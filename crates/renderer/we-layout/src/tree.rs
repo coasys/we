@@ -7,6 +7,7 @@
 //! (auto/scroll → scroll containers, hidden/clip → paint-time clipping),
 //! `aspect-ratio`, `display: none`, and `Grid`'s `columns`/`minChildWidth`
 //! as real grid tracks.
+use indexmap::IndexMap;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -59,11 +60,22 @@ pub struct PartSpec {
     pub indent: f32,
     /// Align-items override for a part (e.g. `ay` on the tree row).
     pub align: Option<ItemAlign>,
+    /// Justify-content override for a part. `Auto` takes the owner's own
+    /// `ax`.
+    pub justify: Option<ItemAlign>,
     /// `flex-grow` along the part's main axis — the alert's content part
     /// fills what the icon leaves, so a trailing part docks at the far edge.
     pub flex_grow: f32,
+    /// The part is a `display: contents` slot: it gets no box, and its
+    /// children are the host's own flex items (the button's default slot).
+    pub contents: bool,
     /// `gap` between the part's children (the button's icon–label space).
     pub column_gap: f32,
+    /// `row-gap` between the part's children — a column part's rows.
+    pub row_gap: f32,
+    /// Padding inside the part, `[top, right, bottom, left]`; `indent`
+    /// adds to the left edge.
+    pub padding: [f32; 4],
     pub parts: Vec<PartSpec>,
 }
 
@@ -79,8 +91,12 @@ impl PartSpec {
             min_height: 0.0,
             indent: 0.0,
             align: None,
+            justify: None,
             flex_grow: 0.0,
+            contents: false,
             column_gap: 0.0,
+            row_gap: 0.0,
+            padding: [0.0; 4],
             parts: vec![],
         }
     }
@@ -96,8 +112,12 @@ impl PartSpec {
             min_height: 0.0,
             indent: 0.0,
             align: None,
+            justify: None,
             flex_grow: 0.0,
+            contents: false,
             column_gap: 0.0,
+            row_gap: 0.0,
+            padding: [0.0; 4],
             parts: vec![],
         }
     }
@@ -113,8 +133,12 @@ impl PartSpec {
             min_height: 0.0,
             indent: 0.0,
             align: None,
+            justify: None,
             flex_grow: 0.0,
+            contents: false,
             column_gap: 0.0,
+            row_gap: 0.0,
+            padding: [0.0; 4],
             parts,
         }
     }
@@ -131,9 +155,21 @@ impl PartSpec {
         self
     }
 
+    /// The part is a `display: contents` slot — see [`PartSpec::contents`].
+    pub fn as_contents(mut self) -> Self {
+        self.contents = true;
+        self
+    }
+
     /// Cross-axis alignment for the part's children.
     pub fn aligned(mut self, align: ItemAlign) -> Self {
         self.align = Some(align);
+        self
+    }
+
+    /// Main-axis alignment for the part's children (`Auto`: the owner's).
+    pub fn justified(mut self, justify: ItemAlign) -> Self {
+        self.justify = Some(justify);
         self
     }
 
@@ -193,6 +229,138 @@ pub struct TreeCfg {
     pub selected: Option<Value>,
 }
 
+/// `we-tree-item`'s caret box and its row's floor (`--we-tree-row-height`).
+const TREE_CARET: f32 = 16.0;
+const TREE_ROW_MIN: f32 = 32.0;
+
+/// The tree row's theme-driven lengths, resolved through the token table
+/// the way the primitive's stylesheet reads them.
+struct TreeMetrics {
+    /// `--we-theme-tree-padding`, else `space-100 space-200` — `[t, r, b, l]`.
+    pad: [f32; 4],
+    space_200: f32,
+    /// `--we-theme-tree-gap`, else `space-100` — the space between rows.
+    row_gap: f32,
+}
+
+impl TreeMetrics {
+    fn resolve(scx: &StyleCx) -> Self {
+        // A theme writes the padding as a shorthand (`calc(0.5rem) 10px`),
+        // which `p` cannot carry through a `var()` — expand it per side.
+        let theme_pad = scx
+            .scope
+            .get("--we-theme-tree-padding")
+            .map(|v| v.to_string())
+            .or_else(|| {
+                scx.tokens
+                    .get("--we-theme-tree-padding")
+                    .map(str::to_string)
+            });
+        let sides: [String; 4] = match theme_pad.as_deref().map(split_top_level) {
+            Some(v) if (1..=4).contains(&v.len()) => {
+                let at = |i: usize| v[i].clone();
+                match v.len() {
+                    1 => [at(0), at(0), at(0), at(0)],
+                    2 => [at(0), at(1), at(0), at(1)],
+                    3 => [at(0), at(1), at(2), at(1)],
+                    _ => [at(0), at(1), at(2), at(3)],
+                }
+            }
+            _ => [
+                "var(--we-space-100)".into(),
+                "var(--we-space-200)".into(),
+                "var(--we-space-100)".into(),
+                "var(--we-space-200)".into(),
+            ],
+        };
+        let mut props: IndexMap<Arc<str>, Value> = ["pt", "pr", "pb", "pl"]
+            .iter()
+            .zip(sides)
+            .map(|(k, v)| (Arc::from(*k), Value::Str(Arc::from(v.as_str()))))
+            .collect();
+        props.insert(
+            Arc::from("gap"),
+            Value::Str(Arc::from("var(--we-theme-tree-gap, var(--we-space-100))")),
+        );
+        props.insert(Arc::from("m"), Value::Str(Arc::from("var(--we-space-200)")));
+        let probe = ResolvedNode {
+            id: NodeId::from("$tree-metrics"),
+            ty: Arc::from("div"),
+            props,
+            handlers: IndexMap::new(),
+            slot: None,
+            children: vec![],
+            transition: None,
+            surfaces: Default::default(),
+        };
+        let style = crate::defaults::style_of(&probe, scx);
+        let px = |d: &Option<Dimension>| d.as_ref().and_then(|d| dim_px(d, scx)).unwrap_or(0.0);
+        let l = &style.layout;
+        Self {
+            pad: [
+                px(&l.padding.top),
+                px(&l.padding.right),
+                px(&l.padding.bottom),
+                px(&l.padding.left),
+            ],
+            space_200: px(&l.margin.left),
+            row_gap: l
+                .gap
+                .as_ref()
+                .and_then(|(r, _)| dim_px(r, scx))
+                .unwrap_or(0.0),
+        }
+    }
+}
+
+/// `var(--we-theme-tree--selected-text, var(--we-role-on-selected))` in
+/// `scx`'s scope.
+fn tree_selected_text(scx: &StyleCx) -> Option<we_style::Color> {
+    let probe = ResolvedNode {
+        id: NodeId::from("$tree-selected"),
+        ty: Arc::from("div"),
+        props: [(
+            Arc::from("color"),
+            Value::Str(Arc::from(
+                "var(--we-theme-tree--selected-text, var(--we-role-on-selected))",
+            )),
+        )]
+        .into_iter()
+        .collect(),
+        handlers: IndexMap::new(),
+        slot: None,
+        children: vec![],
+        transition: None,
+        surfaces: Default::default(),
+    };
+    crate::defaults::style_of(&probe, scx).text.color
+}
+
+/// A CSS value split at top-level whitespace — `calc(a * b) 10px` is two.
+fn split_top_level(s: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut depth = 0usize;
+    for ch in s.chars() {
+        match ch {
+            '(' => depth += 1,
+            ')' => depth = depth.saturating_sub(1),
+            c if c.is_whitespace() && depth == 0 => {
+                if !cur.is_empty() {
+                    out.push(std::mem::take(&mut cur));
+                }
+                continue;
+            }
+            _ => {}
+        }
+        cur.push(ch);
+    }
+    if !cur.is_empty() {
+        out.push(cur);
+    }
+    out
+}
+
 /// The layout output: every resolved node's rect, every part rect, the text
 /// children (painted by the frame, not a widget), scroll-container axes, the
 /// resolved styles (measure and paint read the same answer — scopes already
@@ -238,6 +406,9 @@ pub struct Layout {
     /// finish, not a detected cycle. The returned build is honest (its
     /// `bases` are the values it actually used) but not settled.
     pub unconverged: bool,
+    /// Every home lane's bounds ([`crate::lane::lane_bounds`]), measured on
+    /// this layout — what a drag resizing the lane clamps to.
+    pub lanes: HashMap<NodeId, crate::lane::LaneBounds>,
 }
 
 /// The resolved percent bases of one node — what its `calc(…% …)` and
@@ -500,6 +671,31 @@ fn lpa_base(v: LengthPercentageAuto, base: AxisBase) -> AxisBase {
         ExpandedLengthPercentageAuto::Percent(p) => base.map(|b| p * b),
         _ => AxisBase::Indefinite,
     }
+}
+
+/// An out-of-flow box's `auto` size on an axis: the containing block less
+/// both insets and margins when neither inset is `auto`, else indefinite
+/// (the box shrink-wraps).
+fn inset_size(
+    start: LengthPercentageAuto,
+    end: LengthPercentageAuto,
+    cb: AxisBase,
+    m_start: AxisBase,
+    m_end: AxisBase,
+) -> AxisBase {
+    let auto = |v: LengthPercentageAuto| matches!(v.expand(), ExpandedLengthPercentageAuto::Auto);
+    if auto(start) || auto(end) {
+        return AxisBase::Indefinite;
+    }
+    // An `auto` margin is 0 here: the size takes what the insets leave.
+    let margin = |m: AxisBase| match m {
+        AxisBase::Indefinite => AxisBase::Definite(0.0),
+        m => m,
+    };
+    cb.sub_state(lpa_base(start, cb))
+        .sub_state(lpa_base(end, cb))
+        .sub_state(margin(m_start))
+        .sub_state(margin(m_end))
 }
 
 /// `lpa_base` for a min/max bound — `auto` is no bound rather than an
@@ -825,8 +1021,21 @@ fn border_lp(side: &Option<we_style::BorderSide>, scx: &StyleCx) -> LengthPercen
     ))
 }
 
+/// Whether `pick` takes `c` — the default slot or a named one.
+fn picks(pick: Option<&Pick>, c: &ResolvedChild) -> bool {
+    match (pick, c) {
+        (None, _) => false,
+        (Some(Pick::Default), ResolvedChild::Node(n)) => n.slot.is_none(),
+        (Some(Pick::Default), ResolvedChild::Text(_)) => true,
+        (Some(Pick::Named(want)), ResolvedChild::Node(n)) => {
+            n.slot.as_deref() == Some(want.as_ref())
+        }
+        (Some(Pick::Named(_)), ResolvedChild::Text(_)) => false,
+    }
+}
+
 /// A part spec → taffy style.
-fn part_style(spec: &PartSpec) -> taffy::Style {
+fn part_style(spec: &PartSpec, host: &Style) -> taffy::Style {
     taffy::Style {
         display: Display::Flex,
         flex_direction: match spec.direction {
@@ -838,6 +1047,11 @@ fn part_style(spec: &PartSpec) -> taffy::Style {
             .as_ref()
             .and_then(|a| align(Some(a)))
             .unwrap_or(AlignItems::NORMAL),
+        justify_content: match &spec.justify {
+            Some(ItemAlign::Auto) => justify(host.layout.justify.as_ref()),
+            j => justify(j.as_ref()),
+        }
+        .unwrap_or(JustifyContent::NORMAL),
         size: taffy::Size {
             width: spec
                 .width
@@ -858,13 +1072,13 @@ fn part_style(spec: &PartSpec) -> taffy::Style {
         },
         gap: taffy::Size {
             width: LengthPercentage::length(spec.column_gap),
-            height: LengthPercentage::length(0.0),
+            height: LengthPercentage::length(spec.row_gap),
         },
         padding: taffy::Rect {
-            left: LengthPercentage::length(spec.indent),
-            right: LengthPercentage::length(0.0),
-            top: LengthPercentage::length(0.0),
-            bottom: LengthPercentage::length(0.0),
+            left: LengthPercentage::length(spec.indent + spec.padding[3]),
+            right: LengthPercentage::length(spec.padding[1]),
+            top: LengthPercentage::length(spec.padding[0]),
+            bottom: LengthPercentage::length(spec.padding[2]),
         },
         flex_shrink: 0.0,
         flex_grow: spec.flex_grow,
@@ -1188,6 +1402,17 @@ impl<'a> Builder<'a> {
                 Some(we_style::FlexDirection::RowReverse) => FlexDirection::RowReverse,
                 Some(we_style::FlexDirection::ColumnReverse) => FlexDirection::ColumnReverse,
                 _ if direction_of(node) == we_style::Direction::Row => FlexDirection::Row,
+                // CSS: `display: flex` with no `flex-direction` is a row. A
+                // primitive host or an HTML element authored that way
+                // (`we-link` with `display: 'flex'` — a logo beside its
+                // wordmark) is one; a layout component (`Column`, `Card`)
+                // brings its own direction.
+                _ if matches!(l.display, Some(WsDisplay::Flex))
+                    && !node.props.contains_key("direction")
+                    && authors_css_flex(node) =>
+                {
+                    FlexDirection::Row
+                }
                 _ => FlexDirection::Column,
             },
             flex_wrap: match l.wrap {
@@ -1308,7 +1533,9 @@ impl<'a> Builder<'a> {
             Ed::Percent(p) => ncx.cb.0.map(|b| p * b),
             Ed::Auto => {
                 if !ncx.in_flow {
-                    AxisBase::Indefinite
+                    // Both insets set: the containing block less them
+                    // (CSS 2.1 §10.3.7) — definite for the children.
+                    inset_size(s.inset.left, s.inset.right, ncx.cb.0, ml, mr)
                 } else if ncx.fill_x {
                     ncx.cb.0.sub_state(ml).sub_state(mr)
                 } else if matches!(ncx.main, Direction::Row) && flexed {
@@ -1325,7 +1552,8 @@ impl<'a> Builder<'a> {
             Ed::Percent(p) => ncx.cb.1.map(|b| p * b),
             Ed::Auto => {
                 if !ncx.in_flow {
-                    AxisBase::Indefinite
+                    // §10.6.4: top and bottom both set size the box.
+                    inset_size(s.inset.top, s.inset.bottom, ncx.cb.1, mt, mb)
                 } else if ncx.fill_y {
                     ncx.cb.1.sub_state(mt).sub_state(mb)
                 } else if matches!(ncx.main, Direction::Column) && flexed {
@@ -1441,7 +1669,14 @@ impl<'a> Builder<'a> {
             cb: (
                 spec.width
                     .map(|w| AxisBase::Definite((w - spec.indent).max(0.0)))
-                    .unwrap_or(AxisBase::Indefinite),
+                    // A growing part's width is the flex result — taffy's
+                    // to resolve a child's percent against (the tree row's
+                    // content holding a `width: 100%` Row).
+                    .unwrap_or(if spec.flex_grow > 0.0 {
+                        AxisBase::Deferred
+                    } else {
+                        AxisBase::Indefinite
+                    }),
                 spec.height
                     .map(AxisBase::Definite)
                     .unwrap_or(AxisBase::Indefinite),
@@ -1461,14 +1696,7 @@ impl<'a> Builder<'a> {
                 .children
                 .iter()
                 .chain(extra.iter())
-                .filter(|c| match (pick, c) {
-                    (Pick::Default, ResolvedChild::Node(n)) => n.slot.is_none(),
-                    (Pick::Default, ResolvedChild::Text(_)) => true,
-                    (Pick::Named(want), ResolvedChild::Node(n)) => {
-                        n.slot.as_deref() == Some(want.as_ref())
-                    }
-                    (Pick::Named(_), ResolvedChild::Text(_)) => false,
-                })
+                .filter(|c| picks(Some(pick), c))
             {
                 if let Some(k) = self.child_node(node, child, tree, &pf, scx, tc, eff) {
                     kids.push(k);
@@ -1484,13 +1712,13 @@ impl<'a> Builder<'a> {
         if kids.is_empty() {
             Some(
                 self.tree
-                    .new_leaf_with_context(part_style(spec), ctx)
+                    .new_leaf_with_context(part_style(spec, eff), ctx)
                     .unwrap(),
             )
         } else {
             let id = self
                 .tree
-                .new_with_children(part_style(spec), &kids)
+                .new_with_children(part_style(spec, eff), &kids)
                 .unwrap();
             self.tree.set_node_context(id, Some(ctx)).unwrap();
             Some(id)
@@ -1565,6 +1793,19 @@ impl<'a> Builder<'a> {
         inherited: Option<&Style>,
     ) -> Option<TaffyId> {
         let mut style = effective(inherited, style_of(node, scx));
+        // The lit tree row's text is the theme's `selected` variant's
+        // (`:host([selected]) [part='row'] { color }`) — it inherits down
+        // into the row's content like any colour.
+        if node.ty.as_ref() == "we-tree-item"
+            && tree.selected.as_ref().is_some_and(|sel| {
+                let value = node.props.get("value");
+                value.is_some_and(|v| v.truthy() && v.strict_eq(sel))
+            })
+        {
+            if let Some(c) = tree_selected_text(scx) {
+                style.text.color = Some(c);
+            }
+        }
 
         // `display: none` removes the node AND its subtree from layout — no
         // rect, no parts, nothing painted.
@@ -1815,12 +2056,32 @@ impl<'a> Builder<'a> {
         // layout's call, and only it can see the ancestor.
         if node.ty.as_ref() == "we-tree-item" {
             if let Some(spec) = &mut spec {
+                let m = TreeMetrics::resolve(scx);
+                // A level indents by the caret and its gap — or, with the
+                // caret at the end, by the tree's `lead` (`--_step`).
+                let step = if tree.caret_end && tree.lead > 0.0 {
+                    tree.lead
+                } else {
+                    TREE_CARET + m.space_200
+                };
                 for part in &mut spec.parts {
-                    if part.name == "row" {
-                        if tree.caret_end {
-                            part.parts.sort_by_key(|p| p.name == "caret");
+                    match part.name {
+                        "row" => {
+                            if tree.caret_end {
+                                part.parts.retain(|p| p.name != "caret-slot");
+                                part.parts.sort_by_key(|p| p.name == "caret");
+                            }
+                            // The theme's tree padding, its start held at
+                            // `space-200` (`padding-inline-start`).
+                            part.padding = [m.pad[0], m.pad[1], m.pad[2], m.space_200];
+                            part.column_gap = m.space_200;
+                            part.min_height = part.min_height.max(TREE_ROW_MIN);
                         }
-                        part.indent += tree.lead;
+                        "children" => {
+                            part.indent = step;
+                            part.row_gap = m.row_gap;
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -1883,6 +2144,47 @@ impl<'a> Builder<'a> {
                 .count()
         };
         let kids: Vec<TaffyId> = match spec {
+            // A `display: contents` part has no box: its children are the
+            // host's own flex items, laid out by the host's direction,
+            // alignment, gap and wrap — the button's slot in `[part=base]`.
+            Some(spec) if spec.parts.iter().any(|p| p.contents) => {
+                let main = match s.flex_direction {
+                    FlexDirection::Row | FlexDirection::RowReverse => Direction::Row,
+                    _ => Direction::Column,
+                };
+                let pf = ParentFrame {
+                    id: Some(&node.id),
+                    cb: own.content,
+                    positioned,
+                    pb,
+                    grid_axes: None,
+                    main,
+                    stretch_x: matches!(main, Direction::Column) && stretch_offer(l.align.as_ref()),
+                    stretch_y: matches!(main, Direction::Row) && stretch_offer(l.align.as_ref()),
+                };
+                let mut kids = Vec::new();
+                for part in &spec.parts {
+                    if part.contents {
+                        for child in node
+                            .children
+                            .iter()
+                            .chain(extra.iter())
+                            .filter(|c| picks(part.pick.as_ref(), c))
+                        {
+                            if let Some(k) =
+                                self.child_node(node, child, &tree, &pf, &scoped, tc, &style)
+                            {
+                                kids.push(k);
+                            }
+                        }
+                    } else if let Some(k) =
+                        self.part_node(&node.id, part, node, extra, &tree, &pf, &scoped, tc, &style)
+                    {
+                        kids.push(k);
+                    }
+                }
+                kids
+            }
             Some(spec) => {
                 s.flex_direction = match spec.direction {
                     Direction::Row => FlexDirection::Row,
@@ -2182,6 +2484,35 @@ fn layout_impl(
     parent: Option<&Style>,
     round: bool,
 ) -> Layout {
+    let mut out = layout_pass(m, scx, root, rect, viewport_root, parent, round);
+    let mut bounds = crate::lane::lane_bounds(root, &out);
+    // A kept lane width the row has no room for gives way (`PanelLane`
+    // draws `clamp(held)`): lay the clamped width out and measure again.
+    // One round settles a lane beside fixed ones; the cap bounds lanes
+    // that narrow each other.
+    let mut drawn: Option<ResolvedNode> = None;
+    for _ in 0..3 {
+        let Some(next) = crate::lane::clamp_kept_widths(drawn.as_ref().unwrap_or(root), &bounds)
+        else {
+            break;
+        };
+        out = layout_pass(m, scx, &next, rect, viewport_root, parent, round);
+        bounds = crate::lane::lane_bounds(&next, &out);
+        drawn = Some(next);
+    }
+    out.lanes = bounds;
+    out
+}
+
+fn layout_pass(
+    m: &dyn Measure,
+    scx: &StyleCx,
+    root: &ResolvedNode,
+    rect: Rect,
+    viewport_root: bool,
+    parent: Option<&Style>,
+    round: bool,
+) -> Layout {
     /// Deep acyclic chains settle in a handful of passes; the cap
     /// bounds whatever does not — a repeated measured state is cyclic
     /// and lands on the CSS fallback, while a chain still moving at
@@ -2206,6 +2537,7 @@ fn layout_impl(
         bases: HashMap::new(),
         content_boxes: HashMap::new(),
         unconverged: false,
+        lanes: HashMap::new(),
     };
 
     // Synthesized children live in an arena outliving every build pass:
@@ -2420,6 +2752,7 @@ fn layout_impl(
                 .map(|(id, (content, _))| (id, content))
                 .collect(),
             unconverged: false,
+            lanes: HashMap::new(),
         };
         collect(&tree, root_id, rect.min, &mut next);
         place_pseudos(&mut next, pseudos, scx);
@@ -2699,4 +3032,18 @@ fn collect(tree: &TaffyTree<Ctx>, id: TaffyId, origin: Pos2, out: &mut Layout) {
     for child in tree.children(id).unwrap_or_default() {
         collect(tree, child, rect.min, out);
     }
+}
+
+/// Whether `display: flex` on this node is CSS's own default row: the
+/// template authored it (`display: 'flex'`) on a primitive (`we-*`) or an
+/// HTML element, whose host brings no direction of its own. A capitalised
+/// layout component keeps the one it declares, and a primitive whose port
+/// lays its parts out as a flex column (`we-tree-item`) is not authored.
+fn authors_css_flex(node: &ResolvedNode) -> bool {
+    let ty = node.ty.as_ref();
+    let host = ty.starts_with("we-") || ty.chars().next().is_some_and(|c| c.is_ascii_lowercase());
+    host && node
+        .props
+        .get("display")
+        .is_some_and(|v| matches!(v.js_string().trim(), "flex" | "inline-flex"))
 }

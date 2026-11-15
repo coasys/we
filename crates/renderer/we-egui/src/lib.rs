@@ -21,6 +21,7 @@ mod edit_state;
 pub mod event;
 mod feedback;
 mod fonts;
+mod gradient;
 mod inputs;
 mod layout;
 mod media;
@@ -61,7 +62,9 @@ pub use text::{
 };
 pub use tree::{Tree, TreeItem};
 pub use unknown::UnknownWidget;
-pub use we_layout::{Direction, PartSpec, PartsSpec, Pick, TextChildren, TreeCfg};
+pub use we_layout::{
+    Direction, LaneBounds, PartSpec, PartsSpec, Pick, TextChildren, TreeCfg, LANE_LEAVES_PX,
+};
 
 /// `style_of` for callers (the gallery's swatches, tests).
 pub use defaults::style_of;
@@ -90,6 +93,10 @@ impl<'a> MeasureCx<'a> {
     }
 }
 
+/// `DISABLED_OPACITY`'s fallback (1-tokens/states.ts): a theme without
+/// `--we-theme-disabled-opacity` dims a disabled primitive to half.
+const DISABLED_OPACITY: f32 = 0.5;
+
 /// What a widget may use while painting.
 ///
 /// - `ui` — the egui painter + interaction.
@@ -117,6 +124,10 @@ pub struct PaintCx<'a> {
     /// content-driven (the CSS cyclic fallback → `0`) or for a
     /// hand-built context in tests.
     pub cb_w: Option<f32>,
+    /// A home lane's bounds as layout measured them
+    /// ([`crate::layout::Layout::lanes`]) — what a drag resizing it clamps
+    /// to. `None` for any other node, or a hand-built context in tests.
+    pub(crate) lane: Option<we_layout::LaneBounds>,
     pub(crate) ancestors: &'a [NodeId],
     pub(crate) events: &'a mut Vec<WidgetEvent>,
     pub(crate) hits: &'a mut HitLog,
@@ -127,6 +138,28 @@ pub struct PaintCx<'a> {
     /// cuts the subtree's output after it paints, so it must use the same
     /// state (cyberpunk's `:hover { clip-path: none }`).
     pub(crate) state_clip: Option<Option<we_style::ClipPath>>,
+    /// How the frame stacks its raised boxes (positioned, `z-index > 0`)
+    /// — `None` on a walk with none — see [`PaintCx::occluded`].
+    pub(crate) stacking: Option<&'a paint::Stacking>,
+}
+
+/// Whether the pointer, over `node`, is over a raised box painted above it
+/// instead ([`paint::Stacking::occludes`]). What `rect_contains_pointer`
+/// cannot answer: it asks the layer, and the covered box and the cover
+/// share one.
+pub(crate) fn occluded(
+    ui: &egui::Ui,
+    stacking: Option<&paint::Stacking>,
+    ancestors: &[NodeId],
+    node: &NodeId,
+) -> bool {
+    let Some(stacking) = stacking else {
+        return false;
+    };
+    let Some(p) = ui.input(|i| i.pointer.hover_pos()) else {
+        return false;
+    };
+    stacking.occludes(p, ancestors, node)
 }
 
 /// The click-sensing rects the frame has reported so far: `activated` —
@@ -185,12 +218,21 @@ impl<'a> PaintCx<'a> {
             edit,
             now,
             cb_w: None,
+            lane: None,
             ancestors,
             events,
             hits,
             clicks,
             state_clip: None,
+            stacking: None,
         }
+    }
+
+    /// Whether the pointer over `node` is covered by a raised box painted
+    /// above it ([`occluded`]) — a container's hover and click read this
+    /// beside `rect_contains_pointer`.
+    pub(crate) fn occluded(&self, node: &NodeId) -> bool {
+        occluded(self.ui, self.stacking, self.ancestors, node)
     }
 
     /// The style for the response's state ([`crate::props::state_style`]),
@@ -203,7 +245,37 @@ impl<'a> PaintCx<'a> {
         disabled: bool,
     ) -> std::borrow::Cow<'s, we_style::Style> {
         let eff = crate::props::state_style(style, response, disabled);
+        let eff = self.disabled_opacity(style, eff, disabled);
         self.report_state(&eff);
+        eff
+    }
+
+    /// shared/styles.ts `:host([disabled])`: one disabled state for every
+    /// primitive, at `DISABLED_OPACITY` — the theme's
+    /// `--we-theme-disabled-opacity`, 0.5 without one — folded into the
+    /// state-resolved `eff`. An authored `disabledProps.opacity` comes later
+    /// in the cascade and wins. Every widget's state goes through here, so
+    /// no widget dims itself.
+    pub(crate) fn disabled_opacity<'s>(
+        &self,
+        style: &we_style::Style,
+        mut eff: std::borrow::Cow<'s, we_style::Style>,
+        disabled: bool,
+    ) -> std::borrow::Cow<'s, we_style::Style> {
+        let authored = style
+            .disabled
+            .as_deref()
+            .is_some_and(|p| p.paint.opacity.is_some());
+        if disabled && !authored {
+            let theme = crate::defaults::tokens_of(self.ui.ctx())
+                .and_then(|t| {
+                    t.get("--we-theme-disabled-opacity")
+                        .and_then(|raw| t.substitute(raw).trim().parse::<f32>().ok())
+                })
+                .unwrap_or(DISABLED_OPACITY);
+            let o = eff.paint.opacity.unwrap_or(1.0) * theme.clamp(0.0, 1.0);
+            eff.to_mut().paint.opacity = Some(o);
+        }
         eff
     }
 

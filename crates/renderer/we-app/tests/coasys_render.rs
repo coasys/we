@@ -51,6 +51,10 @@
 //! Data: `bundles/coasys.bundle.json` + `fixtures/coasys/snapshot.json`.
 //! The snapshot's sha256 is asserted before anything reads it, so capture
 //! bytes cannot drift under the test.
+
+#[path = "support/gpu.rs"]
+mod gpu;
+
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -399,6 +403,7 @@ fn gate_context_setup(ctx: &egui::Context) {
 /// — these are pictures, and the bundle's unnamed buttons are recorded.
 fn pixel_harness(app: RendererApp) -> Harness<'static, RendererApp> {
     Harness::builder()
+        .renderer(gpu::serial())
         .with_size(Vec2::new(W, H))
         .with_pixels_per_point(1.0)
         .with_context_setup(gate_context_setup)
@@ -572,6 +577,7 @@ fn tree_panel() {
     panel.theme = capture_theme();
     let shell = Shell { panel };
     let mut harness = Harness::builder()
+        .renderer(gpu::serial())
         .with_size(Vec2::new(W, H))
         .with_pixels_per_point(1.0)
         .with_context_setup(gate_context_setup)
@@ -611,8 +617,8 @@ fn snapshot_policy_checks_env_and_never_writes() {
 /// The pinned clock is real, not decorative (Lal F2): re-pin "now" to an
 /// absurd instant — the epoch — and the relative text `we-timestamp`
 /// paints moves with it. Under the fixture's own week the same widgets
-/// read "9hr ago"/"Nday ago" (narrow style); under 1970 they read
-/// "in 56yr".
+/// read "9h ago"/"Nd ago" (narrow style, as `Intl.RelativeTimeFormat`
+/// writes it); under 1970 they read "in 56y".
 #[test]
 fn pinned_clock_moves_timestamp_text() {
     let truth = truth();
@@ -622,5 +628,5 @@ fn pinned_clock_moves_timestamp_text() {
     settle_frame(&mut harness);
     // Panics when no painted node carries the absurd pin's text — under
     // the wall clock or `PINNED_NOW` this label cannot appear.
-    harness.get_by_label("in 56yr");
+    harness.get_by_label("in 56y");
 }

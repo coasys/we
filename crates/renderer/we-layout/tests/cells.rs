@@ -518,6 +518,7 @@ fn reversed_spans_project_zero_cells() {
         bases: HashMap::new(),
         content_boxes: HashMap::new(),
         unconverged: false,
+        lanes: Default::default(),
     };
     let cells = project(&out, &proj);
     let rev = cell(&cells, "rev");
@@ -557,6 +558,7 @@ fn huge_spans_saturate_at_u16_max() {
         bases: HashMap::new(),
         content_boxes: HashMap::new(),
         unconverged: false,
+        lanes: Default::default(),
     };
     let huge = cell(&project(&out, &proj), "huge");
     assert_eq!((huge.cols, huge.rows), (u16::MAX, u16::MAX));

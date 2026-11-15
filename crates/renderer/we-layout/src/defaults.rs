@@ -97,7 +97,9 @@ fn entries(bag: &mut Bag, pairs: &[(&str, &str)]) {
 
 /// The component's flex direction for `resolve()`'s axis mapping: `Row`'s is
 /// `row`; `Card`/`Grid`/`div`/`we-link` take their `direction` prop (default
-/// `column`); everything else is `column`.
+/// `column`); `we-button` maps on `row`, as the primitives' `mapFlexAxes(props,
+/// props.direction ?? 'row')` does (its `[part=base]` is a row); everything
+/// else is `column`.
 pub fn direction_of(node: &ResolvedNode) -> we_style::Direction {
     match prop_str(node, "direction") {
         Some("row" | "row-reverse") => return we_style::Direction::Row,
@@ -105,15 +107,16 @@ pub fn direction_of(node: &ResolvedNode) -> we_style::Direction {
         _ => {}
     }
     match node.ty.as_ref() {
-        "Row" => we_style::Direction::Row,
+        "Row" | "we-button" | "we-input" => we_style::Direction::Row,
         _ => we_style::Direction::Column,
     }
 }
 
-/// `tone` picks the toned side of a variant table — `tone` present and not
-/// `"neutral"`, the same rule `getInstanceProps` applies.
+/// `tone` picks the toned side of a variant table — `tone` truthy and not
+/// `"neutral"` (badge.ts `this.tone && this.tone !== 'neutral'`): an
+/// empty string is no tone.
 fn toned(node: &ResolvedNode) -> bool {
-    matches!(prop_str(node, "tone"), Some(t) if t != "neutral")
+    matches!(prop_str(node, "tone"), Some(t) if !t.is_empty() && t != "neutral")
 }
 
 /// `variant`/`size` with the primitive's fallbacks.
@@ -149,13 +152,113 @@ pub(crate) fn bag_for(node: &ResolvedNode) -> Bag {
             bag.insert(k.clone(), val.clone());
         }
     }
+    // A home lane somebody resized takes the width they dragged it to
+    // (`PanelLane`: `clamp(held)` — the template's `minWidth`/`maxWidth`
+    // still bound it, as they stay in the bag).
+    if node.ty.as_ref() == "$lane" {
+        if let Some(width) = crate::props::prop_num(node, "laneWidth") {
+            bag.insert(
+                Arc::from("width"),
+                Value::Str(Arc::from(format!("{width}px").as_str())),
+            );
+        }
+        // A sized or resizable lane holds its width rather than shrinking
+        // (`PanelLane`: `flex: props.flex ?? '0 0 auto'`).
+        if !bag.contains_key("flex") && (bag.contains_key("width") || bag.contains_key("resize")) {
+            bag.insert(Arc::from("flex"), Value::Str(Arc::from("0 0 auto")));
+        }
+    }
+    // A folded home lane takes no room (`PanelLane`: `width: 0`,
+    // `min-width: 0`, `visibility: hidden`) — its sections stay mounted
+    // behind the clip, and its own fill and edge go with it.
+    if node.ty.as_ref() == "$lane" && crate::props::prop_bool(node, "collapsed") {
+        for k in [
+            "bg",
+            "border",
+            "borderLeft",
+            "borderRight",
+            "borderTop",
+            "borderBottom",
+        ] {
+            bag.shift_remove(k);
+        }
+        bag.insert(Arc::from("width"), Value::Str(Arc::from("0px")));
+        bag.insert(Arc::from("minWidth"), Value::Str(Arc::from("0")));
+        bag.insert(Arc::from("overflow"), Value::Str(Arc::from("hidden")));
+    }
     bag
+}
+
+/// The type role a component's words are set in — helpers.ts
+/// `COMPONENT_CASCADE[name].typeRole`. `we-text` takes its role from its
+/// variant: the heading sizes are headings, `label` and `overline` their own,
+/// and every other variant (and none) takes nothing, so text inside a button
+/// inherits the button's control type.
+fn role_of(node: &ResolvedNode) -> Option<&'static str> {
+    match node.ty.as_ref() {
+        "we-button" | "we-menu-item" | "we-tab" => Some("control"),
+        "we-badge" | "we-tag" => Some("badge"),
+        "we-input" | "we-textarea" | "we-select" | "we-number-input" | "we-date-picker" => {
+            Some("body")
+        }
+        "we-text" => match prop_str(node, "variant") {
+            Some(v) if v.starts_with("heading") => Some("heading"),
+            Some("label") => Some("label"),
+            Some("overline") => Some("overline"),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// The DS prop each type-role key lands on, and the key's variable suffix
+/// (`TYPE_ROLE_KEYS`).
+const ROLE_KEYS: &[(&str, &str)] = &[
+    ("fontFamily", "family"),
+    ("fontSize", "size"),
+    ("fontWeight", "weight"),
+    ("letterSpacing", "letter-spacing"),
+    ("lineHeight", "line-height"),
+    ("textTransform", "text-transform"),
+    ("color", "color"),
+];
+
+/// Whether the author set `key` — on the node, or in its `style`/`styles`
+/// bags. An authored value is the narrowest statement and the theme never
+/// reaches past it.
+fn authored(node: &ResolvedNode, key: &str) -> bool {
+    node.props.contains_key(key)
+        || ["style", "styles"]
+            .iter()
+            .any(|o| crate::props::prop_obj(node, o).is_some_and(|m| m.contains_key(key)))
+}
+
+/// Put the theme's type role ahead of the element's own defaults: the web
+/// writes `var(--we-type-<role>-<key>, <default>)` for every key the author
+/// did not set (`applyComponentTheme`, `staticThemeChain`). A variable the
+/// theme does not declare falls through to the default, which is what
+/// leaving the bag alone gives — so only the declared ones are written. The
+/// heading role takes no size (`roleTakes`): headings are a scale.
+fn type_role(bag: &mut Bag, node: &ResolvedNode, tokens: &we_style::TokenTable) {
+    let Some(role) = role_of(node) else {
+        return;
+    };
+    for (prop, key) in ROLE_KEYS {
+        if role == "heading" && *key == "size" {
+            continue;
+        }
+        let var = format!("--we-type-{role}-{key}");
+        if tokens.contains(&var) && !authored(node, prop) {
+            bag.insert(Arc::from(*prop), v(&format!("var({var})")));
+        }
+    }
 }
 
 /// The node's [`we_style::Style`] under `scx`'s theme — the single entry
 /// point layout, measure and paint share.
 pub fn style_of(node: &ResolvedNode, scx: &StyleCx) -> Style {
-    let bag = bag_for(node);
+    let mut bag = bag_for(node);
+    type_role(&mut bag, node, scx.tokens);
     let mut input = StyleInput::new(scx.tokens, direction_of(node));
     input.container_width = scx.container_width;
     input.viewport = scx.viewport;
@@ -263,18 +366,36 @@ fn type_defaults(bag: &mut Bag, node: &ResolvedNode) {
                 _ => ("300", "md", "var(--we-space-400)"),
             };
             entries(bag, &[("fontSize", fs)]);
+            // `[part=base]`'s gap: the theme's button/control gap, then the
+            // size tier's `--we-button-size-gap` (helpers.ts COMPONENT_CASCADE).
+            // The slot is `display: contents`, so it spaces the children.
+            let gap = match size(node, "md") {
+                "xs" => "var(--we-space-100)",
+                "sm" => "var(--we-space-200)",
+                _ => "var(--we-space-300)",
+            };
             bag.insert(
-                Arc::from("px"),
+                Arc::from("gap"),
                 v(&format!(
-                    "var(--we-theme-button-padding-x, var(--we-theme-control-padding-x, {px}))"
+                    "var(--we-theme-button-gap, var(--we-theme-control-gap, {gap}))"
                 )),
             );
-            bag.insert(
-                Arc::from("height"),
-                v(&format!(
-                    "calc(var(--we-component-height-{h}) + var(--we-theme-control-height-offset, 0px))"
-                )),
-            );
+            // The variant merges over the size tier: `bare`'s `height: auto`
+            // and zero padding win, so it wraps what it holds (a card).
+            if variant(node, "solid") != "bare" {
+                bag.insert(
+                    Arc::from("px"),
+                    v(&format!(
+                        "var(--we-theme-button-padding-x, var(--we-theme-control-padding-x, {px}))"
+                    )),
+                );
+                bag.insert(
+                    Arc::from("height"),
+                    v(&format!(
+                        "calc(var(--we-component-height-{h}) + var(--we-theme-control-height-offset, 0px))"
+                    )),
+                );
+            }
             // square: width = height = component height, padding removed.
             if crate::props::prop_bool(node, "square") {
                 let h = v(&format!(
@@ -291,6 +412,68 @@ fn type_defaults(bag: &mut Bag, node: &ResolvedNode) {
                 bag.insert(Arc::from("height"), h);
                 bag.shift_remove("px");
                 bag.shift_remove("py");
+            }
+        }
+        "we-input" => {
+            // input.ts DEFAULT_PROPS: a recessed well with an outline, its
+            // own row (`display: flex`, `ay: center`) holding the `start`
+            // slot, the text and the `end` slot. The size tier sets the
+            // padding, the font and the control height.
+            entries(
+                bag,
+                &[
+                    ("bg", "field"),
+                    ("border", "1px solid border"),
+                    // `r: '300'` reaches the CSS through the input family
+                    // (helpers.ts `radiusGroup: --we-theme-input-radius`).
+                    ("r", "input"),
+                    ("color", "text"),
+                    ("ay", "center"),
+                ],
+            );
+            let state = |pairs: &[(&str, &str)]| {
+                let mut m = IndexMap::new();
+                for (k, val) in pairs {
+                    m.insert(Arc::from(*k), v(val));
+                }
+                Value::Obj(Arc::new(m))
+            };
+            if !bag.contains_key("hoverProps") {
+                bag.insert(
+                    Arc::from("hoverProps"),
+                    state(&[("bg", "field-hover"), ("border", "1px solid border-hover")]),
+                );
+            }
+            if !bag.contains_key("focusProps") {
+                bag.insert(
+                    Arc::from("focusProps"),
+                    state(&[
+                        ("bg", "field-hover"),
+                        ("border", "1px solid var(--we-ring-color)"),
+                        // FOCUS_RING_BEYOND_BORDER: the pixel outside the
+                        // recoloured border, so the two read as one ring.
+                        (
+                            "ring",
+                            "0 0 0 max(0px, calc(var(--we-focus-ring-width) - var(--we-border-width, 1px))) var(--we-ring-color)",
+                        ),
+                    ]),
+                );
+            }
+            let (px, fs, h) = match size(node, "md") {
+                "xs" => ("100", "100", "xs"),
+                "sm" => ("200", "200", "sm"),
+                "lg" => ("400", "400", "lg"),
+                "xl" => ("500", "400", "xl"),
+                _ => ("300", "300", "md"),
+            };
+            entries(bag, &[("px", px), ("fontSize", fs)]);
+            if !bag.contains_key("height") {
+                bag.insert(
+                    Arc::from("height"),
+                    v(&format!(
+                        "calc(var(--we-component-height-{h}) + var(--we-theme-control-height-offset, 0px))"
+                    )),
+                );
             }
         }
         "we-badge" => {
@@ -381,7 +564,9 @@ fn type_defaults(bag: &mut Bag, node: &ResolvedNode) {
             );
         }
         "we-avatar" => {
-            entries(bag, &[("flex", "0 0 auto")]);
+            // helpers.ts: `avatar: { radiusGroup: --we-theme-avatar-radius,
+            // radiusDefault: '50%' }` — the `avatar` family.
+            entries(bag, &[("flex", "0 0 auto"), ("r", "avatar")]);
             // `:host` pins both dims to `--we-avatar-size`, and the tier
             // rules point it at `--we-avatar-size-{tier}` — without them a
             // `stretch` parent widens the face (the TS element's own
@@ -484,6 +669,20 @@ fn type_defaults(bag: &mut Bag, node: &ResolvedNode) {
             // var on the element.
             if crate::props::prop_bool(node, "italic") {
                 entries(bag, &[("fontStyle", "italic")]);
+            }
+        }
+        "we-tree" | "we-tree-item" => {
+            // `STACKED`: rows stack, `space-100` apart unless the theme sets
+            // the tree's gap. A row's text is muted until it is lit.
+            entries(
+                bag,
+                &[
+                    ("direction", "column"),
+                    ("gap", "var(--we-theme-tree-gap, var(--we-space-100))"),
+                ],
+            );
+            if node.ty.as_ref() == "we-tree-item" {
+                entries(bag, &[("color", "text-muted")]);
             }
         }
         "we-divider" => {

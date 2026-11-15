@@ -12,11 +12,13 @@
 pub mod cells;
 pub mod defaults;
 mod geom;
+pub mod lane;
 pub mod props;
 pub mod theme_css;
 mod tree;
 
 pub use geom::{Pos2, Rect, Size, Vec2};
+pub use lane::{LaneBounds, LANE_LEAVES_PX};
 pub use tree::{
     layout, layout_shrink, layout_unrounded, Bases, Direction, Layout, Measure, PartSpec, Parts,
     PartsSpec, Pick, TextChildren, TextSpan, TreeCfg,

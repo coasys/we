@@ -42,6 +42,9 @@ struct Args {
     dump: bool,
     /// `--theme` — which recorded theme to paint with.
     theme: String,
+    /// `--coasys <route>` — the whole app root at one recorded C2a route,
+    /// set up the way `tests/coasys_shots.rs` sets it up.
+    coasys: Option<String>,
     /// `--viewport` — the width the dump reports the host surfaces at.
     viewport: f32,
 }
@@ -68,6 +71,7 @@ fn parse_args() -> Args {
         gallery: Gallery::None,
         dump: false,
         theme: "dark".to_string(),
+        coasys: None,
         // The design's headless measure (6.2): the dump reports the
         // mount's host surfaces at 1440 unless `--viewport` says else.
         viewport: 1440.0,
@@ -108,6 +112,12 @@ fn parse_args() -> Args {
                     .next()
                     .unwrap_or_else(|| panic!("--theme needs a name"));
             }
+            "--coasys" => {
+                args.coasys = Some(
+                    rest.next()
+                        .unwrap_or_else(|| panic!("--coasys needs a route: {COASYS_ROUTES:?}")),
+                );
+            }
             "--viewport" => {
                 args.viewport = rest
                     .next()
@@ -117,13 +127,16 @@ fn parse_args() -> Args {
             "--offline" => {}
             "--help" | "-h" => {
                 eprintln!(
-                    "usage: we-app [dump] [--bundle <path>] [--snapshot <path>] [--route <href>] [--offline] [--theme <name>] [--gallery style|widgets|inputs]\n\n\
+                    "usage: we-app [dump] [--bundle <path>] [--snapshot <path>] [--route <href>] [--offline] [--theme <name>] [--coasys <route>] [--gallery style|widgets|inputs]\n\n\
                      dump               resolve the app root once, print the normal-form tree, exit\n\
                      --bundle <path>    bundle to render (default: the repo's bundles/coasys.bundle.json)\n\
                      --snapshot <path>  offline data: stores/queries/invokes as JSON\n\
                      --route <href>     initial routeStore path (default /)\n\
                      --offline          run with no executor — the only mode this stage has\n\
                      --theme <name>     light, dark, black, retro, cyberpunk or glow (default dark)\n\
+                     --coasys <route>   the whole app at a recorded Coasys route, set up as the\n\
+                                        coasys_shots screenshots are: index, workflows, channels,\n\
+                                        channel-design, calls, call, people, dna, person or about\n\
                      --viewport <px>    the width dump reports the mount surfaces at (default 1440)\n\
                      --gallery style    design-system showcase: roles, scales, radii, shadows\n\
                      --gallery widgets  the E5a widget showcase, themed, schema-driven\n\
@@ -366,7 +379,74 @@ fn main() -> eframe::Result<()> {
     if args.gallery != Gallery::None {
         return run_gallery(args.gallery);
     }
+    if let Some(route) = &args.coasys {
+        return run_coasys(route, &args.theme);
+    }
     run_native(args)
+}
+
+/// The ten routes C2a recorded in `fixtures/coasys/snapshot.json`.
+#[cfg(not(target_arch = "wasm32"))]
+const COASYS_ROUTES: [&str; 10] = [
+    "index",
+    "workflows",
+    "channels",
+    "channel-design",
+    "calls",
+    "call",
+    "people",
+    "dna",
+    "person",
+    "about",
+];
+
+/// `we-app --coasys <route>` — the bundle's whole app root against one
+/// recorded route, in a window: `Runtime::app` over `OfflineData::from_route`
+/// at the route's recorded Rust path, exactly as `tests/coasys_shots.rs`
+/// builds the frames it screenshots. Navigating away leaves the route's
+/// captures behind, so other pages show what that route did not record.
+#[cfg(not(target_arch = "wasm32"))]
+fn run_coasys(route: &str, theme_id: &str) -> eframe::Result<()> {
+    if !COASYS_ROUTES.contains(&route) {
+        panic!("--coasys: no recorded route {route:?}; one of {COASYS_ROUTES:?}");
+    }
+    let bundle = load_bundle(DEFAULT_BUNDLE);
+    let title = format!("{} — {route} ({theme_id})", bundle.name);
+    let (mut app, fell_back) =
+        we_app::coasys_app(&bundle, route, theme_id).unwrap_or_else(|e| panic!("{e}"));
+    if fell_back {
+        eprintln!("no recorded theme {theme_id:?}; painting with dark");
+    }
+
+    let options = eframe::NativeOptions {
+        viewport: eframe::egui::ViewportBuilder::default()
+            .with_title(&title)
+            .with_inner_size([1280.0, 800.0]),
+        ..Default::default()
+    };
+    eframe::run_native(
+        &title,
+        options,
+        Box::new(move |cc| {
+            we_app::init_host(&cc.egui_ctx);
+            let ctx = cc.egui_ctx.clone();
+            app.session
+                .set_waker(Arc::new(move || ctx.request_repaint()));
+            Ok(Box::new(CoasysApp { app }))
+        }),
+    )
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+struct CoasysApp {
+    app: RendererApp,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl eframe::App for CoasysApp {
+    fn ui(&mut self, ui: &mut eframe::egui::Ui, _frame: &mut eframe::Frame) {
+        self.app.frame_body(ui);
+    }
 }
 
 #[cfg(target_arch = "wasm32")]

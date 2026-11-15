@@ -133,10 +133,15 @@ impl RendererApp {
         install_media(ui.ctx());
         // The theme's polarity drives egui's visuals so untoned spots
         // (scrollbars, unknown boxes) sit right on a dark theme.
-        ui.ctx().set_visuals(match self.theme.polarity {
+        let mut visuals = match self.theme.polarity {
             we_style::Polarity::Dark => egui::Visuals::dark(),
             we_style::Polarity::Light => egui::Visuals::light(),
-        });
+        };
+        // Text nothing colours is the body colour the web declares where a
+        // theme applies (`BODY_TYPE`, 2-themes/themeStyles.ts) — not egui's
+        // grey. Every uncoloured fallback reads it through the visuals.
+        visuals.override_text_color = body_text_color(&self.theme.tokens);
+        ui.ctx().set_visuals(visuals);
 
         let resolved = self.session.resolve();
         let stats = self.session.stats().clone();
@@ -210,6 +215,13 @@ impl RendererApp {
                     &mut self.edit,
                     ui.input(|i| i.time),
                 );
+                // A handler's effect — `$setLocal` on hover, a lane's new
+                // width — lands in the next resolve; without asking for
+                // that frame it waits for the next input, so a pointer that
+                // enters the rail and stops leaves it drawn collapsed.
+                if !events.is_empty() {
+                    ui.ctx().request_repaint();
+                }
                 self.drain(events);
             });
 
@@ -279,6 +291,73 @@ impl RendererApp {
     }
 }
 
+/// The bundle's whole app root against one route C2a recorded in
+/// `fixtures/coasys/snapshot.json`, at the route's recorded Rust path and
+/// painted with `theme_id` — what `we-app --coasys` opens and what
+/// `tests/coasys_shots.rs` screenshots. The second value says the theme
+/// was not recorded and `dark` stood in.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn coasys_app(
+    bundle: &we_template::Bundle,
+    route: &str,
+    theme_id: &str,
+) -> Result<(RendererApp, bool), String> {
+    use we_data::{OfflineData, StoreMap};
+    use we_screen::ScreenSchema;
+    use we_template::{AppSpec, LocalState, NoParts, Runtime};
+
+    const SNAPSHOT: &str = include_str!("../../fixtures/coasys/snapshot.json");
+    const SEED_MAP: &str = include_str!("../../we-data/data/storemap-offline.json");
+
+    let truth: serde_json::Value =
+        serde_json::from_str(SNAPSHOT).map_err(|e| format!("snapshot parse: {e}"))?;
+    let map = StoreMap::parse(SEED_MAP).map_err(|e| format!("seed map: {e}"))?;
+    let data = OfflineData::from_route(&truth, route, Some(&map))
+        .map_err(|e| format!("route {route}: {e}"))?;
+    let spec = AppSpec {
+        bundle: bundle.name.clone().into(),
+        app: bundle.app.clone(),
+        template: bundle.templates.as_deref().and_then(|t| t.first()).cloned(),
+        pages: bundle.pages.clone().unwrap_or_default(),
+        boot: bundle.boot_screen.clone(),
+    };
+    let path = truth["routes"][route]["rust"]
+        .as_str()
+        .ok_or_else(|| format!("routes.{route}.rust is not a path"))?;
+    let screen = ScreenState::desktop(
+        ScreenSchema {
+            pages: bundle
+                .pages
+                .as_deref()
+                .unwrap_or_default()
+                .iter()
+                .map(|p| p.id.clone())
+                .collect(),
+            ..ScreenSchema::default()
+        },
+        path,
+    );
+    // `RendererApp::new` builds a single-schema session; swap in the app-root
+    // runtime and the offline host, with the same `$`-type gate.
+    let placeholder: SchemaNode =
+        serde_json::from_value(serde_json::json!({ "type": "Column" })).unwrap();
+    let registry = Registry::with_builtins();
+    let types: std::collections::HashSet<&'static str> = registry.type_names().collect();
+    let mut app = RendererApp::new(placeholder, "coasys", data.bag.clone(), screen, registry);
+    // `set_runtime`, not a field write: the bag's legacy faces must read
+    // this runtime's `screen` view, not the one the session built.
+    app.session.set_runtime(
+        Runtime::app(spec, data.bag.clone(), LocalState::new())
+            .with_sources(Some(data.source()), Arc::new(NoParts))
+            .with_dollar_types(move |ty| types.contains(ty)),
+    );
+    app.session.host = Box::new(StaticHost::new(data.bag.clone()));
+    let set = gallery::load_theme_set();
+    let (theme, fell_back) = set.theme(theme_id);
+    app.theme = theme.clone();
+    Ok((app, fell_back))
+}
+
 /// One pass over the resolved tree collecting `(tag, content-box width)`
 /// for every surface — the box `ResizeObserver.contentBoxSize` answers
 /// (`createSurface.ts:47`). A node with no laid-out box reports nothing.
@@ -331,4 +410,17 @@ impl Shell {
             });
         });
     }
+}
+
+/// `color: var(--we-type-body-color, var(--we-role-text))` against the
+/// theme's tokens — `None` on a theme that records neither.
+fn body_text_color(tokens: &we_style::TokenTable) -> Option<egui::Color32> {
+    let css = tokens.substitute_nested("var(--we-type-body-color, var(--we-role-text))");
+    let [r, g, b, a] = we_style::eval_color(&css)?.to_premultiplied();
+    Some(egui::Color32::from_rgba_premultiplied(
+        (r * 255.0) as u8,
+        (g * 255.0) as u8,
+        (b * 255.0) as u8,
+        (a * 255.0) as u8,
+    ))
 }

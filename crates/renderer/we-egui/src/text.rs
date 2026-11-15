@@ -183,35 +183,48 @@ pub fn format_relative(target_ms: f64, now_ms: f64, style: &str) -> String {
         return "now".to_string();
     };
     let n = n.round() as i64;
-    // `numeric: auto` — the named single-unit forms apply in every style.
+    // `numeric: auto` — the named single-unit forms, shortened with the
+    // style as Intl's English data has them ("last yr.").
+    let named = |long: &'static str, abbr: &'static str| match style {
+        "short" | "narrow" => abbr,
+        _ => long,
+    };
     match (unit, n) {
         ("day", -1) => return "yesterday".to_string(),
         ("day", 1) => return "tomorrow".to_string(),
-        ("year", -1) => return "last year".to_string(),
-        ("year", 1) => return "next year".to_string(),
-        ("month", -1) => return "last month".to_string(),
-        ("month", 1) => return "next month".to_string(),
+        ("year", -1) => return named("last year", "last yr.").to_string(),
+        ("year", 1) => return named("next year", "next yr.").to_string(),
+        ("month", -1) => return named("last month", "last mo.").to_string(),
+        ("month", 1) => return named("next month", "next mo.").to_string(),
         _ => {}
     }
-    let (sing, short, narrow) = match unit {
-        "year" => ("year", "yr", "yr"),
-        "month" => ("month", "mo", "mo"),
-        "day" => ("day", "day", "day"),
-        "hour" => ("hour", "hr", "hr"),
-        _ => ("minute", "min", "min"),
+    let count = n.abs();
+    // Intl's English units: short keeps a space and a period (a day is
+    // never abbreviated), narrow joins a letter to the number.
+    let amount = match style {
+        "narrow" => {
+            let u = match unit {
+                "year" => "y",
+                "month" => "mo",
+                "day" => "d",
+                "hour" => "h",
+                _ => "m",
+            };
+            format!("{count}{u}")
+        }
+        "short" => match unit {
+            "year" => format!("{count} yr."),
+            "month" => format!("{count} mo."),
+            "hour" => format!("{count} hr."),
+            "minute" => format!("{count} min."),
+            _ => format!("{count} {}", if count == 1 { "day" } else { "days" }),
+        },
+        _ => format!("{count} {unit}{}", if count == 1 { "" } else { "s" }),
     };
     if n < 0 {
-        match style {
-            "narrow" => format!("{}{} ago", -n, narrow),
-            "short" => format!("{} {}. ago", -n, short),
-            _ => format!("{} {}{} ago", -n, sing, if n == -1 { "" } else { "s" }),
-        }
+        format!("{amount} ago")
     } else {
-        match style {
-            "narrow" => format!("in {}{}", n, narrow),
-            "short" => format!("in {} {}.", n, short),
-            _ => format!("in {} {}{}", n, sing, if n == 1 { "" } else { "s" }),
-        }
+        format!("in {amount}")
     }
 }
 
@@ -226,6 +239,20 @@ pub fn format_relative(target_ms: f64, now_ms: f64, style: &str) -> String {
 /// and `opacity` folded into the colour's alpha.
 pub fn text_job(
     text: &str,
+    style: &Style,
+    ctx: &egui::Context,
+    avail_w: f32,
+    truncate: bool,
+    lines: Option<usize>,
+) -> std::sync::Arc<egui::Galley> {
+    text_runs_job(&[(text, None)], style, ctx, avail_w, truncate, lines)
+}
+
+/// [`text_job`] over several runs of one paragraph, each in the style's
+/// colour unless it names its own — an inline `<span>` whose only change is
+/// `color` (the typewriter's phrase). One galley, so the runs wrap together.
+pub(crate) fn text_runs_job(
+    runs: &[(&str, Option<egui::Color32>)],
     style: &Style,
     ctx: &egui::Context,
     avail_w: f32,
@@ -273,7 +300,14 @@ pub fn text_job(
         style.text.overflow_wrap,
         Some(we_style::OverflowWrap::Anywhere) | Some(we_style::OverflowWrap::BreakWord)
     );
-    let mut job = egui::text::LayoutJob::simple_format(text.to_string(), format);
+    let mut job = egui::text::LayoutJob::default();
+    for (text, run_color) in runs {
+        let mut f = format.clone();
+        if let Some(c) = run_color {
+            f.color = c.gamma_multiply(opacity);
+        }
+        job.append(text, 0.0, f);
+    }
     job.wrap.max_width = if nowrap {
         f32::INFINITY
     } else {
@@ -456,6 +490,17 @@ impl Widget for Text {
 #[derive(Debug, Default)]
 pub struct Link;
 
+impl Link {
+    /// The words a link draws: `text`/`value` or its text children —
+    /// never `label`, which names it for assistive tech only.
+    fn shown(node: &ResolvedNode) -> String {
+        props::prop_text(node, "text")
+            .or_else(|| props::prop_text(node, "value"))
+            .map(str::to_string)
+            .unwrap_or_else(|| props::children_text(node))
+    }
+}
+
 impl Widget for Link {
     fn type_name(&self) -> &'static str {
         "we-link"
@@ -473,11 +518,14 @@ impl Widget for Link {
         }
     }
     fn measure(&self, cx: &MeasureCx, node: &ResolvedNode, style: &Style, avail: Size) -> Size {
-        measure_text(cx, node, style, avail, &props::text_of(node), false, None)
+        measure_text(cx, node, style, avail, &Self::shown(node), false, None)
     }
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
         crate::containers::paint_container(cx, node, style, rect);
-        let label = props::text_of(node);
+        let shown = Self::shown(node);
+        let label = props::prop_text(node, "label")
+            .map(str::to_string)
+            .unwrap_or_else(|| shown.clone());
         let href = props::prop_text(node, "href")
             .or_else(|| props::prop_text(node, "to"))
             .unwrap_or("")
@@ -507,14 +555,15 @@ impl Widget for Link {
             }
         }
         // The galley is the link's own text — an absorbed text child or a
-        // `text`/`label` prop; under `Leaves` the span paints it instead.
-        let prop_text = props::prop_text(node, "text").is_some()
-            || props::prop_text(node, "label").is_some()
-            || props::prop_text(node, "value").is_some();
+        // `text`/`value` prop; under `Leaves` the span paints it instead.
+        // `label` is link.ts's `aria-label` only: an icon link's name, never
+        // drawn (drawn, "Discord" wrapped a letter a line beside its mark).
+        let prop_text =
+            props::prop_text(node, "text").is_some() || props::prop_text(node, "value").is_some();
         let own = !matches!(self.text_children(node), TextChildren::Leaves);
-        if !label.is_empty() && (own || prop_text) {
+        if !shown.is_empty() && (own || prop_text) {
             let content_rect = props::content_rect(rect, &eff, view_of(cx.ui.ctx()), cx.cb_w);
-            let g = text_job(&label, &eff, cx.ui.ctx(), content_rect.width(), false, None);
+            let g = text_job(&shown, &eff, cx.ui.ctx(), content_rect.width(), false, None);
             paint_galley(cx.ui.painter(), content_rect.min, g, &eff);
             underline(cx, &eff, content_rect);
         }
@@ -590,6 +639,14 @@ impl Widget for Timestamp {
 pub struct Typewriter;
 
 impl Typewriter {
+    /// typewriter.ts: `text` and a space before the phrase, or nothing.
+    fn fixed(node: &ResolvedNode) -> String {
+        match props::prop_str(node, "text") {
+            Some(t) if !t.is_empty() => format!("{t} "),
+            _ => String::new(),
+        }
+    }
+
     /// (phrase index, shown chars) at `now`, from the mount time `t0` —
     /// typewriter.ts's schedule: full → delete → pause → type → next.
     fn shown(node: &ResolvedNode, t0: f64, now: f64) -> (usize, usize) {
@@ -646,11 +703,10 @@ impl Widget for Typewriter {
     fn measure(&self, cx: &MeasureCx, node: &ResolvedNode, style: &Style, avail: Size) -> Size {
         // The longest phrase, so cycling never reflows the line below —
         // typewriter.ts's grid-cell trick.
-        let fixed = props::prop_str(node, "text").unwrap_or("");
         let longest = props::prop_list(node, "phrases")
             .map(|l| {
                 l.iter().map(|v| v.js_string()).fold(String::new(), |a, b| {
-                    if b.len() > a.len() {
+                    if b.chars().count() > a.chars().count() {
                         b
                     } else {
                         a
@@ -663,73 +719,72 @@ impl Widget for Typewriter {
             node,
             style,
             avail,
-            &format!("{fixed}{longest}"),
+            &format!("{}{longest}", Self::fixed(node)),
             false,
             None,
         )
     }
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
-        // First paint stores the mount time — the schedule anchors there.
-        if props::scratch(&cx.edit.data, &node.id, "_typewriter").is_none() {
-            props::scratch_set(
-                &mut cx.edit.data,
-                &node.id,
-                "_typewriter",
-                Value::Num(cx.now),
-            );
-        }
-        let t0 = match props::scratch(&cx.edit.data, &node.id, "_typewriter") {
-            Some(Value::Num(n)) => *n,
-            _ => cx.now,
-        };
-        let fixed = props::prop_str(node, "text").unwrap_or("").to_string();
-        let (ix, n) = Self::shown(node, t0, cx.now);
-        let phrase = props::prop_list(node, "phrases")
-            .and_then(|l| l.get(ix).map(|v| v.js_string()))
+        let phrases = props::prop_list(node, "phrases")
+            .cloned()
             .unwrap_or_default();
-        let cycled: String = phrase.chars().take(n).collect();
+        // typewriter.ts: one phrase, or less motion asked for, holds the
+        // first phrase whole with no caret.
+        let moving = phrases.len() > 1 && !crate::defaults::reduced_motion(cx.ui.ctx());
+        let cycled: String = if moving {
+            // First paint stores the mount time — the schedule anchors there.
+            if props::scratch(&cx.edit.data, &node.id, "_typewriter").is_none() {
+                props::scratch_set(
+                    &mut cx.edit.data,
+                    &node.id,
+                    "_typewriter",
+                    Value::Num(cx.now),
+                );
+            }
+            let t0 = match props::scratch(&cx.edit.data, &node.id, "_typewriter") {
+                Some(Value::Num(n)) => *n,
+                _ => cx.now,
+            };
+            let (ix, n) = Self::shown(node, t0, cx.now);
+            let phrase = phrases.get(ix).map(|v| v.js_string()).unwrap_or_default();
+            phrase.chars().take(n).collect()
+        } else {
+            phrases.first().map(|v| v.js_string()).unwrap_or_default()
+        };
+        let fixed = Self::fixed(node);
+        // `phraseColor` is `tokenVar('color', …)`: a role, a step or CSS.
+        let phrase_color = props::prop_str(node, "phraseColor")
+            .filter(|t| !t.is_empty())
+            .and_then(|t| props::color_token(cx.ui.ctx(), t));
 
         let content_rect = props::content_rect(rect, style, view_of(cx.ui.ctx()), cx.cb_w);
-        let g_fixed = text_job(
-            &fixed,
+        // One paragraph: the phrase is an inline span after the fixed text,
+        // so the two wrap together as the web's do.
+        let galley = text_runs_job(
+            &[(&fixed, None), (&cycled, phrase_color)],
             style,
             cx.ui.ctx(),
             content_rect.width(),
             false,
             None,
         );
-        let x_after = g_fixed.size().x;
-        paint_galley(cx.ui.painter(), content_rect.min, g_fixed, style);
-        let mut phrase_style = style.clone();
-        if let Some(t) = props::prop_str(node, "phraseColor") {
-            if let Some(c) = we_style::eval_color(t) {
-                phrase_style.text.color = Some(c);
-            }
-        }
-        let g_rest = text_job(
-            &cycled,
-            &phrase_style,
-            cx.ui.ctx(),
-            content_rect.width() - x_after,
-            false,
-            None,
-        );
-        let w_rest = g_rest.size().x;
-        paint_galley(
-            cx.ui.painter(),
-            content_rect.min + egui::vec2(x_after, 0.0),
-            g_rest,
-            &phrase_style,
-        );
-        if props::prop_bool(node, "cursor") || !cycled.is_empty() {
-            let p = content_rect.min + egui::vec2(x_after + w_rest + 1.0, 0.0);
+        let end = galley
+            .rows
+            .last()
+            .map(|r| (r.rect().right_top(), r.rect().height()))
+            .unwrap_or((egui::Pos2::ZERO, 0.0));
+        paint_galley(cx.ui.painter(), content_rect.min, galley, style);
+        if moving {
+            // `part="caret"`: a thin bar the line's height, in the phrase colour.
+            let p = content_rect.min + end.0.to_vec2() + egui::vec2(2.0, end.1 * 0.15);
+            let color = phrase_color.unwrap_or_else(|| props::text_color(style, cx.ui.ctx()));
             cx.ui.painter().rect_filled(
-                egui::Rect::from_min_size(p, egui::vec2(6.0, 12.0)),
-                1.0,
-                props::text_color(&phrase_style, cx.ui.ctx()),
+                egui::Rect::from_min_size(p, egui::vec2(2.0, end.1 * 0.7)),
+                0.0,
+                color,
             );
+            cx.ui.ctx().request_repaint();
         }
-        cx.ui.ctx().request_repaint();
         cx.label(rect, &format!("{fixed}{cycled}"));
     }
 }

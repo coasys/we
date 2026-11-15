@@ -3,6 +3,9 @@
 //! panels take. Baselines live in `tests/snapshots/`; re-record with
 //! `UPDATE_SNAPSHOTS=1 cargo test -p we-app gallery_widgets`.
 
+#[path = "support/gpu.rs"]
+mod gpu;
+
 use egui_kittest::{Harness, SnapshotOptions, SnapshotResults};
 use we_app::gallery::{load_theme_set, WidgetsApp};
 
@@ -56,6 +59,7 @@ fn widget_gallery_snapshots_per_theme() {
         let id = theme.id.to_string();
         let app = WidgetsApp::app_for(&set, &id);
         let mut harness = Harness::builder()
+            .renderer(gpu::serial())
             .with_size(egui::Vec2::new(820.0, 1600.0))
             // Pinned raster inputs, same policy as `gallery.rs`: the
             // WE-installed fonts in fixed family order, 1px-per-point, the

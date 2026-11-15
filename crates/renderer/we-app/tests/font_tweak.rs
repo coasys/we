@@ -6,6 +6,10 @@
 //! form-field label read at the CSS default 400 rather than at the file's
 //! default instance. Measured on rendered pixels against an explicit 400
 //! run of the same text, at the same size, laid out through `text_job`.
+
+#[path = "support/gpu.rs"]
+mod gpu;
+
 use std::sync::Arc;
 
 use egui::Vec2;
@@ -70,9 +74,12 @@ impl Surface {
                 "we-input",
                 "root/c",
                 // A styled field: the box is ours (white), egui's frame is off.
+                // The field's text follows its fontSize, so it is set at the
+                // reference run's — this test is about the weight.
                 vec![
                     ("value", s(text)),
                     ("fontFamily", s(family)),
+                    ("fontSize", s(SIZE)),
                     ("bg", s("#ffffff")),
                 ],
             ),
@@ -117,6 +124,7 @@ fn render(root: &ResolvedNode) -> Vec<f32> {
         .clone();
     let size = Vec2::new(320.0, 120.0);
     let mut harness = Harness::builder()
+        .renderer(gpu::serial())
         .with_size(size)
         .with_pixels_per_point(1.0)
         .with_accessibility_check(false)

@@ -146,6 +146,10 @@ impl Widget for TreeItem {
         let mut row_parts = Vec::new();
         if Self::expandable(node) {
             row_parts.push(PartSpec::fixed("caret", CARET_W, ROW_H));
+        } else {
+            // A leaf keeps the caret's room empty so its content lines up;
+            // layout drops it when the tree puts the caret at the end.
+            row_parts.push(PartSpec::fixed("caret-slot", CARET_W, ROW_H));
         }
         if Self::has_slot(node, "icon") {
             row_parts.push(
@@ -153,9 +157,12 @@ impl Widget for TreeItem {
                     .aligned(we_style::ItemAlign::Center),
             );
         }
+        // `[part='content']`: `flex: 1 1 auto` — the row's own content takes
+        // what the caret leaves, so a trailing count docks at the edge.
         row_parts.push(
             PartSpec::group("label", Pick::Default, Direction::Row)
-                .aligned(we_style::ItemAlign::Center),
+                .aligned(we_style::ItemAlign::Center)
+                .growing(1.0),
         );
         if Self::has_slot(node, "actions") {
             row_parts.push(
@@ -173,6 +180,7 @@ impl Widget for TreeItem {
                     Pick::Named("children".into()),
                     Direction::Column,
                 )
+                // Layout sets the indent from the tree's `caret`/`lead`.
                 .indented(INDENT),
             );
         }
@@ -195,13 +203,47 @@ impl Widget for TreeItem {
             cx.interact_label(row, &label, egui::Role::Button, &node.id, "row", true, None);
         let visuals = cx.ui.visuals().clone();
         let selected = Self::selected(cx, node);
-        if selected {
-            let fill = props::tone_color(style, "soft", visuals.selection.bg_fill);
-            cx.ui.painter().rect_filled(row, 4.0, fill);
+        // The primitive's row: the tree radius, the theme's `selected`
+        // variant (fill, and a leading bar in its border colour and width,
+        // square where the bar is), `item-hover` under the pointer.
+        let ctx = cx.ui.ctx().clone();
+        let view = crate::defaults::view_of(&ctx);
+        let px = |name: &str| props::token_px(&ctx, name, &view.metrics, view.viewport);
+        let radius = px("--we-theme-tree-radius")
+            .or_else(|| px("--we-radius-300"))
+            .unwrap_or(8.0);
+        let bar = if selected {
+            px("--we-theme-tree--selected-border-width").unwrap_or(0.0)
+        } else {
+            0.0
+        };
+        let lit = if selected {
+            Some(
+                props::token_color(&ctx, "--we-theme-tree--selected-fill")
+                    .or_else(|| props::role_color(&ctx, "selected"))
+                    .unwrap_or_else(|| props::tone_color(style, "soft", visuals.selection.bg_fill)),
+            )
         } else if response.hovered() {
-            cx.ui
-                .painter()
-                .rect_filled(row, 4.0, visuals.widgets.hovered.bg_fill);
+            Some(props::role_color(&ctx, "item-hover").unwrap_or(visuals.widgets.hovered.bg_fill))
+        } else {
+            None
+        };
+        if let Some(fill) = lit {
+            let r = radius.round().clamp(0.0, 255.0) as u8;
+            let lead = if bar > 0.0 { 0 } else { r };
+            let corners = egui::CornerRadius {
+                nw: lead,
+                sw: lead,
+                ne: r,
+                se: r,
+            };
+            cx.ui.painter().rect_filled(row, corners, fill);
+        }
+        if bar > 0.0 {
+            if let Some(color) = props::token_color(&ctx, "--we-theme-tree--selected-border") {
+                let strip = egui::Rect::from_min_size(row.min, egui::vec2(bar, row.height()));
+                cx.ui.painter().rect_filled(strip, 0.0, color);
+            }
         }
         // The web component's row text is the default slot's content alone
         // — `label` is not a property it declares. Slot content paints in
@@ -223,29 +265,33 @@ impl Widget for TreeItem {
                     true,
                     None,
                 );
-                // A triangle, not a glyph — the kittest font set has no ▸/▾.
+                // tree.ts's chevron: `M3 1.5 L7 5 L3 8.5` in a 10px box
+                // centred in the caret, stroked 1.5px round in
+                // `text-faint`, and turned a quarter (`rotate(90deg)`) when
+                // the row is open. At the row's end it is faint (0.6).
                 let c = caret.center();
-                let (w, h) = (3.0, 4.0);
-                let points = if Self::open(node) {
-                    // Down-pointing.
-                    vec![
-                        c + egui::vec2(-w - 1.0, -h / 2.0),
-                        c + egui::vec2(w + 1.0, -h / 2.0),
-                        c + egui::vec2(0.0, h / 2.0 + 2.0),
-                    ]
-                } else {
-                    // Right-pointing.
-                    vec![
-                        c + egui::vec2(-w / 2.0, -h),
-                        c + egui::vec2(-w / 2.0, h),
-                        c + egui::vec2(w / 2.0 + 2.0, 0.0),
-                    ]
-                };
-                cx.ui.painter().add(egui::Shape::convex_polygon(
-                    points,
-                    visuals.weak_text_color(),
-                    egui::Stroke::NONE,
-                ));
+                let quarter = Self::open(node);
+                let points = [(-2.0, -3.5), (2.0, 0.0), (-2.0, 3.5)]
+                    .map(|(x, y): (f32, f32)| {
+                        if quarter {
+                            c + egui::vec2(-y, x)
+                        } else {
+                            c + egui::vec2(x, y)
+                        }
+                    })
+                    .to_vec();
+                let mut color = props::role_color(cx.ui.ctx(), "text-faint")
+                    .unwrap_or_else(|| visuals.weak_text_color());
+                let at_end = cx
+                    .parts
+                    .get(&(node.id.clone(), "label"))
+                    .is_some_and(|label| caret.min.x >= label.max.x);
+                if at_end {
+                    color = color.gamma_multiply(0.6);
+                }
+                cx.ui
+                    .painter()
+                    .add(egui::Shape::line(points, egui::Stroke::new(1.5, color)));
                 if caret_response.clicked() {
                     cx.emit(
                         &node.id,
