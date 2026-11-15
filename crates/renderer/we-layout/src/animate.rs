@@ -246,6 +246,11 @@ impl Transitions {
                         easing: t.easing.clone(),
                     });
                 }
+                // Asked mid-flight, reduced motion or a duration of 0 ends
+                // the track where it was going, not only the next change.
+                if reduced || duration <= 0.0 {
+                    slot.track = None;
+                }
                 if let Some(track) = &slot.track {
                     if track.done(now) {
                         slot.track = None;
@@ -262,6 +267,9 @@ impl Transitions {
         let key = (node.id.clone(), Prop::Opacity);
         if fade.is_some() && seen.insert(key.clone()) {
             if let Some(slot) = self.slots.get_mut(&key) {
+                if reduced {
+                    slot.track = None;
+                }
                 if let Some(track) = &slot.track {
                     if track.done(now) {
                         slot.track = None;

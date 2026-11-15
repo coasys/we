@@ -170,3 +170,64 @@ fn a_node_a_branch_mounts_fades_in_and_one_there_from_the_start_does_not() {
     assert!(t.apply(&root, &StyleCx::empty(), 2.0, false).is_none());
     assert_eq!(opacity(&mut t, &with_label, 3.0), 0.0);
 }
+
+/// Reduced motion asked for while a track runs stops it where it is going:
+/// the next frame draws the target, not the rest of the animation.
+#[test]
+fn reduced_motion_asked_mid_flight_jumps_to_the_end() {
+    let mut t = Transitions::default();
+    drawn(&mut t, &rail("72px"), 0.0, false);
+    let wide = rail("256px");
+    assert_eq!(drawn(&mut t, &wide, 1.0, false), 72.0);
+    assert_eq!(
+        drawn(&mut t, &wide, 1.05, true),
+        256.0,
+        "reduced: at the end"
+    );
+    assert!(!t.running(1.05));
+}
+
+/// A duration that drops to 0 while a track runs (the same target, a
+/// different `transition`) stops it the same way.
+#[test]
+fn a_duration_dropped_to_zero_mid_flight_jumps_to_the_end() {
+    let mut t = Transitions::default();
+    drawn(&mut t, &rail("72px"), 0.0, false);
+    let wide = rail("256px");
+    assert_eq!(drawn(&mut t, &wide, 1.0, false), 72.0);
+    let mut instant = rail("256px");
+    instant
+        .props
+        .insert(Arc::from("transition"), Value::from("width 0ms linear"));
+    assert_eq!(
+        drawn(&mut t, &instant, 1.05, false),
+        256.0,
+        "0ms: at the end"
+    );
+    assert!(!t.running(1.05));
+}
+
+/// The same for a `$if`'s enter fade already running.
+#[test]
+fn reduced_motion_asked_mid_fade_shows_the_node() {
+    let mut root = rail("72px");
+    root.id = NodeId::from("root");
+    root.props.shift_remove("transition");
+    let with_label = {
+        let mut r = root.clone();
+        r.children.push(ResolvedChild::Node(Box::new(label())));
+        r
+    };
+    let mut t = Transitions::default();
+    assert!(t.apply(&root, &StyleCx::empty(), 0.0, false).is_none());
+    assert_eq!(opacity(&mut t, &with_label, 1.0), 0.0);
+    let scx = StyleCx::empty();
+    let tree = t.apply(&with_label, &scx, 1.05, true);
+    let tree = tree.as_ref().unwrap_or(&with_label);
+    let node = match tree.children.first() {
+        Some(ResolvedChild::Node(n)) => n,
+        _ => panic!("the label"),
+    };
+    assert_eq!(style_of(node, &scx).paint.opacity.unwrap_or(1.0), 1.0);
+    assert!(!t.running(1.05));
+}
