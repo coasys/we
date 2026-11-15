@@ -610,8 +610,8 @@ fn snapshot_policy_checks_env_and_never_writes() {
 /// The pinned clock is real, not decorative (Lal F2): re-pin "now" to an
 /// absurd instant — the epoch — and the relative text `we-timestamp`
 /// paints moves with it. Under the fixture's own week the same widgets
-/// read "9hr ago"/"Nday ago" (narrow style); under 1970 they read
-/// "in 56yr".
+/// read "9h ago"/"Nd ago" (narrow style, as `Intl.RelativeTimeFormat`
+/// writes it); under 1970 they read "in 56y".
 #[test]
 fn pinned_clock_moves_timestamp_text() {
     let truth = truth();
@@ -621,5 +621,5 @@ fn pinned_clock_moves_timestamp_text() {
     settle_frame(&mut harness);
     // Panics when no painted node carries the absurd pin's text — under
     // the wall clock or `PINNED_NOW` this label cannot appear.
-    harness.get_by_label("in 56yr");
+    harness.get_by_label("in 56y");
 }

@@ -183,35 +183,48 @@ pub fn format_relative(target_ms: f64, now_ms: f64, style: &str) -> String {
         return "now".to_string();
     };
     let n = n.round() as i64;
-    // `numeric: auto` — the named single-unit forms apply in every style.
+    // `numeric: auto` — the named single-unit forms, shortened with the
+    // style as Intl's English data has them ("last yr.").
+    let named = |long: &'static str, abbr: &'static str| match style {
+        "short" | "narrow" => abbr,
+        _ => long,
+    };
     match (unit, n) {
         ("day", -1) => return "yesterday".to_string(),
         ("day", 1) => return "tomorrow".to_string(),
-        ("year", -1) => return "last year".to_string(),
-        ("year", 1) => return "next year".to_string(),
-        ("month", -1) => return "last month".to_string(),
-        ("month", 1) => return "next month".to_string(),
+        ("year", -1) => return named("last year", "last yr.").to_string(),
+        ("year", 1) => return named("next year", "next yr.").to_string(),
+        ("month", -1) => return named("last month", "last mo.").to_string(),
+        ("month", 1) => return named("next month", "next mo.").to_string(),
         _ => {}
     }
-    let (sing, short, narrow) = match unit {
-        "year" => ("year", "yr", "yr"),
-        "month" => ("month", "mo", "mo"),
-        "day" => ("day", "day", "day"),
-        "hour" => ("hour", "hr", "hr"),
-        _ => ("minute", "min", "min"),
+    let count = n.abs();
+    // Intl's English units: short keeps a space and a period (a day is
+    // never abbreviated), narrow joins a letter to the number.
+    let amount = match style {
+        "narrow" => {
+            let u = match unit {
+                "year" => "y",
+                "month" => "mo",
+                "day" => "d",
+                "hour" => "h",
+                _ => "m",
+            };
+            format!("{count}{u}")
+        }
+        "short" => match unit {
+            "year" => format!("{count} yr."),
+            "month" => format!("{count} mo."),
+            "hour" => format!("{count} hr."),
+            "minute" => format!("{count} min."),
+            _ => format!("{count} {}", if count == 1 { "day" } else { "days" }),
+        },
+        _ => format!("{count} {unit}{}", if count == 1 { "" } else { "s" }),
     };
     if n < 0 {
-        match style {
-            "narrow" => format!("{}{} ago", -n, narrow),
-            "short" => format!("{} {}. ago", -n, short),
-            _ => format!("{} {}{} ago", -n, sing, if n == -1 { "" } else { "s" }),
-        }
+        format!("{amount} ago")
     } else {
-        match style {
-            "narrow" => format!("in {}{}", n, narrow),
-            "short" => format!("in {} {}.", n, short),
-            _ => format!("in {} {}{}", n, sing, if n == 1 { "" } else { "s" }),
-        }
+        format!("in {amount}")
     }
 }
 

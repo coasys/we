@@ -393,6 +393,88 @@ fn timestamp_formats() {
     assert_eq!(format_relative(ms - 86_400_000.0, ms, "long"), "yesterday");
 }
 
+/// `Intl.RelativeTimeFormat('en', { numeric: 'auto', style })`, as node 24
+/// prints it: the named forms shorten too ("last yr."), narrow drops the
+/// space and the period ("9h ago"), short keeps both ("9 hr. ago").
+#[test]
+fn timestamp_relative_styles_match_intl() {
+    const H: f64 = 3_600_000.0;
+    const D: f64 = 24.0 * H;
+    const Y: f64 = 365.0 * D;
+    const MO: f64 = Y / 12.0;
+    let now = parse_date(&s("2026-06-24T10:30:00Z")).unwrap();
+    for (style, want) in [
+        (
+            "long",
+            [
+                "last year",
+                "next year",
+                "2 years ago",
+                "last month",
+                "3 months ago",
+                "yesterday",
+                "4 days ago",
+                "9 hours ago",
+                "1 hour ago",
+                "5 minutes ago",
+                "in 2 hours",
+                "in 3 days",
+            ],
+        ),
+        (
+            "short",
+            [
+                "last yr.",
+                "next yr.",
+                "2 yr. ago",
+                "last mo.",
+                "3 mo. ago",
+                "yesterday",
+                "4 days ago",
+                "9 hr. ago",
+                "1 hr. ago",
+                "5 min. ago",
+                "in 2 hr.",
+                "in 3 days",
+            ],
+        ),
+        (
+            "narrow",
+            [
+                "last yr.",
+                "next yr.",
+                "2y ago",
+                "last mo.",
+                "3mo ago",
+                "yesterday",
+                "4d ago",
+                "9h ago",
+                "1h ago",
+                "5m ago",
+                "in 2h",
+                "in 3d",
+            ],
+        ),
+    ] {
+        let got = [
+            -Y,
+            Y,
+            -2.0 * Y,
+            -MO,
+            -3.0 * MO,
+            -D,
+            -4.0 * D,
+            -9.0 * H,
+            -H,
+            -300_000.0,
+            2.0 * H,
+            3.0 * D,
+        ]
+        .map(|d| format_relative(now + d, now, style));
+        assert_eq!(got, want, "{style}");
+    }
+}
+
 #[test]
 fn grid_columns_land() {
     // An auto-width grid shrink-wraps its tracks (CSS rules); pin the width
