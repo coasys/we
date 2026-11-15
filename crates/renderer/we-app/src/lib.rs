@@ -28,25 +28,37 @@ use we_template::{
     MountCx, ResolvedChild, ResolvedNode, RootSpec, SchemaNode, StaticHost, StoreBag, SurfaceTag,
 };
 
-/// Every input a cached [`Layout`] resolved against: the resolve count,
-/// the offered rect, and everything `style_of` reads — theme id (the
+/// Every input a resolved tree is styled against: the resolve count, the
+/// offered width, and everything `style_of` reads — theme id (the
 /// `[data-we-theme]` selectors `theme_css` matches), the token table's
 /// contents (every `var(--we-*)`, including the `--we-font-size-300` the
 /// unit metrics fold over `scx.metrics`), the configured metrics and the
 /// viewport. A theme swap that moves none of the first three still
 /// repaints into stale rects without the rest.
-#[derive(PartialEq)]
-struct LayoutKey {
+///
+/// The transitions are asked again whenever it moves, as the layout is:
+/// a `50vh` height or a token's length changes its target with no resolve,
+/// and a transition that only looked at resolves would find that target
+/// at the next unrelated one and play the old value back.
+#[derive(PartialEq, Clone)]
+struct StyleInputs {
     resolves: u64,
-    /// Moves every frame a transition drew an in-between tree, and on the
-    /// frame it stops.
-    drawn: u64,
     width: f32,
-    y: f32,
     theme: Arc<str>,
     tokens: u64,
     metrics: we_metrics::UnitMetrics,
     viewport: we_style::Size,
+}
+
+/// Every input a cached [`Layout`] resolved against: the [`StyleInputs`],
+/// the tree a transition drew, and where the rect starts.
+#[derive(PartialEq)]
+struct LayoutKey {
+    inputs: StyleInputs,
+    /// Moves every frame a transition drew an in-between tree, and on the
+    /// frame it stops.
+    drawn: u64,
+    y: f32,
 }
 
 /// A content hash of the table — the gallery swaps the whole
@@ -139,10 +151,10 @@ pub struct RendererApp {
     /// The tree a transition is drawing this frame in place of the
     /// resolved one, while one is running.
     drawn: Option<Arc<ResolvedNode>>,
-    /// The resolve count the transitions last looked at, and how many
+    /// The style inputs the transitions last looked at, and how many
     /// times they have drawn an in-between tree — the layout cache keys
     /// on the second.
-    animated_at: Option<u64>,
+    animated_at: Option<StyleInputs>,
     drawn_frames: u64,
     /// F12 — the resolve/paint counters overlay.
     pub debug: bool,
@@ -267,8 +279,16 @@ impl RendererApp {
                 // when the tree re-resolved or while it is drawing; a
                 // frame with neither draws what the resolve produced.
                 let now = ui.input(|i| i.time);
-                if self.animated_at != Some(stats.resolves) || self.drawn.is_some() {
-                    self.animated_at = Some(stats.resolves);
+                let inputs = StyleInputs {
+                    resolves: stats.resolves,
+                    width,
+                    theme: self.theme.id.clone(),
+                    tokens: token_hash(&self.theme.tokens),
+                    metrics: scx.metrics,
+                    viewport: scx.viewport,
+                };
+                if self.animated_at.as_ref() != Some(&inputs) || self.drawn.is_some() {
+                    self.animated_at = Some(inputs.clone());
                     let reduced = we_egui::defaults::reduced_motion(ui.ctx());
                     let was_drawing = self.drawn.is_some();
                     self.drawn = self
@@ -284,14 +304,9 @@ impl RendererApp {
                 }
                 let tree = self.drawn.clone().unwrap_or_else(|| resolved.clone());
                 let key = LayoutKey {
-                    resolves: stats.resolves,
+                    inputs,
                     drawn: self.drawn_frames,
-                    width,
                     y: rect.min.y,
-                    theme: self.theme.id.clone(),
-                    tokens: token_hash(&self.theme.tokens),
-                    metrics: scx.metrics,
-                    viewport: scx.viewport,
                 };
                 if self.layout_key.as_ref() != Some(&key) || self.layout.is_none() {
                     let started = std::time::Instant::now();
