@@ -2150,7 +2150,16 @@ fn vals_eq(a: &HashMap<(NodeId, Axis), f32>, b: &HashMap<(NodeId, Axis), f32>) -
 /// `height: auto` still paints the whole viewport (`min-height: 100vh`),
 /// so a `bg` root covers the empty tail of a short panel.
 pub fn layout(m: &dyn Measure, scx: &StyleCx, root: &ResolvedNode, rect: Rect) -> Layout {
-    layout_impl(m, scx, root, rect, true, None)
+    layout_impl(m, scx, root, rect, true, None, true)
+}
+
+/// The same walk with taffy's px-edge rounding off — the layout a
+/// terminal projects to cells: logical CSS px keeps its fractional edges
+/// so the projection's own snap sees them. `layout()` keeps the
+/// integer-edge output the egui painter was built against; moving the
+/// snap into the painter is a frontend task, not this one.
+pub fn layout_unrounded(m: &dyn Measure, scx: &StyleCx, root: &ResolvedNode, rect: Rect) -> Layout {
+    layout_impl(m, scx, root, rect, true, None, false)
 }
 
 /// The same walk for a subtree that is not the page root — the overlay
@@ -2167,7 +2176,7 @@ pub fn layout_shrink(
     rect: Rect,
     parent: Option<&Style>,
 ) -> Layout {
-    layout_impl(m, scx, root, rect, false, parent)
+    layout_impl(m, scx, root, rect, false, parent, true)
 }
 
 /// Fill `extra`/`map` with `node`'s synthesized children and recurse into
@@ -2197,6 +2206,7 @@ fn layout_impl(
     rect: Rect,
     viewport_root: bool,
     parent: Option<&Style>,
+    round: bool,
 ) -> Layout {
     /// Deep acyclic chains settle in a handful of passes; the cap
     /// bounds whatever does not — a repeated measured state is cyclic
@@ -2252,8 +2262,15 @@ fn layout_impl(
         if pass == MAX_PASSES && forced.is_empty() {
             break;
         }
+        let mut tree = TaffyTree::new();
+        // Logical CSS px, not device px: the unrounded walk keeps the
+        // fractional edges so the frontend's own snap (a terminal's cells)
+        // sees them — see [`layout_unrounded`].
+        if !round {
+            tree.disable_rounding();
+        }
         let mut b = Builder {
-            tree: TaffyTree::new(),
+            tree,
             m,
             scx,
             nodes: HashMap::new(),

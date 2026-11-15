@@ -5696,6 +5696,7 @@ dependencies = [
  "log",
  "taffy",
  "we-expr",
+ "we-metrics",
  "we-style",
  "we-template",
 ]
@@ -5710,6 +5711,10 @@ dependencies = [
  "we-screen",
  "we-template",
 ]
+
+[[package]]
+name = "we-metrics"
+version = "0.1.0"
 
 [[package]]
 name = "we-screen"
@@ -5748,6 +5753,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "we-expr",
+ "we-metrics",
 ]
 
 [[package]]

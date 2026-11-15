@@ -24,7 +24,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-core="we-session we-layout we-catalog we-data we-expr we-screen we-template we-style we-legacy"
+core="we-session we-layout we-catalog we-data we-expr we-screen we-template we-style we-legacy we-metrics"
 args=()
 for p in $core; do args+=(-p "$p"); done
 

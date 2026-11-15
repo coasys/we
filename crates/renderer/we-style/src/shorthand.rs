@@ -15,43 +15,12 @@ use we_expr::Value;
 pub type Bag = IndexMap<Arc<str>, Value>;
 
 /// The viewport tier — `TIERS` in `1-tokens/src/breakpoint.ts`, ordered by
-/// precedence: a tier applies when the width clears its threshold.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Tier {
-    Base,
-    Sm,
-    Md,
-    Lg,
-}
-
-impl Tier {
-    /// `sm: 640px, md: 900px, lg: 1200px` — literals baked into the generated
-    /// CSS, so baked here too.
-    pub fn for_width(px: f32) -> Tier {
-        if px >= 1200.0 {
-            Tier::Lg
-        } else if px >= 900.0 {
-            Tier::Md
-        } else if px >= 640.0 {
-            Tier::Sm
-        } else {
-            Tier::Base
-        }
-    }
-
-    /// `sm`–`lg` ascending — `TIERS.slice(1)`.
-    pub const UPPER: [Tier; 3] = [Tier::Sm, Tier::Md, Tier::Lg];
-
-    /// The prop key a tier's bag lives under — `TIER_PROP_KEYS`.
-    pub fn prop_key(self) -> Option<&'static str> {
-        match self {
-            Tier::Base => None,
-            Tier::Sm => Some("smUpProps"),
-            Tier::Md => Some("mdUpProps"),
-            Tier::Lg => Some("lgUpProps"),
-        }
-    }
-}
+/// precedence: a tier applies when the width clears its threshold. E3c-12a
+/// moved the type to `we-metrics` as [`SizeTier`](we_metrics::SizeTier)
+/// (renamed so it cannot be confused with the capability tier); this alias
+/// keeps the callers compiling for the one task, and E3c-12b renames the
+/// uses and drops it.
+pub use we_metrics::SizeTier as Tier;
 
 /// `sideOf` — the first truthy value in a side's fallback chain.
 fn side_of<'a>(props: Option<&'a Bag>, chain: &[&str]) -> Option<&'a Value> {
