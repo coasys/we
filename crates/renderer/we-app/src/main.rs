@@ -293,6 +293,7 @@ fn run_native(args: Args) -> eframe::Result<()> {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_title(&title)
             .with_inner_size([1024.0, 640.0]),
+        wgpu_options: we_app::wgpu_options(),
         ..Default::default()
     };
     eframe::run_native(
@@ -357,6 +358,7 @@ fn run_gallery(kind: Gallery) -> eframe::Result<()> {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_title(title)
             .with_inner_size(size),
+        wgpu_options: we_app::wgpu_options(),
         ..Default::default()
     };
     eframe::run_native(
@@ -423,6 +425,7 @@ fn run_coasys(route: &str, theme_id: &str) -> eframe::Result<()> {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_title(&title)
             .with_inner_size([1280.0, 800.0]),
+        wgpu_options: we_app::wgpu_options(),
         ..Default::default()
     };
     eframe::run_native(

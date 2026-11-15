@@ -62,6 +62,50 @@ fn token_hash(tokens: &we_style::TokenTable) -> u64 {
     h.finish()
 }
 
+/// How the window's frames reach the screen. egui's default queues up to
+/// two frames ahead of the display (`desired_maximum_frame_latency: 2`),
+/// which keeps a GPU-heavy app busy but can hold a finished frame back a
+/// refresh behind the pointer. WE draws little, so it takes egui's own
+/// `LOW_LATENCY`: still vsynced (`AutoVsync` — no tearing, and nothing
+/// drawn while idle, the app being reactive), one frame queued at most,
+/// and left at wgpu's default on iOS, where one halves the frame rate.
+///
+/// `WE_FRAME_LATENCY=<n>` sets the queue depth instead (2 is egui's
+/// default) and `WE_PRESENT_MODE=fifo|mailbox|immediate|auto-vsync|
+/// auto-no-vsync` the present mode — `immediate` and `auto-no-vsync` may
+/// tear, and wgpu refuses a mode the surface does not offer (`mailbox` is
+/// not everywhere). They are for measuring; the default is the choice.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn wgpu_options() -> eframe::WgpuConfiguration {
+    let latency = std::env::var("WE_FRAME_LATENCY").ok();
+    let mode = std::env::var("WE_PRESENT_MODE").ok();
+    eframe::WgpuConfiguration {
+        surface: surface_config(latency.as_deref(), mode.as_deref()),
+        ..Default::default()
+    }
+}
+
+/// [`wgpu_options`]'s surface, from the two variables' values.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn surface_config(latency: Option<&str>, mode: Option<&str>) -> eframe::SurfaceConfig {
+    use eframe::wgpu::PresentMode;
+    let mut surface = eframe::SurfaceConfig::LOW_LATENCY;
+    if let Some(n) = latency.and_then(|v| v.trim().parse::<u32>().ok()) {
+        surface.desired_maximum_frame_latency = Some(n.max(1));
+    }
+    if let Some(mode) = mode {
+        surface.present_mode = match mode.trim() {
+            "fifo" => PresentMode::Fifo,
+            "mailbox" => PresentMode::Mailbox,
+            "immediate" => PresentMode::Immediate,
+            "auto-no-vsync" => PresentMode::AutoNoVsync,
+            "auto-vsync" => PresentMode::AutoVsync,
+            other => panic!("WE_PRESENT_MODE: unknown mode {other:?}"),
+        };
+    }
+    surface
+}
+
 /// The production host's one-time context setup, called from eframe's
 /// creation callback: a glyph no installed font has draws as a tofu box —
 /// a paint detail, never a crash in front of a user — and the media fonts
