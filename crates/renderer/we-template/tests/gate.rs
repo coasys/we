@@ -646,43 +646,38 @@ fn a_bare_runtime_does_not_serve_unclassified_bag_roots_to_space() {
 
 // ── F4: cross-authority payloads ────────────────────────────────────
 
-/// A namespace carrying `token`, filtered by the gate for an App mount —
-/// it keeps App's view whoever reads it later.
-fn app_filtered_token() -> Value {
-    let gate = Arc::new(Gate::new(HandleTable::new()));
-    gate.serve(
-        "x",
-        we_template::RootDomain::Space,
-        Bound {
-            value: map(&[("token", Value::from("app-secret"))]),
-            members: Some(MemberTiers::from_rows(&[("token", Tier::App)])),
-            domain: None,
-        },
-        &app_auth(),
-        &Declared::default(),
-    )
-    .expect("served at App")
-}
-
-/// A payload carrying another frame's authority three ways: an
-/// App-filtered namespace, a raw namespace, and an accessor whose answer
-/// is App data.
-fn smuggling_payload() -> Value {
+/// A payload carrying another frame's authority three ways — a live
+/// App-filtered namespace (`app`, see [`live_app_token`]), a raw
+/// namespace and an accessor whose answer is App data — at the top and
+/// again under alternating list/object layers (`deep`).
+fn smuggling_payload(app: &Value) -> Value {
+    let raw = || map(&[("token", Value::from("raw-secret"))]);
     obj(&[
-        ("app", app_filtered_token()),
-        ("raw", map(&[("token", Value::from("raw-secret"))])),
+        ("app", app.clone()),
+        ("raw", raw()),
         (
             "acc",
             Value::Callable(we_expr::CallableRef::accessor("acc", |_| {
                 Value::from("acc-secret")
             })),
         ),
+        (
+            "deep",
+            Value::List(Arc::new(vec![obj(&[(
+                "l",
+                Value::List(Arc::new(vec![obj(&[("app", app.clone()), ("raw", raw())])])),
+            )])])),
+        ),
         ("plain", Value::from("ok")),
     ])
 }
 
-/// Rows for any request: one row holding the smuggling payload.
-struct Smuggler;
+/// Answers any request with the smuggling payload — as its one row, or
+/// as the query's error.
+struct Smuggler {
+    payload: Value,
+    fail: bool,
+}
 impl we_template::QuerySource for Smuggler {
     fn open(
         &self,
@@ -691,9 +686,11 @@ impl we_template::QuerySource for Smuggler {
         _handles: &HandleTable,
         sink: we_template::QuerySink,
     ) {
-        sink.deliver(we_template::QueryEvent::Rows(Arc::new(vec![
-            smuggling_payload(),
-        ])));
+        sink.deliver(if self.fail {
+            we_template::QueryEvent::Failed(self.payload.clone())
+        } else {
+            we_template::QueryEvent::Rows(Arc::new(vec![self.payload.clone()]))
+        });
     }
     fn close(&self, _ticket: we_template::SubTicket) {}
 }
@@ -712,24 +709,45 @@ impl we_template::Host for Parking {
     }
 }
 
-fn smuggle_tree() -> SchemaNode {
-    let reads = |src: &str| {
-        json!([
-            { "type": "Text", "props": { "t": { "$": format!("{src}.app.token") } } },
-            { "type": "Text", "props": { "t": { "$": format!("{src}.raw.token") } } },
-            { "type": "Text", "props": { "t": { "$": format!("{src}.acc") } } },
-            { "type": "Text", "props": { "t": { "$": format!("{src}.plain") } } }
-        ])
+/// The reads one delivered payload is judged by: four that must be
+/// Undefined, then the plain leaf.
+const SMUGGLED: [&str; 6] = [
+    "app.token",
+    "raw.token",
+    "acc",
+    "first(first(X.deep).l).app.token",
+    "first(first(X.deep).l).raw.token",
+    "plain",
+];
+
+fn smuggle_tree(fail: bool) -> SchemaNode {
+    let reads = |src: &str| -> Vec<serde_json::Value> {
+        SMUGGLED
+            .iter()
+            .map(|r| {
+                let expr = if r.contains('X') {
+                    r.replace('X', src)
+                } else {
+                    format!("{src}.{r}")
+                };
+                json!({ "type": "Text", "props": { "t": { "$": expr } } })
+            })
+            .collect()
     };
     let mut children = vec![json!({
         "type": "Button",
         "props": { "onClick": {
             "$invoke": "storeX.slow",
-            "onSuccess": [{ "$setLocal": "got", "value": { "$": "result" } }]
+            "onSuccess": [{ "$setLocal": "got", "value": { "$": "result" } }],
+            "onError": [{ "$setLocal": "got", "value": { "$": "result" } }]
         } }
     })];
-    children.extend(reads("first(local.rows)").as_array().unwrap().clone());
-    children.extend(reads("local.got").as_array().unwrap().clone());
+    children.extend(reads(if fail {
+        "local.rowsError"
+    } else {
+        "first(local.rows)"
+    }));
+    children.extend(reads("local.got"));
     serde_json::from_value(json!({
         "type": "Column",
         "$localState": { "got": { "type": "object", "initial": null } },
@@ -739,23 +757,28 @@ fn smuggle_tree() -> SchemaNode {
     .unwrap()
 }
 
-/// F4 (Lal): a query row and an `onSuccess` payload delivered into a
-/// Space frame cannot carry another authority — an App-filtered
-/// namespace, a raw namespace and an accessor inside them read Undefined
-/// there; plain data survives.
-#[test]
-fn query_rows_and_callback_payloads_carry_no_foreign_authority() {
+/// The payload delivered into a mount at `cx` as a query answer and as a
+/// completion — rows and `onSuccess`, or (`fail`) the query's error and
+/// `onError` — read back: six reads of the query's delivery, six of the
+/// callback's.
+fn smuggled(cx: MountCx, fail: bool, app: &Value) -> Vec<Value> {
     let bag = Arc::new(StoreBag::new());
     let mut rt = Runtime::from_spec(
         RootSpec::Single {
-            node: Box::new(smuggle_tree()),
-            cx: space_auth(),
+            node: Box::new(smuggle_tree(fail)),
+            cx,
             declared: Declared::default(),
         },
         bag.clone(),
         LocalState::new(),
     )
-    .with_sources(Some(Arc::new(Smuggler)), Arc::new(we_template::NoParts));
+    .with_sources(
+        Some(Arc::new(Smuggler {
+            payload: smuggling_payload(app),
+            fail,
+        })),
+        Arc::new(we_template::NoParts),
+    );
     let mut host = Parking::default();
     let mut screen = ScreenState::desktop(ScreenSchema::default(), "/");
     let root = rt.frame(&mut host, &screen).clone();
@@ -766,24 +789,48 @@ fn query_rows_and_callback_payloads_carry_no_foreign_authority() {
     rt.dispatch(&mut host, &mut screen, &button, "onClick", Value::Null);
     let done = host.0.pop().expect("parked");
     let call = done.call_id();
-    rt.complete(&mut host, &mut screen, call, Ok(smuggling_payload()));
+    let payload = smuggling_payload(app);
+    let result = if fail { Err(payload) } else { Ok(payload) };
+    rt.complete(&mut host, &mut screen, call, result);
     let root = rt.frame(&mut host, &screen).clone();
     let mut ts = Vec::new();
     texts(&root, &mut ts);
-    assert_eq!(ts.len(), 8, "{ts:?}");
+    assert_eq!(ts.len(), 2 * SMUGGLED.len(), "{ts:?}");
+    ts
+}
+
+/// F4 (Lal; N4 for the fixture): a payload delivered into a frame — a
+/// query's rows or error, an `onSuccess` or `onError` result — carries no
+/// other authority, at a Space recipient or an App one: a live
+/// App-filtered namespace, a raw namespace and an accessor inside it read
+/// Undefined there at any depth; plain data survives.
+#[test]
+fn query_rows_and_callback_payloads_carry_no_foreign_authority() {
+    // The gate is held for the whole test: its wrappers' back edge is
+    // weak (F8), so a dropped gate would make the fixture dead already.
+    let (_gate, app) = live_app_token();
+    assert!(
+        get(&app, "token").strict_eq(&Value::from("app-secret")),
+        "the App-filtered fixture is a live view before delivery"
+    );
     let undefined = |v: &Value| v.strict_eq(&Value::Undefined);
-    // Query row: app / raw / accessor stripped, plain kept.
-    assert!(
-        ts[..3].iter().all(undefined),
-        "query row carried a foreign authority: {ts:?}"
-    );
-    assert!(ts[3].strict_eq(&Value::from("ok")), "{ts:?}");
-    // Callback payload: the same.
-    assert!(
-        ts[4..7].iter().all(undefined),
-        "onSuccess payload carried a foreign authority: {ts:?}"
-    );
-    assert!(ts[7].strict_eq(&Value::from("ok")), "{ts:?}");
+    for (cx, tier) in [(space_auth(), Tier::Space), (app_auth(), Tier::App)] {
+        for fail in [false, true] {
+            let ts = smuggled(cx.clone(), fail, &app);
+            let paths = if fail {
+                ["query error", "onError payload"]
+            } else {
+                ["query row", "onSuccess payload"]
+            };
+            for (path, at) in paths.into_iter().zip([0, SMUGGLED.len()]) {
+                assert!(
+                    ts[at..at + 5].iter().all(undefined),
+                    "{path} at {tier:?} carried a foreign authority: {ts:?}"
+                );
+                assert!(ts[at + 5].strict_eq(&Value::from("ok")), "{path}: {ts:?}");
+            }
+        }
+    }
 }
 
 // ── F2: one policy for screen facts ─────────────────────────────────
