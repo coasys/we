@@ -82,13 +82,14 @@ The arguments are `executorArgs` in `electron/executorProcess.js`:
 - `--log-dir <data folder>/logs`: the executor's own log, one file per run, five runs kept
   (`executor-0.log` is this run). `runtime.logTail` reads it. `ad4m.log` (below) keeps this app's
   `HOST` lines and what the executor still prints to stdout.
-- `--custody-channel true`: opens `identity.custodyStatus` to the custody service beside it. That
+- `--custody-channel true`: opens `identity.custodyStatus` and `identity.inboxSealed` to the custody
+  service beside it, which opens a master key sealed to this computer with its own enc key. That
   service connects with the **custody credential**, which the app makes afresh at every start beside
   the admin credential and which is never the same as it. The executor reads it from the first line
   of its stdin, which the app writes right after the spawn, before waiting for the executor to
   answer (`custodyCredentialLine`). It is never an argument and never in the environment: the window's
   admin credential could read an environment back through the executor (`/proc/<pid>/environ`), and
-  the custody guard exists to keep the window away from `identity.takeMaster`. The executor refuses
+  the custody guard exists to keep the window away from `identity.inboxSealed`. The executor refuses
   to start (78, not restarted) with `AD4M_CUSTODY_CREDENTIAL` or `AD4M_CUSTODY_CREDENTIAL_FILE` set,
   so the app strips both from every child's environment (`withoutCustodyCredential`).
 

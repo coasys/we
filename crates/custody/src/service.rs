@@ -26,6 +26,7 @@ use ad4m_identity_client::flows::revoke::revoke;
 use ad4m_identity_client::record::{self, Change};
 use ad4m_identity_client::{
     ClientError, Clock, ExecutorRpc, OsRandom, Secret, SystemClock, VaultError, ViaExecutor,
+    WithEncKey,
 };
 use ad4m_identity_core::link::{DeviceString, OfferKind, CONFIRM_GRACE_S, OFFER_TTL_S};
 use ad4m_identity_core::record::{DeviceEntry, DeviceKind, HoldsMaster as Holds, Place};
@@ -35,6 +36,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio::sync::{broadcast, mpsc, oneshot};
 
+use crate::enc::CustodyEncKey;
 use crate::seal::{self, PassphraseProblem};
 use crate::vault::{DesktopVault, Unlocking};
 
@@ -367,7 +369,19 @@ pub struct CustodyPublic {
     pub requests: Vec<RequestView>,
     /// A master key waits in this computer's inbox ("Accept master key").
     pub master_waiting: bool,
+    /// The key log lets this computer keep the master key but lists an enc key for it that is not
+    /// the one kept here ([`CustodyEncKey`]): lost or replaced. Nothing sealed to this computer
+    /// opens any more — no master key it is sent, no device list — and that key cannot be made
+    /// again, so the person revokes this computer from a device that holds the master key and
+    /// links it again ([`ENC_MISMATCH`]).
+    pub enc_mismatch: bool,
 }
+
+/// What the person reads when [`CustodyPublic::enc_mismatch`] is set.
+pub const ENC_MISMATCH: &str =
+    "This computer has lost the key that opens your master key and your device list, so it can \
+     no longer receive either. On a device that holds your master key, revoke this computer, then \
+     link it again.";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct HoldsMaster {
@@ -503,14 +517,33 @@ pub fn spawn(vault: DesktopVault, executor: ExecutorAddress) -> CustodyHandle {
 
 type Rx = mpsc::UnboundedReceiver<Request>;
 
-async fn connect(address: &ExecutorAddress) -> Result<ViaExecutor<WsRpcClient>, String> {
-    WsRpcClient::connect(&address.url, &address.credential)
+/// The executor, with every call that needs this computer's enc key answered here
+/// ([`WithEncKey`] over [`CustodyEncKey`]): the master key waiting, the inbox's kinds, the record
+/// key, and the `enc` a claim, a device or an incept names. The executor's device key, which the
+/// key is kept for, is asked first.
+async fn connect(
+    address: &ExecutorAddress,
+    vault: &DesktopVault,
+) -> Result<ViaExecutor<WithEncKey<WsRpcClient>>, String> {
+    const STARTING: &str =
+        "The identity service on this computer is still starting. Try again in a moment.";
+    let rpc = WsRpcClient::connect(&address.url, &address.credential)
         .await
-        .map(ViaExecutor::new)
-        .map_err(|_| {
-            "The identity service on this computer is still starting. Try again in a moment."
-                .to_string()
-        })
+        .map_err(|_| STARTING.to_string())?;
+    let status: Value = ExecutorRpc::call(&rpc, "identity.status", json!({}))
+        .await
+        .map_err(|_| STARTING.to_string())?;
+    let device_key = status["deviceKey"]
+        .as_str()
+        .ok_or_else(|| STARTING.to_string())?;
+    let enc = CustodyEncKey::for_device(vault.shared_store(), device_key).map_err(|e| {
+        format!("This computer could not keep the key that opens your master key: {e}")
+    })?;
+    Ok(ViaExecutor::new(WithEncKey::new(
+        rpc,
+        Box::new(enc),
+        Box::new(SystemClock),
+    )))
 }
 
 /// What a step says when the executor has no identity store it can use — its network names none,
@@ -747,9 +780,9 @@ async fn finish_pending_quietly<R: ExecutorRpc>(executor: &ViaExecutor<R>, vault
 }
 
 async fn public_state(vault: &DesktopVault, address: &ExecutorAddress) -> CustodyPublic {
-    match connect(address).await {
+    match connect(address, vault).await {
         Ok(executor) => public_state_on(Some(&executor), vault).await,
-        Err(_) => public_state_on::<WsRpcClient>(None, vault).await,
+        Err(_) => public_state_on::<WithEncKey<WsRpcClient>>(None, vault).await,
     }
 }
 
@@ -758,23 +791,22 @@ async fn public_state_on<R: ExecutorRpc>(
     executor: Option<&ViaExecutor<R>>,
     vault: &DesktopVault,
 ) -> CustodyPublic {
-    let (did, blocked) = match executor {
+    let status = match executor {
         Some(executor) => {
             finish_pending_quietly(executor, vault).await;
-            match executor.status().await {
-                Ok(status) => (
-                    status.did,
-                    (!status.store.is_some_and(|s| s.trusted)).then_some(NO_STORE),
-                ),
-                Err(_) => (None, None),
-            }
+            executor.status().await.ok()
         }
-        None => (None, None),
+        None => None,
     };
+    let did = status.as_ref().and_then(|s| s.did.clone());
+    let blocked = status
+        .as_ref()
+        .and_then(|s| (!s.store.as_ref().is_some_and(|s| s.trusted)).then_some(NO_STORE));
     let mut master_waiting = false;
     let mut devices = Vec::new();
     let mut requests = Vec::new();
     let mut revoked_holders = Vec::new();
+    let mut enc_mismatch = false;
     if let (Some(executor), Some(did)) = (executor, did.as_deref()) {
         master_waiting = master_waits(executor).await;
         // Where the operating system unlocks a new item, the master key waiting is taken as the
@@ -810,13 +842,15 @@ async fn public_state_on<R: ExecutorRpc>(
                 Vec::new()
             }
         };
-        revoked_holders = match executor.events(did).await {
-            Ok(events) => crate::keylog::revoked_holders(&events),
-            Err(e) => {
-                log::warn!("custody: the key log cannot be read now: {e}");
-                Vec::new()
+        match executor.events(did).await {
+            Ok(events) => {
+                revoked_holders = crate::keylog::revoked_holders(&events);
+                enc_mismatch = status
+                    .as_ref()
+                    .is_some_and(|status| enc_lost(&events, status));
             }
-        };
+            Err(e) => log::warn!("custody: the key log cannot be read now: {e}"),
+        }
         requests = waiting_requests(executor).await;
     }
     // Whether this identity's key is held here and, if so, whether it is sealed.
@@ -851,6 +885,28 @@ async fn public_state_on<R: ExecutorRpc>(
         revoked_holders,
         requests,
         master_waiting,
+        enc_mismatch,
+    }
+}
+
+/// [`CustodyPublic::enc_mismatch`] for this computer's device key, from the identity's log.
+/// `status` is the executor's answer through the adapter, whose `deviceEnc` is the custody enc key.
+fn enc_lost(events: &[Event], status: &IdentityStatus) -> bool {
+    crate::keylog::enc_mismatch(events, status.key_id.as_deref(), &status.device_enc)
+}
+
+/// Whether the log lists another enc key for this computer than the one kept here; false when it
+/// cannot be asked.
+async fn enc_lost_now<R: ExecutorRpc>(executor: &ViaExecutor<R>) -> bool {
+    let Ok(status) = executor.status().await else {
+        return false;
+    };
+    let Some(did) = status.did.as_deref() else {
+        return false;
+    };
+    match executor.events(did).await {
+        Ok(events) => enc_lost(&events, &status),
+        Err(_) => false,
     }
 }
 
@@ -1008,7 +1064,7 @@ async fn run_create(
     rx: &mut Rx,
     reply: &mut Reply,
 ) {
-    let executor = match connect(address).await {
+    let executor = match connect(address, vault).await {
         Ok(e) => e,
         Err(message) => return answer(reply, Ok(Screen::Failed { message })),
     };
@@ -1221,7 +1277,7 @@ fn passphrase_for(vault: &DesktopVault, did: &str) -> Result<bool, ClientError> 
 }
 
 async fn run_link(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, reply: &mut Reply) {
-    let executor = match connect(address).await {
+    let executor = match connect(address, vault).await {
         Ok(e) => e,
         Err(message) => return answer(reply, Ok(Screen::Failed { message })),
     };
@@ -1487,7 +1543,7 @@ async fn retry_quietly<R: ExecutorRpc>(
 /// The holder takes the new device's code (scanned or pasted), opens an offer bound to its key and
 /// puts the ticket where the device reads it; then the link goes on as one the device claimed.
 async fn run_scan(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, reply: &mut Reply) {
-    let executor = match connect(address).await {
+    let executor = match connect(address, vault).await {
         Ok(e) => e,
         Err(message) => return answer(reply, Ok(Screen::Failed { message })),
     };
@@ -1599,12 +1655,13 @@ fn check_code(code: &str, store_url: &str, now: u64) -> Result<DeviceString, Str
 /// claim until the holder confirms. The main window's state is read beside it into `reads`, which
 /// the service keeps polling once the flow ends.
 async fn run_show_code(reads: &mut StateReads<'_>, rx: &mut Rx, reply: &mut Reply) {
-    let executor = match connect(reads.address).await {
+    let executor = match connect(reads.address, reads.vault).await {
         Ok(e) => e,
         Err(message) => return answer(reply, Ok(Screen::Failed { message })),
     };
     // Subscribed before the code exists, so a claim made at once is not missed.
     let events = match executor
+        .rpc()
         .rpc()
         .watch_events(json!({ "link-ticket": null }))
         .await
@@ -2538,7 +2595,7 @@ async fn run_take_master(
     rx: &mut Rx,
     reply: &mut Reply,
 ) {
-    let executor = match connect(address).await {
+    let executor = match connect(address, vault).await {
         Ok(e) => e,
         Err(message) => return answer(reply, Ok(Screen::Failed { message })),
     };
@@ -2571,10 +2628,16 @@ async fn take_master_on<R: ExecutorRpc>(
         Err(e) => return answer(reply, Ok(failed(&ClientError::Rpc(e)))),
     };
     if !master_waits(executor).await {
+        // A key sealed to an enc key this computer no longer keeps never shows as waiting.
+        let message = if enc_lost_now(executor).await {
+            ENC_MISMATCH
+        } else {
+            NO_MASTER_WAITING
+        };
         return answer(
             reply,
             Ok(Screen::Failed {
-                message: NO_MASTER_WAITING.into(),
+                message: message.into(),
             }),
         );
     }
@@ -2633,7 +2696,7 @@ async fn take_master_on<R: ExecutorRpc>(
 /// A linked app without the master key asks the identity's other devices for it: a
 /// `send-master` request in the identity's box, which a holder answers.
 async fn run_ask_master(vault: &DesktopVault, address: &ExecutorAddress, reply: &mut Reply) {
-    let executor = match connect(address).await {
+    let executor = match connect(address, vault).await {
         Ok(e) => e,
         Err(message) => return answer(reply, Ok(Screen::Failed { message })),
     };
@@ -2661,6 +2724,12 @@ async fn ask_master_on<R: ExecutorRpc>(executor: &ViaExecutor<R>, vault: &Deskto
             message: "This computer already has the master key.".into(),
         };
     }
+    // The holder would seal it to the enc key the log lists, which this computer cannot open.
+    if enc_lost_now(executor).await {
+        return Screen::Failed {
+            message: ENC_MISMATCH.into(),
+        };
+    }
     match executor
         .post_request(&DeviceRequestBody::SendMaster {}, None)
         .await
@@ -2686,7 +2755,7 @@ async fn run_answer(
     reply: &mut Reply,
     id: String,
 ) {
-    let executor = match connect(address).await {
+    let executor = match connect(address, vault).await {
         Ok(e) => e,
         Err(message) => return answer(reply, Ok(Screen::Failed { message })),
     };
@@ -2855,7 +2924,7 @@ async fn run_rename(
     reply: &mut Reply,
     key_id: String,
 ) {
-    let executor = match connect(address).await {
+    let executor = match connect(address, vault).await {
         Ok(e) => e,
         Err(message) => return answer(reply, Ok(Screen::Failed { message })),
     };
@@ -3014,7 +3083,7 @@ async fn run_revoke(
     reply: &mut Reply,
     key_id: String,
 ) {
-    let executor = match connect(address).await {
+    let executor = match connect(address, vault).await {
         Ok(e) => e,
         Err(message) => return answer(reply, Ok(Screen::Failed { message })),
     };
@@ -3466,6 +3535,7 @@ mod tests {
                 expires: 9,
             }],
             master_waiting: true,
+            enc_mismatch: true,
         })
         .unwrap();
         assert_eq!(public["devices"][0]["keyId"], "d1");
@@ -3474,6 +3544,7 @@ mod tests {
         assert_eq!(public["requests"][0]["kind"], "send-master");
         assert_eq!(public["requests"][0]["keyIds"], json!([]));
         assert_eq!(public["masterWaiting"], true);
+        assert_eq!(public["encMismatch"], true);
         assert_eq!(public["revokedHolders"], json!(["d3"]));
         assert_eq!(public["holdsMaster"]["index"], 0);
         assert_eq!(public["blocked"], NO_STORE);
@@ -3986,6 +4057,85 @@ mod tests {
         let executor = ViaExecutor::new(FakeExecutor::new());
         *executor.rpc().held.borrow_mut() = Some(LINKED_SCID.into());
         executor
+    }
+
+    /// The device `d2` of `keylog::tests::log_with_d2_enc`'s identity, which may keep the master
+    /// key, its executor behind the custody enc adapter as [`connect`] puts it. The log lists `d2`
+    /// with `listed` (this vault's custody enc key when `None`), and the executor's sealed inbox
+    /// holds master #0 sealed to that key, as `m1`. Answers the identity's SCID.
+    fn joined_executor(
+        vault: &DesktopVault,
+        listed: Option<String>,
+    ) -> (ViaExecutor<WithEncKey<FakeExecutor>>, String) {
+        use ad4m_identity_client::EncKey;
+        use ad4m_identity_core::inbox::{seal, sign_payload, InboxAddress, InboxBody};
+        use ad4m_identity_core::link::SignedBy;
+        let d2 = KeySigner::new(&[4u8; 32], 0);
+        let device_key = Signer::key(&d2);
+        let custody = CustodyEncKey::for_device(vault.shared_store(), device_key.as_str()).unwrap();
+        let enc = listed.unwrap_or_else(|| custody.enc().as_str().to_string());
+        let (events, _) = crate::keylog::tests::log_with_d2_enc(true, enc.clone());
+        let chain = ad4m_identity_core::fold(&events).unwrap();
+        let scid = events[0].scid.clone();
+        let fake = FakeExecutor {
+            device: d2,
+            ..FakeExecutor::new()
+        };
+        fake.answer(
+            "identity.status",
+            json!({
+                "did": did_of(&scid),
+                "deviceKey": device_key,
+                // The executor's wallet key: the adapter answers the custody enc key instead.
+                "deviceEnc": ad4m_identity_core::encode_x25519_multikey(&[6u8; 32]),
+                "keyId": "d2",
+                "revoked": null,
+                "head": null,
+                "fork": null,
+                "store": { "url": "https://store.example", "trusted": true },
+            }),
+        );
+        fake.answer("identity.log", log_answer(&events));
+        let master = words::master_key(&words::seed(&words::from_entropy(&[41u8; 16])), 0).unwrap();
+        let payload = sign_payload(
+            device_key,
+            InboxBody::Master {
+                did: did_of(&scid),
+                index: 0,
+                secret: bs58::encode(master.to_bytes()).into_string(),
+            },
+            CLOCK.now(),
+            SignedBy {
+                key_id: "m0".into(),
+                kel_seq: 0,
+                kel_hash: chain.hash_at(0).unwrap().clone(),
+            },
+            &master,
+        )
+        .unwrap();
+        let address = InboxAddress::Joined {
+            scid: scid.clone(),
+            key_id: "d2".into(),
+        };
+        let sealed = seal(
+            &ad4m_identity_core::Multikey::from(enc.as_str()),
+            &address,
+            &payload,
+            &mut rand_core::OsRng,
+        )
+        .unwrap();
+        fake.answer(
+            "identity.inboxSealed",
+            json!([{
+                "id": "m1", "sealed": sealed, "scid": scid, "keyId": "d2",
+                "storedAt": 0, "expires": CLOCK.now() + 300,
+            }]),
+        );
+        // An acknowledged message is gone from the store.
+        fake.answer("identity.inboxAck", json!({}));
+        fake.answer_after("identity.inboxAck", "identity.inboxSealed", json!([]));
+        let adapter = WithEncKey::new(fake, Box::new(custody), Box::new(SystemClock));
+        (ViaExecutor::new(adapter), scid)
     }
 
     #[tokio::test]
@@ -5753,12 +5903,12 @@ mod tests {
 
     #[tokio::test]
     async fn with_no_master_key_waiting_nothing_is_taken() {
-        let executor = linked_executor();
-        executor.rpc().answer(
-            "identity.inbox",
-            json!([{ "id": "m0", "kind": "offer-ticket", "storedAt": 0, "expires": 9 }]),
-        );
         let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (executor, scid) = joined_executor(&vault, None);
+        executor
+            .rpc()
+            .rpc()
+            .answer("identity.inboxSealed", json!([]));
         let (address, mut rx, mut reply, _window, first) = opened();
         take_master_on(&executor, &vault, &address, &mut rx, &mut reply).await;
         let screen = first.await.unwrap().unwrap();
@@ -5766,20 +5916,14 @@ mod tests {
             matches!(&screen, Screen::Failed { message } if message == NO_MASTER_WAITING),
             "{screen:?}"
         );
-        assert!(executor.rpc().called("identity.takeMaster").is_empty());
+        assert!(!vault.holds(&scid).unwrap());
     }
 
     #[tokio::test]
     async fn a_master_key_taken_into_a_sealed_store_gets_a_passphrase_first() {
         let dir = tempfile::tempdir().unwrap();
-        let executor = linked_executor();
-        executor.rpc().answer(
-            "identity.inbox",
-            json!([{ "id": "m1", "kind": "master", "storedAt": 0, "expires": 9 }]),
-        );
-        // Another app on this computer took it meanwhile.
-        executor.rpc().answer("identity.takeMaster", Value::Null);
         let vault = open_vault(dir.path());
+        let (executor, scid) = joined_executor(&vault, None);
         assert!(vault.needs_passphrase());
         let (address, mut rx, mut reply, window, first) = opened();
         let ((), screens) = tokio::join!(
@@ -5812,10 +5956,15 @@ mod tests {
             "{screens:?}"
         );
         assert!(
-            matches!(&screens[2], Screen::Failed { message } if message == NO_MASTER_WAITING),
+            matches!(&screens[2], Screen::MasterTaken { did, .. } if *did == did_of(&scid)),
             "{screens:?}"
         );
-        assert_eq!(executor.rpc().called("identity.takeMaster").len(), 1);
+        // Taken once the passphrase is set, and kept under it.
+        assert_eq!(held_sealed(&vault, &scid).unwrap(), Some(true));
+        assert_eq!(
+            executor.rpc().rpc().called("identity.inboxAck"),
+            vec![json!({ "id": "m1" })]
+        );
     }
 
     #[tokio::test]
@@ -5972,6 +6121,25 @@ mod tests {
 
     impl rand_core::CryptoRng for Fixed {}
 
+    /// `identity.log`'s answer for the identity `events` make, its head signed by the store key
+    /// `[9u8; 32]`: the reader trusts it for the record's receipt as for the head.
+    fn log_answer(events: &[Event]) -> Value {
+        let scid = &events[0].scid;
+        let json_events: Vec<Value> = events
+            .iter()
+            .map(|e| serde_json::to_value(e).unwrap())
+            .collect();
+        let seq = ad4m_identity_core::fold(events).unwrap().head().seq;
+        let store = KeySigner::new(&[9u8; 32], 0);
+        json!({
+            "did": did_of(scid), "events": json_events, "fork": null,
+            "head": {
+                "scid": scid, "seq": seq, "hash": "h", "time": 0,
+                "store": format!("did:key:{}", Signer::key(&store)), "sig": "s",
+            },
+        })
+    }
+
     /// An executor that is device `d1` of the identity `events` make, answering its log and
     /// `record` sealed to the log's readers, as the store would.
     fn executor_with(
@@ -5981,24 +6149,10 @@ mod tests {
         let scid = events[0].scid.clone();
         let executor = ViaExecutor::new(FakeExecutor::new());
         *executor.rpc().held.borrow_mut() = Some(scid.clone());
-        let json_events: Vec<Value> = events
-            .iter()
-            .map(|e| serde_json::to_value(e).unwrap())
-            .collect();
         let chain = ad4m_identity_core::fold(events).unwrap();
-        // The store's head key: the reader trusts it for the record's receipt as for the head.
         let store = KeySigner::new(&[9u8; 32], 0);
         let seq = chain.head().seq;
-        executor.rpc().answer(
-            "identity.log",
-            json!({
-                "did": did_of(&scid), "events": json_events, "fork": null,
-                "head": {
-                    "scid": scid, "seq": seq, "hash": "h", "time": 0,
-                    "store": format!("did:key:{}", Signer::key(&store)), "sig": "s",
-                },
-            }),
-        );
+        executor.rpc().answer("identity.log", log_answer(events));
         // `d1`, the executor's device key in `log_with_d2`, signs the envelope.
         let d1 = KeySigner::new(&[2u8; 32], 0);
         let sealed =
@@ -6334,16 +6488,16 @@ mod tests {
             "body": { "kind": "confirm-revoke", "keyIds": ["d3"], "rotate": false },
             "by": "d2", "created": 0, "expires": 99, "signed": {},
         }]);
-        let inbox = json!([{ "id": "m1", "kind": "master", "storedAt": 0, "expires": 9 }]);
-
         // A sealed store: the waiting key is shown, never taken without the passphrase.
         let dir = tempfile::tempdir().unwrap();
-        let executor = linked_executor();
-        executor.rpc().answer("identity.requests", requests);
-        executor.rpc().answer("identity.inbox", inbox.clone());
-        let public = public_state_on(Some(&executor), &open_vault(dir.path())).await;
+        let vault = open_vault(dir.path());
+        let (executor, scid) = joined_executor(&vault, None);
+        executor.rpc().rpc().answer("identity.requests", requests);
+        let public = public_state_on(Some(&executor), &vault).await;
         assert!(public.master_waiting);
-        assert!(executor.rpc().called("identity.takeMaster").is_empty());
+        assert!(!public.enc_mismatch);
+        assert!(!vault.holds(&scid).unwrap());
+        assert!(executor.rpc().rpc().called("identity.inboxAck").is_empty());
         assert_eq!(public.requests.len(), 1);
         let request = &public.requests[0];
         assert_eq!(
@@ -6358,15 +6512,59 @@ mod tests {
         assert_eq!(request.key_ids, vec!["d3".to_string()]);
         // The record cannot be read here: no devices, rather than a failed state.
         assert!(public.devices.is_empty());
+    }
 
-        // Where the OS unlocks a new item, the waiting key is taken as the state is asked.
-        let executor = linked_executor();
-        executor.rpc().answer("identity.inbox", inbox);
-        executor.rpc().answer("identity.takeMaster", Value::Null);
+    #[tokio::test]
+    async fn where_the_os_unlocks_a_new_item_the_state_takes_a_master_key_sealed_to_this_computer()
+    {
         let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (executor, scid) = joined_executor(&vault, None);
         let public = public_state_on(Some(&executor), &vault).await;
-        assert_eq!(executor.rpc().called("identity.takeMaster").len(), 1);
+        assert_eq!(public.holds_master, Some(HoldsMaster { index: 0 }));
+        assert_eq!(held_sealed(&vault, &scid).unwrap(), Some(false));
         assert!(!public.master_waiting);
+        assert!(!public.enc_mismatch);
+        // Opened here: the executor was asked only for the sealed text, and to forget it.
+        let fake = executor.rpc().rpc();
+        assert!(fake.called("identity.takeMaster").is_empty());
+        assert!(fake.called("identity.inbox").is_empty());
+        assert!(!fake.called("identity.inboxSealed").is_empty());
+        assert_eq!(
+            fake.called("identity.inboxAck"),
+            vec![json!({ "id": "m1" })]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_log_listing_an_enc_key_this_computer_lost_says_to_revoke_and_link_again() {
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let lost = ad4m_identity_core::encode_x25519_multikey(&[5u8; 32]);
+        let (executor, scid) = joined_executor(&vault, Some(lost));
+        let public = public_state_on(Some(&executor), &vault).await;
+        assert!(public.enc_mismatch);
+        // The key sealed to the lost enc key does not open here, so it is not shown as waiting.
+        assert!(!public.master_waiting);
+        assert_eq!(public.holds_master, None);
+
+        // Taking it, or asking for it again, says what to do instead.
+        let (address, mut rx, mut reply, _window, first) = opened();
+        take_master_on(&executor, &vault, &address, &mut rx, &mut reply).await;
+        let screen = first.await.unwrap().unwrap();
+        assert!(
+            matches!(&screen, Screen::Failed { message } if message == ENC_MISMATCH),
+            "{screen:?}"
+        );
+        let screen = ask_master_on(&executor, &vault).await;
+        assert!(
+            matches!(&screen, Screen::Failed { message } if message == ENC_MISMATCH),
+            "{screen:?}"
+        );
+        assert!(executor
+            .rpc()
+            .rpc()
+            .called("identity.postRequest")
+            .is_empty());
+        assert!(!vault.holds(&scid).unwrap());
     }
 
     #[test]
