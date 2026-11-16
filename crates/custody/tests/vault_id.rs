@@ -70,6 +70,9 @@ impl SecretStore for Keychain {
     fn delete(&self, name: &str) -> Result<(), VaultError> {
         self.0.delete(name)
     }
+    fn claim_secret(&self, name: &str, bytes: &[u8]) -> Result<Vec<u8>, VaultError> {
+        self.0.claim_secret(name, bytes)
+    }
     fn put_tagged(&self, name: &str, bytes: &[u8], tag: &ItemTag) -> Result<(), VaultError> {
         self.0.put_tagged(name, bytes, tag)
     }
