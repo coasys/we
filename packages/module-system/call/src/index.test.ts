@@ -294,6 +294,25 @@ describe('the gear below the narrow breakpoint', () => {
     expect(JSON.stringify(props(gate)?.condition)).toBe(JSON.stringify({ $: "surface.tier != 'base'" }));
   });
 
+  it('shows the way back to the call as an icon below `base`, where its name costs Leave', () => {
+    // In a call from another space the back-to-call button joins the row; its name, even
+    // truncated, pushed Leave off a 390px bar. The icon stays at every width, the tooltip names it.
+    const back = walk(row()).find(
+      (node) =>
+        node.type === 'we-button' &&
+        walk(node).some((icon) => icon.type === 'we-icon' && props(icon).name === 'arrow-bend-up-left'),
+    ) as SchemaNode;
+    expect(back, 'no back-to-call button in the bar').toBeDefined();
+    const name = walk(back).find((node) => node.type === 'we-text') as SchemaNode;
+    expect(name, 'no name on the back-to-call button').toBeDefined();
+    const gate = lineage(back, name)?.find(
+      (node) => node.type === '$if' && JSON.stringify(props(node).condition).includes('surface.tier'),
+    );
+    expect(JSON.stringify(props(gate)?.condition)).toBe(JSON.stringify({ $: "surface.tier != 'base'" }));
+    const icon = walk(back).find((node) => node.type === 'we-icon') as SchemaNode;
+    expect(lineage(back, icon)?.some((node) => node.type === '$if')).toBe(false);
+  });
+
   it('keeps Call settings in the menu at the width that drops it', () => {
     /*
       The line exists *because* the gear is gone — so it is gated on the same tier, negated, and

@@ -1624,13 +1624,17 @@ const returnToCall: SchemaNode = {
           props: { variant: 'soft', gap: '200', onClick: { $invoke: 'modules.call.returnToCall' } },
           children: [
             { type: 'we-icon', props: { name: 'arrow-bend-up-left' } },
-            {
+            /*
+              Icon only below `base`: even truncated, the name pushed Leave off a 390px bar. The
+              tooltip above still says where the call is.
+            */
+            whenRoomy({
               type: 'we-text',
               // Truncated rather than wrapped: a long space name would otherwise make the bar two
               // rows tall, which is the one thing a fixed strip of controls cannot absorb.
               props: { truncate: true, maxWidth: '96px' },
               children: [{ $: "modules.call.callSpace.name ? modules.call.callSpace.name : 'In a call'" }],
-            },
+            }),
           ],
         },
       ],
