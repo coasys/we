@@ -6,7 +6,7 @@
  * executor's stdin and of the sidecar's — never in an argument or an environment, which the
  * renderer's admin credential could read back (`/proc/<pid>/environ`). The main window's `get-token` answers the
  * admin credential, which the executor's custody guard (`identity::custody::admit`) refuses, so
- * nothing running in the main renderer can call `identity.takeMaster` or `identity.claimOffer` with
+ * nothing running in the main renderer can call `identity.inboxSealed` or `identity.claimOffer` with
  * `canKeepMaster`.
  *
  * The sidecar is a fake `we-custody` beside the fake executor (`fixtures/fake-executor.cjs`, which
@@ -291,7 +291,7 @@ describe.skipIf(process.platform === 'win32' || !existsSync(join(here, 'seed-csp
       const token = await invoke('get-token');
       // The custody channel of ad4m (`identity::custody::admit`) admits only the custody credential
       // on a loopback listener, so the main renderer, with this token, cannot call
-      // `identity.takeMaster` and take a master key waiting in this computer's inbox.
+      // `identity.inboxSealed` and read a master key waiting in this computer's inbox.
       expect(token).toMatch(/^[0-9a-f-]{36}$/);
       expect(token).not.toBe(custody.firstLine);
       expect(executorStart().env.AD4M_ADMIN_CREDENTIAL).toBe(token);

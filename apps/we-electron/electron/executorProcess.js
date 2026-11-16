@@ -346,8 +346,9 @@ export async function startWithPortRetry(startOnce, { samePort = false, appUp, a
  * - `--log-dir`: the executor keeps its own log, one file per run, five runs
  *   (`executor-0.log` is this run), which `runtime.logTail` reads.
  * - `--config`: the file `runtime.setConfig` writes and the next start reads.
- * - `--custody-channel`: opens `identity.custodyStatus` to the custody service beside it. Its
- *   credential is the first line of stdin, never an argument or a variable.
+ * - `--custody-channel`: opens `identity.custodyStatus` and `identity.inboxSealed` to the custody
+ *   service beside it, which opens a master key sealed to this computer itself. Its credential is
+ *   the first line of stdin, never an argument or a variable.
  *
  * The admin credential is in the environment (`executorSpawnEnv`), not here: an argument is visible
  * to every user of the computer through `ps`.

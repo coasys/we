@@ -70,6 +70,13 @@ impl SecretStore for Keychain {
     fn delete(&self, name: &str) -> Result<(), VaultError> {
         self.0.delete(name)
     }
+    fn claim_secret(
+        &self,
+        name: &str,
+        bytes: &[u8],
+    ) -> Result<zeroize::Zeroizing<Vec<u8>>, VaultError> {
+        self.0.claim_secret(name, bytes)
+    }
     fn put_tagged(&self, name: &str, bytes: &[u8], tag: &ItemTag) -> Result<(), VaultError> {
         self.0.put_tagged(name, bytes, tag)
     }
@@ -96,6 +103,8 @@ fn over_then(
         Box::new(PlacedStore::new(
             Box::new(FileStore::new(custody)),
             Some(Box::new(Keychain(keychain.clone(), Mutex::new(then)))),
+            // The placement lock where `system_store` keeps it, in the custody folder.
+            custody.join("claim.lock"),
         )),
         PendingIncepts::file(custody),
         CHEAP,

@@ -4,10 +4,14 @@
 //!   keychain behind Touch ID, or sealed under a passphrase ([`seal`]) in the Linux Secret
 //!   Service, or in a 0600 file — on Linux where there is no Secret Service, and on macOS where
 //!   the build lacks the keychain entitlement.
+//! - [`enc::CustodyEncKey`] is the X25519 key the key log lists beside this computer's executor
+//!   device key, kept in the same store with no unlock: the holder seals the master key and wraps
+//!   the record key to it, and the service opens both, so the executor only passes sealed text on.
 //! - [`pending`] keeps the incept of an identity made here until its publish is confirmed, so a
 //!   create the app did not see finish is completed on the next start rather than stranded.
 //! - [`service`] runs the identity client's flows — create, add a device, revoke — for the identity
-//!   window, and reaches the executor only over its RPC with the admin credential.
+//!   window, and reaches the executor only over its RPC with the custody credential, behind
+//!   [`enc::CustodyEncKey`]'s adapter.
 //! - [`window`] says which Tauri window may call which command.
 //! - [`host`] is what every desktop host starts the service with: the custody folder. Which
 //!   identity store the executor uses, and whether it trusts it, the service asks the executor.
@@ -19,6 +23,7 @@
 //! No Windows: the desktop app does not ship there. Nothing here links the executor;
 //! `tests/boundary.rs` keeps it so.
 
+pub mod enc;
 pub mod host;
 pub mod keylog;
 pub mod pending;

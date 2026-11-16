@@ -182,7 +182,8 @@ describe('the AD4M identity port with a custody service', () => {
   const custody = (state: Partial<Ad4mCustodyState> = {}) => ({
     open: vi.fn(async () => 'done' as const),
     publicState: vi.fn(
-      async () => ({ did: DID, holdsMaster: { index: 0 }, unlock: 'os', ...state }) as Ad4mCustodyState,
+      async () =>
+        ({ did: DID, holdsMaster: { index: 0 }, unlock: 'os', encMismatch: false, ...state }) as Ad4mCustodyState,
     ),
   });
 
@@ -224,6 +225,7 @@ describe('the AD4M identity port with a custody service', () => {
       // The desktop's custody service runs beside the executor, so it names no device of its own.
       thisDevice: null,
       pending: null,
+      encMismatch: false,
     });
   });
 
@@ -253,6 +255,13 @@ describe('the AD4M identity port with a custody service', () => {
       custody({ thisDevice: { keyId: null, kind: 'phone-app' } }),
     );
     expect((await unlisted.custody!()).thisDevice).toEqual({ keyId: null, kind: 'phone-app' });
+  });
+
+  it('carries the custody service’s word that this computer lost its enc key', async () => {
+    const port = createAd4mIdentityPort(client({ status: {} }), custody({ holdsMaster: null, encMismatch: true }));
+    const view = await port.custody!();
+    expect(view.encMismatch).toBe(true);
+    expect(view.holdsMaster).toBe(false);
   });
 
   it('reads the private record’s names, the waiting requests and a master key waiting here', async () => {
