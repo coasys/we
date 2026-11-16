@@ -15,6 +15,8 @@ use ad4m_identity_core::{verify_signed, Event, KeyLife, Op};
 pub struct LoggedDevice {
     /// Its signing key (multikey).
     pub sign: String,
+    /// The X25519 key the holder seals the master key and wraps the record key to (multikey).
+    pub enc: String,
     /// Made the identity, or joined with a claim that said `canKeepMaster`.
     pub may_keep_master: bool,
 }
@@ -27,6 +29,7 @@ pub fn device(events: &[Event], key_id: &str) -> Option<LoggedDevice> {
                 .find(|k| k.id.as_str() == key_id)
                 .map(|k| LoggedDevice {
                     sign: k.sign.as_str().to_string(),
+                    enc: k.enc.as_str().to_string(),
                     may_keep_master: matches!(k.life, KeyLife::Standing),
                 })
         }
@@ -35,6 +38,7 @@ pub fn device(events: &[Event], key_id: &str) -> Option<LoggedDevice> {
                 .find(|k| k.id.as_str() == key_id)
                 .map(|k| LoggedDevice {
                     sign: k.sign.as_str().to_string(),
+                    enc: k.enc.as_str().to_string(),
                     may_keep_master: matches!(k.life, KeyLife::Standing)
                         && claimed_can_keep_master(
                             &event.scid,
@@ -66,6 +70,21 @@ pub fn revoked_holders(events: &[Event]) -> Vec<String> {
     revoked.retain(|id| device(events, id).is_some_and(|d| d.may_keep_master));
     revoked.dedup();
     revoked
+}
+
+/// Whether the log lists device `key_id` as one that may keep the master key, not revoked, with an
+/// enc key other than `custody_enc`: the holder seals the master key and wraps the record key to the
+/// log's, which this computer then cannot open. A device that may not keep the master key is
+/// listed with its executor's own enc key, which opens its record key there, so it is not one.
+pub fn enc_mismatch(events: &[Event], key_id: Option<&str>, custody_enc: &str) -> bool {
+    let Some(key_id) = key_id else {
+        return false;
+    };
+    let revoked = events.iter().any(|event| match &event.op {
+        Op::Revoke { revoke } => revoke.iter().any(|k| k.as_str() == key_id),
+        _ => false,
+    });
+    !revoked && device(events, key_id).is_some_and(|d| d.may_keep_master && d.enc != custody_enc)
 }
 
 /// Whether `co_sig` is the device's signature over a claim on `offer_id` that said
@@ -121,6 +140,11 @@ pub(crate) mod tests {
 
     /// A log made by device `d1`, which adds `d2` from a claim that said `can_keep_master`.
     pub(crate) fn log_with_d2(can_keep_master: bool) -> (Vec<Event>, KeySigner) {
+        log_with_d2_enc(can_keep_master, encode_x25519_multikey(&[5u8; 32]))
+    }
+
+    /// [`log_with_d2`], with `d2` listed with enc key `enc`.
+    pub(crate) fn log_with_d2_enc(can_keep_master: bool, enc: String) -> (Vec<Event>, KeySigner) {
         use ad4m_identity_core::words;
         let seed = words::seed(&words::from_entropy(&[41u8; 16]));
         let master = words::master_key(&seed, 0).unwrap();
@@ -136,7 +160,6 @@ pub(crate) mod tests {
         cosign(&mut incept, "d1", &d1_signer).unwrap();
         let chain = fold(std::slice::from_ref(&incept)).unwrap();
         let d2_signer = KeySigner::new(&[4u8; 32], 0);
-        let enc = encode_x25519_multikey(&[5u8; 32]);
         let claim = make_claim(
             &incept.scid,
             "offer-1",
@@ -202,6 +225,32 @@ pub(crate) mod tests {
         // A claim that said no: the same key, and no record entry can change it.
         let (events, _) = log_with_d2(false);
         assert!(!device(&events, "d2").unwrap().may_keep_master);
+    }
+
+    #[test]
+    fn an_enc_key_this_computer_does_not_keep_is_a_mismatch_only_where_it_may_keep_the_master_key()
+    {
+        use ad4m_identity_core::build::revoke;
+        use ad4m_identity_core::{words, KeyId};
+        let kept = encode_x25519_multikey(&[6u8; 32]);
+        let lost = encode_x25519_multikey(&[5u8; 32]);
+        let (events, _) = log_with_d2(true);
+        assert_eq!(device(&events, "d2").unwrap().enc, lost);
+        // The log lists another key than the one kept here.
+        assert!(enc_mismatch(&events, Some("d2"), &kept));
+        // It lists the one kept here.
+        assert!(!enc_mismatch(&events, Some("d2"), &lost));
+        // A device that may not keep the master key is listed with its executor's own enc key.
+        let (events_no_master, _) = log_with_d2(false);
+        assert!(!enc_mismatch(&events_no_master, Some("d2"), &kept));
+        // No key id, or one the log does not list: nothing is known to be wrong.
+        assert!(!enc_mismatch(&events, None, &kept));
+        assert!(!enc_mismatch(&events, Some("d9"), &kept));
+        // Revoked: linking again is under way or done, and this key is past.
+        let master = words::master_key(&words::seed(&words::from_entropy(&[41u8; 16])), 0).unwrap();
+        let mut revoked = events.clone();
+        revoked.push(revoke(&fold(&events).unwrap(), &master, &[KeyId::from("d2")]).unwrap());
+        assert!(!enc_mismatch(&revoked, Some("d2"), &kept));
     }
 
     #[test]

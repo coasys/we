@@ -234,6 +234,7 @@ describe('BaseBoot', () => {
       revokedHolders: [],
       requests: [],
       masterWaiting: false,
+      encMismatch: false,
     };
     let state = empty;
     let store!: BaseStore;
@@ -276,6 +277,7 @@ describe('BaseBoot', () => {
       revokedHolders: [],
       requests: [],
       masterWaiting: false,
+      encMismatch: false,
     };
     let store!: BaseStore;
     const host: BaseHost = {
@@ -354,6 +356,7 @@ describe('BaseBoot', () => {
       revokedHolders: [],
       requests: [],
       masterWaiting: false,
+      encMismatch: false,
     };
 
     function noKeyring(agent: 'needs-password' | 'needs-new-password', answer: 'unlocked' | 'wrong') {

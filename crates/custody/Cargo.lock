@@ -5,7 +5,7 @@ version = 4
 [[package]]
 name = "ad4m-client"
 version = "0.13.1-staging.11"
-source = "git+https://github.com/coasys/ad4m?rev=c55c8bfd3670c59fc3bee4b7ae4ea4ebf541df20#c55c8bfd3670c59fc3bee4b7ae4ea4ebf541df20"
+source = "git+https://github.com/coasys/ad4m?rev=6a8b6e8ff550bd67896d0e59deec23ded1d9d8df#6a8b6e8ff550bd67896d0e59deec23ded1d9d8df"
 dependencies = [
  "anyhow",
  "chrono",
@@ -25,7 +25,7 @@ dependencies = [
 [[package]]
 name = "ad4m-hash-chain"
 version = "0.1.0"
-source = "git+https://github.com/coasys/ad4m?rev=c55c8bfd3670c59fc3bee4b7ae4ea4ebf541df20#c55c8bfd3670c59fc3bee4b7ae4ea4ebf541df20"
+source = "git+https://github.com/coasys/ad4m?rev=6a8b6e8ff550bd67896d0e59deec23ded1d9d8df#6a8b6e8ff550bd67896d0e59deec23ded1d9d8df"
 dependencies = [
  "bs58",
  "ed25519-dalek",
@@ -38,7 +38,7 @@ dependencies = [
 [[package]]
 name = "ad4m-identity-client"
 version = "0.1.0"
-source = "git+https://github.com/coasys/ad4m?rev=c55c8bfd3670c59fc3bee4b7ae4ea4ebf541df20#c55c8bfd3670c59fc3bee4b7ae4ea4ebf541df20"
+source = "git+https://github.com/coasys/ad4m?rev=6a8b6e8ff550bd67896d0e59deec23ded1d9d8df#6a8b6e8ff550bd67896d0e59deec23ded1d9d8df"
 dependencies = [
  "ad4m-client",
  "ad4m-hash-chain",
@@ -58,7 +58,7 @@ dependencies = [
 [[package]]
 name = "ad4m-identity-core"
 version = "0.1.0"
-source = "git+https://github.com/coasys/ad4m?rev=c55c8bfd3670c59fc3bee4b7ae4ea4ebf541df20#c55c8bfd3670c59fc3bee4b7ae4ea4ebf541df20"
+source = "git+https://github.com/coasys/ad4m?rev=6a8b6e8ff550bd67896d0e59deec23ded1d9d8df#6a8b6e8ff550bd67896d0e59deec23ded1d9d8df"
 dependencies = [
  "ad4m-hash-chain",
  "base64 0.22.1",
@@ -82,7 +82,7 @@ dependencies = [
 [[package]]
 name = "ad4m-ldk"
 version = "0.13.0-test-1"
-source = "git+https://github.com/coasys/ad4m?rev=c55c8bfd3670c59fc3bee4b7ae4ea4ebf541df20#c55c8bfd3670c59fc3bee4b7ae4ea4ebf541df20"
+source = "git+https://github.com/coasys/ad4m?rev=6a8b6e8ff550bd67896d0e59deec23ded1d9d8df#6a8b6e8ff550bd67896d0e59deec23ded1d9d8df"
 dependencies = [
  "futures",
  "js-sys",
@@ -822,7 +822,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1839,7 +1839,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2039,7 +2039,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2384,7 +2384,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

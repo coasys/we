@@ -354,7 +354,11 @@ pub fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Command, Str
 pub fn keyring() -> Result<Box<dyn SecretStore>, VaultError> {
     #[cfg(target_os = "linux")]
     {
-        crate::store::SecretServiceStore::connect()
+        // The custody folder every custody process takes the claim lock in; the storage secret's
+        // own reads and writes never take it.
+        let home =
+            dirs::home_dir().ok_or_else(|| VaultError::Unavailable("no home folder".into()))?;
+        crate::store::SecretServiceStore::connect(&crate::host::custody_dir(&home))
             .map(|store| Box::new(store) as Box<dyn SecretStore>)
     }
     #[cfg(target_os = "macos")]

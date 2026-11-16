@@ -17,6 +17,7 @@ import {
   checkEmailCard,
   deviceList,
   deviceListFootnote,
+  encMismatchWarning,
   identityProblem,
   keyLogSummary,
   makeIdentityCard,
@@ -407,6 +408,7 @@ export const devicesPage: SchemaNode = {
   children: [
     heading('Devices', 'This computer and the devices you link to it.'),
     identityProblem,
+    encMismatchWarning,
     thisDeviceRow,
     requestList,
     ...masterKeyCards,

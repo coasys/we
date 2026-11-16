@@ -7,6 +7,7 @@ use std::sync::Mutex;
 use ad4m_identity_client::VaultError;
 use we_custody::store::{keyring_locked, no_keyring, MemoryStore, SecretStore, StoreKind};
 use we_custody::wallet::{self, Answer, Mode};
+use zeroize::Zeroizing;
 
 #[test]
 fn a_first_make_keeps_a_new_passphrase_and_every_read_after_answers_the_same_one() {
@@ -82,6 +83,10 @@ impl SecretStore for Refusing {
         Err((self.error)())
     }
     fn claim_public(&self, _: &str, _: &[u8]) -> Result<bool, VaultError> {
+        *self.writes.lock().unwrap() += 1;
+        Err((self.error)())
+    }
+    fn claim_secret(&self, _: &str, _: &[u8]) -> Result<Zeroizing<Vec<u8>>, VaultError> {
         *self.writes.lock().unwrap() += 1;
         Err((self.error)())
     }
@@ -183,6 +188,9 @@ impl SecretStore for Holding {
         Err((self.error)())
     }
     fn claim_public(&self, _: &str, _: &[u8]) -> Result<bool, VaultError> {
+        Err((self.error)())
+    }
+    fn claim_secret(&self, _: &str, _: &[u8]) -> Result<Zeroizing<Vec<u8>>, VaultError> {
         Err((self.error)())
     }
     fn get(&self, _: &str) -> Result<Option<Vec<u8>>, VaultError> {
