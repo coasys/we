@@ -43,7 +43,7 @@ impl CustodyEncKey {
         let name = enc_item_name(device_key);
         let mut fresh = Zeroizing::new([0u8; 32]);
         rand_core::RngCore::fill_bytes(&mut rand_core::OsRng, fresh.as_mut());
-        let kept = Zeroizing::new(store.claim_secret(&name, fresh.as_ref())?);
+        let kept = store.claim_secret(&name, fresh.as_ref())?;
         let enc = x25519_multikey_of(&secret_of(&kept)?);
         Ok(CustodyEncKey { store, name, enc })
     }

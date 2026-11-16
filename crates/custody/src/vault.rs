@@ -378,7 +378,11 @@ mod tests {
             fn delete(&self, _: &str) -> Result<(), VaultError> {
                 Err(VaultError::Unavailable("cannot delete".into()))
             }
-            fn claim_secret(&self, _: &str, _: &[u8]) -> Result<Vec<u8>, VaultError> {
+            fn claim_secret(
+                &self,
+                _: &str,
+                _: &[u8],
+            ) -> Result<zeroize::Zeroizing<Vec<u8>>, VaultError> {
                 Err(VaultError::Unavailable("cannot claim".into()))
             }
         }
@@ -509,7 +513,11 @@ mod tests {
         fn delete(&self, n: &str) -> Result<(), VaultError> {
             (**self).delete(n)
         }
-        fn claim_secret(&self, n: &str, b: &[u8]) -> Result<Vec<u8>, VaultError> {
+        fn claim_secret(
+            &self,
+            n: &str,
+            b: &[u8],
+        ) -> Result<zeroize::Zeroizing<Vec<u8>>, VaultError> {
             (**self).claim_secret(n, b)
         }
     }
@@ -537,7 +545,11 @@ mod tests {
             fn delete(&self, n: &str) -> Result<(), VaultError> {
                 self.0.delete(n)
             }
-            fn claim_secret(&self, n: &str, b: &[u8]) -> Result<Vec<u8>, VaultError> {
+            fn claim_secret(
+                &self,
+                n: &str,
+                b: &[u8],
+            ) -> Result<zeroize::Zeroizing<Vec<u8>>, VaultError> {
                 self.0.claim_secret(n, b)
             }
         }
@@ -603,7 +615,11 @@ mod tests {
             fn delete(&self, n: &str) -> Result<(), VaultError> {
                 self.0.delete(n)
             }
-            fn claim_secret(&self, n: &str, b: &[u8]) -> Result<Vec<u8>, VaultError> {
+            fn claim_secret(
+                &self,
+                n: &str,
+                b: &[u8],
+            ) -> Result<zeroize::Zeroizing<Vec<u8>>, VaultError> {
                 self.0.claim_secret(n, b)
             }
         }

@@ -72,6 +72,8 @@ export interface Ad4mCustodyState {
   /** The revoked keys the key log says may still hold a valid master key. */
   revokedHolders?: string[];
   masterWaiting?: boolean;
+  /** The key log lists an enc key for this computer other than the one the custody service keeps. */
+  encMismatch: boolean;
 }
 
 type Raw = Record<string, unknown>;
@@ -157,6 +159,7 @@ export function readCustody(value: Ad4mCustodyState): IdentityCustodyView {
     revokedHolders: Array.isArray(value.revokedHolders) ? value.revokedHolders.map(String) : [],
     requests,
     masterWaiting: value.masterWaiting === true,
+    encMismatch: value.encMismatch,
   };
 }
 

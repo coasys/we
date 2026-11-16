@@ -161,6 +161,13 @@ export interface IdentityCustodyView {
   requests: DeviceRequestView[];
   /** A master key another device sent waits for this computer to take it. */
   masterWaiting: boolean;
+  /**
+   * The key log lets this computer keep the master key but lists an encryption key for it that this
+   * computer no longer has. Nothing sent to it opens any more — no master key, no device list (so
+   * `devices` is empty) — until it is revoked from a device that holds the master key and linked
+   * again.
+   */
+  encMismatch: boolean;
 }
 
 /** A device as the private record names it. */

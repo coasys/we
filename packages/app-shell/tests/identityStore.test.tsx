@@ -102,6 +102,7 @@ const NO_CUSTODY: IdentityCustodyView = {
   revokedHolders: [],
   requests: [],
   masterWaiting: false,
+  encMismatch: false,
 };
 
 /** The port able to sign changes: `custody` and `change` answered by the test. */
@@ -538,6 +539,32 @@ describe('deviceStore', () => {
     expect(deviceStore.masterWaiting()).toBe(false);
     expect(deviceStore.canManage()).toBe(true);
     expect(deviceStore.requests().map((r) => r.id)).toEqual(['r1']);
+  });
+
+  it('on a computer that lost its enc key: says so, offers no master key step, and claims no names', async () => {
+    const b = backend({ did: DID, events: [incept, add], devices });
+    const state: IdentityCustodyView = {
+      ...NO_CUSTODY,
+      did: DID,
+      unlock: 'os',
+      // Neither can open here; a stale record or a waiting master key must not be offered as if it could.
+      devices: [{ keyId: 'd2', name: 'Laptop', kind: 'desktop-app', holdsMaster: 'yes' }],
+      masterWaiting: true,
+      encMismatch: true,
+    };
+    setPorts({
+      identity: signing(b.port, { custody: async () => state, change: async () => 'done' }),
+    });
+    const { devices: deviceStore } = mount();
+    await flush();
+    await flush();
+    expect(deviceStore.encMismatch()).toBe(true);
+    expect(deviceStore.masterWaiting()).toBe(false);
+    expect(deviceStore.canAskMaster()).toBe(false);
+    expect(deviceStore.devices().map((d) => [d.label, d.master])).toEqual([
+      ['This computer', ''],
+      ['Device d2', ''],
+    ]);
   });
 
   it('offers "Show code" on a computer of no identity, and reads the identity once it joined', async () => {
