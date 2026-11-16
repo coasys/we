@@ -272,7 +272,11 @@ mod tests {
         // Without a platform store, a new item goes to the file, sealed.
         let empty = dir.path().join("empty");
         let none = DesktopVault::with_kdf(
-            Box::new(PlacedStore::new(Box::new(FileStore::new(&empty)), None)),
+            Box::new(PlacedStore::new(
+                Box::new(FileStore::new(&empty)),
+                None,
+                empty.join("claim.lock"),
+            )),
             PendingIncepts::memory(),
             CHEAP,
         );
@@ -387,6 +391,7 @@ mod tests {
             }
         }
         let name = item_name("QmScid");
+        let lock = tempfile::tempdir().unwrap();
         fn refused(store: &dyn SecretStore, name: &str) {
             assert!(unavailable(store.get(name)));
             assert!(unavailable(store.contains(name)));
@@ -401,6 +406,7 @@ mod tests {
         let store = PlacedStore::new(
             Box::new(Unanswering(StoreKind::File)),
             Some(Box::new(platform.clone())),
+            lock.path().join("claim.lock"),
         );
         refused(&store, &name);
         assert_eq!(
@@ -414,6 +420,7 @@ mod tests {
         let store = PlacedStore::new(
             Box::new(file.clone()),
             Some(Box::new(Unanswering(StoreKind::Keychain))),
+            lock.path().join("claim.lock"),
         );
         refused(&store, &name);
         assert_eq!(
@@ -451,7 +458,12 @@ mod tests {
         let platform = Arc::new(MemoryStore::as_kind(StoreKind::Keychain));
         file.put(&name, b"sealed").unwrap();
         platform.put(&name, b"keychain").unwrap();
-        let store = PlacedStore::new(Box::new(file.clone()), Some(Box::new(platform.clone())));
+        let lock = tempfile::tempdir().unwrap();
+        let store = PlacedStore::new(
+            Box::new(file.clone()),
+            Some(Box::new(platform.clone())),
+            lock.path().join("claim.lock"),
+        );
         assert!(unavailable(store.get(&name)));
         assert!(unavailable(store.contains(&name)));
         assert!(unavailable(store.kind_of(&name)));
@@ -487,6 +499,7 @@ mod tests {
             Box::new(crate::store::PlacedStore::new(
                 Box::new(crate::store::FileStore::new(custody)),
                 platform.map(|p| Box::new(p) as Box<dyn SecretStore>),
+                custody.join("claim.lock"),
             )),
             PendingIncepts::memory(),
             CHEAP,
