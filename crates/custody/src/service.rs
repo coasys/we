@@ -3469,10 +3469,10 @@ async fn answer_on<R: ExecutorRpc>(
             continue;
         };
         let unlocking = vault.unlocking(passphrase.map(TypedSecret::into_secret));
-        let answered_screen = |answered: Answered| {
+        let answered_screen = |answered: Answered, stopped: bool| {
             let note = match answered {
-                Answered::MasterSent(sent) => handed_over(&[], &sent.record),
-                Answered::Revoked(revoked) => handed_over(&[], &revoked.record),
+                Answered::MasterSent(sent) => handed_over(&[], &sent.record, false),
+                Answered::Revoked(revoked) => handed_over(&[], &revoked.record, false),
                 Answered::Rotated { rotated, deleted } => {
                     // The rotation is published: a request left in the box is a note.
                     let left = deleted.err().map(|e| {
@@ -3481,9 +3481,9 @@ async fn answer_on<R: ExecutorRpc>(
                     });
                     if rotated.kept.is_err() {
                         let answered = format!("The request from {device} was answered.");
-                        return replaced(rotated, joined(Some(answered), left));
+                        return replaced(rotated, joined(Some(answered), left), stopped);
                     }
-                    joined(handed_over(&rotated.pushes, &rotated.record), left)
+                    joined(handed_over(&rotated.pushes, &rotated.record, stopped), left)
                 }
             };
             Screen::RequestAnswered {
@@ -3494,7 +3494,8 @@ async fn answer_on<R: ExecutorRpc>(
         };
         match requests::answer(executor, &unlocking, &did, &request, &CLOCK, &RANDOM).await {
             Ok(answered) => {
-                let screen = answered_screen(answered);
+                let stopped = rotation_stopped(executor, &answered).await;
+                let screen = answered_screen(answered, stopped);
                 return after_rotation(
                     executor, vault, address, rx, reply, &unlocking, &did, screen,
                 )
@@ -3521,7 +3522,10 @@ async fn answer_on<R: ExecutorRpc>(
                     )
                     .await
                     {
-                        Ok(answered) => break answered_screen(answered),
+                        Ok(answered) => {
+                            let stopped = rotation_stopped(executor, &answered).await;
+                            break answered_screen(answered, stopped);
+                        }
                         Err(ClientError::NotTheseWords(_)) => {
                             error = Some((NOT_THESE_WORDS.into(), None))
                         }
@@ -4018,7 +4022,10 @@ async fn revoke_on<R: ExecutorRpc>(
                 )
                 .await
                 {
-                    Ok(rotated) => break replaced(rotated, None),
+                    Ok(rotated) => {
+                        let stopped = stopped_at_record(executor, &rotated.record).await;
+                        break replaced(rotated, None, stopped);
+                    }
                     Err(ClientError::NotTheseWords(_)) => {
                         error = Some((NOT_THESE_WORDS.into(), None))
                     }
@@ -4112,13 +4119,16 @@ async fn ask_words(
 /// The last screen of a rotation that was published, saying what did not happen yet (`extra`
 /// first). When this computer could not keep the new key, [`Screen::MasterNotKept`]: the rotation
 /// stands either way, so neither screen says nothing changed.
-fn replaced(rotated: Rotated, extra: Option<String>) -> Screen {
+fn replaced(rotated: Rotated, extra: Option<String>, stopped: bool) -> Screen {
     let revoked: Vec<String> = rotated
         .revoked
         .iter()
         .map(|k| k.as_str().to_string())
         .collect();
-    let note = joined(extra, handed_over(&rotated.pushes, &rotated.record));
+    let note = joined(
+        extra,
+        handed_over(&rotated.pushes, &rotated.record, stopped),
+    );
     match rotated.kept {
         // The index this computer keeps: the rotation's, or a later one another app on this
         // computer kept first (the vault never goes back a generation).
@@ -4203,7 +4213,10 @@ async fn rotate_with_words<R: ExecutorRpc>(
         };
         let rotated = rotate_words(executor, unlocking, vault, did, &words, &CLOCK, &RANDOM).await;
         match rotated {
-            Ok(rotated) => return Some(Ok(replaced(rotated, None))),
+            Ok(rotated) => {
+                let stopped = stopped_at_record(executor, &rotated.record).await;
+                return Some(Ok(replaced(rotated, None, stopped)));
+            }
             Err(ClientError::NotTheseWords(_)) => error = Some((NOT_THESE_WORDS.into(), None)),
             Err(e) => return Some(Err(e)),
         }
@@ -4258,16 +4271,61 @@ async fn after_rotation<R: ExecutorRpc>(
 }
 
 /// What the hand-over of a new master key left undone, in words: the apps it has not reached yet
-/// (the retry list sends it again at each unlock), and the device list not updated yet.
+/// (the retry list sends it again at each unlock), and the device list not updated yet. `stopped`
+/// ([`stopped_at_record`]): the hand-over stopped before any push because this computer cannot
+/// open the record, so no other device was sent the key and nothing writes the list here.
 fn handed_over(
     pushes: &[(ad4m_identity_core::KeyId, Result<String, ClientError>)],
     record: &Result<u64, ClientError>,
+    stopped: bool,
 ) -> Option<String> {
+    // Stopped before any push: there are no pushes to report, and the list never catches up here.
+    if stopped {
+        if let Err(e) = record {
+            log::warn!("custody: the record was not written after the rotation: {e}");
+        }
+        return Some(NOT_HANDED_OVER.into());
+    }
     we_identity_steps::handed_over(
         pushes,
         record,
         "It's sent again the next time this computer unlocks.",
     )
+}
+
+/// The note of a rotation whose hand-over stopped at the record ([`stopped_at_record`]): the key
+/// log lists an enc key for this computer it no longer keeps ([`ENC_MISMATCH`]), so no other
+/// device was sent the new master key. A device that asks for it is sent it from here all the
+/// same (a push seals to that device's enc key), and holding it, that device revokes this one.
+pub const NOT_HANDED_OVER: &str =
+    "Your other devices weren't sent the new master key, because this computer has lost the key \
+     that opens your device list. When one of them asks for it, review the request in Settings > \
+     Devices here to send it. Then, on that device, revoke this computer and link it again.";
+
+/// Whether the hand-over of a new master key stopped at the record, before any push, because this
+/// computer cannot open it. ad4m's hand-over reads the record as `Reader::Recovery`:
+/// the words' `"recovery"` entry opens it, and a record without one opens only through this
+/// computer's own entry, whose failure it answers as `NoEntry("recovery")` with no push made. That
+/// error alone also covers a read that failed for a passing reason, so the log is asked too: the
+/// enc key it lists for this computer is one it no longer keeps ([`enc_lost_now`]), and that
+/// entry will not open again.
+async fn stopped_at_record<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    record: &Result<u64, ClientError>,
+) -> bool {
+    use ad4m_identity_core::record::{RecordError, RECOVERY_ENTRY};
+    matches!(
+        record,
+        Err(ClientError::Record(RecordError::NoEntry(entry))) if entry == RECOVERY_ENTRY
+    ) && enc_lost_now(executor).await
+}
+
+/// [`stopped_at_record`] for an answered request: only a rotation hands a new master key over.
+async fn rotation_stopped<R: ExecutorRpc>(executor: &ViaExecutor<R>, answered: &Answered) -> bool {
+    match answered {
+        Answered::Rotated { rotated, .. } => stopped_at_record(executor, &rotated.record).await,
+        Answered::MasterSent(_) | Answered::Revoked(_) => false,
+    }
 }
 
 /// The executor's identity, or the screen saying it has none.
@@ -4521,10 +4579,11 @@ async fn restore_on<R: ExecutorRpc>(
         match enrolled {
             Ok(enrolled) => {
                 retry_quietly(executor, &unlocking, &did).await;
+                let stopped = stopped_at_record(executor, &enrolled.record).await;
                 return answer(
                     reply,
                     Ok(Screen::Restored {
-                        note: handed_over(&enrolled.pushes, &enrolled.record),
+                        note: handed_over(&enrolled.pushes, &enrolled.record, stopped),
                         did: restored.did,
                         name,
                         key_id: enrolled.key_id.as_str().to_string(),
@@ -10197,5 +10256,124 @@ mod tests {
         let executor = executor_of(&behind);
         public_state_on(Some(&executor), &vault).await;
         assert_eq!(vault.master_index(&scid).unwrap(), Some(1));
+    }
+
+    /// This computer, `d2` of `log_with_d2_enc`, keeping master #0, its log listing `listed` for it
+    /// (its own custody enc key when `None`), and the store serving a record in which `d1` holds
+    /// master #0, sealed to the log's readers with a `"recovery"` entry or without one.
+    fn holder_with_record(
+        vault: &DesktopVault,
+        listed: Option<String>,
+        recovery_entry: bool,
+    ) -> (Adapted, String) {
+        let (executor, scid) = joined_executor(vault, listed.clone());
+        let enc = listed.unwrap_or_else(|| {
+            use ad4m_identity_client::EncKey;
+            let d2 = Signer::key(&KeySigner::new(&[4u8; 32], 0));
+            CustodyEncKey::for_device(vault.shared_store(), d2.as_str())
+                .unwrap()
+                .enc()
+                .as_str()
+                .to_string()
+        });
+        let (events, _) = crate::keylog::tests::log_with_d2_enc(true, enc);
+        let chain = ad4m_identity_core::fold(&events).unwrap();
+        let mut record = ad4m_identity_core::record::PrivateRecord::default();
+        let mut d1 = named("Laptop");
+        d1.holds_master = Holds::Yes;
+        d1.master_index = Some(0);
+        record.devices.insert("d1".into(), d1);
+        record.devices.insert(
+            "d2".into(),
+            this_computer(None, true, Some((0, VaultId([1; 16])))),
+        );
+        let seed = words::seed(&words::from_entropy(&[41u8; 16]));
+        let recovery = recovery_entry.then(|| {
+            let key = ad4m_identity_core::x25519_multikey_of(&words::recovery_secret(&seed));
+            let master = words::master_key(&seed, 0).unwrap();
+            ad4m_identity_core::record::attest_recovery_key(&chain, key, &master).unwrap()
+        });
+        let d1_signer = KeySigner::new(&[2u8; 32], 0);
+        let sealed = ad4m_identity_core::record::seal_record(
+            &chain,
+            1,
+            &record,
+            recovery,
+            &d1_signer,
+            &mut Fixed(7),
+        )
+        .unwrap();
+        let receipt = ad4m_identity_core::record::sign_receipt(
+            &scid,
+            &sealed,
+            chain.head().seq,
+            &store_key(),
+        )
+        .unwrap();
+        let fake = executor.rpc().rpc();
+        fake.answer(
+            "identity.record",
+            json!({ "record": sealed, "receipt": receipt }),
+        );
+        fake.answer("identity.recordPut", json!({ "version": 2 }));
+        // The rotation the words make, which the log serves once it is published.
+        let mut rotated = events.clone();
+        let m1 = words::master_key(&seed, 1).unwrap();
+        let salt = bs58::encode(words::salt(&seed, 1)).into_string();
+        let (next, _) = words::next_commitment(&seed, 2).unwrap();
+        rotated
+            .push(ad4m_identity_core::build::rotate(&chain, &m1, &salt, Some(next), &[]).unwrap());
+        fake.answer_after("identity.publish", "identity.log", log_answer(&rotated));
+        keep_master(vault, &scid, 0);
+        (executor, scid)
+    }
+
+    /// "Replace master key" on a computer whose log lists an enc key it lost: the words sign the
+    /// rotation and this computer keeps the new key. With no `"recovery"` entry in the record, ad4m's
+    /// hand-over cannot open it, stops there and pushes to no one, and the screen says so — not that
+    /// the device list catches up. The same record with this computer's own key listed opens, `d1` is
+    /// pushed the key, and the note is the usual one; so is a lost key with a `"recovery"` entry,
+    /// which the words open.
+    #[tokio::test]
+    async fn replacing_the_master_key_with_a_lost_enc_key_says_no_other_device_was_sent_it() {
+        let lost = || Some(ad4m_identity_core::encode_x25519_multikey(&[5u8; 32]));
+        for (listed, recovery_entry, stopped) in [
+            (lost(), false, true),
+            (None, false, false),
+            (lost(), true, false),
+        ] {
+            let case = format!("lost {} recovery {recovery_entry}", listed.is_some());
+            let vault = memory_vault(crate::store::StoreKind::Keychain);
+            let (executor, scid) = holder_with_record(&vault, listed, recovery_entry);
+            let (address, mut rx, mut reply, window, first) = opened();
+            let ((), screens) = tokio::join!(
+                replace_master_on(&executor, &vault, &address, &mut rx, &mut reply),
+                async {
+                    let mut shown = vec![first.await.unwrap().unwrap()];
+                    shown.push(
+                        window
+                            .step(StepInput::TwelveWords {
+                                words: phrase_of(41).into(),
+                            })
+                            .await,
+                    );
+                    shown
+                }
+            );
+            let Screen::MasterReplaced { index: 1, note, .. } = &screens[1] else {
+                panic!("{case}: {:?}", screens[1]);
+            };
+            let note = note.as_deref().unwrap_or_default();
+            assert_eq!(note.contains(NOT_HANDED_OVER), stopped, "{case}: {note}");
+            assert_eq!(
+                note.contains("after its next change"),
+                !stopped,
+                "{case}: {note}"
+            );
+            // Stopped at the record, the hand-over pushed to no one; else `d1` was sent the key.
+            let pushed = executor.rpc().rpc().called("identity.inboxPut").len();
+            assert_eq!(pushed == 0, stopped, "{case}");
+            assert_eq!(vault.master_index(&scid).unwrap(), Some(1), "{case}");
+        }
     }
 }
