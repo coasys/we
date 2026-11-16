@@ -1621,7 +1621,15 @@ const returnToCall: SchemaNode = {
       children: [
         {
           type: 'we-button',
-          props: { variant: 'soft', gap: '200', onClick: { $invoke: 'modules.call.returnToCall' } },
+          props: {
+            variant: 'soft',
+            gap: '200',
+            // Its name is gone below `base`, so the button says where it goes on its own.
+            label: {
+              $: "modules.call.callSpace.name ? `Back to the call in ${modules.call.callSpace.name}` : 'Back to the call'",
+            },
+            onClick: { $invoke: 'modules.call.returnToCall' },
+          },
           children: [
             { type: 'we-icon', props: { name: 'arrow-bend-up-left' } },
             /*

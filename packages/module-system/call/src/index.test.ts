@@ -311,6 +311,8 @@ describe('the gear below the narrow breakpoint', () => {
     expect(JSON.stringify(props(gate)?.condition)).toBe(JSON.stringify({ $: "surface.tier != 'base'" }));
     const icon = walk(back).find((node) => node.type === 'we-icon') as SchemaNode;
     expect(lineage(back, icon)?.some((node) => node.type === '$if')).toBe(false);
+    // Icon-only at `base`, so the button carries its own accessible name.
+    expect(JSON.stringify(props(back).label)).toContain('Back to the call');
   });
 
   it('keeps Call settings in the menu at the width that drops it', () => {
