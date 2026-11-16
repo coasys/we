@@ -63,11 +63,15 @@ uses, as below. After the credential line it speaks lines of JSON on stdin and s
 | `step`        | `{input}` | `{screen, outcome}` — the next screen         |
 | `cancel`      |           | `null`, or `{screen, outcome}` (below)        |
 
-`cancel` answers `null` once the open step is ended and wiped, and the host may close the window. A
-cancel that cannot finish — the executor did not confirm the end of a link's claim, a shown code was
-cancelled before any claim of it was seen here (the executor may have claimed one whose event is on
-its way, and reads for tickets until the code expires), or this computer had already joined —
-answers `{screen, outcome}` instead: the host shows that screen and keeps the window open.
+`cancel` answers `null` once the open step is ended and wiped, and the host may close the window.
+Cancelling a shown code ends it on the executor (`identity.endPrepared`): its ticket read stops,
+and every claim of it is cancelled, including one whose event has not reached custody yet. A cancel
+that cannot finish answers `{screen, outcome}` instead, and the host shows that screen and keeps the
+window open. That happens when the executor did not answer in 10 seconds, when it refused the call
+or gave an unknown answer before custody saw a claim, or when this computer had already joined.
+When the executor refuses or gives an unknown answer after custody saw a claim, custody cancels that
+claim with `identity.cancelJoin`: the executor stops reading the code after its first claim, so a confirmed
+cancel answers `null`, and an unconfirmed one answers the screen.
 
 `outcome` is `done`, `failed` or `null` until a screen ends the step. Failures are
 `{"id", "error": "<sentence>"}`, and a line that is not a request is answered with `"id": null`. No
