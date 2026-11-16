@@ -531,9 +531,11 @@ pub struct CustodyPublic {
     pub unlock: &'static str,
     /// Why no identity step can run on this computer, in words a person reads; `None` when they
     /// can. Set when the executor answers `identity.status` with no identity store, or with one it
-    /// trusts no key for, so nothing it publishes could take; `None` too while the executor does
-    /// not answer, since nothing is known then (a step asks again).
-    pub blocked: Option<&'static str>,
+    /// trusts no key for, so nothing it publishes could take ([`NO_STORE`]); and when the executor
+    /// answers but this computer's store cannot keep or read the key that opens what is sent to it
+    /// ([`enc_key_unkept`]). `None` while the executor does not answer, since nothing is known
+    /// then (a step asks again).
+    pub blocked: Option<String>,
     /// The devices the private record names, by key id. Empty before the first record write, or
     /// when the record cannot be read now.
     pub devices: Vec<DeviceName>,
@@ -714,8 +716,16 @@ async fn connect(
     address: &ExecutorAddress,
     vault: &DesktopVault,
 ) -> Result<ViaExecutor<WithEncKey<WsRpcClient>>, String> {
-    const STARTING: &str =
-        "The identity service on this computer is still starting. Try again in a moment.";
+    let (rpc, device_key) = reach(address).await?;
+    with_enc_key(rpc, &device_key, vault)
+}
+
+/// What a step says while the executor does not answer.
+const STARTING: &str =
+    "The identity service on this computer is still starting. Try again in a moment.";
+
+/// The executor's RPC and the device key it reports; [`STARTING`] while it does not answer.
+async fn reach(address: &ExecutorAddress) -> Result<(WsRpcClient, String), String> {
     let rpc = WsRpcClient::connect(&address.url, &address.credential)
         .await
         .map_err(|_| STARTING.to_string())?;
@@ -724,15 +734,31 @@ async fn connect(
         .map_err(|_| STARTING.to_string())?;
     let device_key = status["deviceKey"]
         .as_str()
-        .ok_or_else(|| STARTING.to_string())?;
-    let enc = CustodyEncKey::for_device(vault.shared_store(), device_key).map_err(|e| {
-        format!("This computer could not keep the key that opens your master key: {e}")
-    })?;
+        .ok_or_else(|| STARTING.to_string())?
+        .to_string();
+    Ok((rpc, device_key))
+}
+
+/// `rpc` behind this computer's enc key for `device_key`, kept in the vault's store; the words of
+/// [`enc_key_unkept`] when the store cannot keep or read it.
+fn with_enc_key<R: ExecutorRpc>(
+    rpc: R,
+    device_key: &str,
+    vault: &DesktopVault,
+) -> Result<ViaExecutor<WithEncKey<R>>, String> {
+    let enc = CustodyEncKey::for_device(vault.shared_store(), device_key)
+        .map_err(|e| enc_key_unkept(&e))?;
     Ok(ViaExecutor::new(WithEncKey::new(
         rpc,
         Box::new(enc),
         Box::new(SystemClock),
     )))
+}
+
+/// What the person reads when this computer's store cannot keep or read its enc key: every step
+/// stops there, and the main window says so rather than calling the executor offline.
+fn enc_key_unkept(e: &VaultError) -> String {
+    format!("This computer could not keep the key that opens your master key: {e}")
 }
 
 /// What a step says when the executor has no identity store it can use — its network names none,
@@ -1029,9 +1055,30 @@ async fn finish_pending_quietly<R: ExecutorRpc>(executor: &ViaExecutor<R>, vault
 }
 
 async fn public_state(vault: &DesktopVault, address: &ExecutorAddress) -> CustodyPublic {
-    match connect(address, vault).await {
-        Ok(executor) => public_state_on(Some(&executor), vault).await,
+    match reach(address).await {
+        Ok((rpc, device_key)) => public_state_reached(rpc, &device_key, vault).await,
+        // Not answering: nothing is known, and a step asks again.
         Err(_) => public_state_on::<WithEncKey<WsRpcClient>>(None, vault).await,
+    }
+}
+
+/// [`public_state`] once the executor answers. A store that cannot keep this computer's enc key
+/// is not an executor offline: every step would stop on it, so the person is told why
+/// ([`CustodyPublic::blocked`]) in the words a step would show.
+async fn public_state_reached<R: ExecutorRpc>(
+    rpc: R,
+    device_key: &str,
+    vault: &DesktopVault,
+) -> CustodyPublic {
+    match with_enc_key(rpc, device_key, vault) {
+        Ok(executor) => public_state_on(Some(&executor), vault).await,
+        Err(message) => {
+            log::warn!("custody: {message}");
+            CustodyPublic {
+                blocked: Some(message),
+                ..public_state_on::<WithEncKey<R>>(None, vault).await
+            }
+        }
     }
 }
 
@@ -1050,7 +1097,7 @@ async fn public_state_on<R: ExecutorRpc>(
     let did = status.as_ref().and_then(|s| s.did.clone());
     let blocked = status
         .as_ref()
-        .and_then(|s| (!s.store.as_ref().is_some_and(|s| s.trusted)).then_some(NO_STORE));
+        .and_then(|s| (!s.store.as_ref().is_some_and(|s| s.trusted)).then(|| NO_STORE.into()));
     let mut master_waiting = false;
     let mut devices = Vec::new();
     let mut requests = Vec::new();
@@ -4902,7 +4949,7 @@ mod tests {
             did: Some("did:scid:coasys:1:Qm".into()),
             holds_master: Some(HoldsMaster { index: Some(0) }),
             unlock: "passphrase",
-            blocked: Some(NO_STORE),
+            blocked: Some(NO_STORE.into()),
             devices: vec![DeviceName {
                 key_id: "d1".into(),
                 name: "Work laptop".into(),
@@ -5076,13 +5123,86 @@ mod tests {
             *executor.rpc().store.borrow_mut() = store;
             assert_eq!(
                 public_state_on(Some(&executor), &vault).await.blocked,
-                Some(NO_STORE)
+                Some(NO_STORE.into())
             );
         }
         assert_eq!(
             public_state_on::<FakeExecutor>(None, &vault).await.blocked,
             None
         );
+    }
+
+    /// A store that answers everything but the enc key's claim: a Secret Service whose collection
+    /// will not unlock, say.
+    struct NoClaims(crate::store::MemoryStore);
+
+    impl crate::store::SecretStore for NoClaims {
+        fn kind(&self) -> crate::store::StoreKind {
+            self.0.kind()
+        }
+        fn kind_of(&self, n: &str) -> Result<crate::store::StoreKind, VaultError> {
+            self.0.kind_of(n)
+        }
+        fn put(&self, n: &str, b: &[u8]) -> Result<(), VaultError> {
+            self.0.put(n, b)
+        }
+        fn get(&self, n: &str) -> Result<Option<Vec<u8>>, VaultError> {
+            self.0.get(n)
+        }
+        fn contains(&self, n: &str) -> Result<bool, VaultError> {
+            self.0.contains(n)
+        }
+        fn delete(&self, n: &str) -> Result<(), VaultError> {
+            self.0.delete(n)
+        }
+        fn claim_secret(
+            &self,
+            _: &str,
+            _: &[u8],
+        ) -> Result<zeroize::Zeroizing<Vec<u8>>, VaultError> {
+            Err(VaultError::Unavailable(
+                "Secret Service: the collection would not unlock".into(),
+            ))
+        }
+    }
+
+    /// An executor that answers while the store cannot keep this computer's enc key is not
+    /// offline: the main window is told why nothing can be done, in a step's own words.
+    #[tokio::test]
+    async fn a_store_that_cannot_keep_the_enc_key_reaches_the_person_not_offline() {
+        let vault = DesktopVault::new(
+            Box::new(NoClaims(crate::store::MemoryStore::new())),
+            PendingIncepts::memory(),
+        );
+        let fake = FakeExecutor::new();
+        let device_key = Signer::key(&fake.device).as_str().to_string();
+        let public = public_state_reached(fake, &device_key, &vault).await;
+        let blocked = public.blocked.expect("the person is told");
+        assert_eq!(
+            blocked,
+            "This computer could not keep the key that opens your master key: the vault is \
+             unavailable: Secret Service: the collection would not unlock"
+        );
+        // The step's own refusal is the same words.
+        assert_eq!(
+            with_enc_key(FakeExecutor::new(), &device_key, &vault).err(),
+            Some(blocked.clone())
+        );
+        // And it crosses to the main window as the reason, where `NO_STORE` does.
+        let json = serde_json::to_value(CustodyPublic {
+            blocked: Some(blocked.clone()),
+            ..public_state_on::<FakeExecutor>(None, &vault).await
+        })
+        .unwrap();
+        assert_eq!(json["blocked"], blocked);
+
+        // A store that keeps it: not blocked, and the executor's state is read.
+        let vault = DesktopVault::new(
+            Box::new(crate::store::MemoryStore::new()),
+            PendingIncepts::memory(),
+        );
+        let public = public_state_reached(FakeExecutor::new(), &device_key, &vault).await;
+        assert_eq!(public.blocked, None);
     }
 
     #[test]
@@ -8813,7 +8933,11 @@ mod tests {
             }
             self.items.rename(from, to)
         }
-        fn claim_secret(&self, name: &str, bytes: &[u8]) -> Result<Vec<u8>, VaultError> {
+        fn claim_secret(
+            &self,
+            name: &str,
+            bytes: &[u8],
+        ) -> Result<zeroize::Zeroizing<Vec<u8>>, VaultError> {
             self.items.claim_secret(name, bytes)
         }
     }

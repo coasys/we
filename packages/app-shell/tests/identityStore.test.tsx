@@ -103,6 +103,7 @@ const NO_CUSTODY: IdentityCustodyView = {
   revokedHolders: [],
   requests: [],
   masterWaiting: false,
+  encMismatch: false,
 };
 
 /** The port able to sign changes: `custody` and `change` answered by the test. */
@@ -557,6 +558,58 @@ describe('deviceStore', () => {
     expect(deviceStore.masterWaiting()).toBe(false);
     expect(deviceStore.canManage()).toBe(true);
     expect(deviceStore.requests().map((r) => r.id)).toEqual(['r1']);
+  });
+
+  it('on a computer that lost its enc key: says so, offers no master key step, and claims no names', async () => {
+    const b = backend({ did: DID, events: [incept, add], devices });
+    const state: IdentityCustodyView = {
+      ...NO_CUSTODY,
+      did: DID,
+      unlock: 'os',
+      // Neither can open here; a stale record or a waiting master key must not be offered as if it could.
+      devices: [{ keyId: 'd2', name: 'Laptop', kind: 'desktop-app', holdsMaster: 'yes' }],
+      masterWaiting: true,
+      encMismatch: true,
+    };
+    setPorts({
+      identity: signing(b.port, { custody: async () => state, change: async () => 'done' }),
+    });
+    const { devices: deviceStore } = mount();
+    await flush();
+    await flush();
+    expect(deviceStore.encMismatch()).toBe(true);
+    expect(deviceStore.masterWaiting()).toBe(false);
+    expect(deviceStore.canAskMaster()).toBe(false);
+    expect(deviceStore.devices().map((d) => [d.label, d.master])).toEqual([
+      ['This computer', ''],
+      ['Device d2', ''],
+    ]);
+  });
+
+  it('on a computer that lost its enc key: still warns of a revoked holder from the key log, and offers the words', async () => {
+    const revokedD2 = devices.map((d) => (d.keyId === 'd2' ? { ...d, revokedSeq: 2 } : d));
+    const revoke = { seq: 2, op: 'revoke', hash: 'QmHash2', added: [], revoked: ['d2'] };
+    const b = backend({ did: DID, events: [incept, add, revoke], devices: revokedD2 });
+    const state: IdentityCustodyView = {
+      ...NO_CUSTODY,
+      did: DID,
+      unlock: 'os',
+      // The record's word that d2 took the master key cannot be read here; the key log's can.
+      devices: [{ keyId: 'd2', name: 'Laptop', kind: 'desktop-app', holdsMaster: 'yes' }],
+      revokedHolders: ['d2'],
+      encMismatch: true,
+    };
+    setPorts({ identity: signing(b.port, { custody: async () => state, change: async () => 'done' }) });
+    const { devices: deviceStore } = mount();
+    await flush();
+    await flush();
+    const d2 = deviceStore.devices().find((d) => d.keyId === 'd2')!;
+    expect(d2.label).toBe('Device d2');
+    expect(d2.master).toBe('May still have your master key. Replace it to lock this device out.');
+    expect(d2.replaceMaster).toBe(true);
+    // The words sign a rotation, and the new key is kept here: nothing sent to this computer is needed.
+    expect(deviceStore.canReplaceMaster()).toBe(true);
+    expect(deviceStore.canAskMaster()).toBe(false);
   });
 
   it('offers "Show code" on a computer of no identity, and reads the identity once it joined', async () => {

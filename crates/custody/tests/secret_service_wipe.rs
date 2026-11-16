@@ -50,7 +50,8 @@ fn the_copy_that_crosses_threads_is_wiped() {
         "this would write to the person's own keyring: run it in a session of its own"
     );
 
-    let store = SecretServiceStore::connect().expect("a Secret Service in this session");
+    let dir = std::env::temp_dir().join(format!("custody-wipe-{}", std::process::id()));
+    let store = SecretServiceStore::connect(&dir).expect("a Secret Service in this session");
     let name = format!("coasys.identity/test-wipe-{}", std::process::id());
     // The caller's own copy, freed after the watch.
     let secret = SECRET.to_vec();

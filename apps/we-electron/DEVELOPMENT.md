@@ -120,10 +120,14 @@ its stdin, with `--custody-channel true` and with neither `AD4M_CUSTODY_CREDENTI
 a credential different from the admin one:
 
 ```bash
+#!/usr/bin/env bash
+# Run as a script: it exits on a failed step and removes $DIR when it ends.
 CUSTODY=$(uuidgen)
-mkfifo /tmp/we-custody-in
-( echo "$CUSTODY"; exec sleep infinity ) > /tmp/we-custody-in &   # holds stdin open
-AD4M_ADMIN_CREDENTIAL=<admin> ad4m-executor run --custody-channel true --watch-stdin true … < /tmp/we-custody-in &
+DIR=$(mktemp -d) || exit 1                  # 0700: no other user can open the FIFO
+trap 'rm -rf "$DIR"' EXIT
+mkfifo -m 600 "$DIR/custody-in" || exit 1
+( echo "$CUSTODY"; exec sleep infinity ) > "$DIR/custody-in" &   # holds stdin open
+AD4M_ADMIN_CREDENTIAL=<admin> ad4m-executor run --custody-channel true --watch-stdin true … < "$DIR/custody-in" &
 WE_EXTERNAL_AD4M_PORT=<port> WE_EXTERNAL_AD4M_TOKEN=<admin> WE_EXTERNAL_AD4M_CUSTODY_CREDENTIAL="$CUSTODY" pnpm electron:dev
 ```
 
