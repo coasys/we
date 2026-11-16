@@ -114,6 +114,12 @@ pub trait SecretStore: Send + Sync {
     /// never leave the store.
     fn contains(&self, name: &str) -> Result<bool, VaultError>;
     fn delete(&self, name: &str) -> Result<(), VaultError>;
+    /// Keeps `bytes` under `name` unless an item is kept there already, and answers what is kept:
+    /// `bytes` when this call made the item, the item that was there when it did not. Two callers
+    /// racing get the same answer. The item asks for no unlock (no `.userPresence` on the keychain),
+    /// so it is for what the custody service reads on every use without the person — the custody
+    /// enc key ([`crate::enc`]), never a master key.
+    fn claim_secret(&self, name: &str, bytes: &[u8]) -> Result<Vec<u8>, VaultError>;
     /// Whether the store can be reached now, so a new item may go to it. Always, for a store that
     /// is not reached over a connection.
     fn reachable(&self) -> bool {
@@ -174,12 +180,16 @@ const KEPT_PREFIX: &str = "coasys.identity/";
 const STAGED_PREFIX: &str = "coasys.identity.staged/";
 
 /// The file stem a name is kept under beside the sealed files: `<scid>` for a kept item,
-/// `<scid>.staged` for a staged one (a scid is base58, so it has no dot of its own).
+/// `<scid>.staged` for a staged one, `<device key>.enc` for a custody enc key (a scid and a device
+/// key are base58, so neither has a dot of its own, and no two kinds share a stem).
 fn stem(name: &str) -> String {
-    match name.strip_prefix(STAGED_PREFIX) {
-        Some(scid) => format!("{scid}.staged"),
-        None => name.rsplit('/').next().unwrap_or(name).to_string(),
+    if let Some(scid) = name.strip_prefix(STAGED_PREFIX) {
+        return format!("{scid}.staged");
     }
+    if let Some(device_key) = name.strip_prefix(ENC_PREFIX) {
+        return format!("{device_key}.enc");
+    }
+    name.rsplit('/').next().unwrap_or(name).to_string()
 }
 
 /// The kept item a staged name stands beside; `None` for any other name.
@@ -187,9 +197,18 @@ fn kept_beside(name: &str) -> Option<String> {
     name.strip_prefix(STAGED_PREFIX).map(item_name)
 }
 
+const ENC_PREFIX: &str = "coasys.custody.enc/";
+
+/// The custody enc key's name for the executor whose device key is `device_key` (its signing
+/// multikey, base58 like a scid).
+pub fn enc_item_name(device_key: &str) -> String {
+    format!("{ENC_PREFIX}{device_key}")
+}
+
 // ─── File ───────────────────────────────────────────────────────────────────────
 
-/// `<dir>/<scid>.bin`, mode 0600, written whole through a temp file so a crash leaves the old one.
+/// `<dir>/<scid>.bin` for a master key and `<dir>/<device key>.enc` for a custody enc key, mode
+/// 0600, written whole through a temp file so a crash leaves the old one.
 pub struct FileStore {
     dir: PathBuf,
 }
@@ -200,8 +219,36 @@ impl FileStore {
     }
 
     fn path(&self, name: &str) -> PathBuf {
-        // `coasys.identity/<scid>` is `<scid>.bin`, its staged slot `<scid>.staged.bin`.
-        self.dir.join(format!("{}.bin", stem(name)))
+        // `coasys.identity/<scid>` is `<scid>.bin`, its staged slot `<scid>.staged.bin`, and
+        // `coasys.custody.enc/<device key>` is `<device key>.enc`, which no `.bin` name can be.
+        if name.starts_with(ENC_PREFIX) {
+            self.dir.join(stem(name))
+        } else {
+            self.dir.join(format!("{}.bin", stem(name)))
+        }
+    }
+
+    /// A 0600 file holding `bytes`, synced, under a name no other writer uses.
+    fn written_aside(&self, path: &std::path::Path, bytes: &[u8]) -> Result<PathBuf, VaultError> {
+        use std::io::Write;
+        let mut tag = [0u8; 8];
+        rand_core::RngCore::fill_bytes(&mut rand_core::OsRng, &mut tag);
+        let aside = path.with_extension(format!("{}.claim", bs58::encode(tag).into_string()));
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut file = options.open(&aside).map_err(io)?;
+        file.write_all(bytes)
+            .and_then(|_| file.sync_all())
+            .map_err(|e| {
+                let _ = std::fs::remove_file(&aside);
+                io(e)
+            })?;
+        Ok(aside)
     }
 }
 
@@ -284,6 +331,26 @@ impl SecretStore for FileStore {
                 other.map_err(io)?;
                 sync_dir(&self.dir).map_err(io)
             }
+        }
+    }
+
+    fn claim_secret(&self, name: &str, bytes: &[u8]) -> Result<Vec<u8>, VaultError> {
+        // Written whole beside it, then linked to the name: a link fails when the name exists, so
+        // the first writer's file is the item, and no reader ever sees a half-written one.
+        std::fs::create_dir_all(&self.dir).map_err(io)?;
+        let path = self.path(name);
+        let aside = self.written_aside(&path, bytes)?;
+        let linked = std::fs::hard_link(&aside, &path);
+        let _ = std::fs::remove_file(&aside);
+        match linked {
+            Ok(()) => {
+                sync_dir(&self.dir).map_err(io)?;
+                Ok(bytes.to_vec())
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                std::fs::read(&path).map_err(io)
+            }
+            Err(e) => Err(io(e)),
         }
     }
 }
@@ -375,6 +442,16 @@ impl SecretStore for MemoryStore {
             .map_err(|_| VaultError::Unavailable("poisoned".into()))?
             .remove(name);
         Ok(())
+    }
+    fn claim_secret(&self, name: &str, bytes: &[u8]) -> Result<Vec<u8>, VaultError> {
+        Ok(self
+            .items
+            .lock()
+            .map_err(|_| VaultError::Unavailable("poisoned".into()))?
+            .entry(name.into())
+            .or_insert_with(|| (bytes.to_vec(), None))
+            .0
+            .clone())
     }
 }
 
@@ -539,6 +616,52 @@ mod secret_service_store {
                 Ok(())
             })
         }
+
+        fn claim_secret(&self, name: &str, bytes: &[u8]) -> Result<Vec<u8>, VaultError> {
+            // Calls in this process run one at a time on the client's thread, so search-then-create
+            // is whole here. Another process can create beside it (the Secret Service has no
+            // create-if-absent): every claimer keeps the item made first — the lowest item path,
+            // which the service numbers as it creates them — and removes any other.
+            let (name, bytes) = (name.to_string(), zeroize::Zeroizing::new(bytes.to_vec()));
+            self.run(move |service| {
+                let attributes = HashMap::from([(ATTRIBUTE, name.as_str())]);
+                let found = service
+                    .search_items(attributes.clone())
+                    .map_err(unavailable)?;
+                if found.unlocked.is_empty() && found.locked.is_empty() {
+                    let collection = service.get_default_collection().map_err(unavailable)?;
+                    if collection.is_locked().map_err(unavailable)? {
+                        collection.unlock().map_err(unavailable)?;
+                    }
+                    collection
+                        .create_item(
+                            &name,
+                            attributes.clone(),
+                            &bytes,
+                            false,
+                            "application/octet-stream",
+                        )
+                        .map_err(unavailable)?;
+                }
+                let found = service.search_items(attributes).map_err(unavailable)?;
+                let mut items: Vec<_> = found.unlocked.into_iter().chain(found.locked).collect();
+                items.sort_by_key(|item| {
+                    let path = item.item_path.as_str();
+                    (path.len(), path.to_string())
+                });
+                let mut items = items.into_iter();
+                let first = items.next().ok_or_else(|| {
+                    VaultError::Unavailable("Secret Service: item vanished".into())
+                })?;
+                for other in items {
+                    other.delete().map_err(unavailable)?;
+                }
+                if first.is_locked().map_err(unavailable)? {
+                    first.unlock().map_err(unavailable)?;
+                }
+                first.get_secret().map_err(unavailable)
+            })
+        }
     }
 }
 
@@ -551,6 +674,7 @@ pub use keychain_store::KeychainStore;
 mod keychain_store {
     use core_foundation::base::{CFType, CFTypeRef, TCFType};
     use core_foundation::boolean::CFBoolean;
+    use core_foundation::data::CFData;
     use core_foundation::dictionary::CFDictionary;
     use core_foundation::number::CFNumber;
     use core_foundation::string::{CFString, CFStringRef};
@@ -562,9 +686,9 @@ mod keychain_store {
     use security_framework_sys::item::{
         kSecAttrAccount, kSecAttrComment, kSecAttrService, kSecClass, kSecClassGenericPassword,
         kSecMatchLimit, kSecReturnAttributes, kSecUseAuthenticationUI,
-        kSecUseDataProtectionKeychain,
+        kSecUseDataProtectionKeychain, kSecValueData,
     };
-    use security_framework_sys::keychain_item::{SecItemCopyMatching, SecItemUpdate};
+    use security_framework_sys::keychain_item::{SecItemAdd, SecItemCopyMatching, SecItemUpdate};
 
     use super::*;
 
@@ -590,6 +714,7 @@ mod keychain_store {
     const ERR_SEC_USER_CANCELED: i32 = -128;
     const ERR_SEC_ITEM_NOT_FOUND: i32 = -25300;
     const ERR_SEC_INTERACTION_NOT_ALLOWED: i32 = -25308;
+    const ERR_SEC_DUPLICATE_ITEM: i32 = -25299;
 
     fn unavailable(e: Error) -> VaultError {
         if e.code() == ERR_SEC_USER_CANCELED {
@@ -716,6 +841,44 @@ mod keychain_store {
             match delete_generic_password_options(item(name)) {
                 Err(e) if e.code() != ERR_SEC_ITEM_NOT_FOUND => Err(unavailable(e)),
                 _ => Ok(()),
+            }
+        }
+
+        fn claim_secret(&self, name: &str, bytes: &[u8]) -> Result<Vec<u8>, VaultError> {
+            // A bare `SecItemAdd`, no access control: it fails with errSecDuplicateItem when the
+            // item exists, where `set_generic_password_options` would overwrite it.
+            let pairs: Vec<(CFString, CFType)> = unsafe {
+                vec![
+                    (
+                        CFString::wrap_under_get_rule(kSecClass),
+                        CFString::wrap_under_get_rule(kSecClassGenericPassword).into_CFType(),
+                    ),
+                    (
+                        CFString::wrap_under_get_rule(kSecAttrService),
+                        CFString::new(SERVICE).into_CFType(),
+                    ),
+                    (
+                        CFString::wrap_under_get_rule(kSecAttrAccount),
+                        CFString::new(name).into_CFType(),
+                    ),
+                    (
+                        CFString::wrap_under_get_rule(kSecUseDataProtectionKeychain),
+                        CFBoolean::true_value().into_CFType(),
+                    ),
+                    (
+                        CFString::wrap_under_get_rule(kSecValueData),
+                        CFData::from_buffer(bytes).into_CFType(),
+                    ),
+                ]
+            };
+            let query = CFDictionary::from_CFType_pairs(&pairs);
+            let mut added: CFTypeRef = std::ptr::null();
+            match unsafe { SecItemAdd(query.as_concrete_TypeRef(), &mut added) } {
+                0 => Ok(bytes.to_vec()),
+                ERR_SEC_DUPLICATE_ITEM => self.get(name)?.ok_or_else(|| {
+                    VaultError::Unavailable("keychain: the enc key vanished".into())
+                }),
+                code => Err(unavailable(Error::from_code(code))),
             }
         }
     }
@@ -961,6 +1124,10 @@ impl SecretStore for PlacedStore {
         }
         from_side.delete(from)
     }
+
+    fn claim_secret(&self, name: &str, bytes: &[u8]) -> Result<Vec<u8>, VaultError> {
+        self.side(name)?.claim_secret(name, bytes)
+    }
 }
 
 // ─── Reconnecting ───────────────────────────────────────────────────────────────
@@ -1116,6 +1283,13 @@ impl SecretStore for Reconnecting {
         self.unmark(name)
     }
 
+    fn claim_secret(&self, name: &str, bytes: &[u8]) -> Result<Vec<u8>, VaultError> {
+        let connected = self.reach()?;
+        let kept = self.on(&connected, |store| store.claim_secret(name, bytes))?;
+        self.mark(name)?;
+        Ok(kept)
+    }
+
     fn reachable(&self) -> bool {
         self.reach().is_ok()
     }
@@ -1257,6 +1431,56 @@ mod tests {
         assert!(!store.contains(&name).unwrap());
     }
 
+    /// A custody enc key, a kept master key and a staged one rest in three files, even when the
+    /// device key and the scid are the same string: the enc file is never read as a master key,
+    /// and a promote or a forget of the master keys leaves it.
+    #[test]
+    fn a_custody_enc_key_file_is_never_a_kept_or_a_staged_master_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = FileStore::new(dir.path());
+        let (kept, staged, enc) = (
+            item_name("QmSame"),
+            staged_name("QmSame"),
+            enc_item_name("QmSame"),
+        );
+        assert_eq!(store.claim_secret(&enc, b"enc").unwrap(), b"enc");
+        assert!(!store.contains(&kept).unwrap());
+        assert!(!store.contains(&staged).unwrap());
+        assert_eq!(store.get(&kept).unwrap(), None);
+        store.put(&kept, b"kept").unwrap();
+        store.put(&staged, b"staged").unwrap();
+        let mut files: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .collect();
+        files.sort();
+        assert_eq!(files, ["QmSame.bin", "QmSame.enc", "QmSame.staged.bin"]);
+        store.rename(&staged, &kept).unwrap();
+        assert_eq!(store.get(&kept).unwrap().as_deref(), Some(&b"staged"[..]));
+        store.delete(&kept).unwrap();
+        assert_eq!(store.get(&enc).unwrap().as_deref(), Some(&b"enc"[..]));
+        // Claimed again, the enc key is the one kept.
+        assert_eq!(store.claim_secret(&enc, b"other").unwrap(), b"enc");
+    }
+
+    /// The Secret Service's marker for a custody enc key is its own: while the service is down, an
+    /// identity whose scid is the device key's string is still absent, not refused.
+    #[test]
+    fn a_custody_enc_key_marker_is_not_a_master_keys_marker() {
+        let dir = tempfile::tempdir().unwrap();
+        let keyring = Keyring::new(true);
+        let store = keyring.store(dir.path());
+        store
+            .claim_secret(&enc_item_name("QmSame"), b"enc")
+            .unwrap();
+        // A store that never reached the service: the one above keeps its connection.
+        keyring.set_up(false);
+        let down = keyring.store(dir.path());
+        assert!(down.contains(&enc_item_name("QmSame")).is_err());
+        assert!(!down.contains(&item_name("QmSame")).unwrap());
+        assert!(!down.contains(&staged_name("QmSame")).unwrap());
+    }
+
     #[test]
     fn only_a_missing_entitlement_moves_macos_off_the_keychain() {
         // errSecMissingEntitlement: the build cannot use the data-protection keychain at all.
@@ -1345,6 +1569,9 @@ mod tests {
         }
         fn delete(&self, name: &str) -> Result<(), VaultError> {
             self.0.delete(name)
+        }
+        fn claim_secret(&self, name: &str, bytes: &[u8]) -> Result<Vec<u8>, VaultError> {
+            self.0.claim_secret(name, bytes)
         }
     }
 
