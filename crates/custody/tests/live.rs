@@ -211,9 +211,17 @@ impl Node {
 
     /// The call's answer, or its error as the executor said it.
     async fn try_call(&self, method: &str, params: Value) -> Result<Value, String> {
-        let client = WsRpcClient::connect(&self.url(), &self.token)
-            .await
-            .unwrap();
+        self.try_call_as(&self.token, method, params).await
+    }
+
+    /// [`Node::try_call`] on `credential`: the custody credential, say.
+    async fn try_call_as(
+        &self,
+        credential: &str,
+        method: &str,
+        params: Value,
+    ) -> Result<Value, String> {
+        let client = WsRpcClient::connect(&self.url(), credential).await.unwrap();
         client
             .call::<Value>(method, params)
             .await
@@ -958,6 +966,68 @@ async fn a_desktop_executor_takes_its_first_link_as_its_operator() {
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
     assert!(waiting, "the master key sealed to B never arrived");
+
+    // The pending seal is the custody service's alone to open. No call answers it opened: there is
+    // no `identity.takeMaster` for the operator or for the custody channel.
+    for (who, credential) in [
+        ("the admin credential", b_admin),
+        ("the custody channel", b_custody),
+    ] {
+        let refused = b
+            .try_call_as(credential, "identity.takeMaster", json!({}))
+            .await
+            .expect_err("the executor answered a master key in plaintext");
+        println!("identity.takeMaster on {who}: {refused}");
+        // An unknown method (404), or refused outright (403): never an error on the way there.
+        assert!(
+            refused.contains("404") || refused.contains("403"),
+            "{who}: {refused}"
+        );
+    }
+    // The operator cannot read it even sealed: only the custody channel can.
+    b.try_call("identity.inboxSealed", json!({}))
+        .await
+        .expect_err("the admin credential read the sealed inbox");
+    let pending: Vec<Value> = serde_json::from_value(
+        b.try_call_as(b_custody, "identity.inboxSealed", json!({}))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    let scid = did.rsplit(':').next().unwrap();
+    let message = pending
+        .iter()
+        .find(|m| m["scid"] == scid && m["keyId"] == "d2")
+        .unwrap_or_else(|| panic!("no pending seal for d2: {pending:?}"));
+    let address = ad4m_identity_core::inbox::InboxAddress::Joined {
+        scid: scid.to_string(),
+        key_id: "d2".into(),
+    };
+    // It opens with the custody enc key kept here, to a master key. An HPKE seal opens with the
+    // one key it was sealed to, and the log lists `kept` for d2, not `deviceEnc` (checked above).
+    // That it does not open with the executor's own enc key is not tried here: that key is
+    // derived inside the executor's keystore from its device key, and no call answers it, so
+    // this test has nothing to try it with.
+    let status = b.call("identity.status", json!({})).await;
+    let custody_secret: [u8; 32] = FileStore::new(&b_dir)
+        .get(&enc_item_name(status["deviceKey"].as_str().unwrap()))
+        .unwrap()
+        .unwrap()
+        .try_into()
+        .unwrap();
+    let opened = ad4m_identity_core::inbox::open(
+        &ad4m_identity_core::X25519Secret::from(custody_secret),
+        &address,
+        message["sealed"].as_str().unwrap(),
+    )
+    .expect("the custody enc key opens the pending seal");
+    assert!(
+        matches!(
+            opened.body,
+            ad4m_identity_core::inbox::InboxBody::Master { .. }
+        ),
+        "{opened:?}"
+    );
     let set = device.start(IdentityStep::TakeMaster).await.unwrap();
     assert!(
         matches!(set, Screen::SetPassphrase { error: None }),
@@ -1520,9 +1590,16 @@ async fn a_phone_joins_through_an_offer() {
         return;
     };
     std::fs::create_dir_all(&out).unwrap();
-    let credential = "custody-phone-admin-credential";
-    let a = world.start_node("a", None, Some(credential), None).await;
-    let custody = custody_on(a.url(), credential, &world.dir.join("custody"));
+    // The custody service runs on the custody channel: only that channel co-signs an incept listing
+    // the custody service's own enc key. The admin credential stays for operator calls.
+    let (a_admin, a_custody) = (
+        "custody-phone-admin-credential",
+        "custody-phone-custody-credential",
+    );
+    let a = world
+        .start_node("a", None, Some(a_admin), Some(a_custody))
+        .await;
+    let custody = custody_on(a.url(), a_custody, &world.dir.join("custody"));
     let (did, _) = make_identity(&custody).await;
     assert_eq!(log_ops(&a, &did).await, ["incept"]);
 
@@ -1678,9 +1755,16 @@ async fn a_phone_keeps_the_master_key_and_answers_for_it() {
         return;
     };
     std::fs::create_dir_all(&out).unwrap();
-    let credential = "custody-phone-2b-admin-credential";
-    let a = world.start_node("a", None, Some(credential), None).await;
-    let custody = custody_on(a.url(), credential, &world.dir.join("custody"));
+    // The custody service runs on the custody channel: only that channel co-signs an incept listing
+    // the custody service's own enc key. The admin credential stays for operator calls.
+    let (a_admin, a_custody) = (
+        "custody-phone-2b-admin-credential",
+        "custody-phone-2b-custody-credential",
+    );
+    let a = world
+        .start_node("a", None, Some(a_admin), Some(a_custody))
+        .await;
+    let custody = custody_on(a.url(), a_custody, &world.dir.join("custody"));
     let (did, _) = make_identity(&custody).await;
     write_step(
         &out,

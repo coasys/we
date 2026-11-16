@@ -189,6 +189,13 @@ export interface IdentityCustodyView {
    * `IdentityStatusView.keyId` and `DeviceKeyView.thisDevice` already name.
    */
   thisDevice?: CustodyDeviceView | null;
+  /**
+   * The key log lets this computer keep the master key but lists an encryption key for it that this
+   * computer no longer has. Nothing sent to it opens any more — no master key, no device list (so
+   * `devices` is empty) — until it is revoked from a device that holds the master key and linked
+   * again.
+   */
+  encMismatch: boolean;
 }
 
 /** The device a custody service answers for, set apart from the backend it reaches. */

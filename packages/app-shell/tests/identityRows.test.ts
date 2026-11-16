@@ -238,6 +238,7 @@ describe('this device, on a phone and on a desktop', () => {
     requests: [],
     masterWaiting: false,
     thisDevice,
+    encMismatch: false,
   });
   // The executor is the laptop's (d1), and marks d1 as its own; the phone is d2.
   const keys = [

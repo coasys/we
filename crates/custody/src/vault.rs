@@ -818,7 +818,11 @@ mod tests {
         // Without a platform store, a new item goes to the file, sealed.
         let empty = dir.path().join("empty");
         let none = DesktopVault::with_kdf(
-            Box::new(PlacedStore::new(Box::new(FileStore::new(&empty)), None)),
+            Box::new(PlacedStore::new(
+                Box::new(FileStore::new(&empty)),
+                None,
+                empty.join("claim.lock"),
+            )),
             PendingIncepts::memory(),
             CHEAP,
         );
@@ -927,11 +931,16 @@ mod tests {
             fn delete(&self, _: &str) -> Result<(), VaultError> {
                 Err(VaultError::Unavailable("cannot delete".into()))
             }
-            fn claim_secret(&self, _: &str, _: &[u8]) -> Result<Vec<u8>, VaultError> {
+            fn claim_secret(
+                &self,
+                _: &str,
+                _: &[u8],
+            ) -> Result<zeroize::Zeroizing<Vec<u8>>, VaultError> {
                 Err(VaultError::Unavailable("cannot claim".into()))
             }
         }
         let name = item_name("QmScid");
+        let lock = tempfile::tempdir().unwrap();
         fn refused(store: &dyn SecretStore, name: &str) {
             assert!(unavailable(store.get(name)));
             assert!(unavailable(store.contains(name)));
@@ -946,6 +955,7 @@ mod tests {
         let store = PlacedStore::new(
             Box::new(Unanswering(StoreKind::File)),
             Some(Box::new(platform.clone())),
+            lock.path().join("claim.lock"),
         );
         refused(&store, &name);
         assert_eq!(
@@ -959,6 +969,7 @@ mod tests {
         let store = PlacedStore::new(
             Box::new(file.clone()),
             Some(Box::new(Unanswering(StoreKind::Keychain))),
+            lock.path().join("claim.lock"),
         );
         refused(&store, &name);
         assert_eq!(
@@ -996,7 +1007,12 @@ mod tests {
         let platform = Arc::new(MemoryStore::as_kind(StoreKind::Keychain));
         file.put(&name, b"sealed").unwrap();
         platform.put(&name, b"keychain").unwrap();
-        let store = PlacedStore::new(Box::new(file.clone()), Some(Box::new(platform.clone())));
+        let lock = tempfile::tempdir().unwrap();
+        let store = PlacedStore::new(
+            Box::new(file.clone()),
+            Some(Box::new(platform.clone())),
+            lock.path().join("claim.lock"),
+        );
         assert!(unavailable(store.get(&name)));
         assert!(unavailable(store.contains(&name)));
         assert!(unavailable(store.kind_of(&name)));
@@ -1032,6 +1048,7 @@ mod tests {
             Box::new(crate::store::PlacedStore::new(
                 Box::new(crate::store::FileStore::new(custody)),
                 platform.map(|p| Box::new(p) as Box<dyn SecretStore>),
+                custody.join("claim.lock"),
             )),
             PendingIncepts::memory(),
             CHEAP,
@@ -1073,7 +1090,11 @@ mod tests {
         fn reachable(&self) -> bool {
             (**self).reachable()
         }
-        fn claim_secret(&self, n: &str, b: &[u8]) -> Result<Vec<u8>, VaultError> {
+        fn claim_secret(
+            &self,
+            n: &str,
+            b: &[u8],
+        ) -> Result<zeroize::Zeroizing<Vec<u8>>, VaultError> {
             (**self).claim_secret(n, b)
         }
     }
@@ -1104,7 +1125,11 @@ mod tests {
             fn delete(&self, n: &str) -> Result<(), VaultError> {
                 self.0.delete(n)
             }
-            fn claim_secret(&self, n: &str, b: &[u8]) -> Result<Vec<u8>, VaultError> {
+            fn claim_secret(
+                &self,
+                n: &str,
+                b: &[u8],
+            ) -> Result<zeroize::Zeroizing<Vec<u8>>, VaultError> {
                 self.0.claim_secret(n, b)
             }
         }
@@ -1177,7 +1202,11 @@ mod tests {
             fn delete(&self, n: &str) -> Result<(), VaultError> {
                 self.0.delete(n)
             }
-            fn claim_secret(&self, n: &str, b: &[u8]) -> Result<Vec<u8>, VaultError> {
+            fn claim_secret(
+                &self,
+                n: &str,
+                b: &[u8],
+            ) -> Result<zeroize::Zeroizing<Vec<u8>>, VaultError> {
                 self.0.claim_secret(n, b)
             }
         }
@@ -1576,7 +1605,11 @@ mod tests {
         fn rename(&self, from: &str, to: &str) -> Result<(), VaultError> {
             self.file.rename(from, to)
         }
-        fn claim_secret(&self, n: &str, b: &[u8]) -> Result<Vec<u8>, VaultError> {
+        fn claim_secret(
+            &self,
+            n: &str,
+            b: &[u8],
+        ) -> Result<zeroize::Zeroizing<Vec<u8>>, VaultError> {
             self.file.claim_secret(n, b)
         }
     }
@@ -1909,7 +1942,11 @@ mod tests {
         fn rename(&self, from: &str, to: &str) -> Result<(), VaultError> {
             self.answer(self.items.rename(from, to))
         }
-        fn claim_secret(&self, n: &str, b: &[u8]) -> Result<Vec<u8>, VaultError> {
+        fn claim_secret(
+            &self,
+            n: &str,
+            b: &[u8],
+        ) -> Result<zeroize::Zeroizing<Vec<u8>>, VaultError> {
             self.items.claim_secret(n, b)
         }
     }
@@ -2866,7 +2903,11 @@ mod tests {
         fn tag_of(&self, n: &str) -> Result<Option<ItemTag>, VaultError> {
             self.inner.tag_of(n)
         }
-        fn claim_secret(&self, n: &str, b: &[u8]) -> Result<Vec<u8>, VaultError> {
+        fn claim_secret(
+            &self,
+            n: &str,
+            b: &[u8],
+        ) -> Result<zeroize::Zeroizing<Vec<u8>>, VaultError> {
             self.inner.claim_secret(n, b)
         }
         fn reachable(&self) -> bool {
@@ -2903,12 +2944,17 @@ mod tests {
                 Box::new(PlacedStore::new(
                     Box::new(FileStore::new(&custody)),
                     Some(Box::new(Gated::new(keychain.clone(), gate.clone()))),
+                    custody.join("claim.lock"),
                 )),
                 PendingIncepts::file(&custody),
                 CHEAP,
             );
             let unsigned = DesktopVault::with_kdf(
-                Box::new(PlacedStore::new(Box::new(FileStore::new(&custody)), None)),
+                Box::new(PlacedStore::new(
+                    Box::new(FileStore::new(&custody)),
+                    None,
+                    custody.join("claim.lock"),
+                )),
                 PendingIncepts::file(&custody),
                 CHEAP,
             );
@@ -2959,6 +3005,7 @@ mod tests {
                     Box::new(PlacedStore::new(
                         Box::new(FileStore::new(&custody)),
                         Some(Box::new(gated.clone())),
+                        custody.join("claim.lock"),
                     )),
                     PendingIncepts::file(&custody),
                     CHEAP,
@@ -3045,7 +3092,11 @@ mod tests {
         fn tag_of(&self, n: &str) -> Result<Option<ItemTag>, VaultError> {
             self.inner.tag_of(n)
         }
-        fn claim_secret(&self, n: &str, b: &[u8]) -> Result<Vec<u8>, VaultError> {
+        fn claim_secret(
+            &self,
+            n: &str,
+            b: &[u8],
+        ) -> Result<zeroize::Zeroizing<Vec<u8>>, VaultError> {
             self.inner.claim_secret(n, b)
         }
     }
