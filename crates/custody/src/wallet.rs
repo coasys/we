@@ -248,7 +248,11 @@ pub fn parse_args(args: impl IntoIterator<Item = String>) -> Result<(Mode, Strin
 pub fn keyring() -> Result<Box<dyn SecretStore>, VaultError> {
     #[cfg(target_os = "linux")]
     {
-        crate::store::SecretServiceStore::connect()
+        // The custody folder every custody process takes the claim lock in; the wallet's own
+        // reads and writes never take it.
+        let home =
+            dirs::home_dir().ok_or_else(|| VaultError::Unavailable("no home folder".into()))?;
+        crate::store::SecretServiceStore::connect(&crate::host::custody_dir(&home))
             .map(|store| Box::new(store) as Box<dyn SecretStore>)
     }
     #[cfg(target_os = "macos")]
@@ -434,6 +438,15 @@ pub(crate) mod login_keychain {
                     ERR_SEC_DUPLICATE_ITEM => Ok(false),
                     code => Err(refused(security_framework::base::Error::from_code(code))),
                 }
+            })
+        }
+
+        /// [`Self::claim_public`]'s create-if-absent, then the item that holds the name: the one
+        /// this claim added, or the one another had already kept.
+        fn claim_secret(&self, name: &str, bytes: &[u8]) -> Result<Zeroizing<Vec<u8>>, VaultError> {
+            self.claim_public(name, bytes)?;
+            self.get(name)?.map(Zeroizing::new).ok_or_else(|| {
+                VaultError::Unavailable("keychain: the item claimed is not there".into())
             })
         }
 

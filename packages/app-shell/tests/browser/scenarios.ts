@@ -65,7 +65,7 @@ import {
   draftProblem,
   grantSpaces,
 } from '../../src/shared/botRows';
-import { custodyDevice, deviceRows, servingDevice } from '../../src/shared/identityRows';
+import { custodyDevice, deviceRows, servingDevice, UNNAMED_DEVICE } from '../../src/shared/identityRows';
 import { overlaySurfaceStyle } from '../../src/shared/overlaySurface';
 import { sharingPickerOptions } from '../../src/shared/sharingOptions';
 
@@ -2766,6 +2766,7 @@ const devicesOnPhone = (): Scenario => {
     requests: [],
     masterWaiting: false,
     thisDevice: { keyId: 'd2', kind: 'phone-app' },
+    encMismatch: false,
   });
   return {
     node: {
@@ -2790,6 +2791,74 @@ const devicesOnPhone = (): Scenario => {
         serving: servingDevice(keys, names, here),
         deviceNoun: 'phone',
         canManage: false,
+        // The phone opens what is sealed to it with its own key: it has no custody enc key to lose.
+        encMismatch: false,
+        requests: [],
+        error: '',
+      },
+    },
+  };
+};
+
+/** The first node under `value` whose children include one `match` accepts: the node that holds it. */
+const holderOf = (value: unknown, match: (node: SchemaNode) => boolean): SchemaNode | undefined => {
+  if (!value || typeof value !== 'object') return undefined;
+  const node = value as SchemaNode;
+  if (!Array.isArray(value) && Array.isArray(node.children)) {
+    if (node.children.some((c) => !!c && typeof c === 'object' && match(c as SchemaNode))) return node;
+  }
+  for (const child of Object.values(value)) {
+    const hit = holderOf(child, match);
+    if (hit) return hit;
+  }
+  return undefined;
+};
+
+/**
+ * Settings → Devices on a linked computer whose enc key the key log no longer matches: the custody
+ * service says `encMismatch`, a master key waits that it cannot open, and the record's names are
+ * not readable. The page as Settings draws it, found by the warning it holds.
+ */
+const devicesEncMismatch = (): Scenario => {
+  const page = holderOf(
+    settingsTemplate,
+    (n) => n.type === '$if' && (n.props?.condition as { $?: string } | undefined)?.$ === 'deviceStore.encMismatch',
+  );
+  if (!page) throw new Error('Settings has no Devices page with the enc-key warning');
+  const row = (keyId: string, thisDevice: boolean, addedSeq: number) => ({
+    keyId,
+    addedSeq,
+    revokedSeq: null,
+    label: thisDevice ? 'This computer' : UNNAMED_DEVICE,
+    subtitle: `${keyId} · added at #${addedSeq}`,
+    icon: thisDevice ? 'laptop' : 'key',
+    thisDevice,
+    revoked: false,
+    status: 'Active',
+    canRevoke: !thisDevice,
+    name: '',
+    holdsMaster: 'no',
+    master: '',
+  });
+  return {
+    node: { type: 'Column', props: { width: '100%', p: '400' }, children: [page] },
+    tables: {},
+    stores: {
+      sessionStore: {
+        host: null,
+        identityCapabilities: { devices: true, linkDevice: true, keyLog: true, masterKey: true },
+      },
+      identityStore: { error: '', did: 'did:scid:coasys:1:QmScid', canChange: true, busy: false },
+      deviceStore: {
+        devices: [row('d2', true, 1), row('d1', false, 0)],
+        devicesLoaded: true,
+        validCount: 2,
+        canManage: false,
+        canShowCode: false,
+        // What the store answers while `encMismatch` holds, a master key waiting or not.
+        canAskMaster: false,
+        masterWaiting: false,
+        encMismatch: true,
         requests: [],
         error: '',
       },
@@ -2859,6 +2928,7 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'signIn:we': signInScreen,
   'coasys:tree-dna': coasysTreeDna,
   'profile:pages': profilePages,
+  'settings:devices-enc-mismatch': devicesEncMismatch,
   'tree:caret-end': treeCaretEnd,
   'rail:app': appRail,
   'shell:settings': shellSettings,

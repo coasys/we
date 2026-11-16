@@ -39,7 +39,8 @@ fn the_store_works_from_inside_the_custody_runtime_and_drops_there() {
     }
 
     // Connected outside the runtime, as the app connects it before the custody thread starts.
-    let store = SecretServiceStore::connect().expect("a Secret Service in this session");
+    let dir = tempfile::tempdir().unwrap();
+    let store = SecretServiceStore::connect(dir.path()).expect("a Secret Service in this session");
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -68,7 +69,8 @@ fn a_claim_never_replaces_a_kept_item() {
     if !in_a_session_of_its_own() {
         return;
     }
-    let store = SecretServiceStore::connect().expect("a Secret Service in this session");
+    let dir = tempfile::tempdir().unwrap();
+    let store = SecretServiceStore::connect(dir.path()).expect("a Secret Service in this session");
     let name = format!("coasys.identity.vault/test-claim-{}", std::process::id());
     assert!(store.claim_public(&name, b"first").unwrap());
     assert!(!store.claim_public(&name, b"second").unwrap());
@@ -91,7 +93,9 @@ fn of_claims_at_once_at_most_one_is_kept() {
         .map(|n| {
             let (name, start) = (name.clone(), start.clone());
             std::thread::spawn(move || {
-                let store = SecretServiceStore::connect().expect("a Secret Service");
+                // A custody folder of its own each: no folder lock is shared between them.
+                let dir = tempfile::tempdir().unwrap();
+                let store = SecretServiceStore::connect(dir.path()).expect("a Secret Service");
                 start.wait();
                 (n, store.claim_public(&name, &[n; 4]).unwrap())
             })
@@ -104,7 +108,8 @@ fn of_claims_at_once_at_most_one_is_kept() {
         .map(|(n, _)| n)
         .collect();
     eprintln!("claims kept: {won:?}");
-    let store = SecretServiceStore::connect().expect("a Secret Service in this session");
+    let dir = tempfile::tempdir().unwrap();
+    let store = SecretServiceStore::connect(dir.path()).expect("a Secret Service in this session");
     match won.as_slice() {
         [] => assert_eq!(store.get(&name).unwrap(), None),
         [n] => assert_eq!(store.get(&name).unwrap(), Some(vec![*n; 4])),
@@ -123,9 +128,91 @@ fn the_store_connects_from_inside_a_runtime_too() {
         .enable_all()
         .build()
         .unwrap();
+    let dir = tempfile::tempdir().unwrap();
     runtime.block_on(async {
-        let store = SecretServiceStore::connect().expect("a Secret Service in this session");
+        let store =
+            SecretServiceStore::connect(dir.path()).expect("a Secret Service in this session");
         let name = format!("coasys.identity/test-connect-{}", std::process::id());
         assert!(!store.contains(&name).unwrap());
     });
+}
+
+/// Every item kept under `name`, as the Secret Service lists them.
+fn items_named(name: &str) -> usize {
+    let service =
+        secret_service::blocking::SecretService::connect(secret_service::EncryptionType::Dh)
+            .unwrap();
+    let found = service
+        .search_items(std::collections::HashMap::from([("coasys-identity", name)]))
+        .unwrap();
+    found.unlocked.len() + found.locked.len()
+}
+
+#[test]
+fn claimers_in_one_custody_folder_make_one_item_and_all_get_it() {
+    if !in_a_session_of_its_own() {
+        return;
+    }
+    // Each claimer its own connection, as each custody process has: only the folder's lock is
+    // shared between them.
+    let dir = tempfile::tempdir().unwrap();
+    let name = format!("coasys.identity/test-claim-{}", std::process::id());
+    let answers: Vec<Vec<u8>> = std::thread::scope(|scope| {
+        let claimers: Vec<_> = (0..6u8)
+            .map(|i| {
+                let (dir, name) = (dir.path(), name.as_str());
+                scope.spawn(move || {
+                    let store = SecretServiceStore::connect(dir).unwrap();
+                    store.claim_secret(name, &[i; 32]).unwrap().to_vec()
+                })
+            })
+            .collect();
+        claimers.into_iter().map(|c| c.join().unwrap()).collect()
+    });
+    assert!(answers.windows(2).all(|w| w[0] == w[1]), "{answers:?}");
+    assert_eq!(items_named(&name), 1);
+    SecretServiceStore::connect(dir.path())
+        .unwrap()
+        .delete(&name)
+        .unwrap();
+}
+
+#[test]
+fn duplicates_already_there_answer_the_first_made_and_none_is_deleted() {
+    if !in_a_session_of_its_own() {
+        return;
+    }
+    // Two items under one name, made outside any lock, the second a second later: `Created` is in
+    // seconds.
+    let name = format!("coasys.identity/test-dup-{}", std::process::id());
+    let service =
+        secret_service::blocking::SecretService::connect(secret_service::EncryptionType::Dh)
+            .unwrap();
+    let collection = service.get_default_collection().unwrap();
+    let attributes = std::collections::HashMap::from([("coasys-identity", name.as_str())]);
+    for (i, secret) in [b"made first", b"made later"].into_iter().enumerate() {
+        if i > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(1100));
+        }
+        collection
+            .create_item(
+                &name,
+                attributes.clone(),
+                secret,
+                false,
+                "application/octet-stream",
+            )
+            .unwrap();
+    }
+    drop(collection);
+    drop(service);
+
+    let dir = tempfile::tempdir().unwrap();
+    let store = SecretServiceStore::connect(dir.path()).unwrap();
+    assert_eq!(
+        &store.claim_secret(&name, b"fresh").unwrap()[..],
+        b"made first"
+    );
+    assert_eq!(items_named(&name), 2, "a claim deletes no item");
+    store.delete(&name).unwrap();
 }
