@@ -10299,9 +10299,10 @@ mod tests {
         d1.holds_master = Holds::Yes;
         d1.master_index = Some(0);
         record.devices.insert("d1".into(), d1);
-        record
-            .devices
-            .insert("d2".into(), this_computer(None, true, Some(0)));
+        record.devices.insert(
+            "d2".into(),
+            this_computer(None, true, Some((0, VaultId([1; 16])))),
+        );
         let seed = words::seed(&words::from_entropy(&[41u8; 16]));
         let recovery = recovery_entry.then(|| {
             let key = ad4m_identity_core::x25519_multikey_of(&words::recovery_secret(&seed));
