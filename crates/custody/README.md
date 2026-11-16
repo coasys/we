@@ -26,8 +26,20 @@ keychain is not usable from the Electron app, and the identity it belongs to can
 there. A key in a sealed file opens from either app with its passphrase. On Linux both apps reach
 the same Secret Service.
 
+Beside each executor's device key the store keeps this computer's **custody enc key**: an X25519 key
+made at random the first time the crate connects to that executor, and never derived from the words,
+the master key or the device key. It goes in the keychain or the Secret Service as
+`coasys.custody.enc/<device key>`, or in the same folder as `<device key>.enc` (mode 0600), wherever
+a new master key would go. It asks for no unlock: the main window's state reads the record on every
+call. A link that may keep the master key lists it in the key log, so the device holding the master
+key seals the master key and wraps the record key to it. The crate opens both here
+(`CustodyEncKey`, through the identity client's `WithEncKey`), and the executor only passes the
+sealed text on (`identity.inboxSealed`). A key lost from the store cannot be made again; the log
+then lists one this computer does not have, and `publicState` says `encMismatch`: revoke this
+computer from a device that holds the master key, and link it again.
+
 The crate runs the identity client's flows — make the identity, add a device, revoke one — and
-reaches the executor only over its RPC with the admin credential. It is its own crate so nothing of
+reaches the executor only over its RPC with the custody credential. It is its own crate so nothing of
 it links the executor; `tests/boundary.rs` keeps it so. No Windows: the desktop apps start there
 without identity.
 
@@ -368,8 +380,10 @@ for one, or a new one when this computer keeps no master key yet.
 
 `publicState` carries what the Devices page draws: `devices` (the private record's names, kinds and
 `holdsMaster`: `true`, `false` or `"offered"`), `requests` (what other devices asked, never their
-signed parts) and `masterWaiting`. Saying no to a request is closing the window: the request waits
-until it expires.
+signed parts), `masterWaiting` and `encMismatch` (the log lists another enc key for this computer
+than the one kept here: a master key sent to it cannot be opened, and `take-master` and `ask-master`
+say to revoke this computer and link it again). Saying no to a request is closing the window: the
+request waits until it expires.
 
 What a card or a confirmation says about a device comes from the key log, never from the private
 record, which any linked device can write. A request card names who asks by its key id and the

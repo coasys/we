@@ -1601,6 +1601,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     canRestore: state('devices'),
     canRemoveMaster: state('devices'),
     masterWaiting: state('devices'),
+    encMismatch: state('devices'),
     requests: state('devices'),
     error: state('devices'),
     refresh: ambient('devices'),

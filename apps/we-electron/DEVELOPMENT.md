@@ -82,13 +82,14 @@ The arguments are `executorArgs` in `electron/executorProcess.js`:
 - `--log-dir <data folder>/logs`: the executor's own log, one file per run, five runs kept
   (`executor-0.log` is this run). `runtime.logTail` reads it. `ad4m.log` (below) keeps this app's
   `HOST` lines and what the executor still prints to stdout.
-- `--custody-channel true`: opens `identity.custodyStatus` to the custody service beside it. That
+- `--custody-channel true`: opens `identity.custodyStatus` and `identity.inboxSealed` to the custody
+  service beside it, which opens a master key sealed to this computer with its own enc key. That
   service connects with the **custody credential**, which the app makes afresh at every start beside
   the admin credential and which is never the same as it. The executor reads it from the first line
   of its stdin, which the app writes right after the spawn, before waiting for the executor to
   answer (`custodyCredentialLine`). It is never an argument and never in the environment: the window's
   admin credential could read an environment back through the executor (`/proc/<pid>/environ`), and
-  the custody guard exists to keep the window away from `identity.takeMaster`. The executor refuses
+  the custody guard exists to keep the window away from `identity.inboxSealed`. The executor refuses
   to start (78, not restarted) with `AD4M_CUSTODY_CREDENTIAL` or `AD4M_CUSTODY_CREDENTIAL_FILE` set,
   so the app strips both from every child's environment (`withoutCustodyCredential`).
 
@@ -119,10 +120,14 @@ its stdin, with `--custody-channel true` and with neither `AD4M_CUSTODY_CREDENTI
 a credential different from the admin one:
 
 ```bash
+#!/usr/bin/env bash
+# Run as a script: it exits on a failed step and removes $DIR when it ends.
 CUSTODY=$(uuidgen)
-mkfifo /tmp/we-custody-in
-( echo "$CUSTODY"; exec sleep infinity ) > /tmp/we-custody-in &   # holds stdin open
-AD4M_ADMIN_CREDENTIAL=<admin> ad4m-executor run --custody-channel true --watch-stdin true … < /tmp/we-custody-in &
+DIR=$(mktemp -d) || exit 1                  # 0700: no other user can open the FIFO
+trap 'rm -rf "$DIR"' EXIT
+mkfifo -m 600 "$DIR/custody-in" || exit 1
+( echo "$CUSTODY"; exec sleep infinity ) > "$DIR/custody-in" &   # holds stdin open
+AD4M_ADMIN_CREDENTIAL=<admin> ad4m-executor run --custody-channel true --watch-stdin true … < "$DIR/custody-in" &
 WE_EXTERNAL_AD4M_PORT=<port> WE_EXTERNAL_AD4M_TOKEN=<admin> WE_EXTERNAL_AD4M_CUSTODY_CREDENTIAL="$CUSTODY" pnpm electron:dev
 ```
 
