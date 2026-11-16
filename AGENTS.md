@@ -1493,7 +1493,7 @@ Not a standalone selector — wrap in we-popover for dropdown behavior.
   Props: collapsible: boolean = false, open: boolean = false, heading: string = ''
 - we-menu-item (DesignSystemElement) — Single actionable item inside a we-menu.
 Supports selected and active states; `tone: 'danger'` marks a destructive item.
-  Props: selected: boolean = false, active: boolean = false, disabled: boolean = false, label: unknown, value: unknown
+  Props: selected: boolean = false, active: boolean = false, disabled: boolean = false, dismiss: boolean = false, label: unknown, value: unknown
 - we-modal (OverlayElement)
   Props: size: 'sm' | 'md' | 'lg' | 'fullscreen' = 'md', hideclosebutton: boolean = false, close: () => void
 - we-move-handle (LayoutElement)
