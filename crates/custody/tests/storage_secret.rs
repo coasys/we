@@ -134,6 +134,10 @@ impl SecretStore for Refusing {
         *self.writes.lock().unwrap() += 1;
         Err((self.error)())
     }
+    fn claim_secret(&self, _: &str, _: &[u8]) -> Result<Zeroizing<Vec<u8>>, VaultError> {
+        *self.writes.lock().unwrap() += 1;
+        Err((self.error)())
+    }
     fn get(&self, _: &str) -> Result<Option<Vec<u8>>, VaultError> {
         Err((self.error)())
     }

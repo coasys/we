@@ -59,8 +59,9 @@ fn a_locked_keyring_is_answered_within_a_bound_and_nothing_is_written() {
     assert!(collection.is_locked().unwrap());
 
     let wait = Duration::from_secs(3);
-    let store =
-        SecretServiceStore::connect_waiting(wait).expect("a Secret Service in this session");
+    let dir = tempfile::tempdir().unwrap();
+    let store = SecretServiceStore::connect_waiting(dir.path(), wait)
+        .expect("a Secret Service in this session");
     let name = format!("coasys.identity/test-locked-{}", std::process::id());
     let (answer, answered) = mpsc::channel();
     let started = Instant::now();

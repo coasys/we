@@ -115,10 +115,15 @@ describe("a device row's Rename", () => {
     expect(button, 'the Rename button').toBeDefined();
     return (button.props?.condition as { $: string }).$;
   };
-  const shown = (device: { revoked: boolean; thisDevice: boolean }, canManage: boolean, canChange: boolean) => {
+  const shown = (
+    device: { revoked: boolean; thisDevice: boolean },
+    canManage: boolean,
+    canChange: boolean,
+    encMismatch = false,
+  ) => {
     const scope: Record<string, unknown> = {
       device,
-      deviceStore: { canManage },
+      deviceStore: { canManage, encMismatch },
       identityStore: { canChange },
     };
     const env: EvaluationEnv = {
@@ -143,5 +148,34 @@ describe("a device row's Rename", () => {
   it('is never offered on a removed device, this one included', () => {
     expect(shown({ revoked: true, thisDevice: true }, true, true)).toBe(false);
     expect(shown({ revoked: true, thisDevice: false }, true, true)).toBe(false);
+  });
+
+  // A name goes in the private record, which a computer that lost its enc key cannot open.
+  it('is not offered while this computer has lost the key that opens the device list', () => {
+    expect(shown(own, false, true, true)).toBe(false);
+    expect(shown(other, true, true, true)).toBe(false);
+  });
+});
+
+/*
+  The custody service marks a computer whose enc key the key log no longer matches (`encMismatch`):
+  nothing sent to it opens, the master key and the device list included. Devices said nothing of it;
+  the only sign was a step that failed in the identity window.
+*/
+describe('the Devices page, on a computer that lost its enc key', () => {
+  const ENC_MISMATCH =
+    'This computer has lost the key that opens your master key and your device list, so it can no longer receive either. On a device that holds your master key, revoke this computer, then link it again.';
+
+  it('warns in the custody service’s own words, and only then', () => {
+    const warning = find(
+      shell,
+      (n) => n.type === '$if' && (n.props?.then as Node | undefined)?.children?.[0] === ENC_MISMATCH,
+    )!;
+    expect(warning, 'the warning').toBeDefined();
+    // On Devices, beside the page's heading.
+    const page = find(shell, (n) => Array.isArray(n.children) && n.children.includes(warning));
+    expect(JSON.stringify(page?.children?.[0])).toContain('"Devices"');
+    expect((warning.props?.condition as { $: string }).$).toBe('deviceStore.encMismatch');
+    expect(warning.props?.then).toMatchObject({ type: 'we-alert', props: { tone: 'warning' } });
   });
 });
