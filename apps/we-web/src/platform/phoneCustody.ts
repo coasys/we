@@ -89,6 +89,9 @@ export function phoneCustodyHost(plugin: DeviceKeyPlugin, nav: PageNav = browser
     async publicState(): Promise<Ad4mCustodyState> {
       // This device is the phone, whatever the executor it reaches calls its own key: Settings
       // marks the phone's key "This phone", and the executor's computer is one more device.
+      // The phone's key path keeps no custody enc key of the desktop's kind (`crates/phone-custody`
+      // opens what is sealed to the phone with the phone's own key), so it can never lose one.
+      const encMismatch = false;
       let status;
       try {
         status = await plugin.identityStatus();
@@ -97,9 +100,11 @@ export function phoneCustodyHost(plugin: DeviceKeyPlugin, nav: PageNav = browser
         const code = (error as DeviceKeyError).code;
         const made = code === 'NoIdentity' ? await finishMade() : null;
         if (made === 'published') return publishedState();
-        if (made !== null) return { did: null, pending: made, holdsMaster: null, unlock: null, thisDevice };
+        if (made !== null) {
+          return { did: null, pending: made, holdsMaster: null, unlock: null, thisDevice, encMismatch };
+        }
         if (code === 'NoIdentity' || code === 'NoKeys') {
-          return { did: null, holdsMaster: null, unlock: null, thisDevice };
+          return { did: null, holdsMaster: null, unlock: null, thisDevice, encMismatch };
         }
         return {
           did: null,
@@ -107,6 +112,7 @@ export function phoneCustodyHost(plugin: DeviceKeyPlugin, nav: PageNav = browser
           unlock: null,
           blocked: `Can’t load your devices. Try again later. (${messageOf(error)})`,
           thisDevice,
+          encMismatch,
         };
       }
       const holds = status.masterIndex !== null;
@@ -115,6 +121,7 @@ export function phoneCustodyHost(plugin: DeviceKeyPlugin, nav: PageNav = browser
         holdsMaster: holds ? { index: status.masterIndex } : null,
         unlock: holds ? 'os' : null,
         thisDevice: { keyId: status.keyId, kind: PHONE_KIND },
+        encMismatch,
       };
       if (status.revoked !== null) {
         return { ...base, blocked: 'This phone was removed. It can’t make changes to your identity.' };

@@ -115,6 +115,7 @@ describe('the phone custody host', () => {
       holdsMaster: null,
       unlock: null,
       thisDevice: { keyId: null, kind: 'phone-app' },
+      encMismatch: false,
     });
     await host.publicState();
     expect(p.finishPending).toHaveBeenCalledTimes(2);
@@ -169,6 +170,8 @@ describe('the phone custody host', () => {
       masterWaiting: false,
       // The phone's own key is this device, not the key of the executor it reaches.
       thisDevice: { keyId: 'd2', kind: 'phone-app' },
+      // The phone opens what is sealed to it with its own key: it has no custody enc key to lose.
+      encMismatch: false,
     });
   });
 
@@ -199,6 +202,7 @@ describe('the phone custody host', () => {
         unlock: null,
         // Still the phone: the executor's key is not this device even before the phone joins.
         thisDevice: { keyId: null, kind: 'phone-app' },
+        encMismatch: false,
       });
     }
   });
@@ -207,6 +211,7 @@ describe('the phone custody host', () => {
     const offline = await phoneCustodyHost(plugin({ status: refusal('Rpc', 'store-unavailable') })).publicState();
     expect(offline.blocked).toMatch(/Can’t load your devices\. Try again later\. \(store-unavailable\)/);
     expect(offline.thisDevice).toEqual({ keyId: null, kind: 'phone-app' });
+    expect(offline.encMismatch).toBe(false);
 
     const removed = plugin({ status: status({ revoked: 7 }) });
     const state = await phoneCustodyHost(removed).publicState();
