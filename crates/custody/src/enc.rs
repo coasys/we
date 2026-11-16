@@ -43,7 +43,7 @@ impl CustodyEncKey {
         let name = enc_item_name(device_key);
         let mut fresh = Zeroizing::new([0u8; 32]);
         rand_core::RngCore::fill_bytes(&mut rand_core::OsRng, fresh.as_mut());
-        let kept = Zeroizing::new(store.claim_secret(&name, fresh.as_ref())?);
+        let kept = store.claim_secret(&name, fresh.as_ref())?;
         let enc = x25519_multikey_of(&secret_of(&kept)?);
         Ok(CustodyEncKey { store, name, enc })
     }
@@ -106,7 +106,11 @@ mod tests {
 
     fn file_vault(dir: &std::path::Path) -> DesktopVault {
         DesktopVault::new(
-            Box::new(PlacedStore::new(Box::new(FileStore::new(dir)), None)),
+            Box::new(PlacedStore::new(
+                Box::new(FileStore::new(dir)),
+                None,
+                dir.join("claim.lock"),
+            )),
             PendingIncepts::memory(),
         )
     }
@@ -139,12 +143,20 @@ mod tests {
             let mode = std::fs::metadata(&path).unwrap().permissions().mode();
             assert_eq!(mode & 0o777, 0o600);
         }
-        // Nothing is left beside it from the write.
-        let names: Vec<_> = std::fs::read_dir(&custody)
+        // Nothing is left beside it from the write but the claim lock, which stays by design.
+        let mut names: Vec<_> = std::fs::read_dir(&custody)
             .unwrap()
             .map(|e| e.unwrap().file_name().into_string().unwrap())
             .collect();
-        assert_eq!(names.len(), 2, "{names:?}");
+        names.sort();
+        assert_eq!(
+            names,
+            [
+                "claim.lock".to_string(),
+                format!("{OTHER_DEVICE}.enc"),
+                format!("{DEVICE}.enc"),
+            ]
+        );
     }
 
     #[test]

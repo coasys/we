@@ -41,11 +41,16 @@ export interface DeviceStore {
   canManage: Accessor<boolean>;
   /** "Show code" can be offered: this computer can join an identity, and speaks for none yet. */
   canShowCode: Accessor<boolean>;
-  /** "Ask for master key": a device of the identity that does not keep it, nor has it waiting. */
+  /**
+   * "Ask for master key": a device of the identity that does not keep it, nor has it waiting, and
+   * could open it if it came (not `encMismatch`).
+   */
   canAskMaster: Accessor<boolean>;
   /**
    * "Replace master key" can be offered: a device of the identity, where the custody service takes
    * the 12 words. It need not keep the master key: replacing it is how a lost holder is shut out.
+   * Offered under `encMismatch` too: the words sign the rotation and the new key is kept here, so
+   * nothing sent to this computer is needed.
    */
   canReplaceMaster: Accessor<boolean>;
   /**
@@ -55,8 +60,16 @@ export interface DeviceStore {
   canRestore: Accessor<boolean>;
   /** "Remove master key from this computer?" can be asked on sign out: it keeps one. */
   canRemoveMaster: Accessor<boolean>;
-  /** A master key another device sent waits here: "Accept master key". */
+  /**
+   * A master key another device sent waits here: "Accept master key". False while `encMismatch`
+   * holds, since this computer cannot open it then.
+   */
   masterWaiting: Accessor<boolean>;
+  /**
+   * This computer lost the key that opens what is sent to it: no master key and no device names reach
+   * it until it is revoked from a device that holds the master key and linked again.
+   */
+  encMismatch: Accessor<boolean>;
   /** What other devices asked, waiting for an answer from a device that keeps the master key. */
   requests: Accessor<RequestRow[]>;
   /** Why the last read failed, or empty. */
@@ -141,7 +154,9 @@ export function DeviceStoreProvider(props: ParentProps) {
     return outcome;
   }
 
-  const names = () => identity.custody()?.devices ?? [];
+  const encMismatch = () => !!identity.custody()?.encMismatch;
+  // The record's names cannot have been read here then: whatever came is not this computer's to show.
+  const names = () => (encMismatch() ? [] : (identity.custody()?.devices ?? []));
   const rows = createMemo(() =>
     deviceRows(raw(), names(), identity.custody()?.revokedHolders ?? [], lastRotation(identity.keyLog())),
   );
@@ -149,7 +164,7 @@ export function DeviceStoreProvider(props: ParentProps) {
   const words = () => session.identityCapabilities().recoveryWords && identity.canChange();
   const linking = () => session.identityCapabilities().linkDevice && identity.canChange();
   const canManage = () => linking() && !!identity.did() && !!identity.custody()?.holdsMaster;
-  const masterWaiting = () => !!identity.custody()?.masterWaiting;
+  const masterWaiting = () => !!identity.custody()?.masterWaiting && !encMismatch();
   const store: DeviceStore = {
     devices: rows,
     devicesLoaded,
@@ -162,11 +177,13 @@ export function DeviceStoreProvider(props: ParentProps) {
       !!identity.keyId() &&
       !identity.thisDeviceRevoked() &&
       !identity.custody()?.holdsMaster &&
-      !masterWaiting(),
+      !masterWaiting() &&
+      !encMismatch(),
     canReplaceMaster: () => words() && !!identity.did() && !!identity.keyId() && !identity.thisDeviceRevoked(),
     canRestore: () => words() && identity.statusLoaded() && !identity.did() && !identity.custody()?.holdsMaster,
     canRemoveMaster: () => linking() && !!identity.did() && !!identity.custody()?.holdsMaster,
     masterWaiting,
+    encMismatch,
     requests: createMemo(() =>
       canManage() ? requestRows(identity.custody()?.requests ?? [], names(), identity.keyId() || null) : [],
     ),

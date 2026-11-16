@@ -2384,6 +2384,7 @@ export const contextData: ContextData = {
         canRestore: { type: 'boolean' },
         canRemoveMaster: { type: 'boolean' },
         masterWaiting: { type: 'boolean' },
+        encMismatch: { type: 'boolean' },
         requests: { type: 'array', properties: ['id', 'kind', 'title', 'detail'] },
         error: { type: 'string' },
       },

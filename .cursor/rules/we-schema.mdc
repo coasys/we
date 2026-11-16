@@ -3112,11 +3112,12 @@ DeviceStore:
   - validCount: number — how many keys are valid
   - canManage: boolean — Link a device (scanDevice, addDevice), Rename, Remove and answering requests can be offered: this computer keeps the master key of the identity
   - canShowCode: boolean — "Show code" can be offered: this computer can join an identity and speaks for none yet
-  - canAskMaster: boolean — "Ask for master key" can be offered: a device of the identity that does not keep the master key and has none waiting
+  - canAskMaster: boolean — "Ask for master key" can be offered: a device of the identity that does not keep the master key, has none waiting, and could open one (not encMismatch)
   - canReplaceMaster: boolean — "Replace master key" can be offered: a valid device of the identity where the 12 words can be typed. It need not keep the master key: replacing it shuts out a lost device that kept one
   - canRestore: boolean — "Restore with recovery phrase" can be offered: this computer can take the words and speaks for no identity yet. Offer it beside "Show code"
   - canRemoveMaster: boolean — this computer keeps the master key: on log out, ask "Remove master key from this computer?"
-  - masterWaiting: boolean — a master key another device sent waits here: offer "Accept master key"
+  - masterWaiting: boolean — a master key another device sent waits here and this computer can open it: offer "Accept master key"
+  - encMismatch: boolean — this computer lost the key that opens what is sent to it: no master key and no device names reach it (`devices` carries no names and nothing the record says of the master key then; the warning on a revoked row, read from the key log, stays). Show a warning that says to revoke this computer from a device that holds the master key, then link it again
   - requests: { id, kind, title, detail }[] — what the person's other devices asked and is waiting for an answer, while this computer keeps the master key; empty otherwise. `kind` is 'send-master' or 'confirm-revoke'; `title` names the device that asked ('Laptop asks for the master key')
   - error: string — why the last read failed, or empty
 - Actions:
@@ -3214,7 +3215,7 @@ IdentityStore:
   - keyLogLoaded: boolean — the log has been read once
   - forked: boolean — the backend found two different logs for this identity
   - fork: { seq, ours, theirs } | null — where they part
-  - custody: { did, holdsMaster, unlock, blocked, devices, revokedHolders, requests, masterWaiting } | null — whether this computer can sign changes, as public facts: whether it keeps a master key (`holdsMaster`, a boolean), how that key unlocks ('os' for the computer's own prompt, or 'passphrase'), why no change can run, if one cannot (`blocked`), the devices the private record names (`devices`: { keyId, name, kind, holdsMaster: 'yes' | 'no' | 'offered' }[]), the revoked key ids the key log says may still hold a valid master key (`revokedHolders`), what other devices asked (`requests`: { id, kind, by, keyIds, expires }[]), and whether a master key waits here to be taken (`masterWaiting`). deviceStore words all of these for a page. Null where the backend cannot change an identity from here
+  - custody: { did, holdsMaster, unlock, blocked, devices, revokedHolders, requests, masterWaiting, encMismatch } | null — whether this computer can sign changes, as public facts: whether it keeps a master key (`holdsMaster`, a boolean), how that key unlocks ('os' for the computer's own prompt, or 'passphrase'), why no change can run, if one cannot (`blocked`), the devices the private record names (`devices`: { keyId, name, kind, holdsMaster: 'yes' | 'no' | 'offered' }[]), the revoked key ids the key log says may still hold a valid master key (`revokedHolders`), what other devices asked (`requests`: { id, kind, by, keyIds, expires }[]), whether a master key waits here to be taken (`masterWaiting`), and whether this computer lost the key that opens what is sent to it, so no master key or device list reaches it until it is revoked and linked again (`encMismatch`). deviceStore words all of these for a page. Null where the backend cannot change an identity from here
   - needsFirstRun: boolean — ask the first-run question now: this computer can sign changes, this device speaks for nobody, and "Start now" was not chosen for this account on this computer. Still true where changeBlocked is set, so the person learns why; offer "Start now" then
   - busy: boolean — a change is running
   - lastOutcome: 'done' | 'cancelled' | 'failed' | '' — how the last change ended

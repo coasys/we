@@ -26,6 +26,26 @@ export const identityProblem: SchemaNode = {
   },
 };
 
+/**
+ * This computer lost the key that opens what is sent to it (`deviceStore.encMismatch`): no master key
+ * and no device names reach it, so the only way on is to revoke it and link it again. The words are
+ * the custody service's own (`ENC_MISMATCH` in `crates/custody/src/service.rs`), so the identity
+ * window and this page say the same thing.
+ */
+export const encMismatchWarning: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'deviceStore.encMismatch' },
+    then: {
+      type: 'we-alert',
+      props: { tone: 'warning' },
+      children: [
+        'This computer has lost the key that opens your master key and your device list, so it can no longer receive either. On a device that holds your master key, revoke this computer, then link it again.',
+      ],
+    },
+  },
+};
+
 const heading = (title: string, blurb: string, action?: SchemaNode): SchemaNode => ({
   type: 'Row',
   props: { gap: '400', ay: 'start', ax: 'between', wrap: true },
@@ -324,9 +344,10 @@ const deviceRow: SchemaNode = listRow(
     {
       type: '$if',
       props: {
-        // Any linked device may name itself; naming another needs the master key here.
+        // Any linked device may name itself; naming another needs the master key here. A name goes in
+        // the private record, which a computer that lost its enc key cannot open.
         condition: {
-          $: '!device.revoked && (deviceStore.canManage || (device.thisDevice && identityStore.canChange))',
+          $: '!device.revoked && !deviceStore.encMismatch && (deviceStore.canManage || (device.thisDevice && identityStore.canChange))',
         },
         then: {
           type: 'we-button',
