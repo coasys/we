@@ -1223,10 +1223,14 @@ async fn add_a_bot_grant_it_one_space_pause_it_and_revoke_it() {
     };
 
     // A: the computer that keeps the master key. B: a desktop executor, where the bot runs.
-    let a_admin = "custody-live-a-admin";
-    let a = world.start_node("a", None, Some(a_admin), None).await;
-    let holder = custody_on(a.url(), a_admin, &world.dir.join("custody-a"));
-    let did = make_identity(&holder).await;
+    // A's custody service runs on the custody channel: only that channel co-signs an incept
+    // listing the custody service's own enc key.
+    let (a_admin, a_custody) = ("custody-live-a-admin", "custody-live-a-custody");
+    let a = world
+        .start_node("a", None, Some(a_admin), Some(a_custody))
+        .await;
+    let holder = custody_on(a.url(), a_custody, &world.dir.join("custody-a"));
+    let (did, _) = make_identity(&holder).await;
     let (b_admin, b_custody) = ("custody-live-b-admin", "custody-live-b-custody");
     let b = world
         .start_node("b", None, Some(b_admin), Some(b_custody))
