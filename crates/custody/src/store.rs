@@ -928,7 +928,6 @@ mod keychain_store {
     const ERR_SEC_ITEM_NOT_FOUND: i32 = -25300;
     const ERR_SEC_DUPLICATE_ITEM: i32 = -25299;
     const ERR_SEC_INTERACTION_NOT_ALLOWED: i32 = -25308;
-    const ERR_SEC_DUPLICATE_ITEM: i32 = -25299;
 
     fn unavailable(e: Error) -> VaultError {
         if e.code() == ERR_SEC_USER_CANCELED {
