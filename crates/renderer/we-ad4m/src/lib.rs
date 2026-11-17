@@ -52,4 +52,4 @@ pub use source::{Ad4mQuerySource, SourceStats, SpaceBinding};
 #[cfg(not(target_arch = "wasm32"))]
 pub use spaces::{list_spaces, SpaceRow};
 #[cfg(not(target_arch = "wasm32"))]
-pub use write_host::{Access, Notice, Notices, PendingConfirm, WriteHost};
+pub use write_host::{read_only_notice, Access, Notice, Notices, PendingConfirm, WriteHost};

@@ -32,12 +32,62 @@ use crate::executor::Ad4mExecutor;
 /// The write rows this build ships.
 const ROWS: &str = include_str!("../data/storemap-writes.json");
 
-/// Whether this window may write.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+/// Whether this window may write, and where.
+///
+/// The grant names one space (`--write --space <uuid>`), and so does this:
+/// a window granted `A` that opens `B` writes nothing there, whatever the
+/// connection would allow. An operator connection (an executor with no
+/// admin credential) holds no scoped token, so this check is the only
+/// thing between it and `B`.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum Access {
     #[default]
     ReadOnly,
-    Write,
+    /// Writes in this perspective uuid, and no other.
+    Write(SpaceId),
+}
+
+impl Access {
+    /// Writes granted in `space` (a perspective uuid).
+    pub fn write(space: impl Into<std::sync::Arc<str>>) -> Self {
+        Access::Write(SpaceId::new(space))
+    }
+
+    /// Whether a window with this access may write in `space`.
+    pub fn writes(&self, space: &str) -> bool {
+        matches!(self, Access::Write(granted) if granted.as_str() == space)
+    }
+
+    /// The space the grant names, if any.
+    pub fn granted(&self) -> Option<&str> {
+        match self {
+            Access::ReadOnly => None,
+            Access::Write(s) => Some(s.as_str()),
+        }
+    }
+
+    /// What this access means in `space`: itself where it may write,
+    /// read-only anywhere else.
+    pub fn in_space(&self, space: &str) -> Access {
+        if self.writes(space) {
+            self.clone()
+        } else {
+            Access::ReadOnly
+        }
+    }
+}
+
+/// The notice a window shows when it cannot write in `space` (a uuid).
+pub fn read_only_notice(access: &Access, space: &str) -> String {
+    match access.granted() {
+        Some(granted) if granted != space => format!(
+            "This space is read-only: this window may change only space {granted}. \
+             Start it with --write --space {space} to change this one."
+        ),
+        _ => format!(
+            "This window is read-only. Start it with --write --space {space} to make changes."
+        ),
+    }
 }
 
 /// One line the app shows after a write went wrong.
@@ -136,8 +186,9 @@ impl WriteHost {
         WriteRows::from_map(&StoreMap::parse(ROWS).expect("storemap-writes.json parses"))
     }
 
-    pub fn access(&self) -> Access {
-        self.access
+    /// The window's grant (which may name another space than this one).
+    pub fn access(&self) -> &Access {
+        &self.access
     }
 
     pub fn notices(&self) -> Notices {
@@ -221,11 +272,9 @@ impl Host for WriteHost {
         let Some(row) = self.rows.get(target) else {
             return self.fallback.act(request, done);
         };
-        if self.access == Access::ReadOnly {
-            self.notices.push(format!(
-                "This window is read-only. Start it with --write --space {} to make changes.",
-                self.space.as_str()
-            ));
+        if !self.access.writes(self.space.as_str()) {
+            self.notices
+                .push(read_only_notice(&self.access, self.space.as_str()));
             self.wake();
             return Invoked::Done(Err(err_value("read-only", 0, "This window is read-only.")));
         }

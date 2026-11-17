@@ -242,7 +242,7 @@ fn grant(args: &Args) -> (we_ad4m::connect::GrantScope, we_ad4m::Access) {
             we_ad4m::connect::GrantScope::Write {
                 space: space.clone(),
             },
-            we_ad4m::Access::Write,
+            we_ad4m::Access::write(space.as_str()),
         ),
         _ => (
             we_ad4m::connect::GrantScope::ReadOnly,
@@ -609,7 +609,7 @@ mod tests {
             scope,
             we_ad4m::connect::GrantScope::Write { space: UUID.into() }
         );
-        assert_eq!(access, we_ad4m::Access::Write);
+        assert_eq!(access, we_ad4m::Access::write(UUID));
     }
 
     #[test]

@@ -54,40 +54,7 @@ fn rig(name: &str) -> Option<Rig> {
 impl Rig {
     /// The app on the space, with the inspector open on `card`.
     fn open(&self, card: &str, access: Access) -> (LiveSpace, mpsc::Receiver<()>) {
-        let space = SpaceRow {
-            uuid: self.uuid.clone(),
-            name: "e11-app".into(),
-            shared_url: None,
-        };
-        let (mut live, _) = live_space_app(
-            &self.bundle,
-            &self.reader,
-            space,
-            "dark",
-            DataMode::Live,
-            access,
-        )
-        .unwrap();
-        let (tx, wake) = mpsc::channel();
-        let tx = std::sync::Mutex::new(tx);
-        let waker: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
-            let _ = tx.lock().unwrap().send(());
-        });
-        live.app.session.set_waker(waker.clone());
-        if let Some(host) = live.app.session.host_mut_as::<we_ad4m::WriteHost>() {
-            host.set_waker(waker);
-        }
-        for (name, value) in [("cardType", "TaskBlock"), ("card", card)] {
-            live.app.session.apply_screen(ScreenOp::SetParam {
-                name: name.into(),
-                value: Some(value.into()),
-                push: None,
-            });
-        }
-        live.app.session.apply_screen(ScreenOp::OpenTemplatePanel {
-            id: "inspector".into(),
-        });
-        (live, wake)
+        open_on(&self.bundle, &self.reader, &self.uuid, card, access)
     }
 
     fn tasks(&self) -> Vec<serde_json::Value> {
@@ -100,6 +67,43 @@ impl Rig {
             .find(|r| r["id"] == json!(id))
             .map(|r| r["title"].as_str().unwrap_or_default().to_string())
     }
+}
+
+/// The app on `uuid` over `conn`, with the inspector open on `card`.
+fn open_on(
+    bundle: &we_template::Bundle,
+    conn: &we_ad4m::Connection,
+    uuid: &str,
+    card: &str,
+    access: Access,
+) -> (LiveSpace, mpsc::Receiver<()>) {
+    let space = SpaceRow {
+        uuid: uuid.to_string(),
+        name: "e11-app".into(),
+        shared_url: None,
+    };
+    let (mut live, _) =
+        live_space_app(bundle, conn, space, "dark", DataMode::Live, access).unwrap();
+    let (tx, wake) = mpsc::channel();
+    let tx = std::sync::Mutex::new(tx);
+    let waker: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
+        let _ = tx.lock().unwrap().send(());
+    });
+    live.app.session.set_waker(waker.clone());
+    if let Some(host) = live.app.session.host_mut_as::<we_ad4m::WriteHost>() {
+        host.set_waker(waker);
+    }
+    for (name, value) in [("cardType", "TaskBlock"), ("card", card)] {
+        live.app.session.apply_screen(ScreenOp::SetParam {
+            name: name.into(),
+            value: Some(value.into()),
+            push: None,
+        });
+    }
+    live.app.session.apply_screen(ScreenOp::OpenTemplatePanel {
+        id: "inspector".into(),
+    });
+    (live, wake)
 }
 
 fn root(live: &mut LiveSpace) -> Arc<ResolvedNode> {
@@ -221,7 +225,7 @@ fn edit_and_delete_from_the_inspector() {
         ),
         std::slice::from_ref(&id)
     );
-    let (mut live, wake) = r.open(&id, Access::Write);
+    let (mut live, wake) = r.open(&id, Access::write(r.uuid.as_str()));
     start_editing(&mut live, &wake, "Task to edit");
 
     // Edit: the title control, as the inspector draws it.
@@ -308,7 +312,7 @@ fn create_a_signal_type_from_the_inspector() {
     ))
     .unwrap();
     let id = kit::create_task(&r.rt, &r.writer, &r.uuid, "Task with signals");
-    let (mut live, wake) = r.open(&id, Access::Write);
+    let (mut live, wake) = r.open(&id, Access::write(r.uuid.as_str()));
     wait_until(
         &mut live,
         &wake,
@@ -367,7 +371,7 @@ fn create_a_signal_type_from_the_inspector() {
 fn a_refused_write_shows_the_executors_message() {
     let Some(r) = rig("e11-refused") else { return };
     let id = kit::create_task(&r.rt, &r.writer, &r.uuid, "Task to keep");
-    let (mut live, wake) = r.open(&id, Access::Write);
+    let (mut live, wake) = r.open(&id, Access::write(r.uuid.as_str()));
     start_editing(&mut live, &wake, "Task to keep");
 
     // The test class has no `description`; the inspector offers it, as a
@@ -437,7 +441,7 @@ fn a_shared_space_is_not_opened_for_writing() {
         space.clone(),
         "dark",
         DataMode::Live,
-        Access::Write,
+        Access::write(r.uuid.as_str()),
     )
     .err()
     .expect("refused");
@@ -454,4 +458,120 @@ fn a_shared_space_is_not_opened_for_writing() {
         .is_ok(),
         "read-only still opens it"
     );
+}
+
+/// The access `--connect --write --space <a>` gives the window.
+fn granted(a: &str) -> Access {
+    Access::write(a)
+}
+
+/// A window granted writes in `a` opens `b` (the picker's "Switch
+/// space"): `b` is read-only, says so, and an edit there is refused
+/// locally — nothing reaches the executor. `a` still writes.
+fn switching_space_keeps_the_grant(
+    bundle: &we_template::Bundle,
+    rt: &we_ad4m::Runtime,
+    seeder: &we_ad4m::Connection,
+    window: &we_ad4m::Connection,
+    a: &str,
+    b: &str,
+) {
+    let in_b = kit::create_task(rt, seeder, b, "Task in B");
+    let (mut live, wake) = open_on(bundle, window, b, &in_b, granted(a));
+    assert_eq!(live.access, Access::ReadOnly, "B opens read-only");
+    let label = live.access_label();
+    assert!(!label.contains("writes"), "{label}");
+    assert!(
+        live.notices().iter().any(|n| n.text.contains(a)),
+        "a notice names the space this window may change: {:?}",
+        live.notices()
+    );
+    start_editing(&mut live, &wake, "Task in B");
+    let rt_node = root(&mut live);
+    let title = find(&rt_node, |n| {
+        is_text_input(n) && prop_str(n, "value") == Some("Task in B")
+    })
+    .expect("the title control")
+    .id
+    .clone();
+    dispatch(&mut live, &title, "onChange", detail("Changed in B"));
+    std::thread::sleep(Duration::from_millis(500));
+    let title_b = kit::query_rows(rt, seeder, b, "TaskBlock")
+        .into_iter()
+        .find(|r| r["id"] == json!(in_b))
+        .map(|r| r["title"].clone());
+    assert_eq!(title_b, Some(json!("Task in B")), "B unchanged");
+    assert!(
+        live.notices()
+            .iter()
+            .any(|n| n.text.contains("read-only") && n.text.contains(a)),
+        "{:?}",
+        live.notices()
+    );
+
+    // Back in A, the grant holds.
+    let in_a = kit::create_task(rt, seeder, a, "Task in A");
+    let (mut live, wake) = open_on(bundle, window, a, &in_a, granted(a));
+    assert_eq!(live.access, granted(a));
+    assert!(live.access_label().starts_with("writes:"));
+    start_editing(&mut live, &wake, "Task in A");
+    let rt_node = root(&mut live);
+    let title = find(&rt_node, |n| {
+        is_text_input(n) && prop_str(n, "value") == Some("Task in A")
+    })
+    .expect("the title control")
+    .id
+    .clone();
+    dispatch(&mut live, &title, "onChange", detail("Changed in A"));
+    wait_for("A renamed", Duration::from_secs(5), || {
+        kit::query_rows(rt, seeder, a, "TaskBlock")
+            .iter()
+            .any(|r| r["id"] == json!(in_a) && r["title"] == "Changed in A")
+    });
+}
+
+#[test]
+fn switching_space_keeps_the_grant_operator() {
+    let Some(executor) = kit::start_executor() else {
+        return;
+    };
+    let rt = we_ad4m::Runtime::new().unwrap();
+    let seeder = kit::connect(&rt, &executor.url);
+    let a = kit::seed_space(&rt, &seeder, "e11-a");
+    let b = kit::seed_space_as(&rt, &seeder, "e11-b");
+    for s in [&a, &b] {
+        kit::add_class(&rt, &seeder, s, "TaskBlock", kit::TASK_SDNA);
+    }
+    // No admin credential: the window's socket is the operator, with no
+    // scoped token — only the window's own check keeps B read-only.
+    let window = kit::connect(&rt, &executor.url);
+    let bundle = we_template::Bundle::parse(BUNDLE).unwrap();
+    switching_space_keeps_the_grant(&bundle, &rt, &seeder, &window, &a, &b);
+}
+
+#[test]
+fn switching_space_keeps_the_grant_scoped_token() {
+    let Some(executor) = kit::start_executor_with_admin("e11-admin") else {
+        return;
+    };
+    let rt = we_ad4m::Runtime::new().unwrap();
+    let admin = kit::connect_as(&rt, &executor.url, "e11-admin");
+    rt.block_on(admin.client().agent.generate("passphrase".into()))
+        .unwrap();
+    let a = kit::seed_space_as(&rt, &admin, "e11-a");
+    let b = kit::seed_space_as(&rt, &admin, "e11-b");
+    for s in [&a, &b] {
+        kit::add_class(&rt, &admin, s, "TaskBlock", kit::TASK_SDNA);
+    }
+    let app = we_ad4m::connect::app_info(&we_ad4m::connect::GrantScope::Write { space: a.clone() });
+    let token = kit::mint_token(
+        &rt,
+        &executor.url,
+        &admin,
+        &app.name,
+        serde_json::to_value(&app.capabilities).unwrap(),
+    );
+    let window = kit::connect_as(&rt, &executor.url, &token);
+    let bundle = we_template::Bundle::parse(BUNDLE).unwrap();
+    switching_space_keeps_the_grant(&bundle, &rt, &admin, &window, &a, &b);
 }

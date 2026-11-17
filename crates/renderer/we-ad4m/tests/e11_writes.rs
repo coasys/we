@@ -310,7 +310,7 @@ fn a_target_with_no_row_falls_back() {
     let Some(r) = rig("e11-fallback") else { return };
     let (mut s, _wake) = session(
         &r,
-        Access::Write,
+        Access::write(r.uuid.as_str()),
         button(invoke("routeStore.unknownThing", json!([]))),
     );
     click(&mut s);
@@ -330,7 +330,7 @@ fn a_write_row_reaches_the_executor_and_settles_ok() {
         "record.update",
         json!(["CollectionBlock", r.id, { "title": "B" }]),
     ));
-    let (mut s, wake) = session(&r, Access::Write, spec);
+    let (mut s, wake) = session(&r, Access::write(r.uuid.as_str()), spec);
     click(&mut s);
     let took = wait_for(&mut s, &wake, "ok=true", Duration::from_secs(5));
     eprintln!("record.update settled in {took:?}");
@@ -345,7 +345,7 @@ fn a_refused_write_runs_on_error_and_leaves_a_notice() {
         "record.update",
         json!(["CollectionBlock", r.id, { "nope": 1 }]),
     ));
-    let (mut s, wake) = session(&r, Access::Write, spec);
+    let (mut s, wake) = session(&r, Access::write(r.uuid.as_str()), spec);
     click(&mut s);
     let took = wait_for(
         &mut s,
@@ -392,7 +392,7 @@ fn read_only_refuses_without_calling_the_executor() {
 fn a_delete_waits_for_the_answer() {
     let Some(r) = rig("e11-delete") else { return };
     let spec = button(invoke("record.delete", json!(["CollectionBlock", r.id])));
-    let (mut s, wake) = session(&r, Access::Write, spec);
+    let (mut s, wake) = session(&r, Access::write(r.uuid.as_str()), spec);
     click(&mut s);
     let c = host(&s).pending_confirm().expect("asks first");
     assert_eq!(c.title, "Delete this CollectionBlock?");
@@ -427,7 +427,7 @@ fn create_signal_type_writes_one_signal_type() {
         "mode": "toggle", "rangeMin": 0, "rangeMax": 1, "step": 1
     });
     let spec = button(invoke("spaceStore.createSignalType", json!([fresh])));
-    let (mut s, wake) = session(&r, Access::Write, spec);
+    let (mut s, wake) = session(&r, Access::write(r.uuid.as_str()), spec);
     click(&mut s);
     let took = wait_for(&mut s, &wake, "ok=true", Duration::from_secs(5));
     eprintln!("createSignalType settled in {took:?}");
@@ -440,4 +440,28 @@ fn create_signal_type_writes_one_signal_type() {
     assert_eq!(row["aggregate"], "count", "{row}");
     assert_eq!(row["rangeMin"], 0, "{row}");
     assert_eq!(row["rangeMax"], 1, "{row}");
+}
+
+#[test]
+fn a_grant_for_another_space_refuses_here() {
+    let Some(r) = rig("e11-other-space") else {
+        return;
+    };
+    let spec = button(invoke(
+        "record.update",
+        json!(["CollectionBlock", r.id, { "title": "B" }]),
+    ));
+    let other = "00000000-0000-4000-8000-000000000000";
+    let (mut s, _wake) = session(&r, Access::write(other), spec);
+    click(&mut s);
+    std::thread::sleep(Duration::from_millis(500));
+    s.poll();
+    assert_eq!(r.title().as_deref(), Some("A"), "unchanged");
+    let notices = host(&s).notices().list();
+    assert!(
+        notices
+            .iter()
+            .any(|n| n.text.contains("read-only") && n.text.contains(other)),
+        "{notices:?}"
+    );
 }

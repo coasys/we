@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex};
 
 use egui::{Color32, RichText};
 use we_ad4m::connect::{Ask, ConnectFlow, ConnectPhase, ConnectSettings, GrantScope};
-use we_ad4m::{Access, Connection, Notices, SpaceRow, WriteHost};
+use we_ad4m::{Connection, Notices, SpaceRow, WriteHost};
 use we_data::writes::Confirm;
 
 use crate::live::{live_space_app, LiveSpace};
@@ -111,7 +111,7 @@ impl ConnectedApp {
             space,
             &self.args.theme,
             self.args.data,
-            self.args.access,
+            self.args.access.clone(),
         )?;
         if fell_back {
             eprintln!(
@@ -499,10 +499,7 @@ fn space_screen(
             ui.painter()
                 .circle_filled(dot.center(), 4.0, if connected { LIVE } else { LOST });
             ui.label(format!("{url}  ·  {}", live.space.name));
-            ui.label(match live.access {
-                Access::ReadOnly => "read-only".to_string(),
-                Access::Write => format!("writes: {}", live.space.name),
-            });
+            ui.label(live.access_label());
             if !connected {
                 // What is on screen is the last answer; nothing updates
                 // until the socket is back.

@@ -23,8 +23,8 @@ use std::sync::Arc;
 use we_ad4m::live::{LiveMap, LiveMembers};
 use we_ad4m::write_host::ConfirmSlot;
 use we_ad4m::{
-    Access, Ad4mQuerySource, Connection, Notice, Notices, SourceStats, SpaceBinding, SpaceRow,
-    WriteHost,
+    read_only_notice, Access, Ad4mQuerySource, Connection, Notice, Notices, SourceStats,
+    SpaceBinding, SpaceRow, WriteHost,
 };
 use we_data::writes::Confirm;
 use we_data::{OfflineData, Provenance, SpaceId, StoreMap};
@@ -188,6 +188,15 @@ impl LiveSpace {
         }
     }
 
+    /// The status bar's word for what this window may do here: `read-only`
+    /// or `writes: <space>`.
+    pub fn access_label(&self) -> String {
+        match self.access {
+            Access::ReadOnly => "read-only".to_string(),
+            Access::Write(_) => format!("writes: {}", self.space.name),
+        }
+    }
+
     /// Calls the host dropped (no write row), in order.
     pub fn dropped_calls(&self) -> Vec<String> {
         dropped_calls(&self.app.session)
@@ -218,9 +227,12 @@ pub fn live_space_app(
     mode: DataMode,
     access: Access,
 ) -> Result<(LiveSpace, bool), String> {
-    if access == Access::Write && space.shared_url.is_some() {
+    if access.writes(&space.uuid) && space.shared_url.is_some() {
         return Err(SHARED_WRITE_REFUSED.into());
     }
+    // The grant names one space: anywhere else this window is read-only,
+    // and says so (the host refuses there too, whatever the connection).
+    let here = access.in_space(&space.uuid);
     let truth: serde_json::Value =
         serde_json::from_str(SNAPSHOT).map_err(|e| format!("snapshot parse: {e}"))?;
     let live_map = LiveMap::bundled();
@@ -231,7 +243,7 @@ pub fn live_space_app(
     let data = match mode {
         DataMode::Live => {
             let data = OfflineData::from_snapshot(
-                &connected_doc(&truth, access == Access::Write),
+                &connected_doc(&truth, here != Access::ReadOnly),
                 Some(&map),
             )?;
             // Every recorded store answers what it still holds and notes
@@ -305,9 +317,12 @@ pub fn live_space_app(
         conn.clone(),
         SpaceId::from(space.uuid.as_str()),
         data.bag.clone(),
-        access,
+        access.clone(),
     );
     let notices = host.notices();
+    if here == Access::ReadOnly && access != Access::ReadOnly {
+        notices.push(read_only_notice(&access, &space.uuid));
+    }
     let confirm = host.confirm_handle();
     app.session.host = Box::new(host);
     app.dropped_calls = dropped_calls;
@@ -322,7 +337,7 @@ pub fn live_space_app(
             source: stats,
             live_members: live.members().to_vec(),
             mode,
-            access,
+            access: here,
             notices,
             confirm,
             _live: live,
