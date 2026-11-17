@@ -195,6 +195,12 @@ export interface ShapeStore {
    * somebody extracted an hour ago even if the target has since been switched off.
    */
   extractionCandidates: Accessor<string[]>;
+  /**
+   * `extractionCandidates` is the whole list. Core vocabulary is in it at once; this space's models
+   * and the classes it already had arrive a few round trips later, so until this is true the list
+   * may be missing members that are coming.
+   */
+  extractionCandidatesLoaded: Accessor<boolean>;
   /** Options for the relationship target picker — `{ label, value }`, grouped and labelled. */
   relationshipTargets: Accessor<RelationshipTargetOption[]>;
   /**
@@ -514,8 +520,14 @@ export function ShapeStoreProvider(props: ParentProps) {
     DatasetStore publishes the interpretation surface modules reach, and sits *above* this store in
     the provider tree, so it cannot read a shape. The accessor rather than the value, so it follows
     a community defining a model without anything re-registering.
+
+    Lent as it arrives, with whether it is whole beside it. A picker shows the core classes at once;
+    a standing watch waits for the rest, because one registered from the part that had arrived was
+    removed and registered again when the rest did — four writes to the shared graph from every
+    member who opened a call or the feed, ending where they started.
   */
-  onCleanup(datasetStore.provideExtractionCandidates(extractionCandidates));
+  const extractionCandidatesLoaded = createMemo(() => shapesLoaded() && datasetStore.currentDatasetEntitiesLoaded());
+  onCleanup(datasetStore.provideExtractionCandidates(extractionCandidates, extractionCandidatesLoaded));
 
   /**
    * What a relationship may point at here, grouped by where it comes from and labelled for the
@@ -631,10 +643,17 @@ export function ShapeStoreProvider(props: ParentProps) {
     });
   }
 
+  /** The newest `loadShapes` — see `current` inside it. */
+  let shapesLoad = 0;
+
   async function loadShapes(): Promise<void> {
     const ports = schemas();
     const dataset = handle();
     const uuid = datasetStore.currentDataset()?.id;
+    // Only the newest load publishes. Saving a model reloads while an earlier load can still be
+    // adopting, and that one finishing first showed the older list and called it whole.
+    const load = ++shapesLoad;
+    const current = () => load === shapesLoad && datasetStore.currentDataset()?.id === uuid;
     if (!ports || !dataset || !datasetStore.isWeSpace()) {
       setSpaceShapes([]);
       setShapesLoaded(true);
@@ -652,7 +671,7 @@ export function ShapeStoreProvider(props: ParentProps) {
     try {
       const records = await storage().list(dataset);
       trace('shapes', 'records', { space: uuid, count: records.length, ms: lap() });
-      if (datasetStore.currentDataset()?.id !== uuid) return; // navigated away while loading
+      if (!current()) return; // navigated away, or reloaded, while loading
 
       const views: SpaceShapeView[] = [];
       const adopted = new Set<string>();
@@ -713,12 +732,12 @@ export function ShapeStoreProvider(props: ParentProps) {
         totalMs: Math.round(performance.now() - started),
         sincePageStartMs: Math.round(performance.now()),
       });
-      if (datasetStore.currentDataset()?.id === uuid) setSpaceShapes(views);
+      if (current()) setSpaceShapes(views);
     } catch (err) {
       console.error('ShapeStore: loading space shapes failed', err);
-      if (datasetStore.currentDataset()?.id === uuid) setSpaceShapes([]);
+      if (current()) setSpaceShapes([]);
     } finally {
-      if (datasetStore.currentDataset()?.id === uuid) setShapesLoaded(true);
+      if (current()) setShapesLoaded(true);
     }
   }
 
@@ -1403,6 +1422,7 @@ export function ShapeStoreProvider(props: ParentProps) {
     generating,
     hintEntities,
     extractionCandidates,
+    extractionCandidatesLoaded,
     provideExtractionEnroller: extractionEnroller.provide,
     relationshipTargets,
     identityOptions,

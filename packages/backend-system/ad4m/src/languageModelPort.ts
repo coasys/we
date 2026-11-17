@@ -6,6 +6,7 @@ import type {
   LanguageModelStatus,
 } from '@we/backend-shared';
 
+import { sharedInFlight } from './inFlight';
 import { readChatStream, toOpenAiMessages, toOpenAiTools } from './openaiChat';
 import { rpcStatus } from './rpcStatus';
 
@@ -62,7 +63,8 @@ export function createAd4mLanguageModelPort(
   const port: LanguageModelPort = {
     async available() {
       try {
-        const models = await client.ai.getModels();
+        // Several stores ask as soon as the port arrives; one request answers all of them.
+        const models = await sharedInFlight(client, 'ai.getModels', () => client.ai.getModels());
         return models.some((m) => m.modelType === 'LLM');
       } catch {
         // An executor without the AI service is a node without a model, not an error.

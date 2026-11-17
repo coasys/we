@@ -1602,6 +1602,10 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   const targetsFor = (collection: string): { entity: string; selected: boolean }[] =>
     typeof interpretation?.targets === 'function' ? interpretation.targets(collection) : [];
 
+  /** Whether `targetsFor` is the whole list yet — see {@link syncWatch}. A host without the answer reads as yes. */
+  const targetsLoaded = (): boolean =>
+    typeof interpretation?.targetsLoaded === 'function' ? interpretation.targetsLoaded() : true;
+
   /** Whether a pass over this collection has anything to look for. */
   const hasTargets = (collection: string): boolean => targetsFor(collection).some((t) => t.selected);
 
@@ -2351,6 +2355,13 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   let watchedAuto = true;
 
   /**
+   * The collection whose registration `syncWatch` put off until the target list was read. Nothing is
+   * `watched` while it waits, but the watch is one row in the shared graph and may already be there
+   * from an earlier visit — so switching extraction off meanwhile still has to remove it.
+   */
+  let deferredWatch: string | null = null;
+
+  /**
    * The collection this agent has already been told has nothing selected to extract — see the toast
    * in `syncWatch`. `syncWatch` re-runs on every change to the target list, and somebody unticking
    * the last chip should hear about it once rather than on every press afterwards.
@@ -2382,6 +2393,26 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
           .join(',')
       : '';
     const auto = next ? autoEnabled(next) : true;
+    /*
+      Nothing decided from a list the host has not finished reading.
+
+      The list arrives in parts — core vocabulary at once, the space's own models and the classes it
+      already had a few round trips later — and the key above changes as each part lands. Keyed on
+      the first part, opening a call registered the watch without the classes still to come, then
+      removed it and registered the whole list once they came: four writes to the shared graph from
+      every member who opened it, ending where they started, and a second in which the watch looked
+      for less than the call asked. Waiting writes nothing when the stored watch already says what
+      the whole list does, because the host compares before it writes.
+
+      Only while extraction is on. Switching it off needs no list, and waiting would leave the watch
+      spending a pass per batch on a community that has just said stop.
+    */
+    if (next && auto && !targetsLoaded()) {
+      deferredWatch = next;
+      return;
+    }
+    const deferred = deferredWatch === next ? next : null;
+    deferredWatch = null;
     if (watched === next && watchedClasses === key && watchedAuto === auto) return;
     const previous = watched;
     /*
@@ -2456,6 +2487,17 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       */
       watched = null;
       watchedClasses = '';
+      /*
+        And a registration that was waiting for the list: nothing here registered it, but the stored
+        watch may be there from before, and the teardown above only knows what this agent watched.
+      */
+      if (deferred && deferred !== previous && typeof interpretation?.unwatchCollection === 'function') {
+        try {
+          await interpretation.unwatchCollection(deferred, callTarget());
+        } catch (error) {
+          console.warn('[transcribe] could not stop the watch on this call', error);
+        }
+      }
       return;
     }
 
@@ -2523,8 +2565,10 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   effect?.(() => {
     const live = collectionId();
     if (!live) return;
-    // Read inside the effect so a change to the list re-runs it.
+    // Read inside the effect so a change to the list re-runs it — and the list finishing loading,
+    // which may change nothing in it and is still the moment the watch can be decided.
     void targetsFor(live);
+    void targetsLoaded();
     /*
       And the space's own switch, for the same reason and a longer story.
 

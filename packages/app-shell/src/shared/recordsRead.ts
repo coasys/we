@@ -23,6 +23,27 @@ interface ReadModel {
 }
 
 /**
+ * A module's `RecordQuery` as the ORM reads it.
+ *
+ * - `within` becomes `parent`: the container, by containment, which is one predicate on every
+ *   backend. See `RecordQuery.within`.
+ * - `select` becomes `properties`, the name the model reads its field list under. Passed on as
+ *   `select` the AD4M model ignores it and answers every field — on a call, the id of every line said
+ *   in it. The renderer's `$query` makes the same rename in the query adapter's `lower`; a module's
+ *   read does not pass through that adapter, so it is made here.
+ */
+export function moduleQueryAsOrm(query: unknown): Record<string, unknown> {
+  type Asked = { within?: unknown; select?: unknown } & Record<string, unknown>;
+  const { within, select, ...rest } = (query ?? {}) as Asked;
+  const out: Record<string, unknown> = { ...rest };
+  if (Array.isArray(select)) out.properties = select;
+  if (typeof within === 'string' && within) {
+    out.parent = { id: within, relation: 'children', entity: 'CollectionBlock' };
+  }
+  return out;
+}
+
+/**
  * The records kernel's `find`: the entity's rows in `dataset`. Throws naming the class when
  * neither registry holds it — `getEntity` supplies the miss — because a find has to say what it
  * could not read.
