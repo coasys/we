@@ -18731,12 +18731,42 @@
                         "props": {
                           "variant": "ghost",
                           "size": "md",
-                          "square": true,
-                          "label": "Interpretation",
+                          "square": {
+                            "$": "!count(modules.transcribe.proposalsFor[routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : spaceStore.root)])"
+                          },
+                          "label": {
+                            "$": "count(modules.transcribe.proposalsFor[routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : spaceStore.root)]) ? `Interpretation, ${count(modules.transcribe.proposalsFor[routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : spaceStore.root)])} ${plural(count(modules.transcribe.proposalsFor[routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : spaceStore.root)]), 'suggestion', 'suggestions')} to review` : 'Interpretation'"
+                          },
                           "expanded": { "$": "modules.transcribe.extractionOpen" },
                           "onClick": { "$invoke": "spaceStore.launchModule", "args": ["transcribe:extraction"] }
                         },
-                        "children": [{ "type": "we-icon", "props": { "name": "sparkle" } }]
+                        "children": [
+                          {
+                            "type": "$if",
+                            "props": {
+                              "condition": { "$": "modules.transcribe.passRunning" },
+                              "then": { "type": "we-animated-icon", "props": { "name": "spinner" } },
+                              "else": { "type": "we-icon", "props": { "name": "sparkle" } }
+                            }
+                          },
+                          {
+                            "type": "$if",
+                            "props": {
+                              "condition": {
+                                "$": "count(modules.transcribe.proposalsFor[routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : spaceStore.root)])"
+                              },
+                              "then": {
+                                "type": "we-badge",
+                                "props": { "size": "xs", "variant": "solid", "tone": "accent" },
+                                "children": [
+                                  {
+                                    "$": "count(modules.transcribe.proposalsFor[routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : spaceStore.root)])"
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        ]
                       }
                     ]
                   },

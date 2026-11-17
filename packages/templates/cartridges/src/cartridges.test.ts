@@ -127,9 +127,12 @@ describe('the Coasys cartridge', () => {
   */
   it('opens the extraction panel from a call’s bar, the rail’s own way', () => {
     const aside = { children: callBarAside("'call-1'") };
-    const button = findNode(aside, (n) => (n.props as { label?: string } | undefined)?.label === 'Interpretation')!;
+    const button = findNode(
+      aside,
+      (n) => n.type === 'we-button' && JSON.stringify(n.props).includes('transcribe:extraction'),
+    )!;
     expect(button).toBeDefined();
-    // "Interpretation" is the word the team agreed on; its tooltip says the same as its label.
+    // "Interpretation" is the word the team agreed on, on the button and on its tooltip.
     const tooltip = findNode(
       aside,
       (n) => n.type === 'we-tooltip' && (n as { children?: unknown[] }).children?.[0] === button,
@@ -143,6 +146,71 @@ describe('the Coasys cartridge', () => {
     expect(JSON.stringify(button.props)).toContain('modules.transcribe.extractionOpen');
     // The transcript export it sits beside is still offered the same way.
     expect(JSON.stringify(callBarAside("'call-1'"))).toContain('spaceStore.exportCallTranscript');
+  });
+
+  /*
+    What the panel holds, on the button that opens it: how many suggestions are waiting for somebody
+    to keep or drop them, and a spinner while a pass runs — both at once. Counted for the conversation
+    the panel itself shows, so the number is what opening it will list. No badge at zero: a 0 is a
+    mark with nothing to say. Evaluated by the expression engine the renderer uses.
+  */
+  it('shows on its button how many suggestions wait, and that a pass is running', () => {
+    const evaluate = (source: string, roots: Record<string, unknown>) =>
+      evaluateExpression(parseExpression(source), {
+        root: (name) => ({ bound: name in roots, value: roots[name] }),
+        call: (name, args) =>
+          listFunctions()
+            .find((f) => f.name === name)
+            ?.impl(args, { context: {}, stores: {} }),
+      });
+    const roots = (waiting: number, running = false) => ({
+      routeStore: { params: { call: 'call-1' } },
+      spaceStore: { root: 'space-root' },
+      modules: {
+        transcribe: {
+          callId: '',
+          passRunning: running,
+          proposalsFor: { 'call-1': Array.from({ length: waiting }, (_, i) => ({ id: `p${i}` })) },
+        },
+      },
+    });
+    type Node = { type?: string; props?: Record<string, unknown>; children?: unknown[] };
+    const button = findNode(
+      { children: callBarAside("'call-1'") },
+      (n) => n.type === 'we-button' && JSON.stringify(n.props).includes('transcribe:extraction'),
+    ) as Node;
+    const subject =
+      'routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : ' +
+      'spaceStore.root)';
+    expect(JSON.stringify(button)).toContain(`modules.transcribe.proposalsFor[${subject}]`);
+
+    const badgeGate = findNode(button, (n) => n.type === '$if' && JSON.stringify(n).includes('we-badge')) as Node;
+    const gate = (badgeGate.props!.condition as { $: string }).$;
+    expect(evaluate(gate, roots(0))).toBeFalsy();
+    expect(evaluate(gate, roots(3))).toBeTruthy();
+    const badge = findNode(badgeGate.props!.then, (n) => n.type === 'we-badge') as Node;
+    expect(evaluate((badge.children![0] as { $: string }).$, roots(3))).toBe(3);
+
+    // Its name says the count, since a screen reader is not shown the badge.
+    const label = (button.props!.label as { $: string }).$;
+    expect(evaluate(label, roots(0))).toBe('Interpretation');
+    expect(evaluate(label, roots(1))).toBe('Interpretation, 1 suggestion to review');
+    expect(evaluate(label, roots(3))).toBe('Interpretation, 3 suggestions to review');
+
+    // Square while it holds one glyph; widened to take the badge beside it.
+    const square = (button.props!.square as { $: string }).$;
+    expect(evaluate(square, roots(0))).toBe(true);
+    expect(evaluate(square, roots(3))).toBe(false);
+
+    // The spinner takes the glyph's place while a pass runs, and the badge stays.
+    const busyGate = findNode(
+      button,
+      (n) => n.type === '$if' && JSON.stringify(n).includes('we-animated-icon'),
+    ) as Node;
+    const busy = (busyGate.props!.condition as { $: string }).$;
+    expect(evaluate(busy, roots(3, true))).toBe(true);
+    expect(evaluate(busy, roots(3, false))).toBe(false);
+    expect(evaluate(gate, roots(3, true))).toBeTruthy();
   });
 
   /*

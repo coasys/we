@@ -294,6 +294,19 @@ const CALL_ID = 'routeStore.params.id';
 const MINE = `modules.call.callRecordId == ${CALL_ID}`;
 
 /**
+ * The conversation the interpretation panel shows — its own subject, written out as the panel writes
+ * it (`EXTRACTION_SUBJECT_EXPR` in `@we/module-transcribe`), so the count on the button is what
+ * opening the panel will list. Copied rather than imported, because a cartridge is data and depends
+ * on no module package — so a change to the panel's subject has to be made here as well.
+ */
+const INTERPRETATION_SUBJECT =
+  'routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : ' +
+  'spaceStore.root)';
+
+/** How many suggestions on it nobody has kept or dropped yet. */
+const WAITING = `count(modules.transcribe.proposalsFor[${INTERPRETATION_SUBJECT}])`;
+
+/**
  * The end of a call's bar: Live while it runs, the way to the interpretation panel, and the
  * transcript to take away.
  *
@@ -305,6 +318,11 @@ const MINE = `modules.call.callRecordId == ${CALL_ID}`;
  * panel's dock id, so a press toggles it and an open-but-hidden one is brought forward rather than
  * closed — because this interface has no rail for it to live on. The panel opens only by hand, so
  * without it there would be no way to it at all.
+ *
+ * So the button says what the panel holds: a badge counting the suggestions waiting on somebody, and
+ * none at zero, and a spinner in place of its glyph while a pass runs, as the rail's button has. The
+ * badge sits beside the glyph rather than over it, so the button gives up being square while it has
+ * one rather than covering its own icon.
  */
 export const callBarAside = (callId: string): SchemaNode[] => [
   {
@@ -323,12 +341,34 @@ export const callBarAside = (callId: string): SchemaNode[] => [
         props: {
           variant: 'ghost',
           size: 'md',
-          square: true,
-          label: 'Interpretation',
+          square: { $: `!${WAITING}` },
+          label: {
+            $: `${WAITING} ? \`Interpretation, \${${WAITING}} \${plural(${WAITING}, 'suggestion', 'suggestions')} to review\` : 'Interpretation'`,
+          },
           expanded: { $: 'modules.transcribe.extractionOpen' },
           onClick: { $invoke: 'spaceStore.launchModule', args: ['transcribe:extraction'] },
         },
-        children: [{ type: 'we-icon', props: { name: 'sparkle' } }],
+        children: [
+          {
+            type: '$if',
+            props: {
+              condition: { $: 'modules.transcribe.passRunning' },
+              then: { type: 'we-animated-icon', props: { name: 'spinner' } },
+              else: { type: 'we-icon', props: { name: 'sparkle' } },
+            },
+          },
+          {
+            type: '$if',
+            props: {
+              condition: { $: WAITING },
+              then: {
+                type: 'we-badge',
+                props: { size: 'xs', variant: 'solid', tone: 'accent' },
+                children: [{ $: WAITING }],
+              },
+            },
+          },
+        ],
       },
     ],
   },
