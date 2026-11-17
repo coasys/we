@@ -57,6 +57,7 @@ fn coasys_named_and_inline_queries_settle_in_one_frame() {
     let node = schema(json!({ "type": "Column",
         "$queries": {
             "calls": { "entity": "CollectionBlock", "limit": 12,
+                       "select": ["title", "createdAt"],
                        "order": { "createdAt": "desc" }, "where": { "kind": "call" } },
             "callDetail": { "entity": "CollectionBlock", "limit": 1,
                        "where": { "id": { "$": "first(local.calls).id" } } }
