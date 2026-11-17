@@ -27,6 +27,14 @@ export interface SpaceListEntry {
   kind: 'shared' | 'personal' | 'foreign';
   /** False for a joined dataset with no WE Space record — the "initialize" state. */
   isWeSpace: boolean;
+  /**
+   * This row's Space record has not been read yet, so `isWeSpace` and `kind` do not know yet.
+   *
+   * True only for the first seconds of a boot: the space on screen is read before the app appears,
+   * and the others after its first screen has drawn (see `BootController`). A row that is loading is
+   * not a dataset from another app, so a page must not say it is one.
+   */
+  loading: boolean;
   /** Whether this agent may change what everyone here sees. See `SpaceStore.canAdministerSpace`. */
   canAdminister: boolean;
   /**

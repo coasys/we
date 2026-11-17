@@ -7830,6 +7830,7 @@
             "avatar",
             "kind",
             "isWeSpace",
+            "loading",
             "canAdminister",
             "modules",
             "shareLink",
