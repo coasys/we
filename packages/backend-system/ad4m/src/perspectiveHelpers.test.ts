@@ -229,7 +229,7 @@ describe('buildEntityManifest', () => {
     expect(entry.properties[0]).toMatchObject({ name: 'about', type: 'uri', relatedEntity: 'DiscussionTopic' });
   });
 
-  it('still prefers sh:class when both are declared', () => {
+  it('prefers target_class_name over sh:class when both are declared (decorator classes write both)', () => {
     const shape = {
       nodeShapeUri: 'TopicShape',
       targetClass: 'discussion://Topic',
@@ -248,7 +248,8 @@ describe('buildEntityManifest', () => {
     } as unknown as SHACLShape;
 
     const [entry] = buildEntityManifest([{ name: 'Position', shape }]);
-    expect(entry.properties[0].relatedEntity).toBe('DiscussionTopicShape');
+    // `sh:class` is the target's *shape* URI (`…Shape`); the class name is `targetClassName`.
+    expect(entry.properties[0].relatedEntity).toBe('DiscussionTopic');
   });
 
   it('names a reverse relation’s forward from the predicate they share', () => {
@@ -294,5 +295,78 @@ describe('buildEntityManifest', () => {
 
     const backPointer = entries.find((e) => e.name === 'Comment')!.properties[0];
     expect(backPointer).toMatchObject({ name: 'post', reverse: true, reverseOf: 'comments' });
+  });
+
+  it('pairs a reverse with the forward that points back at its class, among forwards over one predicate', () => {
+    // `pinned` is declared first and shares the predicate, but points at Pin; only `comments` points at Comment.
+    const board = {
+      nodeShapeUri: 'BoardShape',
+      targetClass: 'discuss://Board',
+      properties: [
+        {
+          name: 'pinned',
+          path: 'discuss://has_child',
+          nodeKind: 'IRI',
+          relationKind: 'hasMany',
+          targetClassName: 'Pin',
+        },
+        {
+          name: 'comments',
+          path: 'discuss://has_child',
+          nodeKind: 'IRI',
+          relationKind: 'hasMany',
+          targetClassName: 'Comment',
+        },
+      ],
+      parentShapes: [],
+    } as unknown as SHACLShape;
+    const comment = {
+      nodeShapeUri: 'CommentShape',
+      targetClass: 'discuss://Comment',
+      properties: [
+        {
+          name: 'board',
+          path: 'discuss://has_child',
+          nodeKind: 'IRI',
+          relationKind: 'belongsToOne',
+          targetClassName: 'Board',
+        },
+      ],
+      parentShapes: [],
+    } as unknown as SHACLShape;
+
+    const entries = buildEntityManifest([
+      { name: 'Board', shape: board },
+      { name: 'Comment', shape: comment },
+    ]);
+    expect(entries.find((e) => e.name === 'Comment')!.properties[0]).toMatchObject({ reverseOf: 'comments' });
+  });
+
+  it('falls back to the predicate when no forward names the reverse’s class', () => {
+    const board = {
+      nodeShapeUri: 'BoardShape',
+      targetClass: 'discuss://Board',
+      properties: [{ name: 'items', path: 'discuss://has_child', nodeKind: 'IRI', relationKind: 'hasMany' }],
+      parentShapes: [],
+    } as unknown as SHACLShape;
+    const comment = {
+      nodeShapeUri: 'CommentShape',
+      targetClass: 'discuss://Comment',
+      properties: [
+        {
+          name: 'board',
+          path: 'discuss://has_child',
+          nodeKind: 'IRI',
+          relationKind: 'belongsToOne',
+          targetClassName: 'Board',
+        },
+      ],
+      parentShapes: [],
+    } as unknown as SHACLShape;
+    const entries = buildEntityManifest([
+      { name: 'Board', shape: board },
+      { name: 'Comment', shape: comment },
+    ]);
+    expect(entries.find((e) => e.name === 'Comment')!.properties[0]).toMatchObject({ reverseOf: 'items' });
   });
 });

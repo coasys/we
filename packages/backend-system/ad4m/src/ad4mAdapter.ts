@@ -290,14 +290,16 @@ function resolveScopeToParent(
   const relationOn = (name: string | undefined) =>
     name ? models.find((m) => m.name === name)?.properties.find((p) => p.name === scope.via) : undefined;
   /*
-    `direction: 'in'` reads `result --via--> anchor`, so the relation is often the *result's* own —
+    `direction: 'in'` reads `result --via--> anchor`, so the relation is the *result's* own —
     "what points at this message through `replyTo`" names the reply's field, not the message's. The
-    anchor is asked first, which keeps a tree read through one relation (`children` from both ends)
-    exactly as it was; the entity being read answers where the anchor declares no such relation.
+    entity being read is asked first, and a class that declares no such relation falls back to the
+    anchor, which keeps a tree read through one relation (`children` from both ends) as it was. A
+    name both declare therefore means the result's, whatever predicate the anchor gives it.
   */
   const prop =
-    relationOn(scope.anchor) ??
-    (scope.direction === 'in' && typeof entity === 'string' ? relationOn(entity) : undefined);
+    scope.direction === 'in' && typeof entity === 'string'
+      ? (relationOn(entity) ?? relationOn(scope.anchor))
+      : relationOn(scope.anchor);
   if (!prop?.predicate) {
     throw new Error(
       `ad4mQueryAdapter: cannot resolve scope { anchor: "${scope.anchor}", via: "${scope.via}" } — ` +

@@ -234,11 +234,11 @@ export function buildEntityManifest(shapes: ForeignShape[]): EntityManifestEntry
         required: (p.minCount ?? 0) >= 1,
         writable: p.writable ?? true,
         ...(p.resolveLanguage !== undefined && { resolveLanguage: p.resolveLanguage }),
-        // The target class reaches us two ways: `sh:class` reads as `p.class`, while a model's
-        // `target_class_name` is lifted into `p.targetClassName` — a shape declaring only the
-        // second still knows which entity its relation points at, so take whichever is set.
-        ...((p.class ?? p.targetClassName) !== undefined && {
-          relatedEntity: shaclClassToLocalName((p.class ?? p.targetClassName)!),
+        // The target class reaches us two ways, and decorator-generated classes write BOTH:
+        // `sh:class` is the target's *shape* URI (`…Shape`), `target_class_name` its class name.
+        // The name is the entity, so it wins; a shape declaring only `sh:class` still resolves.
+        ...((p.targetClassName ?? p.class) !== undefined && {
+          relatedEntity: shaclClassToLocalName((p.targetClassName ?? p.class)!),
         }),
         // The shape says which end owns the link, so an entry read back from storage keeps it.
         ...(p.relationKind?.startsWith('belongsTo') && { reverse: true }),
@@ -256,9 +256,11 @@ export function buildEntityManifest(shapes: ForeignShape[]): EntityManifestEntry
   for (const entry of entries) {
     for (const p of entry.properties) {
       if (!p.reverse || p.reverseOf || !p.relatedEntity) continue;
-      const forward = entries
+      // Several forwards can share a predicate; the one that points back at this entity is the pair.
+      const candidates = entries
         .find((e) => e.name === p.relatedEntity)
-        ?.properties.find((q) => !q.reverse && q.predicate === p.predicate);
+        ?.properties.filter((q) => !q.reverse && q.predicate === p.predicate);
+      const forward = candidates?.find((q) => q.relatedEntity === entry.name) ?? candidates?.[0];
       if (forward) p.reverseOf = forward.name;
     }
   }
