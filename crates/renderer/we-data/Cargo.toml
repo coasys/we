@@ -1,0 +1,28 @@
+[package]
+name = "we-data"
+version = "0.1.0"
+edition = "2021"
+description = "The executor boundary: the Executor trait, its argument types and FakeExecutor"
+publish = false
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+indexmap.workspace = true
+thiserror.workspace = true
+async-trait.workspace = true
+unicode-normalization.workspace = true
+we-expr.workspace = true
+we-template.workspace = true
+
+[dev-dependencies]
+# Session + screen for the offline-report example and the route-resolution
+# tests — we-session does not depend on we-data, so there is no cycle.
+we-session.workspace = true
+we-screen.workspace = true
+# The legacy screen adapter for the real_snapshot harness — it drives a
+# raw Runtime and must install what a session installs.
+we-legacy.workspace = true
+# A minimal block_on for the async Executor calls in tests — tokio is off
+# limits; pollster is already in the lock via eframe.
+pollster = "1.0"

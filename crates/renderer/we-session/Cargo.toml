@@ -1,0 +1,16 @@
+[package]
+name = "we-session"
+version = "0.1.0"
+edition = "2021"
+description = "The app without pixels — screen state, local state, data and resolve revisions"
+publish = false
+
+[dependencies]
+we-expr.workspace = true
+we-screen.workspace = true
+we-template.workspace = true
+we-legacy.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+we-metrics.workspace = true

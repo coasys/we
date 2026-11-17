@@ -1,0 +1,15 @@
+[package]
+name = "we-legacy"
+version = "0.1.0"
+edition = "2021"
+description = "Legacy screen-store adapter — the old routeStore/shellStore/themeStore/spaceStore names served live over the `screen` root"
+publish = false
+
+[dependencies]
+we-expr.workspace = true
+we-template.workspace = true
+indexmap.workspace = true
+
+[dev-dependencies]
+we-screen.workspace = true
+serde_json.workspace = true
