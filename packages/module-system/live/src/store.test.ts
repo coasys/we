@@ -28,7 +28,14 @@ const WORLD = { surface: 'canvas:c1', kind: 'world' as const, x: 10, y: 20 };
  * so a manifest that forgot one fails here rather than passing and degrading in the app.
  */
 function setup(
-  options: { settings?: Record<string, boolean>; dataset?: unknown; shared?: boolean; reportsResults?: boolean } = {},
+  options: {
+    settings?: Record<string, boolean>;
+    dataset?: unknown;
+    shared?: boolean;
+    reportsResults?: boolean;
+    /** Collect the store's effects rather than running each once, so a test can re-fire them. */
+    effects?: (() => void)[];
+  } = {},
 ) {
   const wire = fakeEphemeral({ self: ME });
   // Before the store attaches, since a consumer subscribes as it opens the channel.
@@ -40,6 +47,23 @@ function setup(
 
   const deps = fakeDeps({
     selfId: () => ME,
+    /*
+      The fake's one-shot `effect` runs every wiring pass at construction — before `leave` has
+      happened, which is exactly what an effect on presence exists to notice. Collect them instead
+      and re-run by hand where the test is about what an effect catches.
+    */
+    ...(options.effects
+      ? {
+          effect: (fn: () => void) => {
+            options.effects!.push(fn);
+            try {
+              fn();
+            } catch {
+              // The degraded host the fake's effect tolerates.
+            }
+          },
+        }
+      : {}),
     dataset: () => (options.dataset === undefined ? (wire.dataset as never) : (options.dataset as never)),
     /*
       A shared space has a global uri and a personal one does not, which is what the module asks to
@@ -500,6 +524,60 @@ describe('the wheel', () => {
   });
 });
 
+describe('when the call ends', () => {
+  /*
+    The switches for sharing the pointer and taking the wheel live in the call's More menu, which is
+    gone once the call is. Left on past it, neither could be turned off from anywhere.
+  */
+  const joinCall = (presence: ReturnType<typeof fakePresence>) => presence.publish(ME, { type: 'call', id: 'call:1' });
+
+  it('stops sharing the pointer and gives up the wheel, since nothing left on screen could', () => {
+    const effects: (() => void)[] = [];
+    const { store, presence, wire } = setup({ effects });
+    joinCall(presence);
+    for (const fn of effects) fn();
+    store.toggleCursors();
+    store.takeWheel();
+    expect(store.cursorsOn()).toBe(true);
+    expect(store.driving()).toBe(true);
+
+    presence.kernel.clearActivity('call', 'call:1');
+    for (const fn of effects) fn();
+
+    expect(store.cursorsOn()).toBe(false);
+    expect(store.driving()).toBe(false);
+    expect(presence.cleared).toContainEqual({ type: 'live', id: undefined });
+    expect(presence.cleared).toContainEqual({ type: 'driving', id: undefined });
+    expect(published(wire).at(-1)).toMatchObject({ kind: 'cursor', at: null });
+  });
+
+  it('leaves them alone where there never was a call to end', () => {
+    const effects: (() => void)[] = [];
+    const { store } = setup({ effects });
+    store.toggleCursors();
+    store.takeWheel();
+    for (const fn of effects) fn();
+
+    expect(store.cursorsOn()).toBe(true);
+    expect(store.driving()).toBe(true);
+  });
+
+  it('leaves following alone, which the rail still offers', () => {
+    const effects: (() => void)[] = [];
+    const { store, presence } = setup({ effects });
+    joinCall(presence);
+    for (const fn of effects) fn();
+    presence.publish(ANA, { type: 'driving', since: 1_000 });
+    store.follow();
+    expect(store.following()).toBe(true);
+
+    presence.kernel.clearActivity('call', 'call:1');
+    for (const fn of effects) fn();
+
+    expect(store.following()).toBe(true);
+  });
+});
+
 describe('which of the two the rail offers', () => {
   it('offers the wheel while it is free, and following once somebody has it', () => {
     const { store, presence } = setup();
@@ -647,6 +725,27 @@ describe('the synthetic cursors', () => {
       carried on afterwards could not be turned off at all — which is what testing found, twice.
     */
     presence.leave(ME);
+    expect(view.decorations()).toEqual([]);
+  });
+
+  it('forgets the count with the call, the way the fake peers die with theirs', () => {
+    /*
+      Drawing stops when the call does, but that is only half the reset: the count is remembered
+      (localStorage), so a stale number resurrects the same marks the moment the next call starts —
+      on screen again with nobody having asked, in a call whose own count is still zero by every
+      honest reading. The call module's fake participants die at teardown; so do these.
+    */
+    const effects: (() => void)[] = [];
+    const { store, view, presence } = setup({ effects });
+    joinCall(presence);
+    harness(store).addFakeCursor();
+    harness(store).addFakeCursor();
+    expect(harness(store).fakeCursorCount()).toBe(2);
+
+    presence.leave(ME);
+    // What Solid's tracking does for it: presence changed, so the effects re-run.
+    for (const fn of effects) fn();
+    expect(harness(store).fakeCursorCount(), 'the count itself, not only what it draws').toBe(0);
     expect(view.decorations()).toEqual([]);
   });
 
