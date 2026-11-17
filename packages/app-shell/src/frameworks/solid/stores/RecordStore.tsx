@@ -1842,8 +1842,18 @@ export function RecordStoreProvider(props: ParentProps) {
    * remembered. A to-one answers from the card's own field; a to-many from the row of the holding
    * class that lists the card, which is a scan of that class and the only spelling of "who lists me"
    * a list leaves.
+   *
+   * A card can be listed by more than one holder, so the parent the tree drew it under is passed as
+   * `holder` where it is known (the edge a drop reports, or the parent an undo entry left it under):
+   * it is answered if that one row still lists the card, by a read of that row alone. Only when it
+   * does not — or no holder is known, as for an ancestor walked up — is the class scanned.
    */
-  async function parentThrough(handle: unknown, relation: FollowedRelation, cardId: string): Promise<string> {
+  async function parentThrough(
+    handle: unknown,
+    relation: FollowedRelation,
+    cardId: string,
+    holder?: string,
+  ): Promise<string> {
     const Model = entityClass(relation.holder, handle);
     if (heldByChild(relation)) {
       const record = (await Model.findOne(handle, { where: { id: cardId } } as never)) as Record<
@@ -1852,12 +1862,19 @@ export function RecordStoreProvider(props: ParentProps) {
       > | null;
       return record ? (idsAt(record, relation.name)[0] ?? '') : '';
     }
+    if (holder) {
+      const row = (await Model.findOne(handle, {
+        where: { id: holder },
+        include: { [relation.name]: true },
+      } as never)) as Record<string, unknown> | null;
+      if (row && idsAt(row, relation.name).includes(cardId)) return holder;
+    }
     const rows = (await Model.findAll(handle, { include: { [relation.name]: true } } as never)) as unknown as Record<
       string,
       unknown
     >[];
-    const holder = rows.find((row) => idsAt(row, relation.name).includes(cardId));
-    return typeof holder?.id === 'string' ? holder.id : '';
+    const found = rows.find((row) => idsAt(row, relation.name).includes(cardId));
+    return typeof found?.id === 'string' ? found.id : '';
   }
 
   /**
@@ -1871,7 +1888,8 @@ export function RecordStoreProvider(props: ParentProps) {
    * `set`/`add`/`remove`. A set is its own clear, so a move needs nothing more; a clear alone has no
    * spelling there (`update` skips an empty value) and is reported rather than pretended.
    *
-   * A to-many is the parent's list: off the old holder's, onto the new one's.
+   * A to-many is the parent's list: off the old holder's, onto the new one's, in one write group so
+   * no reader sees the card on neither list or on both.
    */
   async function writeLink(
     handle: unknown,
@@ -1882,8 +1900,10 @@ export function RecordStoreProvider(props: ParentProps) {
   ): Promise<boolean> {
     const Model = entityClass(relation.holder, handle);
     if (!heldByChild(relation)) {
-      if (from && from !== parent) await Model.removeRelation(handle, from, relation.name, cardId);
-      if (parent && parent !== from) await Model.addRelation(handle, parent, relation.name, cardId);
+      await runEntityTransaction(handle, async (tx) => {
+        if (from && from !== parent) await Model.removeRelation(handle, from, relation.name, cardId, tx.batchId);
+        if (parent && parent !== from) await Model.addRelation(handle, parent, relation.name, cardId, tx.batchId);
+      });
       return true;
     }
     const record = (await Model.findOne(handle, { where: { id: cardId } } as never)) as Record<string, unknown> | null;
@@ -1939,11 +1959,11 @@ export function RecordStoreProvider(props: ParentProps) {
       scope: canvas,
       label: to ? 'move card in tree' : 'take card out of tree',
       undo: async () => {
-        if ((await parentThrough(handle, relation, cardId)) !== to) return;
+        if ((await parentThrough(handle, relation, cardId, to)) !== to) return;
         await replay(from, to, 'undo');
       },
       redo: async () => {
-        if ((await parentThrough(handle, relation, cardId)) !== from) return;
+        if ((await parentThrough(handle, relation, cardId, from)) !== from) return;
         await replay(to, from, 'redo');
       },
     });
@@ -2003,6 +2023,15 @@ export function RecordStoreProvider(props: ParentProps) {
       event.edge?.type === 'relation' && typeof event.edge.data?.relation === 'string' ? event.edge.data.relation : '';
     const named = hungBy || (spine !== '*' ? spine : '');
     let relation = named ? byName(named) : undefined;
+    /*
+      The parent the tree drew the card under, when the edge it was dragged by is this relation's: a
+      card a to-many lists from two holders hangs under each of them, and the drop moves the one it
+      was picked up from.
+    */
+    const edgeHolder = (through: FollowedRelation) =>
+      hungBy === `${through.holder}.${through.name}` && typeof event.edge?.data?.holder === 'string'
+        ? event.edge.data.holder
+        : undefined;
     if (named && !relation) {
       toastService.info('The tree does not follow that relation, so a card cannot be moved along it.');
       return;
@@ -2010,7 +2039,7 @@ export function RecordStoreProvider(props: ParentProps) {
 
     if (event.into === 'loose') {
       if (!relation) return;
-      const from = await parentThrough(handle, relation, cardId);
+      const from = await parentThrough(handle, relation, cardId, edgeHolder(relation));
       // A card dragged around the zone it is already in has nothing to write.
       if (!from) return;
       if (!(await writeLink(handle, relation, cardId, null, from))) {
@@ -2071,7 +2100,7 @@ export function RecordStoreProvider(props: ParentProps) {
       return;
     }
 
-    const from = await parentThrough(handle, relation, cardId);
+    const from = await parentThrough(handle, relation, cardId, edgeHolder(relation));
     // A drop beside its own siblings moves nothing but its place in the row — the ranks below still run.
     if (from !== parentId && !(await writeLink(handle, relation, cardId, parentId, from))) return;
 

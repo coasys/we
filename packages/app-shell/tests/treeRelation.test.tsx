@@ -797,6 +797,50 @@ describe('a tree drop writes the link the edge stands for', () => {
     expect(world.lists).toEqual(['-m2.items:t2', '+m1.items:t2']);
   });
 
+  it('takes the card off the list the edge drew it under, not the first list that holds it', async () => {
+    world.meetings.set('m1', { id: 'm1', items: ['t2'] });
+    world.meetings.set('m2', { id: 'm2', items: [] });
+    world.meetings.set('m3', { id: 'm3', items: ['t2'] });
+    for (const id of ['m1', 'm2', 'm3']) place(id);
+    const store = mount();
+    await store.arrangeOnTree(CANVAS, 'rel:Meeting.items', {
+      recordId: 't2',
+      recordType: 'DiscussionTopic',
+      into: 'child',
+      targetId: 'm2',
+      targetType: 'Meeting',
+      order: ['t2'],
+      edge: hangsBy('Meeting.items', 'm3', 't2'),
+    });
+    // m3 is the parent the tree drew; m1's list is another link and stays.
+    expect(world.lists).toEqual(['-m3.items:t2', '+m2.items:t2']);
+    expect(world.meetings.get('m1')?.items).toEqual(['t2']);
+    expect(world.meetings.get('m3')?.items).toEqual([]);
+
+    world.lists = [];
+    await store.undoCanvas(CANVAS);
+    expect(world.lists).toEqual(['-m2.items:t2', '+m3.items:t2']);
+    expect(world.meetings.get('m1')?.items).toEqual(['t2']);
+  });
+
+  it('reads a stale edge against the data: a holder that no longer lists the card is not unlinked', async () => {
+    world.meetings.set('m1', { id: 'm1', items: ['t2'] });
+    world.meetings.set('m2', { id: 'm2', items: [] });
+    world.meetings.set('m3', { id: 'm3', items: [] });
+    for (const id of ['m1', 'm2', 'm3']) place(id);
+    const store = mount();
+    await store.arrangeOnTree(CANVAS, 'rel:Meeting.items', {
+      recordId: 't2',
+      recordType: 'DiscussionTopic',
+      into: 'child',
+      targetId: 'm2',
+      targetType: 'Meeting',
+      order: ['t2'],
+      edge: hangsBy('Meeting.items', 'm3', 't2'),
+    });
+    expect(world.lists).toEqual(['-m1.items:t2', '+m2.items:t2']);
+  });
+
   it('takes the spine as a typed value as well as its spelling', async () => {
     const store = mount();
     await store.arrangeOnTree(
