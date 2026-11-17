@@ -387,6 +387,7 @@ export const contextData: ContextData = {
         { name: 'selected', type: 'boolean', optional: false, default: 'false' },
         { name: 'active', type: 'boolean', optional: false, default: 'false' },
         { name: 'disabled', type: 'boolean', optional: false, default: 'false' },
+        { name: 'dismiss', type: 'boolean', optional: false, default: 'false' },
         { name: 'label', type: 'unknown', optional: false },
         { name: 'value', type: 'unknown', optional: false },
       ],
@@ -4762,7 +4763,7 @@ export const contextData: ContextData = {
       icon: 'cursor-click',
       scope: 'space',
       requires: { kernels: ['presence', 'ephemeral', 'view'] },
-      capabilities: ['kernel:presence', 'kernel:ephemeral', 'kernel:view', 'slot:call-controls', 'slot:call-status'],
+      capabilities: ['kernel:presence', 'kernel:ephemeral', 'kernel:view', 'slot:call-menu', 'slot:call-status'],
       members: [
         { name: 'canDrive', kind: 'state', doc: 'Whether taking the wheel is possible here.' },
         { name: 'canFollow', kind: 'state', doc: 'Whether somebody else is driving, so this agent could follow them.' },
@@ -4795,11 +4796,7 @@ export const contextData: ContextData = {
       ],
       parts: [{ name: 'cursorToggle' }, { name: 'wheelButton' }, { name: 'driverStrip' }],
       panels: [],
-      launchers: [
-        { key: 'live:cursors', label: 'Share your pointer' },
-        { key: 'live:wheel', label: 'Take the wheel' },
-        { key: 'live:follow', label: 'Follow the driver' },
-      ],
+      launchers: [{ key: 'live:follow', label: 'Follow the driver' }],
       settings: [
         {
           key: 'cursors',
