@@ -43,6 +43,8 @@ import {
   TREE_LOCALS,
   TREE_QUERIES,
   treeStrip,
+  VOCABULARY_BUCKETS,
+  VOCABULARY_OPENS,
 } from './index.ts';
 
 /**
@@ -1476,5 +1478,24 @@ describe('Back through a discard guard', () => {
     });
     expect(nested(composer)).toBe(false);
     expect(nested(recordFormModal({ back }))).toBe(false);
+  });
+});
+
+/*
+  What a definition opens into on the vocabulary map is knowledge about one of WE's classes, so it is
+  a table by class name: a class from another app has no row, and the map shows it without uses.
+*/
+describe('the vocabulary map’s uses, by class', () => {
+  it('keys what a definition opens into by its class, and each bucket of that class reads it from there', () => {
+    expect(Object.keys(VOCABULARY_OPENS)).toEqual([
+      'SignalType',
+      'RelationshipType',
+      'TaskState',
+      'InvolvementType',
+      'Topic',
+    ]);
+    for (const [name, opens] of Object.entries(VOCABULARY_OPENS))
+      expect(VOCABULARY_BUCKETS).toContain(`entity: '${name}', opens: ${opens}`);
+    expect(VOCABULARY_OPENS.TaskState).toContain("entity: 'TaskBlock', field: 'status', key: 'slug'");
   });
 });
