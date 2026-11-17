@@ -1363,7 +1363,7 @@ turn rather than rise, and the spinner keeps turning, since a still spinner look
   Props: variant: 'soft' | 'solid' = 'soft', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-blockquote (DesignSystemElement)
 - we-button (DesignSystemElement)
-  Props: variant: 'solid' | 'soft' | 'outline' | 'ghost' | 'bare' = 'solid', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', text?: string | undefined, label: string = '', expanded?: boolean | undefined, href?: string | undefined, disabled: boolean = false, loading: boolean = false, gradient: boolean = false, square: boolean = false
+  Props: variant: 'solid' | 'soft' | 'outline' | 'ghost' | 'bare' = 'solid', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', text?: string | undefined, label: string = '', expanded?: boolean | undefined, href?: string | undefined, disabled: boolean = false, loading: boolean = false, gradient: boolean = false, square: boolean = false, autofocus: boolean = false
 - we-checkbox (DesignSystemElement)
   Props: checked: boolean = false, disabled: boolean = false, name: string = '', label: string = '', value: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-code (DesignSystemElement)
@@ -4141,6 +4141,7 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - level — Microphone loudness as the voice detector measures it, 0–1.
   - levelPercent — The microphone level as a CSS width for a meter.
   - listening — True only while actually transcribing — what a record button highlights on.
+  - liveCallRecords — The record of every call somebody is in right now.
   - liveCollectionId — The record the call this agent is in is writing into, or empty when there is none.
   - modelMissing — No transcription model is installed on this node, as last read.
   - modelUnready — A transcription model is installed and cannot run yet — still downloading, or its server is not answering.
