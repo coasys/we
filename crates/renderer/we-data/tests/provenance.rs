@@ -94,7 +94,6 @@ const SNAPSHOT_DEMO: &[&str] = &[
     "sessionStore.me",
     "sessionStore.signInStep",
     "spaceStore.currentSpace",
-    "spaceStore.firstScreenOpen",
     "spaceStore.involvementTypes",
     "spaceStore.members",
     "spaceStore.orderedSidebarItems",

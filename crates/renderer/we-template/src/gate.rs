@@ -554,7 +554,7 @@ impl FilteredNs {
 
 /// Whether two values are the same allocation — the identity a memo
 /// entry keys a wrapper by.
-fn same_alloc(a: &Value, b: &Value) -> bool {
+pub(crate) fn same_alloc(a: &Value, b: &Value) -> bool {
     match (a, b) {
         (Value::Namespace(a), Value::Namespace(b)) => Arc::ptr_eq(a, b),
         (Value::Obj(a), Value::Obj(b)) => Arc::ptr_eq(a, b),

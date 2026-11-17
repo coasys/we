@@ -171,6 +171,9 @@ pub struct RendererApp {
     /// it, puts its own reader here (this file is shared with wasm and does
     /// not name the connected host).
     pub dropped_calls: fn(&Session) -> Vec<String>,
+    /// The bag whose `spaceStore.firstScreenOpen` opens after the first
+    /// frame — see [`RendererApp::hold_first_screen`].
+    first_screen: Option<Arc<StoreBag>>,
     edit: EditState,
     layout: Option<Layout>,
     /// The inputs the cached layout was computed for — see [`LayoutKey`].
@@ -249,6 +252,7 @@ impl RendererApp {
             debug: false,
             stages: Stages::default(),
             frame_log: false,
+            first_screen: None,
         }
     }
 
@@ -426,6 +430,19 @@ impl RendererApp {
         if self.frame_log {
             self.log_frame(ui.ctx(), &resolved);
         }
+        // The first screen is drawn: what a template held until now (the
+        // sidebar's latest calls) may start.
+        if let Some(bag) = self.first_screen.take() {
+            bag.set_host_member("spaceStore", "firstScreenOpen", we_expr::Value::Bool(true));
+        }
+    }
+
+    /// Hold `spaceStore.firstScreenOpen` closed — the caller has set it
+    /// `false` on `bag` — until this app has drawn its first frame, then
+    /// open it, as the TS host does once its first screen is up. A host
+    /// that never calls this has it open from the start.
+    pub fn hold_first_screen(&mut self, bag: Arc<StoreBag>) {
+        self.first_screen = Some(bag);
     }
 
     /// `WE_FRAME_LOG`: one stderr line per frame — when it ran, what input

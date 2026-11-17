@@ -100,6 +100,28 @@ fn connect_pick_and_render() {
     step_until(&mut h, "the new call", Duration::from_secs(2), |h| {
         tree_text(h).contains("A call from elsewhere")
     });
+
+    // Back on the space's own page, the sidebar's Calls group lists it too
+    // — once the first screen is drawn (`spaceStore.firstScreenOpen`, which
+    // the host opens after its first frame).
+    let live = h.state_mut().as_mut().unwrap().live_space().unwrap();
+    live.app
+        .session
+        .apply_screen(we_screen::ScreenOp::Navigate {
+            to: "~/".into(),
+            query: None,
+            base_depth: None,
+            replace: false,
+        });
+    step_until(
+        &mut h,
+        "the call in the sidebar",
+        Duration::from_secs(10),
+        |h| {
+            let text = tree_text(h);
+            text.contains("A call from elsewhere") && !text.contains("No calls yet.")
+        },
+    );
 }
 
 fn app_for(url: &str, tokens: &std::path::Path) -> H<'static> {

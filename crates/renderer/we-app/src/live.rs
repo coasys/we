@@ -308,6 +308,11 @@ pub fn live_space_app(
     let registry = Registry::with_builtins();
     let types: std::collections::HashSet<&'static str> = registry.type_names().collect();
     let mut app = RendererApp::new(placeholder, "coasys", data.bag.clone(), screen, registry);
+    // Open from a recording, but live the first screen is drawn first: what
+    // the template holds for it (the sidebar's latest calls) starts after.
+    data.bag
+        .set_host_member("spaceStore", "firstScreenOpen", we_expr::Value::Bool(false));
+    app.hold_first_screen(data.bag.clone());
     let runtime = Runtime::app(spec, data.bag.clone(), LocalState::new())
         .with_sources(Some(source), Arc::new(NoParts))
         .with_dollar_types(move |ty| types.contains(ty));

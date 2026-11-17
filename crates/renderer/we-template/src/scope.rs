@@ -506,6 +506,13 @@ pub struct StoreBag {
     functions: RwLock<HashMap<Arc<str>, CallFn>>,
     queries: RwLock<IndexMap<Arc<str>, Value>>,
     invokes: RwLock<HashMap<String, Value>>,
+    /// Members the host owns, by store: laid over whatever root the store
+    /// is bound to, so a `set_root` from a live layer cannot take one away.
+    host_members: RwLock<IndexMap<Arc<str>, HostMemberMap>>,
+    /// The overlay built for each store, kept while neither its root nor
+    /// its members move: a reader compares roots by identity, so the same
+    /// root must give back the same overlay.
+    host_overlays: Mutex<HashMap<Arc<str>, HostOverlay>>,
     /// The sessions listening for `set_root` — one [`Invalidator`] each,
     /// so several sessions can share a bag and each hears every write.
     invalidators: Mutex<Vec<Invalidator>>,
@@ -531,14 +538,69 @@ impl StoreBag {
     /// root a `set_root` wrote. Session-owned bindings (`screen`, the
     /// legacy faces) live in the mount's [`RootLayer`], never here.
     pub fn root(&self, name: &str) -> Option<Value> {
-        self.roots.read().ok()?.get(name).cloned()
+        self.with_host_members(name, self.roots.read().ok()?.get(name).cloned())
     }
 
     /// The store root under a face's overlay — what `set_root` writes.
     /// A screen face reads its base through here, at read time; for a
     /// name with no face this is the same answer [`StoreBag::root`] gives.
     pub fn root_base(&self, name: &str) -> Option<Value> {
-        self.roots.read().ok()?.get(name).cloned()
+        self.with_host_members(name, self.roots.read().ok()?.get(name).cloned())
+    }
+
+    /// `root` with the host's own members of that store laid over it.
+    fn with_host_members(&self, name: &str, base: Option<Value>) -> Option<Value> {
+        let members = self
+            .host_members
+            .read()
+            .ok()
+            .and_then(|m| m.get(name).cloned())
+            .filter(|m| !m.is_empty());
+        let Some(members) = members else {
+            return base;
+        };
+        let mut overlays = self.host_overlays.lock().ok()?;
+        if let Some(held) = overlays.get(name) {
+            let same_base = match (&held.base, &base) {
+                (Some(a), Some(b)) => crate::gate::same_alloc(a, b),
+                (None, None) => true,
+                _ => false,
+            };
+            let same_members = held.members.len() == members.len()
+                && held
+                    .members
+                    .iter()
+                    .all(|(k, v)| members.get(k).is_some_and(|w| v.strict_eq(w)));
+            if same_base && same_members {
+                return Some(held.value.clone());
+            }
+        }
+        let value = Value::namespace(HostMembers {
+            base: base.clone().unwrap_or(Value::Undefined),
+            members: members.clone(),
+        });
+        overlays.insert(
+            name.into(),
+            HostOverlay {
+                base,
+                members,
+                value: value.clone(),
+            },
+        );
+        Some(value)
+    }
+
+    /// Set a member the host owns — `spaceStore.firstScreenOpen`, say —
+    /// and tell every subscribed session the data moved. It answers from
+    /// `store`'s root whatever that root is rebound to.
+    pub fn set_host_member(&self, store: &str, key: &str, value: Value) {
+        if let Ok(mut all) = self.host_members.write() {
+            all.entry(store.into())
+                .or_default()
+                .insert(key.into(), value);
+        }
+        self.version.fetch_add(1, Ordering::Relaxed);
+        self.invalidate_subscribers();
     }
 
     /// A function call — built-ins in E1, natives in E6. Unknown → `Undefined`.
@@ -701,6 +763,11 @@ impl StoreBag {
                 table.insert(target.clone(), Value::from_json(reply));
             }
         }
+        // A recording is a first screen already drawn, so the work a
+        // template holds until then (a sidebar's calls) may start. A host
+        // that draws live closes it again and opens it after its first
+        // frame — see `set_host_member`.
+        bag.set_host_member("spaceStore", "firstScreenOpen", Value::Bool(true));
         Ok(bag)
     }
 }
@@ -716,5 +783,48 @@ impl DataRevision for StoreBag {
 
     fn subscribe(&self, invalidator: Invalidator) {
         self.set_invalidator(invalidator);
+    }
+}
+
+type HostMemberMap = IndexMap<Arc<str>, Value>;
+
+/// The root an overlay was laid over, the members it carried, and the overlay.
+struct HostOverlay {
+    base: Option<Value>,
+    members: HostMemberMap,
+    value: Value,
+}
+
+/// A store root with the host's own members over it.
+#[derive(Debug)]
+struct HostMembers {
+    base: Value,
+    members: IndexMap<Arc<str>, Value>,
+}
+
+impl Namespace for HostMembers {
+    fn get(&self, key: &str) -> Value {
+        if let Some(v) = self.members.get(key) {
+            return v.clone();
+        }
+        match &self.base {
+            Value::Namespace(ns) => ns.get(key),
+            Value::Obj(map) => map.get(key).cloned().unwrap_or(Value::Undefined),
+            _ => Value::Undefined,
+        }
+    }
+
+    fn keys(&self) -> Vec<Arc<str>> {
+        let mut keys = match &self.base {
+            Value::Namespace(ns) => ns.keys(),
+            Value::Obj(map) => map.keys().cloned().collect(),
+            _ => vec![],
+        };
+        for k in self.members.keys() {
+            if !keys.contains(k) {
+                keys.push(k.clone());
+            }
+        }
+        keys
     }
 }
