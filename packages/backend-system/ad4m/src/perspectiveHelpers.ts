@@ -256,9 +256,11 @@ export function buildEntityManifest(shapes: ForeignShape[]): EntityManifestEntry
   for (const entry of entries) {
     for (const p of entry.properties) {
       if (!p.reverse || p.reverseOf || !p.relatedEntity) continue;
-      const forward = entries
+      // Several forwards can share a predicate; the one that points back at this entity is the pair.
+      const candidates = entries
         .find((e) => e.name === p.relatedEntity)
-        ?.properties.find((q) => !q.reverse && q.predicate === p.predicate);
+        ?.properties.filter((q) => !q.reverse && q.predicate === p.predicate);
+      const forward = candidates?.find((q) => q.relatedEntity === entry.name) ?? candidates?.[0];
       if (forward) p.reverseOf = forward.name;
     }
   }
