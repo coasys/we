@@ -2167,6 +2167,70 @@ describe('what a collection extracts', () => {
     await vi.waitFor(() => expect(port.watched).toContain(watchId(root)));
   }, 15000);
 
+  it('registers the space collection’s watch once, with the whole list, when the space’s classes arrive late', async () => {
+    // The trace this pins: the watch registered from the list as it stood a moment after the switch —
+    // without the classes the space already had — and then again when they arrived. Each time the
+    // stored registration differed from a partial list, so the host removed it and added it back.
+    const registrations: { watchId: string; classes: string[] }[] = [];
+    const removed: string[] = [];
+    let release: (() => void) | undefined;
+    let hold = false;
+    onPorts = (ports) => {
+      const read = ports.schemas.foreignSchemas.bind(ports.schemas);
+      ports.schemas.foreignSchemas = async (dataset) => {
+        if (!hold) return read(dataset);
+        await new Promise<void>((resolve) => (release = resolve));
+        return [
+          {
+            name: 'Sighting',
+            targetClass: 'test://Sighting',
+            properties: [],
+            interpretationHint: 'something somebody saw',
+          },
+        ];
+      };
+      (ports as unknown as { interpretation: unknown }).interpretation = {
+        watch: async (_dataset: unknown, args: { watchId: string; classes: string[] }) => {
+          registrations.push({ watchId: args.watchId, classes: [...args.classes] });
+        },
+        unwatch: async (_dataset: unknown, id: string) => {
+          removed.push(id);
+        },
+      };
+    };
+    const stores = mountShell();
+    await ready(stores);
+    hold = true;
+    await enterSpace(stores, 'Late');
+    const root = stores.spaces.root();
+    const mine = () => registrations.filter((r) => r.watchId === watchId(root));
+
+    // Wanted, and not registered: what the space can extract is still being read.
+    await vi.waitFor(() => expect(release).toBeDefined());
+    expect(stores.spaces.autoExtractFor(root)).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(mine()).toEqual([]);
+    expect(stores.shapes.extractionCandidatesLoaded()).toBe(false);
+
+    release!();
+    await vi.waitFor(() => expect(mine()).toHaveLength(1));
+    // The list as decided once everything was read — the space's class is now a candidate, and this
+    // collection's own list (copied from the defaults when it was made) chooses from that.
+    expect(stores.shapes.extractionCandidates()).toContain('Sighting');
+    const decided = kernel()
+      .targets(root)
+      .filter((t) => t.selected)
+      .map((t) => t.entity);
+    expect([...mine()[0].classes].sort()).toEqual([...decided].sort());
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(mine()).toHaveLength(1);
+    expect(removed).not.toContain(watchId(root));
+
+    // Off still stops it.
+    await stores.spaces.setAutoExtractFor(root, false);
+    await vi.waitFor(() => expect(removed).toContain(watchId(root)));
+  }, 15000);
+
   it('refuses the space collection to a member who does not administer the space, but not a call', async () => {
     const stores = mountShell();
     await ready(stores);

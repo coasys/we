@@ -5011,6 +5011,14 @@ export function SpaceStoreProvider(props: ParentProps) {
     // registration, and the port replaces it when the list differs.
     if (root) void extractionTargetsFor(root);
     if (wanted) {
+      /*
+        Not before the list is whole. Core vocabulary is known at once and the space's own models and
+        foreign classes a few round trips later, so registering on the first answer wrote a watch
+        without them and then, when they came, removed it and wrote it again — on every visit, from
+        every member. Registered once it is whole, the port finds what is stored already says the
+        same and writes nothing.
+      */
+      if (!shapeStore.extractionCandidatesLoaded()) return;
       looseWatchOn = { root, handle };
       void datasetStore.watchConversation(root, handle).catch((error: unknown) => {
         console.info('SpaceStore: the space’s loose messages cannot be watched here', error);

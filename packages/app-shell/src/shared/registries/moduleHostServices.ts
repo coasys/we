@@ -116,6 +116,8 @@ export interface ModuleHostServices {
   proposalsForCollection?: (dataset: DatasetHandle, collectionId: string) => Promise<InterpretationProposal[]>;
   /** What one call extracts and what else it could. Absent reads as an empty list. */
   extractionTargets?: (collectionId: string) => { entity: string; selected: boolean }[];
+  /** Whether `extractionTargets` is the whole answer yet. Absent reads as true. */
+  extractionTargetsLoaded?: () => boolean;
   setExtractionTarget?: (collectionId: string, entity: string, on: boolean) => Promise<void>;
   /** `dataset` absent means the space on screen. */
   watchCollection?: (collectionId: string, dataset?: DatasetHandle) => Promise<void>;
@@ -579,6 +581,7 @@ export function createModuleStoreDeps(framework: {
         await set(collectionId, on);
       },
       targets: (collectionId) => services.extractionTargets?.(collectionId) ?? [],
+      targetsLoaded: () => services.extractionTargetsLoaded?.() ?? true,
       setTarget: async (collectionId, entity, on) => {
         const set = services.setExtractionTarget;
         if (!set) throw new Error('interpretation: this host cannot record a call’s extraction targets');

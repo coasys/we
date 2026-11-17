@@ -977,9 +977,22 @@ describe('extraction', () => {
     const candidates = new Set(initialTargets);
     const defaults = [...initialTargets];
     const forCall = (collection: string) => targets.get(collection) ?? defaults.filter((e) => candidates.has(e));
+    /**
+     * Whether the host has finished reading what this space could extract. True unless a test holds
+     * it back: the class catalogue arrives in pieces — core vocabulary at once, a space's own and
+     * foreign classes a few round trips later.
+     */
+    let loaded = true;
+    /** The class list each registration was made with, in the same order as the registrations. */
+    const registered: string[][] = [];
     return {
       calls,
       watches,
+      registered,
+      /** Stand in for the catalogue still loading (`false`) and arriving (`true`). */
+      setLoaded: (next: boolean) => {
+        loaded = next;
+      },
       targetsSeen,
       reconciled,
       /** What the watch would currently be registered for — the module hands the host a collection. */
@@ -993,6 +1006,7 @@ describe('extraction', () => {
       },
       port: {
         available: () => available,
+        targetsLoaded: () => loaded,
         targets: (collection: string) => {
           const active = forCall(collection);
           return [...candidates].map((entity) => ({ entity, selected: active.includes(entity) }));
@@ -1011,6 +1025,7 @@ describe('extraction', () => {
         watchCollection: async (collectionId: string, target?: { dataset?: string }) => {
           watches.push(collectionId);
           targetsSeen.push(target?.dataset ?? '');
+          registered.push(forCall(collectionId));
         },
         unwatchCollection: async (collectionId: string, target?: { dataset?: string }) => {
           watches.push(`-${collectionId}`);
@@ -1367,6 +1382,60 @@ describe('extraction', () => {
       // Removed first, then registered again — a plain re-register would union the old list back in.
       expect(i.watches).toEqual([collection, `-${collection}`, collection]);
       expect(i.watchTargetsOf(collection)).toEqual(['TaskBlock']);
+    });
+
+    /*
+      The list is not an answer until the host has read all of it.
+
+      Core vocabulary is known at once; a space's own models and the classes it already had arrive a
+      few round trips later. A watch keyed on the list as it stood then registered the part that had
+      arrived, then removed it and registered the whole once the rest did — four writes to the shared
+      graph from every member who opened the call, ending where they started, and a second in between
+      in which the watch did not look for what had not arrived.
+    */
+    it('registers once, with the whole list, when what the space can extract arrives late', async () => {
+      const i = interpreter(undefined, true, ['EventBlock', 'TaskBlock']);
+      i.setLoaded(false);
+      const h = harness(inCall, { interpretation: i.port });
+      await h.say('we should ship the docs on friday');
+
+      expect(i.watches).toEqual([]);
+      // Nothing selected is not what an unread list means, so nobody is told so.
+      expect(h.notified).toEqual([]);
+
+      i.setCandidates(['EventBlock', 'Sighting', 'TaskBlock']);
+      i.setLoaded(true);
+      await h.settle();
+
+      expect(i.watches).toEqual([RECORD]);
+      expect(i.registered).toEqual([['EventBlock', 'Sighting', 'TaskBlock']]);
+    });
+
+    it('registers once the list is read even when reading it changed nothing', async () => {
+      // The list the call opened with was already the whole of it — only the flag moves.
+      const i = interpreter(undefined, true, ['EventBlock', 'TaskBlock']);
+      i.setLoaded(false);
+      const h = harness(inCall, { interpretation: i.port });
+      await h.say('we should ship the docs on friday');
+
+      i.setLoaded(true);
+      await h.settle();
+
+      expect(i.watches).toEqual([RECORD]);
+    });
+
+    it('still stops the watch when automatic extraction is switched off while the list is reloading', async () => {
+      // Off needs no list: waiting for one would leave the watch spending a pass per batch meanwhile.
+      const i = interpreter(undefined, true, ['EventBlock', 'TaskBlock']);
+      let auto = true;
+      const h = harness(inCall, { interpretation: { ...i.port, autoEnabled: () => auto } });
+      await h.say('we should ship the docs on friday');
+
+      i.setLoaded(false);
+      auto = false;
+      await h.settle();
+
+      expect(i.watches).toEqual([RECORD, `-${RECORD}`]);
     });
 
     it('does not re-register when the list has not actually changed', async () => {

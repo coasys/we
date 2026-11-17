@@ -195,6 +195,12 @@ export interface ShapeStore {
    * somebody extracted an hour ago even if the target has since been switched off.
    */
   extractionCandidates: Accessor<string[]>;
+  /**
+   * `extractionCandidates` is the whole list. Core vocabulary is in it at once; this space's models
+   * and the classes it already had arrive a few round trips later, so until this is true the list
+   * may be missing members that are coming.
+   */
+  extractionCandidatesLoaded: Accessor<boolean>;
   /** Options for the relationship target picker — `{ label, value }`, grouped and labelled. */
   relationshipTargets: Accessor<RelationshipTargetOption[]>;
   /**
@@ -514,8 +520,15 @@ export function ShapeStoreProvider(props: ParentProps) {
     DatasetStore publishes the interpretation surface modules reach, and sits *above* this store in
     the provider tree, so it cannot read a shape. The accessor rather than the value, so it follows
     a community defining a model without anything re-registering.
+
+    And lent as nothing while it is still being read. A standing watch registered from the part that
+    had arrived was removed and registered again when the rest did — four writes to the shared graph
+    from every member who opened a call or the feed, ending where they started.
   */
-  onCleanup(datasetStore.provideExtractionCandidates(extractionCandidates));
+  const extractionCandidatesLoaded = createMemo(() => shapesLoaded() && datasetStore.currentDatasetEntitiesLoaded());
+  onCleanup(
+    datasetStore.provideExtractionCandidates(() => (extractionCandidatesLoaded() ? extractionCandidates() : undefined)),
+  );
 
   /**
    * What a relationship may point at here, grouped by where it comes from and labelled for the
@@ -1403,6 +1416,7 @@ export function ShapeStoreProvider(props: ParentProps) {
     generating,
     hintEntities,
     extractionCandidates,
+    extractionCandidatesLoaded,
     provideExtractionEnroller: extractionEnroller.provide,
     relationshipTargets,
     identityOptions,
