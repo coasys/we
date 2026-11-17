@@ -215,7 +215,7 @@ identity is not vouched; Settings → Security offers the check, and the person 
 
 The custody service calls the platform's `POST /api/vouch/email/start {email, did}` and
 `POST /api/vouch/email/verify {email, did, code}` (`src/platform.rs`). The platform's base URL is
-`WE_PLATFORM_URL` in the environment of the custody service, else `https://api.coasys.org`. The
+`WE_PLATFORM_URL` in the environment of the custody service, else `https://api.coasys.app`. The
 address and the code stay in the identity window and the custody service; neither reaches the app.
 
 ## Pending identities
