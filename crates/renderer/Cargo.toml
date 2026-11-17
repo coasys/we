@@ -21,6 +21,9 @@ members = [
     "we-layout",
     "we-catalog",
     "we-session",
+    "we-egui",
+    "we-cli",
+    "we-tui",
 ]
 
 [workspace.dependencies]
@@ -55,3 +58,6 @@ we-style = { path = "we-style" }
 we-layout = { path = "we-layout" }
 we-catalog = { path = "we-catalog" }
 we-session = { path = "we-session" }
+we-cli = { path = "we-cli" }
+we-tui = { path = "we-tui" }
+we-egui = { path = "we-egui" }
