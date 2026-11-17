@@ -18,7 +18,8 @@ import { expr, type SchemaNode } from '@we/schema-shared';
 const SOMEBODY_DRIVING = { $: 'modules.live.driverName' };
 
 /**
- * The cursor switch, for the call bar and for the rail.
+ * The cursor switch, as a part an interface may place. Placed by nothing WE ships: the call bar
+ * offers the same act as a line in its More menu (`cursorMenuItem`), which is its one home there.
  *
  * A toggle that says what pressing it would *do* rather than what is true — "Share your pointer" while
  * off — because an icon-only control has no other way to say what it does, and a cursor glyph is

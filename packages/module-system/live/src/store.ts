@@ -915,7 +915,7 @@ export function createLiveStore(deps: ModuleStoreDeps) {
      * Whether the wheel is this agent's to take — free, or already theirs.
      *
      * Paired with `canFollow` below, and the two are mutually exclusive by construction. That is what
-     * lets the rail offer exactly one button at a time: taking a wheel somebody else is holding is a
+     * lets a surface offer exactly one button at a time: taking a wheel somebody else is holding is a
      * different act from following them, and a single control that silently did one or the other
      * would be a control whose label is wrong half the time.
      */

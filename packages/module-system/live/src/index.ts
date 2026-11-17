@@ -18,9 +18,9 @@
  *
  * ## What it never names
  *
- * The call module. A cursor toggle belongs beside mute and camera, and it gets there through the
- * `call-controls` anchor the call module opened — so neither module knows the other, a third can join
- * the same bar, and turning calls off leaves this one working everywhere else. Which call is running
+ * The call module. Sharing a pointer and taking the wheel are lines in the call bar's More menu, and
+ * they get there through the `call-menu` anchor the call module opened — so neither module knows the
+ * other, and a third can join the same menu. Which call is running
  * and who is in it arrive through presence, as they do for transcription.
  *
  * ## Fragments only
@@ -102,7 +102,7 @@ export const liveModule: ModuleDefinition = defineModule({
      *
      * Contributing to another module's anchor is how capabilities are supposed to meet — neither names
      * the other, a third can join the same bar, and a space with calls switched off simply has nothing
-     * matched here. The rail launcher below is what makes the module reachable when no call is running.
+     * matched here. Following a driver is also on the rail (below), for somebody who is not in the call.
      */
     slots: [
       /*
@@ -131,55 +131,19 @@ export const liveModule: ModuleDefinition = defineModule({
     ],
 
     /**
-     * A rail button, because cursors are not only for calls.
+     * The rail keeps one live button: following whoever is driving.
      *
-     * Two people reading the same board want to point at things whether or not anybody is talking, and
-     * the call bar does not exist unless a call does. `availableWhen` takes it off the rail in a
-     * personal space, which has nobody to be live to.
+     * Sharing your pointer and taking the wheel were rail launchers too, and so showed twice on screen
+     * during a call — on the rail and in the bar's More menu. They have one home now, the menu (see the
+     * `call-menu` slots above), which also means they are reached only while a call is running.
      */
     launchers: [
-      {
-        key: 'cursors',
-        icon: 'cursor-click',
-        label: 'Share your pointer',
-        activeLabel: 'Stop sharing your pointer',
-        action: 'toggleCursors',
-        activeWhen: 'cursorsOn',
-        availableWhen: 'canShareCursors',
-      },
       /*
-        The wheel, on the rail as well as in the call bar.
+        Somebody else is driving, so what is on offer is following them.
 
-        Contributed to `call-controls` too, which is where it belongs while a call is running — but the
-        bar only exists while one is, so without this the feature is unreachable unless somebody is
-        talking. That is the same argument the cursor launcher above carries, and it applies harder
-        here: "look at what I am looking at" is most useful when explaining something, which is not the
-        same thing as being in a call.
-
-        `toggleWheel` rather than two entries, for the reason the button gives: only the store can ask
-        which state it is in at the moment of the press.
-      */
-      {
-        key: 'wheel',
-        icon: 'signpost',
-        label: 'Take the wheel',
-        activeLabel: 'Give up the wheel',
-        action: 'toggleWheel',
-        activeWhen: 'driving',
-        // Only while the wheel is free or already this agent's — see `canTakeWheel`. Taking one
-        // somebody else is holding is a different act, and it is the button below.
-        availableWhen: 'canTakeWheel',
-      },
-      /*
-        The other side of it: somebody else is driving, so what is on offer is following them.
-
-        A second launcher rather than a third meaning for the one above, because a launcher has one
-        label and one action: a button reading "Take the wheel" that actually followed somebody would
-        be wrong half the time it was shown. `canTakeWheel` and `canFollow` are mutually exclusive, so
-        exactly one of the two is ever on the rail.
-
-        This is the entry point the call bar's status strip provides during a call, and it exists here
-        for the reason the wheel does — the bar is not there unless somebody is talking.
+        This is the entry point the call bar's status strip provides during a call, and it is on the
+        rail as well because a driver can be followed by somebody who is not in the call — the bar is
+        not there unless they are.
       */
       {
         key: 'follow',
