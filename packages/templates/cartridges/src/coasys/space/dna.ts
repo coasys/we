@@ -66,27 +66,66 @@ export const DNA_KIND = `split(${DNA_AT}, '|')[0]`;
 export const DNA_ID = `split(${DNA_AT}, '|')[1]`;
 export const DNA_RECORD = `split(${DNA_AT}, '|')[2]`;
 
+/**
+ * An expression over the focus's parts — kind, what of it, record — written once over a single reading
+ * of the address, for the expressions that would otherwise repeat the whole of `DNA_AT` in each.
+ */
+export const onFocus = (body: (kind: string, id: string, record: string) => string): string =>
+  `[split(${DNA_AT}, '|')].map(p, ${body('p[0]', 'p[1]', 'p[2]')})[0]`;
+
 /** A class is in focus. */
 export const ON_CLASS = `${DNA_KIND} == '${MODEL}' && ${DNA_ID}`;
 
 /** The class in focus keeps its records in a store's list (see `WeVocabularyClass.list`). */
 const LISTS = WE_VOCABULARY.filter((cls) => cls.list);
-const LISTED = `${DNA_ID} in ${quoted(LISTS.map((cls) => cls.name))}`;
+const listedOf = (id: string) => `${id} in ${quoted(LISTS.map((cls) => cls.name))}`;
+const LISTED = listedOf(DNA_ID);
 
-/** The records of a class not listed by a store, asked only while one is in focus. Declare it where the rows are read. */
+/** The class in focus is one of WE's vocabulary, whose records are read whole and by name. */
+const NAMED = WE_VOCABULARY.filter((cls) => !cls.list);
+const namedOf = (id: string) => `${id} in ${quoted(NAMED.map((cls) => cls.name))}`;
+const ON_NAMED = namedOf(DNA_ID);
+/** How many rows the read of any other class holds at most. */
+const PAGE = 100;
+
+/**
+ * The records of a class not listed by a store, asked only while one is in focus. Declare it where the
+ * rows are read. WE's own vocabulary is read whole, by name, as the vocabulary settings list it; any
+ * other class by what is newest, a page of it.
+ */
 export const CLASS_QUERIES = {
+  vocabRows: {
+    entity: { $: DNA_ID },
+    order: { name: 'asc' },
+    when: { $: `(${ON_CLASS}) && (${ON_NAMED})` },
+  },
   classRows: {
     entity: { $: DNA_ID },
     order: { createdAt: 'desc' },
-    limit: 100,
-    when: { $: `(${ON_CLASS}) && !(${LISTED})` },
+    limit: PAGE,
+    when: { $: `(${ON_CLASS}) && !(${LISTED}) && !(${ON_NAMED})` },
+  },
+  // The record chosen, where it is beyond the page — so its crumb still names it.
+  classRecord: {
+    entity: { $: DNA_ID },
+    where: { id: { $: DNA_RECORD } },
+    limit: 1,
+    when: { $: `(${ON_CLASS}) && ${DNA_RECORD} && !(${LISTED})` },
   },
 };
 
-/** The records of the class in focus: the store's list where it keeps one, else the query's. */
-export const CLASS_ROWS = `(${LISTED} ? ${table(LISTS.map((cls) => [cls.name, cls.list!]))}[${DNA_ID}] : local.classRows)`;
+/** The records of the class `id`: the store's list where it keeps one, else the query's. */
+const rowsOf = (id: string) =>
+  `(${listedOf(id)} ? ${table(LISTS.map((cls) => [cls.name, cls.list!]))}[${id}] : ${namedOf(id)} ? local.vocabRows : local.classRows)`;
+/** The records of the class in focus. */
+export const CLASS_ROWS = onFocus((_kind, id) => rowsOf(id));
 /** Whether they have been read — a store's list is there already. */
-export const CLASS_ROWS_LOADED = `${LISTED} || local.classRowsLoaded`;
+export const CLASS_ROWS_LOADED = `${LISTED} || (${ON_NAMED} ? local.vocabRowsLoaded : local.classRowsLoaded)`;
+/** How many there are, as the heading says it: `100+` where the read stops at a page and that page is full. */
+export const CLASS_ROWS_COUNT = onFocus(
+  (_kind, id) =>
+    `(!(${listedOf(id)}) && !(${namedOf(id)}) && count(${rowsOf(id)}) >= ${PAGE} ? '${PAGE}+' : count(${rowsOf(id)}))`,
+);
 
 /** How the class in focus is drawn — every class has a display, whoever wrote it. */
 export const CLASS_DISPLAY = `recordStore.displays[${DNA_ID}]`;
@@ -94,13 +133,6 @@ export const CLASS_DISPLAY = `recordStore.displays[${DNA_ID}]`;
 export const CLASS_LABEL = `(${table(WE_VOCABULARY.map((cls) => [cls.name, `'${cls.label}'`]))}[${DNA_ID}] ?? ${CLASS_DISPLAY}.label) ?? ${DNA_ID}`;
 /** Its glyph. */
 export const CLASS_ICON = `(${table(WE_VOCABULARY.map((cls) => [cls.name, `'${cls.icon}'`]))}[${DNA_ID}] ?? ${CLASS_DISPLAY}.icon) ?? 'cube'`;
-
-/**
- * An expression over the focus's parts — kind, what of it, record — written once over a single reading
- * of the address, for the expressions that would otherwise repeat the whole of `DNA_AT` in each.
- */
-export const onFocus = (body: (kind: string, id: string, record: string) => string): string =>
-  `[split(${DNA_AT}, '|')].map(p, ${body('p[0]', 'p[1]', 'p[2]')})[0]`;
 
 /**
  * The vocabulary map's bucket for the focus `kind`, `id`: the policy's, one of WE's vocabulary classes'
@@ -136,9 +168,6 @@ export const dnaFocusOf = (node: string): string => {
   ].join(' ');
 };
 
-/** The record of the class in focus, by what its display says names it. */
-const RECORD_NAME = `find(${CLASS_ROWS}, { id: ${DNA_RECORD} })[${CLASS_DISPLAY}.title ?? 'name']`;
-
 /** The crumbs a Social DNA focus shows: Social DNA, then the class or the policy, then a record or a rule — each a way back up. */
 export const dnaCrumbs = (when = 'true'): Crumb[] => [
   { label: 'Social DNA', onClick: showDna("'all'"), when },
@@ -148,7 +177,14 @@ export const dnaCrumbs = (when = 'true'): Crumb[] => [
     when: `(${when}) && ${DNA_AT} != 'all'`,
   },
   {
-    label: { $: `${DNA_KIND} == 'policy' ? ${DNA_ID} : (${RECORD_NAME}) ?? 'Record'` },
+    // A record is named by what its class's display says names it: from the rows, else the one asked for
+    // by itself — the rows are a page, and the record may be beyond it.
+    label: {
+      $: onFocus(
+        (kind, id, record) =>
+          `${kind} == 'policy' ? ${id} : ((find(${rowsOf(id)}, { id: ${record} }) ?? first(local.classRecord))[recordStore.displays[${id}].title ?? 'name']) ?? 'Record'`,
+      ),
+    },
     when: `(${when}) && (${DNA_KIND} == 'policy' ? ${DNA_ID} : ${DNA_RECORD})`,
   },
 ];

@@ -10,6 +10,7 @@ import {
   CLASS_LABEL,
   CLASS_QUERIES,
   CLASS_ROWS,
+  CLASS_ROWS_COUNT,
   CLASS_ROWS_LOADED,
   DNA_AT,
   DNA_ID,
@@ -111,7 +112,7 @@ const classPage: SchemaNode = {
       type: 'Column',
       props: { gap: '300' },
       children: [
-        heading([{ $: CLASS_LABEL }], { $: CLASS_ICON }, `count(${CLASS_ROWS})`),
+        heading([{ $: CLASS_LABEL }], { $: CLASS_ICON }, CLASS_ROWS_COUNT),
         {
           type: '$if',
           props: {

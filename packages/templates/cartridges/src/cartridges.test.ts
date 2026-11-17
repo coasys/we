@@ -33,7 +33,7 @@ import { describe, expect, it } from 'vitest';
 
 import { coasysFirstRun } from './coasys/firstRun.ts';
 import { canvasPane } from './coasys/space/canvas.ts';
-import { CLASS_GROUPS, CLASS_ROWS, DNA_AT, OTHER_CLASSES } from './coasys/space/dna.ts';
+import { CLASS_GROUPS, CLASS_ROWS, CLASS_ROWS_COUNT, DNA_AT, dnaCrumbs, OTHER_CLASSES } from './coasys/space/dna.ts';
 import { callPath, groupPath, personPath, SELECTED_EXPR } from './coasys/space/paths.ts';
 import { treeSection } from './coasys/space/tree.ts';
 import { callPage, spaceRoutes } from './coasys/space/views.ts';
@@ -658,6 +658,51 @@ describe('the Coasys cartridge', () => {
     });
 
     /*
+      WE's own vocabulary (signal types, connection types, topics) is read whole, by name, as it was
+      before classes were models; any other class reads its newest hundred. A class page whose read is
+      limited says "100+" when the limit is hit, and a record beyond the first page still has its crumb.
+    */
+    it("reads WE's vocabulary by name with no limit, and any other class newest first, a hundred", () => {
+      const page = spaceRoutes.find((route) => route.path === '/dna')!;
+      const queries = page.$queries as Record<string, Record<string, unknown>>;
+      const data = { local: { vocabRows: [{ id: 'a' }], classRows: [{ id: 'q1' }] } };
+      for (const cls of ['SignalType', 'RelationshipType', 'Topic']) {
+        const evaluate = at(['dna'], { dna: `model|${cls}` }, data);
+        expect(evaluate(queries.vocabRows.when)).toBe(true);
+        expect(evaluate(queries.classRows.when)).toBe(false);
+        expect(evaluate({ $: CLASS_ROWS })).toEqual(data.local.vocabRows);
+      }
+      expect(queries.vocabRows.order).toEqual({ name: 'asc' });
+      expect(queries.vocabRows).not.toHaveProperty('limit');
+      expect(queries.classRows).toMatchObject({ order: { createdAt: 'desc' }, limit: 100 });
+      expect(at(['dna'], { dna: 'model|Question' }, data)(queries.vocabRows.when)).toBe(false);
+      expect(at(['dna'], { dna: 'model|TaskState' }, data)(queries.vocabRows.when)).toBe(false);
+    });
+
+    it('says 100+ in the heading when a limited read is full, and still names a record beyond it', () => {
+      const rows = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `q${i}`, name: `Q${i}` }));
+      const count = (n: number, dna = 'model|Question') =>
+        at(['dna'], { dna }, { local: { classRows: rows(n), vocabRows: rows(n) } })({ $: CLASS_ROWS_COUNT });
+      expect(count(100)).toBe('100+');
+      expect(count(40)).toBe(40);
+      expect(count(150, 'model|Topic')).toBe(150);
+
+      const crumb = dnaCrumbs()[2].label as { $: string };
+      const data = (record: unknown[]) => ({
+        recordStore: { displays: { Question: { title: 'name', label: 'Question' } } },
+        local: { classRows: rows(100), classRecord: record },
+      });
+      const at500 = { dna: 'model|Question|q500' };
+      expect(at(['dna'], at500, data([{ id: 'q500', name: 'Far' }]))(crumb)).toBe('Far');
+      expect(at(['dna'], at500, data([]))(crumb)).toBe('Record');
+      expect(at(['dna'], { dna: 'model|Question|q3' }, data([]))(crumb)).toBe('Q3');
+      const query = (spaceRoutes.find((route) => route.path === '/dna')!.$queries as Record<string, { when: unknown }>)
+        .classRecord;
+      expect(at(['dna'], at500, data([]))(query.when)).toBe(true);
+      expect(at(['dna'], { dna: 'model|Question' }, data([]))(query.when)).toBe(false);
+    });
+
+    /*
       Every bar says where the view is as a trail: Calls › the call, People › a person, Social DNA ›
       Signal types › Like — each step but the last a way back to it, in the mode it was in.
     */
@@ -697,7 +742,7 @@ describe('the Coasys cartridge', () => {
         trail(bar(node), at(path, params, { shellStore: { collapsedLanes: [] }, ...extra }));
       const route = (path: string) => spaceRoutes.find((r) => r.path === path)! as SchemaNode;
       const dnaData = {
-        local: { classRows: [{ id: 'like', name: 'Like' }] },
+        local: { vocabRows: [{ id: 'like', name: 'Like' }] },
         recordStore: { displays: { SignalType: { label: 'Signal type', title: 'name' } } },
         spaceStore: { spacePath: '/space/s1', taskStates: [], involvementTypes: [], policy: { sentences: [] } },
       };
