@@ -714,12 +714,20 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
         const t0Epoch = Date.now();
         current = { run: k + 1, kind, from, t0 };
         run.attempted = k + 1;
-        if (k === 0 || replacement) await page.goto(spacePage);
-        else await page.reload();
+        // A page that closes under the navigation is a load outcome, as it is during the wait below;
+        // any other navigation error ends the suite.
+        let drew = null;
+        try {
+          if (k === 0 || replacement) await page.goto(spacePage);
+          else await page.reload();
+        } catch (e) {
+          if (!page.isClosed()) throw e;
+          drew = { drawn: false, kind: 'page-closed', error: e.message };
+        }
         // The newest page: the newest seeded message on screen, and the 49th of the window in the
         // DOM. A run that never gets there is recorded with why (a refused feed call, or the
         // timeout) instead of ending the suite: a slow or refused load is a result.
-        const drew = await waitForRow(page, queries, from, {
+        drew ??= await waitForRow(page, queries, from, {
           timeout: PAGE_TIMEOUT,
           shown: async () =>
             (await row(page, MESSAGES - 1).isVisible()) && (await row(page, MESSAGES - (FIRST_PAGE - 1)).count()) > 0,
