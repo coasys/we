@@ -49,11 +49,15 @@ export async function check({ evaluate, count, hover, screenshot }) {
         let card = text.parentElement;
         while (card && !exports.some((e) => card.contains(e))) card = card.parentElement;
         if (!card) return { title, missing: 'export' };
-        const exp = exports.find((e) => card.contains(e));
+        const own = exports.filter((e) => card.contains(e));
+        const exp = own[0];
         const badge = card.querySelector('we-badge');
         const stamp = card.querySelector('we-timestamp');
         return {
           title,
+          exports: own.length,
+          // Its own call's title, not the next card's: the global count above passes with two swapped.
+          labelled: exp.getAttribute('label') ?? exp.label ?? '',
           card: box(card),
           text: box(text),
           exp: box(exp),
@@ -71,6 +75,8 @@ export async function check({ evaluate, count, hover, screenshot }) {
       problems.push(`${c.title}: no ${c.missing}`);
       continue;
     }
+    if (c.exports !== 1) problems.push(`${c.title}: ${c.exports} exports on the card`);
+    if (c.labelled !== `${LABEL} of ${c.title}`) problems.push(`${c.title}: the export is labelled "${c.labelled}"`);
     if (c.inPress) problems.push(`${c.title}: the export is inside the card's own button`);
     if (overlaps(c.exp, c.text)) problems.push(`${c.title}: the export is over the title`);
     if (c.badge && overlaps(c.exp, c.badge)) problems.push(`${c.title}: the export is over the Live badge`);
@@ -101,7 +107,8 @@ export async function check({ evaluate, count, hover, screenshot }) {
           (e.getAttribute('label') ?? e.label ?? '').startsWith(label),
         )[nth];
         if (!b) return { exported: 'no button' };
-        b.shadowRoot?.querySelector('button')?.click() ?? b.click();
+        // One press: `click()` returns undefined, so `?.click() ?? b.click()` would press twice.
+        (b.shadowRoot?.querySelector('button') ?? b).click();
         await new Promise((r) => setTimeout(r, 50));
         return { exported: globalThis.__exported ?? 'not called', navigated: globalThis.__navigated ?? null };
       },
