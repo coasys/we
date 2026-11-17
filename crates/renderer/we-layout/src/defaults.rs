@@ -881,6 +881,19 @@ fn type_defaults(bag: &mut Bag, node: &ResolvedNode) {
             // colour come out in paint.
         }
         "Card" => card_defaults(bag),
+        // The primitive's DEFAULT_PROPS: a block that scrolls its overflow,
+        // and that a flex parent may shrink below its content (`min-size:
+        // auto` would otherwise grow it to the content and push the rest of
+        // the column away).
+        "we-scroll-area" => entries(
+            bag,
+            &[
+                ("display", "block"),
+                ("overflow", "auto"),
+                ("minWidth", "0"),
+                ("minHeight", "0"),
+            ],
+        ),
         "we-tooltip" | "Grid" | "div" | "Row" | "Column" => {}
         _ => {}
     }
