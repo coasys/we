@@ -38,6 +38,7 @@ import {
   Accessor,
   batch,
   createContext,
+  createEffect,
   createMemo,
   createSignal,
   onCleanup,
@@ -141,6 +142,13 @@ export interface DatasetStore {
    * their per-machine settings. `null` until its schema is installed. See `systemDatasets.ts`.
    */
   personalDataset: Accessor<AppDataset | null>;
+  /**
+   * The personal space's schema install, from the moment the boot has found the dataset: resolves
+   * with it once `personalDataset` is set, or with `null` if the install failed. `null` before the
+   * boot has found it. A write to the personal space awaits this, so a write made after the app
+   * appears and before the install is held rather than dropped.
+   */
+  whenPersonalDataset: Accessor<Promise<AppDataset | null> | null>;
   testDataset: Accessor<AppDataset | null>;
   globalDataset: Accessor<AppDataset | null>;
   marketplaceDataset: Accessor<AppDataset | null>;
@@ -293,6 +301,16 @@ export function DatasetStoreProvider(props: ParentProps) {
   const [isWeSpace, setIsWeSpace] = createSignal<boolean>(false);
   const [rootDataset, setRootDataset] = createSignal<AppDataset | null>(null);
   const [personalDataset, setPersonalDataset] = createSignal<AppDataset | null>(null);
+  const [whenPersonalDataset, setWhenPersonalDataset] = createSignal<Promise<AppDataset | null> | null>(null);
+  /*
+    Counted up each time the agent locks. The personal space's install runs after the app appears,
+    so it can still be out when somebody locks and signs in again; what it finds belongs to the
+    session that started it, and the count is how it knows that session has ended.
+  */
+  let sessionsEnded = 0;
+  createEffect(() => {
+    if (session.bootState() === 'login') sessionsEnded++;
+  });
   const [testDataset, setTestDataset] = createSignal<AppDataset | null>(null);
   const [agentSettings, setAgentSettings] = createSignal<AgentSettings | null>(null, { equals: false });
 
@@ -967,10 +985,16 @@ export function DatasetStoreProvider(props: ParentProps) {
     // the app needs to appear is waited for: the root, which holds the agent's settings, templates
     // and per-space choices, and the datasets a first run has to make, so the list published holds them.
     const made: AppDataset[] = [];
+    const started = sessionsEnded;
     await Promise.all([
       initRootDataset(refs, made).catch((error) => console.error('DatasetStore: root dataset error', error)),
       findPersonalDataset(refs, made).then(
-        (personal) => void initPersonalDataset(personal, made.includes(personal)),
+        (personal) => {
+          if (started !== sessionsEnded) return;
+          // Held, not awaited: the boot does not wait for it. `initPersonalDataset` catches its own errors.
+          const install = initPersonalDataset(personal, made.includes(personal));
+          void setWhenPersonalDataset(() => install);
+        },
         (error) => console.error('DatasetStore: personal dataset error', error),
       ),
       (async () => {
@@ -1040,19 +1064,22 @@ export function DatasetStoreProvider(props: ParentProps) {
    * models. Every module's entities install here too, the space-scoped ones included: a note can
    * hold any block a post can, and a block a module contributes is one of those.
    *
-   * Published only once its schema is in, since the first thing a reader does is query it — the
-   * Pocket's effect fires the moment `personalDataset` is set, and a query ahead of the install
-   * fails with "No SHACL shape" rather than returning nothing.
+   * Published only once its schema is in, since the first thing a reader does is query it — a
+   * template's `$query` on `personalDataset` runs the moment it is set, and a query ahead of the
+   * install fails with "No SHACL shape" rather than returning nothing.
    *
    * After the first screen (`shared/firstScreen.ts`), and not waited for by the boot: the space on
    * screen reads nothing here, and these schema reads go to the same backend as its Feed's first
-   * page. What reads it — the Pocket, notes, agent-scoped modules — waits on `agentData.ready()`.
-   * A failure is logged and leaves `personalDataset` unset, as it always did.
+   * page. What writes to it — the Pocket, notes, agent-scoped modules — awaits what this resolves
+   * with (`whenPersonalDataset`). A failure is logged, leaves `personalDataset` unset, as it always
+   * did, and resolves `null`. So does a session that ended while the install was out: what it set
+   * would be the last session's dataset in the next.
    *
    * No `Space` record. Nothing yet navigates into this dataset, and a record would put it in every
    * list that reads `Space` — which is exactly the listing a system dataset stays out of.
    */
-  async function initPersonalDataset(personal: AppDataset, created: boolean): Promise<void> {
+  async function initPersonalDataset(personal: AppDataset, created: boolean): Promise<AppDataset | null> {
+    const started = sessionsEnded;
     try {
       await firstScreen.whenOpen();
       const schemas = session.backendPorts()!.schemas;
@@ -1069,9 +1096,12 @@ export function DatasetStoreProvider(props: ParentProps) {
           }),
         ]);
       }
+      if (started !== sessionsEnded) return null;
       setPersonalDataset(personal);
+      return personal;
     } catch (error) {
       console.error('DatasetStore: personal dataset error', error);
+      return null;
     }
   }
 
@@ -1386,6 +1416,7 @@ export function DatasetStoreProvider(props: ParentProps) {
     systemDatasetUuids,
     rootDataset,
     personalDataset,
+    whenPersonalDataset,
     testDataset,
     globalDataset,
     marketplaceDataset,

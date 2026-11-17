@@ -91,11 +91,12 @@ export function BootController() {
       other reads do, and fill in when they land. Until then a row shows the dataset's name and says
       it is loading (`SpaceListEntry.loading`). A failure is logged by `loadSpaces` and blocks nothing.
 
-      Given the list read above, the open space is not read again. Without it, the published one.
+      The list is read as it is then, not as it was above: a space can arrive in between. The open
+      space is held by then, so it is not read again.
     */
     void firstScreen
       .whenOpen()
-      .then(() => timed('spaces', spaceStore.loadSpaces(listed)))
+      .then(() => timed('spaces', spaceStore.loadSpaces()))
       .catch((error: unknown) => console.error('BootController: loading spaces failed', error));
 
     // Seed own profile into the cache from the public dataset

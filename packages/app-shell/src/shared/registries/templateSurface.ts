@@ -472,6 +472,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       panels, which render at the chrome tier, have it.
     */
     personalDataset: state('agent'),
+    // The personal space's schema install, for the agent-data kernel to wait on. Not for templates.
+    whenPersonalDataset: WIRING,
     testDataset: WIRING,
     /*
       The global discovery space and the marketplace — shared neighbourhoods holding nothing of this

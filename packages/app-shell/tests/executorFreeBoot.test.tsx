@@ -16,8 +16,10 @@ import { createBlocks, registerCoreBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
 import { AgentSettings, CollectionBlock, getEntity, Policy, Space, SpaceLandmark } from '@we/entities';
 import { type FeedFind, readFeedWindow } from '@we/module-feed';
+import { notesModule } from '@we/module-notes';
+import { pocketModule } from '@we/module-pocket';
 import { createEffect, createRoot, createSignal } from 'solid-js';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
 // The platform provider supplies the in-memory backend; the template/theme/route stores (not
@@ -180,9 +182,10 @@ import { type SessionStore, SessionStoreProvider, useSessionStore } from '../src
 import { type ShapeStore, ShapeStoreProvider, useShapeStore } from '../src/frameworks/solid/stores/ShapeStore';
 import { ShellStoreProvider } from '../src/frameworks/solid/stores/ShellStore';
 import { type SpaceStore, SpaceStoreProvider, useSpaceStore } from '../src/frameworks/solid/stores/SpaceStore';
+import { agentDataKernel } from '../src/shared/agentData';
 import { NO_STARTER } from '../src/shared/bundles/bundleStarter';
-import { createModuleStoreDeps } from '../src/shared/registries/moduleHostServices';
-import { moduleRegistry } from '../src/shared/registries/moduleRegistry';
+import { createModuleStoreDeps, provideModuleHostServices } from '../src/shared/registries/moduleHostServices';
+import { moduleRegistry, moduleStores } from '../src/shared/registries/moduleRegistry';
 import { provideSeed } from '../src/shared/seedRegistry';
 import { writeSpaceLandmark } from '../src/shared/spaceLandmarks';
 import { COMMUNITY_POLICY } from '../src/shared/spacePolicy';
@@ -400,6 +403,122 @@ describe('boot', () => {
     } finally {
       error.mockRestore();
     }
+  });
+
+  /*
+    The app is ready before the personal space's schema is in, so a gather or a note can be asked for
+    in between. The kernel said it was not ready and every write returned nothing: a drag into the
+    Pocket in the first seconds did nothing, with no error. A write in that window waits for the
+    schema and lands; if the schema fails, the write says so.
+  */
+  describe('a write to the personal space before its schema is up', () => {
+    const host = { backend: 'inmemory', framework: 'solid' };
+    type Model = {
+      create(d: unknown, f: Record<string, unknown>, o?: Record<string, unknown>): Promise<{ id?: string }>;
+      findAll(d: unknown, q?: unknown): Promise<Record<string, unknown>[]>;
+      update(d: unknown, id: string, f: Record<string, unknown>): Promise<unknown>;
+      delete(d: unknown, id: string): Promise<void>;
+    };
+    const model = (entity: string) => getEntity(entity) as unknown as Model;
+    let unbind: (() => void) | undefined;
+
+    /** The personal space's schema install, held until `release`, and refused with `fail`. */
+    function holdPersonalSchema(options: { fail?: boolean } = {}): () => void {
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => (release = resolve));
+      onPorts = (ports) => {
+        const { installSpace } = ports.schemas;
+        ports.schemas.installSpace = async (dataset, modules) => {
+          if ((dataset as { name?: string }).name === 'we-personal') {
+            await held;
+            if (options.fail) throw new Error('schema refused');
+          }
+          return installSpace(dataset, modules);
+        };
+      };
+      return release;
+    }
+
+    /** The module stores, over the agent-data kernel the host builds from the dataset store. */
+    function modulesOver(stores: Stores) {
+      unbind = provideModuleHostServices({
+        agentData: agentDataKernel(stores.datasets, {
+          create: (handle, entity, fields, options) =>
+            model(entity).create(handle, fields, Object.keys(options).length ? options : undefined),
+          find: (handle, entity, query) => model(entity).findAll(handle, query),
+          update: (handle, entity, id, fields) => model(entity).update(handle, id, fields),
+          remove: (handle, entity, id) => model(entity).delete(handle, id),
+        }),
+      });
+      return {
+        pocket: moduleStores.pocket as unknown as {
+          gather: (input: { entity: string; id: string; ref: string; label: string }) => Promise<void>;
+          lastError: () => string;
+        },
+        notes: moduleStores.notes as unknown as {
+          create: (document: unknown) => Promise<string>;
+          lastError: () => string;
+        },
+      };
+    }
+
+    const gathered = { entity: 'Post', id: 'p1', ref: 'we:n:somewhere/Post/p1', label: 'A post' };
+
+    beforeEach(() => {
+      const deps = createModuleStoreDeps({ signal: createSignal, effect: createEffect });
+      moduleRegistry.register(pocketModule, host, deps);
+      moduleRegistry.register(notesModule, host, deps);
+      registerCoreBlocks();
+    });
+
+    afterEach(() => {
+      unbind?.();
+      unbind = undefined;
+      moduleRegistry.unregister('pocket');
+      moduleRegistry.unregister('notes');
+    });
+
+    it('holds a gather and a note until the schema is in, then writes both', async () => {
+      const release = holdPersonalSchema();
+      const stores = mountShell();
+      await ready(stores);
+      const { pocket, notes } = modulesOver(stores);
+      expect(stores.datasets.personalDataset()).toBeNull();
+
+      const gathering = pocket.gather(gathered);
+      const noting = notes.create({ _type: 'document', blocks: [{ _type: 'block', text: 'kept early' }] });
+      release();
+      await gathering;
+      const noteId = await noting;
+
+      await vi.waitFor(() => expect(stores.datasets.personalDataset()?.name).toBe('we-personal'));
+      const personal = stores.datasets.personalDataset()!;
+      const items = await model('PocketItem').findAll(personal.handle);
+      expect(items.map((item) => item.ref)).toEqual([gathered.ref]);
+      expect(noteId).not.toBe('');
+      const kept = await CollectionBlock.findAll(personal.handle as never, { where: { kind: 'post' } });
+      expect(kept.map((note) => note.id)).toEqual([noteId]);
+      expect(pocket.lastError()).toBe('');
+      expect(notes.lastError()).toBe('');
+    }, 15000);
+
+    it('reports a gather, rather than dropping it, when the schema fails', async () => {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        const release = holdPersonalSchema({ fail: true });
+        const stores = mountShell();
+        await ready(stores);
+        const { pocket } = modulesOver(stores);
+
+        const gathering = pocket.gather(gathered);
+        release();
+        await gathering;
+
+        expect(pocket.lastError()).toMatch(/personal space/i);
+      } finally {
+        error.mockRestore();
+      }
+    }, 15000);
   });
 
   /*
@@ -622,6 +741,105 @@ describe('boot', () => {
     }, 15000);
 
     /*
+      The other spaces are read once the first screen is up, which can be seconds after the list was
+      read. A space that arrived in between is in the list then, and is read with the rest.
+    */
+    it('reads a space that arrived before the first screen was up', async () => {
+      const ids = await agentWithSpaces(['Garden']);
+      gate.holds = true;
+      gate.reset();
+      const reads = divertSpaceReads(
+        () => [],
+        (read) => read(),
+      );
+      try {
+        const stores = mountShell();
+        await ready(stores);
+
+        const orchard = await lifecycle.create('Orchard');
+        await Space.create(orchard.handle as never, { name: 'Orchard', uuid: orchard.id } as never);
+        await vi.waitFor(() => expect(stores.datasets.datasets().map((d) => d.name)).toContain('Orchard'));
+
+        gate.current.answered();
+        await vi.waitFor(() =>
+          expect(
+            stores.spaces
+              .mySpaces()
+              .map((s) => s.name)
+              .sort(),
+          ).toEqual(['Garden', 'Orchard']),
+        );
+        expect(reads.asked.filter((id) => id === ids.Garden)).toHaveLength(1);
+      } finally {
+        reads.spy?.mockRestore();
+      }
+    }, 15000);
+
+    /*
+      A read that throws before it answers is not caught per space, so the whole list read fails.
+      The rows must still stop saying they are loading.
+    */
+    it('stops loading the rows when the list read throws', async () => {
+      const ids = await agentWithSpaces(['Garden', 'Kitchen']);
+      window.history.replaceState({}, '', `/space/${ids.Garden}`);
+      route.go(`/space/${ids.Garden}`);
+      const reads = divertSpaceReads(
+        () => [ids.Kitchen],
+        () => {
+          throw new Error('backend gone');
+        },
+      );
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        const stores = mountShell();
+        await ready(stores);
+        await vi.waitFor(() => expect(reads.asked).toContain(ids.Kitchen));
+
+        const row = (name: string) => stores.spaces.spaceList().find((r) => r.name === name);
+        await vi.waitFor(() => expect(row('Kitchen')).toMatchObject({ loading: false }));
+        expect(error).toHaveBeenCalledWith('SpaceStore: loadSpaces error', expect.any(Error));
+      } finally {
+        error.mockRestore();
+        reads.spy?.mockRestore();
+        window.history.replaceState({}, '', '/');
+      }
+    }, 15000);
+
+    /*
+      The share picker's options are one backend call, and nothing about them depends on the spaces.
+      They are asked for beside the space reads, not after the slowest one.
+    */
+    it('reads the sharing options while the other spaces are still being read', async () => {
+      const ids = await agentWithSpaces(['Garden', 'Kitchen']);
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => (release = resolve));
+      const reads = divertSpaceReads(
+        () => [ids.Kitchen],
+        async (read) => {
+          await held;
+          return read();
+        },
+      );
+      const divert = onPorts!;
+      onPorts = (ports) => {
+        divert(ports);
+        ports.lifecycle.sharingOptions = async () => [{ id: 'p2p', name: 'p2p', kind: 'peer-to-peer' }];
+      };
+      try {
+        const stores = mountShell();
+        await ready(stores);
+        await vi.waitFor(() => expect(reads.asked).toContain(ids.Kitchen));
+
+        await vi.waitFor(() => expect(stores.spaces.sharingOptions().map((o) => o.value)).toEqual(['p2p']));
+        expect(stores.spaces.mySpaces().map((s) => s.name)).not.toContain('Kitchen');
+        release();
+      } finally {
+        release();
+        reads.spy?.mockRestore();
+      }
+    }, 15000);
+
+    /*
       A guest's invite names a space the agent has not joined, so there is no record to read first.
       The join happens after ready, and the other spaces' read — landing after it — must not take the
       joined space away again.
@@ -674,6 +892,93 @@ describe('boot', () => {
 
     await stores.session.login('secret');
     await ready(stores);
+  });
+
+  /*
+    The other spaces and the personal space's schema are read after the app appears, so either can
+    still be out when the agent locks and signs in again. What a read started by the session before
+    finds must not land in the session after.
+  */
+  describe('a read still out when the agent locks and signs in again', () => {
+    async function signedIn(): Promise<Stores> {
+      agentOptions = { unlocked: false, password: 'secret' };
+      const stores = mountShell();
+      await vi.waitFor(() => expect(stores.session.bootState()).toBe('login'));
+      await stores.session.login('secret');
+      await ready(stores);
+      return stores;
+    }
+
+    async function signInAgain(stores: Stores): Promise<void> {
+      await stores.session.logout();
+      expect(stores.session.bootState()).toBe('login');
+      await stores.session.login('secret');
+      await ready(stores);
+    }
+
+    it('drops the spaces the last session read', async () => {
+      let kitchen = '';
+      let answered = 0;
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => (release = resolve));
+      const reads = divertSpaceReads(
+        () => [kitchen],
+        async (read) => {
+          // The first session's read waits; the next session's fails, so only the first can find it.
+          if (answered++ === 0) {
+            await held;
+            return read();
+          }
+          throw new Error('backend gone');
+        },
+      );
+      try {
+        const stores = await signedIn();
+        await stores.spaces.createSpace('Kitchen', 'x', 'personal', 'hidden');
+        kitchen = stores.datasets.datasets().find((d) => d.name === 'Kitchen')!.id;
+
+        await signInAgain(stores);
+        await vi.waitFor(() => expect(answered).toBe(1));
+        await signInAgain(stores);
+        await vi.waitFor(() => expect(answered).toBe(2));
+        const row = () => stores.spaces.spaceList().find((r) => r.name === 'Kitchen');
+        await vi.waitFor(() => expect(row()).toMatchObject({ loading: false, isWeSpace: false }));
+
+        release();
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        expect(stores.spaces.mySpaces().map((s) => s.name)).not.toContain('Kitchen');
+      } finally {
+        release();
+        reads.spy?.mockRestore();
+      }
+    }, 15000);
+
+    it('drops the personal space the last session brought up', async () => {
+      let installs = 0;
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => (release = resolve));
+      const stores = await signedIn();
+      // Its schema is in from the first sign-in, so each later one brings its modules up to date.
+      const { installModules } = keptPorts!.schemas;
+      keptPorts!.schemas.installModules = async (dataset, modules) => {
+        // The first session's install lands after the next session's.
+        if ((dataset as { name?: string }).name === 'we-personal' && installs++ === 0) await held;
+        return installModules(dataset, modules);
+      };
+
+      await signInAgain(stores);
+      await vi.waitFor(() => expect(installs).toBe(1));
+      await signInAgain(stores);
+      await vi.waitFor(() => expect(installs).toBe(2));
+      await vi.waitFor(() => expect(stores.datasets.personalDataset()?.name).toBe('we-personal'));
+      const current = stores.datasets.datasets().find((d) => d.name === 'we-personal');
+      expect(stores.datasets.personalDataset()).toBe(current);
+
+      release();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(stores.datasets.personalDataset()).toBe(current);
+      expect(await stores.datasets.whenPersonalDataset()).toBe(current);
+    }, 15000);
   });
 
   it('does not blame the password for a failure that happened after it was accepted', async () => {

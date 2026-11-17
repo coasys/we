@@ -1198,10 +1198,10 @@ export interface SpaceStore {
 
   // Boot wiring (used by the boot controller, not by schemas)
   /**
-   * Read the Space record of every space the agent holds, for the sidebar and the spaces list. Given
-   * the dataset list, reads spaces from it rather than from the published one — see there.
+   * Read the Space record of every space the agent holds, for the sidebar and the spaces list, from
+   * the published dataset list as it is when called. A space already held is not read again.
    */
-  loadSpaces: (candidates?: readonly AppDataset[] | null) => Promise<void>;
+  loadSpaces: () => Promise<void>;
   /**
    * Start what opening the space at this address needs — its templates and its schema reads — for a
    * boot that is about to open it, and read its Space record. Resolves when that record is held, at
@@ -1710,9 +1710,17 @@ export function SpaceStoreProvider(props: ParentProps) {
     }),
   );
 
+  /*
+    Counted up each time the agent locks. `loadSpaces` runs after the app appears, so its reads can
+    still be out when somebody locks and signs in again; what they find belongs to the session that
+    started them, and the count is how `loadSpaces` knows that session has ended.
+  */
+  let sessionsEnded = 0;
+
   // Locking the agent clears the loaded spaces along with the session.
   createEffect(() => {
     if (session.bootState() !== 'login') return;
+    sessionsEnded++;
     setMySpaces([]);
     setSpacesListed(false);
   });
@@ -1836,31 +1844,36 @@ export function SpaceStoreProvider(props: ParentProps) {
   });
 
   /**
-   * Load the Space model from every candidate dataset — the sidebar's and the spaces list's names
-   * and pictures.
+   * Load the Space model from every dataset the agent holds — the sidebar's and the spaces list's
+   * names and pictures.
    *
-   * From the published dataset list, or from one handed in. A boot calls this once the first screen
-   * is up, after the app has appeared, so it merges into what is held rather than replacing it.
+   * From the published dataset list as it is when this runs. A boot calls this once the first screen
+   * is up, seconds after the list was read, so a space that arrived in between is read too. It
+   * merges into what is held rather than replacing it, and a space already held — the space on
+   * screen, read as the boot opened it — is not read again.
+   *
+   * The sharing options start beside the reads: they are one call that does not depend on them.
+   * Whatever happens to the reads, the rows stop saying they are loading.
    */
-  async function loadSpaces(from?: readonly AppDataset[] | null): Promise<void> {
-    let read: SpaceRow[];
+  async function loadSpaces(): Promise<void> {
+    const started = sessionsEnded;
+    void loadSharingOptions();
     try {
       // A space already held is skipped: its row came from a newer read — the space on screen, read
       // as the boot opened it and followed live since, or one made or joined a moment ago.
       const held = untrack(mySpaces);
-      read = await readSpaceRows(
-        (from ?? datasetStore.datasets()).filter((ds) => !held.some((space) => isSpaceSelf(space, ds))),
+      const read = await readSpaceRows(
+        datasetStore.datasets().filter((ds) => !held.some((space) => isSpaceSelf(space, ds))),
       );
+      // Locked while the reads were out: what they found belongs to a session that has ended.
+      if (started !== sessionsEnded) return;
+      // A space can have been left while the reads were out.
+      holdSpaceRows(read, datasetStore.datasetsLoaded() ? datasetStore.datasets() : undefined);
     } catch (error) {
       console.error('SpaceStore: loadSpaces error', error);
-      return;
+    } finally {
+      if (started === sessionsEnded) setSpacesListed(true);
     }
-    // Locked while the reads were out: what they found belongs to a session that has ended.
-    if (session.bootState() === 'login') return;
-    // A space can have been left while the reads were out.
-    holdSpaceRows(read, datasetStore.datasetsLoaded() ? datasetStore.datasets() : undefined);
-    setSpacesListed(true);
-    void loadSharingOptions();
   }
 
   /**
