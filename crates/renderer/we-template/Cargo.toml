@@ -10,4 +10,7 @@ serde.workspace = true
 serde_json.workspace = true
 indexmap.workspace = true
 thiserror.workspace = true
+smallvec.workspace = true
 we-expr.workspace = true
+we-metrics.workspace = true
+we-screen.workspace = true

@@ -62,8 +62,6 @@ fn minimal_evaluator() {
         ("list['0']", 1.into()),
         ("list.length", 3.into()),
         ("s.length", 5.into()),
-        ("bag.__proto__", Value::Undefined),
-        ("bag.constructor", Value::Undefined),
         ("ns.b", "from-ns".into()),
         ("ns.missing", Value::Undefined),
         // strict equality — `===`, never `==` coerced
@@ -179,7 +177,20 @@ fn vector_eval_ns_bare() {
 
 #[test]
 fn syntax_errors() {
-    for bad in ["", "1 ==", "(", "a.", "a[", "'unterminated", "a ? 1", "* 2"] {
+    for bad in [
+        "",
+        "1 ==",
+        "(",
+        "a.",
+        "a[",
+        "'unterminated",
+        "a ? 1",
+        "* 2",
+        // denied properties are rejected at parse time, like parser.ts
+        "bag.__proto__",
+        "bag.constructor",
+        "bag.prototype",
+    ] {
         assert!(parse(bad).is_err(), "{bad:?} should not parse");
     }
 }
