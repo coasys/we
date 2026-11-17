@@ -51,7 +51,12 @@ const { world } = vi.hoisted(() => ({
     positions: new Map<string, Pos>(),
     posts: new Map<string, Post>(),
     authors: new Map<string, Author>(),
+    meetings: new Map<string, { id: string; title?: string; items?: string[] }>(),
     rows: new Map<string, Row>(),
+    /** `Relationship`s the drop created — a model-relation drop must create none. */
+    created: [] as Record<string, unknown>[],
+    /** Writes to a parent's list (`Agenda.items`), in order: `+a1:t3`, `-a0:t3`. */
+    lists: [] as string[],
     /** Instances without `set`/`add`/`remove` — how AD4M's `fromSHACL` builds an installed SDNA's to-ones. */
     bare: false,
   },
@@ -61,7 +66,7 @@ const { world } = vi.hoisted(() => ({
  * A model class the way the record contract hands one over: `findAll`/`findOne`/`add`/`remove`/`set`
  * accessors, with the relations living on the instances as plain ids.
  */
-const { TopicModel, PositionModel, PostModel, AuthorModel, AgendaModel } = vi.hoisted(() => {
+const { TopicModel, PositionModel, PostModel, AuthorModel, AgendaModel, MeetingModel } = vi.hoisted(() => {
   type AnyRow = Record<string, unknown> & { id: string };
   const live = (table: Map<string, AnyRow>, row: AnyRow, toOnes: string[]) => {
     const instance = { ...row };
@@ -100,8 +105,16 @@ const { TopicModel, PositionModel, PostModel, AuthorModel, AgendaModel } = vi.ho
       for (const [field, value] of Object.entries(patch)) if (value !== '' && value != null) row[field] = value;
       return row;
     },
-    addRelation: async () => {},
-    removeRelation: async () => {},
+    addRelation: async (_p: unknown, id: string, relation: string, value: string) => {
+      world.lists.push(`+${id}.${relation}:${value}`);
+      const row = table.get(id);
+      if (row) row[relation] = [...((row[relation] as string[] | undefined) ?? []), value];
+    },
+    removeRelation: async (_p: unknown, id: string, relation: string, value: string) => {
+      world.lists.push(`-${id}.${relation}:${value}`);
+      const row = table.get(id);
+      if (row) row[relation] = ((row[relation] as string[] | undefined) ?? []).filter((v) => v !== value);
+    },
     setRelation: async () => {},
   });
   return {
@@ -111,6 +124,8 @@ const { TopicModel, PositionModel, PostModel, AuthorModel, AgendaModel } = vi.ho
     // `post` is a derived back-pointer — a belongsTo instance never carries a setter for it.
     AuthorModel: modelOf(world.authors as unknown as Map<string, AnyRow>, []),
     AgendaModel: modelOf(new Map<string, AnyRow>(), []),
+    // A parent that lists its children — `items` is its to-many.
+    MeetingModel: modelOf(world.meetings as unknown as Map<string, AnyRow>, []),
   };
 });
 
@@ -234,6 +249,21 @@ const ENTRIES = [
     ],
   },
   {
+    name: 'Meeting',
+    targetClass: 'discussion://Meeting',
+    properties: [
+      {
+        name: 'items',
+        predicate: 'discussion://items',
+        type: 'uri',
+        isCollection: true,
+        required: false,
+        writable: true,
+        relatedEntity: 'DiscussionTopic',
+      },
+    ],
+  },
+  {
     name: 'AgendaItem',
     targetClass: 'discussion://AgendaItem',
     properties: [
@@ -254,7 +284,10 @@ vi.mock('@we/entities', async () => {
   const Relationship = {
     findAll: async () => [],
     findOne: async () => null,
-    create: async (_p: unknown, data: Record<string, unknown>) => data,
+    create: async (_p: unknown, data: Record<string, unknown>) => {
+      world.created.push(data);
+      return { id: `rel-${world.created.length}`, ...data };
+    },
     update: async () => {},
     delete: async () => {},
   };
@@ -283,7 +316,9 @@ vi.mock('@we/entities', async () => {
               ? AuthorModel
               : name === 'AgendaItem'
                 ? AgendaModel
-                : Relationship,
+                : name === 'Meeting'
+                  ? MeetingModel
+                  : Relationship,
   };
 });
 
@@ -322,6 +357,12 @@ function mount(): RecordStore {
 const place = (node: string, rank?: number) =>
   world.rows.set(`row-${node}`, { id: `row-${node}`, node, parent: CANVAS, ...(rank ? { rank } : {}) });
 const aboutOf = (position: string) => world.positions.get(position)?.about;
+/** The edge a card hangs by, as the graph reports it on a drop: a model relation's, here. */
+const hangsBy = (relation: string, holder: string, target: string) => ({
+  id: `relation|${relation}|${holder}|${target}`,
+  type: 'relation',
+  data: { relation, holder, holderType: relation.split('.')[0], target },
+});
 
 beforeEach(() => {
   world.topics.clear();
@@ -329,6 +370,9 @@ beforeEach(() => {
   world.posts.clear();
   world.authors.clear();
   world.rows.clear();
+  world.meetings.clear();
+  world.created = [];
+  world.lists = [];
   world.bare = false;
   world.topics.set('t1', { id: 't1', title: 'Roadmap' });
   world.topics.set('t2', { id: 't2', title: 'Q3', subTopicOf: 't1' });
@@ -503,14 +547,13 @@ describe('a tree drop on a model relation', () => {
     expect(world.posts.get('p1')?.author).toBe('a1');
   });
 
-  it('undo of a move across classes restores the old field, not the new one', async () => {
+  it('refuses a parent the link the card hangs by cannot reach — and writes nothing', async () => {
     /*
-      `t2` hangs under `t1` by `subTopicOf`; the wildcard move to an AgendaItem writes
-      `agendaItem` — a different field, a different class. An undo that replays the new write
-      with the old parent writes a DiscussionTopic's id into an AgendaItem's field and leaves
-      `subTopicOf` empty — both links lost, one of them corrupt. The entry has to clear what it
-      wrote *and* restore what it cleared, through the two writes they each went by.
+      `t2` hangs under `t1` by `subTopicOf`. The drop moves *that* link, and `subTopicOf` only reaches
+      a DiscussionTopic — so an AgendaItem is refused rather than answered with another field, which
+      would leave the card hanging by two links at once.
     */
+    const info = vi.spyOn(toastService, 'info');
     const store = mount();
     await store.arrangeOnTree(CANVAS, 'rel:*', {
       recordId: 't2',
@@ -519,25 +562,33 @@ describe('a tree drop on a model relation', () => {
       targetId: 'a1',
       targetType: 'AgendaItem',
       order: ['t2'],
+      edge: hangsBy('DiscussionTopic.subTopicOf', 't2', 't1'),
     });
-    expect(world.topics.get('t2')?.agendaItem).toBe('a1');
-    expect(world.topics.get('t2')?.subTopicOf).toBeFalsy();
-
-    await store.undoCanvas(CANVAS);
     expect(world.topics.get('t2')?.subTopicOf).toBe('t1');
     expect(world.topics.get('t2')?.agendaItem).toBeFalsy();
+    expect(info).toHaveBeenCalledWith(expect.stringContaining('points at'));
+  });
 
-    await store.redoCanvas(CANVAS);
-    expect(world.topics.get('t2')?.agendaItem).toBe('a1');
-    expect(world.topics.get('t2')?.subTopicOf).toBeFalsy();
+  it('attaches a card that hangs by nothing through the relation joining the two classes', async () => {
+    world.topics.set('t3', { id: 't3', title: 'Loose' });
+    place('t3');
+    const store = mount();
+    await store.arrangeOnTree(CANVAS, 'rel:*', {
+      recordId: 't3',
+      recordType: 'DiscussionTopic',
+      into: 'child',
+      targetId: 'a1',
+      targetType: 'AgendaItem',
+      order: ['t3'],
+    });
+    expect(world.topics.get('t3')?.agendaItem).toBe('a1');
   });
 
   it('rewrites the pointer the card hangs by, not the first of the right class', async () => {
     /*
       Two pointers at the same class — `about` and `regarding`, both → DiscussionTopic — and a
-      card hanging by the *second*. `rel:*` used to write the first declared (`about`), which
-      hung the card twice: the new parent by one field, the old by another. A reparent rewrites
-      the link it is on.
+      card hanging by the *second*. The drop is told the edge it hangs by and rewrites that link;
+      writing the first declared (`about`) would hang the card twice, by one field each.
     */
     world.positions.set('pos3', { id: 'pos3', text: 'Later', regarding: 't2' });
     place('pos3');
@@ -549,6 +600,7 @@ describe('a tree drop on a model relation', () => {
       targetId: 't1',
       targetType: 'DiscussionTopic',
       order: ['pos3'],
+      edge: hangsBy('Position.regarding', 'pos3', 't2'),
     });
     expect(world.positions.get('pos3')?.regarding).toBe('t1');
     expect(world.positions.get('pos3')?.about).toBeFalsy();
@@ -576,31 +628,6 @@ describe('a tree drop on a model relation', () => {
       await store.arrangeOnTree(CANVAS, SPINE, { recordId: 'pos1', recordType: 'Position', into: 'loose' });
       expect(aboutOf('pos1')).toBe('t2');
       expect(info).toHaveBeenCalledWith(expect.stringContaining('cannot be cleared'));
-    });
-
-    it('moves a named belongsTo by the set alone — the to-one’s write is its own clear', async () => {
-      /*
-        Under `rel:Author.post` the card hangs by `Post.author` — clearing it and setting it are
-        the same write. Taken as two steps, the clear found no spelling on an installed SDNA and
-        refused a move the set alone would have made.
-      */
-      world.bare = true;
-      world.posts.set('p1', { id: 'p1', text: 'A take', author: 'a1' });
-      world.authors.set('a1', { id: 'a1', name: 'Ada', post: 'p1' });
-      world.authors.set('a2', { id: 'a2', name: 'Bob' });
-      place('p1');
-      const info = vi.spyOn(toastService, 'info');
-      const store = mount();
-      await store.arrangeOnTree(CANVAS, 'rel:Author.post', {
-        recordId: 'p1',
-        recordType: 'Post',
-        into: 'child',
-        targetId: 'a2',
-        targetType: 'Author',
-        order: ['p1'],
-      });
-      expect(world.posts.get('p1')?.author).toBe('a2');
-      expect(info).not.toHaveBeenCalledWith(expect.stringContaining('cannot be cleared'));
     });
 
     it('says an undo could not take a first attach back when nothing can clear the field', async () => {
@@ -687,6 +714,80 @@ describe('a tree drop on a model relation', () => {
     });
     expect(aboutOf('pos2')).toBe('t2');
     expect(error).not.toHaveBeenCalled();
+  });
+});
+
+describe('a tree drop writes the link the edge stands for', () => {
+  it('moves a model field under "Any connection" — no Relationship is written', async () => {
+    const store = mount();
+    await store.arrangeOnTree(CANVAS, '', {
+      recordId: 'pos1',
+      recordType: 'Position',
+      into: 'child',
+      targetId: 't1',
+      targetType: 'DiscussionTopic',
+      order: ['pos1'],
+      edge: hangsBy('Position.about', 'pos1', 't2'),
+    });
+    expect(aboutOf('pos1')).toBe('t1');
+    expect(world.created).toEqual([]);
+  });
+
+  it('refuses under "Any connection" too when the card’s link cannot reach the new parent', async () => {
+    const info = vi.spyOn(toastService, 'info');
+    const store = mount();
+    await store.arrangeOnTree(CANVAS, '', {
+      recordId: 'pos1',
+      recordType: 'Position',
+      into: 'child',
+      targetId: 'a1',
+      targetType: 'AgendaItem',
+      order: ['pos1'],
+      edge: hangsBy('Position.about', 'pos1', 't2'),
+    });
+    expect(aboutOf('pos1')).toBe('t2');
+    expect(world.created).toEqual([]);
+    expect(info).toHaveBeenCalledWith(expect.stringContaining('points at'));
+  });
+
+  it('moves a card between two lists — off the old parent’s, onto the new one’s — and back on undo', async () => {
+    world.meetings.set('m1', { id: 'm1', items: ['t2'] });
+    world.meetings.set('m2', { id: 'm2', items: [] });
+    for (const id of ['m1', 'm2']) place(id);
+    const store = mount();
+    await store.arrangeOnTree(CANVAS, 'rel:Meeting.items', {
+      recordId: 't2',
+      recordType: 'DiscussionTopic',
+      into: 'child',
+      targetId: 'm2',
+      targetType: 'Meeting',
+      order: ['t2'],
+      edge: hangsBy('Meeting.items', 'm1', 't2'),
+    });
+    expect(world.lists).toEqual(['-m1.items:t2', '+m2.items:t2']);
+    expect(world.meetings.get('m2')?.items).toEqual(['t2']);
+
+    world.lists = [];
+    await store.undoCanvas(CANVAS);
+    expect(world.lists).toEqual(['-m2.items:t2', '+m1.items:t2']);
+  });
+
+  it('refuses a spine naming a reverse relation — the tree never draws one', async () => {
+    world.posts.set('p1', { id: 'p1', text: 'A take', author: 'a1' });
+    world.authors.set('a1', { id: 'a1', name: 'Ada', post: 'p1' });
+    world.authors.set('a2', { id: 'a2', name: 'Bob' });
+    place('p1');
+    const store = mount();
+    await store.arrangeOnTree(CANVAS, 'rel:Author.post', {
+      recordId: 'p1',
+      recordType: 'Post',
+      into: 'child',
+      targetId: 'a2',
+      targetType: 'Author',
+      order: ['p1'],
+    });
+    expect(world.posts.get('p1')?.author).toBe('a1');
+    expect(world.created).toEqual([]);
   });
 });
 

@@ -363,6 +363,12 @@ export interface GraphViewProps {
      */
     pending?: boolean;
     changed?: boolean;
+    /**
+     * The edge the card hung by before the drop — its parent edge in the tree — with the facts its
+     * seed stamped on it (`data.relation` for a model relation, the record a drawn connection stands
+     * for). A drop moves that same link; absent for a card that hung by nothing.
+     */
+    edge?: { id: string; type: string; data?: Record<string, GraphValue> };
     targetId?: string;
     targetType?: string;
     before?: boolean;

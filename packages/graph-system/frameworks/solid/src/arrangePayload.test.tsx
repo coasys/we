@@ -49,7 +49,7 @@ async function mountTree(marks: Record<string, unknown> = {}) {
           nodes: [node('p', 0), node('a', 0), node('card', 1, marks)],
           edges: [
             { id: 'p-a', source: addr('p'), target: addr('a'), type: 'rel' },
-            { id: 'p-card', source: addr('p'), target: addr('card'), type: 'rel' },
+            { id: 'p-card', source: addr('p'), target: addr('card'), type: 'rel', data: { relation: 'Thing.under' } },
           ],
         }}
         layout={{
@@ -101,6 +101,14 @@ describe('what an arrange drop reports', () => {
         order: ['card', 'a'],
       }),
     ]);
+  });
+
+  it('says which edge the card hangs by, so the drop can write that same link', async () => {
+    // A model relation, a drawn connection: what the drop moves is whatever made the card a child.
+    const { arranged, dropBeforeA } = await mountTree();
+    dropBeforeA();
+
+    expect(arranged[0].edge).toEqual({ id: 'p-card', type: 'rel', data: { relation: 'Thing.under' } });
   });
 
   it('marks a card still awaiting acceptance as pending', async () => {

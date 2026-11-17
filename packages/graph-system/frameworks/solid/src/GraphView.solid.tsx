@@ -760,6 +760,14 @@ export function GraphView(props: GraphViewProps) {
             read off the stored node, resolved exactly as `nodeClick` resolves it above.
           */
           const node = engine.store.node(event.node.id);
+          /*
+            The edge the card hangs by, before the drop — read off the hierarchy the layout reported,
+            which is the data's rather than the preview's. A drop moves *that* link: a model field for
+            an edge a relation drew, a connection for one somebody drew. Without it a consumer would
+            have to work out again which of a card's links made it a child, by rules of its own.
+          */
+          const hungBy = engine.behaviourContext().hierarchy()?.parentEdges.get(event.node.id);
+          const edge = hungBy ? engine.store.edge(hungBy) : undefined;
           props.onNodeArrange?.({
             id: event.node.id,
             into: named || event.into === 'loose' ? event.into : 'loose',
@@ -767,6 +775,9 @@ export function GraphView(props: GraphViewProps) {
             recordType: at.type ?? '',
             ...(node?.data?.pending === true ? { pending: true } : {}),
             ...(node?.data?.changed === true ? { changed: true } : {}),
+            ...(edge
+              ? { edge: { id: edge.id, type: edge.type ?? '', ...(edge.data ? { data: edge.data } : {}) } }
+              : {}),
             ...(named ? { targetId: named.id, targetType: named.type ?? '' } : {}),
             ...(event.before === undefined ? {} : { before: event.before }),
             ...(order ? { order } : {}),
