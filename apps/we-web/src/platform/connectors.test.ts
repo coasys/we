@@ -60,8 +60,9 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-// Each test's first dynamic import transforms the connector's whole module graph. The guest one
-// takes ~3.5 s on a CI runner, and over vitest's 5 s default when several PRs run at once.
+// The first dynamic import of a connector transforms its module graph (later imports hit the
+// shared module cache). The guest one takes ~3.5 s on a CI runner, and over vitest's 5 s default
+// when several PRs run at once.
 const IMPORT_TIMEOUT = 30_000;
 
 describe('the WE web connector', () => {
