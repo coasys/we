@@ -12,7 +12,7 @@
  * - a `scope` drill through the `belongsTo`, and an inbound `scope` through the child's own field,
  *   both find the record that points at the anchor.
  */
-import { Ad4mClient } from '@coasys/ad4m';
+import { Ad4mClient, Ad4mModel, HasOne, Model, Property } from '@coasys/ad4m';
 import { getEntityForDataset } from '@we/entities';
 import { afterAll, describe, expect, inject, it } from 'vitest';
 
@@ -70,6 +70,25 @@ const POSITION = {
     },
   ],
 };
+
+/*
+  A class written with the decorators, as an app would. The generated shape carries BOTH
+  `sh:class` (the target's shape URI, `…Shape`) and `target_class_name` (its class name), and they
+  disagree: the entity a relation points at is the name.
+*/
+@Model({ name: 'DecoTopic' })
+class DecoTopic extends Ad4mModel {
+  @Property({ through: 'decolive://title', required: true })
+  title: string = '';
+}
+@Model({ name: 'DecoPosition' })
+class DecoPosition extends Ad4mModel {
+  @Property({ through: 'decolive://statement', required: true })
+  statement: string = '';
+
+  @HasOne(() => DecoTopic, { through: 'decolive://about' })
+  about: string = '';
+}
 
 type Row = Record<string, unknown> & { id: string };
 type Model = {
@@ -141,6 +160,38 @@ describe('an installed SDNA’s relations, read back live', () => {
       expect(await scoped({ anchor: 'MlTopic', via: 'about', anchorId: topic.id, direction: 'in' })).toEqual([
         position.id,
       ]);
+    } finally {
+      await ports.lifecycle.remove(ref.id);
+    }
+  });
+
+  it('names the class a decorator-generated relation points at, not its shape', { timeout: 120_000 }, async () => {
+    const { url, token } = inject('ad4mExecutor');
+    client = new Ad4mClient(url, token);
+    const agent = (await client.agent.me()).did;
+    const ports = createAd4mBackendPorts(client, { selfId: () => agent });
+    const ref = await ports.lifecycle.create(`manifest-decorated-${Date.now()}`);
+    try {
+      await ports.schemas.installSpace(ref.handle, []);
+      const perspective = ref.handle as { ensureSDNASubjectClass(c: unknown): Promise<void> };
+      await perspective.ensureSDNASubjectClass(DecoTopic);
+      await perspective.ensureSDNASubjectClass(DecoPosition);
+
+      // The generated shape really does write both, and they differ.
+      const generated = (
+        DecoPosition as unknown as {
+          generateSHACL(): { shape: { toJSON(): { properties: Record<string, unknown>[] } } };
+        }
+      )
+        .generateSHACL()
+        .shape.toJSON()
+        .properties.find((p) => p.name === 'about');
+      expect(generated).toMatchObject({ target_class_name: 'DecoTopic' });
+      expect(String(generated?.class ?? generated?.['sh:class'])).toMatch(/Shape$/);
+
+      const entries = await ports.schemas.foreignSchemas(ref.handle);
+      const about = entries.find((e) => e.name === 'DecoPosition')?.properties.find((p) => p.name === 'about');
+      expect(about).toMatchObject({ relatedEntity: 'DecoTopic' });
     } finally {
       await ports.lifecycle.remove(ref.id);
     }

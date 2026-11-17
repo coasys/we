@@ -229,7 +229,7 @@ describe('buildEntityManifest', () => {
     expect(entry.properties[0]).toMatchObject({ name: 'about', type: 'uri', relatedEntity: 'DiscussionTopic' });
   });
 
-  it('still prefers sh:class when both are declared', () => {
+  it('prefers target_class_name over sh:class when both are declared (decorator classes write both)', () => {
     const shape = {
       nodeShapeUri: 'TopicShape',
       targetClass: 'discussion://Topic',
@@ -248,7 +248,8 @@ describe('buildEntityManifest', () => {
     } as unknown as SHACLShape;
 
     const [entry] = buildEntityManifest([{ name: 'Position', shape }]);
-    expect(entry.properties[0].relatedEntity).toBe('DiscussionTopicShape');
+    // `sh:class` is the target's *shape* URI (`…Shape`); the class name is `targetClassName`.
+    expect(entry.properties[0].relatedEntity).toBe('DiscussionTopic');
   });
 
   it('names a reverse relation’s forward from the predicate they share', () => {
