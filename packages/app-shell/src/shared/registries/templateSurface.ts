@@ -429,6 +429,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     currentDatasetUri: state('content'),
     currentDatasetCid: state('content'),
     currentDatasetEntities: state('content'),
+    currentDatasetEntitiesLoaded: state('content'),
     isWeSpace: state('navigation'),
     joinedSpaceCids: state('navigation'),
     datasetsLoaded: state('navigation'),
@@ -827,6 +828,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       wizard would make an ordinary card list ask for the capability that edits a space's vocabulary.
     */
     extractionCandidates: state('content'),
+    extractionCandidatesLoaded: state('content'),
     provideExtractionEnroller: WIRING,
     extractionNeedsIdentity: state('space-settings'),
     relationshipTargets: state('space-settings'),

@@ -6373,6 +6373,9 @@
         "currentDatasetEntities": {
           "type": "array"
         },
+        "currentDatasetEntitiesLoaded": {
+          "type": "boolean"
+        },
         "isWeSpace": {
           "type": "boolean"
         },
@@ -7440,6 +7443,9 @@
         },
         "extractionCandidates": {
           "type": "array"
+        },
+        "extractionCandidatesLoaded": {
+          "type": "boolean"
         },
         "relationshipTargets": {
           "type": "array",

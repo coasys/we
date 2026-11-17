@@ -289,6 +289,7 @@ export const storeEntries: StoreEntry[] = [
       currentDataset: { type: 'object', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
       currentDatasetCid: { type: 'string' },
       currentDatasetEntities: { type: 'array' },
+      currentDatasetEntitiesLoaded: { type: 'boolean' },
       isWeSpace: { type: 'boolean' },
       joinedSpaceCids: { type: 'array' },
       datasetsLoaded: { type: 'boolean' },
@@ -607,6 +608,7 @@ export const storeEntries: StoreEntry[] = [
       generating: { type: 'boolean' },
       hintEntities: { type: 'array', properties: ['entity', 'source'] },
       extractionCandidates: { type: 'array' },
+      extractionCandidatesLoaded: { type: 'boolean' },
       extractionNeedsIdentity: { type: 'boolean' },
       relationshipTargets: { type: 'array', properties: ['label', 'value'] },
       identityOptions: { type: 'array', properties: ['label', 'value'] },
@@ -1131,6 +1133,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       currentDatasetCid: 'string | undefined — the neighbourhood CID of the current dataset (prefix stripped)',
       currentDatasetEntities:
         'EntityManifestEntry[] (non-WE SHACL models from the current dataset; injected as externalEntities into AI messages)',
+      currentDatasetEntitiesLoaded:
+        'boolean — currentDatasetEntities has been read for the dataset on screen. They arrive a few round trips after the switch, so until this is true an empty list means "not read yet" rather than "none"',
       isWeSpace:
         "boolean — true once the current dataset is confirmed to have WE's Space SDNA installed (false for a joined-but-foreign dataset, e.g. one synced in from Flux)",
       joinedSpaceCids: 'string[] — CIDs of every joined shared dataset',
@@ -1794,6 +1798,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       generating: 'boolean — an AI generation is in flight',
       extractionCandidates:
         "string[] — entity names an extraction pass COULD write here: core vocabulary that declares itself extractable, plus every adopted shape that does. Candidacy, not a decision — which of these a collection actually looks for is two layers down (spaceStore.extractionTargets, the default a new collection copies, then the collection's own list). Read it to offer a choice, and to display findings: a card should show a record somebody extracted an hour ago even if the target has since been switched off",
+      extractionCandidatesLoaded:
+        "boolean — extractionCandidates is the whole list: the space's models and the classes it already had have both been read. Until then the list is missing members that are coming; wait for this before treating the list as decided",
       extractionNeedsIdentity:
         'boolean — the open draft would be extracted into and has no field to recognise what it already wrote, so every pass duplicates everything. A warning to put beside the switch, not a refusal: the wizard saves either way',
       hintEditorDirty:
