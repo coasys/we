@@ -137,6 +137,7 @@ describe('results', () => {
     mode: 'hybrid',
     seed: { seconds: 2_000, links: 12_000_000 },
     newest: [900, 300, 320, 310, 350],
+    newestCold: 900,
     older: [400, 410, 390, 420, 500],
     queries: [100, 120, 110],
     otherQueries: [40, 700],
@@ -198,6 +199,22 @@ describe('results', () => {
 
   it('keeps a run seeded another way apart', () => {
     expect(metrics({ ...full, mode: 'executor' })[0].params).toEqual({ messages: 1_000_000, seed_mode: 'executor' });
+  });
+
+  it('reports no cold time when the cold load never drew', () => {
+    const run = { ...full, newest: [300, 320, 310, 350], newestCold: null, newestFailures: ['timeout'] };
+    const by = Object.fromEntries(metrics(run).map((m) => [m.metric, m]));
+    expect(by['feed.newest_page.cold']).toBeUndefined();
+    // The drawn warm loads still count toward the median and the max.
+    expect(by['feed.newest_page.median'].value).toBe(315);
+    expect(by['feed.newest_page.max'].value).toBe(350);
+    expect(summaryLine(run, 'passed')).toContain('newest(cold/median/max)=-/315/350ms');
+  });
+
+  it("reports the cold load's own time when it drew", () => {
+    const by = Object.fromEntries(metrics(full).map((m) => [m.metric, m]));
+    expect(by['feed.newest_page.cold'].value).toBe(900);
+    expect(summaryLine(full, 'passed')).toContain('newest(cold/median/max)=900/');
   });
 
   it('leaves out what a run that stopped early did not measure', () => {

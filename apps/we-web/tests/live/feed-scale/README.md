@@ -32,6 +32,9 @@ reloads (warm). There are 5 runs by default.
 
 All of them are better when lower, except `seed.links_per_second`.
 
+`feed.newest_page.cold` is the cold load's own time: when the cold load never draws it is left
+out, and a warm reload's time is never reported in its place.
+
 The page times come from the page itself. An init script watches the DOM and writes a mark, with
 `Date.now()`, when the newest message is attached and visible, when the 49th is attached, and when
 message 150 is attached. The suite's own waits (Playwright polls a locator up to every 500 ms) are
@@ -53,7 +56,10 @@ The suite writes two files in `FEED_SCALE_ARTIFACTS`:
 A load whose page never draws is a result, not a failure of the suite. The run is recorded with
 `detail.runs[].outcome` (`feed-call-refused`, `timeout`, `page-closed`) and the calls it made, and
 the counts land in the `feed.newest_page.failures`, `feed.older_page.failures` and
-`executor.feed_query.failures` metrics. `feed-call-refused` is the executor declining to answer: its
+`executor.feed_query.failures` metrics. Feed calls the executor did answer before the load gave up
+still count toward `executor.feed_query.*`. When the tab itself is what closed, the next load runs
+in a fresh tab of the same device, so the loads after it are still measured. `feed-call-refused` is
+the executor declining to answer: its
 SPARQL eval deadline (`query_deadline_secs`, 30 s on `dev`, not configurable from outside) kills a
 query it cannot answer in time, and the page then has nothing to draw. The suite's own Feed query
 from outside the page is recorded the same way in `detail.direct[].error`. A slower query is

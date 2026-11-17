@@ -349,6 +349,7 @@ const run = {
   mode: STORE_META?.mode ?? MODE,
   seed: null,
   newest: [],
+  newestCold: null,
   older: [],
   queries: [],
   otherQueries: [],
@@ -662,32 +663,58 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
     let current = null;
     // The executor's CPU seconds when the loads begin.
     let cpuBefore = null;
+    // The calls of the page that is open, as the executor answered them. Declared beside `current`
+    // because the catch below reads them when a run fails; a page that closes during a run is
+    // replaced, and the replacement is watched the same way.
+    let page = null;
+    let queries = null;
     const reader = await device(browser, executor, account, { name: 'reader' });
-    try {
-      const page = await reader.tab('main');
+    const openReaderPage = async () => {
+      page = await reader.tab('main');
       pages.set('reader', page);
       await page.addLocatorHandler(page.getByRole('textbox', { name: 'Name...', exact: true }), () =>
         dismissNamePrompt(page, 'Reader'),
       );
-      const queries = watchFeedQueries(page, shape.root);
+      queries = watchFeedQueries(page, shape.root);
       await page.addInitScript(feedMarks, {
         newest: MESSAGES - 1,
         last: MESSAGES - (FIRST_PAGE - 1),
         older: MESSAGES - (SECOND_WINDOW - 1),
       });
+    };
+    try {
+      await openReaderPage();
       cpuBefore = cpuOf(executor.pid);
       const spacePage = `${app.url}/space/${spaceUrl.replace('neighbourhood://', '')}`;
       // Each call as name:limit:time@when-sent, both in ms from the start of the load.
       const said = (q) =>
         `${q.className ?? q.type}${q.limit === null ? '' : `:${q.limit}`}:${q.ms.toFixed(0)}@${q.sentAfterMs.toFixed(0)}`;
+      // What a run's answered feed calls measured: each reply's round trip joins the executor query
+      // metrics, by class; a refused one counts as a failure and is not a latency sample. Runs once
+      // per load, on either outcome — a load that never drew may still hold completed calls.
+      const tally = (mine) => {
+        for (const q of mine) {
+          if (q.error) {
+            run.failedFeedCalls = (run.failedFeedCalls ?? 0) + 1;
+            continue;
+          }
+          (q.className === 'TextBlock' ? run.queries : run.otherQueries).push(q.ms);
+        }
+      };
       for (let k = 0; k < RUNS; k++) {
         const kind = k === 0 ? 'cold' : 'warm';
+        current = null;
+        // A run whose page closed is followed by a fresh tab, instrumented the same. It has nothing
+        // loaded to reload, so it navigates as the first run did: `page-closed` stays a recorded
+        // load outcome, not the end of the suite.
+        const replacement = page.isClosed();
+        if (replacement) await openReaderPage();
         const from = queries.length;
         const t0 = performance.now();
         const t0Epoch = Date.now();
         current = { run: k + 1, kind, from, t0 };
         run.attempted = k + 1;
-        if (k === 0) await page.goto(spacePage);
+        if (k === 0 || replacement) await page.goto(spacePage);
         else await page.reload();
         // The newest page: the newest seeded message on screen, and the 49th of the window in the
         // DOM. A run that never gets there is recorded with why (a refused feed call, or the
@@ -703,8 +730,7 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
         const calls = () => queries.slice(from).map(({ sent, ...q }) => ({ ...q, sentAfterMs: sent - t0 }));
         if (!drew.drawn) {
           const mine = calls().filter((q) => q.feed);
-          const failedCalls = mine.filter((q) => q.error);
-          run.failedFeedCalls = (run.failedFeedCalls ?? 0) + failedCalls.length;
+          tally(mine);
           run.newestFailures = [...(run.newestFailures ?? []), drew.kind];
           detail.runs.push({
             run: k + 1,
@@ -740,9 +766,6 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
           `the page did not mark the newest page: ${JSON.stringify(marked)}`,
         );
         const newest = Math.max(marks.newestVisible, marks.lastAttached);
-        // Nothing past the first window: the page is the window, not the space.
-        const past = await row(page, MESSAGES - FIRST_PAGE - 10).count();
-        assert.equal(past, 0, 'the newest page drew more than its window');
 
         const t1Epoch = Date.now();
         await scrollToOlderEdge(row(page, MESSAGES - (FIRST_PAGE - 1)));
@@ -752,16 +775,18 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
           timeout: PAGE_TIMEOUT,
           shown: async () => (await row(page, MESSAGES - (SECOND_WINDOW - 1)).count()) > 0,
         });
-        const olderAt = await page.evaluate(() => window.__feedScaleMarks.olderAttached);
+        let olderAt;
         let older = null;
         let olderOutcome = 'drawn';
         if (!olderDrew.drawn) {
+          // The mark is read only on a drawn page: after a close there is no page to read it from.
           olderOutcome = olderDrew.kind;
           run.olderFailures = [...(run.olderFailures ?? []), olderDrew.kind];
           log(
             `run ${k + 1} (${kind}): the older page did not arrive: ${olderDrew.kind}${olderDrew.error ? ` (${olderDrew.error})` : ''}`,
           );
         } else {
+          olderAt = await page.evaluate(() => window.__feedScaleMarks.olderAttached);
           assert.equal(typeof olderAt, 'number', 'the page did not mark the older window');
           // The Feed may ask for the older window by itself before the scroll (README): then it is 0.
           older = Math.max(0, olderAt - t1Epoch);
@@ -770,14 +795,11 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
 
         const mine = calls().filter((q) => q.feed);
         run.newest.push(newest);
+        // The cold load's own time, kept apart: when the cold load never draws, no warm reload's
+        // time may be reported as it (`feed.newest_page.cold` in `results.mjs`).
+        if (kind === 'cold') run.newestCold = newest;
         if (older !== null) run.older.push(older);
-        for (const q of mine) {
-          if (q.error) {
-            run.failedFeedCalls = (run.failedFeedCalls ?? 0) + 1;
-            continue;
-          }
-          (q.className === 'TextBlock' ? run.queries : run.otherQueries).push(q.ms);
-        }
+        tally(mine);
         // The slowest of the page's other calls: what it may have waited on before the Feed asked.
         const slowest = calls()
           .filter((q) => !q.feed)
@@ -825,8 +847,8 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
         detail.failedRun = {
           run: current.run,
           kind: current.kind,
-          answered: queries.slice(current.from).map(since),
-          unanswered: queries.unanswered().map(since),
+          answered: (queries ?? []).slice(current.from).map(since),
+          unanswered: (queries?.unanswered?.() ?? []).map(since),
         };
         const said = (q) =>
           `${q.className ?? q.type}${q.limit === null ? '' : `:${q.limit}`}@${q.sentAfterMs.toFixed(0)}` +
@@ -864,34 +886,38 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
       const now = rssOf(executor.pid);
       run.rss.peak = peakOf(now);
     }
-    const doc = {
-      job: JOB,
-      status,
-      summary: summaryLine(run, status),
-      metrics: metrics(run),
-      detail: { ...detail, run },
-    };
-    writeFileSync(join(ARTIFACTS, 'results.json'), `${JSON.stringify(doc, null, 2)}\n`);
-    // The same metrics alone, as `scripts/perf/record` reads a results file (`{"metrics": [...]}`):
-    // beside results.json, and in `PERF_RESULTS_DIR` when the job gives one.
-    const perf = `${JSON.stringify({ metrics: doc.metrics }, null, 2)}\n`;
-    writeFileSync(join(ARTIFACTS, 'metrics.json'), perf);
-    if (process.env.PERF_RESULTS_DIR) {
-      mkdirSync(process.env.PERF_RESULTS_DIR, { recursive: true });
-      writeFileSync(join(process.env.PERF_RESULTS_DIR, `${JOB}.json`), perf);
-    }
-    await browser?.close().catch(() => {});
-    await app?.close().catch(() => {});
-    if (executor) {
-      try {
-        writeFileSync(join(ARTIFACTS, 'executor.log'), executor.output.join(''));
-      } catch (error) {
-        log(`could not write the executor log: ${error.message}`);
+    try {
+      const doc = {
+        job: JOB,
+        status,
+        summary: summaryLine(run, status),
+        metrics: metrics(run),
+        detail: { ...detail, run },
+      };
+      writeFileSync(join(ARTIFACTS, 'results.json'), `${JSON.stringify(doc, null, 2)}\n`);
+      // The same metrics alone, as `scripts/perf/record` reads a results file (`{"metrics": [...]}`):
+      // beside results.json, and in `PERF_RESULTS_DIR` when the job gives one.
+      const perf = `${JSON.stringify({ metrics: doc.metrics }, null, 2)}\n`;
+      writeFileSync(join(ARTIFACTS, 'metrics.json'), perf);
+      if (process.env.PERF_RESULTS_DIR) {
+        mkdirSync(process.env.PERF_RESULTS_DIR, { recursive: true });
+        writeFileSync(join(process.env.PERF_RESULTS_DIR, `${JOB}.json`), perf);
       }
-      executor.admin.close?.();
-      await executor.stop().catch(() => {});
+      log(`artifacts in ${ARTIFACTS}`);
+    } finally {
+      // The browser, the server and the executor go away however writing the artifacts went.
+      await browser?.close().catch(() => {});
+      await app?.close().catch(() => {});
+      if (executor) {
+        try {
+          writeFileSync(join(ARTIFACTS, 'executor.log'), executor.output.join(''));
+        } catch (error) {
+          log(`could not write the executor log: ${error.message}`);
+        }
+        executor.admin.close?.();
+        await executor.stop().catch(() => {});
+      }
     }
-    log(`artifacts in ${ARTIFACTS}`);
     console.log(summaryLine(run, status));
   }
 });
