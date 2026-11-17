@@ -76,11 +76,25 @@ fn connect_pick_and_render() {
     step_until(&mut h, "the space", Duration::from_secs(10), |h| {
         h.state().as_ref().is_some_and(|a| a.stage() == "space")
     });
-    step_until(&mut h, "the empty state", Duration::from_secs(30), |h| {
-        tree_text(h).contains("A space starts with ")
+    // The sidebar lists the space's sections; calls are on their own page.
+    step_until(&mut h, "the sidebar", Duration::from_secs(30), |h| {
+        tree_text(h).contains("Social DNA")
     });
     // The status bar names the space.
     assert!(h.query_by_label_contains("e7-ui").is_some());
+
+    let live = h.state_mut().as_mut().unwrap().live_space().unwrap();
+    live.app
+        .session
+        .apply_screen(we_screen::ScreenOp::Navigate {
+            to: "~/calls".into(),
+            query: None,
+            base_depth: None,
+            replace: false,
+        });
+    step_until(&mut h, "the empty state", Duration::from_secs(30), |h| {
+        tree_text(h).contains("No calls yet.")
+    });
 
     kit::create_collection(&rt, &writer, &uuid, "call", "A call from elsewhere");
     step_until(&mut h, "the new call", Duration::from_secs(2), |h| {
