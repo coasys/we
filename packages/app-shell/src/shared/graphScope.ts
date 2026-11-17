@@ -7,7 +7,7 @@
  * such read by scanning candidates and filtering here.
  *
  * Most of them need no scan. When `via` is a to-one the result's class declares, holding the anchor's
- * id, the question is a filter on that field — `where: { about: [ids] }` — which both backends push
+ * id, the question is a filter on that field — `where: { replyTo: [ids] }` — which both backends push
  * down, the live test reads on an executor, and a watch can subscribe to like any other read. A list,
  * a reverse read, or a read over several entities are left to the scan, which still says so.
  */

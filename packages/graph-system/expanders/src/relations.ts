@@ -224,7 +224,7 @@ export async function readRelations(request: ReadRelationsRequest): Promise<{
 
   /*
     Backward: one inbound read per relation pointing at `type`, for every id at once — "what points
-    at any of these through `about`". The row's own field says which of the ids it points at; where a
+    at any of these through `replyTo`". The row's own field says which of the ids it points at; where a
     backend did not return the field, a read about one id can only have meant that one.
   */
   // An untyped relation is asked about only where its class is reified — see {@link reifiedEnds}.

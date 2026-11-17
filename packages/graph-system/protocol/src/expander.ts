@@ -140,7 +140,7 @@ export interface ExpanderQuery {
    * A list asks the same question of every anchor in one read, the way the query IR's `scope` does
    * (`boundedTraversal.multiAnchor`): a level of a tree is one round trip rather than one per parent.
    * `direction: 'in'` reads `result --via--> anchor`, so `via` is then the *result's* relation —
-   * "what points at these through `about`".
+   * "what points at these through `replyTo`".
    */
   scope?: { anchor: string; via: string; anchorId: string | string[]; direction?: 'in' | 'out' };
   signal?: AbortSignal;
@@ -165,7 +165,7 @@ export type WatchQuery = Omit<ExpanderQuery, 'signal'>;
  * {@link EntityShape.relations}):
  *
  * - a forward to-one: the record holding the field is the child, and the value its parent — a
- *   position's `about` names the topic it hangs under;
+ *   reply's `replyTo` names the message it hangs under;
  * - a forward to-many: the holder is the parent, and each value a child.
  *
  * Here rather than in each consumer because three of them must agree: the canvas seed draws the
