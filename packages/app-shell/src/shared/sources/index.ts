@@ -29,7 +29,7 @@ import { reactors } from './reactors';
 import { requirementLabel } from './requirementLabel';
 import { reactions, signalTally } from './signalTally';
 import { signalTypesByUse } from './signalTypesByUse';
-import { treeSpines } from './treeSpines';
+import { treeSpine, treeSpines } from './treeSpines';
 import { voices, voicesParam } from './voices';
 
 export interface HostSource {
@@ -175,6 +175,13 @@ export const hostSources: readonly HostSource[] = [
     example:
       'treeSpines({ kinds: local.relationshipKinds, shapes: shapeStore.spaceShapes, foreign: datasetStore.currentDatasetEntities })',
     fn: (options: unknown) => treeSpines(options ?? {}),
+  },
+  {
+    name: 'treeSpine',
+    params: ['options'],
+    doc: "A tree spine as the tree reads it, from the picker's value (local.spine): its kind — any, relationship (with id) or relation (with class and prop for one, without for all) — and selector (the forest layout's spine), offSpine (the when of a rule drawing the other lines faint; absent for any) and relations (whether the canvas seed should draw the models' relations). The one reader of the spelling, so pass this rather than local.spine to anything that needs the spine. Options: value.",
+    example: 'treeSpine({ value: local.spine }).selector',
+    fn: (options: unknown) => treeSpine(options ?? {}),
   },
   {
     name: 'generatedRun',

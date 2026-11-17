@@ -105,7 +105,7 @@ import {
   withRelationEntry,
   writeFieldValue,
 } from '../../../shared/shapes/recordDraft';
-import { modelManifestEntries } from '../../../shared/sources/treeSpines';
+import { modelManifestEntries, parseSpine, type Spine } from '../../../shared/sources/treeSpines';
 import { isRank, seatInRow } from '../../../shared/treeOrder';
 import { type AppDataset, useDatasetStore } from './DatasetStore';
 import { useSessionStore } from './SessionStore';
@@ -660,7 +660,7 @@ export interface RecordStore {
    * where that is explicit), and taking out a connection people have commented on or reacted to, since
    * removing a parental claim means deleting the record and there is no reversible spelling of that.
    */
-  arrangeOnTree: (canvas: string, relationshipTypeId: string, payload: unknown) => Promise<void>;
+  arrangeOnTree: (canvas: string, spine: Spine | string, payload: unknown) => Promise<void>;
   /**
    * Set one presentation property of one card — or of a whole selection — on one canvas: colour,
    * shape, content scale, rotation, stacking.
@@ -2155,10 +2155,10 @@ export function RecordStoreProvider(props: ParentProps) {
    *
    * The counterpart of `dragOnCanvas` for a canvas being read as a hierarchy. There the position *is*
    * the data, so a drag writes a coordinate; here the layout derives the position, so a drag writes
-   * the structure the layout reads. `relationshipTypeId` says which kind of connection the tree
-   * follows, which the store cannot know: what makes a parent a parent is the community's own
-   * vocabulary and the reader's current choice of spine — or a model relation, spelled `rel:` —
-   * which {@link arrangeOnRelationTree} answers.
+   * the structure the layout reads. The spine says which kind of connection the tree follows, which
+   * the store cannot know: what makes a parent a parent is the community's own vocabulary and the
+   * reader's current choice. A card hanging by a model relation — or by nothing, under a model-relation
+   * spine — is moved by {@link arrangeOnRelationTree}.
    *
    * ## Reparenting moves the connection rather than replacing it
    *
@@ -2177,7 +2177,14 @@ export function RecordStoreProvider(props: ParentProps) {
    * its tree — and that is the one thing a drop must not do as a side effect. It is refused, with a
    * toast pointing at the unconnected zone, where the same act is explicit.
    */
-  async function arrangeOnTree(canvas: string, relationshipTypeId: string, payload: unknown): Promise<void> {
+  async function arrangeOnTree(canvas: string, spineValue: Spine | string, payload: unknown): Promise<void> {
+    /*
+      The spine as a typed value — `treeSpine` hands one over, and an older caller's spelling is read
+      by the one codec. A connection spine is its kind's id, and "any" or a model relation is the empty
+      kind, which the connection path reads as every kind.
+    */
+    const spine = parseSpine(spineValue);
+    const relationshipTypeId = spine.kind === 'relationship' ? spine.id : '';
     const event = (payload ?? {}) as {
       recordId?: string;
       recordType?: string;
@@ -2192,7 +2199,7 @@ export function RecordStoreProvider(props: ParentProps) {
     };
     const dataset = datasetStore.currentDataset();
     /*
-      `relationshipTypeId` may be empty, and that is an answer rather than a missing argument: the tree is
+      The kind may be empty, and that is an answer rather than a missing argument: the tree is
       following every kind of connection, so this follows every kind too and mints a kindless one where it
       has to create a parent. A connection with no kind is what the canvas's own connect gesture already
       writes, and the layout draws it like any other — so refusing here would make the two disagree about
@@ -2216,11 +2223,11 @@ export function RecordStoreProvider(props: ParentProps) {
         whatever the spine — "Any connection" included — and one hanging by nothing under a model
         relation spine takes the spine's. Everything else is a connection somebody drew.
       */
-      if (event.edge?.type === 'relation' || relationshipTypeId.startsWith('rel:')) {
+      if (event.edge?.type === 'relation' || spine.kind === 'relation') {
         await arrangeOnRelationTree(
           canvas,
           handle,
-          relationshipTypeId.startsWith('rel:') ? relationshipTypeId.slice(4) : '*',
+          spine.kind === 'relation' && spine.class ? `${spine.class}.${spine.prop}` : '*',
           event,
         );
         return;

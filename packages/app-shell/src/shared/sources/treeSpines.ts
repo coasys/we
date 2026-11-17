@@ -42,6 +42,88 @@ interface KindInput {
   icon?: string;
 }
 
+/**
+ * What a tree's spine follows — the one reading of the picker's value.
+ *
+ * - `any`: every line there is ("Any connection"), relations and drawn connections alike;
+ * - `relationship`: drawn connections of one `RelationshipType`, by its id;
+ * - `relation`: the relations the models declare — all of them, or one, by class and property.
+ *
+ * A picker and an address hold the spine as a string (`?spine=`), so it has a spelling: empty, a bare
+ * kind id (what a link saved before relations existed holds), `rel:*` and `rel:Class.prop`. Only
+ * {@link parseSpine} reads that spelling and only {@link spineValue} writes it; everything else takes
+ * the typed value, which is what keeps a reader from comparing `data.relation` with `*` again.
+ */
+export type Spine =
+  | { kind: 'any' }
+  | { kind: 'relationship'; id: string }
+  | { kind: 'relation'; class?: undefined; prop?: undefined }
+  | { kind: 'relation'; class: string; prop: string };
+
+const RELATION = 'rel:';
+
+/** The spine a picker value or an address names; a spine already typed is taken as it is. */
+export function parseSpine(value: unknown): Spine {
+  if (value && typeof value === 'object') {
+    const spine = value as Partial<{ kind: string; id: string; class: string; prop: string }>;
+    if (spine.kind === 'relationship' && typeof spine.id === 'string' && spine.id)
+      return { kind: 'relationship', id: spine.id };
+    if (spine.kind === 'relation') {
+      return typeof spine.class === 'string' && spine.class && typeof spine.prop === 'string' && spine.prop
+        ? { kind: 'relation', class: spine.class, prop: spine.prop }
+        : { kind: 'relation' };
+    }
+    return { kind: 'any' };
+  }
+  if (typeof value !== 'string' || !value) return { kind: 'any' };
+  if (!value.startsWith(RELATION)) return { kind: 'relationship', id: value };
+  const named = value.slice(RELATION.length);
+  if (named === '*') return { kind: 'relation' };
+  const dot = named.indexOf('.');
+  return dot > 0 && dot < named.length - 1
+    ? { kind: 'relation', class: named.slice(0, dot), prop: named.slice(dot + 1) }
+    : { kind: 'any' };
+}
+
+/** A spine's spelling, for a picker option and the address. */
+export function spineValue(spine: Spine): string {
+  if (spine.kind === 'relationship') return spine.id;
+  if (spine.kind === 'relation') return spine.class ? `${RELATION}${spine.class}.${spine.prop}` : `${RELATION}*`;
+  return '';
+}
+
+/**
+ * A spine as the tree reads it — the host function the kit's expressions call, so no template decodes
+ * the spelling itself:
+ *
+ * - `selector`: the `forest` layout's `spine` — which field of a line makes a parent, and the value it
+ *   must hold. Empty for "any", which the layout reads as every line;
+ * - `offSpine`: the `when` of the faint-line rule — the lines that are not the spine, or nothing;
+ * - `relations`: whether the canvas seed should draw the models' relations — not under one connection
+ *   kind, whose tree is built from `Relationship` records alone.
+ */
+export function treeSpine(options: { value?: unknown } = {}): Spine & {
+  value: string;
+  selector: { field: string; value: string };
+  offSpine?: Record<string, unknown>;
+  relations: boolean;
+} {
+  const spine = parseSpine(options.value);
+  const [field, value] =
+    spine.kind === 'relation'
+      ? spine.class
+        ? ['data.relation', `${spine.class}.${spine.prop}`]
+        : ['type', 'relation']
+      : ['data.relationshipTypeId', spine.kind === 'relationship' ? spine.id : ''];
+  return {
+    ...spine,
+    value: spineValue(spine),
+    selector: { field, value },
+    ...(spine.kind === 'any' ? {} : { offSpine: { [field]: { not: value } } }),
+    relations: spine.kind !== 'relationship',
+  };
+}
+
 export interface SpineOption {
   label: string;
   value: string;
@@ -90,7 +172,7 @@ export function treeSpines(options: {
   const relations: SpineOption[] = followedRelations(modelManifestEntries(options).map(toEntityShape)).map(
     (relation) => ({
       label: `${relation.holder} › ${relation.name}`,
-      value: `rel:${relation.holder}.${relation.name}`,
+      value: spineValue({ kind: 'relation', class: relation.holder, prop: relation.name }),
       icon: 'link',
       group: 'Model relations',
     }),
@@ -98,10 +180,19 @@ export function treeSpines(options: {
   return [
     ...(options.kinds ?? [])
       .filter((kind) => typeof kind.id === 'string' && kind.id)
-      .map((kind) => ({ label: kind.name ?? kind.id!, value: kind.id!, icon: kind.icon })),
+      .map((kind) => ({
+        label: kind.name ?? kind.id!,
+        value: spineValue({ kind: 'relationship', id: kind.id! }),
+        icon: kind.icon,
+      })),
     ...(relations.length
       ? [
-          { label: 'All model relations', value: 'rel:*', icon: 'tree-structure', group: 'Model relations' },
+          {
+            label: 'All model relations',
+            value: spineValue({ kind: 'relation' }),
+            icon: 'tree-structure',
+            group: 'Model relations',
+          },
           ...relations,
         ]
       : []),

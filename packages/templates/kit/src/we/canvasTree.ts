@@ -101,19 +101,19 @@ export const TREE_QUERIES = {
 export const TREE_ON = 'local.treeMode';
 
 /**
- * The spine, as the `forest` layout names one: one field of a line, and the value it must hold.
+ * The spine, as the tree reads it — `treeSpine`, the host function that is the one reader of the picker's
+ * spelling.
  *
- * `local.spine` holds a `RelationshipType` id as it always has, and now also the model relations the
- * seed draws — spelled `rel:Class.prop`, which `treeSpines` builds the picker entries in — plus
- * `rel:*` for "the models' relations, all of them". Each spelling selects the field that carries its
- * kind of claim: `rel:` decodes to `data.relation` (the `Class.prop` a `relation` edge names), `rel:*`
- * to the edge's `type`, and anything else stays `data.relationshipTypeId` — so an address saved with
- * `?spine=<kindId>` still means the same tree.
+ * `local.spine` holds what the picker and the address hold: a `RelationshipType` id as it always has,
+ * `rel:Class.prop` for one model relation and `rel:*` for all of them. Nothing here decodes that string;
+ * every reader asks `treeSpine` for what it needs — the layout's selector, the faint lines, whether the
+ * seed draws relations — and the drag is handed the typed spine itself. So an address saved with
+ * `?spine=<kindId>` still means the same tree, and a new kind of spine is one function's business.
  */
-const SPINE_SELECTOR =
-  `(local.spine == 'rel:*' ? { field: 'type', value: 'relation' }` +
-  ` : (startsWith(local.spine, 'rel:') ? { field: 'data.relation', value: split(local.spine, ':')[1] }` +
-  ` : { field: 'data.relationshipTypeId', value: local.spine }))`;
+const SPINE = 'treeSpine({ value: local.spine })';
+
+/** The spine, as the `forest` layout names one: one field of a line, and the value it must hold. */
+const SPINE_SELECTOR = `${SPINE}.selector`;
 
 /**
  * The models' own declared relations, followed as tree edges — the canvas seed's `relations`, only in
@@ -131,7 +131,7 @@ const SPINE_SELECTOR =
  * pulled-in records would only crowd its unconnected area.
  */
 export const TREE_RELATIONS: SchemaProp = {
-  $: `${TREE_ON} && (!local.spine || startsWith(local.spine, 'rel:')) ? { children: true } : false`,
+  $: `${TREE_ON} && ${SPINE}.relations ? { children: true } : false`,
 };
 
 /**
@@ -503,7 +503,7 @@ export const TREE_BEHAVIOURS: SchemaProp = {
  * vocabulary and this reader's current choice, neither of which a store can know.
  */
 export function treeArrange(canvas: SchemaProp): SchemaProp {
-  return { $invoke: 'recordStore.arrangeOnTree', args: [canvas, { $: 'local.spine' }, { $: 'event' }] };
+  return { $invoke: 'recordStore.arrangeOnTree', args: [canvas, { $: SPINE }, { $: 'event' }] };
 }
 
 /**
@@ -535,6 +535,23 @@ export const TREE_CARD_STYLE = {
   badge: { $: `${TREE_ON} && ${BY_SIGNAL} ? 'reaction' : ''` },
 };
 
+/*
+  Every child hangs off the bottom of its parent and is met at its own top.
+
+  Left to the geometry, a parent's three children get three different-looking relationships: the
+  outer two spread sideways far enough that their left and right edges are the shortest path, and
+  only the middle one is met at its top. They are the same relationship, and in a tree the
+  arrangement is what carries that — so the rank has to read as one thing.
+
+  `ignoreRoute` is the other half of the same sentence, and without it the rank still did not read as
+  one thing: a line somebody had pulled to a card's left side on the canvas, or bent around something
+  that is no longer in the way, kept doing both here. Those are decisions about one connection on one
+  canvas, which is the narrower fact and wins everywhere the canvas is what is being read — and this is
+  not that. Nothing is unwritten; going back to the canvas finds every one of them again, and the bend
+  going away and coming back is animated rather than snapped.
+*/
+const ANCHORED = `{ style: { sourceAnchor: 's', targetAnchor: 'n', ignoreRoute: true } }`;
+
 /**
  * The connections a tree is NOT following, drawn faint.
  *
@@ -555,35 +572,16 @@ export const TREE_CARD_STYLE = {
  * the canvas should not do. A line style is worth offering later, on its own, for both modes.
  */
 export const TREE_EDGE_RULES: SchemaProp = {
+  /*
+    The lines that are not the spine are drawn faint, by the field the picked spine reads — `treeSpine`
+    answers which: `data.relation` for a model relation, `data.relationshipTypeId` for a connection
+    kind, and the edge's `type` for all model relations at once. A line that carries neither is dimmed
+    either way, which is the point: what is not the spine is background. Under "Any connection" every
+    line is the spine, so nothing is.
+  */
   $:
-    `${TREE_ON} ? [` +
-    /*
-      Every child hangs off the bottom of its parent and is met at its own top.
-
-      Left to the geometry, a parent's three children get three different-looking relationships: the
-      outer two spread sideways far enough that their left and right edges are the shortest path, and
-      only the middle one is met at its top. They are the same relationship, and in a tree the
-      arrangement is what carries that — so the rank has to read as one thing.
-
-      `ignoreRoute` is the other half of the same sentence, and without it the rank still did not read as
-      one thing: a line somebody had pulled to a card's left side on the canvas, or bent around something
-      that is no longer in the way, kept doing both here. Those are decisions about one connection on one
-      canvas, which is the narrower fact and wins everywhere the canvas is what is being read — and this is
-      not that. Nothing is unwritten; going back to the canvas finds every one of them again, and the bend
-      going away and coming back is animated rather than snapped.
-    */
-    `{ style: { sourceAnchor: 's', targetAnchor: 'n', ignoreRoute: true } },` +
-    /*
-      The field the dimming checks is the one the picked spine reads — `data.relation` for a model
-      relation, `data.relationshipTypeId` for a connection kind, and the edge's `type` for all model
-      relations at once (`rel:*` names no single relation, so `data.relation` would match none and
-      dim the whole spine). A line that carries neither is dimmed either way, which is the point:
-      what is not the spine is background.
-    */
-    ` { when: (local.spine == 'rel:*' ? { type: { not: 'relation' } }` +
-    ` : (startsWith(local.spine, 'rel:') ? { 'data.relation': { not: split(local.spine, ':')[1] } }` +
-    ` : { 'data.relationshipTypeId': { not: local.spine } })),` +
-    ` style: { opacity: 0.25, dashed: true, arrow: 'none' } }] : []`,
+    `${TREE_ON} ? (${SPINE}.offSpine ? [${ANCHORED}, { when: ${SPINE}.offSpine,` +
+    ` style: { opacity: 0.25, dashed: true, arrow: 'none' } }] : [${ANCHORED}]) : []`,
 };
 
 /**

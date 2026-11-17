@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 
 import type { SchemaNode, TemplatePanel } from '@we/schema-shared';
 import { evaluateExpression, listFunctions, parseExpression } from '@we/schema-shared';
-import { KIND_CARD_RULES, kindGlyph, STATE_FILLS, stateIcon, TREE_EDGE_RULES, treeLayout } from '@we/template-kit';
+import { KIND_CARD_RULES, kindGlyph, STATE_FILLS, stateIcon } from '@we/template-kit';
 import { describe, expect, it } from 'vitest';
 
 import * as showcase from './index.ts';
@@ -2163,13 +2163,13 @@ describe('the workshop’s tree', () => {
     */
     expect(canvas).toContain("{ type: 'forest', options: { spine:");
     /*
-      The spine decodes the picker's spelling: `rel:*` selects every `relation`-typed edge,
-      `rel:Class.prop` one relation by name, and anything else stays a connection kind — so a
-      `?spine=<kindId>` link saved before relations existed still means the same tree.
+      The spine is read once, by `treeSpine`, which knows its kinds — `rel:*`, `rel:Class.prop`, or a
+      bare connection kind, so a `?spine=<kindId>` link saved before relations existed still means the
+      same tree. No reader here decodes the spelling for itself.
     */
-    expect(canvas).toContain("local.spine == 'rel:*' ? { field: 'type', value: 'relation' }");
-    expect(canvas).toContain("{ field: 'data.relation', value: split(local.spine, ':')[1] }");
-    expect(canvas).toContain("{ field: 'data.relationshipTypeId', value: local.spine }");
+    expect(canvas).toContain("{ type: 'forest', options: { spine: treeSpine({ value: local.spine }).selector");
+    expect(canvas).not.toContain('startsWith(local.spine');
+    expect(canvas).not.toContain('split(local.spine');
     expect(canvas).toContain("{ type: 'manual', options: { size: { width: 180, height: 135 }");
     // One layout prop on the canvas's graph, so there is exactly one place the mode is read. (The
     // route also holds the vocabulary map, a different graph with a layout of its own.)
@@ -2240,7 +2240,7 @@ describe('the workshop’s tree', () => {
       community's vocabulary and this reader's choice, neither of which a store can know.
     */
     expect(canvas).toContain('"onNodeArrange":{"$invoke":"recordStore.arrangeOnTree"');
-    expect(canvas).toContain('{"$":"local.spine"}');
+    expect(canvas).toContain('{"$":"treeSpine({ value: local.spine })"}');
     expect(canvas).toContain('"onNodeDragEnd":{"$invoke":"recordStore.dragOnCanvas"');
   });
 
@@ -2278,7 +2278,7 @@ describe('the workshop’s tree', () => {
       still drawn, and a connection of another kind entirely is exactly what a reader following a
       decision pathway wants to notice. Faint rather than absent, or the shape is lost in the tangle.
     */
-    expect(canvas).toContain("{ 'data.relationshipTypeId': { not: local.spine } }");
+    expect(canvas).toContain('{ when: treeSpine({ value: local.spine }).offSpine,');
     expect(canvas).toContain('opacity: 0.25');
     /*
       And every child is met at its own top, from its parent's bottom.
@@ -2384,85 +2384,5 @@ describe('the workshop’s space-wide views', () => {
     const calendar = route('/calendar');
     expect(calendar).toContain('"calendarFrom":{"entity":"CollectionBlock"');
     expect(calendar).toContain('(e.id in first(local.calendarFrom).extracted)');
-  });
-});
-
-/**
- * The tree's spine and its faint lines, evaluated rather than read as text — the spellings
- * `treeSpines` offers (`rel:*`, `rel:Class.prop`, a bare kind id) each have to pick the same
- * lines in the layout and leave those same lines at full strength.
- */
-describe('the tree’s spine over model relations', () => {
-  const run = (source: string, local: Record<string, unknown>) =>
-    evaluateExpression(parseExpression(source), {
-      root: (name: string) => (name === 'local' ? { bound: true, value: local } : { bound: false }),
-      call: (name: string, args: unknown[]) =>
-        listFunctions()
-          .find((f) => f.name === name)
-          ?.impl(args, {} as never),
-    } as never);
-  /** The graph's own reading of a `when` clause: dotted `data.` keys, `not` as exclusion. */
-  const field = (edge: Record<string, unknown>, key: string) =>
-    key.startsWith('data.') ? (edge.data as Record<string, unknown>)[key.slice(5)] : edge[key];
-  const dims = (when: Record<string, unknown>, edge: Record<string, unknown>) =>
-    Object.entries(when).every(([key, expected]) => {
-      const excluded = (expected as { not?: unknown }).not;
-      return excluded === undefined ? field(edge, key) === expected : field(edge, key) !== excluded;
-    });
-  const relation = { type: 'relation', data: { relation: 'Note.about' } };
-  const other = { type: 'relation', data: { relation: 'Note.replyTo' } };
-  const connection = { type: 'relates', data: { relationshipTypeId: 'k-blocks' } };
-  const dimRule = (spine: string) =>
-    (run((TREE_EDGE_RULES as { $: string }).$, { treeMode: true, spine }) as { when?: Record<string, unknown> }[])[1]
-      .when!;
-
-  it('keeps every model relation at full strength under "All model relations"', () => {
-    const when = dimRule('rel:*');
-    expect(dims(when, relation)).toBe(false);
-    expect(dims(when, other)).toBe(false);
-    expect(dims(when, connection)).toBe(true);
-  });
-
-  it('keeps only the named relation at full strength under one relation', () => {
-    const when = dimRule('rel:Note.about');
-    expect(dims(when, relation)).toBe(false);
-    expect(dims(when, other)).toBe(true);
-    expect(dims(when, connection)).toBe(true);
-  });
-
-  it('still means a connection kind by a bare id', () => {
-    const when = dimRule('k-blocks');
-    expect(dims(when, connection)).toBe(false);
-    expect(dims(when, relation)).toBe(true);
-  });
-
-  it('selects in the layout the same lines it keeps strong', () => {
-    const spine = (value: string) =>
-      (run((treeLayout() as { $: string }).$, { treeMode: true, spine: value }) as { options: { spine: unknown } })
-        .options.spine;
-    expect(spine('rel:*')).toEqual({ field: 'type', value: 'relation' });
-    expect(spine('rel:Note.about')).toEqual({ field: 'data.relation', value: 'Note.about' });
-    expect(spine('k-blocks')).toEqual({ field: 'data.relationshipTypeId', value: 'k-blocks' });
-  });
-
-  it('follows model relations only in a tree whose spine can show them', () => {
-    // The canvas seed's `relations` option — off on the freeform canvas, and off while the spine is
-    // one connection kind, so a `Relationship` tree reads exactly as it did before relations existed.
-    const workshop = showcase.workshopTemplate as Schema;
-    const route = (workshop.routes ?? []).find((entry) => entry.path === '/canvas');
-    let source = '';
-    const find = (node: unknown): void => {
-      if (typeof node !== 'object' || node === null || source) return;
-      const relations = (node as { relations?: { $?: unknown } }).relations;
-      if (typeof relations?.$ === 'string') source = relations.$;
-      else Object.values(node).forEach(find);
-    };
-    find(route);
-    expect(source).not.toBe('');
-    expect(run(source, { treeMode: false, spine: '' })).toBe(false);
-    expect(run(source, { treeMode: true, spine: 'k-blocks' })).toBe(false);
-    expect(run(source, { treeMode: true, spine: '' })).toEqual({ children: true });
-    expect(run(source, { treeMode: true, spine: 'rel:*' })).toEqual({ children: true });
-    expect(run(source, { treeMode: true, spine: 'rel:Note.about' })).toEqual({ children: true });
   });
 });

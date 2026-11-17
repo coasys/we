@@ -729,12 +729,10 @@ describe('the Coasys cartridge', () => {
           is a different graph with a layout of its own.
         */
         expect(graphJson.match(/"layout":/g)).toHaveLength(1);
-        // The spine is the Workshop's: `rel:*`, `rel:Class.prop`, or a bare relationship kind id.
-        expect(graphJson).toContain(
-          "{ type: 'forest', options: { spine: (local.spine == 'rel:*' ? { field: 'type', value: 'relation' }",
-        );
-        expect(graphJson).toContain("{ field: 'data.relation', value: split(local.spine, ':')[1] }");
-        expect(graphJson).toContain("{ field: 'data.relationshipTypeId', value: local.spine }");
+        // The spine is the Workshop's, read once by `treeSpine` — nothing here decodes its spelling.
+        expect(graphJson).toContain("{ type: 'forest', options: { spine: treeSpine({ value: local.spine }).selector");
+        expect(graphJson).not.toContain('startsWith(local.spine');
+        expect(graphJson).not.toContain('split(local.spine');
         // Freeform as it was: manual, parked at the canvas's own card size. Nothing about the
         // positions people arranged is read by the tree, so switching back finds every card.
         expect(graphJson).toContain("{ type: 'manual', options: { size: { width: 200, height: 140 }");
@@ -747,7 +745,7 @@ describe('the Coasys cartridge', () => {
         expect(graphJson).toContain("'select', { type: 'arrange-nodes'");
         // A drag in the tree writes the structure the layout reads, not a position it then erases.
         expect(graphJson).toContain('"onNodeArrange":{"$invoke":"recordStore.arrangeOnTree"');
-        expect(graphJson).toContain('{"$":"local.spine"}');
+        expect(graphJson).toContain('{"$":"treeSpine({ value: local.spine })"}');
         expect(graphJson).toContain('"onNodeDragEnd":{"$invoke":"recordStore.dragOnCanvas"');
       });
 
@@ -757,7 +755,7 @@ describe('the Coasys cartridge', () => {
       });
 
       it('draws the connections it is not following, faintly', () => {
-        expect(graphJson).toContain("{ 'data.relationshipTypeId': { not: local.spine } }");
+        expect(graphJson).toContain('{ when: treeSpine({ value: local.spine }).offSpine,');
         expect(graphJson).toContain('opacity: 0.25');
         expect(graphJson).toContain("sourceAnchor: 's', targetAnchor: 'n'");
       });
@@ -769,7 +767,7 @@ describe('the Coasys cartridge', () => {
           spine drew every card in the unconnected zone.
         */
         expect(graphJson).toContain(
-          '"relations":{"$":"local.treeMode && (!local.spine || startsWith(local.spine, \'rel:\')) ? { children: true } : false"}',
+          '"relations":{"$":"local.treeMode && treeSpine({ value: local.spine }).relations ? { children: true } : false"}',
         );
       });
 

@@ -8,7 +8,7 @@
 import type { EntityManifestEntry } from '@we/backend-shared';
 import { describe, expect, it } from 'vitest';
 
-import { treeSpines } from '../src/shared/sources/treeSpines';
+import { parseSpine, type Spine, spineValue, treeSpine, treeSpines } from '../src/shared/sources/treeSpines';
 
 const uri = (name: string, relatedEntity: string, isCollection = false): EntityManifestEntry['properties'][number] => ({
   name,
@@ -111,5 +111,60 @@ describe('treeSpines — forward relations only', () => {
 
     expect(values).toContain('rel:Post.comments');
     expect(values).not.toContain('rel:Comment.post');
+  });
+});
+
+/**
+ * The spine as a value with a kind, rather than a string every reader decodes.
+ *
+ * `rel:*`, `rel:Class.prop` and a bare `RelationshipType` id shared one string, and each reader — the
+ * layout's selector, the faint-line rule, the seed's switch, the drag — parsed it again. The faint-line
+ * bug (`data.relation` compared with `*`) came from one of those parses. The string stays the spelling
+ * a picker and an address hold; `parseSpine` is the only thing that reads it.
+ */
+describe('the spine as a typed value', () => {
+  it('reads each spelling as its kind, and writes it back the same', () => {
+    const cases: [string, Spine][] = [
+      ['', { kind: 'any' }],
+      ['kind-1', { kind: 'relationship', id: 'kind-1' }],
+      ['rel:*', { kind: 'relation' }],
+      ['rel:Position.about', { kind: 'relation', class: 'Position', prop: 'about' }],
+    ];
+    for (const [value, spine] of cases) {
+      expect(parseSpine(value)).toEqual(spine);
+      expect(spineValue(spine)).toBe(value);
+    }
+  });
+
+  it('takes a spine already typed, and reads anything unreadable as any connection', () => {
+    expect(parseSpine({ kind: 'relation', class: 'Position', prop: 'about' })).toEqual({
+      kind: 'relation',
+      class: 'Position',
+      prop: 'about',
+    });
+    for (const value of [undefined, null, 42, 'rel:', 'rel:Position'])
+      expect(parseSpine(value)).toEqual({ kind: 'any' });
+  });
+
+  it('answers what the tree reads off it — the layout’s selector, the faint lines, whether relations are drawn', () => {
+    expect(treeSpine({ value: 'rel:*' })).toMatchObject({
+      kind: 'relation',
+      selector: { field: 'type', value: 'relation' },
+      offSpine: { type: { not: 'relation' } },
+      relations: true,
+    });
+    expect(treeSpine({ value: 'rel:Position.about' })).toMatchObject({
+      selector: { field: 'data.relation', value: 'Position.about' },
+      offSpine: { 'data.relation': { not: 'Position.about' } },
+      relations: true,
+    });
+    expect(treeSpine({ value: 'kind-1' })).toMatchObject({
+      selector: { field: 'data.relationshipTypeId', value: 'kind-1' },
+      offSpine: { 'data.relationshipTypeId': { not: 'kind-1' } },
+      relations: false,
+    });
+    // "Any connection": the layout follows every line, nothing is faint, and relations are drawn.
+    expect(treeSpine({ value: '' })).toMatchObject({ kind: 'any', relations: true });
+    expect(treeSpine({ value: '' }).selector).toEqual({ field: 'data.relationshipTypeId', value: '' });
   });
 });

@@ -797,6 +797,24 @@ describe('a tree drop writes the link the edge stands for', () => {
     expect(world.lists).toEqual(['-m2.items:t2', '+m1.items:t2']);
   });
 
+  it('takes the spine as a typed value as well as its spelling', async () => {
+    const store = mount();
+    await store.arrangeOnTree(
+      CANVAS,
+      { kind: 'relation', class: 'Position', prop: 'about' },
+      {
+        recordId: 'pos2',
+        recordType: 'Position',
+        into: 'child',
+        targetId: 't1',
+        targetType: 'DiscussionTopic',
+        order: ['pos2'],
+      },
+    );
+    expect(aboutOf('pos2')).toBe('t1');
+    expect(world.created).toEqual([]);
+  });
+
   it('refuses a spine naming a reverse relation — the tree never draws one', async () => {
     world.posts.set('p1', { id: 'p1', text: 'A take', author: 'a1' });
     world.authors.set('a1', { id: 'a1', name: 'Ada', post: 'p1' });
