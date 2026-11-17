@@ -2268,6 +2268,146 @@ describe('what a collection extracts', () => {
     for (const entity of partial) expect(whole).toContain(entity);
   }, 15000);
 
+  it('removes the space collection’s watch when extraction is switched off before this visit registers it', async () => {
+    // The watch is one row in the shared graph, so it can be there from an earlier visit while this
+    // visit waits for the class list. Switched off in that wait, it must still be removed.
+    const registered: string[] = [];
+    const removed: string[] = [];
+    let release: (() => void) | undefined;
+    let hold = false;
+    onPorts = (ports) => {
+      const read = ports.schemas.foreignSchemas.bind(ports.schemas);
+      ports.schemas.foreignSchemas = async (dataset) => {
+        if (hold) await new Promise<void>((resolve) => (release = resolve));
+        return read(dataset);
+      };
+      (ports as unknown as { interpretation: unknown }).interpretation = {
+        watch: async (_dataset: unknown, args: { watchId: string }) => {
+          registered.push(args.watchId);
+        },
+        unwatch: async (_dataset: unknown, id: string) => {
+          removed.push(id);
+        },
+      };
+    };
+    const stores = mountShell();
+    await ready(stores);
+    hold = true;
+    await enterSpace(stores, 'Earlier');
+    const root = stores.spaces.root();
+    await vi.waitFor(() => expect(release).toBeDefined());
+    expect(stores.spaces.autoExtractFor(root)).toBe(true);
+    expect(stores.shapes.extractionCandidatesLoaded()).toBe(false);
+
+    await stores.spaces.setAutoExtractFor(root, false);
+    await vi.waitFor(() => expect(removed).toContain(watchId(root)));
+
+    // And the list arriving afterwards registers nothing: it is off.
+    release!();
+    await vi.waitFor(() => expect(stores.shapes.extractionCandidatesLoaded()).toBe(true));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(registered).not.toContain(watchId(root));
+  }, 15000);
+
+  /** Two spaces, and the foreign-schema reads of every later switch held until a test lets them go. */
+  async function twoSpacesWithHeldReads() {
+    const pending: (() => void)[] = [];
+    let hold = false;
+    onPorts = (ports) => {
+      const read = ports.schemas.foreignSchemas.bind(ports.schemas);
+      ports.schemas.foreignSchemas = async (dataset) => {
+        if (hold) await new Promise<void>((resolve) => pending.push(resolve));
+        return read(dataset);
+      };
+    };
+    const stores = mountShell();
+    await ready(stores);
+    await stores.spaces.createSpace('Space A', 'x', 'personal', 'hidden');
+    await stores.spaces.createSpace('Space B', 'x', 'personal', 'hidden');
+    const refs = await lifecycle.list();
+    const a = refs.find((d) => d.name === 'Space A')!.id;
+    const b = refs.find((d) => d.name === 'Space B')!.id;
+    const open = async (id: string) => {
+      await stores.spaces.navigateToSpace(id);
+      await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(id));
+    };
+    await open(b);
+    await vi.waitFor(() => expect(stores.datasets.currentDatasetEntitiesLoaded()).toBe(true));
+    hold = true;
+    return { stores, a, b, open, pending };
+  }
+
+  it('says a space’s classes are not read when it is opened again before the read for it ends', async () => {
+    const { stores, a, b, open, pending } = await twoSpacesWithHeldReads();
+    await open(a);
+    await vi.waitFor(() => expect(pending).toHaveLength(1));
+    pending[0](); // A, read whole.
+    await vi.waitFor(() => expect(stores.datasets.currentDatasetEntitiesLoaded()).toBe(true));
+
+    await open(b);
+    await vi.waitFor(() => expect(pending).toHaveLength(2));
+    await open(a);
+    await vi.waitFor(() => expect(pending).toHaveLength(3));
+    // A's earlier read finished, but this visit's has not.
+    expect(stores.datasets.currentDatasetEntitiesLoaded()).toBe(false);
+
+    pending[2]();
+    await vi.waitFor(() => expect(stores.datasets.currentDatasetEntitiesLoaded()).toBe(true));
+    pending[1]();
+  }, 15000);
+
+  it('does not let an older read of the same space finish the newer one', async () => {
+    const { stores, a, b, open, pending } = await twoSpacesWithHeldReads();
+    await open(a); // read 0 — A
+    await vi.waitFor(() => expect(pending).toHaveLength(1));
+    await open(b); // read 1 — B
+    await vi.waitFor(() => expect(pending).toHaveLength(2));
+    await open(a); // read 2 — A again
+    await vi.waitFor(() => expect(pending).toHaveLength(3));
+
+    pending[0]();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(stores.datasets.currentDatasetEntitiesLoaded()).toBe(false);
+
+    pending[2]();
+    await vi.waitFor(() => expect(stores.datasets.currentDatasetEntitiesLoaded()).toBe(true));
+    pending[1]();
+  }, 15000);
+
+  it('is not ready while a newer read of the space’s models is still out', async () => {
+    // Saving a model reloads the list while an earlier load can still be adopting; the earlier one
+    // finishing must not say the list is whole while the newer one is out.
+    const pending: (() => void)[] = [];
+    let hold = false;
+    onPorts = (ports) => {
+      const shapes = ports.schemas.shapes!;
+      const list = shapes.list.bind(shapes);
+      shapes.list = async (dataset) => {
+        if (hold) await new Promise<void>((resolve) => pending.push(resolve));
+        return list(dataset);
+      };
+    };
+    const stores = mountShell();
+    await ready(stores);
+    await enterSpace(stores, 'Reloading');
+    await vi.waitFor(() => expect(stores.shapes.shapesLoaded()).toBe(true));
+
+    hold = true;
+    const first = stores.shapes.addRecordTypes('nothing', []);
+    const second = stores.shapes.addRecordTypes('nothing', []);
+    await vi.waitFor(() => expect(pending).toHaveLength(2));
+    expect(stores.shapes.shapesLoaded()).toBe(false);
+
+    pending[0]();
+    await first;
+    expect(stores.shapes.shapesLoaded()).toBe(false);
+    expect(stores.shapes.extractionCandidatesLoaded()).toBe(false);
+
+    pending[1]();
+    await second;
+    expect(stores.shapes.shapesLoaded()).toBe(true);
+  }, 15000);
+
   it('refuses the space collection to a member who does not administer the space, but not a call', async () => {
     const stores = mountShell();
     await ready(stores);

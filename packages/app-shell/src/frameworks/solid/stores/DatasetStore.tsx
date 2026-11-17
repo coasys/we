@@ -278,6 +278,11 @@ export function DatasetStoreProvider(props: ParentProps) {
   const [currentDatasetEntities, setCurrentDatasetEntities] = createSignal<EntityManifestEntry[]>([]);
   /** The dataset `currentDatasetEntities` was last read for — see `currentDatasetEntitiesLoaded`. */
   const [entitiesReadFor, setEntitiesReadFor] = createSignal<string | null>(null);
+  /**
+   * Which publish the read in flight belongs to. Opening a space again starts a new read, and an
+   * older read of the same space finishing must not say the newer one is done.
+   */
+  let entitiesRead = 0;
   const currentDatasetEntitiesLoaded = (): boolean => {
     const id = currentDataset()?.id;
     return Boolean(id) && entitiesReadFor() === id;
@@ -1272,9 +1277,12 @@ export function DatasetStoreProvider(props: ParentProps) {
       // SDNA is installed — switch immediately so WE templates render. WE model classes
       // are pre-registered at module load; foreign (non-WE) model resolution isn't needed
       // for the visible switch at all — it's only consumed below, in the background.
+      // A new read starts below, so whatever was read before — even for this same space — is not it.
+      const read = ++entitiesRead;
       batch(() => {
         setIsWeSpace(weSpace);
         setCurrentDataset(app);
+        setEntitiesReadFor(null);
       });
       trace('dataset', 'switch:published', {
         dataset: uuid,
@@ -1289,7 +1297,7 @@ export function DatasetStoreProvider(props: ParentProps) {
       void (async () => {
         try {
           const manifest = await schemas.foreignSchemas(handle);
-          if (currentDataset()?.id === uuid)
+          if (read === entitiesRead && currentDataset()?.id === uuid)
             batch(() => {
               setCurrentDatasetEntities(manifest);
               setEntitiesReadFor(uuid);
@@ -1297,7 +1305,7 @@ export function DatasetStoreProvider(props: ParentProps) {
         } catch (err) {
           console.warn('DatasetStore: foreignSchemas failed', err);
           // Read, and answered with nothing: a failed read must not hold back everything that waits on it.
-          if (currentDataset()?.id === uuid)
+          if (read === entitiesRead && currentDataset()?.id === uuid)
             batch(() => {
               setCurrentDatasetEntities([]);
               setEntitiesReadFor(uuid);

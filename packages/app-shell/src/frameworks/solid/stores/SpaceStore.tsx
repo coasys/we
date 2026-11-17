@@ -5017,9 +5017,12 @@ export function SpaceStoreProvider(props: ParentProps) {
         without them and then, when they came, removed it and wrote it again — on every visit, from
         every member. Registered once it is whole, the port finds what is stored already says the
         same and writes nothing.
+
+        Recorded as on before the wait, all the same: the watch is one row in the shared graph and
+        may be there from an earlier visit, so switching off during the wait must still remove it.
       */
-      if (!shapeStore.extractionCandidatesLoaded()) return;
       looseWatchOn = { root, handle };
+      if (!shapeStore.extractionCandidatesLoaded()) return;
       void datasetStore.watchConversation(root, handle).catch((error: unknown) => {
         console.info('SpaceStore: the space’s loose messages cannot be watched here', error);
       });

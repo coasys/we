@@ -1438,6 +1438,39 @@ describe('extraction', () => {
       expect(i.watches).toEqual([RECORD, `-${RECORD}`]);
     });
 
+    it('stops a watch the call already had when extraction is switched off before the list is read', async () => {
+      // The call's watch is one row in the shared graph, so it can be there from an earlier visit or
+      // another member while this agent waits for the list. Off must still remove it.
+      const i = interpreter(undefined, true, ['EventBlock', 'TaskBlock']);
+      i.setLoaded(false);
+      let auto = true;
+      const h = harness(inCall, { interpretation: { ...i.port, autoEnabled: () => auto } });
+      await h.say('we should ship the docs on friday');
+      expect(i.watches).toEqual([]);
+
+      auto = false;
+      await h.settle();
+      expect(i.watches).toEqual([`-${RECORD}`]);
+
+      // Once only, and the same call target a registration names.
+      await h.settle();
+      auto = true;
+      i.setLoaded(true);
+      await h.settle();
+      expect(i.watches).toEqual([`-${RECORD}`, RECORD]);
+      expect(i.targetsSeen[0]).toBe(i.targetsSeen[1]);
+    });
+
+    it('removes nothing for a call that was off before this agent waited on it', async () => {
+      const i = interpreter(undefined, true, ['EventBlock', 'TaskBlock']);
+      i.setLoaded(false);
+      const h = harness(inCall, { interpretation: { ...i.port, autoEnabled: () => false } });
+      await h.say('we should ship the docs on friday');
+      await h.settle();
+
+      expect(i.watches).toEqual([]);
+    });
+
     it('does not re-register when the list has not actually changed', async () => {
       const i = interpreter(undefined, true, ['EventBlock', 'TaskBlock']);
       const h = harness(inCall, { interpretation: i.port });

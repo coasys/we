@@ -2355,6 +2355,13 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   let watchedAuto = true;
 
   /**
+   * The collection whose registration `syncWatch` put off until the target list was read. Nothing is
+   * `watched` while it waits, but the watch is one row in the shared graph and may already be there
+   * from an earlier visit — so switching extraction off meanwhile still has to remove it.
+   */
+  let deferredWatch: string | null = null;
+
+  /**
    * The collection this agent has already been told has nothing selected to extract — see the toast
    * in `syncWatch`. `syncWatch` re-runs on every change to the target list, and somebody unticking
    * the last chip should hear about it once rather than on every press afterwards.
@@ -2400,7 +2407,12 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       Only while extraction is on. Switching it off needs no list, and waiting would leave the watch
       spending a pass per batch on a community that has just said stop.
     */
-    if (next && auto && !targetsLoaded()) return;
+    if (next && auto && !targetsLoaded()) {
+      deferredWatch = next;
+      return;
+    }
+    const deferred = deferredWatch === next ? next : null;
+    deferredWatch = null;
     if (watched === next && watchedClasses === key && watchedAuto === auto) return;
     const previous = watched;
     /*
@@ -2475,6 +2487,17 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       */
       watched = null;
       watchedClasses = '';
+      /*
+        And a registration that was waiting for the list: nothing here registered it, but the stored
+        watch may be there from before, and the teardown above only knows what this agent watched.
+      */
+      if (deferred && deferred !== previous && typeof interpretation?.unwatchCollection === 'function') {
+        try {
+          await interpretation.unwatchCollection(deferred, callTarget());
+        } catch (error) {
+          console.warn('[transcribe] could not stop the watch on this call', error);
+        }
+      }
       return;
     }
 

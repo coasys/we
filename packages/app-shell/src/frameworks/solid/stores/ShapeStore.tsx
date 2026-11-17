@@ -643,10 +643,17 @@ export function ShapeStoreProvider(props: ParentProps) {
     });
   }
 
+  /** The newest `loadShapes` — see `current` inside it. */
+  let shapesLoad = 0;
+
   async function loadShapes(): Promise<void> {
     const ports = schemas();
     const dataset = handle();
     const uuid = datasetStore.currentDataset()?.id;
+    // Only the newest load publishes. Saving a model reloads while an earlier load can still be
+    // adopting, and that one finishing first showed the older list and called it whole.
+    const load = ++shapesLoad;
+    const current = () => load === shapesLoad && datasetStore.currentDataset()?.id === uuid;
     if (!ports || !dataset || !datasetStore.isWeSpace()) {
       setSpaceShapes([]);
       setShapesLoaded(true);
@@ -664,7 +671,7 @@ export function ShapeStoreProvider(props: ParentProps) {
     try {
       const records = await storage().list(dataset);
       trace('shapes', 'records', { space: uuid, count: records.length, ms: lap() });
-      if (datasetStore.currentDataset()?.id !== uuid) return; // navigated away while loading
+      if (!current()) return; // navigated away, or reloaded, while loading
 
       const views: SpaceShapeView[] = [];
       const adopted = new Set<string>();
@@ -725,12 +732,12 @@ export function ShapeStoreProvider(props: ParentProps) {
         totalMs: Math.round(performance.now() - started),
         sincePageStartMs: Math.round(performance.now()),
       });
-      if (datasetStore.currentDataset()?.id === uuid) setSpaceShapes(views);
+      if (current()) setSpaceShapes(views);
     } catch (err) {
       console.error('ShapeStore: loading space shapes failed', err);
-      if (datasetStore.currentDataset()?.id === uuid) setSpaceShapes([]);
+      if (current()) setSpaceShapes([]);
     } finally {
-      if (datasetStore.currentDataset()?.id === uuid) setShapesLoaded(true);
+      if (current()) setShapesLoaded(true);
     }
   }
 
