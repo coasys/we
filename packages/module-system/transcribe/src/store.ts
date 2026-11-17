@@ -114,6 +114,9 @@ const TRANSCRIPT_FIRST_PAGE = 50;
  */
 const TRANSCRIPT_PAGE = 200;
 
+/** How many of the live call's newest typed lines the unread count looks at — see `unreadMessages`. */
+const MESSAGES_WATCHED = 50;
+
 /**
  * How a line in a transcript came to be — the three values of `TextBlock.source`.
  *
@@ -2913,6 +2916,78 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     replyTo(null);
   });
 
+  /*
+    The call's messages: its typed lines, in a pane of their own that the call bar opens.
+
+    The pane is a view over the call's record, not a new kind of thing — the same `TextBlock`s with
+    `source: typed` that the transcript draws among the utterances, read without the speech. So the
+    only state it needs here is whether it is up, and how many lines arrived that nobody has seen.
+
+    The count is read off one bounded subscription to the live call's typed lines, in the call's own
+    space, so it holds wherever the reader has walked to. The first answer is what was there before
+    this agent looked, and counts as seen; anything after it counts until the pane shows it. The
+    window is the newest `MESSAGES_WATCHED`: a call with more unread messages than that says that
+    many, which is all a badge needs to say.
+  */
+  const [messagesOpen, setMessagesOpen] = signal(false);
+  const [unreadMessages, setUnreadMessages] = signal(0);
+  let messagesWatched = '';
+  let messagesStop: (() => void) | null = null;
+  let messagesRows: Record<string, unknown>[] = [];
+  let messagesSeen = new Set<string>();
+  let messagesAnswered = false;
+  const rowId = (row: Record<string, unknown>) => (typeof row.id === 'string' ? row.id : '');
+  function countUnread(): void {
+    if (messagesOpen()) for (const row of messagesRows) messagesSeen.add(rowId(row));
+    const me = selfId?.() ?? null;
+    setUnreadMessages(
+      messagesRows.filter((row) => {
+        const id = rowId(row);
+        return id && !messagesSeen.has(id) && row.author !== me;
+      }).length,
+    );
+  }
+  function stopWatchingMessages(): void {
+    messagesStop?.();
+    messagesStop = null;
+    messagesRows = [];
+    messagesSeen = new Set();
+    messagesAnswered = false;
+    setUnreadMessages(0);
+  }
+  effect?.(() => {
+    const record = myCall() ? targetCollection() : '';
+    const target = callTarget();
+    const key = record ? `${target?.dataset ?? ''} ${record}` : '';
+    if (key === messagesWatched) return;
+    messagesWatched = key;
+    stopWatchingMessages();
+    // A pane left open when the call ended would open again, empty, at the start of the next one.
+    if (!record) setMessagesOpen(false);
+    if (!record || typeof records?.subscribe !== 'function') return;
+    messagesStop = records.subscribe(
+      'TextBlock',
+      { within: record, where: { source: TYPED }, order: { createdAt: 'desc' }, limit: MESSAGES_WATCHED },
+      (rows) => {
+        messagesRows = rows;
+        if (!messagesAnswered) {
+          messagesAnswered = true;
+          for (const row of rows) messagesSeen.add(rowId(row));
+        }
+        countUnread();
+      },
+      target,
+    );
+  });
+  onDispose?.(() => {
+    messagesStop?.();
+    messagesStop = null;
+  });
+  const showMessages = (next: boolean) => {
+    setMessagesOpen(next);
+    countUnread();
+  };
+
   return {
     // ── State ────────────────────────────────────────────────────────────────
     status: state(
@@ -3030,6 +3105,26 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     // the flag.
     openPanel: action(() => setOpen(true), 'Opens the transcript panel.', { ambient: true }),
     closePanel: action(() => setOpen(false), 'Closes the transcript panel.', { ambient: true }),
+    /**
+     * Whether the call's messages pane is up — the module's, like `open`, so the call bar's button and
+     * the panel's titlebar agree, and so opening it can clear `unreadMessages`.
+     */
+    messagesOpen: state(messagesOpen, 'Whether the call’s messages pane is open.'),
+    openMessages: action(() => showMessages(true), 'Opens the call’s messages pane.', { ambient: true }),
+    closeMessages: action(() => showMessages(false), 'Closes the call’s messages pane.', { ambient: true }),
+    toggleMessages: action(
+      () => showMessages(!messagesOpen()),
+      'Opens the call’s messages pane, or closes it when it is open.',
+      { ambient: true },
+    ),
+    /**
+     * How many messages others typed into the call this agent is in since the pane last showed them —
+     * wherever the call is, like `recordingCall`, because the call bar that shows it is about the call.
+     */
+    unreadMessages: state(
+      unreadMessages,
+      'How many messages others typed into the call this agent is in since its messages pane last showed them.',
+    ),
     /**
      * The record this call's transcript lives in, or `null` when there is not one yet.
      *

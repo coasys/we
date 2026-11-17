@@ -4318,6 +4318,7 @@ export const contextData: ContextData = {
         { name: 'canEditProposals', kind: 'state', doc: 'Whether an edited suggestion can be written back on accept.' },
         { name: 'changedIds', kind: 'state', doc: 'Agreed records carrying a suggested change, by id.' },
         { name: 'closeExtractionPanel', kind: 'action', doc: 'Closes the extraction panel.', ambient: true },
+        { name: 'closeMessages', kind: 'action', doc: 'Closes the call’s messages pane.', ambient: true },
         { name: 'closePanel', kind: 'action', doc: 'Closes the transcript panel.', ambient: true },
         {
           name: 'collectionId',
@@ -4417,6 +4418,7 @@ export const contextData: ContextData = {
           kind: 'state',
           doc: 'The record the call this agent is in is writing into, or empty when there is none.',
         },
+        { name: 'messagesOpen', kind: 'state', doc: 'Whether the call’s messages pane is open.' },
         { name: 'modelMissing', kind: 'state', doc: 'No transcription model is installed on this node, as last read.' },
         {
           name: 'modelUnready',
@@ -4430,6 +4432,7 @@ export const contextData: ContextData = {
         },
         { name: 'open', kind: 'state', doc: 'Whether the transcript panel is open.' },
         { name: 'openExtractionPanel', kind: 'action', doc: 'Opens the extraction panel.', ambient: true },
+        { name: 'openMessages', kind: 'action', doc: 'Opens the call’s messages pane.', ambient: true },
         { name: 'openPanel', kind: 'action', doc: 'Opens the transcript panel.', ambient: true },
         { name: 'partialCoverage', kind: 'state', doc: 'Someone in this call is not being transcribed.' },
         {
@@ -4567,6 +4570,12 @@ export const contextData: ContextData = {
           doc: 'Includes or excludes one model from what a call extracts, for everyone in it; defaults to the live call.',
         },
         {
+          name: 'toggleMessages',
+          kind: 'action',
+          doc: 'Opens the call’s messages pane, or closes it when it is open.',
+          ambient: true,
+        },
+        {
           name: 'transcribers',
           kind: 'state',
           doc: 'Everyone recording this call, this agent included — the numerator of coverage.',
@@ -4583,6 +4592,11 @@ export const contextData: ContextData = {
         },
         { name: 'transcriptShown', kind: 'state', doc: 'How many transcript lines are loaded right now.' },
         { name: 'unconfirmedIds', kind: 'state', doc: 'Records a pass made that nobody has kept yet, by id.' },
+        {
+          name: 'unreadMessages',
+          kind: 'state',
+          doc: 'How many messages others typed into the call this agent is in since its messages pane last showed them.',
+        },
         {
           name: 'watchProblem',
           kind: 'state',
@@ -4601,10 +4615,12 @@ export const contextData: ContextData = {
         { name: 'coverage' },
         { name: 'extractionTargets' },
         { name: 'pendingUtterance' },
+        { name: 'callMessages', subject: 'modules.transcribe.callId' },
       ],
       panels: [
         { name: 'transcript', title: 'Transcript', icon: 'waveform', hostOwned: false },
         { name: 'extraction', title: 'Extraction', icon: 'sparkle', hostOwned: false },
+        { name: 'messages', title: 'Messages', hostOwned: false },
       ],
       launchers: [],
       settings: [

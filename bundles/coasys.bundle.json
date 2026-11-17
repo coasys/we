@@ -18795,7 +18795,7 @@
                         "props": { "color": "text-muted", "flex": "1" },
                         "children": [
                           {
-                            "$": "find(modules.call.liveCalls, { recordId: routeStore.params.id }) ? 'This call is happening now.' : 'This call has ended. Its transcript is below.'"
+                            "$": "find(modules.call.liveCalls, { recordId: routeStore.params.id }) ? 'This call is happening now.' : 'This call has ended. Its transcript and messages are below.'"
                           }
                         ]
                       },
@@ -18820,18 +18820,45 @@
                 }
               },
               {
-                "type": "Column",
+                "type": "Row",
                 "props": {
                   "flex": "1",
                   "minHeight": "0",
+                  "gap": "500",
                   "px": "500",
                   "pb": "calc(var(--we-space-500) + var(--we-covered-bottom, 0px))",
                   "transition": "padding-bottom 300 ease"
                 },
                 "children": [
                   {
-                    "type": "$part",
-                    "props": { "id": "transcribe.transcriptFeed", "subject": { "$": "routeStore.params.id" } }
+                    "type": "Column",
+                    "props": { "flex": "1", "minWidth": "0", "minHeight": "0" },
+                    "children": [
+                      {
+                        "type": "$part",
+                        "props": { "id": "transcribe.transcriptFeed", "subject": { "$": "routeStore.params.id" } }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "Column",
+                    "props": { "width": "22rem", "flex": "0 0 auto", "minHeight": "0", "gap": "300" },
+                    "children": [
+                      {
+                        "type": "we-text",
+                        "props": {
+                          "variant": "label",
+                          "color": "text-muted",
+                          "textTransform": "uppercase",
+                          "letterSpacing": "wide"
+                        },
+                        "children": ["Messages"]
+                      },
+                      {
+                        "type": "$part",
+                        "props": { "id": "transcribe.callMessages", "subject": { "$": "routeStore.params.id" } }
+                      }
+                    ]
                   }
                 ]
               }

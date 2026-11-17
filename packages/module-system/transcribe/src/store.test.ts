@@ -3575,6 +3575,141 @@ describe('replies', () => {
 });
 
 /**
+ * The call's messages: the typed lines in its record, opened from the call bar.
+ *
+ * The pane is the module's to open, like the transcript, and the count on its button is read off one
+ * bounded subscription to the live call's typed lines. A line is unread when it arrived after the
+ * pane last showed it and somebody else wrote it.
+ */
+describe('call messages', () => {
+  interface Subscription {
+    entity: string;
+    query: Record<string, unknown>;
+    cb: (rows: Record<string, unknown>[]) => void;
+    target?: unknown;
+    stopped: boolean;
+  }
+
+  function withSubscriptions(peers: Peer[], extra: HarnessDeps = {}) {
+    const subs: Subscription[] = [];
+    const h = harness(peers, {
+      ...extra,
+      records: {
+        subscribe: (entity: string, query: Record<string, unknown>, cb: Subscription['cb'], target?: unknown) => {
+          const sub: Subscription = { entity, query, cb, target, stopped: false };
+          subs.push(sub);
+          return () => (sub.stopped = true);
+        },
+      } as never,
+    });
+    const live = () => subs.filter((s) => !s.stopped);
+    return { ...h, subs, live };
+  }
+
+  const line = (id: string, author: string) => ({ id, author, text: `line ${id}`, source: 'typed' });
+
+  it('opens and closes the pane, and the toggle does both', () => {
+    const h = harness();
+    expect(h.store.messagesOpen()).toBe(false);
+    h.store.openMessages();
+    expect(h.store.messagesOpen()).toBe(true);
+    h.store.closeMessages();
+    expect(h.store.messagesOpen()).toBe(false);
+    h.store.toggleMessages();
+    expect(h.store.messagesOpen()).toBe(true);
+    h.store.toggleMessages();
+    expect(h.store.messagesOpen()).toBe(false);
+  });
+
+  it('keeps the pane apart from the transcript panel', () => {
+    const h = harness();
+    h.store.openMessages();
+    expect(h.store.open()).toBe(false);
+  });
+
+  it('watches the typed lines of the live call, in the call’s own space, and nothing outside a call', () => {
+    const outside = withSubscriptions([]);
+    expect(outside.live()).toEqual([]);
+    expect(outside.store.unreadMessages()).toBe(0);
+
+    const h = withSubscriptions([
+      peer(ME, { type: 'call', id: CALL, record: RECORD, anchor: { datasetUri: 'space-a' } } as Activity),
+    ]);
+    expect(h.live()).toHaveLength(1);
+    expect(h.live()[0]).toMatchObject({
+      entity: 'TextBlock',
+      query: { within: RECORD, where: { source: 'typed' }, order: { createdAt: 'desc' } },
+      target: { dataset: 'space-a' },
+    });
+    expect(h.live()[0].query.limit).toBeGreaterThan(0);
+  });
+
+  it('counts what others write after the first answer, and not what was already there or its own', () => {
+    const h = withSubscriptions([peer(ME, { type: 'call', id: CALL, record: RECORD })]);
+    const sub = h.live()[0];
+
+    sub.cb([line('a', THEM)]);
+    expect(h.store.unreadMessages()).toBe(0);
+
+    sub.cb([line('c', ME), line('b', THEM), line('a', THEM)]);
+    expect(h.store.unreadMessages()).toBe(1);
+
+    sub.cb([line('d', THEM), line('c', ME), line('b', THEM), line('a', THEM)]);
+    expect(h.store.unreadMessages()).toBe(2);
+  });
+
+  it('clears the count when the pane opens, and counts nothing that arrives while it is open', () => {
+    const h = withSubscriptions([peer(ME, { type: 'call', id: CALL, record: RECORD })]);
+    const sub = h.live()[0];
+    sub.cb([]);
+    sub.cb([line('a', THEM)]);
+    expect(h.store.unreadMessages()).toBe(1);
+
+    h.store.openMessages();
+    expect(h.store.unreadMessages()).toBe(0);
+    sub.cb([line('b', THEM), line('a', THEM)]);
+    expect(h.store.unreadMessages()).toBe(0);
+
+    h.store.closeMessages();
+    sub.cb([line('c', THEM), line('b', THEM), line('a', THEM)]);
+    expect(h.store.unreadMessages()).toBe(1);
+  });
+
+  it('starts again for the next call, and lets the last one’s subscription go', async () => {
+    let peers = [peer(ME, { type: 'call', id: CALL, record: RECORD })];
+    const h = withSubscriptions(peers);
+    const first = h.live()[0];
+    first.cb([]);
+    first.cb([line('a', THEM)]);
+    expect(h.store.unreadMessages()).toBe(1);
+
+    peers = [peer(ME, { type: 'call', id: 'call:rec-2', record: 'rec-2' })];
+    h.setPeers(peers);
+
+    expect(first.stopped).toBe(true);
+    expect(h.live()).toHaveLength(1);
+    expect(h.live()[0].query.within).toBe('rec-2');
+    expect(h.store.unreadMessages()).toBe(0);
+
+    // Open when the call ends, it is put down — it would otherwise open empty at the next call.
+    h.store.openMessages();
+    h.setPeers([]);
+    expect(h.live()).toEqual([]);
+    expect(h.store.messagesOpen()).toBe(false);
+  });
+
+  it('lets its subscription go when the module is disposed', () => {
+    const disposers: (() => void)[] = [];
+    const h = withSubscriptions([peer(ME, { type: 'call', id: CALL, record: RECORD })], {
+      onDispose: (fn) => disposers.push(fn),
+    });
+    const sub = h.live()[0];
+    for (const fn of disposers) fn();
+    expect(sub.stopped).toBe(true);
+  });
+});
+
+/**
  * Which call records somebody is in right now — what the transcript's `subscribe` tests its subject
  * against.
  *

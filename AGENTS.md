@@ -4033,6 +4033,7 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - listening — True only while actually transcribing — what a record button highlights on.
   - liveCallRecords — The record of every call somebody is in right now.
   - liveCollectionId — The record the call this agent is in is writing into, or empty when there is none.
+  - messagesOpen — Whether the call’s messages pane is open.
   - modelMissing — No transcription model is installed on this node, as last read.
   - modelUnready — A transcription model is installed and cannot run yet — still downloading, or its server is not answering.
   - modelUnreadyText — Why the model cannot run yet, ready to show — "Downloading the speech model — 45%", "The speech server is not answering".
@@ -4060,6 +4061,7 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - transcriptFromStart — Whether the transcript is being read from its beginning rather than following the live end.
   - transcriptShown — How many transcript lines are loaded right now.
   - unconfirmedIds — Records a pass made that nobody has kept yet, by id.
+  - unreadMessages — How many messages others typed into the call this agent is in since its messages pane last showed them.
   - watchProblem — Why the standing extraction watch is not running here; empty when it is.
 - Actions (`{ "$invoke": "modules.transcribe.<name>" }`):
   - acceptProposal — Keeps a suggestion, as proposed or as edited.
@@ -4069,6 +4071,7 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - cancelReply — Puts a reply down without sending it.
   - cancelTiedDecision — Puts the decision waiting in tiedDecision down without making it.
   - closeExtractionPanel — Closes the extraction panel.
+  - closeMessages — Closes the call’s messages pane.
   - closePanel — Closes the transcript panel.
   - confirmTiedDecision — Carries out the decision waiting in tiedDecision, with everything tied to it.
   - connectServer — Connects the speech server found on the node’s machine, makes its transcription model the default, and resumes recording that was waiting on one.
@@ -4079,6 +4082,7 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - extractCollection — Runs one extraction pass over any call’s record, by id.
   - flushNow — Writes what has been heard so far without waiting for the buffer to fill.
   - openExtractionPanel — Opens the extraction panel.
+  - openMessages — Opens the call’s messages pane.
   - openPanel — Opens the transcript panel.
   - readTranscriptFromStart — Shows the beginning of the transcript, to be read forwards.
   - readTranscriptLive — Goes back to following the end of the transcript.
@@ -4091,8 +4095,9 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - toggle — Starts or stops recording this agent’s microphone into the call, and opens the transcript when starting.
   - toggleAutoExtract — Turns automatic extraction on or off for one collection, for everyone in it; defaults to the live call.
   - toggleExtractionTarget — Includes or excludes one model from what a call extracts, for everyone in it; defaults to the live call.
-- Parts: `transcribe.transcriptFeed` (subject: routeStore.params.call ? routeStore.params.call : modules.transcribe.collectionId), `transcribe.transcriptLines` (subject: modules.transcribe.collectionId), `transcribe.transcriptComposer`, `transcribe.captureMeter`, `transcribe.captureStatus`, `transcribe.coverage`, `transcribe.extractionTargets`, `transcribe.pendingUtterance`
-- Panels (`meta.panels[].dock`): `transcript` "Transcript" (module-owned openness), `extraction` "Extraction" (module-owned openness)
+  - toggleMessages — Opens the call’s messages pane, or closes it when it is open.
+- Parts: `transcribe.transcriptFeed` (subject: routeStore.params.call ? routeStore.params.call : modules.transcribe.collectionId), `transcribe.transcriptLines` (subject: modules.transcribe.collectionId), `transcribe.transcriptComposer`, `transcribe.captureMeter`, `transcribe.captureStatus`, `transcribe.coverage`, `transcribe.extractionTargets`, `transcribe.pendingUtterance`, `transcribe.callMessages` (subject: modules.transcribe.callId)
+- Panels (`meta.panels[].dock`): `transcript` "Transcript" (module-owned openness), `extraction` "Extraction" (module-owned openness), `messages` "Messages" (module-owned openness)
 - Settings: `recordCalls` (boolean; deployment, agent, space, agent-in-space) — Record calls automatically; `timelineOrder` (enum; agent) — Newest messages
 - Presence activities: `transcribe` { id: string, recording: boolean, anchor: object, collection: string }
 - Functions:

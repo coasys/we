@@ -69,6 +69,7 @@ import { threadLinesFunction } from '@we/messages';
 import { defineModule, type ModuleHost, type ModuleStoreDeps } from '@we/module-shared';
 
 import { CALL_CONTROLS_ANCHOR, callControl } from './CallControl.schema';
+import { callMessages, MESSAGES_SUBJECT_EXPR, messagesControl, messagesPanel } from './Messages.schema';
 import {
   captureMeter,
   captureStatus,
@@ -87,6 +88,7 @@ import { tiedDecisionModals } from './TiedDecision.schema';
 
 export { CALL_CONTROLS_ANCHOR, callControl } from './CallControl.schema';
 export { extractionActivity } from './ExtractionStatus.schema';
+export { callMessages, MESSAGES_SUBJECT_EXPR, messagesControl, messagesPanel } from './Messages.schema';
 export {
   captureMeter,
   captureStatus,
@@ -225,6 +227,17 @@ export const transcribeModule = defineModule({
         label: 'Being heard',
         description: 'What has been said and is not in the transcript yet.',
       },
+      /*
+        A call's typed lines alone, with a box to write one — see `Messages.schema.ts`. Its subject is
+        the bare live-call token, so a placement can point it at any call by its record: the call
+        page does, which is how somebody outside the call, or after it ended, writes into it.
+      */
+      callMessages: {
+        node: callMessages,
+        subject: MESSAGES_SUBJECT_EXPR,
+        label: 'Call messages',
+        description: 'What people typed into a call, and a box to message it.',
+      },
     },
 
     slots: [
@@ -242,6 +255,12 @@ export const transcribeModule = defineModule({
         decision it is. The call module's `call-status` anchor has nothing left to hold.
       */
       { anchor: CALL_CONTROLS_ANCHOR, node: callControl, order: 10 },
+      /*
+        And the way into the call's messages, beside it. Not a personal control like the record
+        button, but the bar is where somebody in a call is looking, and a message from the call has to
+        be findable from there — the count on it is how they learn one arrived.
+      */
+      { anchor: CALL_CONTROLS_ANCHOR, node: messagesControl, order: 20 },
       /*
         The one "decide these together?" question every Accept and Discard can raise, wherever it was
         pressed — see `TiedDecision.schema.ts`. Chrome rather than a panel's, because the buttons are
@@ -329,6 +348,21 @@ export const transcribeModule = defineModule({
         show: 'openExtractionPanel',
         close: 'closeExtractionPanel',
         order: 91,
+      },
+      /*
+        The call's messages. No `icon`, so no rail button: it is opened from the call bar, where the
+        call is, and has nothing to show outside one. The module owns the flag for the reason the
+        transcript's does — opening it is what clears the count on the bar's button.
+      */
+      {
+        name: 'messages',
+        title: 'Messages',
+        node: messagesPanel,
+        bid: { edge: 'right', size: 'sm' },
+        open: 'messagesOpen',
+        show: 'openMessages',
+        close: 'closeMessages',
+        order: 89,
       },
     ],
 

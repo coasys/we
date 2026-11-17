@@ -160,6 +160,27 @@ describe('the Coasys cartridge', () => {
     });
   });
 
+  /*
+    A call's page is where somebody outside the call, or reading it after it ended, finds it — so its
+    messages are there for everyone, pointed at the call the address names, and not behind the gate
+    that offers a way into the call.
+  */
+  it('shows the call’s messages on its page, to everyone, with a box to message it', () => {
+    const placement = findNode(
+      callPage,
+      (n) => n.type === '$part' && (n.props as { id?: unknown } | undefined)?.id === 'transcribe.callMessages',
+    );
+    expect(placement).toBeDefined();
+    expect((placement!.props as { subject?: unknown }).subject).toEqual({ $: 'routeStore.params.id' });
+
+    // Not inside any `$if`: nothing about the reader or the call's state hides it.
+    const gated = findNode(
+      callPage,
+      (n) => n.type === '$if' && JSON.stringify(n).includes('"transcribe.callMessages"'),
+    );
+    expect(gated).toBeUndefined();
+  });
+
   it('brings its own name, mark, sign-in screen and theme', () => {
     const bundle = cartridgeBundles().find((b) => b.id === 'coasys')!;
     expect(bundle.brand?.name).toBe('Coasys');

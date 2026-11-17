@@ -94,9 +94,12 @@ describe('the module declaration', () => {
     const panels = transcribeModule.contributes?.panels ?? [];
     const surface = storeSurface(bareStore());
 
-    expect(panels.map((p) => p.name)).toEqual(['transcript', 'extraction']);
+    expect(panels.map((p) => p.name)).toEqual(['transcript', 'extraction', 'messages']);
     for (const p of panels) {
-      expect(p.icon).toBeTruthy();
+      // Messages is opened from the call bar's button, which also counts what is unread — a rail
+      // button would be a second way in that shows neither.
+      if (p.name === 'messages') expect(p.icon).toBeUndefined();
+      else expect(p.icon).toBeTruthy();
       expect(surface[p.open ?? '']?.kind).toBe('state');
       expect(surface[p.show ?? '']?.kind).toBe('action');
       expect(surface[p.close ?? '']?.kind).toBe('action');

@@ -354,7 +354,7 @@ export const callPage: SchemaNode = {
               props: { color: 'text-muted', flex: '1' },
               children: [
                 {
-                  $: `find(modules.call.liveCalls, { recordId: ${CALL_ID} }) ? 'This call is happening now.' : 'This call has ended. Its transcript is below.'`,
+                  $: `find(modules.call.liveCalls, { recordId: ${CALL_ID} }) ? 'This call is happening now.' : 'This call has ended. Its transcript and messages are below.'`,
                 },
               ],
             },
@@ -370,10 +370,33 @@ export const callPage: SchemaNode = {
         },
       },
     },
+    /*
+      The transcript, and beside it the call's messages — the typed lines alone, with the box to write
+      one. Both pointed at the call the address names, so they are the same for somebody in the call,
+      somebody outside it and somebody reading it after it ended: anybody here can message it.
+    */
     {
-      type: 'Column',
-      props: { flex: '1', minHeight: '0', px: '500', pb: CLEAR_OF_THE_BAR, transition: LIFT },
-      children: [{ type: '$part', props: { id: 'transcribe.transcriptFeed', subject: { $: CALL_ID } } }],
+      type: 'Row',
+      props: { flex: '1', minHeight: '0', gap: '500', px: '500', pb: CLEAR_OF_THE_BAR, transition: LIFT },
+      children: [
+        {
+          type: 'Column',
+          props: { flex: '1', minWidth: '0', minHeight: '0' },
+          children: [{ type: '$part', props: { id: 'transcribe.transcriptFeed', subject: { $: CALL_ID } } }],
+        },
+        {
+          type: 'Column',
+          props: { width: '22rem', flex: '0 0 auto', minHeight: '0', gap: '300' },
+          children: [
+            {
+              type: 'we-text',
+              props: { variant: 'label', color: 'text-muted', textTransform: 'uppercase', letterSpacing: 'wide' },
+              children: ['Messages'],
+            },
+            { type: '$part', props: { id: 'transcribe.callMessages', subject: { $: CALL_ID } } },
+          ],
+        },
+      ],
     },
   ],
 };

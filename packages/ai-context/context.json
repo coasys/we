@@ -9207,6 +9207,12 @@
           "ambient": true
         },
         {
+          "name": "closeMessages",
+          "kind": "action",
+          "doc": "Closes the call’s messages pane.",
+          "ambient": true
+        },
+        {
           "name": "closePanel",
           "kind": "action",
           "doc": "Closes the transcript panel.",
@@ -9379,6 +9385,11 @@
           "doc": "The record the call this agent is in is writing into, or empty when there is none."
         },
         {
+          "name": "messagesOpen",
+          "kind": "state",
+          "doc": "Whether the call’s messages pane is open."
+        },
+        {
           "name": "modelMissing",
           "kind": "state",
           "doc": "No transcription model is installed on this node, as last read."
@@ -9402,6 +9413,12 @@
           "name": "openExtractionPanel",
           "kind": "action",
           "doc": "Opens the extraction panel.",
+          "ambient": true
+        },
+        {
+          "name": "openMessages",
+          "kind": "action",
+          "doc": "Opens the call’s messages pane.",
           "ambient": true
         },
         {
@@ -9562,6 +9579,12 @@
           "doc": "Includes or excludes one model from what a call extracts, for everyone in it; defaults to the live call."
         },
         {
+          "name": "toggleMessages",
+          "kind": "action",
+          "doc": "Opens the call’s messages pane, or closes it when it is open.",
+          "ambient": true
+        },
+        {
           "name": "transcribers",
           "kind": "state",
           "doc": "Everyone recording this call, this agent included — the numerator of coverage."
@@ -9585,6 +9608,11 @@
           "name": "unconfirmedIds",
           "kind": "state",
           "doc": "Records a pass made that nobody has kept yet, by id."
+        },
+        {
+          "name": "unreadMessages",
+          "kind": "state",
+          "doc": "How many messages others typed into the call this agent is in since its messages pane last showed them."
         },
         {
           "name": "watchProblem",
@@ -9618,6 +9646,10 @@
         },
         {
           "name": "pendingUtterance"
+        },
+        {
+          "name": "callMessages",
+          "subject": "modules.transcribe.callId"
         }
       ],
       "panels": [
@@ -9631,6 +9663,11 @@
           "name": "extraction",
           "title": "Extraction",
           "icon": "sparkle",
+          "hostOwned": false
+        },
+        {
+          "name": "messages",
+          "title": "Messages",
           "hostOwned": false
         }
       ],
