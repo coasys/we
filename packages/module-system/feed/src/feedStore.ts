@@ -120,9 +120,13 @@ export function createFeed(deps: FeedDeps) {
   // Forgotten whenever the dataset or the collection changes, so a switch never draws the last
   // space's rows, or the last call's, under the new one's name.
   let rootWas = '';
+  let datasetWas: unknown;
   effect?.(() => {
-    void deps.dataset?.();
+    const ds = deps.dataset?.();
     const now = root();
+    // A root that reads other signals (the calls drawn) can re-run this for the same collection.
+    if (ds === datasetWas && now === rootWas) return;
+    datasetWas = ds;
     setRows([]);
     setLoaded(false);
     setAnswered(false);

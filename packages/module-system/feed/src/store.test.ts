@@ -397,6 +397,25 @@ describe('the Feed of one call', () => {
     ],
   };
 
+  it('keeps a call’s lines when a second drawing of it comes and goes', async () => {
+    vi.useFakeTimers();
+    const h = harness([], {}, CALL_LINES);
+    h.store.watchCallFeed('call-9');
+    await vi.runAllTimersAsync();
+    const lines = () => (h.store.callFeedRows() as { id: string }[]).map((r) => r.id).sort();
+    expect(lines()).toEqual(['bot', 'said', 'typed']);
+
+    h.store.watchCallFeed('call-9');
+    await vi.runAllTimersAsync();
+    expect(lines()).toEqual(['bot', 'said', 'typed']);
+    expect(h.store.callFeedLoaded()).toBe(true);
+
+    h.store.unwatchCallFeed('call-9');
+    await vi.runAllTimersAsync();
+    expect(lines()).toEqual(['bot', 'said', 'typed']);
+    vi.useRealTimers();
+  });
+
   it('reads the call it is drawn for, and leaves the space’s window alone', async () => {
     vi.useFakeTimers();
     const h = harness([], {}, CALL_LINES);
