@@ -2231,6 +2231,43 @@ describe('what a collection extracts', () => {
     await vi.waitFor(() => expect(removed).toContain(watchId(root)));
   }, 15000);
 
+  it('shows a call’s picker the core classes while the space’s own are read, and says the list is not whole yet', async () => {
+    // The reader side of the wait above. Only the registrars wait for the whole list: the picker,
+    // its chips and the Extract button read the list as it arrives, so the panel never says there is
+    // nothing to extract for the few round trips before the space's own classes come.
+    let release: (() => void) | undefined;
+    let hold = false;
+    onPorts = (ports) => {
+      const read = ports.schemas.foreignSchemas.bind(ports.schemas);
+      ports.schemas.foreignSchemas = async (dataset) => {
+        if (!hold) return read(dataset);
+        await new Promise<void>((resolve) => (release = resolve));
+        return [
+          { name: 'Sighting', targetClass: 'test://Sighting', properties: [], interpretationHint: 'something seen' },
+        ];
+      };
+    };
+    const stores = mountShell();
+    await ready(stores);
+    hold = true;
+    await enterSpace(stores, 'Partial');
+    const root = stores.spaces.root();
+    const interpretation = kernel();
+    await vi.waitFor(() => expect(release).toBeDefined());
+
+    // Still loading: the core classes, already, and not yet whole.
+    const partial = interpretation.targets(root).map((t) => t.entity);
+    expect(partial.length).toBeGreaterThan(0);
+    expect(partial).not.toContain('Sighting');
+    expect(interpretation.targetsLoaded?.()).toBe(false);
+
+    release!();
+    await vi.waitFor(() => expect(interpretation.targetsLoaded?.()).toBe(true));
+    const whole = interpretation.targets(root).map((t) => t.entity);
+    expect(whole).toContain('Sighting');
+    for (const entity of partial) expect(whole).toContain(entity);
+  }, 15000);
+
   it('refuses the space collection to a member who does not administer the space, but not a call', async () => {
     const stores = mountShell();
     await ready(stores);

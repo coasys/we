@@ -225,10 +225,11 @@ export interface DatasetStore {
   unwatchConversation: (collectionId: string, dataset?: DatasetHandle) => Promise<void>;
   /**
    * ShapeStore supplies "which entities *could* be extracted here" — core vocabulary that declares
-   * itself extractable, plus this space's adopted shapes — and `undefined` while it is still
-   * reading them. Unset reads as none.
+   * itself extractable, plus this space's adopted shapes — and whether that list is whole yet. The
+   * list is lent as it arrives, so a picker shows the core classes at once; only what writes from it
+   * waits for `loaded`. Unset reads as none, and as not loaded.
    */
-  provideExtractionCandidates: (candidates: () => string[] | undefined) => () => void;
+  provideExtractionCandidates: (candidates: () => string[], loaded: () => boolean) => () => void;
   /**
    * SpaceStore supplies what one collection extracts, and how to change it.
    *
@@ -315,12 +316,24 @@ export function DatasetStoreProvider(props: ParentProps) {
     silent fallback to that constant would make a wiring failure look exactly like a space whose
     community had turned everything off.
   */
-  const extractionCandidatesGate = hostSlot<() => string[] | undefined>();
+  const extractionCandidatesGate = hostSlot<() => string[]>();
 
-  /** The candidates, or `undefined` while ShapeStore is still reading them. Unset reads as none. */
-  const extractionCandidates = (): string[] | undefined => {
-    const gate = extractionCandidatesGate.get();
-    return gate ? gate() : [];
+  /*
+    Whether that list is whole yet, lent beside it. Readers do not wait for it — a picker showing the
+    core classes while the space's own are read is true as far as it goes. A watch registered from
+    the part that had arrived was removed and written again when the rest came, so registrars wait.
+    Unset reads as *not* loaded: with nothing lent the list is empty, and an empty list read as
+    whole would register a watch for nothing.
+  */
+  const extractionCandidatesLoadedGate = hostSlot<() => boolean>();
+
+  const provideExtractionCandidates = (candidates: () => string[], loaded: () => boolean): (() => void) => {
+    const releaseCandidates = extractionCandidatesGate.provide(candidates);
+    const releaseLoaded = extractionCandidatesLoadedGate.provide(loaded);
+    return () => {
+      releaseCandidates();
+      releaseLoaded();
+    };
   };
 
   /*
@@ -409,7 +422,7 @@ export function DatasetStoreProvider(props: ParentProps) {
   }
 
   const targetsForCollection = (collectionId: string): string[] => {
-    const candidates = extractionCandidates() ?? [];
+    const candidates = extractionCandidatesGate.get()?.() ?? [];
     const chosen = collectionExtraction.get()?.targetsFor(collectionId);
     if (!chosen) return candidates;
     return candidates.filter((entity) => chosen.includes(entity));
@@ -502,7 +515,7 @@ export function DatasetStoreProvider(props: ParentProps) {
       */
       extractionTargets: (collectionId: string) => {
         const active = targetsForCollection(collectionId);
-        return (extractionCandidates() ?? []).map((entity) => ({
+        return (extractionCandidatesGate.get()?.() ?? []).map((entity) => ({
           entity,
           selected: active.includes(entity),
         }));
@@ -510,9 +523,10 @@ export function DatasetStoreProvider(props: ParentProps) {
       /*
         Whether that list is the whole of it yet. A space's own models and the classes it already had
         are read a few round trips after its core vocabulary is known, and a watch registered from the
-        part that had arrived was removed and registered again when the rest did.
+        part that had arrived was removed and registered again when the rest did. The list above does
+        not wait for this; what registers from it does.
       */
-      extractionTargetsLoaded: () => extractionCandidates() !== undefined,
+      extractionTargetsLoaded: () => extractionCandidatesLoadedGate.get()?.() ?? false,
       setAutoInterpret: async (collectionId: string, on: boolean) => {
         const extraction = collectionExtraction.get();
         if (!extraction) throw new Error('interpretation: this host cannot record a collection’s extraction settings');
@@ -1376,7 +1390,7 @@ export function DatasetStoreProvider(props: ParentProps) {
     provideAutoInterpretGate: autoInterpretGate.provide,
     watchConversation,
     unwatchConversation,
-    provideExtractionCandidates: extractionCandidatesGate.provide,
+    provideExtractionCandidates,
     provideCollectionExtraction: collectionExtraction.provide,
   };
 

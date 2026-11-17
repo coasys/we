@@ -521,14 +521,13 @@ export function ShapeStoreProvider(props: ParentProps) {
     the provider tree, so it cannot read a shape. The accessor rather than the value, so it follows
     a community defining a model without anything re-registering.
 
-    And lent as nothing while it is still being read. A standing watch registered from the part that
-    had arrived was removed and registered again when the rest did — four writes to the shared graph
-    from every member who opened a call or the feed, ending where they started.
+    Lent as it arrives, with whether it is whole beside it. A picker shows the core classes at once;
+    a standing watch waits for the rest, because one registered from the part that had arrived was
+    removed and registered again when the rest did — four writes to the shared graph from every
+    member who opened a call or the feed, ending where they started.
   */
   const extractionCandidatesLoaded = createMemo(() => shapesLoaded() && datasetStore.currentDatasetEntitiesLoaded());
-  onCleanup(
-    datasetStore.provideExtractionCandidates(() => (extractionCandidatesLoaded() ? extractionCandidates() : undefined)),
-  );
+  onCleanup(datasetStore.provideExtractionCandidates(extractionCandidates, extractionCandidatesLoaded));
 
   /**
    * What a relationship may point at here, grouped by where it comes from and labelled for the
