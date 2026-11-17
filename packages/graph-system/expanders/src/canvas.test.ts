@@ -174,16 +174,59 @@ function answer(
         ),
       );
     } else if (request.scope && request.scope.anchorId !== canvas) {
-      // A scope read past the canvas is a relation pull: the children the anchor names through
-      // `via`, which the backend keeps as a foreign key on the child's own row.
-      const { anchor, via, anchorId } = request.scope;
-      rows = rows.filter((row) => row[`__${anchor}_${via}`] === anchorId || row[via] === anchorId);
+      /*
+        A scope read past the canvas is a relation pull. Inbound — what the row's own `via` points
+        at — is the shared reader's backward read, over every anchor at once; outbound is the
+        anchor's own list, which the backend keeps as a foreign key on the child's row.
+      */
+      const { anchor, via, direction } = request.scope;
+      const anchors = ([] as string[]).concat(request.scope.anchorId);
+      rows =
+        direction === 'in'
+          ? rows.filter((row) =>
+              ([] as unknown[]).concat(row[via] ?? []).some((value) => anchors.includes(idOf(value))),
+            )
+          : rows.filter(
+              (row) => anchors.includes(row[`__${anchor}_${via}`] as string) || anchors.includes(row[via] as string),
+            );
+    }
+    // A forward read's includes, hydrated the way the backend does: the row's own field, else the
+    // children holding the foreign key the relation writes.
+    if (where && request.include && !several) {
+      rows = rows.map((row) => hydrate(tables, entity, row, request.include as Record<string, unknown>));
     }
     // A placement's `node` is an untyped to-one, so an include reads it as whatever kind it is.
     if (withCards && entity === 'Placement') rows = rows.map((row) => ({ ...row, node: cardFor(tables, row.node) }));
     // A read over several kinds says which each row was read as.
     return several ? rows.map((row) => ({ ...row, [NODE_TYPE_KEY]: entity })) : rows;
   });
+}
+
+const idOf = (value: unknown) =>
+  typeof value === 'string' ? value : String((value as { id?: unknown } | null)?.id ?? '');
+
+/** A row with each included relation that names its target class read as the records it holds. */
+function hydrate(
+  tables: Record<string, Record<string, unknown>[]>,
+  entity: string,
+  row: Record<string, unknown>,
+  include: Record<string, unknown>,
+): Record<string, unknown> {
+  const out = { ...row };
+  const shape = SHAPES.find((s) => s.name === entity);
+  for (const name of Object.keys(include)) {
+    const relation = shape?.relations.find((r) => r.name === name);
+    if (!relation?.target) continue;
+    const rows = tables[relation.target] ?? [];
+    const held = row[name];
+    const byKey = rows.filter((candidate) => candidate[`__${entity}_${name}`] === row.id);
+    const listed =
+      held === undefined
+        ? byKey
+        : ([] as unknown[]).concat(held).map((value) => rows.find((r) => r.id === idOf(value)) ?? value);
+    out[name] = relation.cardinality === 'many' ? listed : (listed[0] ?? held);
+  }
+  return out;
 }
 
 /** The record a placement names, as the kind it is — or nothing, for one that is not there. */
@@ -1387,7 +1430,7 @@ describe('a canvas over another record’s members', () => {
   ];
 
   function spaceContext() {
-    const asked: { entities: string[]; anchor?: string; via?: string; include?: unknown }[] = [];
+    const asked: { entities: string[]; anchor?: string | string[]; via?: string; include?: unknown }[] = [];
     const tagged = (entity: string, rows: Record<string, unknown>[]) =>
       rows.map((row) => ({ ...row, [NODE_TYPE_KEY]: entity }));
     const ctx = {
@@ -1904,5 +1947,65 @@ describe('canvasSeed — model relations', () => {
       expect.arrayContaining(['we-graph://entity/ds/DiscussionTopic/t1', 'we-graph://entity/ds/Position/pos1']),
     );
     expect(nodes.find((n) => n.id.endsWith('/Position/pos1'))?.data?.origin).toBe('call-1');
+  });
+});
+
+describe('canvasSeed — a level of the relation pull is one read per relation', () => {
+  /*
+    The pull used to drill one `scope` read per parent for every list it followed, and that path was
+    the one no live test reached. Through the shared relation reader a level is one read per
+    relation — every parent of a kind asked at once — however many parents the level holds.
+  */
+  it('asks every parent of a level at once, for the lists they hold and the pointers at them', async () => {
+    const queries: ExpanderQuery[] = [];
+    const { context: base } = context({
+      Placement: [
+        { id: 'p1', node: 'th1', nodeType: 'Thread', x: 0, y: 0 },
+        { id: 'p2', node: 'th2', nodeType: 'Thread', x: 0, y: 40 },
+        { id: 'p3', node: 't1', nodeType: 'DiscussionTopic', x: 0, y: 80 },
+        { id: 'p4', node: 't2', nodeType: 'DiscussionTopic', x: 0, y: 120 },
+      ],
+      Thread: [
+        { id: 'th1', title: 'Weekly' },
+        { id: 'th2', title: 'Daily' },
+      ],
+      Post: [
+        { id: 'po1', text: 'notes', __Thread_posts: 'th1' },
+        { id: 'po2', text: 'more', __Thread_posts: 'th2' },
+      ],
+      DiscussionTopic: [
+        { id: 't1', title: 'Roadmap' },
+        { id: 't2', title: 'Q3' },
+      ],
+      Position: [
+        { id: 'pos1', text: 'a', about: 't1' },
+        { id: 'pos2', text: 'b', about: 't2' },
+      ],
+    });
+    const ctx = {
+      ...base,
+      query: (request: ExpanderQuery) => {
+        queries.push(request);
+        return base.query(request);
+      },
+    } as ExpanderContext;
+
+    const { nodes } = await canvasSeed().seed({ canvas: 'b1', relations: { children: true } }, ctx);
+
+    expect(nodes.map((n) => n.id)).toEqual(
+      expect.arrayContaining([
+        'we-graph://entity/ds/Post/po1',
+        'we-graph://entity/ds/Post/po2',
+        'we-graph://entity/ds/Position/pos1',
+        'we-graph://entity/ds/Position/pos2',
+      ]),
+    );
+    // The two threads' posts in one read, not one drill per thread.
+    expect(queries.filter((q) => q.entity === 'Thread' && q.where)).toHaveLength(1);
+    expect(queries.filter((q) => q.scope?.anchor === 'Thread')).toEqual([]);
+    // Both topics' positions in one inbound read, anchored at the whole level.
+    const forPositions = queries.filter((q) => q.entity === 'Position' && q.scope?.direction === 'in');
+    expect(forPositions).toHaveLength(1);
+    expect(forPositions[0].scope?.anchorId).toEqual(expect.arrayContaining(['t1', 't2']));
   });
 });

@@ -44,6 +44,7 @@ import { entityAddress, NODE_TYPE_KEY, parseAddress } from '@we/graph-protocol';
 
 import { rowToNode } from './nodes';
 import { placementsFor, resolvePlacement } from './placements';
+import { type FollowedRelation, followedRelations, idsAt, readRelations, type RelationLink } from './relations';
 import { type Pretend, pretendVotes, readVotes, voicesOf, type Vote, weighVotes } from './weighing';
 
 export interface CanvasSeedOptions {
@@ -596,56 +597,46 @@ export function canvasSeed(): SeedSource {
           (typeof options.relations === 'object' && options.relations?.children !== false));
       const maxNodes =
         (typeof options.relations === 'object' && options.relations !== null && Number(options.relations.max)) || 500;
+      /*
+        Only what the space's own DNA declares — the shared rule, `followedRelations`: typed, and never
+        to or from a class the host marks `bookkeeping` (WE's `signals`, `runs`, `generatedBy` would
+        hang reactions, model runs and the transcripts they wrote under every card). The canvas's own
+        placements and its drawn connections are read by other means, so they are left out too.
+      */
+      const followed = followRelations
+        ? followedRelations(shapes, {
+            skipClasses: [placementEntity, ...(options.connections ? [options.connections] : [])],
+          })
+        : [];
       const relSpecs = new Map<string, RelationSpec[]>();
-      if (followRelations) {
+      for (const relation of followed) {
         /*
-          Only what the space's own DNA declares. WE's core classes carry typed relations too —
-          every card's `signals`, its `runs` and `generatedBy` — and following them puts reactions,
-          model runs and the transcripts they wrote under every card: the furniture, walked as if
-          it were the structure. A host marks them `bookkeeping` (WE's is the extraction list,
-          `WE_PLUMBING_CLASSES`) and a relation to or from one is never a spine here.
+          The forward this relation inverts. Named where the declaration says it (`reverseOf`); where
+          it does not, a reverse is still pairable — a `belongsTo` shares its forward's predicate, the
+          same link read from the other end. Left unpaired, a reverse to-one falls to the
+          children-side default below and the seed draws the link *and* its inverse — a two-cycle.
         */
-        const plumbing = new Set(shapes.filter((shape) => shape.bookkeeping).map((shape) => shape.name));
-        for (const shape of shapes) {
-          if (shape.name === placementEntity || shape.name === options.connections || plumbing.has(shape.name)) {
-            continue;
-          }
-          const specs = shape.relations
-            .filter((relation) => relation.target && !plumbing.has(relation.target))
-            .map((relation) => {
-              /*
-                The forward this relation inverts. Named where the declaration says it
-                (`reverseOf`); where it does not, a reverse is still pairable — a `belongsTo`
-                shares its forward's predicate, the same link read from the other end. Left
-                unpaired, a reverse to-one falls to the children-side default below and the seed
-                draws the link *and* its inverse — `Post.comments` and `Comment.post` as two
-                opposing edges, a two-cycle.
-              */
-              const forward = (() => {
-                const target = shapes.find((s) => s.name === relation.target);
-                if (relation.reverseOf) {
-                  return target?.relations.find((r) => r.name === relation.reverseOf);
-                }
-                if (relation.reverse && relation.predicate) {
-                  return target?.relations.find((r) => !r.reverse && r.predicate === relation.predicate);
-                }
-                return undefined;
-              })();
-              return {
-                name: relation.name,
-                target: relation.target,
-                many: relation.cardinality === 'many',
-                reverse: relation.reverse === true,
-                forwardName: relation.reverseOf ?? (relation.reverse ? forward?.name : undefined),
-                // Unresolvable reads as a to-one: a `belongsTo` declared without naming its
-                // forward is AD4M's, and there the inverse of `hasOne`/`hasMany` is always the
-                // children side.
-                forwardMany: forward?.cardinality === 'many',
-              };
-            });
-          if (specs.length) relSpecs.set(shape.name, specs);
-        }
+        const target = shapes.find((s) => s.name === relation.target);
+        const forward = relation.reverseOf
+          ? target?.relations.find((r) => r.name === relation.reverseOf)
+          : relation.reverse && relation.predicate
+            ? target?.relations.find((r) => !r.reverse && r.predicate === relation.predicate)
+            : undefined;
+        const specs = relSpecs.get(relation.holder) ?? [];
+        specs.push({
+          name: relation.name,
+          target: relation.target,
+          many: relation.cardinality === 'many',
+          reverse: relation.reverse === true,
+          forwardName: relation.reverseOf ?? (relation.reverse ? forward?.name : undefined),
+          // Unresolvable reads as a to-one: a `belongsTo` declared without naming its forward is
+          // AD4M's, and there the inverse of `hasOne`/`hasMany` is always the children side.
+          forwardMany: forward?.cardinality === 'many',
+        });
+        relSpecs.set(relation.holder, specs);
       }
+      const specOf = (relation: FollowedRelation) =>
+        relSpecs.get(relation.holder)?.find((spec) => spec.name === relation.name);
       /**
        * Whether the holder is the *child* end of this link — the value it reads is a parent.
        * True for a forward to-one (`Reply.replyTo` names its message) and for the back-pointer of
@@ -667,21 +658,6 @@ export function canvasSeed(): SeedSource {
       const relationInclude = Object.fromEntries(relationNames.map((name) => [name, true]));
       const includeFor = (entity: string) =>
         orNothing(Object.fromEntries((relSpecs.get(entity) ?? []).map((spec) => [spec.name, true])));
-      /**
-       * A relation's targets on a row, as ids — hydrated records, bare references, or a list of
-       * either, whichever the read brought back.
-       */
-      const idsAt = (row: Record<string, unknown>, relation: string): string[] => {
-        const value = row[relation];
-        const list = Array.isArray(value) ? value : value === undefined || value === null ? [] : [value];
-        const out: string[] = [];
-        for (const entry of list) {
-          const id = typeof entry === 'string' ? entry : (entry as { id?: unknown } | null)?.id;
-          if (typeof id === 'string' && id) out.push(id);
-        }
-        return out;
-      };
-
       /*
         Round one: everything this canvas says about itself, and everything it owns. Two reads, together.
 
@@ -1041,77 +1017,57 @@ export function canvasSeed(): SeedSource {
       */
       if (pullChildren && onCanvas.size) {
         let frontier = [...onCanvas].map((id) => ({ id, type: typeOf.get(id)! }));
-        // Found but not yet drawn — the walk's backlog, and all the cap is counting against. A
-        // scope-found row remembers the (parent, relation) that produced it: its edge cannot be
-        // read back off the row, because a to-many's foreign key lives on the child's side of a
-        // field the parent spells.
+        // Found but not yet drawn — the walk's backlog, and all the cap is counting against.
         interface Found {
           entity: string;
           row: Record<string, unknown>;
-          via?: { holder: string; spec: RelationSpec; id: string };
         }
         const pending = new Map<string, Found>();
         while (frontier.length && nodes.length + pending.size < maxNodes) {
           const next: { id: string; type: string }[] = [];
           const found: Found[] = [];
+          const level: RelationLink[] = [];
           const parentsByType = new Map<string, string[]>();
           for (const { id, type } of frontier) {
             const list = parentsByType.get(type) ?? [];
             list.push(id);
             parentsByType.set(type, list);
           }
+          /*
+            One level, through the shared relation reader: per type of parent, the children the
+            parents list (read forward, with `include`) and the children that point at them (read
+            backward, one inbound read per relation for every parent at once). A kind the reader put
+            away is not asked for — the same rule the tray read keeps.
+          */
           await Promise.all(
-            [...parentsByType.entries()].flatMap(([type, ids]) => {
-              const queries: Promise<unknown>[] = [];
-              // Child-held pointers: one read per (class, relation) for every parent of this type —
-              // `where` already speaks a list of ends, the same way the connections read does.
-              for (const [entity, specs] of relSpecs) {
-                // A kind the reader put away is not asked for — the same rule the tray read keeps.
-                if (hiddenTypes.has(entity)) continue;
-                for (const spec of specs) {
-                  if (spec.target !== type || !heldByChild(spec)) continue;
-                  queries.push(
-                    read(entity, { [spec.name]: ids }, pullInclude(entity), scope, maxNodes).then((rows) =>
-                      found.push(...rows.map((row) => ({ entity, row }))),
-                    ),
-                  );
-                }
-              }
-              // Parent-side lists: one drill per parent, per relation it declares toward a child.
-              for (const spec of relSpecs.get(type) ?? []) {
-                if (heldByChild(spec)) continue;
-                if (!declared(spec.target) || hiddenTypes.has(spec.target)) continue;
-                for (const id of ids) {
-                  const via = { holder: type, spec, id };
-                  queries.push(
-                    context
-                      .query({
-                        entity: spec.target,
-                        dataset,
-                        scope: { anchor: type, via: spec.name, anchorId: id },
-                        include: pullInclude(spec.target),
-                        limit: maxNodes,
-                        signal,
-                      })
-                      .then((rows) => found.push(...rows.map((row) => ({ entity: spec.target, row, via }))))
-                      .catch((error: unknown) =>
-                        context.warn(
-                          `canvas: cannot read children of ${type} ${id} via ${spec.name}: ${
-                            error instanceof Error ? error.message : String(error)
-                          }`,
-                        ),
-                      ),
-                  );
-                }
-              }
-              return queries;
-            }),
+            [...parentsByType.entries()].map(([type, ids]) =>
+              readRelations({
+                context,
+                dataset,
+                type,
+                ids,
+                forward: followed.filter(
+                  (relation) =>
+                    relation.holder === type && !heldByChild(specOf(relation)!) && !hiddenTypes.has(relation.target),
+                ),
+                backward: followed.filter(
+                  (relation) =>
+                    relation.target === type && heldByChild(specOf(relation)!) && !hiddenTypes.has(relation.holder),
+                ),
+                include: pullInclude,
+                limit: maxNodes,
+                signal,
+              }).then(({ rows, links }) => {
+                found.push(...rows);
+                level.push(...links);
+              }),
+            ),
           );
-          for (const { entity, row, via } of found) {
+          for (const { entity, row } of found) {
             const id = typeof row.id === 'string' ? row.id : undefined;
             if (!id || onCanvas.has(id) || hidden.has(id) || pending.has(id)) continue;
             if (options.onlyFrom && originOf(row) !== options.onlyFrom) continue;
-            pending.set(id, { entity, row, via });
+            pending.set(id, { entity, row });
           }
           /*
             Drawn in id order rather than the order the reads happened to resolve in: the cap
@@ -1119,7 +1075,7 @@ export function canvasSeed(): SeedSource {
             canvas every load. Sorted is arbitrary but stable — the same walk finds the same
             five hundred.
           */
-          for (const [id, { entity, row, via }] of [...pending.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+          for (const [id, { entity, row }] of [...pending.entries()].sort(([a], [b]) => a.localeCompare(b))) {
             if (nodes.length >= maxNodes) break;
             pending.delete(id);
             const node = rowToNode(
@@ -1139,9 +1095,12 @@ export function canvasSeed(): SeedSource {
             typeOf.set(id, entity);
             cardRows.set(id, { entity, row });
             next.push({ id, type: entity });
-            // The edge the scope answered for, drawn from the asking rather than the fields —
-            // which is also the only place a `belongsTo` link can be read back reliably.
-            if (via) addRelationEdge(via.holder, via.spec, via.id, id);
+          }
+          // The links the level answered with — read from the asking, which is also the only place a
+          // list's link can be read back reliably: the child's row does not spell the parent's field.
+          for (const link of level) {
+            const spec = specOf(link.relation);
+            if (spec) addRelationEdge(link.relation.holder, spec, link.holder, link.value);
           }
           frontier = next;
         }

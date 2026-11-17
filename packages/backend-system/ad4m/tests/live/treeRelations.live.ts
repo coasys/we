@@ -15,6 +15,7 @@ import { Ad4mClient } from '@coasys/ad4m';
 import { getEntityForDataset } from '@we/entities';
 import { afterAll, describe, expect, inject, it } from 'vitest';
 
+import { createAd4mQueryAdapter } from '../../src/ad4mAdapter';
 import { createAd4mBackendPorts } from '../../src/backendPortsAdapter';
 
 /** Two classes in the shape a model author writes: links as typed `hasOne`s, no `sh:class`. */
@@ -68,6 +69,35 @@ const POSITION = {
       relation_kind: 'hasOne',
       target_class_name: 'LiveTopic',
       node_kind: 'IRI',
+    },
+  ],
+};
+
+/** A parent that lists its children — the to-many a tree reads from the holder's side. */
+const link = (action: string, predicate: string) => [{ action, source: 'this', predicate, target: 'value' }];
+const AGENDA = {
+  target_class: 'treelive://LiveAgenda',
+  properties: [
+    {
+      path: 'treelive://agendaTitle',
+      name: 'title',
+      datatype: 'xsd://string',
+      min_count: 1,
+      max_count: 1,
+      writable: true,
+      setter: setter('treelive://agendaTitle'),
+      identity: true,
+    },
+    {
+      path: 'treelive://items',
+      name: 'items',
+      min_count: 0,
+      writable: true,
+      relation_kind: 'hasMany',
+      target_class_name: 'LiveTopic',
+      node_kind: 'IRI',
+      adder: link('addLink', 'treelive://items'),
+      remover: link('removeLink', 'treelive://items'),
     },
   ],
 };
@@ -141,6 +171,113 @@ describe('a tree over an installed SDNA’s relations, live', () => {
         (row) => row?.about === t1.id,
       );
       expect(moved?.about).toBe(t1.id);
+    } finally {
+      await ports.lifecycle.remove(ref.id);
+    }
+  });
+
+  /*
+    The two reads a level of the canvas's relation pull makes, for every parent of a kind at once —
+    never one read per parent. Backward: "what points at any of these topics through `about`", the
+    inbound scope the shared relation reader asks, read here the two ways it reaches the executor (the
+    query adapter's traverse form, and the `where` over the field the graph host lowers it to). Forward:
+    the children a list of agendas holds, read with `include` on the parents — and, for a template
+    that drills instead, the same children through an outbound scope anchored at the whole list.
+  */
+  it('reads a level of the pull for a list of anchors, both ways round', { timeout: 120_000 }, async () => {
+    const { url, token } = inject('ad4mExecutor');
+    client ??= new Ad4mClient(url, token);
+    const agent = (await client.agent.me()).did;
+    const ports = createAd4mBackendPorts(client, { selfId: () => agent });
+    const ref = await ports.lifecycle.create(`tree-relations-list-${Date.now()}`);
+    try {
+      await ports.schemas.installSpace(ref.handle, []);
+      const perspective = ref.handle as {
+        addSdna(n: string, c: string, t: 'subject_class', s: string): Promise<boolean>;
+      };
+      await perspective.addSdna('LiveTopic', '', 'subject_class', JSON.stringify(TOPIC));
+      await perspective.addSdna('LivePosition', '', 'subject_class', JSON.stringify(POSITION));
+      await perspective.addSdna('LiveAgenda', '', 'subject_class', JSON.stringify(AGENDA));
+      const entries = await ports.schemas.foreignSchemas(ref.handle);
+      expect(entries.find((e) => e.name === 'LiveAgenda')?.properties.find((p) => p.name === 'items')).toMatchObject({
+        relatedEntity: 'LiveTopic',
+        isCollection: true,
+      });
+
+      const Topic = getEntityForDataset('LiveTopic', ref.handle) as unknown as Model;
+      const Position = getEntityForDataset('LivePosition', ref.handle) as unknown as Model;
+      const Agenda = getEntityForDataset('LiveAgenda', ref.handle) as unknown as Model;
+      const [t1, t2, t3] = await Promise.all(
+        ['Roadmap', 'Hiring', 'Budget'].map((title) => Topic.create(ref.handle, { title })),
+      );
+      const p1 = await Position.create(ref.handle, { statement: 'Ship it', about: t1.id });
+      const p2 = await Position.create(ref.handle, { statement: 'Hire two', about: t2.id });
+      await Position.create(ref.handle, { statement: 'Elsewhere', about: t3.id });
+      const a1 = await Agenda.create(ref.handle, { title: 'Monday' });
+      const a2 = await Agenda.create(ref.handle, { title: 'Tuesday' });
+      /*
+        Listed by link, as the class stores them. `addRelation` is refused here: AD4M's `fromSHACL`
+        reads an installed `hasMany` back as getter-only, so it offers no write — a gap of its own,
+        noted beside the to-one clear in the PR, and not one the tree's reads depend on.
+      */
+      const lists = ref.handle as {
+        add(link: { source: string; predicate: string; target: string }): Promise<unknown>;
+      };
+      for (const [parent, child] of [
+        [a1.id, t1.id],
+        [a2.id, t2.id],
+        [a2.id, t3.id],
+      ]) {
+        await lists.add({ source: parent, predicate: 'treelive://items', target: child });
+      }
+      const adapter = createAd4mQueryAdapter(() => entries);
+      const ids = (rows: Row[]) => rows.map((row) => row.id).sort();
+
+      // Backward, through the query adapter: an inbound scope anchored at two topics at once.
+      const inbound = await eventually(
+        () =>
+          Position.findAll(
+            ref.handle,
+            adapter.lower({
+              irVersion: 1,
+              entity: 'LivePosition',
+              scope: { anchor: 'LiveTopic', via: 'about', anchorId: [t1.id, t2.id], direction: 'in' },
+            } as never),
+          ),
+        (rows) => rows.length >= 2,
+      );
+      expect(ids(inbound)).toEqual([p1.id, p2.id].sort());
+      // Backward, as the graph host lowers the same read: a filter on the child's own field.
+      expect(ids(await Position.findAll(ref.handle, { where: { about: [t1.id, t2.id] } }))).toEqual(
+        [p1.id, p2.id].sort(),
+      );
+
+      // Forward, the to-many pull: both agendas' items in one read, each on the agenda that lists it.
+      const parents = await eventually(
+        () => Agenda.findAll(ref.handle, { where: { id: [a1.id, a2.id] }, include: { items: true } }),
+        (rows) => rows.length === 2 && rows.every((row) => Array.isArray(row.items) && row.items.length > 0),
+      );
+      const held = Object.fromEntries(
+        parents.map((row) => [
+          row.id,
+          ids((row.items as Row[]).map((item) => (typeof item === 'string' ? { id: item } : item))),
+        ]),
+      );
+      expect(held).toEqual({ [a1.id]: [t1.id], [a2.id]: [t2.id, t3.id].sort() });
+      expect((parents.find((row) => row.id === a1.id)!.items as Row[])[0]).toMatchObject({
+        id: t1.id,
+        title: 'Roadmap',
+      });
+      // The same children through an outbound scope over both agendas, for a template that drills.
+      const drilled = await Topic.findAll(
+        ref.handle,
+        adapter.lower({
+          irVersion: 1,
+          entity: 'LiveTopic',
+          scope: { anchor: 'LiveAgenda', via: 'items', anchorId: [a1.id, a2.id] },
+        } as never),
+      );
+      expect(ids(drilled)).toEqual([t1.id, t2.id, t3.id].sort());
     } finally {
       await ports.lifecycle.remove(ref.id);
     }

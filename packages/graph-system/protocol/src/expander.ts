@@ -134,8 +134,15 @@ export interface ExpanderQuery {
   limit?: number;
   offset?: number;
   include?: Record<string, unknown>;
-  /** Drill down from an anchor instance through one of its relations. */
-  scope?: { anchor: string; via: string; anchorId: string; direction?: 'in' | 'out' };
+  /**
+   * Drill down from an anchor instance through one of its relations — or from several at once.
+   *
+   * A list asks the same question of every anchor in one read, the way the query IR's `scope` does
+   * (`boundedTraversal.multiAnchor`): a level of a tree is one round trip rather than one per parent.
+   * `direction: 'in'` reads `result --via--> anchor`, so `via` is then the *result's* relation —
+   * "what points at these through `about`".
+   */
+  scope?: { anchor: string; via: string; anchorId: string | string[]; direction?: 'in' | 'out' };
   signal?: AbortSignal;
 }
 
