@@ -396,6 +396,36 @@ describe('the readouts the bar dropped', () => {
  * page underneath it, and covering whatever a view did not pad for — the last row of the space
  * settings was unreachable and the Feed kept a blank band for it. These pin the new arrangement.
  */
+/**
+ * Who is in the call is the stage's to show, not the bar's.
+ *
+ * The bar carried a stack of faces and "N in the call" beside hang-up. The tiles above it already say
+ * who is here, each with a name, so the readout was the same fact twice in one panel (Josh, #487).
+ */
+describe('the bar without a participants readout', () => {
+  const row = (): SchemaNode =>
+    walk(chrome()).find(
+      (node) =>
+        node.type === 'Row' &&
+        ((node.children ?? []) as SchemaNode[]).some(
+          (child) => child?.type === '$slot' && props(child).anchor === 'call-controls',
+        ),
+    ) as SchemaNode;
+
+  it('draws no stack of faces in the bar', () => {
+    expect(walk(row()).filter((node) => node.type === 'AvatarStack')).toEqual([]);
+    expect(JSON.stringify(row())).not.toContain('modules.call.tileFaces');
+  });
+
+  it('says "in the call" nowhere in the call’s chrome', () => {
+    expect(JSON.stringify(chrome())).not.toContain(' in the call"');
+  });
+
+  it('keeps the faces the tiles draw, which still read tileFaces', () => {
+    expect(JSON.stringify(part('tile'))).toContain('modules.call.tileFaces');
+  });
+});
+
 describe('where the bar lives', () => {
   /** Every chrome node that is not the stage — where the bar used to float. */
   const offStage = (): SchemaNode[] => slotNodes();
@@ -576,9 +606,9 @@ describe('how the bar reads left to right', () => {
     expect(dev).toBeGreaterThan(-1);
     /*
       The whole arrangement in one assertion: a user's bar and a developer's differ by one trailing
-      group. So nothing shipped may follow it except the rule and the readout that close the row.
+      group. So nothing shipped may follow it except the rule and the hang-up that close the row.
     */
-    expect(order.slice(dev + 1)).toEqual(['divider', 'we-tooltip', 'modules.call.leave']);
+    expect(order.slice(dev + 1)).toEqual(['divider', 'modules.call.leave']);
     expect(order.indexOf('menu')).toBeLessThan(dev);
     expect(order.indexOf('slot:call-controls')).toBeLessThan(dev);
   });

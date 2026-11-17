@@ -36,7 +36,7 @@ import { defineModule, type ModuleHost } from '@we/module-shared';
   coupling, nothing for the host to provide, and no version for the two to agree on. That is why it
   is a devDependency here rather than a peer, unlike `@we/module-shared` and `@we/schema-shared`.
 */
-import { field, formModal, peopleTooltip } from '@we/schema-kit';
+import { field, formModal } from '@we/schema-kit';
 import { expr, type SchemaNode } from '@we/schema-shared';
 
 import { deviceSettings, deviceSettingsModal } from './DeviceSettings.schema';
@@ -152,9 +152,8 @@ function contentCentred(edge: 'top' | 'bottom', child: SchemaNode): SchemaNode {
  * `base` is the strip's tier below 640px of content — a phone, or a desktop with enough docked
  * beside the space that the full row would not fit. The full bar runs to six hundred pixels with
  * a contributed control or two; below that width the strip above keeps it on screen by letting it
- * overlap the dock, which is survivable and not good. Compact, it is about half as wide: the
- * readout keeps its faces and loses its sentence, and everything that is not mute, camera, or
- * hang-up moves into one menu.
+ * overlap the dock, which is survivable and not good. Compact, it is about half as wide: everything
+ * that is not mute, camera, or hang-up moves into one menu.
  *
  * One tier rather than a gradual collapse, because a control that moves at 700 and another at 500
  * is a bar nobody can learn. The rule is: below `base` it is the small bar, otherwise the whole
@@ -977,89 +976,6 @@ function mediaToggle(opts: {
 }
 
 /**
- * Who is here — a readout, not a control.
- *
- * The count used to be a number sitting inside the show/hide button, which made that button the one
- * thing in the bar that could not be square and put a fact inside a switch: the digit changed when
- * somebody joined, which looks like the control changing state.
- *
- * Separated, it also says the same thing the same way in both halves of this file. The bar you see
- * when you are *not* in the call is faces and "3 in a call"; this is faces and "3 in the call". One
- * sentence, two tenses.
- *
- * Faces come from `tileFaces` rather than from the roster, so a profile arriving fills them in
- * without touching `tiles` — which is what keeps a late avatar from remounting somebody's video.
- * Three, because past that the stack is a smudge at this size and the number is doing the work.
- *
- * ## The roster on hover
- *
- * Three faces and a number answer "how many"; only the list answers "who". It hangs off the whole
- * readout rather than off the avatars, because what a reader points at is the faces *and* the words
- * beside them — a tooltip owned by the stack alone produces nothing when you hover "5 in the call".
- *
- * It lists everyone, not the three that were drawn: the people the stack had to hide are exactly the
- * ones there is no other way to find out about.
- *
- * `peopleTooltip` is the kit's, not this module's. It was written out by hand here first — the kit
- * lived under `templates/` and `modules → templates` is the sideways edge the dependency rules
- * forbid — and that copy is what made the packaging wrong rather than the module unusual, so the
- * portable tier moved to `@we/schema-kit` and this reaches for it like a template would.
- */
-const participants: SchemaNode = peopleTooltip({
-  items: { $: 'modules.call.tileFaces' },
-  image: { $: 'person.image' },
-  hash: { $: 'person.hash' },
-  name: { $: 'person.name' },
-  placement: 'bottom',
-  children: [
-    {
-      type: 'Row',
-      props: { gap: '200', ay: 'center', pl: '100' },
-      children: [
-        {
-          type: 'AvatarStack',
-          props: {
-            avatars: {
-              $: 'modules.call.tileFaces.map(item, { image: item.image, hash: item.hash, initials: item.name })',
-            },
-            max: 3,
-            size: 'sm',
-            // The faces overlap, so each is edged in the bar's own colour to show where one ends. It was
-            // `--we-ring-color` — the focus colour — which put a permanent accent ring on everyone.
-            edge: 'var(--we-role-page)',
-          },
-        },
-        /*
-          The sentence is the first thing to go when the bar is short of room — see `ROOMY`. The
-          faces stay, and the stack's own "+N" carries the count past three; the roster on hover is
-          unchanged, so nothing is lost that was not already a hover away.
-        */
-        whenRoomy({
-          type: 'we-text',
-          props: {
-            color: 'text-muted',
-            /*
-            One line, whatever the window does to the bar.
-
-            The bar is shrink-to-fit, so a narrow content box squeezes it — and this readout is the
-            only thing in it that can give, every other child being a fixed-size button. Left to
-            wrap, "11 in the call" broke between the number and the words and made the whole bar a
-            row taller, which moves every control in it.
-
-            `truncate` is the wrong prop: that clips with an ellipsis, where the honest behaviour
-            for a bar too narrow for its contents is to overflow. Below the compact tier this text
-            is not rendered at all, which is the answer for the widths where it actually happened.
-          */
-            whiteSpace: 'nowrap',
-          },
-          children: [{ type: 'we-number', props: { value: { $: 'count(modules.call.tiles)' } } }, ' in the call'],
-        }),
-      ],
-    },
-  ],
-});
-
-/**
  * The three toggles that leave the row when it is short of room — declared once, so the square in
  * the bar and the line in the overflow menu are built from the same facts and cannot come to
  * disagree about what a control does or which way round it reads.
@@ -1799,7 +1715,6 @@ const controls: SchemaNode = {
         // a rule drawn down the whole bar. It moved with the buttons: at 20px against `sm` it was
         // that already, and left alone against `md` it would have been half.
         { type: 'we-divider', props: { orientation: 'vertical', height: '26px' } },
-        participants,
         {
           type: 'we-tooltip',
           props: { content: 'Leave the call', placement: 'bottom' },
