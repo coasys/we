@@ -736,6 +736,67 @@ describe('dataset lifecycle through the real stores', () => {
     expect(rowOf()).toBe(before);
   }, 10000);
 
+  it('shows a space default set here before it is stored, read off the space on screen', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    await stores.spaces.createSpace('Default Space', '', 'personal', 'hidden');
+    const uuid = (await lifecycle.list()).find((d) => d.name === 'Default Space')!.id;
+    await stores.datasets.switchDataset(uuid);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(uuid));
+
+    const writing = stores.spaces.setSpaceDefaultTheme('retro', uuid);
+    // Before the write has been stored: what is on screen already says so.
+    expect(stores.spaces.spaceDefaultThemeId()).toBe('retro');
+    expect(stores.spaces.currentSpace()?.defaultThemeId).toBe('retro');
+    await writing;
+
+    const templating = stores.spaces.setSpaceDefaultTemplate('some-template', uuid);
+    expect(stores.spaces.spaceDefaultTemplateId()).toBe('some-template');
+    await templating;
+    expect(stores.spaces.mySpaces().find((s) => s.uuid === uuid)?.defaultTemplateId).toBe('some-template');
+  }, 10000);
+
+  it('stores a space setting, and shows it on the cached space and the space on screen', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    await stores.spaces.createSpace('Setting Space', '', 'personal', 'hidden');
+    const ref = (await lifecycle.list()).find((d) => d.name === 'Setting Space')!;
+    const uuid = ref.id;
+    await stores.datasets.switchDataset(uuid);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(uuid));
+    const shownBefore = stores.spaces.currentSpace();
+
+    await stores.spaces.setThreadMode('flat', uuid);
+
+    const held = stores.spaces.mySpaces().find((s) => s.uuid === uuid);
+    expect(held?.threadMode).toBe('flat');
+    // A new object, so everything reading the space on screen hears the change.
+    expect(stores.spaces.currentSpace()).not.toBe(shownBefore);
+    expect(stores.spaces.currentSpace()?.threadMode).toBe('flat');
+    const [stored] = await Space.findAll(ref.handle as never);
+    expect(stored?.threadMode).toBe('flat');
+  }, 10000);
+
+  it('says so, and changes nothing on screen, when a space setting cannot be stored', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    await stores.spaces.createSpace('Failing Space', '', 'personal', 'hidden');
+    const uuid = (await lifecycle.list()).find((d) => d.name === 'Failing Space')!.id;
+    await vi.waitFor(() => expect(stores.spaces.mySpaces().some((s) => s.uuid === uuid)).toBe(true));
+    const refused = vi.spyOn(toastService, 'error');
+    const update = vi
+      .spyOn(getEntity('Space') as unknown as { update: (...a: unknown[]) => Promise<unknown> }, 'update')
+      .mockRejectedValueOnce(new Error('disk full'));
+    try {
+      await expect(stores.spaces.setThreadMode('flat', uuid)).rejects.toThrow('disk full');
+      expect(refused).toHaveBeenCalledWith('Could not save this change for the space.');
+      expect(stores.spaces.mySpaces().find((s) => s.uuid === uuid)?.threadMode).not.toBe('flat');
+    } finally {
+      update.mockRestore();
+      refused.mockRestore();
+    }
+  }, 10000);
+
   /*
     The same for a module's setting rows, which are rebuilt on every write: pressing one switch on a
     settings screen redrew every row under it and threw the page's scroll.

@@ -1,4 +1,5 @@
 import { Ad4mModel, type LinkExpression, LinkQuery, Literal, PerspectiveProxy } from '@coasys/ad4m';
+import { ttlCache } from '@we/backend-shared';
 import { type EntityClass, getEntityPredicates, getEntityTargetClass } from '@we/entities';
 
 import {
@@ -109,7 +110,7 @@ export async function bulkHasSubjectClassLink(
  * Every class this perspective marks as a SubjectClass, read once and shared for a moment.
  *
  * A space switch asks three times in a row — \`hasCoreSchema\`, then \`installModules\`, then
- * \`refreshSpace\` — and each used to be its own round trip on the load path. The answer is one
+ * \`refreshSpace\`. The answer is one
  * query whichever classes are asked about, so it is read once and shared: concurrent callers share
  * the read in flight, and later ones reuse it for a few seconds. Dropped with the stored shapes
  * whenever this package writes a registration, and never kept after a failure.
@@ -117,35 +118,23 @@ export async function bulkHasSubjectClassLink(
  * Short on purpose. A class another peer registers inside the window reads as absent, and a
  * registration written on that answer is a duplicate — the thing \`cleanupSpaceSdna\` exists for.
  */
-const subjectClassesCache = new Map<string, { classes: Promise<Set<string>>; at: number }>();
-const SUBJECT_CLASSES_CACHE_TTL = 3_000;
+const subjectClassesCache = ttlCache<string, Set<string>>(3_000);
 
 function cachedSubjectClasses(p: PerspectiveProxy): Promise<Set<string>> {
-  const now = Date.now();
-  const cached = subjectClassesCache.get(p.uuid);
-  if (cached && now - cached.at < SUBJECT_CLASSES_CACHE_TTL) return cached.classes;
-  const classes = p
-    .get(new LinkQuery({ predicate: 'rdf://type', target: 'ad4m://SubjectClass' }))
-    .then((links) => new Set(links.map((l) => l.data.source)));
-  const entry = { classes, at: now };
-  subjectClassesCache.set(p.uuid, entry);
-  classes.catch(() => {
-    if (subjectClassesCache.get(p.uuid) === entry) subjectClassesCache.delete(p.uuid);
-  });
-  return classes;
+  return subjectClassesCache.get(p.uuid, () =>
+    p
+      .get(new LinkQuery({ predicate: 'rdf://type', target: 'ad4m://SubjectClass' }))
+      .then((links) => new Set(links.map((l) => l.data.source))),
+  );
 }
 
 /**
  * Everything about a stored shape that a *reader* of it can act on.
  *
- * Read as one bundle, and compared as one bundle, because the alternative has now failed three
- * times. Staleness started as "does it have every predicate", which missed a hint being added;
- * then gained "does it have a hint", which missed a hint being *reworded*; then compared hint
- * values, which still missed `identity` being set on a property, because that changes no predicate
- * and no class hint. Each fix was correct and each was one aspect behind.
+ * Read as one bundle, and compared as one bundle: comparing one aspect at a time is always one
+ * aspect behind (a hint added, a hint reworded, `identity` set on a property).
  *
- * The rule that replaces the whack-a-mole: **this must carry whatever the executor reads off a
- * shape.** The executor resolves shapes from the perspective, not from the model classes, so
+ * The rule: **this must carry whatever the executor reads off a shape.** The executor resolves shapes from the perspective, not from the model classes, so
  * anything it consumes and this ignores is a change that silently never arrives — and the symptom
  * is always somewhere else entirely ("the model extracted nothing", "the model duplicated
  * everything"), never "your schema is out of date".
@@ -271,27 +260,12 @@ async function storedShapes(p: PerspectiveProxy): Promise<Map<string, StoredShap
  *
  * A failed read is never cached: the callers fall back to an empty map for that call only.
  */
-const storedShapesCache = new Map<string, { shapes: Promise<Map<string, StoredShape>>; at: number }>();
-const STORED_SHAPES_CACHE_TTL = 10_000;
+// Pruned past 20 entries so it cannot grow without bound across many perspectives.
+const storedShapesCache = ttlCache<string, Map<string, StoredShape>>(10_000, { maxEntries: 20 });
 
 /** Held as the read in flight, so callers that arrive together — a switch's two steps — share it. */
 function cachedStoredShapes(p: PerspectiveProxy): Promise<Map<string, StoredShape>> {
-  const now = Date.now();
-  const cached = storedShapesCache.get(p.uuid);
-  if (cached && now - cached.at < STORED_SHAPES_CACHE_TTL) return cached.shapes;
-  const shapes = storedShapes(p);
-  const entry = { shapes, at: now };
-  storedShapesCache.set(p.uuid, entry);
-  shapes.catch(() => {
-    if (storedShapesCache.get(p.uuid) === entry) storedShapesCache.delete(p.uuid);
-  });
-  // Prevent the map from growing without bound across many perspectives.
-  if (storedShapesCache.size > 20) {
-    for (const [key, entry] of storedShapesCache) {
-      if (now - entry.at >= STORED_SHAPES_CACHE_TTL) storedShapesCache.delete(key);
-    }
-  }
-  return shapes;
+  return storedShapesCache.get(p.uuid, () => storedShapes(p));
 }
 
 /**
@@ -299,8 +273,8 @@ function cachedStoredShapes(p: PerspectiveProxy): Promise<Map<string, StoredShap
  * from — a SubjectClass registration, an interpretation hint, the customized marker.
  */
 export function forgetStoredShapes(p: Pick<PerspectiveProxy, 'uuid'>): void {
-  storedShapesCache.delete(p.uuid);
-  subjectClassesCache.delete(p.uuid);
+  storedShapesCache.drop(p.uuid);
+  subjectClassesCache.drop(p.uuid);
 }
 
 /**
@@ -382,10 +356,9 @@ function decodeHint(value: string): string {
 /**
  * Whether a perspective's stored shape for a model is behind what the model now declares.
  *
- * Adding a property to an existing model used to be a silent one-way break: shapes were written only
- * for a class absent *entirely*, so every space created before the property existed kept the old
- * shape, and writes to the new field were dropped by a perspective that looked perfectly healthy.
- * `Space.enabledModules` shipped straight into that hole.
+ * A space made before a property existed holds the old shape, and a perspective with the old shape
+ * drops writes to the new field while looking perfectly healthy — so a shape behind its model is
+ * rewritten, not only a shape that is absent.
  *
  * The executor handles the write half: `add_sdna` purges the prior SHACL graph and rewrites it
  * whenever a SubjectClass is registered *with* a shape, so re-registering is a genuine refresh

@@ -1,7 +1,7 @@
 import { activitiesOfType } from '@we/backend-shared';
 import { CORRECTED, SPOKEN, TYPED } from '@we/messages';
 import type { DatasetTarget, ModuleStoreDeps, RecordsKernel } from '@we/module-shared';
-import { coalesceByKey } from '@we/module-shared';
+import { coalesceByKey, latest } from '@we/module-shared';
 import { namespace } from '@we/schema-shared';
 
 import { WORKLET_NAME, WORKLET_SOURCE } from './workletSource';
@@ -88,10 +88,8 @@ const FLUSH_AFTER_MS = 3_000;
 /**
  * How many lines a transcript opens with.
  *
- * Small, and smaller than it was. The figure used to be the same as the growth step below, and was
- * argued for on the grounds that a reader scrolling back a little should never meet a button —
- * which stopped being a reason the moment there was no button: earlier lines now load as the reader
- * reaches them. What is left is the cost of opening, and that is paid by everybody on every call.
+ * Small: earlier lines load as the reader reaches them, so what is left is the cost of opening, and
+ * that is paid by everybody on every call.
  *
  * Two hundred rows arriving at once is also a hundred-odd custom elements laying out in one pass,
  * which is what made the panel open a couple of lines short of the bottom — see `SETTLE_MS` in
@@ -247,11 +245,8 @@ export interface TiedDecision {
  * Field names worth leading with, most identifying first. Anything else follows in map order.
  *
  * `label` is here because two models genuinely call their title that — `EmbedBlock` and
- * `Relationship` — and a proposal of one used to lead with whatever came first in the map instead.
- * It read as a bug in the ordering and was one in the *naming*: the backend resolved every
- * `we://title` to `label` regardless of model, so a task's title never matched `title` either. That
- * is fixed where it arose (see `NameTables` in `interpretationAdapter.ts`); this entry is what the
- * list should always have said, for the two models where `label` is the honest word.
+ * `Relationship`. Which property name a model's title has is decided by the backend (see
+ * `NameTables` in `interpretationAdapter.ts`).
  */
 const SUMMARY_FIELDS = ['title', 'label', 'text', 'name', 'startDate', 'dueDate', 'assignee', 'location'];
 
@@ -523,10 +518,9 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   /**
    * Words that have left the buffer and are being written, held until the write lands.
    *
-   * The preview used to clear the instant a flush began, and the row it becomes does not exist until
-   * a create has gone to the backend and come back through the feed's subscription. Between those
-   * two moments the transcript said nothing at all — a sentence vanishing and reappearing somewhere
-   * else, which reads as a glitch rather than as saving.
+   * The row the preview becomes does not exist until a create has gone to the backend and come back
+   * through the feed's subscription. Clearing the preview when a flush begins would make the
+   * sentence vanish and reappear, which reads as a glitch rather than as saving.
    *
    * Separate from the buffer rather than a delayed clear of it, because speech does not stop for a
    * write: anything said during one accumulates in `buffer` as usual, and the two are shown in
@@ -760,14 +754,13 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
   let buffer = '';
   /**
-   * Bumped by every start and every stop, so a start that lost a race can tell.
+   * Begun by every start and every stop, so a start that lost a race can tell.
    *
    * Starting is slow in a way the user can act inside of: loading Whisper takes seconds, during
-   * which the panel says "Starting…" and nothing appears. Switching off in that window used to leave
-   * the half-built session to finish and go on transcribing — the UI said off, blocks kept arriving,
-   * and nothing held a reference to shut it down.
+   * which the panel says "Starting…" and nothing appears. Switching off in that window must not leave
+   * the half-built session to finish and go on transcribing with nothing holding a reference to it.
    */
-  let generation = 0;
+  const sessions = latest();
 
   function clearTimer() {
     if (flushTimer) clearTimeout(flushTimer);
@@ -800,15 +793,12 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       /*
         The space the call is *in*, which is not necessarily the space on screen.
 
-        A call survives navigation, so by the time somebody speaks the reader may be two spaces away
-        — and every write here used to resolve to "the current dataset", which put the utterance in
-        the wrong perspective with a `children` link to a record that perspective does not hold.
-        Peers in the call's own space stopped seeing the transcript. The call module publishes this
-        on every activity, so it is already here; it just was not being read.
+        A call survives navigation, so by the time somebody speaks the reader may be two spaces away;
+        a write to "the current dataset" would put the utterance in the wrong perspective. The call
+        module publishes this on every activity.
       */
       datasetUri: anchor?.datasetUri ?? null,
-      // Published by the call module from the moment the call starts — see `recordCallId`. This is
-      // what replaced electing a creator among the transcribers.
+      // Published by the call module from the moment the call starts — see `recordCallId`.
       recordId: (mine.activity as { record?: string }).record ?? null,
       // Published by the call module when the call was picked back up on a record that already
       // existed — see `continuedRecord` there. What lets the record be adopted before anybody speaks.
@@ -891,10 +881,8 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * anybody has spoken, and false again on stop. `collection` says which record this agent is
    * writing into, and stays published after recording stops.
    *
-   * `collection` used to be load-bearing: it was how peers found the record one of them had created,
-   * and adopting an announced one was the alternative to creating a second. The call's own activity
-   * now carries the record from the moment it starts, so this is no longer how anybody finds it — it
-   * remains because a continued call's record is adopted before anybody has spoken into it, and a
+   * The call's own activity carries the record from the moment it starts, so `collection` is not how
+   * anybody finds it — it is here because a continued call's record is adopted before anybody has spoken into it, and a
    * peer has to be able to see that somebody is writing into an old transcript.
    */
   function announce(callId: string, recording: boolean, collection?: string | null): void {
@@ -929,11 +917,8 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * exactly one writer per member, and the one writer who can never be raced about an agent's
    * presence is that agent.
    *
-   * It used to append *everyone it could see*, from every agent that was recording. That is N writes
-   * per person rather than one, it repeats on every session that resets the guard, and it grew
-   * without bound: a two-person call carried each of them several times over, and the avatar row
-   * drew a wall of the same two faces. Deduplicating at the point of drawing hid it; it did not stop
-   * `$count` — or anything else that reads the relation — from being wrong.
+   * Appending *everyone it could see* would be N writes per person rather than one, repeated on every
+   * session that resets the guard, and would grow the relation without bound.
    *
    * ## Why coverage survives
    *
@@ -1011,14 +996,8 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    *
    * ## Adopting, not electing
    *
-   * This used to create the record, and everything hard about it followed from that. A call had no
-   * identity of its own until somebody spoke, so the first transcriber to flush minted the
-   * `CollectionBlock` — and two agents flushing together minted two, for one meeting. That race was
-   * fought with a distributed election among the recorders, a five-second timeout for an elected
-   * creator who might never speak, and a documented failure mode where a partition still produced
-   * two records.
-   *
-   * All of it is gone. A call now creates its record when it *starts* and publishes the id on its
+   * This does not create the record: two agents creating one together would make two, for one
+   * meeting. A call creates its record when it *starts* and publishes the id on its
    * presence activity, so every transcriber is told the answer before anyone has said a word. There
    * is nothing left to agree about, which is the only way to be safe under partition: the id was
    * decided by one agent, before the network could disagree, and it travels with the roster.
@@ -1071,17 +1050,9 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   /**
    * Re-read the staged suggestions — this call's, not the whole dataset's.
    *
-   * It used to be the whole dataset's, on the reasoning that the two coincide in practice: the only
-   * thing staging proposals here is this call's own extraction. They do not coincide, because a
-   * proposal outlives the pass that made it. One nobody accepted or rejected an hour ago is still
-   * staged, so it arrived the moment the next call started — reading as something that call had
-   * just found, in a panel that had been on screen for ten seconds.
-   *
-   * Accepting one made it worse rather than harmless. The instance was parented to the *earlier*
-   * call when that pass ran, and accepting commits its values without moving it; so the record went
-   * on existing exactly where it always had, and never appeared on the board of the call the
-   * reviewer was sitting in. "Showing one more than expected" was not the cost — the cost was a
-   * suggestion nobody could act on from where they were.
+   * A proposal outlives the pass that made it, so the whole dataset's would show an earlier call's
+   * suggestions as this call's. Accepting one commits its values without moving it, so it would stay
+   * parented to the earlier call: a suggestion nobody could act on from where they were.
    *
    * `collection` names which conversation to ask about. A caller that has just run a pass passes the
    * one it ran, so extracting a *past* call from the calls list can still review what that found;
@@ -1105,11 +1076,8 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     /*
       No call, nothing to review.
 
-      An empty key used to ask the backend for everything staged in the dataset. The port offers
-      that, and it is the honest answer for a surface that is genuinely about a dataset — but there
-      is no such surface here, and what it produced was a panel outside a call listing suggestions
-      from every conversation the space has ever had, with no way to tell which was which. It is
-      also the exact hazard `loadProposals` was narrowed to avoid: an unscoped read hands a stale
+      An empty key would ask the backend for everything staged in the dataset, and there is no
+      surface here that is about a dataset. That is the exact hazard `loadProposals` was narrowed to avoid: an unscoped read hands a stale
       proposal to a reader who has no way to act on it from where they are.
     */
     if (!key) return;
@@ -1160,7 +1128,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * The suggestions staged on one conversation, fetching them the first time anybody asks.
    *
    * The read is what triggers the load, so a panel that opens on a call nobody has extracted this
-   * session still fills — which is the whole point, and what a restart used to lose.
+   * session, or after a restart, still fills.
    */
   function proposalsFor(collection: string): ProposalView[] {
     const key = collection ?? '';
@@ -1592,8 +1560,8 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    *
    * Three layers decide it and none of them is a module's business: the codebase says what is a
    * candidate, the space says what its calls start with, the call's participants say what this one
-   * is doing. This used to be a constant naming two classes, which is why a community could write
-   * careful hints for a `Sighting` and never have anything extract one.
+   * is doing. A constant list would mean a community could write careful hints
+   * for a `Sighting` and never have anything extract one.
    *
    * Feature-tested per method rather than per object, the same way `syncWatch` tests its two: the
    * host publishes a forwarding wrapper that is always present, so `interpretation?.` only answers
@@ -1940,7 +1908,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       setStatus('no-backend');
       return;
     }
-    const mine = ++generation;
+    const isMine = sessions.begin();
     setStatus('starting');
     setError('');
 
@@ -1957,11 +1925,10 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       // Through `readModels`, so the panel learns what this start learned — including a failure,
       // which is rethrown below as the start's own.
       const models = (await readModels()) ?? (await transcription.models());
-      if (mine !== generation) return await unwind();
+      if (!isMine()) return await unwind();
 
-      // `no-model` means *there is no model*, and nothing else. It used to also fire when a model
-      // was installed but reported not-ready, which told the user to go and install the thing they
-      // had already installed.
+      // `no-model` means *there is no model*, and nothing else — not an installed model that is not
+      // ready yet.
       if (models.length === 0) {
         if (autoJoined()) return giveUpAutoJoin('no-model');
         // Distinguished from a silent failure on purpose: no model and nobody talking look identical
@@ -1988,7 +1955,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       const model = ready.find((m) => m.isDefault) ?? ready[0];
 
       newStream = await transcription.open(model.id, onText);
-      if (mine !== generation) return await unwind();
+      if (!isMine()) return await unwind();
       hearingModel = model.id;
 
       newContext = new AudioContext();
@@ -2001,7 +1968,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       } finally {
         URL.revokeObjectURL(workletUrl);
       }
-      if (mine !== generation) return await unwind();
+      if (!isMine()) return await unwind();
 
       const newNode = new AudioWorkletNode(newContext, WORKLET_NAME);
       // The thresholds that actually run. See `VAD` — the worklet's own defaults are the ones Flux
@@ -2043,12 +2010,10 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
         A feed fails for reasons that have nothing to do with this session being over: the node was
         unreachable for a moment, a request timed out, the executor let the stream go, or the
         utterance itself was refused by something between here and the node. None of them is a reason
-        to stop recording, and stopping is what used to happen — one failed retry ended transcription
-        for the rest of the call, with no way back but a press nobody knew to make.
+        to stop recording.
 
-        The last of those is worth naming, because it is the one that was actually happening and the
-        one a retry cannot fix: a proxy refusing an utterance too large for it, the same way every
-        time. Resending it is what turned a refused utterance into a dead session. The drain below
+        The last of those is the one a retry cannot fix: a proxy refusing an utterance too large for
+        it, the same way every time. The drain below
         drops one the far end will not take, so it costs an utterance rather than the call.
 
         So it keeps trying, on a backoff, while the microphone stays open and what is said is held.
@@ -2066,10 +2031,10 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
         session.reconnecting = (async () => {
           for (const delay of RECONNECT_DELAYS_MS) {
             await new Promise((resolve) => setTimeout(resolve, delay));
-            if (mine !== generation) return;
+            if (!isMine()) return;
             try {
               const fresh = await transcription.open(model.id, onText);
-              if (mine !== generation) {
+              if (!isMine()) {
                 await fresh.close().catch(() => {});
                 return;
               }
@@ -2094,8 +2059,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
                     it is larger than something between here and the node will carry.
 
                     Dropped, and the rest of the queue goes on. The same call as a failed block
-                    write: losing one utterance is better than losing the transcript, and this is
-                    the retry that used to end the session instead.
+                    write: losing one utterance is better than losing the transcript.
                   */
                   console.warn('transcribe: this utterance was refused twice and has been dropped', refused);
                   session.held.shift();
@@ -2104,7 +2068,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
               setReconnecting(false);
               return;
             } catch (again) {
-              if (mine !== generation) return;
+              if (!isMine()) return;
               last = again;
               console.info('[transcribe] could not re-establish the stream; trying again', again);
             }
@@ -2134,7 +2098,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
         try {
           await tried.feed(audio);
         } catch (cause) {
-          if (mine !== generation) return;
+          if (!isMine()) return;
           // Held too, so the sentence that discovered the problem is not the one lost.
           hold(audio);
           reconnect(cause);
@@ -2159,7 +2123,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       await unwind();
       // A start that was already superseded must not repaint the panel — the run that replaced it
       // owns the status now, and an error from an abandoned attempt is noise.
-      if (mine !== generation) return;
+      if (!isMine()) return;
       setStatus('error');
       setError(cause instanceof Error ? cause.message : String(cause));
     }
@@ -2173,17 +2137,14 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * status itself would have it overwritten when this finished.
    */
   async function stop(resting: TranscribeStatus = 'idle'): Promise<void> {
-    // Bumped first: a start still in flight is now stale, and will discard rather than publish.
-    const mine = ++generation;
+    // Begun first: a start still in flight is now stale, and will discard rather than publish.
+    const isMine = sessions.begin();
 
     /*
       Release the audio graph *before* awaiting anything, and null the handles in the same tick.
 
-      It used to flush first and tear down after, which left `context` non-null across an await. The
-      start guard is `if (!context)`, so audio returning inside that window found a context that was
-      already on its way out, skipped, and then watched `stop` null it. Recording was dead with the
-      button lit and no dependency left to change, so nothing re-triggered the effect: the only way
-      back was to leave the space.
+      The start guard is `if (!context)`, so `context` must not stay non-null across an await: audio
+      returning inside that window would find a context on its way out, skip, and never restart.
 
       Flushing after closing the port is also the more correct order — `buffer` already holds what
       was said, and a closed port cannot race it with one more message.
@@ -2197,7 +2158,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     setSpeaking(false);
     // Whatever was in flight answers into a closed stream now, so nothing is still being transcribed.
     clearInFlight();
-    // A reconnection in progress belongs to the session being torn down: the generation bump above
+    // A reconnection in progress belongs to the session being torn down: the `begin()` above
     // is what ends it, and nothing should still be claiming the words are on their way.
     setReconnecting(false);
 
@@ -2218,7 +2179,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     // Only if nothing started in the meantime. Releasing the graph early is what makes a restart
     // during this window possible at all, and a late `setStatus('idle')` would then describe the
     // session that replaced this one.
-    if (mine === generation && status() !== 'error') setStatus(resting);
+    if (isMine() && status() !== 'error') setStatus(resting);
   }
 
   /**
@@ -2570,16 +2531,8 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     void targetsFor(live);
     void targetsLoaded();
     /*
-      And the space's own switch, for the same reason and a longer story.
-
-      Nothing used to read it here. The only thing that did was a throw inside the host's
-      `watchCollection`, so turning automatic extraction *on* during a call changed nothing at all:
-      the watch had already failed to register, no effect depended on the setting, and the panel went
-      on saying auto-extraction was unavailable until everybody left the call and rejoined. Turning
-      it off mid-call was worse — the watch stayed registered and kept spending an LLM call per pass
-      on a community that had just said stop.
-
-      Read here, both directions land while the call is running, which is the only behaviour anybody
+      And the space's own switch, for the same reason. Read here, turning automatic extraction on
+      or off lands while the call is running, which is the only behaviour anybody
       would predict from a switch.
     */
     void autoEnabled(live);
@@ -2616,9 +2569,9 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * ## Why not always
    *
    * The watch is one registration the whole call shares, keyed on the record. Every agent in the call
-   * converges on it, so removing it is a decision about everyone's extraction, not this agent's. It
-   * used to be removed by whoever left *first*: everyone else's `syncWatch` saw nothing change and
-   * never re-registered, so one person stepping out stopped extraction for the rest of the meeting.
+   * converges on it, so removing it is a decision about everyone's extraction, not this agent's. Nobody
+   * else's `syncWatch` sees a change when one person leaves, so a removal by whoever leaves first
+   * would stop extraction for the rest of the meeting.
    *
    * So the watch lives as long as the call has anybody in it, and the last one out removes it.
    * Counted over everyone in the call rather than over the recorders: somebody who stays without
@@ -2647,9 +2600,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     /*
       Whatever this agent announced about the call goes with it, adopted record or not. Pressing
       record announces before anybody speaks, and a record is only adopted on the first flush, so
-      this used to be cleared only for an agent who had spoken: one who recorded and left in silence
-      went on telling the call's peers they were transcribing it for the rest of the session, and
-      kept the call space's presence open to say so.
+      an agent who recorded and left in silence must still clear it.
     */
     presence?.clearActivity(TRANSCRIBE_ACTIVITY, left.id);
 
@@ -2694,7 +2645,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * arrived.
    *
    * Setting it here rather than teaching those three to ask a second question: they are each
-   * reading `enabled` correctly, and what was wrong is that `enabled` was.
+   * reading `enabled` correctly; `enabled` is what must be right.
    */
   let decidedForCall: string | null = null;
   effect?.(() => {
@@ -2712,21 +2663,17 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   /**
    * Record the call you are in.
    *
-   * The module's one piece of policy, and it is now the whole of it: being in a call is what starts
+   * The module's one piece of policy: being in a call is what starts
    * recording, whether or not anybody else is already doing it.
    *
-   * It used to stop short of that on purpose — joining a transcript somebody else had started was
-   * held to be a different question from starting one, and starting one was left to a space setting
-   * that did not exist. In practice the two are the same question asked at different
-   * moments, and splitting them made the ordinary case the unreliable one: whether a meeting was
-   * recorded depended on whether whoever happened to arrive first remembered to press a button. A
+   * Joining a transcript and starting one are the same question asked at different moments. A
    * transcript that exists for four meetings out of five is worse than either alternative, because
    * nothing distinguishes "we chose not to record that one" from "nobody pressed it".
    *
    * The argument for joining carries over unchanged, and it is not a privacy argument: a refusal
    * does not stop the conversation being recorded, it only removes this agent's own words from the
    * record of a conversation they are part of, which produces a wrong transcript rather than a
-   * smaller one. What survives from the old shape is the way out — `optedOut` is checked first, and
+   * smaller one. The way out remains — `optedOut` is checked first, and
    * pressing Leave or stopping recording by hand sets it for the rest of the call.
    *
    * Three guards, and each is a case where starting would be wrong rather than merely unhelpful:
@@ -2834,15 +2781,9 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   /*
     Having nowhere to write ends the session — but a call is somewhere to write.
 
-    This used to stop the moment `dataset()` went null, on the grounds that "the blocks belong to
-    the space that was being spoken in, and continuing to write into a perspective the user has
-    navigated away from would be wrong". The premise was true and the conclusion followed from a
-    second, unstated one: that the only perspective this module could write to was the one on
-    screen. It no longer is — every write now names the call's own dataset — so navigating away is
-    not a reason to stop transcribing a call that is still running, any more than it is a reason to
-    hang up. #161 made the call survive navigation; this is the rest of that.
-
-    What is left is the case the effect was really for: nowhere to write *at all*. No dataset and no
+    Every write names the call's own dataset, so navigating away is not a reason to stop
+    transcribing a call that is still running, any more than it is a reason to hang up. What ends it
+    is nowhere to write *at all*. No dataset and no
     call is the boot frame, a logged-out agent, and the moment after leaving a call — all of them
     "stop", and none of them "the reader wandered off".
   */
@@ -3215,8 +3156,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     ),
     /**
      * Whether somebody is in the call the address names, read off presence rather than off the call
-     * module's roster. The panel used to read `modules.call.liveCalls` for this, which was the one
-     * place this module named that one; presence is the medium the two are meant to meet in.
+     * module's roster. Presence is the medium the two modules are meant to meet in.
      */
     callOnScreenLive: state(() => {
       const record = deps.callOnScreen?.() ?? null;
@@ -3547,26 +3487,15 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     /*
       ── Live extraction ──────────────────────────────────────────────────────
 
-      The feed, its two halves, its counts and the sharing footnote used to be published here, as
-      pass-throughs to the host's own interpretation state. They are `interpretationStore`'s now,
-      and this module names none of them.
-
-      Not tidying: they were a *second* publisher of one capability's state, so the same rows had
-      two addresses and nothing chose which was canonical — and re-exporting another capability is
-      how a module comes to depend on one. What is left below is transcription: a microphone, a
+      The feed, its halves and its counts are `interpretationStore`'s, and this module names none of
+      them: one capability's state has one publisher, and re-exporting another capability is how a
+      module comes to depend on one. What is below is transcription: a microphone, a
       buffer, the record this session writes into, and who else is recording.
     */
 
     /*
-      No band of its own, and this used to reserve one.
-
-      There was a strip under the call bar reporting a running pass, and this held room for it — so
-      while a pass ran, everything on screen moved up to clear a band. The strip is gone: what it
-      reported lives in the extraction panel, and what is left in the bar is the record button, one
-      square in the bar's own row, which the call module already accounts for.
-
-      The reservation outlived it, so the content still moved for a strip that was not there. Left
-      out entirely rather than returned as zeroes, because a module with no fixed chrome should not
+      No band of its own. What is in the bar is the record button, one square in the bar's own row,
+      which the call module already accounts for. Left out entirely rather than returned as zeroes, because a module with no fixed chrome should not
       be answering the question — see `chromeReserve` in the module contract.
     */
 
@@ -3881,7 +3810,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * a reply made from a transcript of a call running somewhere else.
      */
     reply: action(async (parentId: string, text: string, marks?: string, inCall?: boolean) => {
-      // Said rather than swallowed: a reply with nothing to answer used to resolve as though sent.
+      // Said rather than swallowed: a reply with nothing to answer must not resolve as though sent.
       if (!parentId) {
         console.warn('[transcribe] a reply has no line to answer, so it was not sent');
         return;

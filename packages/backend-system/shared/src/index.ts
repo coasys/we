@@ -72,6 +72,9 @@ export type {
 export { setTraceSink, trace, tracing } from './trace';
 export type { TraceSink } from './trace';
 
+export { ttlCache } from './ttlCache';
+export type { TtlCache, TtlCacheOptions } from './ttlCache';
+
 export {
   blockableEntities,
   CONTAINMENT_PREDICATE,
