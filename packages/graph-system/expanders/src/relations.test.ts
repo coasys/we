@@ -65,6 +65,30 @@ describe('followedRelations — which relations a graph follows', () => {
     expect(names(followedRelations(SHAPES, { skipClasses: ['Placement'] }))).not.toContain('Placement.node');
   });
 
+  it('follows a link from its forward declaration only — a reverse adds nothing', () => {
+    /*
+      One link, one edge: a `belongsTo` reads the same link its forward already gives, so it is never
+      followed. That holds for a typed `belongsTo` whose forward nobody declares too — a DNA can say
+      it, and the link it reads is then one no declaration in the space writes.
+    */
+    const shapes: EntityShape[] = [
+      { name: 'Post', properties: [], relations: [{ name: 'comments', target: 'Comment', cardinality: 'many' }] },
+      {
+        name: 'Comment',
+        properties: [],
+        relations: [{ name: 'post', target: 'Post', cardinality: 'one', reverse: true }],
+      },
+      {
+        name: 'Author',
+        properties: [],
+        // No forward anywhere in the space: still skipped.
+        relations: [{ name: 'books', target: 'Book', cardinality: 'many', reverse: true }],
+      },
+      { name: 'Book', properties: [], relations: [] },
+    ];
+    expect(names(followedRelations(shapes))).toEqual(['Post.comments']);
+  });
+
   it('narrows to the names asked for, and drops the names excluded', () => {
     expect(names(followedRelations(SHAPES, { relations: ['about', 'items'], exclude: ['items'] }))).toEqual([
       'Position.about',

@@ -123,21 +123,16 @@ const SHAPES: EntityShape[] = [
     name: 'Post',
     identityProperty: 'text',
     properties: [{ name: 'text', type: 'string' }],
-    relations: [{ name: 'comments', target: 'Comment', cardinality: 'many', predicate: 'discuss://comments' }],
+    relations: [{ name: 'comments', target: 'Comment', cardinality: 'many' }],
   },
-  /*
-    A `belongsToOne` declared without naming its forward — the shape installed SDNA arrives as.
-    The back-pointer still shares its forward's predicate: `Comment.post` and `Post.comments`
-    are the one `discuss://comments` link read from the two ends.
-  */
+  // A `belongsToOne`: `Comment.post` reads the `Post.comments` link from the other end.
   {
     name: 'Comment',
     identityProperty: 'text',
     properties: [{ name: 'text', type: 'string' }],
-    relations: [{ name: 'post', target: 'Post', cardinality: 'one', reverse: true, predicate: 'discuss://comments' }],
+    relations: [{ name: 'post', target: 'Post', cardinality: 'one', reverse: true }],
   },
-  // A reverse (belongsTo) relation: the inverse side, whose values are the records pointing at the
-  // holder — children, found the same `scope` way as a held list.
+  // A reverse (belongsTo) relation whose forward nothing declares — never followed.
   {
     name: 'Author',
     identityProperty: 'name',
@@ -1550,7 +1545,7 @@ describe('canvasSeed — model relations', () => {
     expect(edge).toBeDefined();
     expect(edge!.source).toBe(topic('t1'));
     expect(edge!.target).toBe(position('pos1'));
-    expect(edge!.data).toMatchObject({ relation: 'Position.about', holder: 'pos1', target: 't1', heldByChild: true });
+    expect(edge!.data).toMatchObject({ relation: 'Position.about', holder: 'pos1', target: 't1' });
   });
 
   it('draws a to-one relation between two topics as the tree the links describe', async () => {
@@ -1729,7 +1724,7 @@ describe('canvasSeed — model relations', () => {
     expect(nodes.map((n) => n.id)).not.toContain(position('pos1'));
   });
 
-  it('draws a link both ends declare once — as the child’s own field, the one a reparent writes', async () => {
+  it('draws each forward declaration as its own link, both from parent to child', async () => {
     const shapes: EntityShape[] = [
       ...SHAPES,
       {
@@ -1758,9 +1753,16 @@ describe('canvasSeed — model relations', () => {
 
     const { edges } = await canvasSeed().seed({ canvas: 'b1', relations: { children: false } }, ctx);
 
+    /*
+      Two forward declarations are two links in the data — `Board.cards` and `Card.board` are written
+      separately — so each is an edge of its own, both running board → card. Nothing pairs them: only a
+      `belongsTo` reads another's link, and that is never followed.
+    */
     const relations = edges.filter((e) => e.type === 'relation');
-    expect(relations).toHaveLength(1);
-    expect(relations[0].data).toMatchObject({ relation: 'Card.board', heldByChild: true });
+    expect(relations.map((e) => e.data?.relation).sort()).toEqual(['Board.cards', 'Card.board']);
+    for (const edge of relations) {
+      expect([edge.source, edge.target]).toEqual(['we-graph://entity/ds/Board/bd1', 'we-graph://entity/ds/Card/c1']);
+    }
   });
 
   it('pulls in only the conversation’s own children when the canvas keeps to one', async () => {
@@ -1884,7 +1886,7 @@ describe('canvasSeed — model relations', () => {
     expect(weighed.nodes.find((n) => n.id === position('pos1'))?.data?.weight).toBe(5);
   });
 
-  it('draws a named list and its unnamed back-pointer once — one edge, not a two-cycle', async () => {
+  it('draws a list and its back-pointer once, from the list — one edge, not a two-cycle', async () => {
     /*
       `Post.comments` and `Comment.post` are the same link declared from both ends, the second
       as a `belongsTo` that never names the first — how installed SDNA arrives, `reverseOf`
@@ -1907,8 +1909,23 @@ describe('canvasSeed — model relations', () => {
     expect(between).toHaveLength(1);
     expect(between[0].source).toBe('we-graph://entity/ds/Post/post1');
     expect(between[0].target).toBe('we-graph://entity/ds/Comment/c1');
-    // The child's own field wins the one edge — it is the statement a reparent writes.
-    expect(between[0].data).toMatchObject({ relation: 'Comment.post', heldByChild: true });
+    // Drawn from the forward declaration — the list the post holds; the back-pointer adds nothing.
+    expect(between[0].data).toMatchObject({ relation: 'Post.comments', holder: 'post1', target: 'c1' });
+  });
+
+  it('draws nothing for a belongsTo no forward declaration writes', async () => {
+    // `Author.posts` reads a link nothing in this space declares writing. A reverse adds no edge,
+    // and with no forward to give the link, the author's posts are not pulled in under it either.
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', node: 'au1', nodeType: 'Author', x: 0, y: 0 }],
+      Author: [{ id: 'au1', name: 'Ann', posts: ['po1'] }],
+      Post: [{ id: 'po1', text: 'notes', __Author_posts: 'au1' }],
+    });
+
+    const { nodes, edges } = await canvasSeed().seed({ canvas: 'b1', relations: { children: true } }, ctx);
+
+    expect(nodes.map((n) => n.id)).toEqual(['we-graph://entity/ds/Author/au1']);
+    expect(edges.filter((e) => e.type === 'relation')).toEqual([]);
   });
 
   it('keeps a pulled child under "this call" only when its origin was actually read', async () => {

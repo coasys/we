@@ -10,6 +10,8 @@
  *
  * - {@link followedRelations} — **which** relations a graph follows. Typed only: one naming no target
  *   could point at anything (`children`-of-anything under every card is a tangle, not a structure).
+ *   Forward only: a `belongsTo`/`reverseOf` reads the link its forward already writes, so one link
+ *   is one edge, and a reverse whose forward nothing declares is not followed at all.
  *   Never to or from a class the host marks `bookkeeping` — the reactions, model runs and placements
  *   it hangs on every record are real links, and following them fills a tree with furniture.
  * - {@link readRelations} — **how** a level of them is read: forward with `include` (one read for
@@ -32,10 +34,6 @@ export interface FollowedRelation {
   /** The class its values are — empty only for a reified class's own ends, see {@link readRelations}. */
   target: string;
   cardinality: 'one' | 'many';
-  /** A `belongsTo`/`reverseOf`: the link is the target's, read back from this end. */
-  reverse?: boolean;
-  reverseOf?: string;
-  predicate?: string;
 }
 
 export interface RelationFilter {
@@ -59,15 +57,16 @@ export function followedRelations(shapes: readonly EntityShape[], filter: Relati
     skipped.has(shape.name)
       ? []
       : shape.relations
-          .filter((relation) => relation.target && !skipped.has(relation.target) && wanted(relation.name))
+          // Forward only: a reverse reads a link its forward already gives — one link, one edge.
+          .filter(
+            (relation) =>
+              relation.target && !relation.reverse && !skipped.has(relation.target) && wanted(relation.name),
+          )
           .map((relation) => ({
             holder: shape.name,
             name: relation.name,
             target: relation.target,
             cardinality: relation.cardinality,
-            ...(relation.reverse ? { reverse: true } : {}),
-            ...(relation.reverseOf ? { reverseOf: relation.reverseOf } : {}),
-            ...(relation.predicate ? { predicate: relation.predicate } : {}),
           })),
   );
 }

@@ -37,14 +37,9 @@ export function toEntityShape(entry: EntityManifestEntry): EntityShape {
         name: property.name,
         target: property.relatedEntity ?? '',
         cardinality: property.isCollection ? 'many' : 'one',
-        // A `belongsTo`/`reverseOf` reads a link the other end owns — the direction matters to
-        // anything that has to know which side of the edge is the holder, so carry it through,
-        // and the forward property's name with it: that is the field a write of this link goes to.
-        // The predicate travels too: where the declaration never named the forward, it is the one
-        // fact that still pairs a back-pointer with the link it inverts — they share it.
+        // A `belongsTo`/`reverseOf` reads a link its forward already gives, so a graph never follows
+        // it — the mark is what lets it tell the two apart.
         ...(property.reverse ? { reverse: true } : {}),
-        ...(property.reverseOf ? { reverseOf: property.reverseOf } : {}),
-        ...(property.predicate ? { predicate: property.predicate } : {}),
       });
     } else {
       properties.push({

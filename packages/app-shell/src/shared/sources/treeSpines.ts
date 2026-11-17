@@ -25,8 +25,9 @@
  */
 import { type EntityManifestEntry, manifestEntries } from '@we/backend-shared';
 import { CORE_MANIFEST } from '@we/entities/manifest';
+import { followedRelations } from '@we/graph-expanders';
 
-import { WE_PLUMBING_CLASSES } from '../shapes/extractionCandidates';
+import { toEntityShape } from '../graphEntityShape';
 
 /** A shape record as `shapeStore.spaceShapes` hands one over — only the fields this reads. */
 interface ShapeInput {
@@ -81,26 +82,19 @@ export function treeSpines(options: {
   foreign?: readonly EntityManifestEntry[];
 }): SpineOption[] {
   /*
-    Only relations the space's own DNA declares. Every core WE class carries typed relations too —
-    `signals`, `runs`, `generatedBy` — and offering one as a spine means a picker that names the
-    furniture beside the community's structure, then a tree full of it. The canvas seed leaves the
-    same classes out (`bookkeeping`, `WE_PLUMBING_CLASSES`), so a spine never follows what the seed
-    would not draw.
+    The relations the canvas follows, by the same rule it follows them by (`followedRelations`): typed,
+    forward only, and never to or from WE's bookkeeping — `signals`, `runs`, `generatedBy` would offer
+    the furniture beside the community's structure, then a tree full of it. A spine on a relation the
+    seed never draws would select an edge that is not there.
   */
-  const plumbing = new Set<string>(WE_PLUMBING_CLASSES);
-  const relations: SpineOption[] = [];
-  for (const entry of modelManifestEntries(options)) {
-    if (plumbing.has(entry.name)) continue;
-    for (const property of entry.properties) {
-      if (property.type !== 'uri' || !property.relatedEntity || plumbing.has(property.relatedEntity)) continue;
-      relations.push({
-        label: `${entry.name} › ${property.name}`,
-        value: `rel:${entry.name}.${property.name}`,
-        icon: 'link',
-        group: 'Model relations',
-      });
-    }
-  }
+  const relations: SpineOption[] = followedRelations(modelManifestEntries(options).map(toEntityShape)).map(
+    (relation) => ({
+      label: `${relation.holder} › ${relation.name}`,
+      value: `rel:${relation.holder}.${relation.name}`,
+      icon: 'link',
+      group: 'Model relations',
+    }),
+  );
   return [
     ...(options.kinds ?? [])
       .filter((kind) => typeof kind.id === 'string' && kind.id)

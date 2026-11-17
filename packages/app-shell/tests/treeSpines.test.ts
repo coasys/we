@@ -91,3 +91,25 @@ describe('treeSpines', () => {
     expect(values).not.toContain('rel:Post.generatedBy');
   });
 });
+
+describe('treeSpines — forward relations only', () => {
+  it('offers a belongsTo nowhere: its forward already names that link', () => {
+    /*
+      `Post.comments` and `Comment.post` are one link read from its two ends. The tree draws it from
+      the forward declaration, so a spine on the reverse would select an edge nothing draws.
+    */
+    const foreign: EntityManifestEntry[] = [
+      { name: 'Post', targetClass: 'disc://Post', properties: [uri('comments', 'Comment', true)] },
+      {
+        name: 'Comment',
+        targetClass: 'disc://Comment',
+        properties: [{ ...uri('post', 'Post'), predicate: 'disc://comments', reverse: true, reverseOf: 'comments' }],
+      },
+    ];
+
+    const values = treeSpines({ foreign }).map((option) => option.value);
+
+    expect(values).toContain('rel:Post.comments');
+    expect(values).not.toContain('rel:Comment.post');
+  });
+});
