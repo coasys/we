@@ -524,6 +524,60 @@ describe('the wheel', () => {
   });
 });
 
+describe('when the call ends', () => {
+  /*
+    The switches for sharing the pointer and taking the wheel live in the call's More menu, which is
+    gone once the call is. Left on past it, neither could be turned off from anywhere.
+  */
+  const joinCall = (presence: ReturnType<typeof fakePresence>) => presence.publish(ME, { type: 'call', id: 'call:1' });
+
+  it('stops sharing the pointer and gives up the wheel, since nothing left on screen could', () => {
+    const effects: (() => void)[] = [];
+    const { store, presence, wire } = setup({ effects });
+    joinCall(presence);
+    for (const fn of effects) fn();
+    store.toggleCursors();
+    store.takeWheel();
+    expect(store.cursorsOn()).toBe(true);
+    expect(store.driving()).toBe(true);
+
+    presence.kernel.clearActivity('call', 'call:1');
+    for (const fn of effects) fn();
+
+    expect(store.cursorsOn()).toBe(false);
+    expect(store.driving()).toBe(false);
+    expect(presence.cleared).toContainEqual({ type: 'live', id: undefined });
+    expect(presence.cleared).toContainEqual({ type: 'driving', id: undefined });
+    expect(published(wire).at(-1)).toMatchObject({ kind: 'cursor', at: null });
+  });
+
+  it('leaves them alone where there never was a call to end', () => {
+    const effects: (() => void)[] = [];
+    const { store } = setup({ effects });
+    store.toggleCursors();
+    store.takeWheel();
+    for (const fn of effects) fn();
+
+    expect(store.cursorsOn()).toBe(true);
+    expect(store.driving()).toBe(true);
+  });
+
+  it('leaves following alone, which the rail still offers', () => {
+    const effects: (() => void)[] = [];
+    const { store, presence } = setup({ effects });
+    joinCall(presence);
+    for (const fn of effects) fn();
+    presence.publish(ANA, { type: 'driving', since: 1_000 });
+    store.follow();
+    expect(store.following()).toBe(true);
+
+    presence.kernel.clearActivity('call', 'call:1');
+    for (const fn of effects) fn();
+
+    expect(store.following()).toBe(true);
+  });
+});
+
 describe('which of the two the rail offers', () => {
   it('offers the wheel while it is free, and following once somebody has it', () => {
     const { store, presence } = setup();

@@ -689,16 +689,22 @@ export function createLiveStore(deps: ModuleStoreDeps) {
     if (next) {
       setActivity({ type: 'live', cursors: true });
     } else {
-      presence?.clearActivity('live');
-      held.clear();
-      stopExpiry();
-      publishedAt = null;
-      bumpCursors();
-      // Say so rather than leaving peers to the TTL: switching off is deliberate, and three seconds
-      // of a cursor that is no longer being updated is three seconds of a lie.
-      publish({ kind: 'cursor', at: null });
+      stopCursors();
     }
   };
+
+  /** The off half of `toggleCursors`, also taken when the call ends. */
+  function stopCursors(): void {
+    setCursorsOn(false);
+    presence?.clearActivity('live');
+    held.clear();
+    stopExpiry();
+    publishedAt = null;
+    bumpCursors();
+    // Say so rather than leaving peers to the TTL: switching off is deliberate, and three seconds
+    // of a cursor that is no longer being updated is three seconds of a lie.
+    publish({ kind: 'cursor', at: null });
+  }
 
   // ── Wiring ─────────────────────────────────────────────────────────────────
 
@@ -859,6 +865,22 @@ export function createLiveStore(deps: ModuleStoreDeps) {
   */
   effect?.(() => {
     if (devCursorsAvailable && !inCall() && fakeCount() > 0) setFakes(0);
+  });
+
+  /*
+    The call ends, and sharing the pointer and holding the wheel end with it. Both switches live in the
+    call's More menu, which goes with the call — left on, nothing on screen could turn them off again.
+    Only on the way out of a call: a store that never saw one leaves them as they are. Following is
+    untouched, since the rail still offers it.
+  */
+  let wasInCall = false;
+  effect?.(() => {
+    const inCallNow = inCall();
+    const ended = wasInCall && !inCallNow;
+    wasInCall = inCallNow;
+    if (!ended) return;
+    if (cursorsOn()) stopCursors();
+    if (driving()) releaseWheel();
   });
 
   onDispose?.(() => {
