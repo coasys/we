@@ -462,6 +462,7 @@ fn run_gallery(kind: Gallery) -> eframe::Result<()> {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result<()> {
+    we_app::logging::init();
     let args = parse_args();
     if args.dump {
         run_dump(&args);

@@ -18,6 +18,8 @@ pub mod gallery;
 pub mod gallery_widgets;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod live;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod logging;
 
 use std::collections::BTreeSet;
 use std::sync::Arc;
