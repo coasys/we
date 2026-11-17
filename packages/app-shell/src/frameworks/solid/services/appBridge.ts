@@ -196,7 +196,7 @@ export function startAppBridge(deps: AppBridgeDeps) {
       // The proxy opens a WebSocket to the executor carrying WE's own auth token, so serving one is
       // the same act as handing over the token. Gated identically: a frame this document mounted,
       // pointed at a registered app. `event.origin` empty fails the check, which is what we want —
-      // a proxy frame carrying GraphQL responses must never be sent to '*'.
+      // a proxy frame carrying the executor's RPC responses must never be sent to '*'.
       if (!credentialedFrameFor(source, event.origin)) {
         console.warn('appBridge: rejected AD4M_PROXY_WS_CONNECT from an unregistered source');
         return;

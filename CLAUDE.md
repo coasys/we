@@ -3107,10 +3107,10 @@ DatasetStore:
 
 DeviceStore:
 - State:
-  - devices: { keyId, addedSeq, revokedSeq, label, subtitle, icon, thisDevice, revoked, status, canRevoke }[] — the device keys of the person's key log, valid first and this computer on top. `label` is 'This computer' or 'Device d2' (devices have no names yet); `status` 'Valid' or 'Revoked at #2'; `canRevoke` is a valid key that is not this computer's
+  - devices: { keyId, addedSeq, revokedSeq, label, subtitle, icon, thisDevice, revoked, status, canRevoke }[] — the device keys of the person's key log, valid first and this computer on top. `label` is 'This computer' or 'Device d2' (devices have no names yet); `status` 'Active' or 'Removed at #2'; `canRevoke` is a valid key that is not this computer's
   - devicesLoaded: boolean — the list has been read once
   - validCount: number — how many keys are valid
-  - canManage: boolean — Add a device and Revoke can be offered: this computer keeps the master key of the identity
+  - canManage: boolean — Link a device or Remove can be offered: this computer keeps the master key of the identity
   - error: string — why the last read failed, or empty
 - Actions:
   - refresh(): reads the device list again
@@ -3194,7 +3194,7 @@ IdentityStore:
   - did: string — the person’s identifier, or empty while this device speaks for nobody
   - keyId: string — this device’s id in the key log (`d1`), or empty
   - thisDeviceRevoked: boolean — the key log revoked this device’s key: it no longer speaks for the person
-  - keyLog: { seq, op, keys, position, icon, title, detail, hash, hashShort, thisComputer }[] — the key log, newest first, with what each row says made from `op` and `keys` (reword from those where a template wants other words), already worded: `title` "Created your identity", "Added d2", "Revoked d2"; `detail` the keys it names with this computer’s marked "This computer"; `hashShort` the event’s hash for a monospace column
+  - keyLog: { seq, op, keys, position, icon, title, detail, hash, hashShort, thisComputer }[] — the key log, newest first, with what each row says made from `op` and `keys` (reword from those where a template wants other words), already worded: `title` "Created identity", "Added d2", "Revoked d2"; `detail` the keys it names with this computer’s marked "This computer"; `hashShort` the event’s hash for a monospace column
   - keyLogLoaded: boolean — the log has been read once
   - forked: boolean — the backend found two different logs for this identity
   - fork: { seq, ours, theirs } | null — where they part
@@ -3376,6 +3376,10 @@ RuntimeStore:
   - mcpEnabled: boolean — whether the backend serves MCP on its next start
   - mcpPort: number — the port MCP is served on
   - executorRestartPending: boolean — settings were changed that the running backend has not picked up
+  - executorConfigFile: string — the path of the config file the backend started with, where this app may write it (the desktop app’s own executor); empty otherwise. Gate the config rows on it
+  - executorConfigRows: { id, key, value, kind, choice, editable, note }[] — every key of that file: value ready to show (empty when the file leaves the key to its default, "Default" for a fixed one), kind the control it takes, from the key’s type rather than its value (boolean | number | text, or fixed for one only shown), choice for a boolean key’s three-way select (default | on | off, default while the file leaves it to the backend), editable, and note saying why one is not (a flag of this start sets it) or that it is changed only from this computer
+  - executorLogTail: string — the newest lines of this run’s backend log, oldest first. Empty until loadExecutorLogTail runs
+  - canRestartExecutor: boolean — the host starts the backend, so a restart can be offered
   - pendingConsent: ConsentRequest | null — a request awaiting the user's decision (kind: 'capability' | 'trust', title, message, app, peerId)
   - consentSecret: string — a code an approval returned, to be relayed to the asking app
 - Actions:
@@ -3428,7 +3432,9 @@ RuntimeStore:
   - exportDatabase(): asks for a file, then has the backend write everything to it
   - importDatabase(): asks for a file, then has the backend read it back in
   - setMcpPort(port: number): sets the MCP port. The host refuses one outside 1024-65535
-  - restartExecutor(): starts the backend over so written settings take effect. Does not return
+  - restartExecutor(): starts the backend over so written settings take effect — where it keeps a config file, by asking it to restart, and the app starts it again with the same arguments and reloads. Does not return
+  - setExecutorConfigValue(key: string, value): writes one key of the config file — a row’s key and the control’s value (event.detail); an empty value returns it to its default. Takes effect at the next start. A refused key lands in error with the backend’s reason
+  - loadExecutorLogTail(): reads the newest lines of the backend’s log into executorLogTail
   - approveConsent(): grants the pending request
   - denyConsent(): declines the pending request
   - dismissConsentSecret(): clears the confirmation code display
@@ -4023,6 +4029,7 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - level — Microphone loudness as the voice detector measures it, 0–1.
   - levelPercent — The microphone level as a CSS width for a meter.
   - listening — True only while actually transcribing — what a record button highlights on.
+  - liveCallRecords — The record of every call somebody is in right now.
   - liveCollectionId — The record the call this agent is in is writing into, or empty when there is none.
   - modelMissing — No transcription model is installed on this node, as last read.
   - modelUnready — A transcription model is installed and cannot run yet — still downloading, or its server is not answering.
@@ -4101,6 +4108,7 @@ Needs: kernels records, interpretation.
   - feedRoot — The space collection the Feed reads, and writes typed messages into.
   - feedRows — The Feed's window: every message in the space and a row per group of things extracted or made, merged by time — newest first while following the live end, oldest first from the start. A row is { kind: 'line', id, at, author, text, marks, source, call, callTitle, replyTo } or { kind: 'activity', id, at, author, origin, originTitle, summary, items, suggested }.
   - replyingTo — The line a reply is being written to — { id, text, author } — or null.
+  - showCallTranscripts — Whether this reader asked the Feed to draw the lines calls spoke — off until they do, in this space only.
   - timelineOrientation — Which way round this reader draws the Feed — 'newestBottom' or 'newestTop'. Their own setting.
 - Actions (`{ "$invoke": "modules.feed.<name>" }`):
   - cancelReply — Puts a reply down without sending it.
@@ -4117,7 +4125,7 @@ Needs: kernels records, interpretation.
   - watchFeed — The Feed is drawn somewhere: keep it live.
 - Parts: `feed.feedView`
 - Panels (`meta.panels[].dock`): `feed` "Feed" (module-owned openness)
-- Settings: `timelineOrder` (enum; agent) — Newest messages; `botNotices` (boolean; agent) — Tell me when a bot answers
+- Settings: `timelineOrder` (enum; agent) — Newest messages; `botNotices` (boolean; agent) — Tell me when a bot answers; `showCallTranscripts` (boolean; agent-in-space) — Show call transcripts
 
 ### Live presence (`live`)
 See each other’s cursors, and follow one person’s screen.

@@ -109,6 +109,43 @@ describe('the feed window', () => {
     expect(asked.filter((a) => a.query.within === 'standup')).toEqual([]);
   });
 
+  it('does not let hidden spoken lines use up the window', async () => {
+    /*
+      The schedule that emptied the feed: a call speaks more lines than the window holds after the
+      last typed message. Cut after the merge, those lines were the whole window — the feed said
+      "Nothing said here yet…" and never loaded more, because a list that does not overflow never
+      scrolls. Spoken lines go as they are read instead, so the cut lands on the rows that will be
+      drawn, and the typed history before the call is in it.
+    */
+    const spoken = Array.from({ length: 60 }, (_, i) => line(`said-${i}`, 10 + i, 'standup'));
+    const { find } = store([
+      ...calls,
+      ...spoken,
+      line('m1', 1, 'monday'),
+      line('s1', 6, 'standup'),
+      line('typed-1', 1, ROOT, { source: 'typed' }),
+      line('typed-2', 2, ROOT, { source: 'typed' }),
+      // A typed reply to a hidden spoken line still shows, quoting it.
+      {
+        ...line('reply-1', 40, '', { author: 'did:ben', text: 'answering', source: 'typed', respondsTo: 'said-30' }),
+        threadOf: 'said-30',
+      },
+    ]);
+    const options = { root: ROOT, shown: 50, fromStart: false, activityTypes: [] };
+
+    const hidden = await readFeedWindow(find, { ...options, spoken: false });
+    expect(hidden.rows.map((r) => r.id)).toEqual(['reply-1', 'typed-2', 'typed-1']);
+    expect(hidden.rows[0]).toMatchObject({ replyTo: { id: 'said-30' } });
+    // More is still out there: the call's unread lines, and whatever is older.
+    expect(hidden.hasMore).toBe(true);
+
+    const shown = await readFeedWindow(find, { ...options, spoken: true });
+    expect(shown.rows).toHaveLength(50);
+    expect(shown.rows[0]).toMatchObject({ id: 'said-59', source: 'spoken' });
+    // The call's lines fill the window, the typed reply among them.
+    expect(shown.rows.filter((r) => r.kind === 'line' && r.source === 'spoken')).toHaveLength(49);
+  });
+
   it('draws a reply after the line it answers, in the order it was said, quoting it', async () => {
     // A reply is a child of nothing: it is in the thread of the line it answers, and names that line.
     const { find } = store([

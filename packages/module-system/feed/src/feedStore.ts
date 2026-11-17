@@ -38,6 +38,12 @@ export interface FeedDeps {
   spaceRoot: ModuleStoreDeps['spaceRoot'];
   records: RecordsKernel | undefined;
   interpretation: InterpretationKernel | undefined;
+  /**
+   * Whether this reader wants the lines a call spoke in the window — the Feed's
+   * `showCallTranscripts` setting. Part of what the window holds: it is read as the window is,
+   * so flipping it re-reads.
+   */
+  showSpoken?: () => boolean;
   /** Write a message — the store's own, so typed lines and feed messages are written one way. */
   write: (collection: string, text: string, marks?: string) => Promise<string | null>;
 }
@@ -55,6 +61,8 @@ export function createFeed(deps: FeedDeps) {
   const root = () => (deps.dataset?.() ? (deps.spaceRoot?.() ?? '') : '');
   const [shown, setShown] = signal(FEED_FIRST_PAGE);
   const [fromStart, setFromStart] = signal(false);
+  /** This reader's transcripts choice — everything said, unless they said to keep spoken lines out. */
+  const showSpoken = () => deps.showSpoken?.() ?? true;
   const [rows, setRows] = signal<FeedRow[]>([]);
   const [hasMore, setHasMore] = signal(false);
   const [loaded, setLoaded] = signal(false);
@@ -133,13 +141,16 @@ export function createFeed(deps: FeedDeps) {
     const space = root();
     const size = shown();
     const anchoredAtStart = fromStart();
-    const same = () => !disposed && root() === space && shown() === size && fromStart() === anchoredAtStart;
+    const spoken = showSpoken();
+    const same = () =>
+      !disposed && root() === space && shown() === size && fromStart() === anchoredAtStart && showSpoken() === spoken;
     const activityTypes = (deps.interpretation?.targets(space) ?? []).map((t) => t.entity);
     try {
       const result = await readFeedWindow((entity, query) => records?.find(entity, query) ?? Promise.resolve([]), {
         root: space,
         shown: size,
         fromStart: anchoredAtStart,
+        spoken,
         activityTypes,
         pending: new Set(unconfirmed()),
         stopped: () => !same() || !looking(),
@@ -191,7 +202,7 @@ export function createFeed(deps: FeedDeps) {
 
   // Read when the window moves, and when somebody starts looking at one that is owed a read.
   effect?.(() => {
-    const key = `${root()}|${shown()}|${fromStart()}`;
+    const key = `${root()}|${shown()}|${fromStart()}|${showSpoken()}`;
     if (key !== windowKey) {
       windowKey = key;
       dirty = true;

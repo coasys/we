@@ -83,6 +83,24 @@ export {
   SUGGESTION_STYLES,
 } from './we/canvas.ts';
 export type { CanvasEditingOptions, CanvasSeedOptions } from './we/canvas.ts';
+export {
+  BY_SIGNAL,
+  CANVAS_CARD,
+  SIGNAL_IN_FORCE,
+  TREE_BEHAVIOURS,
+  TREE_CARD_STYLE,
+  TREE_EDGE_RULES,
+  TREE_LOCALS,
+  TREE_ON,
+  TREE_QUERIES,
+  TREE_REFRAME,
+  TREE_VOICE_SUMMARY,
+  TREE_WEIGH,
+  TREE_WEIGHTS,
+  treeArrange,
+  treeLayout,
+  treeStrip,
+} from './we/canvasTree.ts';
 export { fieldEditor, inspectorPanel, kindIcon, kindLabel, openRecord, vocabularyEditLink } from './we/inspector.ts';
 export type { InspectorPanelOptions } from './we/inspector.ts';
 export {
