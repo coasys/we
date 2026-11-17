@@ -3961,10 +3961,11 @@ const placed = (name: string): SchemaNode => ({ type: '$part', props: { id: `tra
  * four status notes, an extract control, a chip row and a proposal list — two surfaces wearing one
  * coat, and the reason nobody could find the half they wanted.
  *
- * Opening itself when a pass starts is what makes this safe to separate, and it is the rule
- * recording already follows: starting something invisible and saying nothing about it is how a
- * feature comes to look broken. A pass any member starts opens this for everyone who has the module,
- * which is what the one-line signal in the call bar used to be for.
+ * It opens only by hand — from the rail, or the button an interface without one puts in its call
+ * bar — and when somebody switches automatic extraction on, since that is asking to see what it
+ * makes. A pass starting does not open it: most are started by a standing watch on some other
+ * member's device, and a panel springing open over the call each time is chrome arguing with its
+ * reader. What a pass is doing is shown on the button that opens this instead.
  */
 export const extractionPanel: SchemaNode = {
   ...panelShell({

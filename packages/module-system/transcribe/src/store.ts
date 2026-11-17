@@ -1046,25 +1046,6 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   }
 
   /** Write what has accumulated, if anything. Safe to call at any point, including teardown. */
-  /**
-   * Show the extraction panel when a pass starts — anybody's, not only this agent's.
-   *
-   * The same rule recording follows, and the reason the one-line signal in the call bar can go:
-   * starting something invisible and saying nothing about it is how a feature comes to look broken.
-   * A pass takes minutes and spends somebody's tokens, and most of them are started by a standing
-   * watch rather than by a press — so the four people in five who did not start it are exactly the
-   * ones who need telling.
-   *
-   * Once, on the edge. Re-opening a panel somebody has deliberately closed, every time a pass
-   * settles and another begins, is chrome arguing with its reader.
-   */
-  let sawRunning = false;
-  effect?.(() => {
-    const running = (interpretation?.activity?.() ?? []).some((row) => row.running);
-    if (running && !sawRunning) setExtractionOpen(true);
-    sawRunning = running;
-  });
-
   /** The reads of staged suggestions in flight, by key — see {@link loadProposals}. */
   const readingProposals = coalesceByKey();
 
