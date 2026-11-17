@@ -52,7 +52,9 @@ fn collect(tokens: &[HandlerToken], out: &mut Vec<Json>) {
     for token in tokens {
         match token {
             HandlerToken::Invoke { target, args, .. } if target == "routeStore.setParam" => {
-                if let Some([name, value]) = args.as_ref().and_then(|a| a.as_array()).map(Vec::as_slice) {
+                if let Some([name, value]) =
+                    args.as_ref().and_then(|a| a.as_array()).map(Vec::as_slice)
+                {
                     if name == "cardType" {
                         out.push(value.clone());
                     }
@@ -109,6 +111,9 @@ fn a_card_names_its_record_type_as_an_expression_or_an_entity() {
             }
         }
     }
-    assert!(seen > 0, "no card handler was found: the test looks at nothing");
+    assert!(
+        seen > 0,
+        "no card handler was found: the test looks at nothing"
+    );
     assert!(bad.is_empty(), "cardType written as text: {bad:#?}");
 }
