@@ -287,6 +287,29 @@ describe('adapter.lower — scope → parent (Tier-2 adapter-rewrite)', () => {
     expect(opts).toMatchObject({ parent: { ids: ['t1', 't2'], predicate: 'x://about', direction: 'in' } });
   });
 
+  it('reads an inbound scope through the result’s relation when anchor and result both declare the name', () => {
+    // Both classes hold an `about`, over different predicates. `result --about--> anchor` is the result's.
+    const prop = (predicate: string, relatedEntity: string) => ({
+      name: 'about',
+      predicate,
+      type: 'uri' as const,
+      isCollection: false,
+      required: false,
+      writable: true,
+      relatedEntity,
+    });
+    const both = createAd4mQueryAdapter(() => [
+      { name: 'Topic', targetClass: 'x://topic', properties: [prop('x://topic_about', 'Topic')] },
+      { name: 'Position', targetClass: 'x://position', properties: [prop('x://position_about', 'Topic')] },
+    ]);
+    const opts = both.lower({
+      irVersion: 1,
+      entity: 'Position',
+      scope: { anchor: 'Topic', via: 'about', anchorId: ['t1'], direction: 'in' },
+    });
+    expect(opts).toMatchObject({ parent: { predicate: 'x://position_about', direction: 'in' } });
+  });
+
   it('throws (surfaced, not silent) when the relation is not in the manifest', () => {
     const ir: QueryIR = {
       irVersion: 1,
