@@ -158,6 +158,34 @@ export type WatchQuery = Omit<ExpanderQuery, 'signal'>;
  * An entity type as the engine sees it — the neutral projection of whatever the backend calls a
  * schema. Enough to build a generic node from an instance nobody wrote code for.
  */
+/**
+ * Whether the record holding a declared link is the tree's *child* — the one direction rule.
+ *
+ * A link is read from its forward declaration (a reverse is never followed; see
+ * {@link EntityShape.relations}):
+ *
+ * - a forward to-one: the record holding the field is the child, and the value its parent — a
+ *   position's `about` names the topic it hangs under;
+ * - a forward to-many: the holder is the parent, and each value a child.
+ *
+ * Here rather than in each consumer because three of them must agree: the canvas seed draws the
+ * edge by it, a tree drop writes the field by it, and a named spine decides which two classes it
+ * joins by it. A drop working it out differently from the seed writes a link the tree then draws
+ * the other way round.
+ */
+export function heldByChild(relation: { cardinality: 'one' | 'many' }): boolean {
+  return relation.cardinality === 'one';
+}
+
+/** The two ends of one held link — `holder` names `value` through `relation` — as the tree reads them. */
+export function treeEnds(
+  relation: { cardinality: 'one' | 'many' },
+  holder: string,
+  value: string,
+): { parent: string; child: string } {
+  return heldByChild(relation) ? { parent: value, child: holder } : { parent: holder, child: value };
+}
+
 export interface EntityShape {
   name: string;
   /** Scalar fields, in declaration order. */

@@ -40,7 +40,7 @@
  * beside it; the connections between the cards are the only round that has to wait.
  */
 import type { GraphEdge, GraphNode, GraphValue, SeedSource } from '@we/graph-protocol';
-import { entityAddress, NODE_TYPE_KEY, parseAddress } from '@we/graph-protocol';
+import { entityAddress, heldByChild, NODE_TYPE_KEY, parseAddress, treeEnds } from '@we/graph-protocol';
 
 import { rowToNode } from './nodes';
 import { placementsFor, resolvePlacement } from './placements';
@@ -595,11 +595,6 @@ export function canvasSeed(): SeedSource {
             skipClasses: [placementEntity, ...(options.connections ? [options.connections] : [])],
           })
         : [];
-      /**
-       * Whether the record holding a link is the tree's *child* — a forward to-one names its parent;
-       * a forward to-many lists its children.
-       */
-      const heldByChild = (relation: FollowedRelation) => relation.cardinality === 'one';
       /** The relations each class holds — what a card of it is read with, and its edges read off. */
       const heldBy = new Map<string, FollowedRelation[]>();
       for (const relation of followed) heldBy.set(relation.holder, [...(heldBy.get(relation.holder) ?? []), relation]);
@@ -920,7 +915,7 @@ export function canvasSeed(): SeedSource {
       const relationEdges = new Map<string, GraphEdge>();
       const addRelationEdge = (link: RelationLink) => {
         const { relation, holder, value } = link;
-        const [parentId, childId] = heldByChild(relation) ? [value, holder] : [holder, value];
+        const { parent: parentId, child: childId } = treeEnds(relation, holder, value);
         if (parentId === childId || !onCanvas.has(parentId) || !onCanvas.has(childId)) return;
         const id = `relation|${relation.holder}.${relation.name}|${holder}|${value}`;
         if (relationEdges.has(id)) return;
