@@ -211,18 +211,20 @@ impl Rig {
 }
 
 /// One button invoking `invoke`, and a text showing `local.ok` / `local.msg`
-/// / `local.kind` — what its lifecycle wrote.
+/// / `local.kind` / `local.fin` — what its lifecycle wrote (`fin` counts
+/// `onFinally` runs).
 fn button(invoke: serde_json::Value) -> RootSpec {
     let node = json!({
         "type": "Column",
         "$localState": {
             "ok": { "type": "boolean", "initial": false },
             "msg": { "type": "string", "initial": "" },
-            "kind": { "type": "string", "initial": "" }
+            "kind": { "type": "string", "initial": "" },
+            "fin": { "type": "number", "initial": 0 }
         },
         "children": [
             { "type": "we-button", "props": { "onClick": invoke }, "children": ["Go"] },
-            { "type": "we-text", "children": [{ "$": "`ok=${local.ok} msg=${local.msg} kind=${local.kind}`" }] }
+            { "type": "we-text", "children": [{ "$": "`ok=${local.ok} msg=${local.msg} kind=${local.kind} fin=${local.fin}`" }] }
         ]
     });
     RootSpec::Single {
@@ -240,7 +242,8 @@ fn invoke(target: &str, args: serde_json::Value) -> serde_json::Value {
         "onError": [
             { "$setLocal": "msg", "value": { "$": "result.message" } },
             { "$setLocal": "kind", "value": { "$": "result.kind" } }
-        ]
+        ],
+        "onFinally": [{ "$setLocal": "fin", "value": { "$": "local.fin + 1" } }]
     })
 }
 
@@ -464,4 +467,75 @@ fn a_grant_for_another_space_refuses_here() {
             .any(|n| n.text.contains("read-only") && n.text.contains(other)),
         "{notices:?}"
     );
+}
+
+/// A local refusal settles like an executor's: `onError`, then `onFinally`
+/// (a template clearing a "saving" flag there must not be left stuck).
+#[test]
+fn a_read_only_refusal_runs_on_error_and_on_finally() {
+    let Some(r) = rig("e11-ro-lifecycle") else {
+        return;
+    };
+    let spec = button(invoke(
+        "record.update",
+        json!(["CollectionBlock", r.id, { "title": "B" }]),
+    ));
+    let (mut s, wake) = session(&r, Access::ReadOnly, spec);
+    click(&mut s);
+    wait_for(
+        &mut s,
+        &wake,
+        "kind=read-only fin=1",
+        Duration::from_secs(5),
+    );
+    assert!(text(&mut s).contains("ok=false"), "{}", text(&mut s));
+    assert_eq!(r.title().as_deref(), Some("A"));
+}
+
+#[test]
+fn a_planner_error_runs_on_error_and_on_finally() {
+    let Some(r) = rig("e11-plan-lifecycle") else {
+        return;
+    };
+    let spec = button(invoke(
+        "record.update",
+        json!(["CollectionBlock", r.id, { "title": "B" }, { "dataset": "datasetStore.rootDataset" }]),
+    ));
+    let (mut s, wake) = session(&r, Access::write(r.uuid.as_str()), spec);
+    click(&mut s);
+    wait_for(&mut s, &wake, "kind=plan fin=1", Duration::from_secs(5));
+    let t = text(&mut s);
+    assert!(t.contains("msg=writes to another dataset"), "{t}");
+    assert!(t.contains("ok=false"), "{t}");
+    assert_eq!(r.title().as_deref(), Some("A"));
+    assert_eq!(host(&s).notices().list().len(), 1);
+}
+
+/// Two deletes in one dispatch: as TS's `requestDestructive`, the second
+/// question answers "no" to the first — which settles (`onError` with
+/// `kind: cancelled`, then `onFinally`) — and is the one on screen.
+#[test]
+fn a_second_confirmation_cancels_the_first() {
+    let Some(r) = rig("e11-two-deletes") else {
+        return;
+    };
+    let one = invoke("record.delete", json!(["CollectionBlock", r.id]));
+    let spec = button(json!([one.clone(), one]));
+    let (mut s, wake) = session(&r, Access::write(r.uuid.as_str()), spec);
+    click(&mut s);
+    wait_for(
+        &mut s,
+        &wake,
+        "kind=cancelled fin=1",
+        Duration::from_secs(5),
+    );
+    assert!(
+        host(&s).pending_confirm().is_some(),
+        "the second question is open"
+    );
+    assert!(r.title().is_some(), "nothing removed yet");
+    s.host_mut_as::<WriteHost>().unwrap().answer_confirm(true);
+    wait_for(&mut s, &wake, "ok=true", Duration::from_secs(5));
+    wait_for(&mut s, &wake, "fin=2", Duration::from_secs(5));
+    assert!(r.title().is_none(), "the second delete ran");
 }

@@ -213,9 +213,7 @@ impl WriteHost {
         if yes {
             self.run(pending.plan, pending.done);
         } else {
-            pending
-                .done
-                .complete(Err(err_value("cancelled", 0, "Cancelled.")));
+            pending.done.complete(Err(cancelled()));
         }
     }
 
@@ -276,7 +274,7 @@ impl Host for WriteHost {
             self.notices
                 .push(read_only_notice(&self.access, self.space.as_str()));
             self.wake();
-            return Invoked::Done(Err(err_value("read-only", 0, "This window is read-only.")));
+            return refuse(done, err_value("read-only", 0, "This window is read-only."));
         }
         let displays = self
             .bag
@@ -303,26 +301,41 @@ impl Host for WriteHost {
                     .unwrap_or(DEFAULT_FAIL);
                 self.notices.push(format!("{fail} {msg}"));
                 self.wake();
-                return Invoked::Done(Err(err_value("plan", 0, &msg)));
+                return refuse(done, err_value("plan", 0, &msg));
             }
         };
         if let Some(confirm) = planned.confirm.clone() {
-            let mut slot = lock(&self.confirm);
-            if slot.is_some() {
-                return Invoked::Done(Err(err_value("busy", 0, "Another confirmation is open.")));
-            }
-            *slot = Some(PendingConfirm {
+            // A second question while one is open answers "no" to the
+            // first rather than losing either (TS `requestDestructive`):
+            // two dialogs cannot both be up, and the first call's
+            // `onFinally` must still run.
+            let previous = lock(&self.confirm).replace(PendingConfirm {
                 confirm,
                 plan: planned,
                 done,
             });
-            drop(slot);
+            if let Some(previous) = previous {
+                previous.done.complete(Err(cancelled()));
+            }
             self.wake();
             return Invoked::Pending;
         }
         self.run(planned, done);
         Invoked::Pending
     }
+}
+
+/// Settle a call the host refused before sending anything — through its
+/// [`Completer`], as an executor's refusal is, so `onError` and
+/// `onFinally` run. (`Invoked::Done` runs no lifecycle.)
+fn refuse(done: Completer, error: Value) -> Invoked {
+    done.complete(Err(error));
+    Invoked::Pending
+}
+
+/// What a cancelled confirmation settles with.
+fn cancelled() -> Value {
+    err_value("cancelled", 0, "Cancelled.")
 }
 
 fn lock(slot: &ConfirmSlot) -> std::sync::MutexGuard<'_, Option<PendingConfirm>> {
