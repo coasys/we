@@ -2,7 +2,7 @@
 //! arguments become the writes the host sends, the confirmation it asks
 //! first, and the notice it shows when the executor refuses.
 use serde_json::json;
-use we_data::writes::{plan, PlanCx, WritePlan, WriteRows};
+use we_data::writes::{plan, PlanCx, PlanError, WritePlan, WriteRows};
 use we_data::{StoreMap, Write, WriteOp};
 use we_expr::Value;
 
@@ -26,7 +26,7 @@ fn args(json: serde_json::Value) -> Vec<Value> {
     }
 }
 
-fn run(target: &str, a: serde_json::Value) -> Result<WritePlan, String> {
+fn run(target: &str, a: serde_json::Value) -> Result<WritePlan, PlanError> {
     let d = displays();
     let rows = rows();
     let row = rows
@@ -49,7 +49,7 @@ fn every_shipped_row_parses() {
     for (target, row) in rows.iter() {
         seen += 1;
         if let Err(e) = plan(row, &[], &cx) {
-            assert!(!e.contains("syntax"), "{target}: {e}");
+            assert!(!e.message.contains("syntax"), "{target}: {e}");
         }
     }
     assert_eq!(seen, 5, "the five E11 rows");
@@ -224,7 +224,7 @@ fn record_create_and_update_send_their_fields() {
         json!(["TaskBlock", "", { "status": "done" }]),
     )
     .unwrap_err();
-    assert!(e.contains("missing"), "{e}");
+    assert!(e.message.contains("missing"), "{e}");
 }
 
 #[test]
@@ -234,7 +234,7 @@ fn another_dataset_is_refused() {
         json!(["AgentSettings", {}, { "dataset": "datasetStore.rootDataset" }]),
     )
     .unwrap_err();
-    assert!(e.contains("another dataset"), "{e}");
+    assert!(e.message.contains("another dataset"), "{e}");
 }
 
 #[test]
@@ -247,5 +247,32 @@ fn a_syntax_error_names_the_row_and_field() {
     let rows = WriteRows::from_map(&map);
     let d = Value::Undefined;
     let e = plan(rows.get("x.y").unwrap(), &[], &PlanCx { displays: &d }).unwrap_err();
-    assert!(e.starts_with("x.y class: "), "{e}");
+    assert!(e.message.starts_with("x.y class: "), "{e}");
+}
+
+/// `''` in an update means "clear" in WE, which the executor cannot do
+/// yet: refused, naming the field; nothing is planned. A number field
+/// emptied is still skipped, as TS skips it.
+#[test]
+fn emptying_a_field_is_refused() {
+    for (target, a) in [
+        (
+            "record.update",
+            json!(["TaskBlock", "t1", { "title": "", "status": "done" }]),
+        ),
+        (
+            "recordStore.updateRecordField",
+            json!(["TaskBlock", "t1", "title", { "detail": "" }]),
+        ),
+    ] {
+        let e = run(target, a).unwrap_err();
+        assert_eq!(e.kind, PlanError::CLEAR_UNSUPPORTED, "{target}: {e}");
+        assert!(e.message.contains("title"), "{target}: {e}");
+    }
+    // A create's '' is not a clear: nothing is stored yet.
+    assert!(run(
+        "record.create",
+        json!(["TaskBlock", { "title": "x", "description": "" }])
+    )
+    .is_ok());
 }

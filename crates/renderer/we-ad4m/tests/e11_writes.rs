@@ -202,6 +202,22 @@ fn rig(name: &str) -> Option<Rig> {
 }
 
 impl Rig {
+    /// How many `we://title` links the record carries.
+    fn title_links(&self) -> usize {
+        self.rt
+            .block_on(self.conn.client().perspectives.query_links(
+                self.uuid.clone(),
+                Some(self.id.clone()),
+                None,
+                Some("we://title".into()),
+                None,
+                None,
+                None,
+            ))
+            .unwrap()
+            .len()
+    }
+
     fn title(&self) -> Option<String> {
         kit::query_rows(&self.rt, &self.conn, &self.uuid, "CollectionBlock")
             .into_iter()
@@ -538,4 +554,43 @@ fn a_second_confirmation_cancels_the_first() {
     wait_for(&mut s, &wake, "ok=true", Duration::from_secs(5));
     wait_for(&mut s, &wake, "fin=2", Duration::from_secs(5));
     assert!(r.title().is_none(), "the second delete ran");
+}
+
+/// Emptying a field: WE's `clearOnEmpty` removes the property's links. The
+/// #1762 executor has no validated way to remove a property (`null` is
+/// refused, and `''` would go through the setter as a value), so the host
+/// refuses the clear, says why, and runs `onError` and `onFinally` —
+/// nothing is sent and the stored value stays.
+#[test]
+fn clearing_a_field_is_refused_and_nothing_is_sent() {
+    let Some(r) = rig("e11-clear") else { return };
+    for (target, args) in [
+        (
+            "record.update",
+            json!(["CollectionBlock", r.id, { "title": "" }]),
+        ),
+        (
+            "recordStore.updateRecordField",
+            json!(["CollectionBlock", r.id, "title", { "detail": "" }]),
+        ),
+    ] {
+        let spec = button(invoke(target, args));
+        let (mut s, wake) = session(&r, Access::write(r.uuid.as_str()), spec);
+        click(&mut s);
+        wait_for(&mut s, &wake, "fin=1", Duration::from_secs(5));
+        let t = text(&mut s);
+        assert!(t.contains("kind=clear-unsupported"), "{target}: {t}");
+        assert!(t.contains("ok=false"), "{target}: {t}");
+        assert_eq!(r.title().as_deref(), Some("A"), "{target}: the title stays");
+        let links = r.title_links();
+        assert_eq!(links, 1, "{target}: one title link, as before");
+        let notices = host(&s).notices().list();
+        assert_eq!(notices.len(), 1, "{target}: {notices:?}");
+        assert!(
+            notices[0].text.starts_with("Could not save that change.")
+                && notices[0].text.contains("title"),
+            "{}",
+            notices[0].text
+        );
+    }
 }

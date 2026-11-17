@@ -107,10 +107,78 @@ struct Recipe {
     skip_if: Option<Expr>,
 }
 
+/// Why a call was not planned: a sentence for the notice, and the `kind`
+/// a template's `onError` reads as `result.kind`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlanError {
+    /// [`PlanError::PLAN`] or [`PlanError::CLEAR_UNSUPPORTED`].
+    pub kind: &'static str,
+    pub message: String,
+}
+
+impl PlanError {
+    /// A malformed row, a refused dataset, a write with no class or id.
+    pub const PLAN: &'static str = "plan";
+    /// An update would empty a field — see [`plan`].
+    pub const CLEAR_UNSUPPORTED: &'static str = "clear-unsupported";
+}
+
+impl std::fmt::Display for PlanError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl From<String> for PlanError {
+    fn from(message: String) -> Self {
+        PlanError {
+            kind: PlanError::PLAN,
+            message,
+        }
+    }
+}
+
 /// Plan one call of `row` with `args`. An `Err` is a sentence for the
 /// notice: a malformed row (naming the target and field), a refused
 /// dataset, or a write with no class or id.
-pub fn plan(row: &MemberRow, args: &[Value], cx: &PlanCx) -> Result<WritePlan, String> {
+///
+/// **An update that empties a field is refused** ([`PlanError::CLEAR_UNSUPPORTED`]).
+/// WE reads `''` as "clear this property" and removes its links
+/// (`clearOnEmpty.ts`); the validated write RPC (ad4m #1762) has no way to
+/// remove a property — `null` is refused and `''` would be stored as an
+/// empty value through the setter, which is present where WE's is absent.
+/// Until the executor has one, the clear is refused whole, and nothing in
+/// the call is sent.
+pub fn plan(row: &MemberRow, args: &[Value], cx: &PlanCx) -> Result<WritePlan, PlanError> {
+    let planned = plan_row(row, args, cx)?;
+    for w in &planned.writes {
+        if w.op != WriteOp::Update {
+            continue;
+        }
+        let emptied: Vec<&str> = w
+            .body
+            .get("properties")
+            .and_then(Json::as_object)
+            .into_iter()
+            .flatten()
+            .filter(|(_, v)| v.as_str() == Some(""))
+            .map(|(k, _)| k.as_str())
+            .collect();
+        if !emptied.is_empty() {
+            return Err(PlanError {
+                kind: PlanError::CLEAR_UNSUPPORTED,
+                message: format!(
+                    "Emptying a field is not possible yet ({}): this app cannot remove a \
+                     value, so it is left as it was.",
+                    emptied.join(", ")
+                ),
+            });
+        }
+    }
+    Ok(planned)
+}
+
+fn plan_row(row: &MemberRow, args: &[Value], cx: &PlanCx) -> Result<WritePlan, String> {
     let target = row.raw.get(TARGET).and_then(Json::as_str).unwrap_or("?");
     let expr = |field: &str, source: &Json| -> Result<Expr, String> {
         let text = source

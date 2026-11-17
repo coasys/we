@@ -293,15 +293,15 @@ impl Host for WriteHost {
             },
         ) {
             Ok(p) => p,
-            Err(msg) => {
+            Err(e) => {
                 let fail = row
                     .raw
                     .get("fail")
                     .and_then(|f| f.as_str())
                     .unwrap_or(DEFAULT_FAIL);
-                self.notices.push(format!("{fail} {msg}"));
+                self.notices.push(format!("{fail} {}", e.message));
                 self.wake();
-                return refuse(done, err_value("plan", 0, &msg));
+                return refuse(done, err_value(e.kind, 0, &e.message));
             }
         };
         if let Some(confirm) = planned.confirm.clone() {
