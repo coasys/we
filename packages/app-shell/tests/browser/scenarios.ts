@@ -2419,12 +2419,30 @@ const coasysTreeDna = (): Scenario => {
         },
       },
       shapeStore: { spaceShapes: [{ id: 'shape-hive', name: 'Hive', icon: 'hexagon' }] },
-      recordStore: {
-        // What the tree's Models lists, as the vocabulary map's Models does: every kind of record.
-        creatableEntities: [
-          { value: 'Hive', label: 'Hive', icon: 'hexagon', hue: 'yellow', group: '', description: '', via: 'form' },
+      // Another app's class, and WE's plumbing an older version wrote under another IRI, which is left out.
+      datasetStore: {
+        currentDatasetEntities: [
+          { name: 'Placement', targetClass: 'old://Placement', properties: [] },
+          { name: 'Question', targetClass: 'conv://Question', properties: [] },
         ],
+      },
+      recordStore: {
+        // The space's own model and one of WE's blocks: the This space and WE groups, beside WE's vocabulary.
+        creatableEntities: [
+          {
+            value: 'Hive',
+            label: 'Hive',
+            icon: 'hexagon',
+            hue: 'yellow',
+            group: 'This space',
+            description: '',
+            via: 'form',
+          },
+          { value: 'TaskBlock', label: 'Task', icon: 'check-square', hue: 'green', group: 'Built in', via: 'form' },
+        ],
+        plumbingClasses: ['Placement', 'Space', 'SignalType', 'TaskState'],
         displays: {
+          Question: { label: 'Question', icon: 'cube', fields: [] },
           Hive: {
             fields: [
               { name: 'name', label: 'Name', kind: 'text' },
