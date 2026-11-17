@@ -97,7 +97,7 @@ export async function applyFixture(deps: ApplyDeps, fixture: Fixture): Promise<A
   /** Per-kind counter, so a node with no title still gets a stable id from its position. */
   const counters = new Map<string, number>();
 
-  await getEntity('Space').create(dataset, {
+  const space = await getEntity('Space').create(dataset, {
     id: `${fixture.id}-space`,
     uuid: datasetId,
     ...(deps.sharedId ? { url: deps.sharedId } : {}),
@@ -114,6 +114,19 @@ export async function applyFixture(deps: ApplyDeps, fixture: Fixture): Promise<A
   });
 
   await writeCarried(deps, fixture, getEntity);
+
+  /*
+    The space collection, after the records are in so the id resolves: `Space.root` is a relation,
+    and the host's own writer — `writeSpaceStructure` — runs inside `createSpace`, which a fixture
+    never calls. Without it `spaceStore.root` is empty, and a template that scopes content to the
+    space collection (a canvas's members, a feed's) photographs an empty space no matter what the
+    fixture carried.
+  */
+  if (fixture.space.root) {
+    const setter = space as { setRoot?: (target: { id: string }) => Promise<unknown> };
+    if (!setter.setRoot) throw new Error(`fixture '${fixture.id}': the backend has no Space.root relation`);
+    await setter.setRoot({ id: fixture.space.root });
+  }
 
   // Signal types first, and by slug: a fixture says a message was hearted, and the id that means
   // "heart" in this space does not exist until the type does. Templates resolve them the same way,

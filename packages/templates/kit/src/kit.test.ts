@@ -40,6 +40,9 @@ import {
   signalDisplay,
   statChip,
   taskBoard,
+  TREE_LOCALS,
+  TREE_QUERIES,
+  treeStrip,
 } from './index.ts';
 
 /**
@@ -245,6 +248,7 @@ const weDomain: Record<string, SchemaNode> = {
     layout: 'list',
     card: { mode: 'compact' },
   }),
+  treeStrip: treeStrip(),
 };
 
 /** The offered types, as `signalTypes.ts` spells them — repeated here so a drift shows up as a test. */
@@ -358,6 +362,18 @@ const withAmbientScope = (node: SchemaNode): SchemaNode => ({
   children: [node],
 });
 
+/**
+ * The tree strip's half of its contract: the locals and queries `canvasTree` asks the canvas route to
+ * declare. Same shim, different contract — the strip reads the mode it switches and the vocabularies
+ * its pickers offer, all of which belong to the route, not to the strip.
+ */
+const withTreeScope = (node: SchemaNode): SchemaNode => ({
+  type: 'Column',
+  $queries: { ...TREE_QUERIES },
+  $localState: { ...TREE_LOCALS },
+  children: [node],
+});
+
 describe('every expansion is a valid schema fragment', () => {
   const needsAmbient = new Set([
     'cardShell',
@@ -373,9 +389,11 @@ describe('every expansion is a valid schema fragment', () => {
     'signalDisplay (compact)',
     'signalDisplay (total)',
   ]);
+  const ambientScopes: Record<string, (node: SchemaNode) => SchemaNode> = { treeStrip: withTreeScope };
   for (const [name, node] of Object.entries({ ...portable, ...weDomain })) {
     it(name, () => {
-      const result = validateSemantic(needsAmbient.has(name) ? withAmbientScope(node) : node, context);
+      const wrap = needsAmbient.has(name) ? withAmbientScope : (ambientScopes[name] ?? ((n) => n));
+      const result = validateSemantic(wrap(node), context);
       expect(result.errors.filter((e) => e.severity === 'error')).toEqual([]);
     });
   }
