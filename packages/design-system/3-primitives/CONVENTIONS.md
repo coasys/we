@@ -291,7 +291,7 @@ This is read once at class registration to generate the static DS stylesheet (CS
 ## Record-anchored decorations — `data-we-record`
 
 Some marks belong at a **record** rather than at a coordinate: a live cursor, a highlight on something
-an extraction pass touched, a comment pin, "two people are reading this". They all need one answer
+an interpretation pass touched, a comment pin, "two people are reading this". They all need one answer
 from the DOM — _which box is that record, and where is it right now_ — and `data-we-record` is it.
 
 ```html

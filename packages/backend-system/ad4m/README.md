@@ -40,7 +40,7 @@ code on this side, which is the intended direction:
 - SDNA staleness diffing and duplicate-install remediation (`sdnaEntities.ts`) — `refreshSpace`
   compares stored shapes against declared ones on every space switch because `add_sdna` is not
   idempotent about a shape that changed.
-- Parenting extracted records and re-keying overlay values from predicates to property names
+- Parenting interpreted records and re-keying overlay values from predicates to property names
   (`interpretationAdapter.ts`) — `runInterpretation` writes instances and returns URIs; attaching
   them to a container and naming their fields for a reviewer happens here.
 - The operators and bounds the planner refuses — `exists`, string range bounds, `startsWith` /

@@ -175,8 +175,8 @@ provenance; it does not cost a rewrite of anything that draws.
 
 ## When a conversation draws the connection
 
-A call can extract `Relationship` like any other candidate, so a pass can say "the migration depends
-on the auth rewrite" as a record. Nothing in the extraction engine knows connections are reified. It
+A call can interpret into `Relationship` like any other candidate, so a pass can say "the migration depends
+on the auth rewrite" as a record. Nothing in the interpretation engine knows connections are reified. It
 fills whatever relations a class declares, so a `Relationship` is a record with two to-one ends, and
 the reified shape costs nothing at write time. What the pass needs is said in the declaration:
 
@@ -188,14 +188,14 @@ the reified shape costs nothing at write time. What the pass needs is said in th
   That property is `connection`, the dedup key, so WE writes it on every connection a person draws
   (`connectionKey`), and rewrites it when an end moves, the connection is relabelled, or a record it
   joins is renamed. Both ends are named by title, so the existing connections read as the tree they
-  are, and a hand-drawn key and an extracted key for the same claim are the same string. A
+  are, and a hand-drawn key and an interpreted key for the same claim are the same string. A
   connection drawn by hand with no key was invisible to the pass meant to extend it.
 - **Which records it can reach.** A pass sees the existing records of the models it is looking for,
   and no others, so a connection can join only those models. Relationship on its own connects nothing.
 
 What a pass cannot do yet is shared by every relation, not special to this one:
 
-- It cannot see a space's `RelationshipType`s, so an extracted connection has no kind. It shows in a
+- It cannot see a space's `RelationshipType`s, so an interpreted connection has no kind. It shows in a
   tree only while the tree follows every kind.
 - It cannot re-point an end. Relation writes are add-only, so "that belongs under X" produces a
   second connection, and a person removes the old one.
