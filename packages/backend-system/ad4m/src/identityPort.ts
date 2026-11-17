@@ -33,6 +33,7 @@ import {
 } from '@we/backend-shared';
 
 import { type BotClientLike, createAd4mBotPort } from './botPort';
+import { sharedInFlight } from './inFlight';
 import { recordMissingMethod } from './missingMethods';
 
 /** The slice of the SDK client this port uses — the whole of it, so a test can stand one in. */
@@ -264,10 +265,13 @@ export function createAd4mIdentityPort(backendClient: unknown, custody?: Ad4mCus
     }
   }
 
+  // `capabilities` and `status` both read `identity.status`, and the shell asks both at startup.
+  const readStatus = () => sharedInFlight(client, 'identity.status', () => client.identity.status());
+
   const port: IdentityPort = {
     async capabilities(): Promise<IdentityCapabilities> {
       try {
-        await client.identity.status();
+        await readStatus();
       } catch (error) {
         recordMissingMethod(error);
         return NO_IDENTITY_CAPABILITIES;
@@ -288,7 +292,7 @@ export function createAd4mIdentityPort(backendClient: unknown, custody?: Ad4mCus
     },
 
     async status() {
-      return readIdentityStatus(await client.identity.status());
+      return readIdentityStatus(await readStatus());
     },
 
     async log(did: string) {
