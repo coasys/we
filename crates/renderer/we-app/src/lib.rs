@@ -147,6 +147,14 @@ pub fn init_host(ctx: &egui::Context) {
     install_media(ctx);
 }
 
+/// The offline host's dropped-call log.
+pub fn static_dropped(session: &Session) -> Vec<String> {
+    session
+        .host_as::<StaticHost>()
+        .map(|h| h.dropped.clone())
+        .unwrap_or_default()
+}
+
 /// One frame's plumbing: the app wires host ↔ runtime ↔ registry; tests drive
 /// `frame_body` through `egui_kittest::Harness::new_ui`.
 pub struct RendererApp {
@@ -156,6 +164,11 @@ pub struct RendererApp {
     /// The theme `style_of` resolves against — `main` loads `dark` from the
     /// recorded tables; tests default to the empty table.
     pub theme: we_style::Theme,
+    /// The calls the session's host dropped, for the F12 overlay. The
+    /// offline host's log by default; a connected window, whose host wraps
+    /// it, puts its own reader here (this file is shared with wasm and does
+    /// not name the connected host).
+    pub dropped_calls: fn(&Session) -> Vec<String>,
     edit: EditState,
     layout: Option<Layout>,
     /// The inputs the cached layout was computed for — see [`LayoutKey`].
@@ -222,6 +235,7 @@ impl RendererApp {
             session,
             registry,
             theme: we_style::Theme::empty("dark", we_style::Polarity::Dark),
+            dropped_calls: static_dropped,
             edit: EditState::default(),
             layout: None,
             layout_key: None,
@@ -479,9 +493,7 @@ impl RendererApp {
                             stats.last_resolve,
                             stats.nodes,
                             unknown.len(),
-                            self.session
-                                .host_as::<StaticHost>()
-                                .map_or(0, |h| h.dropped.len()),
+                            (self.dropped_calls)(&self.session).len(),
                         ))
                         .monospace()
                         .size(11.0),

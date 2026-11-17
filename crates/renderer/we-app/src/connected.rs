@@ -15,7 +15,8 @@ use std::sync::{Arc, Mutex};
 
 use egui::{Color32, RichText};
 use we_ad4m::connect::{Ask, ConnectFlow, ConnectPhase, ConnectSettings, GrantScope};
-use we_ad4m::{Connection, SpaceRow};
+use we_ad4m::{Access, Connection, Notices, SpaceRow, WriteHost};
+use we_data::writes::Confirm;
 
 use crate::live::{live_space_app, LiveSpace};
 
@@ -104,8 +105,14 @@ impl ConnectedApp {
     }
 
     fn open_space(&self, conn: &Connection, space: SpaceRow) -> Result<Box<LiveSpace>, String> {
-        let (mut live, fell_back) =
-            live_space_app(&self.bundle, conn, space, &self.args.theme, self.args.data)?;
+        let (mut live, fell_back) = live_space_app(
+            &self.bundle,
+            conn,
+            space,
+            &self.args.theme,
+            self.args.data,
+            self.args.access,
+        )?;
         if fell_back {
             eprintln!(
                 "no recorded theme {:?}; painting with dark",
@@ -116,6 +123,11 @@ impl ConnectedApp {
         live.app
             .session
             .set_waker(Arc::new(move || ctx.request_repaint()));
+        // A notice or a confirmation appearing wakes the window too.
+        let ctx = self.ctx.clone();
+        if let Some(host) = live.app.session.host_mut_as::<WriteHost>() {
+            host.set_waker(Arc::new(move || ctx.request_repaint()));
+        }
         Ok(Box::new(live))
     }
 
@@ -487,6 +499,10 @@ fn space_screen(
             ui.painter()
                 .circle_filled(dot.center(), 4.0, if connected { LIVE } else { LOST });
             ui.label(format!("{url}  ·  {}", live.space.name));
+            ui.label(match live.access {
+                Access::ReadOnly => "read-only".to_string(),
+                Access::Write => format!("writes: {}", live.space.name),
+            });
             if !connected {
                 // What is on screen is the last answer; nothing updates
                 // until the socket is back.
@@ -531,7 +547,85 @@ fn space_screen(
     egui::CentralPanel::default()
         .frame(egui::Frame::NONE)
         .show(ui, |ui| live.app.frame_body(ui));
+    // What went wrong with a write: top right, below the status bar, gone
+    // after eight seconds unless dismissed sooner.
+    let notices = live.notice_list().clone();
+    notices.expire(NOTICE_LIFE);
+    if !notices.list().is_empty() {
+        let top = ui.max_rect().top() + 40.0;
+        egui::Area::new(egui::Id::unique("we-write-notices"))
+            .order(egui::Order::Foreground)
+            .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-12.0, top))
+            .show(ui.ctx(), |ui| draw_notices(ui, &notices, &live.app.theme));
+        ui.ctx().request_repaint_after(NOTICE_LIFE);
+    }
+    if let Some(confirm) = live.pending_confirm() {
+        if let Some(yes) = draw_confirm(ui, &confirm) {
+            live.answer_confirm(yes);
+        }
+    }
     next
+}
+
+/// How long a notice stays up.
+const NOTICE_LIFE: std::time::Duration = std::time::Duration::from_secs(8);
+
+/// The notices, one framed line each in the theme's danger colours, with a
+/// Dismiss button.
+pub fn draw_notices(ui: &mut egui::Ui, notices: &Notices, theme: &we_style::Theme) {
+    let fill = crate::gallery::role_color(theme, "danger-soft")
+        .unwrap_or_else(|| ui.visuals().extreme_bg_color);
+    let text = crate::gallery::role_color(theme, "danger-text")
+        .unwrap_or_else(|| ui.visuals().error_fg_color);
+    let mut dismiss = None;
+    for (i, notice) in notices.list().iter().enumerate() {
+        egui::Frame::new()
+            .fill(fill)
+            .corner_radius(6.0)
+            .inner_margin(10.0)
+            .show(ui, |ui| {
+                ui.set_max_width(420.0);
+                ui.horizontal_top(|ui| {
+                    ui.add(egui::Label::new(RichText::new(&notice.text).color(text)).wrap());
+                    if ui.small_button("Dismiss").clicked() {
+                        dismiss = Some(i);
+                    }
+                });
+            });
+        ui.add_space(6.0);
+    }
+    if let Some(i) = dismiss {
+        notices.dismiss(i);
+    }
+}
+
+/// The host's confirmation of a destructive call: `Some(true)` on Delete,
+/// `Some(false)` on Cancel, Escape or a click outside, `None` while open.
+pub fn draw_confirm(ui: &mut egui::Ui, confirm: &Confirm) -> Option<bool> {
+    let mut answer = None;
+    let modal = egui::Modal::new(egui::Id::unique("we-write-confirm")).show(ui.ctx(), |ui| {
+        ui.set_max_width(380.0);
+        ui.heading(&confirm.title);
+        ui.add_space(6.0);
+        ui.label(&confirm.body);
+        ui.add_space(12.0);
+        ui.horizontal(|ui| {
+            if ui.button("Cancel").clicked() {
+                answer = Some(false);
+            }
+            let danger = ui.visuals().error_fg_color;
+            if ui
+                .button(RichText::new("Delete").color(danger).strong())
+                .clicked()
+            {
+                answer = Some(true);
+            }
+        });
+    });
+    if answer.is_none() && modal.should_close() {
+        answer = Some(false);
+    }
+    answer
 }
 
 fn data_panel(ui: &mut egui::Ui, live: &LiveSpace, report: &we_data::ProvenanceReport) {
@@ -584,9 +678,9 @@ fn data_panel(ui: &mut egui::Ui, live: &LiveSpace, report: &we_data::ProvenanceR
         section(ui, "Derived", Color32::LIGHT_BLUE, &report.native_served);
         section(
             ui,
-            "Calls dropped (read-only)",
+            "Calls dropped (not wired)",
             Color32::from_rgb(230, 90, 90),
-            &report.dropped,
+            &live.dropped_calls(),
         );
     });
 }

@@ -7,14 +7,27 @@
 //! recorded stores reads unavailable, except the few `data/connected.json`
 //! allowlists — the bundle's themes and brand, and facts of connected mode
 //! (booted, read-only). [`LiveSpace::provenance`] lists what was live, what
-//! came from the bundle and what was unavailable. Read-only: every
-//! `$invoke` is dropped. [`DataMode::DemoRecorded`] (`--demo-recorded`)
-//! puts the whole recording back underneath, for demos only.
+//! came from the bundle and what was unavailable. [`DataMode::DemoRecorded`]
+//! (`--demo-recorded`) puts the whole recording back underneath, for demos
+//! only.
+//!
+//! `$invoke` goes to a [`WriteHost`] (E11): the store map's write rows
+//! (`record.*`, `recordStore.updateRecordField`,
+//! `spaceStore.createSignalType`) write through the validated write RPC when
+//! the window has [`Access::Write`], and are refused with a notice when it
+//! is read-only; everything else is dropped and listed, as before. A write
+//! reaches the screen through the live query that reads it, never
+//! optimistically. Only a personal space may be opened for writing.
 use std::sync::Arc;
 
 use we_ad4m::live::{LiveMap, LiveMembers};
-use we_ad4m::{Ad4mQuerySource, Connection, SourceStats, SpaceBinding, SpaceRow};
-use we_data::{OfflineData, Provenance, StoreMap};
+use we_ad4m::write_host::ConfirmSlot;
+use we_ad4m::{
+    Access, Ad4mQuerySource, Connection, Notice, Notices, SourceStats, SpaceBinding, SpaceRow,
+    WriteHost,
+};
+use we_data::writes::Confirm;
+use we_data::{OfflineData, Provenance, SpaceId, StoreMap};
 use we_egui::Registry;
 use we_screen::{ScreenSchema, ScreenState};
 use we_template::{AppSpec, LocalState, NoParts, Runtime, SchemaNode, StaticHost};
@@ -62,10 +75,18 @@ pub fn connected_facts() -> Vec<String> {
         .collect()
 }
 
+/// What a shared space opened with `--write` is refused with (brief §6 Q3).
+pub const SHARED_WRITE_REFUSED: &str =
+    "Writes to a shared space wait for the space's policy check, \
+     which this app does not run yet. Open it without --write, or pick a personal space.";
+
 /// The store document a live space's bag is built from: the allowlisted
 /// bundle members copied out of the recording and the connected facts, no
-/// queries, no canned `$invoke` replies.
-fn connected_doc(truth: &serde_json::Value) -> serde_json::Value {
+/// queries, no canned `$invoke` replies. `admin` overrides
+/// `spaceStore.canAdministerCurrentSpace`: a window with the write grant
+/// administers the personal space it opened (TS `canAdministerSpace`
+/// answers true for a personal space).
+fn connected_doc(truth: &serde_json::Value, admin: bool) -> serde_json::Value {
     let cfg: serde_json::Value = serde_json::from_str(CONNECTED).expect("connected.json parses");
     let mut stores = serde_json::Map::new();
     let mut put = |path: &str, value: serde_json::Value| {
@@ -88,6 +109,7 @@ fn connected_doc(truth: &serde_json::Value) -> serde_json::Value {
             put(path, v.clone());
         }
     }
+    put("spaceStore.canAdministerCurrentSpace", admin.into());
     serde_json::json!({ "stores": stores, "queries": {}, "invokes": {} })
 }
 
@@ -133,7 +155,51 @@ pub struct LiveSpace {
     pub live_members: Vec<String>,
     /// What fills the members no live row answers.
     pub mode: DataMode,
+    /// Whether this window may change the space.
+    pub access: Access,
+    notices: Notices,
+    confirm: ConfirmSlot,
     _live: LiveMembers,
+}
+
+impl LiveSpace {
+    /// What went wrong with a write, newest last.
+    pub fn notices(&self) -> Vec<Notice> {
+        self.notices.list()
+    }
+
+    /// The notices, shared — the app draws and expires them.
+    pub fn notice_list(&self) -> &Notices {
+        &self.notices
+    }
+
+    /// The confirmation a destructive call waits on, if any.
+    pub fn pending_confirm(&self) -> Option<Confirm> {
+        self.confirm
+            .lock()
+            .ok()
+            .and_then(|c| c.as_ref().map(|p| p.confirm.clone()))
+    }
+
+    /// The person answered the confirmation: `true` runs the write.
+    pub fn answer_confirm(&mut self, yes: bool) {
+        if let Some(host) = self.app.session.host_mut_as::<WriteHost>() {
+            host.answer_confirm(yes);
+        }
+    }
+
+    /// Calls the host dropped (no write row), in order.
+    pub fn dropped_calls(&self) -> Vec<String> {
+        dropped_calls(&self.app.session)
+    }
+}
+
+/// What a connected window's host dropped: the [`WriteHost`]'s fallback.
+pub fn dropped_calls(session: &we_session::Session) -> Vec<String> {
+    session
+        .host_as::<WriteHost>()
+        .map(|h| h.fallback.dropped.clone())
+        .unwrap_or_default()
 }
 
 /// The route a space's index renders at — `/space/<uuid>`, the key every
@@ -150,7 +216,11 @@ pub fn live_space_app(
     space: SpaceRow,
     theme_id: &str,
     mode: DataMode,
+    access: Access,
 ) -> Result<(LiveSpace, bool), String> {
+    if access == Access::Write && space.shared_url.is_some() {
+        return Err(SHARED_WRITE_REFUSED.into());
+    }
     let truth: serde_json::Value =
         serde_json::from_str(SNAPSHOT).map_err(|e| format!("snapshot parse: {e}"))?;
     let live_map = LiveMap::bundled();
@@ -160,7 +230,10 @@ pub fn live_space_app(
     // members no live row answers depends on the mode.
     let data = match mode {
         DataMode::Live => {
-            let data = OfflineData::from_snapshot(&connected_doc(&truth), Some(&map))?;
+            let data = OfflineData::from_snapshot(
+                &connected_doc(&truth, access == Access::Write),
+                Some(&map),
+            )?;
             // Every recorded store answers what it still holds and notes
             // the rest unavailable.
             for store in truth["stores"]
@@ -227,7 +300,17 @@ pub fn live_space_app(
         .with_sources(Some(source), Arc::new(NoParts))
         .with_dollar_types(move |ty| types.contains(ty));
     app.session.set_runtime(runtime);
-    app.session.host = Box::new(StaticHost::new(data.bag.clone()));
+    let host = WriteHost::new(
+        StaticHost::new(data.bag.clone()),
+        conn.clone(),
+        SpaceId::from(space.uuid.as_str()),
+        data.bag.clone(),
+        access,
+    );
+    let notices = host.notices();
+    let confirm = host.confirm_handle();
+    app.session.host = Box::new(host);
+    app.dropped_calls = dropped_calls;
     let set = gallery::load_theme_set();
     let (theme, fell_back) = set.theme(theme_id);
     app.theme = theme.clone();
@@ -239,6 +322,9 @@ pub fn live_space_app(
             source: stats,
             live_members: live.members().to_vec(),
             mode,
+            access,
+            notices,
+            confirm,
             _live: live,
         },
         fell_back,

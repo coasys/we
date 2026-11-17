@@ -1,6 +1,6 @@
 {
-  "note": "What a live space (we-app --connect) reads that is not an executor read. `bundle` names the recorded members allowed in, each static to the Coasys bundle rather than to the recorded space: its themes and its brand. `connected` gives members whose value is a fact of connected mode, not a recording. Every other member of the recorded stores reads unavailable (undefined), and the data panel lists it. `--demo-recorded` restores the recording underneath, for demos only.",
-  "bundle": ["themeStore.builtInThemes", "themeStore.currentThemeId", "templateStore.brand"],
+  "note": "What a live space (we-app --connect) reads that is not an executor read. `bundle` names the recorded members allowed in, each static to the Coasys bundle rather than to the recorded space: its themes and its brand. `connected` gives members whose value is a fact of connected mode, not a recording. Every other member of the recorded stores reads unavailable (undefined), and the data panel lists it. `--demo-recorded` restores the recording underneath, for demos only. `recordStore.displays` (E11) is how each core entity is shown and edited, derived from the core entity manifest, the same for every space: the inspector builds its edit form from it, and the write planner coerces a field by its kind. A community's own shapes and TypeStyle overrides are not in it (E13). `spaceStore.canAdministerCurrentSpace` is overridden to true in a window opened with --write (only a personal space can be).",
+  "bundle": ["themeStore.builtInThemes", "themeStore.currentThemeId", "templateStore.brand", "recordStore.displays"],
   "connected": {
     "sessionStore.bootState": "ready",
     "sessionStore.signInStep": "ready",

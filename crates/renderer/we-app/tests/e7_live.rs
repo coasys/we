@@ -53,7 +53,15 @@ fn coasys_app_renders_a_live_space() {
         name: "e7-app".into(),
         shared_url: None,
     };
-    let (mut live, _) = live_space_app(&bundle, &reader, space, "dark", DataMode::Live).unwrap();
+    let (mut live, _) = live_space_app(
+        &bundle,
+        &reader,
+        space,
+        "dark",
+        DataMode::Live,
+        we_ad4m::Access::ReadOnly,
+    )
+    .unwrap();
     let (tx, wake) = mpsc::channel();
     live.app.session.set_waker(Arc::new(move || {
         let _ = tx.send(());
@@ -167,8 +175,15 @@ fn demo_recorded_puts_the_recording_back() {
         name: "e7-demo".into(),
         shared_url: None,
     };
-    let (mut live, _) =
-        live_space_app(&bundle, &conn, space, "dark", DataMode::DemoRecorded).unwrap();
+    let (mut live, _) = live_space_app(
+        &bundle,
+        &conn,
+        space,
+        "dark",
+        DataMode::DemoRecorded,
+        we_ad4m::Access::ReadOnly,
+    )
+    .unwrap();
     let (tx, wake) = mpsc::channel();
     live.app.session.set_waker(Arc::new(move || {
         let _ = tx.send(());

@@ -67,6 +67,13 @@ fn bag1(key: &str, value: &str) -> Bag {
         .collect()
 }
 
+/// A colour role (`danger-soft`, `text`) as the theme paints it, or
+/// `None` where the theme's table leaves it unevaluated.
+pub fn role_color(theme: &Theme, role: &str) -> Option<Color32> {
+    let input = StyleInput::new(&theme.tokens, Direction::Column);
+    resolve1(&input, "bg", role).paint.bg.map(color32)
+}
+
 fn resolve1(input: &StyleInput, key: &str, value: &str) -> Style {
     we_style::resolve(&bag1(key, value), input)
 }
