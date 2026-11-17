@@ -1849,3 +1849,113 @@ fn a_dependent_recomputes_on_the_error() {
     );
     assert_eq!(source.close_count(), 1, "and closes the fallback");
 }
+
+/// B3: a source whose answer can change — it fails until `ok` is set, as a
+/// space does until the class a query names is installed.
+#[derive(Default)]
+struct Flaky {
+    ok: std::sync::atomic::AtomicBool,
+    opens: std::sync::atomic::AtomicUsize,
+}
+
+impl QuerySource for Flaky {
+    fn open(&self, _: SubTicket, _: &QueryRequest, _: &HandleTable, sink: QuerySink) {
+        self.opens
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        if self.ok.load(std::sync::atomic::Ordering::Relaxed) {
+            sink.deliver(QueryEvent::Rows(Arc::new(vec![Value::from_json(
+                &json!({ "id": "t1" }),
+            )])));
+        } else {
+            sink.deliver(QueryEvent::Failed(Value::from("no such class")));
+        }
+    }
+    fn close(&self, _: SubTicket) {}
+}
+
+fn flaky_opens(source: &Flaky) -> usize {
+    source.opens.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// B3: a failed cell is shared by every site that asks the same question —
+/// the sidebar's list and the page's list are one key. The sidebar never
+/// leaves, so the cell never dies with the page; showing the page again is
+/// a new holder, and it asks again.
+#[test]
+fn a_failed_query_is_asked_again_when_a_page_holding_it_is_shown_again() {
+    let source = Arc::new(Flaky::default());
+    let mut hub = hub();
+    let sidebar = site("t:/sidebar", SiteSlot::Named("types".into()));
+    let page = site("t:/page", SiteSlot::Named("types".into()));
+
+    // Both ask; it fails.
+    hub.claim(sidebar.clone(), request("SignalType"), None);
+    hub.claim(page.clone(), request("SignalType"), None);
+    hub.commit(source.clone());
+    hub.drain();
+    assert_eq!(flaky_opens(&source), 1);
+    assert!(hub.cells()[0].view.error.is_some(), "the first read failed");
+
+    // The class arrives. The page is left (the sidebar still holds the cell)…
+    source.ok.store(true, std::sync::atomic::Ordering::Relaxed);
+    hub.begin_pass();
+    hub.claim(sidebar.clone(), request("SignalType"), None);
+    hub.commit(source.clone());
+    hub.drain();
+    assert_eq!(flaky_opens(&source), 1, "leaving the page asks nothing");
+    assert!(hub.cells()[0].view.error.is_some(), "still the old failure");
+
+    // …and shown again: the retry reads the rows.
+    hub.begin_pass();
+    hub.claim(sidebar.clone(), request("SignalType"), None);
+    hub.claim(page.clone(), request("SignalType"), None);
+    hub.commit(source.clone());
+    hub.drain();
+    assert_eq!(
+        flaky_opens(&source),
+        2,
+        "a new holder retries a failed cell"
+    );
+    let view = &hub.cells()[0].view;
+    assert!(view.error.is_none(), "the failure is replaced");
+    assert_eq!(view.rows.len(), 1);
+}
+
+/// B3: the retry is for a new holder only — a frame that merely goes round
+/// again does not hammer the source.
+#[test]
+fn a_failed_query_is_not_asked_again_by_the_same_holders() {
+    let source = Arc::new(Flaky::default());
+    let mut hub = hub();
+    let a = site("t:/a", SiteSlot::Named("types".into()));
+    hub.claim(a.clone(), request("SignalType"), None);
+    hub.commit(source.clone());
+    hub.drain();
+    for _ in 0..5 {
+        hub.begin_pass();
+        hub.claim(a.clone(), request("SignalType"), None);
+        hub.commit(source.clone());
+        hub.drain();
+    }
+    assert_eq!(flaky_opens(&source), 1, "the same holder asks nothing more");
+}
+
+/// B3: and only for a failure — an answered cell a page is shown again over
+/// is left alone.
+#[test]
+fn an_answered_query_is_not_asked_again_by_a_new_holder() {
+    let source = Arc::new(Flaky::default());
+    source.ok.store(true, std::sync::atomic::Ordering::Relaxed);
+    let mut hub = hub();
+    let a = site("t:/a", SiteSlot::Named("types".into()));
+    let b = site("t:/b", SiteSlot::Named("types".into()));
+    hub.claim(a.clone(), request("SignalType"), None);
+    hub.commit(source.clone());
+    hub.drain();
+    hub.begin_pass();
+    hub.claim(a, request("SignalType"), None);
+    hub.claim(b, request("SignalType"), None);
+    hub.commit(source.clone());
+    hub.drain();
+    assert_eq!(flaky_opens(&source), 1, "an answered cell is not re-asked");
+}

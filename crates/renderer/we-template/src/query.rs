@@ -775,6 +775,14 @@ impl QueryHub {
         for key in want.values() {
             *counts.entry(key.clone()).or_default() += 1;
         }
+        // Keys some site claims now that it did not hold before — a page
+        // shown again, a branch swapped in. A failed cell among them is
+        // asked again below.
+        let joined: std::collections::HashSet<QueryKey> = want
+            .iter()
+            .filter(|(site, key)| self.held.get(*site) != Some(*key))
+            .map(|(_, key)| key.clone())
+            .collect();
         self.held = want;
 
         // Keys absent from the final set close and die — entries and
@@ -813,6 +821,28 @@ impl QueryHub {
                     }
                 }
                 reset = true;
+            }
+        }
+
+        // A failure is not final: the read may fail only until something
+        // outside the template changes (a class a space has since gained),
+        // and a cell several sites share outlives the page that first asked
+        // — the sidebar's list and the page's list are one key — so
+        // "shown again" never reaches a 1→0 edge to reopen it. A site
+        // newly holding a failed key asks again: its ticket closes, and the
+        // opens below mint a new one. The failure stays on screen until the
+        // new answer replaces it, and holders that merely persist across
+        // passes ask nothing.
+        for key in &joined {
+            if let Some(entry) = self.entries.get_mut(key) {
+                if matches!(entry.state, CellState::Failed(_)) && entry.holders > 0 {
+                    if let Some(ticket) = entry.ticket.take() {
+                        self.by_ticket.remove(&ticket);
+                        if let Some(source) = &self.source {
+                            source.close(ticket);
+                        }
+                    }
+                }
             }
         }
 
