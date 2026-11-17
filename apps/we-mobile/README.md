@@ -54,7 +54,7 @@ built for Android with uniffi bindings:
   app's origin, the error page included, is trusted with the phone's login; a page the app loads
   from elsewhere is not in that origin.
 - **Joining an identity.** `join({link})` claims an offer a computer holding the identity's master
-  key opened (`https://id.coasys.org/o#coasys:offer:1:…`); both sides show the same match code, the
+  key opened (`https://coasys.id/o#coasys:offer:1:…`); both sides show the same match code, the
   computer signs an `add` listing the phone's keys, and `waitJoined()` sees it land.
 - **Key login.** Once the phone has joined and has an executor to log in to, the connection choice
   offers it, and WE logs in there with the device key (`user.sessionChallenge` → a signed statement →
