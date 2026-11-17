@@ -762,6 +762,17 @@ describe('the Coasys cartridge', () => {
         expect(graphJson).toContain("sourceAnchor: 's', targetAnchor: 'n'");
       });
 
+      it('follows the models’ own relations in the tree, as the spine picker offers them', () => {
+        /*
+          The picker lists `rel:Class.prop` spines and the layout reads `data.relation`, but those
+          edges exist only when the seed is asked for them. Without `relations` a model-relation
+          spine drew every card in the unconnected zone.
+        */
+        expect(graphJson).toContain(
+          '"relations":{"$":"local.treeMode && (!local.spine || startsWith(local.spine, \'rel:\')) ? { children: true } : false"}',
+        );
+      });
+
       it('fetches the reactions whenever the tree is up, so ordering by one is a re-sort and not a reload', () => {
         expect(graphJson).toContain('"weigh":{"$":"(local.treeMode || local.order == \'signal\') && (');
       });

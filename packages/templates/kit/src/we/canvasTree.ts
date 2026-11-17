@@ -116,6 +116,25 @@ const SPINE_SELECTOR =
   ` : { field: 'data.relationshipTypeId', value: local.spine }))`;
 
 /**
+ * The models' own declared relations, followed as tree edges — the canvas seed's `relations`, only in
+ * tree mode.
+ *
+ * An extracted item points at what it hangs under through a field of its own, without any
+ * `Relationship` record being written, so in the tree the seed also emits a `relation` edge per
+ * declared link — parent at the pointed-at end — and pulls in children nobody placed. The spine picker
+ * offers those links (`rel:Class.prop`, `rel:*`) and `SPINE_SELECTOR` reads them, so a canvas that
+ * offers the picker without this draws every card of a model-relation tree in the unconnected zone.
+ *
+ * Kept off on the freeform canvas, whose lines stay the ones somebody drew: a canvas read freely has
+ * no "under", and drawing every claim the models hold there would be a tangle, not a map. Kept off too
+ * while the spine is one connection kind: that tree is built from `Relationship` records alone, and
+ * pulled-in records would only crowd its unconnected area.
+ */
+export const TREE_RELATIONS: SchemaProp = {
+  $: `${TREE_ON} && (!local.spine || startsWith(local.spine, 'rel:')) ? { children: true } : false`,
+};
+
+/**
  * Which reaction the order is reading, whether or not anybody has picked one.
  *
  * The picker falls back to the community's first type so it never shows an empty box — and that was the
