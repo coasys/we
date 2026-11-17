@@ -4,16 +4,16 @@ Branch `port/e11-writes`, from `port/split` at `4c4b3412d`. Implemented by
 Opus (switched from Devin on 2026-11-17), following
 `.plan/E11-brief.md` step by step. One commit per step:
 
-| step | commit      | what                                                                                     |
-| ---- | ----------- | ---------------------------------------------------------------------------------------- |
-| 0    | —           | verification (below)                                                                     |
-| 1    | `04d7fee53` | `ExecutorError::Rejected`; `Ad4mExecutor::write` through `perspective.instance*`         |
-| 2    | `2965a51ba` | `we_data::writes` (the planner) and `we-ad4m/data/storemap-writes.json` (the five rows)  |
+| step | commit      | what                                                                                         |
+| ---- | ----------- | -------------------------------------------------------------------------------------------- |
+| 0    | —           | verification (below)                                                                         |
+| 1    | `04d7fee53` | `ExecutorError::Rejected`; `Ad4mExecutor::write` through `perspective.instance*`             |
+| 2    | `2965a51ba` | `we_data::writes` (the planner) and `we-ad4m/data/storemap-writes.json` (the five rows)      |
 | 3    | `416c57f22` | `WriteHost`: the `$invoke` interpreter; testkit `SIGNAL_TYPE_SDNA`, `query_rows`, `find_ids` |
-| 4    | `909f62ce3` | the write grant: `--connect --write --space <uuid>`                                       |
-| 5    | `acf2ccf81` | the app writes through `WriteHost`; notices, the confirmation, status bar, data panel    |
-| 6    | `4fcb0325f` | the acceptance test `we-app/tests/e11_live.rs`                                           |
-| 7    | this file   | notes, every command of the brief, red outputs                                           |
+| 4    | `909f62ce3` | the write grant: `--connect --write --space <uuid>`                                          |
+| 5    | `acf2ccf81` | the app writes through `WriteHost`; notices, the confirmation, status bar, data panel        |
+| 6    | `4fcb0325f` | the acceptance test `we-app/tests/e11_live.rs`                                               |
+| 7    | this file   | notes, every command of the brief, red outputs                                               |
 
 ## What works
 
@@ -37,14 +37,14 @@ fresh space (see "Deviations").
 
 Measured in `e11_live` (debug build, the A3 executor, loopback):
 
-| what                                         | time      |
-| -------------------------------------------- | --------- |
-| rename: on the executor                      | 21.5 ms   |
-| rename: on screen (through the subscription) | 86.8 ms   |
-| delete: gone from the executor               | 21.2 ms   |
-| delete: gone from the screen                 | 449.7 ms  |
-| refused write: the notice                    | 20.1 ms   |
-| New signal type (with `--ignored`): created  | 21.6 ms   |
+| what                                         | time     |
+| -------------------------------------------- | -------- |
+| rename: on the executor                      | 21.5 ms  |
+| rename: on screen (through the subscription) | 86.8 ms  |
+| delete: gone from the executor               | 21.2 ms  |
+| delete: gone from the screen                 | 449.7 ms |
+| refused write: the notice                    | 20.1 ms  |
+| New signal type (with `--ignored`): created  | 21.6 ms  |
 
 ## Try it
 
@@ -93,13 +93,13 @@ delete one and see it go.
 `we-ad4m/data/storemap-writes.json`, parsed by `we_data::StoreMap::parse`,
 planned by `we_data::writes::plan` (pure, wasm-safe):
 
-| `$invoke` target                | write                                    | confirm | fail sentence                      |
-| ------------------------------- | ---------------------------------------- | ------- | ---------------------------------- |
-| `record.create`                 | `instanceCreate(args[0], args[1])`       |         | Could not save that.               |
-| `record.update`                 | `instanceUpdate(args[0], args[1], args[2])` |      | Could not save that change.        |
-| `record.delete`                 | `instanceRemove(args[0], args[1])`       | yes     | Could not delete that.             |
-| `recordStore.updateRecordField` | `instanceUpdate`, `{ field: fieldValue }`, skipped when TS would return early | | Could not save that change. |
-| `spaceStore.createSignalType`   | `instanceCreate('SignalType', signalTypeFields(args[0]))` | | Could not create that signal type. |
+| `$invoke` target                | write                                                                         | confirm | fail sentence                      |
+| ------------------------------- | ----------------------------------------------------------------------------- | ------- | ---------------------------------- |
+| `record.create`                 | `instanceCreate(args[0], args[1])`                                            |         | Could not save that.               |
+| `record.update`                 | `instanceUpdate(args[0], args[1], args[2])`                                   |         | Could not save that change.        |
+| `record.delete`                 | `instanceRemove(args[0], args[1])`                                            | yes     | Could not delete that.             |
+| `recordStore.updateRecordField` | `instanceUpdate`, `{ field: fieldValue }`, skipped when TS would return early |         | Could not save that change.        |
+| `spaceStore.createSignalType`   | `instanceCreate('SignalType', signalTypeFields(args[0]))`                     |         | Could not create that signal type. |
 
 `record.*` with a `dataset` option is refused ("writes to another dataset are
 not wired yet").
@@ -147,16 +147,16 @@ rust-executor` is empty (brief §0.3), so it matches the client pin
    read the panel's schema directly):
    - **Delete**: `we-button` with `label: "Delete this record"`, drawn when
      `count(local.card)` (the `card` query: `entity:
-     routeStore.params.cardType`, `where: { id: routeStore.params.card }`).
+routeStore.params.cardType`, `where: { id: routeStore.params.card }`).
    - **Edit**: a `we-button` with **no `label`**, inside a `we-tooltip` whose
      `content` is "Edit this record". Drawn when `count(local.card) &&
-     (count(recordStore.displays[cardType].fields.filter(f, !(f.kind in
-     ['relation','image','file','json']))) || first(local.card).editorState)`.
+(count(recordStore.displays[cardType].fields.filter(f, !(f.kind in
+['relation','image','file','json']))) || first(local.card).editorState)`.
    - **The edit controls**: per field of `recordStore.displays[cardType]`, a
      `we-input` (text) / `we-textarea` (longText) / `we-select` / `we-switch`
      / `we-number-input` / `we-date-picker` / `we-color-picker`, each
      `onChange: recordStore.updateRecordField(cardType, card, field.name,
-     event.detail)`, inside a `we-form-field` labelled with the field.
+event.detail)`, inside a `we-form-field` labelled with the field.
    - **New signal type**: `we-button` `label: "New signal type"` needs
      `count(local.card)` and `spaceStore.canAdministerCurrentSpace`; it sets
      `local.newSignalTypeOpen`. The form (`placeholder: "e.g. Like"`) needs
@@ -176,7 +176,7 @@ rust-executor` is empty (brief §0.3), so it matches the client pin
    `false`, and the guarded method then resolves **`undefined`**
    (`templateSurface.ts:1968`), so in TS a cancelled delete runs
    `onSuccess`, not `onError`. E11 keeps the brief's default (`Err({ kind:
-   "cancelled" })`, no notice); the question stays open for Nico.
+"cancelled" })`, no notice); the question stays open for Nico.
 
 ## Deviations from the brief, and why
 
@@ -220,7 +220,7 @@ rust-executor` is empty (brief §0.3), so it matches the client pin
   `write_task` returns a `Send + 'static` future, so the host collects the
   plan's futures and spawns them on the connection's runtime.
 - **Dropped calls**: `RendererApp` gains `pub dropped_calls: fn(&Session) ->
-  Vec<String>` (default: the `StaticHost` log), which the connected window
+Vec<String>` (default: the `StaticHost` log), which the connected window
   points at the `WriteHost`'s fallback. The data panel used to list
   `report.dropped`, which nothing filled in connected mode; it now lists the
   host's log.
@@ -424,13 +424,13 @@ The review is `/tmp/lal-e11.md`. Every finding was right about the code; none
 is skipped. One commit per finding, each test written and run red first
 (red outputs below, in full in `/tmp/e11r2/`):
 
-| finding     | commit      | what                                                                                       |
-| ----------- | ----------- | ------------------------------------------------------------------------------------------ |
-| P1          | `d728a8755` | writes bound to the granted space; another space opens read-only, and says why            |
-| P2 lifecycle | `71e926040` | local refusals settle through the `Completer`; a second confirmation cancels the first    |
-| P2 clear    | `0a2d06556` | emptying a field is refused (`clear-unsupported`), nothing sent                            |
-| P3          | `c147bdae3` | an update left empty by `null`/`undefined` is a no-op success, no RPC                      |
-| notes       | this file   |                                                                                            |
+| finding      | commit      | what                                                                                   |
+| ------------ | ----------- | -------------------------------------------------------------------------------------- |
+| P1           | `d728a8755` | writes bound to the granted space; another space opens read-only, and says why         |
+| P2 lifecycle | `71e926040` | local refusals settle through the `Completer`; a second confirmation cancels the first |
+| P2 clear     | `0a2d06556` | emptying a field is refused (`clear-unsupported`), nothing sent                        |
+| P3           | `c147bdae3` | an update left empty by `null`/`undefined` is a no-op success, no RPC                  |
+| notes        | this file   |                                                                                        |
 
 ### P1: the grant names one space, and so does the window
 
@@ -459,6 +459,7 @@ lands), and `e11_writes::a_grant_for_another_space_refuses_here` (the host
 alone). The last was written after the change.
 
 Red, as written (`access` assertion first):
+
 ```
 thread 'switching_space_keeps_the_grant_scoped_token' panicked at we-app/tests/e11_live.rs:481:5:
 assertion `left == right` failed: B opens read-only
@@ -469,9 +470,11 @@ assertion `left == right` failed: B opens read-only
   left: Write
  right: ReadOnly
 ```
+
 Red with the `access` assertions removed, to see what the edit does — the
 operator connection **wrote B**, the scoped token was refused by the
 executor while the label said `writes: B`:
+
 ```
 thread 'switching_space_keeps_the_grant_operator' panicked at we-app/tests/e11_live.rs:495:5:
 assertion `left == right` failed: B unchanged
@@ -480,7 +483,9 @@ assertion `left == right` failed: B unchanged
 thread 'switching_space_keeps_the_grant_scoped_token' panicked at we-app/tests/e11_live.rs:496:5:
 [Notice { text: "Could not save that change. Capability is not matched, … expected: Capability { with: Resource { domain: \"perspective\", pointers: [\"348b3da0-…\"] }, can: [\"UPDATE\"] }", … }]
 ```
+
 Green:
+
 ```
 test switching_space_keeps_the_grant_operator ... ok
 test switching_space_keeps_the_grant_scoped_token ... ok
@@ -510,6 +515,7 @@ the second is pending; answering yes runs it, `ok=true`, `fin=2`, the record
 is gone).
 
 Red:
+
 ```
 thread 'a_read_only_refusal_runs_on_error_and_on_finally' panicked at we-ad4m/tests/e11_writes.rs:299:9:
 "kind=read-only fin=1" not in the tree after 5s: {… "ok=false msg= kind= fin=0" …}
@@ -519,6 +525,7 @@ thread 'a_planner_error_runs_on_error_and_on_finally' panicked at we-ad4m/tests/
 "kind=plan fin=1" not in the tree after 5s: {… "ok=false msg= kind= fin=0" …}
 test result: FAILED. 9 passed; 3 failed
 ```
+
 Green: `test result: ok. 12 passed; 0 failed` (`e11_writes` at that commit).
 
 ### P2: emptying a field
@@ -532,9 +539,11 @@ through `update_subject` (the setters); the WS API
 addToCollection and removeFromCollection — the last for collections only.
 So `''` is stored as a value. Observed before the fix, after
 `record.update(…, { title: "" })` on a call titled "A":
+
 ```
 RED record.update: title=Some("") title_links=1 rows=[{… "title": String(""), …}]
 ```
+
 — the property is present with an empty value, where WE's `clearOnEmpty`
 leaves it absent (no link).
 
@@ -562,16 +571,20 @@ targets; the title stays "A", one `we://title` link, one notice naming
 `writes::emptying_a_field_is_refused` (planner).
 
 Red (live, before the change — the executor took it):
+
 ```
 thread 'clearing_a_field_is_refused_and_nothing_is_sent' panicked at we-ad4m/tests/e11_writes.rs:579:9:
 record.update: {… "ok=true msg= kind= fin=1" …}
 ```
+
 Red line for the planner test (the check disabled; the test was written with
 `PlanError`, so its first run was a compile error):
+
 ```
 thread 'emptying_a_field_is_refused' panicked at we-data/tests/writes.rs:262:32:
 called `Result::unwrap_err()` on an `Ok` value: WritePlan { writes: [Write { op: Update, body: Object {"className": String("TaskBlock"), "baseUri": String("t1"), "properties": Object {"title": String(""), "status": String("done")}} }], … }
 ```
+
 Green: `test clearing_a_field_is_refused_and_nothing_is_sent ... ok`;
 `writes`: `test result: ok. 8 passed`.
 
@@ -588,12 +601,14 @@ undefined-only built as a `Value` — JSON cannot hold `undefined`) and
 notice, title unchanged).
 
 Red:
+
 ```
 thread 'an_update_left_empty_is_a_no_op' panicked at we-data/tests/writes.rs:286:5:
 null only: WritePlan { writes: [Write { op: Update, body: Object {"className": String("TaskBlock"), "baseUri": String("t1"), "properties": Object {}} }], … }
 thread 'an_update_with_only_null_is_a_no_op' panicked at we-ad4m/tests/e11_writes.rs:614:5:
 {… "ok=false msg=properties is empty kind=emptyProperties fin=1" …}
 ```
+
 Green: `writes`: `ok. 9 passed`; `e11_writes`: `ok. 14 passed`.
 
 ### Not changed
@@ -642,5 +657,6 @@ exit 0
 $ bash scripts/check-egui-free.sh
 egui-free check passed: we-session we-layout we-catalog we-data we-expr we-screen we-template we-style we-legacy we-metrics + we-tui pull no egui, eframe, epaint, emath, winit, tokio (core: all features, all targets; we-tui: per native target)
 ```
+
 The "Try it" commands were not run (no launcher session to approve in), as
 in round 1.

@@ -30,11 +30,16 @@
     "recordStore.updateRecordField": {
       "kind": "modelWrite",
       "ref": "RecordStore.tsx:2863 updateRecordField (without the connection rekey)",
-      "writes": [{
-        "op": "update", "class": "args[0]", "id": "args[1]",
-        "property": "args[2]", "value": "fieldValue(args[0], args[2], args[3])",
-        "skipIf": "!args[0] || !args[1] || !args[2] || fieldValue(args[0], args[2], args[3]) == undefined"
-      }],
+      "writes": [
+        {
+          "op": "update",
+          "class": "args[0]",
+          "id": "args[1]",
+          "property": "args[2]",
+          "value": "fieldValue(args[0], args[2], args[3])",
+          "skipIf": "!args[0] || !args[1] || !args[2] || fieldValue(args[0], args[2], args[3]) == undefined"
+        }
+      ],
       "fail": "Could not save that change."
     },
     "spaceStore.createSignalType": {
