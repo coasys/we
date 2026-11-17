@@ -18,3 +18,12 @@ fn every_registered_widget_has_a_catalog_entry() {
         missing.join(", ")
     );
 }
+
+/// The inspector draws its body in a `we-scroll-area`: it is a widget, not
+/// the red box an unregistered type gets.
+#[test]
+fn a_scroll_area_is_a_registered_widget() {
+    assert!(Registry::with_builtins()
+        .type_names()
+        .any(|t| t == "we-scroll-area"));
+}

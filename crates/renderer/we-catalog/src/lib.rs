@@ -88,6 +88,13 @@ pub static CATALOG: &[CatalogEntry] = &[
     ),
     e("div", "Div", Role::List, &["data-we-id", "style"], &[]),
     e("$lane", "Lane", Role::List, &["orientation"], &[]),
+    e(
+        "we-scroll-area",
+        "Scroll area",
+        Role::List,
+        &["maxHeight"],
+        &[],
+    ),
     // ---- text
     e(
         "we-text",

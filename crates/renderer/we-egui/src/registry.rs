@@ -50,6 +50,7 @@ impl Registry {
             .with(crate::Grid)
             .with(crate::Card)
             .with(crate::Div)
+            .with(crate::ScrollArea)
             .with(crate::Lane)
             .with(crate::Text)
             .with(crate::Link)

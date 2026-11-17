@@ -43,7 +43,7 @@ use we_style::Style;
 use we_template::{NodeId, ResolvedChild, ResolvedNode};
 
 pub use clock::{now_secs, pin_now};
-pub use containers::{lane_drags, Card, Column, Div, Grid, Lane, Row};
+pub use containers::{lane_drags, Card, Column, Div, Grid, Lane, Row, ScrollArea};
 pub use controls::Button;
 pub use defaults::StyleCx;
 pub use dnd::Sortable;

@@ -111,6 +111,9 @@ container!(Column, "Column");
 container!(Grid, "Grid");
 container!(Card, "Card");
 container!(Div, "div");
+// A scroll region is laid out like any box; its `overflow`/`maxHeight` props are
+// the layout's, so it needs no painting of its own.
+container!(ScrollArea, "we-scroll-area");
 
 /// `$lane` — a home lane. `collapsed` folds it away to nothing. `resize`
 /// (`start` | `end`) puts a drag handle on that edge alone — `end` for a
