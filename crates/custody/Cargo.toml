@@ -27,11 +27,11 @@ cheap-kdf = []
 # the two agree. For a local ad4m checkout, override with
 #   cargo test --config 'patch."https://github.com/coasys/ad4m".ad4m-identity-client.path="<ad4m>/ad4m-identity-client"' …
 # (and the same for ad4m-identity-core, ad4m-client and ad4m-ldk), as `crates/custody/README.md` says.
-ad4m-identity-client = { git = "https://github.com/coasys/ad4m", rev = "1689ed67732c35cc0a41588041dea41e7902690a", features = ["ws"] }
-ad4m-identity-core = { git = "https://github.com/coasys/ad4m", rev = "1689ed67732c35cc0a41588041dea41e7902690a", features = ["build", "words"] }
-ad4m-client = { git = "https://github.com/coasys/ad4m", rev = "1689ed67732c35cc0a41588041dea41e7902690a" }
+ad4m-identity-client = { git = "https://github.com/coasys/ad4m", rev = "658e2941cec73a6cf397a58f7dca90c281ad7b42", features = ["ws"] }
+ad4m-identity-core = { git = "https://github.com/coasys/ad4m", rev = "658e2941cec73a6cf397a58f7dca90c281ad7b42", features = ["build", "words"] }
+ad4m-client = { git = "https://github.com/coasys/ad4m", rev = "658e2941cec73a6cf397a58f7dca90c281ad7b42" }
 # The request box's types (`DeviceRequest`, `DeviceRequestBody`) the holder answers and a device posts.
-ad4m-ldk = { git = "https://github.com/coasys/ad4m", rev = "1689ed67732c35cc0a41588041dea41e7902690a" }
+ad4m-ldk = { git = "https://github.com/coasys/ad4m", rev = "658e2941cec73a6cf397a58f7dca90c281ad7b42" }
 # `io-std` and `io-util`: the sidecar's lines on stdin and stdout.
 tokio = { version = "1", features = ["rt", "sync", "macros", "time", "io-std", "io-util"] }
 serde = { version = "1", features = ["derive"] }
