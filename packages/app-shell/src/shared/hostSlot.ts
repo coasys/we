@@ -20,7 +20,7 @@
  *   still holds its closure — reading signals from a scope that has been disposed. It answers with
  *   whatever was true when the provider died, forever, and nothing anywhere reports it.
  * - **Silent last-write-wins.** Two providers filling the same slot is not an error, it is a
- *   coin toss decided by mount order. `provideExtractionCandidates` was called from two stores with
+ *   coin toss decided by mount order. `provideInterpretationCandidates` was called from two stores with
  *   the same accessor, which was harmless *and unnoticeable*; the day the two differ, the one that
  *   loses is simply gone.
  *

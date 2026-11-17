@@ -1,6 +1,6 @@
 /**
  * An OpenAI-compatible language model that answers from a script: the stub tier's stand-in for a
- * real model, so extraction runs end to end with exact, repeatable results.
+ * real model, so interpretation runs end to end with exact, repeatable results.
  *
  * ## What the executor sends, and what it reads back (ad4m at WE's pin)
  *
@@ -18,7 +18,7 @@
  * ones are the few-shot examples, about classes called Task and Belief — and answers with that array.
  *
  * Anything else (a title, a summary, a prompt that is not JSON) gets a short plain answer, so a
- * caller that is not extraction still sees a well-formed completion. `stream: true` is answered as
+ * caller that is not interpretation still sees a well-formed completion. `stream: true` is answered as
  * server-sent events for the same reason.
  *
  * ## The script

@@ -342,7 +342,7 @@ export function createFeed(deps: FeedDeps) {
     }),
     feedRows: state(
       rows,
-      "The Feed's window: every message in the space and a row per group of things extracted or made, merged by time — newest first while following the live end, oldest first from the start. A row is { kind: 'line', id, at, author, text, marks, source, call, callTitle, replyTo } or { kind: 'activity', id, at, author, origin, originTitle, summary, items, suggested }.",
+      "The Feed's window: every message in the space and a row per group of things interpretation found or somebody made, merged by time — newest first while following the live end, oldest first from the start. A row is { kind: 'line', id, at, author, text, marks, source, call, callTitle, replyTo } or { kind: 'activity', id, at, author, origin, originTitle, summary, items, suggested }.",
     ),
     feedHasMore: state(hasMore, 'Whether there is more of the space beyond the Feed’s window.'),
     feedLoaded: state(loaded, 'Whether the Feed has answered for this space yet.'),

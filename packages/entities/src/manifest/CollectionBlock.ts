@@ -153,7 +153,7 @@ export const CollectionBlock: CoreEntityDef = {
       // the space's defaults when it is made; unset on anything nobody extracts.
       /**
        * Whether this collection is extracted as it grows — a call as it happens, a channel as
-       * messages arrive — rather than only when somebody presses Extract.
+       * messages arrive — rather than only when somebody presses Interpret.
        *
        * Copied from the space's default (`Space.autoInterpret`) when the collection is made, and the
        * collection's own from then on. A copy rather than a live fallback, so that a community

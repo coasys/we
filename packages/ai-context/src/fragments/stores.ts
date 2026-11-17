@@ -565,7 +565,7 @@ export const storeEntries: StoreEntry[] = [
       'copyShareLink',
       'copyGuestLink',
       'exportCallTranscript',
-      'exportExtractionLog',
+      'exportInterpretationLog',
       'setModuleEnabled',
       'setModuleInstalled',
       'setModuleVisible',
@@ -604,8 +604,8 @@ export const storeEntries: StoreEntry[] = [
       aiAvailable: { type: 'boolean' },
       generating: { type: 'boolean' },
       hintEntities: { type: 'array', properties: ['entity', 'source'] },
-      extractionCandidates: { type: 'array' },
-      extractionNeedsIdentity: { type: 'boolean' },
+      interpretationCandidates: { type: 'array' },
+      interpretationNeedsIdentity: { type: 'boolean' },
       relationshipTargets: { type: 'array', properties: ['label', 'value'] },
       identityOptions: { type: 'array', properties: ['label', 'value'] },
       nameOptions: { type: 'array', properties: ['label', 'value'] },
@@ -1412,7 +1412,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         "string[] — ids of the containers in this space holding something newer than this agent's marker for them, or never read. What an unread dot reads: { $: 'channel.id in spaceStore.unreadNodeIds' }. Ids rather than counts, since a count needs every child's timestamp",
       myMentions:
         '{ id, author, createdAt }[] — messages in this space that mention this agent — posts and transcript or Feed lines alike — newest first, the fifty most recent. createdAt is the backend’s comparable timestamp. Asked from the agent’s end through the backend’s references, one lookup per space',
-      root: "string — the id of this space's collection: the one CollectionBlock (kind 'space') everything top-level hangs off — calls, loose messages, posts, channels, extracted items, the canvas. Scope a top-level read through it: { anchor: 'CollectionBlock', via: 'children', anchorId: spaceStore.root }. Empty outside a space, and in a space made before spaces had one",
+      root: "string — the id of this space's collection: the one CollectionBlock (kind 'space') everything top-level hangs off — calls, loose messages, posts, channels, interpreted items, the canvas. Scope a top-level read through it: { anchor: 'CollectionBlock', via: 'children', anchorId: spaceStore.root }. Empty outside a space, and in a space made before spaces had one",
       landmarks:
         "Record<name, id> — the records this space names as its landmarks, e.g. spaceStore.landmarks.canvas is the space's canvas. Written by the space's starter at creation. A landmark can be absent — a space can switch template and a template must never assume what another set up — so guard every read",
       landmarksLoaded:
@@ -1420,15 +1420,15 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       starterChoices:
         "{ id, name, description, icon, includes, app? }[] — what a space made now can start with, the default first: the app's kit when the app in use came built in and brings one (app is its name), otherwise the deployment's own starter, then id '$none' (an empty space: no task states, reactions, canvas or board, drawn with the agent's own default template and theme). includes is what it writes, counted from its records (\"3 task states · a canvas · a board\"), empty for an empty space. Pass an id to createSpace; show the default as chosen while nothing is — { $: \"local.starter ? find(spaceStore.starterChoices, { id: local.starter }) : first(spaceStore.starterChoices)\" }. Installed apps' starters are never listed",
       autoInterpret:
-        'boolean — whether a NEW collection here (a call, a channel) starts out extracted into records as it grows. A community default, copied onto each collection when it is made — a conversation already under way keeps its own answer, read with autoExtractFor. Readable by every member; writing it is space-settings',
+        'boolean — whether a NEW collection here (a call, a channel) starts out interpreted into records as it grows. A community default, copied onto each collection when it is made — a conversation already under way keeps its own answer, read with autoInterpretFor. Readable by every member; writing it is space-settings',
       spaceModuleSettings:
         "SettingRow[] — what each capability that declares settings is set to FOR THIS COMMUNITY, as rows a screen renders directly: { group, groupLabel, key, label, description, type, options, value, source, set, locked, lockedBy }. `value` is already resolved across every level that had an opinion; `source` names the level that decided it ('default' when nobody did); `set` says whether THIS level holds an opinion, so a reset has something to undo; `locked` says a level that BINDS this one has forced it and the control must be disabled rather than springing back — a member's private refusal does not bind the community, so it never locks this list. Built from what modules declare, so a module that adds a setting gets a control with nothing to register",
       myModuleSettings:
         'SettingRow[] — the same rows, for what THIS AGENT has decided in THIS space. Private, held in the root dataset. The most specific of the four levels',
       agentModuleSettings:
         'SettingRow[] — the same rows, for what THIS AGENT has decided everywhere. Private. Render it in global settings, where the question is what you want in every space',
-      extractionTargets:
-        'string[] — the models a NEW collection here starts out extracting. The middle of three layers: shapeStore.extractionCandidates says what COULD be extracted, this says which of them a new conversation begins with, and each collection then holds its own list, which its participants change (modules.transcribe.extractionFor[id].targets). A default, copied when a collection is made. Unset falls back to the two classes that were hardcoded before the setting existed, so no space silently stops extracting. Writing it is space-settings',
+      interpretationTargets:
+        'string[] — the models a NEW collection here starts out interpreting. The middle of three layers: shapeStore.interpretationCandidates says what COULD be interpreted, this says which of them a new conversation begins with, and each collection then holds its own list, which its participants change (modules.transcribe.interpretationFor[id].targets). A default, copied when a collection is made. Unset falls back to the two classes that were hardcoded before the setting existed, so no space silently stops interpreting. Writing it is space-settings',
       personalSpaces: 'array of Space objects (local/personal spaces; all Space fields)',
       sharedSpaces: 'array of Space objects (shared/neighbourhood spaces; all Space fields)',
       spacePath:
@@ -1507,7 +1507,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       moduleInstallSettings:
         "{ id, name, description, icon, installed, surface, switchable, capabilities }[] — every registered module and whether this agent wants it anywhere. `capabilities` is what a person is agreeing to — derived from the module's manifest (its permissions and the kernels it reaches) and what it contributes (a panel, storage in the space), never authored, so it cannot go stale. The global Settings → Modules list, and the only place an 'app', 'capability' or agent-scoped module is decided about: a contribution is gated at the layer where it renders, and only 'chrome' (panels, slots, rail) and 'content' (sections, blocks) render inside a space. `surface` is derived from what the module contributes. Unset, every registered module counts as installed — a seed entry's `enabled: false` is about spaces, not people. Its per-space counterpart is `modules` on each spaceList row, which carries enabled/installed/visible/active together and lists the community-decided modules only: chrome or content, and not agent-scoped. A community-decided module a space has off takes its sections and its space-level settings out of that space",
       moduleLaunchers:
-        '{ id, icon, label, active, busy, concealed }[] — one entry per module panel that asks for a rail button, plus the launchers a module declares of its own; what the host module rail renders. `id` is a panel’s dock id (`<moduleId>:<name>`) or a launcher’s key, and is what launchModule takes. `active` is the module reporting its surface open; `concealed` says that panel is open and out of sight — a background tab of a stack, folded to its bar, or in a lane collapsed to its edge — so light the button on `mod.active && !mod.concealed`, since pressing a concealed one brings the panel forward rather than closing it. `busy` says the module is working in the background — an extraction pass running — and is independent of `active`, so a rail can show work going on behind a closed panel. Pair with { $invoke: "spaceStore.launchModule", args: [{ $: "mod.id" }] }',
+        '{ id, icon, label, active, busy, concealed }[] — one entry per module panel that asks for a rail button, plus the launchers a module declares of its own; what the host module rail renders. `id` is a panel’s dock id (`<moduleId>:<name>`) or a launcher’s key, and is what launchModule takes. `active` is the module reporting its surface open; `concealed` says that panel is open and out of sight — a background tab of a stack, folded to its bar, or in a lane collapsed to its edge — so light the button on `mod.active && !mod.concealed`, since pressing a concealed one brings the panel forward rather than closing it. `busy` says the module is working in the background — an interpretation pass running — and is independent of `active`, so a rail can show work going on behind a closed panel. Pair with { $invoke: "spaceStore.launchModule", args: [{ $: "mod.id" }] }',
     },
     actions: {
       moveChild:
@@ -1519,23 +1519,23 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       markRead:
         '(nodeId: string, spaceUuid?): marks a node read as of now, so it leaves unreadNodeIds. Silent on failure — a lost marker is a stale dot, not an error',
       setAutoInterpret:
-        '(enabled: boolean, spaceUuid?): sets whether a NEW collection in a space starts out extracted as it grows. A default: conversations already under way keep their own answer. Omit spaceUuid for the space on screen',
+        '(enabled: boolean, spaceUuid?): sets whether a NEW collection in a space starts out interpreted as it grows. A default: conversations already under way keep their own answer. Omit spaceUuid for the space on screen',
       setThreadMode:
         "(mode: 'fractal' | 'flat', spaceUuid?): sets how deep conversations go here — whether a reply may itself be replied to. A decision about what may be ADDED, never about what is stored: replies are a tree either way, so switching to flat leaves existing threads drawn as they are and switching back restores the button that grows them. Read it back as spaceStore.currentSpace.threadMode; anything but 'flat' means fractal, so a space that predates the setting reads as fractal. Omit spaceUuid for the space on screen",
-      autoExtractFor:
-        "(collectionId): whether ONE COLLECTION — a call, a channel, the space collection (spaceStore.root) — is extracted as it grows: its own answer, copied from the space's default when it was made. A function rather than a value because the answer is per collection, like canAdministerSpace. False until the collection has been read",
-      setAutoExtractFor:
-        "(collectionId, on): turns automatic extraction on or off for ONE COLLECTION, for everyone in it. A call's participants decide for their call; the space collection is the community's, so only somebody who administers the space can change it — check canSetExtractionFor first. Leaves the space's default alone. Does not stop a pass already running: those tokens are spent",
-      canSetExtractionFor:
-        '(collectionId): whether this agent may change what one collection extracts — anyone for a call or channel, only an administrator for the space collection. Gate the switch on it rather than letting the store refuse the press',
+      autoInterpretFor:
+        "(collectionId): whether ONE COLLECTION — a call, a channel, the space collection (spaceStore.root) — is interpreted as it grows: its own answer, copied from the space's default when it was made. A function rather than a value because the answer is per collection, like canAdministerSpace. False until the collection has been read",
+      setAutoInterpretFor:
+        "(collectionId, on): turns automatic interpretation on or off for ONE COLLECTION, for everyone in it. A call's participants decide for their call; the space collection is the community's, so only somebody who administers the space can change it — check canSetInterpretationFor first. Leaves the space's default alone. Does not stop a pass already running: those tokens are spent",
+      canSetInterpretationFor:
+        '(collectionId): whether this agent may change what one collection interprets — anyone for a call or channel, only an administrator for the space collection. Gate the switch on it rather than letting the store refuse the press',
       setSpaceModuleSetting:
         "(group: string, key: string, value?, spaceUuid?): sets one of a capability's settings for everyone in a space — `group` is the module id and `key` the setting's key, both off the row. **Omit `value` to clear it**, which returns the level to having no opinion: a stored value that happens to equal the default goes on overruling everything less specific while its control reads as untouched. Omit spaceUuid for the space on screen",
       setMyModuleSetting:
         '(group: string, key: string, value?, spaceUuid?): the same, for this agent in one space. Private — written to the root dataset, never to the space. Omitting `value` clears it',
       setAgentModuleSetting:
         '(group: string, key: string, value?): the same, for this agent in every space. Private, and global, so there is no space to name. Omitting `value` clears it',
-      setExtractionTarget:
-        '(entity: string, on: boolean, spaceUuid?): adds or removes one model from what a NEW collection here starts out extracting. Writes the resolved list, so the first toggle also pins whatever was on by fallback. A default: each collection holds its own list afterwards',
+      setInterpretationTarget:
+        '(entity: string, on: boolean, spaceUuid?): adds or removes one model from what a NEW collection here starts out interpreting. Writes the resolved list, so the first toggle also pins whatever was on by fallback. A default: each collection holds its own list afterwards',
       setViewEnabled:
         '(viewId: string, enabled: boolean, spaceUuid?): adds or removes a section from a space. The community’s decision — every member sees it. Omit spaceUuid for the space on screen',
       reorderViews:
@@ -1652,8 +1652,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '(uuid: string): whether this agent may change what every member of that space sees — true for a personal space; for the shared space on screen, for whoever holds its `admin` role (its author, while nobody does); for any other shared space, for its author, since its roles are read once it is open. A UI affordance for deciding whether to offer the controls, NOT enforcement: a shared space is a neighbourhood every member can write to. Ask by name rather than comparing author to me.did, so the answer follows the space\u2019s roles without every template changing',
       exportCallTranscript:
         "(callId: string): writes the call's transcript to a .txt file (one line per utterance: name, timestamp, text) and downloads it. Read-only and client-side — it reads the shared record and writes to the caller's own device",
-      exportExtractionLog:
-        "(callId: string): writes everything extraction did with the call to a Markdown file and downloads it — the settings it ran under, the transcript once, every member's passes with their prompts and responses verbatim, the records written as they are stored now, and the suggestions still awaiting a decision. For handing to a person or a model investigating the extraction. Read-only and client-side, like exportCallTranscript",
+      exportInterpretationLog:
+        "(callId: string): writes everything interpretation did with the call to a Markdown file and downloads it — the settings it ran under, the transcript once, every member's passes with their prompts and responses verbatim, the records written as they are stored now, and the suggestions still awaiting a decision. For handing to a person or a model investigating the interpretation. Read-only and client-side, like exportCallTranscript",
       setModuleInstalled:
         '(moduleId: string, installed: boolean): turns a module on or off for this agent in every space. Personal — writes AgentSettings.installedModules in the root dataset, so no other member sees it',
       setModuleVisible:
@@ -1734,7 +1734,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       updateRecordField:
         "(entity: string, id: string, field: string, value): changes one property of one record — the inspector's edit mode. Takes the field name so one action serves every control; the value is coerced by the field's declared kind and a control's { detail } is unwrapped. An empty string is not written, so a text field cannot be cleared this way",
       rekeyConnection:
-        "(id: string): rewrites a Relationship's dedup key (`connection`) from its label and both ends' titles, which is how an extraction pass reads the structure people drew. updateRecordField does it already; call this after saving a Relationship's label through record.update",
+        "(id: string): rewrites a Relationship's dedup key (`connection`) from its label and both ends' titles, which is how an interpretation pass reads the structure people drew. updateRecordField does it already; call this after saving a Relationship's label through record.update",
       setSpaceTypePresentation:
         "(spaceId: string, nodeType: string, presentation: { display?: { title?, summary?, media?, fields? }, controls?: Record<field, control>, authoring?: string[] } | null): how every record of one type is laid out in this space, over the model's own — which field titles, summarises and pictures its cards and which it lists, the control a field uses, the fields its form asks for. Only what it sets is overridden, slot by slot; null puts the type back to the model's. Read back through recordStore.displays, which every card and form draws from. Keeps the type's colour in the space's key. Takes spaceStore.currentSpace.id",
       setSpaceTypeColor:
@@ -1786,16 +1786,14 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       savingShape: 'boolean — a save is in flight',
       aiAvailable: 'boolean — AI model generation is available (the agent has a Claude API key configured)',
       generating: 'boolean — an AI generation is in flight',
-      extractionCandidates:
-        "string[] — entity names an extraction pass COULD write here: core vocabulary that declares itself extractable, plus every adopted shape that does. Candidacy, not a decision — which of these a collection actually looks for is two layers down (spaceStore.extractionTargets, the default a new collection copies, then the collection's own list). Read it to offer a choice, and to display findings: a card should show a record somebody extracted an hour ago even if the target has since been switched off",
-      extractionNeedsIdentity:
-        'boolean — the open draft would be extracted into and has no field to recognise what it already wrote, so every pass duplicates everything. A warning to put beside the switch, not a refusal: the wizard saves either way',
+      interpretationCandidates:
+        "string[] — entity names an interpretation pass COULD write here: core vocabulary that declares itself interpretable, plus every adopted shape that does. Candidacy, not a decision — which of these a collection actually looks for is two layers down (spaceStore.interpretationTargets, the default a new collection copies, then the collection's own list). Read it to offer a choice, and to display findings: a card should show a record somebody interpreted an hour ago even if the target has since been switched off",
+      interpretationNeedsIdentity:
+        'boolean — the open draft would be interpreted into and has no field to recognise what it already wrote, so every pass duplicates everything. A warning to put beside the switch, not a refusal: the wizard saves either way',
       hintEditorDirty:
         'whether the open hint editor holds edits that closing would lose. What a discard guard reads: the rows come from the model’s declaration, so a schema has no set of local names it could test. Compares against the state the editor opened in, so an editor somebody only read closes without a question',
       hintEntities:
         "{ entity, source: 'core' | 'shape' }[] — entities offering AI-hint tuning in this space: core interpretable vocabulary (TaskBlock, EventBlock, Relationship) plus the space's own shapes",
-      extractionTargets:
-        'string[] — entity names an AI extraction pass may write in this space: core vocabulary marked extractable (TaskBlock, EventBlock, Relationship — a connection, drawn as a line rather than a card) plus every adopted shape that is. What COULD be found here, not what a given pass will look for — a call may narrow it and the space may have auto-extraction off. Drive a findings list off this rather than off any per-call selection, so a card shows a record another member extracted',
       relationshipTargets:
         "{ label, value }[] — what a relationship may point at here, ready for a we-select: this space's own models, then block types, then other apps' models. Core infrastructure entities are deliberately absent",
       identityOptions:
@@ -1823,11 +1821,11 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       cancelShapeWizard: '(): closes the wizard, discarding the draft',
       setShapeField: "(field: 'name' | 'description' | 'icon' | 'classHint', value): sets one top-level draft field",
       setIdentityMember:
-        "(rowId): chooses which member identifies duplicates for AI extraction; 'none' clears it. At most one, which is why it is a picker rather than a per-row flag",
+        "(rowId): chooses which member identifies duplicates for AI interpretation; 'none' clears it. At most one, which is why it is a picker rather than a per-row flag",
       setNameMember:
         "(rowId): chooses which member NAMES an instance — the heading on a card, the caption on a canvas, the label on a drag chip; 'none' returns it to being worked out. Not the same question as setIdentityMember: a dedup key may be a composite nobody would recognise (an event's is its title and day joined), where this is the one short string every surface shows when it has room for one line",
-      setExtractable:
-        '(on: boolean): allows or refuses an AI extraction pass writing instances of the open draft. Its own action rather than a setShapeField case, because the value is a boolean and that field takes strings',
+      setInterpretable:
+        '(on: boolean): allows or refuses an AI interpretation pass writing instances of the open draft. Its own action rather than a setShapeField case, because the value is a boolean and that field takes strings',
       addProperty: '(): appends an empty property (scalar field) row to the draft',
       addRelationship: '(): appends an empty relationship (edge to another model) row to the draft',
       removeMember: '(rowId): removes one member row',
@@ -2322,16 +2320,16 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
   interpretationStore: {
     state: {
       activity:
-        'InterpretationActivityView[] — every extraction pass this agent knows about, its own and its peers’, running first then most recent. Each row carries display-ready strings: `label` is a whole clause ("Anna is waiting on the model", "Extracted 3 records"), `elapsed` is `m:ss` while running and empty once settled, `name`/`avatar`/`runner` identify who is running it, and `mine` says whether it is this agent’s. Only a row with `mine` carries `prompt`/`response` — a peer’s exchange is never sent live; read it from the call’s extraction runs (`ModelRun` records under `runs`) once the pass settles — so gate a details affordance on `hasDetail`',
+        'InterpretationActivityView[] — every interpretation pass this agent knows about, its own and its peers’, running first then most recent. Each row carries display-ready strings: `label` is a whole clause ("Anna is waiting on the model", "Found 3 records"), `elapsed` is `m:ss` while running and empty once settled, `name`/`avatar`/`runner` identify who is running it, and `mine` says whether it is this agent’s. Only a row with `mine` carries `prompt`/`response` — a peer’s exchange is never sent live; read it from the call’s interpretation runs (`ModelRun` records under `runs`) once the pass settles — so gate a details affordance on `hasDetail`',
       runningCount:
-        'number — how many passes are still in flight. What a collapsed "N extractions running" summary counts',
+        'number — how many passes are still in flight. What a collapsed "N interpretations running" summary counts',
       hasActivity:
         'boolean — whether there is anything to show at all. Counts settled rows too, so a bar gated on it does not vanish the instant a pass finishes and take its result with it',
       runningPasses: 'InterpretationActivityView[] — the passes still in flight, for a readout that lists them',
       settledPasses: 'InterpretationActivityView[] — the passes that have finished, newest first',
-      settledCount: 'number — how many have finished. What a collapsed "N extractions processed" line counts',
+      settledCount: 'number — how many have finished. What a collapsed "N interpretations processed" line counts',
       capable:
-        'boolean — whether this node can interpret AT ALL, as distinct from being able to and having no model configured. Answered by asking the backend rather than by testing the client library, so it is false against a node whose executor predates the extraction stack. False means no fix exists from inside the app — say so rather than offering a control that cannot work',
+        'boolean — whether this node can interpret AT ALL, as distinct from being able to and having no model configured. Answered by asking the backend rather than by testing the client library, so it is false against a node whose executor predates the interpretation stack. False means no fix exists from inside the app — say so rather than offering a control that cannot work',
     },
     actions: {
       dismissSettled:

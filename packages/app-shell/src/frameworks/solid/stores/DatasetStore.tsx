@@ -222,7 +222,7 @@ export interface DatasetStore {
    * ShapeStore supplies "which entities *could* be extracted here" — core vocabulary that declares
    * itself extractable, plus this space's adopted shapes. Unset reads as none.
    */
-  provideExtractionCandidates: (candidates: () => string[]) => () => void;
+  provideInterpretationCandidates: (candidates: () => string[]) => () => void;
   /**
    * SpaceStore supplies what one collection extracts, and how to change it.
    *
@@ -233,11 +233,11 @@ export interface DatasetStore {
    * Unset, `targetsFor` reads as the candidates — which keeps a host that has not wired this yet
    * behaving as it did rather than silently extracting nothing.
    */
-  provideCollectionExtraction: (access: CollectionExtractionAccess) => () => void;
+  provideCollectionInterpretation: (access: CollectionInterpretationAccess) => () => void;
 }
 
 /** What SpaceStore lends this store about one collection's extraction settings. */
-export interface CollectionExtractionAccess {
+export interface CollectionInterpretationAccess {
   targetsFor: (collectionId: string) => string[];
   setTargetFor: (collectionId: string, entity: string, on: boolean) => Promise<void>;
   /** Whether this collection is extracted as it grows — its own answer. */
@@ -303,7 +303,7 @@ export function DatasetStoreProvider(props: ParentProps) {
     silent fallback to that constant would make a wiring failure look exactly like a space whose
     community had turned everything off.
   */
-  const extractionCandidatesGate = hostSlot<() => string[]>();
+  const interpretationCandidatesGate = hostSlot<() => string[]>();
 
   /*
     What one collection extracts, and how to change it — the layer below candidacy.
@@ -312,7 +312,7 @@ export function DatasetStoreProvider(props: ParentProps) {
     store. Unset, `targetsFor` falls back to the candidates rather than to nothing: a host that has
     not wired this in should behave as it did before the layer existed.
   */
-  const collectionExtraction = hostSlot<CollectionExtractionAccess>();
+  const collectionInterpretation = hostSlot<CollectionInterpretationAccess>();
 
   /**
    * The class list one pass over this collection should ask for.
@@ -391,8 +391,8 @@ export function DatasetStoreProvider(props: ParentProps) {
   }
 
   const targetsForCollection = (collectionId: string): string[] => {
-    const candidates = extractionCandidatesGate.get()?.() ?? [];
-    const chosen = collectionExtraction.get()?.targetsFor(collectionId);
+    const candidates = interpretationCandidatesGate.get()?.() ?? [];
+    const chosen = collectionInterpretation.get()?.targetsFor(collectionId);
     if (!chosen) return candidates;
     return candidates.filter((entity) => chosen.includes(entity));
   };
@@ -482,22 +482,23 @@ export function DatasetStoreProvider(props: ParentProps) {
         never sees the resolution: candidacy, the space's default and the collection's own list are
         questions it has no business knowing about, and it is handed the answer.
       */
-      extractionTargets: (collectionId: string) => {
+      interpretationTargets: (collectionId: string) => {
         const active = targetsForCollection(collectionId);
-        return (extractionCandidatesGate.get()?.() ?? []).map((entity) => ({
+        return (interpretationCandidatesGate.get()?.() ?? []).map((entity) => ({
           entity,
           selected: active.includes(entity),
         }));
       },
       setAutoInterpret: async (collectionId: string, on: boolean) => {
-        const extraction = collectionExtraction.get();
-        if (!extraction) throw new Error('interpretation: this host cannot record a collection’s extraction settings');
-        await extraction.setAutoFor(collectionId, on);
+        const settings = collectionInterpretation.get();
+        if (!settings)
+          throw new Error('interpretation: this host cannot record a collection’s interpretation settings');
+        await settings.setAutoFor(collectionId, on);
       },
-      setExtractionTarget: async (collectionId: string, entity: string, on: boolean) => {
-        const extraction = collectionExtraction.get();
-        if (!extraction) throw new Error('interpretation: this host cannot record a collection’s extraction targets');
-        await extraction.setTargetFor(collectionId, entity, on);
+      setInterpretationTarget: async (collectionId: string, entity: string, on: boolean) => {
+        const settings = collectionInterpretation.get();
+        if (!settings) throw new Error('interpretation: this host cannot record a collection’s interpretation targets');
+        await settings.setTargetFor(collectionId, entity, on);
       },
 
       // Gathering the turns is the host's half of the job: the port takes turns, and a module has no
@@ -657,8 +658,8 @@ export function DatasetStoreProvider(props: ParentProps) {
       space's default where the collection layer has not been wired, which keeps a host that
       predates it behaving as it did.
     */
-    const auto = collectionExtraction.get()?.autoFor(collectionId) ?? autoInterpretGate.get()?.();
-    if (!auto) throw new Error('interpretation: automatic extraction is off for this collection');
+    const auto = collectionInterpretation.get()?.autoFor(collectionId) ?? autoInterpretGate.get()?.();
+    if (!auto) throw new Error('interpretation: automatic interpretation is off for this collection');
     /*
       The caller's dataset, not `currentDataset()`: a call outlives the space on screen, and a watch
       registered wherever the reader had wandered to interprets the call into a perspective that
@@ -669,8 +670,8 @@ export function DatasetStoreProvider(props: ParentProps) {
 
     const classes = targetsForCollection(collectionId);
     // Refused rather than registered empty: the executor rejects a processor with no classes, and
-    // "this space has marked nothing for extraction" is a sentence worth saying in its own words.
-    if (!classes.length) throw new Error('interpretation: nothing in this space is marked for AI extraction');
+    // "this space has marked nothing for interpretation" is a sentence worth saying in its own words.
+    if (!classes.length) throw new Error('interpretation: nothing in this space is marked for AI interpretation');
 
     await port.watch(handle, {
       watchId: watchIdFor(collectionId),
@@ -1342,8 +1343,8 @@ export function DatasetStoreProvider(props: ParentProps) {
     provideAutoInterpretGate: autoInterpretGate.provide,
     watchConversation,
     unwatchConversation,
-    provideExtractionCandidates: extractionCandidatesGate.provide,
-    provideCollectionExtraction: collectionExtraction.provide,
+    provideInterpretationCandidates: interpretationCandidatesGate.provide,
+    provideCollectionInterpretation: collectionInterpretation.provide,
   };
 
   return <DatasetContext.Provider value={store}>{props.children}</DatasetContext.Provider>;

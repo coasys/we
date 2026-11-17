@@ -276,7 +276,7 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
               condition: { $: pending },
               then: {
                 type: 'we-tooltip',
-                props: { content: 'Extraction proposed this — pending acceptance' },
+                props: { content: 'Interpretation proposed this — pending acceptance' },
                 children: [
                   {
                     type: 'we-badge',

@@ -14,7 +14,7 @@ import { buildGuestLink } from '@shared/guestLink';
 import {
   type AmendmentEntry,
   exportFileName,
-  formatExtractionLog,
+  formatInterpretationLog,
   isoOf,
   type PassEntry,
   transcriptLine,
@@ -140,12 +140,12 @@ import {
 import { toastService } from '@we/components/solid';
 import { saveFile, type SaveOutcome } from '@we/design-utils';
 import {
-  collectionExtractionDefaults,
-  LEGACY_EXTRACTION_TARGETS,
+  collectionInterpretationDefaults,
+  LEGACY_INTERPRETATION_TARGETS,
   parseEntityList,
-  resolveCollectionAutoExtract,
-  resolveCollectionExtractionTargets,
-  resolveSpaceExtractionTargets,
+  resolveCollectionAutoInterpret,
+  resolveCollectionInterpretationTargets,
+  resolveSpaceInterpretationTargets,
 } from '@we/entities';
 import { completeResponse } from '@we/entities';
 import {
@@ -315,8 +315,8 @@ interface ShareTask {
 }
 
 /*
-  The extraction-settings resolution — `LEGACY_EXTRACTION_TARGETS`, `parseEntityList` and the
-  per-collection resolvers below — lives in `collectionExtraction` in `@we/entities` so it can be tested
+  The extraction-settings resolution — `LEGACY_INTERPRETATION_TARGETS`, `parseEntityList` and the
+  per-collection resolvers below — lives in `collectionInterpretation` in `@we/entities` so it can be tested
   without mounting this provider. See that module for why a collection holds a copy.
 */
 
@@ -949,7 +949,7 @@ export interface SpaceStore {
   setAgentModuleSetting: (group: string, key: string, value?: SettingValue) => Promise<void>;
   /**
    * Whether a new collection here — a call, a channel — starts out extracted as it grows. A
-   * community default, copied onto each collection when it is made; see `autoExtractFor` for the
+   * community default, copied onto each collection when it is made; see `autoInterpretFor` for the
    * answer that counts.
    */
   autoInterpret: Accessor<boolean>;
@@ -973,29 +973,29 @@ export interface SpaceStore {
    * Whether one collection — a call, a channel, the space's own — is extracted as it grows: its own
    * answer, copied from the space's default when it was made. False until it has been read.
    */
-  autoExtractFor: (collectionId: string) => boolean;
+  autoInterpretFor: (collectionId: string) => boolean;
   /**
    * Turn it on or off for one collection, for everyone in it. A call's participants decide for their
    * call; the space collection is the community's, so only somebody who administers the space can.
    */
-  setAutoExtractFor: (collectionId: string, on: boolean) => Promise<void>;
-  /** Whether this agent may change what one collection extracts — see `setAutoExtractFor`. */
-  canSetExtractionFor: (collectionId: string) => boolean;
+  setAutoInterpretFor: (collectionId: string, on: boolean) => Promise<void>;
+  /** Whether this agent may change what one collection extracts — see `setAutoInterpretFor`. */
+  canSetInterpretationFor: (collectionId: string) => boolean;
   setAutoInterpret: (enabled: boolean, spaceUuid?: string) => Promise<void>;
   setThreadMode: (mode: string, spaceUuid?: string) => Promise<void>;
   /**
    * Which models a new collection here starts out extracting.
    *
    * The middle of three layers: the codebase says what is a *candidate*
-   * (`shapeStore.extractionCandidates`), this says which of them a new conversation begins with, and
+   * (`shapeStore.interpretationCandidates`), this says which of them a new conversation begins with, and
    * each collection then holds its own list, which its participants change. Always intersected with
    * the candidates, so a model since deleted cannot reach a pass and fail it.
    *
    * A community decision, readable by every member; writing it is space-settings. Unset falls back
    * to the two classes that were hardcoded before the setting existed, so nothing regresses.
    */
-  extractionTargets: Accessor<string[]>;
-  setExtractionTarget: (entity: string, on: boolean, spaceUuid?: string) => Promise<void>;
+  interpretationTargets: Accessor<string[]>;
+  setInterpretationTarget: (entity: string, on: boolean, spaceUuid?: string) => Promise<void>;
   /** Turn a module on or off for this agent everywhere. */
   setModuleInstalled: (moduleId: string, installed: boolean) => Promise<void>;
   /** Show or hide a module for this agent in one space. Private to this agent. */
@@ -1165,7 +1165,7 @@ export interface SpaceStore {
    * the records it wrote as they are stored now, and the suggestions still waiting on a decision.
    * Made to be handed to a person or a model investigating why a call extracted what it did.
    */
-  exportExtractionLog: (callId: string) => Promise<void>;
+  exportInterpretationLog: (callId: string) => Promise<void>;
   removeSpaceFromGlobal: (spaceUuid: string) => Promise<void>;
   updateSpaceInCache: (dataset: AppDataset, updates: Partial<Space>) => void;
 
@@ -1210,7 +1210,7 @@ const TASK_STATE_SEMANTICS: TaskStateView['semantic'][] = ['open', 'active', 'bl
  */
 type LiveRows<T> = { subscribe(cb: (rows: T[]) => void): Promise<T[]>; dispose(): void };
 
-/** What a collection's extraction settings are read from — see `autoExtractFor`. */
+/** What a collection's extraction settings are read from — see `autoInterpretFor`. */
 const COLLECTION_SETTINGS_FIELDS = ['autoExtract', 'extractionTargets'] as const;
 
 export function SpaceStoreProvider(props: ParentProps) {
@@ -1901,10 +1901,10 @@ export function SpaceStoreProvider(props: ParentProps) {
    */
   async function writeSpaceStructure(dataset: DatasetProxy, space: Space, starter?: SpaceStarter): Promise<void> {
     /*
-      Made with the space's extraction defaults like any new collection, unless the starter says
+      Made with the space's interpretation defaults like any new collection, unless the starter says
       otherwise about the messages typed outside calls (`input`).
     */
-    const defaults = collectionExtractionDefaults(space);
+    const defaults = collectionInterpretationDefaults(space);
     const root = await CollectionBlock.create(dataset, {
       kind: SPACE_COLLECTION_KIND,
       // A feed: every member adds to it, so no one member's editor may ever reconcile it, and a
@@ -3162,13 +3162,13 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   /**
-   * Everything extraction did with one call, as one Markdown file — see `formatExtractionLog`.
+   * Everything extraction did with one call, as one Markdown file — see `formatInterpretationLog`.
    *
    * Every member's passes, not only this agent's: the prompts and responses are stored on the shared
    * record, so this exports what the panel already shows. Read in full rather than through the
    * panel's query, which is capped for drawing and an hour of automatic extraction outruns.
    */
-  async function exportExtractionLog(callId: string): Promise<void> {
+  async function exportInterpretationLog(callId: string): Promise<void> {
     const dataset = datasetStore.currentDataset();
     if (!dataset || !callId) return;
     const p = dataset.handle;
@@ -3176,7 +3176,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       const exportedAt = new Date();
       const titled = await CollectionBlock.findOne(p, { where: { id: callId } });
       const outcome = await saveFile({
-        name: exportFileName(titled?.title, 'call', 'md', exportedAt).replace(/\.md$/, '-extraction-log.md'),
+        name: exportFileName(titled?.title, 'call', 'md', exportedAt).replace(/\.md$/, '-interpretation-log.md'),
         type: 'text/markdown;charset=utf-8',
         content: async () => {
           const call = await CollectionBlock.findOne(p, {
@@ -3221,14 +3221,14 @@ export function SpaceStoreProvider(props: ParentProps) {
             ].filter((did): did is string => typeof did === 'string' && did !== ''),
           );
 
-          return formatExtractionLog({
+          return formatInterpretationLog({
             callId,
             callTitle: row?.title,
             spaceName: currentSpace()?.name,
             exportedAt,
-            callTargets: extractionTargetsFor(callId),
-            spaceTargets: extractionTargets(),
-            autoInterpret: autoExtractFor(callId),
+            callTargets: interpretationTargetsFor(callId),
+            spaceTargets: interpretationTargets(),
+            autoInterpret: autoInterpretFor(callId),
             transcript: turns,
             passes,
             records,
@@ -3238,10 +3238,10 @@ export function SpaceStoreProvider(props: ParentProps) {
           });
         },
       });
-      reportSave(outcome, 'Extraction log exported.', 'No extraction has run on this call yet.');
+      reportSave(outcome, 'Interpretation log exported.', 'No interpretation has run on this call yet.');
     } catch (error) {
-      console.error('SpaceStore: exportExtractionLog failed', error);
-      toastService.error('Could not export the extraction log.');
+      console.error('SpaceStore: exportInterpretationLog failed', error);
+      toastService.error('Could not export the interpretation log.');
     }
   }
 
@@ -4799,7 +4799,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     reads false: a decision nobody has made is not a decision to spend somebody's LLM budget.
 
     A default and nothing more. Each collection holds its own answer, copied from this when it was
-    made (`CollectionBlock.autoExtract`); see `collectionExtraction` in `@we/entities` for why a copy.
+    made (`CollectionBlock.autoExtract`); see `collectionInterpretation` in `@we/entities` for why a copy.
   */
   const autoInterpret = createMemo<boolean>(() => currentSpace()?.autoInterpret === true);
   onCleanup(datasetStore.provideAutoInterpretGate(() => autoInterpret()));
@@ -4815,8 +4815,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     Order follows the candidates, so a settings list reads the same way every time rather than in
     whatever order somebody happened to tick things.
   */
-  const extractionTargets = createMemo<string[]>(() =>
-    resolveSpaceExtractionTargets(shapeStore.extractionCandidates(), currentSpace()?.extractionTargets),
+  const interpretationTargets = createMemo<string[]>(() =>
+    resolveSpaceInterpretationTargets(shapeStore.interpretationCandidates(), currentSpace()?.extractionTargets),
   );
 
   /**
@@ -4914,18 +4914,18 @@ export function SpaceStoreProvider(props: ParentProps) {
    * Whether one collection is extracted as it grows: its own answer, or — for a collection made
    * without one — the space's default. False until its settings have been read.
    */
-  const autoExtractFor = (collectionId: string): boolean => {
+  const autoInterpretFor = (collectionId: string): boolean => {
     if (!collectionId) return false;
     askCollection(collectionId);
     if (!loadedCollections().has(collectionId)) return false;
-    return resolveCollectionAutoExtract(autoInterpret(), collectionSettings()[collectionId]?.autoExtract);
+    return resolveCollectionAutoInterpret(autoInterpret(), collectionSettings()[collectionId]?.autoExtract);
   };
 
   /** The models one collection extracts: its own list, else the space's default, narrowed to the candidates. */
-  const extractionTargetsFor = (collectionId: string): string[] => {
+  const interpretationTargetsFor = (collectionId: string): string[] => {
     askCollection(collectionId);
-    return resolveCollectionExtractionTargets(
-      shapeStore.extractionCandidates(),
+    return resolveCollectionInterpretationTargets(
+      shapeStore.interpretationCandidates(),
       currentSpace()?.extractionTargets,
       collectionSettings()[collectionId]?.extractionTargets,
     );
@@ -4938,7 +4938,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    * collection is the community's — the messages typed outside any call — so it is whoever
    * administers the space, exactly as its defaults are.
    */
-  const canSetExtractionFor = (collectionId: string): boolean =>
+  const canSetInterpretationFor = (collectionId: string): boolean =>
     Boolean(collectionId) && (collectionId !== spaceRoot() || canAdministerCurrentSpace());
 
   async function writeCollectionSettings(
@@ -4948,7 +4948,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   ): Promise<void> {
     const dataset = datasetStore.currentDataset();
     if (!dataset || !collectionId) return;
-    if (!canSetExtractionFor(collectionId)) {
+    if (!canSetInterpretationFor(collectionId)) {
       toastService.error(`Only someone who administers this space can change ${what} outside calls.`);
       return;
     }
@@ -4971,8 +4971,8 @@ export function SpaceStoreProvider(props: ParentProps) {
    * default alone — that is where the *next* conversation starts, and this is about this one.
    * Does not stop a pass already running: those tokens are spent.
    */
-  const setAutoExtractFor = (collectionId: string, on: boolean): Promise<void> =>
-    writeCollectionSettings(collectionId, { autoExtract: on }, 'whether this is extracted as it happens');
+  const setAutoInterpretFor = (collectionId: string, on: boolean): Promise<void> =>
+    writeCollectionSettings(collectionId, { autoExtract: on }, 'whether this is interpreted as it happens');
 
   /**
    * Add or remove one model from what a collection extracts, for everyone in it.
@@ -4980,11 +4980,15 @@ export function SpaceStoreProvider(props: ParentProps) {
    * Writes the resolved list rather than a diff, so a collection made without a copy pins whatever
    * the space's default was at that moment — the same rule `setModuleEnabled` follows.
    */
-  async function setExtractionTargetFor(collectionId: string, entity: string, on: boolean): Promise<void> {
-    const next = new Set(extractionTargetsFor(collectionId));
+  async function setInterpretationTargetFor(collectionId: string, entity: string, on: boolean): Promise<void> {
+    const next = new Set(interpretationTargetsFor(collectionId));
     if (on) next.add(entity);
     else next.delete(entity);
-    await writeCollectionSettings(collectionId, { extractionTargets: JSON.stringify([...next]) }, 'what this extracts');
+    await writeCollectionSettings(
+      collectionId,
+      { extractionTargets: JSON.stringify([...next]) },
+      'what this interprets',
+    );
   }
 
   /*
@@ -5006,10 +5010,10 @@ export function SpaceStoreProvider(props: ParentProps) {
   createEffect(() => {
     const root = spaceRoot();
     const handle = datasetStore.currentDataset()?.handle;
-    const wanted = Boolean(root && handle && autoExtractFor(root));
+    const wanted = Boolean(root && handle && autoInterpretFor(root));
     // Read so a change to what it extracts re-registers: the watch's class list is fixed at
     // registration, and the port replaces it when the list differs.
-    if (root) void extractionTargetsFor(root);
+    if (root) void interpretationTargetsFor(root);
     if (wanted) {
       looseWatchOn = { root, handle };
       void datasetStore.watchConversation(root, handle).catch((error: unknown) => {
@@ -5033,19 +5037,19 @@ export function SpaceStoreProvider(props: ParentProps) {
     lends it.
   */
   onCleanup(
-    datasetStore.provideCollectionExtraction({
-      targetsFor: extractionTargetsFor,
-      setTargetFor: setExtractionTargetFor,
-      autoFor: autoExtractFor,
-      setAutoFor: setAutoExtractFor,
+    datasetStore.provideCollectionInterpretation({
+      targetsFor: interpretationTargetsFor,
+      setTargetFor: setInterpretationTargetFor,
+      autoFor: autoInterpretFor,
+      setAutoFor: setAutoInterpretFor,
     }),
   );
   /*
     Ticking "let AI create these" in the model wizard is this space saying yes — see
-    `ShapeStore.provideExtractionEnroller`. Handed upward because ShapeStore mounts above this one
+    `ShapeStore.provideInterpretationEnroller`. Handed upward because ShapeStore mounts above this one
     and cannot reach a `Space`, the mirror of how `autoInterpret` is handed down.
   */
-  onCleanup(shapeStore.provideExtractionEnroller((entity) => setExtractionTarget(entity, true)));
+  onCleanup(shapeStore.provideInterpretationEnroller((entity) => setInterpretationTarget(entity, true)));
 
   /**
    * What actually renders here, for this agent: the three layers intersected, minus personal mutes.
@@ -5930,7 +5934,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
     updateSpaceInCache(ds, { threadMode });
     if (!isCurrent(ds)) return;
-    // A new instance, the `setExtractionTarget` idiom: `currentSpace` is a plain signal and Solid
+    // A new instance, the `setInterpretationTarget` idiom: `currentSpace` is a plain signal and Solid
     // dedupes on `===`, so handing back the object just written notifies nothing and every thread
     // on screen would keep the previous answer until something else refetched the space.
     setCurrentSpace((prev) =>
@@ -5949,23 +5953,23 @@ export function SpaceStoreProvider(props: ParentProps) {
    * a model that becomes a candidate in a later release does not silently join a space that has
    * already decided.
    */
-  async function setExtractionTarget(entity: string, on: boolean, spaceUuid?: string) {
+  async function setInterpretationTarget(entity: string, on: boolean, spaceUuid?: string) {
     const ds = targetDataset(spaceUuid);
     const space = ds ? mySpaces().find((s) => isSpaceSelf(s, ds)) : undefined;
     if (!ds || !space) return;
-    const current = parseEntityList(space.extractionTargets) ?? LEGACY_EXTRACTION_TARGETS;
+    const current = parseEntityList(space.extractionTargets) ?? LEGACY_INTERPRETATION_TARGETS;
     const next = new Set(current);
     if (on) next.add(entity);
     else next.delete(entity);
-    const extractionTargetsJson = JSON.stringify([...next]);
+    const interpretationTargetsJson = JSON.stringify([...next]);
     try {
-      await Space.update(ds.handle, space.id, { extractionTargets: extractionTargetsJson });
+      await Space.update(ds.handle, space.id, { extractionTargets: interpretationTargetsJson });
     } catch (error) {
       console.error('SpaceStore: could not persist extractionTargets', error);
       toastService.error('Could not save this change for the space.');
       throw error;
     }
-    updateSpaceInCache(ds, { extractionTargets: extractionTargetsJson });
+    updateSpaceInCache(ds, { extractionTargets: interpretationTargetsJson });
     if (!isCurrent(ds)) return;
     // Republished as a *new* instance, the `setModuleEnabled` idiom: `currentSpace` is a plain
     // signal and Solid dedupes on `===`, so handing back the object just written through notifies
@@ -5974,7 +5978,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     setCurrentSpace((prev) =>
       prev
         ? (Object.assign(Object.create(Object.getPrototypeOf(prev) as object | null), prev, {
-            extractionTargets: extractionTargetsJson,
+            extractionTargets: interpretationTargetsJson,
           }) as Space)
         : prev,
     );
@@ -6530,9 +6534,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     landmarks: spaceLandmarks,
     landmarksLoaded,
     starterChoices,
-    autoExtractFor,
-    setAutoExtractFor,
-    canSetExtractionFor,
+    autoInterpretFor,
+    setAutoInterpretFor,
+    canSetInterpretationFor,
     spaceModuleSettings,
     myModuleSettings,
     agentModuleSettings,
@@ -6541,8 +6545,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     setAgentModuleSetting,
     setAutoInterpret,
     setThreadMode,
-    extractionTargets,
-    setExtractionTarget,
+    interpretationTargets,
+    setInterpretationTarget,
     setModuleInstalled,
     setModuleVisible,
     setViewEnabled,
@@ -6593,7 +6597,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     copyShareLink,
     copyGuestLink,
     exportCallTranscript,
-    exportExtractionLog,
+    exportInterpretationLog,
     removeSpaceFromGlobal,
     updateSpaceInCache,
 

@@ -19,8 +19,8 @@ import { hostListeners, hostSlot } from '../src/shared/hostSlot';
 describe('hostSlot', () => {
   it('is empty until something is lent', () => {
     // Absent, not a default: what "nothing lent" means is the caller's decision, and the callers
-    // disagree — `autoInterpretGate` reads off, `extractionCandidatesGate` reads none, and
-    // `collectionExtraction` falls back to the candidates.
+    // disagree — `autoInterpretGate` reads off, `interpretationCandidatesGate` reads none, and
+    // `collectionInterpretation` falls back to the candidates.
     expect(hostSlot<string>().get()).toBeNull();
   });
 

@@ -115,7 +115,7 @@ vi.mock('../src/frameworks/solid/stores/ThemeStore', () => ({
 
 // ── Harness ───────────────────────────────────────────────────────────────────
 import { completeResponse } from '@we/entities';
-import { withExtractionDefaults } from '@we/entities';
+import { withInterpretationDefaults } from '@we/entities';
 
 import { credential } from '../src/frameworks/solid/credential';
 import { BootController } from '../src/frameworks/solid/providers/BootController';
@@ -173,7 +173,7 @@ function mountShell(): Stores {
             {/* Setting up an account asks it whether there is an AI question, as the real order has it. */}
             <RuntimeStoreProvider>
               <DatasetStoreProvider>
-                {/* SpaceStore reads the extraction candidates off ShapeStore and hands the wizard back
+                {/* SpaceStore reads the interpretation candidates off ShapeStore and hands the wizard back
                 an enroller, so the two mount in the order the real StoreProvider uses. */}
                 <ShapeStoreProvider>
                   {/* SpaceStore hands the record layer the vocabularies this community owns — a task's
@@ -1603,15 +1603,15 @@ describe('following a space from the rows its live queries push', () => {
     let reads!: FindAllSpy;
     const isSettingsRead = (call: unknown[]) =>
       Array.isArray((call[1] as { where?: { id?: unknown } } | undefined)?.where?.id);
-    const { stores, handle } = await openSpace('Pushed Extraction', () => {
+    const { stores, handle } = await openSpace('Pushed Interpretation', () => {
       asked = vi.spyOn(getEntity('CollectionBlock') as unknown as { query: (...a: unknown[]) => unknown }, 'query');
       reads = spyFindAll('CollectionBlock');
     });
     const root = stores.spaces.root();
     // Ask, and wait for the first answer and the watch behind it.
-    stores.spaces.autoExtractFor(root);
+    stores.spaces.autoInterpretFor(root);
     await vi.waitFor(() => expect(asked.mock.calls.some(isSettingsRead)).toBe(true));
-    const before = stores.spaces.autoExtractFor(root);
+    const before = stores.spaces.autoInterpretFor(root);
     // Only the two fields the settings are made of: a collection's children are the whole space.
     for (const call of [...reads.mock.calls, ...asked.mock.calls].filter(isSettingsRead)) {
       expect((call[1] as { properties?: string[] }).properties).toEqual(['autoExtract', 'extractionTargets']);
@@ -1620,7 +1620,7 @@ describe('following a space from the rows its live queries push', () => {
     const readsBefore = settingsReads();
 
     await CollectionBlock.update(handle, root, { autoExtract: !before } as never);
-    await vi.waitFor(() => expect(stores.spaces.autoExtractFor(root)).toBe(!before));
+    await vi.waitFor(() => expect(stores.spaces.autoInterpretFor(root)).toBe(!before));
     expect(settingsReads()).toBe(readsBefore);
     reads.mockRestore();
     asked.mockRestore();
@@ -2079,9 +2079,9 @@ describe('a card’s presentation, drawn before it is stored', () => {
   }, 10000);
 });
 
-// ── Extraction settings, on the collection ────────────────────────────────────
+// ── Interpretation settings, on the collection ───────────────────────────────
 
-describe('what a collection extracts', () => {
+describe('what a collection interprets', () => {
   /**
    * The interpretation port's standing-watch half, recording what was registered and removed.
    *
@@ -2154,16 +2154,16 @@ describe('what a collection extracts', () => {
     await vi.waitFor(() => expect(port.watched).toContain(watchId(root)));
 
     // Off, for this collection: stored on it, and the watch removed.
-    await stores.spaces.setAutoExtractFor(root, false);
+    await stores.spaces.setAutoInterpretFor(root, false);
     expect((await stored(handle, root)).autoExtract).toBe(false);
     await vi.waitFor(() => expect(port.removed).toContain(watchId(root)));
-    expect(stores.spaces.autoExtractFor(root)).toBe(false);
+    expect(stores.spaces.autoInterpretFor(root)).toBe(false);
     // The space's default — what the next collection starts with — is untouched.
     expect(stores.spaces.autoInterpret()).toBe(true);
 
     // And back on.
     port.watched.length = 0;
-    await stores.spaces.setAutoExtractFor(root, true);
+    await stores.spaces.setAutoInterpretFor(root, true);
     await vi.waitFor(() => expect(port.watched).toContain(watchId(root)));
   }, 15000);
 
@@ -2180,17 +2180,17 @@ describe('what a collection extracts', () => {
     await stores.spaces.revokeRole('admin', stores.session.me()?.did ?? '');
     await vi.waitFor(() => expect(stores.spaces.canAdministerCurrentSpace()).toBe(false));
 
-    expect(stores.spaces.canSetExtractionFor(root)).toBe(false);
-    expect(stores.spaces.canSetExtractionFor(call.id)).toBe(true);
+    expect(stores.spaces.canSetInterpretationFor(root)).toBe(false);
+    expect(stores.spaces.canSetInterpretationFor(call.id)).toBe(true);
 
     const refused = vi.spyOn(toastService, 'error');
-    await stores.spaces.setAutoExtractFor(root, false);
+    await stores.spaces.setAutoInterpretFor(root, false);
     expect(refused).toHaveBeenCalled();
     // Refused before anything was written.
     expect((await stored(handle, root)).autoExtract).toBe(true);
 
     // A call is its participants' to decide.
-    await stores.spaces.setAutoExtractFor(call.id, false);
+    await stores.spaces.setAutoInterpretFor(call.id, false);
     expect((await stored(handle, call.id)).autoExtract).toBe(false);
     refused.mockRestore();
   }, 15000);
@@ -2204,22 +2204,30 @@ describe('what a collection extracts', () => {
     // Made the way the host makes a new feed: the space's defaults as they stand, copied in.
     const before = await CollectionBlock.create(
       handle,
-      withExtractionDefaults('CollectionBlock', { kind: 'call', mode: 'feed' }, stores.spaces.currentSpace()) as never,
+      withInterpretationDefaults(
+        'CollectionBlock',
+        { kind: 'call', mode: 'feed' },
+        stores.spaces.currentSpace(),
+      ) as never,
     );
     await vi.waitFor(() => expect(looksFor(k, before.id, 'TaskBlock')).toBe(true));
 
     // The community changes its defaults.
     await stores.spaces.setAutoInterpret(false);
-    await stores.spaces.setExtractionTarget('TaskBlock', false);
+    await stores.spaces.setInterpretationTarget('TaskBlock', false);
     await vi.waitFor(() => expect(stores.spaces.currentSpace()?.autoInterpret).toBe(false));
 
     const after = await CollectionBlock.create(
       handle,
-      withExtractionDefaults('CollectionBlock', { kind: 'call', mode: 'feed' }, stores.spaces.currentSpace()) as never,
+      withInterpretationDefaults(
+        'CollectionBlock',
+        { kind: 'call', mode: 'feed' },
+        stores.spaces.currentSpace(),
+      ) as never,
     );
 
-    await vi.waitFor(() => expect(stores.spaces.autoExtractFor(before.id)).toBe(true));
-    await vi.waitFor(() => expect(stores.spaces.autoExtractFor(after.id)).toBe(false));
+    await vi.waitFor(() => expect(stores.spaces.autoInterpretFor(before.id)).toBe(true));
+    await vi.waitFor(() => expect(stores.spaces.autoInterpretFor(after.id)).toBe(false));
     // The one already made keeps what it started with; the new one starts with the new list.
     await vi.waitFor(() => expect(looksFor(k, after.id, 'TaskBlock')).toBe(false));
     expect(looksFor(k, before.id, 'TaskBlock')).toBe(true);
@@ -2233,7 +2241,7 @@ describe('what a collection extracts', () => {
     const make = () =>
       CollectionBlock.create(
         handle,
-        withExtractionDefaults(
+        withInterpretationDefaults(
           'CollectionBlock',
           { kind: 'call', mode: 'feed' },
           stores.spaces.currentSpace(),
@@ -2250,16 +2258,16 @@ describe('what a collection extracts', () => {
       expect(interpretation.targets(a.id).find((t) => t.entity === 'TaskBlock')?.selected).toBe(false),
     );
     expect(interpretation.targets(b.id).find((t) => t.entity === 'TaskBlock')?.selected).toBe(true);
-    expect(stores.spaces.extractionTargets()).toContain('TaskBlock');
+    expect(stores.spaces.interpretationTargets()).toContain('TaskBlock');
 
     // The switch: call A off. Its watch is refused from then on; call B's is still registered.
     await interpretation.setAuto(a.id, false);
-    await vi.waitFor(() => expect(stores.spaces.autoExtractFor(a.id)).toBe(false));
-    await expect(interpretation.watchCollection(a.id)).rejects.toThrow('automatic extraction is off');
+    await vi.waitFor(() => expect(stores.spaces.autoInterpretFor(a.id)).toBe(false));
+    await expect(interpretation.watchCollection(a.id)).rejects.toThrow('automatic interpretation is off');
     await interpretation.watchCollection(b.id);
     expect(port.watched).toContain(watchId(b.id));
     expect(port.watched).not.toContain(watchId(a.id));
-    expect(stores.spaces.autoExtractFor(b.id)).toBe(true);
+    expect(stores.spaces.autoInterpretFor(b.id)).toBe(true);
   }, 15000);
 });
 

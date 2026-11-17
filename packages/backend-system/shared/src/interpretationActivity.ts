@@ -10,7 +10,7 @@
  * Because the wait is long enough to look like a hang. A pass on a local model is seconds to
  * minutes, almost all of it inside one LLM call, and both existing surfaces report only the ends:
  * `interpret()` resolves at the end, and a standing watch has no return value at all. A user who
- * pressed Extract sees a spinner; a user in a call whose neighbour pressed it sees nothing
+ * pressed Interpret sees a spinner; a user in a call whose neighbour pressed it sees nothing
  * whatsoever. Neither can tell a slow model from a dead one.
  *
  * ## Why `mine` exists, and why it is not a detail

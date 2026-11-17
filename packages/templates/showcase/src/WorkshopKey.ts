@@ -1017,7 +1017,7 @@ const suggestionsSection: SchemaNode = {
   children: [
     sectionLabel({
       label: 'Suggestions',
-      help: 'Pending acceptance is a record extraction made that nobody has accepted yet: dashed, faded and badged "suggested", and hidden with the switch. A pending change is an accepted record a later pass wants to change: it keeps its colour, gains an amber edge and is never hidden — open it to accept or reject the change.',
+      help: 'Pending acceptance is a record interpretation made that nobody has accepted yet: dashed, faded and badged "suggested", and hidden with the switch. A pending change is an accepted record a later pass wants to change: it keeps its colour, gains an amber edge and is never hidden — open it to accept or reject the change.',
       aside: suggestionsToggle({ count: `count(local.onCall.filter(r, r.id in ${UNCONFIRMED}))`, labelled: false }),
     }),
     {
@@ -1095,7 +1095,7 @@ export function keyPanel(opts: {
   /** The canvas the key is about — its placements are what the key lists. */
   call: Record<string, unknown>;
   callExpr: string;
-  extracted: string;
+  interpretable: string;
   /**
    * Where the canvas's records live, when not in the canvas itself — a space canvas's are the space
    * collection's children. Defaults to the canvas.
@@ -1124,7 +1124,7 @@ export function keyPanel(opts: {
       typeStyles: TYPE_STYLES_QUERY,
       placements: placementsQuery(opts.call),
       onCall: {
-        entity: { $: `(${opts.extracted}).filter(k, k != '${LINK_ENTITY}')` },
+        entity: { $: `(${opts.interpretable}).filter(k, k != '${LINK_ENTITY}')` },
         scope: anchorScope(opts.members ?? opts.call),
         limit: 200,
         when: opts.members ?? opts.call,

@@ -703,7 +703,7 @@ export const calendarView: TemplateSchema = {
                   icon: 'calendar',
                   label: 'events',
                   message:
-                    'Nothing scheduled yet. Add an event, or record a call — extraction writes down the times people agree on.',
+                    'Nothing scheduled yet. Add an event, or record a call — interpretation writes down the times people agree on.',
                 }),
               },
             },

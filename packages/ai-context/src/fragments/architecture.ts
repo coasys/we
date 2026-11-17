@@ -219,7 +219,7 @@ what is a fact about the *type*; reify what is a claim about a *pair*.
 **Before changing anything about boards, read docs/architecture/boards.md.** A board's columns are
 records, and a column is *a saved query with an arrangement*: what is in it comes from each task's
 \`status\`, and the column's ordered \`children\` are only where the cards sit. That split is why work an
-extraction pass writes appears on every board without anyone placing it, why deleting a column must
+interpretation pass writes appears on every board without anyone placing it, why deleting a column must
 never delete its cards, and why the link state can be inconsistent after a partition and the board
 still renders one answer. The same doc records where new per-column state goes, so the entity does
 not accrete a scalar per feature.

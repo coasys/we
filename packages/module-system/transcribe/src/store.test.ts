@@ -183,27 +183,27 @@ function harness(peers: Peer[] = [], extraDeps: HarnessDeps = {}) {
  * one most of the time and a past one whenever somebody opened it from a link — so the live answer
  * is the keyed one looked up by `callId`, exactly as a schema writes it.
  */
-function liveExtraction(store: { extractionFor: () => unknown; callId: () => string }) {
-  return extractionOf(store, store.callId());
+function liveInterpretation(store: { interpretationFor: () => unknown; callId: () => string }) {
+  return interpretationOf(store, store.callId());
 }
 
 /**
  * What the store says about one named call, read the way an expression reads it.
  *
  * A `namespace` rather than an object, because the ids are not enumerable from the store — see
- * `extractionFor`. `.get` is the same door `readProperty` goes through, so a test indexing a plain
+ * `interpretationFor`. `.get` is the same door `readProperty` goes through, so a test indexing a plain
  * object would pass against a shape the evaluator cannot reach. That is not hypothetical: this was
  * a `Proxy` first, every assertion here passed, and the panel showed nothing at all.
  */
-function extractionOf(store: { extractionFor: () => unknown }, collection: string): ExtractionView {
-  const byId = store.extractionFor() as { get: (key: string) => ExtractionView };
+function interpretationOf(store: { interpretationFor: () => unknown }, collection: string): InterpretationView {
+  const byId = store.interpretationFor() as { get: (key: string) => InterpretationView };
   return byId.get(collection);
 }
 
-interface ExtractionView {
+interface InterpretationView {
   targets: TargetView[];
   canChoose: boolean;
-  canExtract: boolean;
+  canInterpret: boolean;
 }
 
 interface TargetView {
@@ -410,11 +410,11 @@ describe('continuing a call', () => {
     The call module says the record was picked back up — `continued` on the activity it already
     publishes the record in — and that is the whole of what this needs. It used to be told by a
     `resume` action the transcript panel's Continue button chained after `continueCall`, which the
-    rail's path into the same call could not do, so Extract sat disabled on one path and not the
+    rail's path into the same call could not do, so Interpret sat disabled on one path and not the
     other until somebody spoke.
   */
   const continued = peer(ME, { type: 'call', id: 'call:the-old-record', record: 'the-old-record', continued: true });
-  /** Enough of the host's half for `canExtract` to be answerable: a model, and something to look for. */
+  /** Enough of the host's half for `canInterpret` to be answerable: a model, and something to look for. */
   const interpretation = { available: () => true, targets: () => [{ entity: 'TaskBlock', selected: true }] };
 
   it('adopts the record before anybody has spoken', () => {
@@ -423,7 +423,7 @@ describe('continuing a call', () => {
     expect(h.store.collectionId()).toBe('the-old-record');
     // The point of adopting early: the record already holds a transcript, so a pass over it is
     // worth offering from the first second rather than after this agent's first utterance.
-    expect(liveExtraction(h.store).canExtract).toBe(true);
+    expect(liveInterpretation(h.store).canInterpret).toBe(true);
   });
 
   it('writes into the record it picked up rather than creating one', async () => {
@@ -457,7 +457,7 @@ describe('continuing a call', () => {
     const h = harness([peer(ME, { type: 'call', id: CALL, record: RECORD })], { interpretation });
 
     expect(h.store.collectionId()).toBeNull();
-    expect(liveExtraction(h.store).canExtract).toBe(false);
+    expect(liveInterpretation(h.store).canInterpret).toBe(false);
   });
 });
 
@@ -939,7 +939,7 @@ describe('a backend that cannot transcribe', () => {
  * collection gets read, whether the last sentence made it in, and whether a slow pass leaves the
  * button looking dead. Each of those fails quietly.
  */
-describe('extraction', () => {
+describe('interpretation', () => {
   let inCall: Peer[];
 
   beforeEach(() => {
@@ -1060,12 +1060,12 @@ describe('extraction', () => {
       // Registered against a real collection rather than an empty string — a watch over nothing
       // would sit there interpreting a transcript that does not exist.
       expect(i.watches[0]).toBeTruthy();
-      // The same collection the one-shot path would read: `canExtract` gates on there being one,
+      // The same collection the one-shot path would read: `canInterpret` gates on there being one,
       // and both go through `collectionId`.
-      expect(liveExtraction(h.store).canExtract).toBe(true);
+      expect(liveInterpretation(h.store).canInterpret).toBe(true);
     });
 
-    it('registers the watch when automatic extraction is switched back on', async () => {
+    it('registers the watch when automatic interpretation is switched back on', async () => {
       /*
         The reported bug: "Automatic extraction is off for this call. Press Extract instead." stayed
         on screen whatever the switch said, once it had been toggled. The effect re-ran on the
@@ -1217,7 +1217,7 @@ describe('extraction', () => {
 
     it('survives a backend that cannot hold one', async () => {
       // Every runtime without the auto-processor throws here, and a call is not worth interrupting
-      // over a capability the Extract button already covers.
+      // over a capability the Interpret button already covers.
       const i = interpreter();
       i.port.watchCollection = async () => {
         throw new Error('no auto-processor here');
@@ -1229,14 +1229,14 @@ describe('extraction', () => {
     });
   });
 
-  it('offers nothing to extract before anybody has spoken', () => {
+  it('offers nothing to interpret before anybody has spoken', () => {
     // There is no collection until the first utterance, so there is nothing to read back. Offering
     // the button here would spend an LLM call on an empty transcript.
     const i = interpreter();
     const h = harness(inCall, { interpretation: i.port });
 
-    expect(liveExtraction(h.store).canExtract).toBe(false);
-    expect(h.store.extractable()).toBe(true);
+    expect(liveInterpretation(h.store).canInterpret).toBe(false);
+    expect(h.store.interpretable()).toBe(true);
   });
 
   it('offers nothing when the node has no model, however much was said', async () => {
@@ -1244,10 +1244,10 @@ describe('extraction', () => {
     const h = harness(inCall, { interpretation: i.port });
     await h.say('hello');
 
-    expect(liveExtraction(h.store).canExtract).toBe(false);
+    expect(liveInterpretation(h.store).canInterpret).toBe(false);
     // Distinguishable from the case above, because the two need different sentences: one is "say
     // something first", the other is "this node cannot do that at all".
-    expect(h.store.extractable()).toBe(false);
+    expect(h.store.interpretable()).toBe(false);
   });
 
   it('reads back the collection this call is writing into', async () => {
@@ -1255,7 +1255,7 @@ describe('extraction', () => {
     const h = harness(inCall, { interpretation: i.port });
     await h.say('James will ship the docs on Friday');
 
-    await h.store.extract();
+    await h.store.interpret();
 
     expect(i.calls).toEqual([RECORD]);
   });
@@ -1278,7 +1278,7 @@ describe('extraction', () => {
       // WE's own naming and would read as jargon on a row of toggles beside a community's own
       // model, so it is dropped: "Task", "Event", "Sighting".
       await h.say('we should ship the docs on friday');
-      expect(liveExtraction(h.store).targets).toEqual([
+      expect(liveInterpretation(h.store).targets).toEqual([
         { entity: 'EventBlock', label: 'Event', selected: true },
         { entity: 'Sighting', label: 'Sighting', selected: true },
         { entity: 'TaskBlock', label: 'Task', selected: true },
@@ -1292,31 +1292,31 @@ describe('extraction', () => {
       press asks for — one list, both consumers. A per-agent narrowing would have peers overwriting
       each other's registration in a loop, which is why the module holds no selection of its own.
     */
-    it('changes what the call extracts, for the press and the watch alike', async () => {
+    it('changes what the call interprets, for the press and the watch alike', async () => {
       const i = interpreter(undefined, true, ['EventBlock', 'Sighting', 'TaskBlock']);
       const h = harness(inCall, { interpretation: i.port });
       await h.say('a heron on the river this morning');
       const collection = h.store.liveCollectionId();
 
-      await h.store.toggleExtractionTarget('TaskBlock');
+      await h.store.toggleInterpretationTarget('TaskBlock');
 
       expect(
-        liveExtraction(h.store)
+        liveInterpretation(h.store)
           .targets.filter((t) => t.selected)
           .map((t) => t.entity),
       ).toEqual(['EventBlock', 'Sighting']);
       expect(i.watchTargetsOf(collection)).toEqual(['EventBlock', 'Sighting']);
     });
 
-    it('will not run a pass with nothing selected, and says so through canExtract', async () => {
+    it('will not run a pass with nothing selected, and says so through canInterpret', async () => {
       const i = interpreter(undefined, true, ['TaskBlock']);
       const h = harness(inCall, { interpretation: i.port });
       await h.say('we should ship the docs on friday');
-      expect(liveExtraction(h.store).canExtract).toBe(true);
+      expect(liveInterpretation(h.store).canInterpret).toBe(true);
 
-      await h.store.toggleExtractionTarget('TaskBlock');
+      await h.store.toggleInterpretationTarget('TaskBlock');
 
-      expect(liveExtraction(h.store).canExtract).toBe(false);
+      expect(liveInterpretation(h.store).canInterpret).toBe(false);
     });
 
     it('has nothing to offer, and no watch to run, in a space that marks no models', async () => {
@@ -1324,14 +1324,14 @@ describe('extraction', () => {
       const h = harness(inCall, { interpretation: i.port });
       await h.say('we should ship the docs on friday');
 
-      expect(liveExtraction(h.store).targets).toEqual([]);
-      expect(liveExtraction(h.store).canExtract).toBe(false);
+      expect(liveInterpretation(h.store).targets).toEqual([]);
+      expect(liveInterpretation(h.store).canInterpret).toBe(false);
       // Registering a watch with an empty class list is refused by the executor, and the reason is
       // one a person can act on — so it is said rather than attempted. Said *once*, out loud: it
       // used to be a permanent sentence under the controls describing what the chips already show.
       expect(i.watches).toEqual([]);
       expect(h.store.watchProblem()).toBe('');
-      expect(h.notified).toEqual([{ tone: 'warning', message: 'No models selected for extraction' }]);
+      expect(h.notified).toEqual([{ tone: 'warning', message: 'No models selected for interpretation' }]);
     });
 
     /*
@@ -1361,7 +1361,7 @@ describe('extraction', () => {
       await h.say('we should ship the docs on friday');
       const collection = h.store.liveCollectionId();
 
-      await h.store.toggleExtractionTarget('EventBlock');
+      await h.store.toggleInterpretationTarget('EventBlock');
       await h.settle();
 
       // Removed first, then registered again — a plain re-register would union the old list back in.
@@ -1399,7 +1399,7 @@ describe('extraction', () => {
     await h.say('first');
 
     h.store.receiveText('and one more thing');
-    await h.store.extract();
+    await h.store.interpret();
 
     const texts = h.created.filter((c) => c.entity === 'TextBlock').map((c) => c.fields.text);
     expect(texts).toContain('and one more thing');
@@ -1410,10 +1410,10 @@ describe('extraction', () => {
     const h = harness(inCall, { interpretation: i.port });
     await h.say('hello');
 
-    await h.store.extract();
+    await h.store.interpret();
 
-    expect(h.store.extractStatus()).toBe('done');
-    expect(h.store.extractCount()).toBe(2);
+    expect(h.store.interpretStatus()).toBe('done');
+    expect(h.store.interpretCount()).toBe(2);
   });
 
   it('surfaces a failed pass rather than swallowing it', async () => {
@@ -1421,10 +1421,10 @@ describe('extraction', () => {
     const h = harness(inCall, { interpretation: i.port });
     await h.say('hello');
 
-    await h.store.extract();
+    await h.store.interpret();
 
-    expect(h.store.extractStatus()).toBe('error');
-    expect(h.store.extractError()).toBe('no LLM configured');
+    expect(h.store.interpretStatus()).toBe('error');
+    expect(h.store.interpretError()).toBe('no LLM configured');
   });
 
   it('does not start a second pass over the first', async () => {
@@ -1434,7 +1434,7 @@ describe('extraction', () => {
     const h = harness(inCall, { interpretation: i.port });
     await h.say('hello');
 
-    await Promise.all([h.store.extract(), h.store.extract()]);
+    await Promise.all([h.store.interpret(), h.store.interpret()]);
 
     expect(i.calls).toHaveLength(1);
   });
@@ -1443,9 +1443,9 @@ describe('extraction', () => {
     const h = harness(inCall);
     await h.say('hello');
 
-    await h.store.extract();
+    await h.store.interpret();
 
-    expect(h.store.extractStatus()).toBe('idle');
+    expect(h.store.interpretStatus()).toBe('idle');
   });
 });
 
@@ -1507,7 +1507,7 @@ describe('staged suggestions', () => {
     });
     await h.say('hello');
 
-    await h.store.extract();
+    await h.store.interpret();
 
     expect(asked).toBe(0);
     expect(h.store.proposals()).toEqual([]);
@@ -1518,7 +1518,7 @@ describe('staged suggestions', () => {
     const h = harness(inCall, { interpretation: i.port });
     await h.say('hello');
 
-    await h.store.extract();
+    await h.store.interpret();
 
     expect(h.store.proposals()).toHaveLength(1);
     expect(h.store.proposals()[0].summary).toBe('title: Ship the docs');
@@ -1549,10 +1549,10 @@ describe('staged suggestions', () => {
     });
     await h.say('hello');
 
-    await h.store.extract();
+    await h.store.interpret();
     // And a finished call extracted from the calls list asks about *that* one — reviewing what it
     // found is the whole point of being able to extract it.
-    await h.store.extractCollection('older-call');
+    await h.store.interpretCollection('older-call');
 
     expect(scopes).toEqual([RECORD, 'older-call']);
   });
@@ -1564,7 +1564,7 @@ describe('staged suggestions', () => {
     const h = harness(inCall, { interpretation: i.port });
     await h.say('hello');
 
-    await h.store.extract();
+    await h.store.interpret();
 
     expect(h.store.proposals()[0].summary).toBe('title: Ship the docs · priority: high');
   });
@@ -1578,7 +1578,7 @@ describe('staged suggestions', () => {
     ]);
     const h = harness(inCall, { interpretation: i.port });
     await h.say('hello');
-    await h.store.extract();
+    await h.store.interpret();
 
     await h.store.acceptProposal('task-1');
 
@@ -1590,7 +1590,7 @@ describe('staged suggestions', () => {
     const i = interpreterWith([{ id: 'task-1', kind: 'create', values: { title: 'One' } }]);
     const h = harness(inCall, { interpretation: i.port });
     await h.say('hello');
-    await h.store.extract();
+    await h.store.interpret();
 
     await h.store.rejectProposal('task-1');
 
@@ -1630,7 +1630,7 @@ describe('staged suggestions', () => {
         records: { remove: async (_entity: string, id: string) => void removed.push(id) },
       });
       await h.say('hello');
-      await h.store.extract();
+      await h.store.interpret();
       return { i, h, removed };
     }
 
@@ -1694,7 +1694,7 @@ describe('staged suggestions', () => {
     });
   });
 
-  it('keeps a successful extraction successful when the review list cannot be read', async () => {
+  it('keeps a successful interpretation successful when the review list cannot be read', async () => {
     // The pass already wrote its records. Reporting an error because a follow-up read failed would
     // be a lie about what happened, and would hide a result the user can see in the graph.
     const h = harness(inCall, {
@@ -1710,9 +1710,9 @@ describe('staged suggestions', () => {
     });
     await h.say('hello');
 
-    await h.store.extract();
+    await h.store.interpret();
 
-    expect(h.store.extractStatus()).toBe('done');
+    expect(h.store.interpretStatus()).toBe('done');
     expect(h.store.proposals()).toEqual([]);
   });
 
@@ -1721,7 +1721,7 @@ describe('staged suggestions', () => {
     const h = harness(inCall, { interpretation: i.port });
     await h.say('hello');
 
-    await h.store.extract();
+    await h.store.interpret();
 
     expect(h.store.proposals()[0].entity).toBe('TaskBlock');
   });
@@ -1736,7 +1736,7 @@ describe('staged suggestions', () => {
     const h = harness(inCall, { interpretation: i.port });
     await h.say('hello');
 
-    await h.store.extract();
+    await h.store.interpret();
 
     expect(h.store.proposals()[0].entity).toBe('');
     expect(h.store.proposals()[0].summary).toBe('title: One');
@@ -1751,7 +1751,7 @@ describe('staged suggestions', () => {
     const h = harness(inCall, { interpretation: i.port });
     await h.say('hello');
 
-    await h.store.extract();
+    await h.store.interpret();
 
     expect(h.store.proposals()[0].fields).toEqual([
       { name: 'title', label: 'Title', value: 'One' },
@@ -1785,7 +1785,7 @@ describe('staged suggestions', () => {
       },
     });
     await h.say('hello');
-    await h.store.extract();
+    await h.store.interpret();
 
     h.store.editProposal('task-1');
     h.store.setProposalField('title', 'Ship the docs');
@@ -1804,7 +1804,7 @@ describe('staged suggestions', () => {
     ]);
     const h = harness(inCall, { interpretation: i.port, records: { update: async () => void wrote++ } });
     await h.say('hello');
-    await h.store.extract();
+    await h.store.interpret();
 
     h.store.editProposal('task-1');
     await h.store.acceptProposal('task-1');
@@ -1825,7 +1825,7 @@ describe('staged suggestions', () => {
       },
     });
     await h.say('hello');
-    await h.store.extract();
+    await h.store.interpret();
 
     h.store.editProposal('task-1');
     h.store.setProposalField('title', 'Two');
@@ -1840,7 +1840,7 @@ describe('staged suggestions', () => {
     const i = interpreterWith([{ id: 'task-1', kind: 'create', entity: 'TaskBlock', values: { title: 'One' } }]);
     const h = harness(inCall, { interpretation: i.port, records: { update: async () => {} } });
     await h.say('hello');
-    await h.store.extract();
+    await h.store.interpret();
 
     h.store.editProposal('task-1');
     h.store.setProposalField('title', 'Two');
@@ -1864,7 +1864,7 @@ describe('staged suggestions', () => {
     const i = interpreterWith([{ id: 'task-1', kind: 'create', entity: 'TaskBlock', values: { title: 'One' } }]);
     const h = harness(inCall, { interpretation: i.port });
 
-    // No extract(), no words said — exactly the state a restart leaves the store in.
+    // No interpret(), no words said — exactly the state a restart leaves the store in.
     const byId = h.store.proposalsFor() as { get: (key: string) => unknown[] };
     expect(byId.get('call-1')).toEqual([]);
     await Promise.resolve();
@@ -1918,7 +1918,7 @@ describe('staged suggestions', () => {
   it('asks about no call at all rather than about every call at once', async () => {
     /*
       An empty key used to mean "everything staged in the dataset". The port offers that and it is
-      the honest answer for a surface genuinely about a dataset — but the extraction panel is about a
+      the honest answer for a surface genuinely about a dataset — but the interpretation panel is about a
       conversation, so outside a call it listed every suggestion the space had ever accumulated, in
       one list, with no way to tell which came from where or to act on one from where the reader was.
     */
@@ -1977,7 +1977,7 @@ describe('staged suggestions', () => {
     const i = interpreterWith([{ id: 'task-1', kind: 'create', entity: 'TaskBlock', values: { title: 'One' } }]);
     const h = harness(inCall, { interpretation: i.port });
     await h.say('hello');
-    await h.store.extract();
+    await h.store.interpret();
     expect(h.store.pendingIds()).toEqual(['task-1']);
 
     await h.store.rejectProposal('task-1');
@@ -1994,7 +1994,7 @@ describe('staged suggestions', () => {
     ]);
     const h = harness(inCall, { interpretation: i.port });
     await h.say('hello');
-    await h.store.extract();
+    await h.store.interpret();
 
     expect(h.store.unconfirmedIds()).toEqual(['task-new']);
     expect(h.store.changedIds()).toEqual(['task-old']);
@@ -2029,7 +2029,7 @@ describe('staged suggestions', () => {
     };
     const h = harness(inCall, { interpretation: port });
     await h.say('hello');
-    await h.store.extract();
+    await h.store.interpret();
     h.store.changedIds();
     await h.settle();
 
@@ -2085,7 +2085,7 @@ describe('staged suggestions', () => {
     const i = interpreterWith([{ id: 'task-1', kind: 'create', entity: 'TaskBlock', values: { title: 'One' } }]);
     const h = harness(inCall, { interpretation: i.port });
     await h.say('hello');
-    await h.store.extract();
+    await h.store.interpret();
 
     expect(h.store.pendingProposals().map((p) => p.id)).toEqual(['task-1']);
     expect(h.store.pendingProposals()[0].summary).toBe('title: One');
@@ -2157,7 +2157,7 @@ describe('staged suggestions', () => {
       const i = interpreterWith([change]);
       const h = withRecord(i);
       await h.say('hello');
-      await h.store.extract();
+      await h.store.interpret();
 
       await h.store.applyChange('task-1', 'status');
 
@@ -2176,7 +2176,7 @@ describe('staged suggestions', () => {
       const i = interpreterWith([change]);
       const h = withRecord(i);
       await h.say('hello');
-      await h.store.extract();
+      await h.store.interpret();
 
       await h.store.applyChange('task-1', 'status');
 
@@ -2235,7 +2235,7 @@ describe('staged suggestions', () => {
       const i = interpreterWith([change]);
       const h = withRecord(i);
       await h.say('hello');
-      await h.store.extract();
+      await h.store.interpret();
 
       await h.store.applyChange('task-1', 'title');
 
@@ -2248,7 +2248,7 @@ describe('staged suggestions', () => {
       const i = interpreterWith([change]);
       const h = withRecord(i);
       await h.say('hello');
-      await h.store.extract();
+      await h.store.interpret();
 
       await h.store.acceptProposal('task-1');
 
@@ -2261,7 +2261,7 @@ describe('staged suggestions', () => {
       const i = interpreterWith([{ id: 'task-2', kind: 'create', entity: 'TaskBlock', values: { title: 'One' } }]);
       const h = withRecord(i);
       await h.say('hello');
-      await h.store.extract();
+      await h.store.interpret();
 
       await h.store.acceptProposal('task-2');
 
@@ -2284,7 +2284,7 @@ describe('staged suggestions', () => {
         },
       });
       await h.say('hello');
-      await h.store.extract();
+      await h.store.interpret();
 
       await h.store.applyChange('task-1', 'status');
 
@@ -2300,7 +2300,7 @@ describe('staged suggestions', () => {
  * The reachable path, and the one the calls list uses. Everything here is about *which* collection a
  * pass runs on — the failure mode is silent, because extracting the wrong call still succeeds.
  */
-describe('extracting by id', () => {
+describe('interpreting by id', () => {
   let inCall: Peer[];
 
   beforeEach(() => {
@@ -2329,19 +2329,19 @@ describe('extracting by id', () => {
     const i = interpreter();
     const h = harness([], { interpretation: i.port });
 
-    await h.store.extractCollection('someone-elses-call');
+    await h.store.interpretCollection('someone-elses-call');
 
     expect(i.calls).toEqual(['someone-elses-call']);
   });
 
   it('does not flush the live buffer into a different call', async () => {
-    // Pressing Extract on this morning's call must not push a word said just now into it.
+    // Pressing Interpret on this morning's call must not push a word said just now into it.
     const i = interpreter();
     const h = harness(inCall, { interpretation: i.port });
     await h.say('hello');
 
     h.store.receiveText('said during a later call');
-    await h.store.extractCollection('an-older-call');
+    await h.store.interpretCollection('an-older-call');
 
     const texts = h.created.filter((c) => c.entity === 'TextBlock').map((c) => c.fields.text);
     expect(texts).not.toContain('said during a later call');
@@ -2353,7 +2353,7 @@ describe('extracting by id', () => {
     await h.say('hello');
 
     h.store.receiveText('and one more thing');
-    await h.store.extractCollection(RECORD);
+    await h.store.interpretCollection(RECORD);
 
     const texts = h.created.filter((c) => c.entity === 'TextBlock').map((c) => c.fields.text);
     expect(texts).toContain('and one more thing');
@@ -2363,18 +2363,18 @@ describe('extracting by id', () => {
     const i = interpreter();
     const h = harness([], { interpretation: i.port });
 
-    await h.store.extractCollection('call-7');
+    await h.store.interpretCollection('call-7');
 
-    expect(h.store.extractedId()).toBe('call-7');
+    expect(h.store.interpretedId()).toBe('call-7');
     // Cleared when the pass ends — it marks what is in flight, not what was done.
-    expect(h.store.extractingId()).toBe('');
+    expect(h.store.interpretingId()).toBe('');
   });
 
   it('refuses a second pass while one is running, whichever call it names', async () => {
     const i = interpreter();
     const h = harness([], { interpretation: i.port });
 
-    await Promise.all([h.store.extractCollection('call-a'), h.store.extractCollection('call-b')]);
+    await Promise.all([h.store.interpretCollection('call-a'), h.store.interpretCollection('call-b')]);
 
     expect(i.calls).toEqual(['call-a']);
   });
@@ -2447,7 +2447,7 @@ describe('what is shown while an utterance is being written', () => {
  * selected, and every press hit a guard that returned without a word. Which is exactly when somebody
  * wants to choose — before the conversation, not after it.
  */
-describe('what a call extracts, before anybody has spoken', () => {
+describe('what a call interprets, before anybody has spoken', () => {
   const targets = [
     { entity: 'TaskBlock', selected: true },
     { entity: 'EventBlock', selected: false },
@@ -2470,10 +2470,10 @@ describe('what a call extracts, before anybody has spoken', () => {
   it('records a choice against the call’s own record, with no transcript yet', async () => {
     const { h, set } = withInterpretation([peer(ME, { type: 'call', id: CALL, record: RECORD })]);
 
-    expect(liveExtraction(h.store).canChoose).toBe(true);
-    expect(liveExtraction(h.store).targets).toHaveLength(2);
+    expect(liveInterpretation(h.store).canChoose).toBe(true);
+    expect(liveInterpretation(h.store).targets).toHaveLength(2);
 
-    await h.store.toggleExtractionTarget('EventBlock');
+    await h.store.toggleInterpretationTarget('EventBlock');
 
     // The call's record, which presence has carried since the call started — not the collection the
     // transcriber has not adopted yet.
@@ -2482,23 +2482,23 @@ describe('what a call extracts, before anybody has spoken', () => {
 
   it('answers about the call it is asked about, not the one this agent is in', async () => {
     /*
-      The gap that made the workshop's own extraction panel wrong in two directions at once.
+      The gap that made the workshop's own interpretation panel wrong in two directions at once.
 
       It asked these three about the *live* call while drawing the results of the one in the address,
       so the chips said what one call was looking for above a list of what a different call had
-      found — and its Extract button was hidden by a `canExtract` about the wrong record, even though
+      found — and its Interpret button was hidden by a `canInterpret` about the wrong record, even though
       the action behind it takes an id and would have worked.
     */
     const { h, set } = withInterpretation([peer(ME, { type: 'call', id: CALL, record: RECORD })]);
     const past = 'we://a-call-from-last-month';
 
-    expect(extractionOf(h.store, past).canChoose).toBe(true);
+    expect(interpretationOf(h.store, past).canChoose).toBe(true);
     // A record somebody named is one they had, so it exists and has been spoken into — unlike the
     // live call's own, which is written before anybody says anything.
-    expect(extractionOf(h.store, past).canExtract).toBe(true);
-    expect(liveExtraction(h.store).canExtract).toBe(false);
+    expect(interpretationOf(h.store, past).canInterpret).toBe(true);
+    expect(liveInterpretation(h.store).canInterpret).toBe(false);
 
-    await h.store.toggleExtractionTarget('EventBlock', past);
+    await h.store.toggleInterpretationTarget('EventBlock', past);
 
     expect(set).toEqual([{ collection: past, entity: 'EventBlock', on: true }]);
   });
@@ -2512,8 +2512,8 @@ describe('what a call extracts, before anybody has spoken', () => {
     */
     const { h } = withInterpretation([]);
 
-    expect(liveExtraction(h.store).canChoose).toBe(false);
-    expect(liveExtraction(h.store).targets).toEqual([]);
+    expect(liveInterpretation(h.store).canChoose).toBe(false);
+    expect(liveInterpretation(h.store).targets).toEqual([]);
   });
 
   it('says it cannot on a host that has no way to store one', async () => {
@@ -2521,10 +2521,10 @@ describe('what a call extracts, before anybody has spoken', () => {
       interpretation: { available: () => true, targets: () => targets },
     });
 
-    expect(liveExtraction(h.store).canChoose).toBe(false);
+    expect(liveInterpretation(h.store).canChoose).toBe(false);
     // And the action stays safe to call: a surface that offers it anyway does nothing, rather than
     // throwing on a missing method.
-    await expect(h.store.toggleExtractionTarget('EventBlock')).resolves.toBeUndefined();
+    await expect(h.store.toggleInterpretationTarget('EventBlock')).resolves.toBeUndefined();
   });
 });
 
@@ -2583,7 +2583,7 @@ describe('stopping a recording', () => {
  * finding whoever owns the space — or leaving the call. This is the same layer the target chips
  * write at: a group decision beside the call, leaving the community's default alone.
  */
-describe('turning automatic extraction off for one call', () => {
+describe('turning automatic interpretation off for one call', () => {
   function withAuto(peers: Peer[], auto: Record<string, boolean>) {
     const set: { collection: string; on: boolean }[] = [];
     const h = harness(peers, {
@@ -2604,7 +2604,7 @@ describe('turning automatic extraction off for one call', () => {
     // spoken — which is when somebody deciding not to record a conversation would say so.
     const { h } = withAuto([peer(ME, { type: 'call', id: CALL, record: RECORD })], { [RECORD]: false });
 
-    expect(h.store.autoExtract()).toBe(false);
+    expect(h.store.autoInterpret()).toBe(false);
   });
 
   it('shows what it makes when switched on, and leaves the panel alone when switched off', async () => {
@@ -2614,13 +2614,13 @@ describe('turning automatic extraction off for one call', () => {
       reading, so closing the panel is the reader's decision rather than a consequence.
     */
     const { h } = withAuto([peer(ME, { type: 'call', id: CALL, record: RECORD })], { [RECORD]: false });
-    expect(h.store.extractionOpen()).toBe(false);
+    expect(h.store.interpretationOpen()).toBe(false);
 
-    await h.store.toggleAutoExtract();
-    expect(h.store.extractionOpen()).toBe(true);
+    await h.store.toggleAutoInterpret();
+    expect(h.store.interpretationOpen()).toBe(true);
 
-    await h.store.toggleAutoExtract();
-    expect(h.store.extractionOpen()).toBe(true);
+    await h.store.toggleAutoInterpret();
+    expect(h.store.interpretationOpen()).toBe(true);
   });
 
   it('leaves the panel shut when a pass starts, whoever started it', async () => {
@@ -2633,29 +2633,29 @@ describe('turning automatic extraction off for one call', () => {
     const h = harness([peer(ME, { type: 'call', id: CALL, record: RECORD })], {
       interpretation: { available: () => true, activity: () => activity },
     });
-    expect(h.store.extractionOpen()).toBe(false);
+    expect(h.store.interpretationOpen()).toBe(false);
 
     activity = [{ id: 'pass-1', running: true }];
     await h.settle();
 
-    expect(h.store.extractionOpen()).toBe(false);
+    expect(h.store.interpretationOpen()).toBe(false);
   });
 
   it('writes the decision against that call', async () => {
     const { h, set } = withAuto([peer(ME, { type: 'call', id: CALL, record: RECORD })], { [RECORD]: true });
 
-    await h.store.toggleAutoExtract();
+    await h.store.toggleAutoInterpret();
 
     expect(set).toEqual([{ collection: RECORD, on: false }]);
-    expect(h.store.autoExtract()).toBe(false);
+    expect(h.store.autoInterpret()).toBe(false);
   });
 
   it('does nothing where there is no call to record it against', async () => {
-    // The same quiet refusal `toggleExtractionTarget` makes, and the same surface answers for both:
+    // The same quiet refusal `toggleInterpretationTarget` makes, and the same surface answers for both:
     // `canChooseTargets` is about the same record.
     const { h, set } = withAuto([], {});
 
-    await h.store.toggleAutoExtract();
+    await h.store.toggleAutoInterpret();
 
     expect(set).toEqual([]);
   });

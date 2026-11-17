@@ -617,7 +617,7 @@ export interface ShellStore {
    *
    * Real methods taking an id, rather than the per-panel keys the dock entries used to name. The
    * keys still answer `edge`/`size`/`float`, which the shell reads in TypeScript — but a close
-   * button is a schema `$invoke`, and `shellStore.close:extraction` names nothing on this store, so
+   * button is a schema `$invoke`, and `shellStore.close:interpretation` names nothing on this store, so
    * the button rendered and did nothing but log. See `closeAction` in `dockRegistry.ts`.
    *
    * Reachable by a template as well, which is the other half: a panel with a close button and no
@@ -1979,7 +1979,7 @@ export function ShellStoreProvider(props: ParentProps) {
    * `panelSupplied` learned to read `dock` and this did not, so it went on looking for
    * `<module>:0` — an id nothing has any more. The declarations still resolved to nothing, silently,
    * and every panel a template had placed fell back to the module's own opening bid. The workshop's
-   * transcript and extraction moved from the left edge to the right and nothing said why.
+   * transcript and interpretation moved from the left edge to the right and nothing said why.
    */
   const dockIdFor = (panel: TemplatePanel): string | null => {
     if (!panel.module) return templatePanelDockId(panel.id);
@@ -2149,7 +2149,7 @@ export function ShellStoreProvider(props: ParentProps) {
    *
    * The horizontal edges are whatever the modules say they are holding there. It was the constant
    * `TOP_CHROME_PX`, sized for the call bar alone, and the call bar stopped being alone: the
-   * transcribe module contributes an extraction status panel into the same fixed column, so the
+   * transcribe module contributes an interpretation status panel into the same fixed column, so the
    * band a panel had to clear grew and the number describing it did not. A panel snapped to that
    * corner landed under it.
    *
@@ -3146,7 +3146,7 @@ export function ShellStoreProvider(props: ParentProps) {
             Those three are read in TypeScript, through `readDockKey`, which resolves against
             `hostDockStores` — where these keys live. The close button is not: it is rendered into the
             titlebar as a schema `$invoke` against `storeRef`, and the renderer resolves `shellStore`
-            to this store's real surface, where `close:extraction` is not a member. It rendered, took
+            to this store's real surface, where `close:interpretation` is not a member. It rendered, took
             the click, and logged. See `closeAction` in `dockRegistry.ts`.
           */
           closeAction: { $invoke: 'shellStore.closeTemplatePanel', args: [panel.id] },

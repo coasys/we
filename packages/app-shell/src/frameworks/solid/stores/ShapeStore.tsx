@@ -23,7 +23,7 @@
 import { hostSlot } from '@shared/hostSlot';
 import {
   type EntityManifest,
-  extractableEntities,
+  interpretableEntities,
   manifestEntries,
   namePropertyOf,
   type ShapeInput,
@@ -51,8 +51,8 @@ import {
   generateShapeDraft as runShapeGeneration,
   type ShapeGenerationTransport,
 } from '../../../shared/ai/shapeGeneration';
-import { foreignExtractionCandidates } from '../../../shared/shapes/extractionCandidates';
 import { hintToDisplay } from '../../../shared/shapes/hintEditor';
+import { foreignInterpretationCandidates } from '../../../shared/shapes/interpretationCandidates';
 import {
   additiveViolations,
   authoredFields,
@@ -190,11 +190,11 @@ export interface ShapeStore {
    * extractable, plus every adopted shape that does.
    *
    * Candidacy, not a decision. Which of these a call actually looks for is two layers down: the
-   * space names its defaults (`spaceStore.extractionTargets`) and a call may add or remove for
+   * space names its defaults (`spaceStore.interpretationTargets`) and a call may add or remove for
    * itself. Read this to offer a choice, and to *display* findings — a card should show a record
    * somebody extracted an hour ago even if the target has since been switched off.
    */
-  extractionCandidates: Accessor<string[]>;
+  interpretationCandidates: Accessor<string[]>;
   /** Options for the relationship target picker — `{ label, value }`, grouped and labelled. */
   relationshipTargets: Accessor<RelationshipTargetOption[]>;
   /**
@@ -234,7 +234,7 @@ export interface ShapeStore {
    * arrives already marked extractable — copied, forked, synced from a peer — becomes a *candidate*
    * this space can switch on, not a target that starts writing into it unasked.
    */
-  provideExtractionEnroller: (enrol: (entity: string) => Promise<void>) => () => void;
+  provideInterpretationEnroller: (enrol: (entity: string) => Promise<void>) => () => void;
 
   // Actions — wizard
   /** Open the wizard: empty for a new model, or pre-filled from a stored shape's definition. */
@@ -256,7 +256,7 @@ export interface ShapeStore {
    * Whether an AI extraction pass may write instances of the open draft — its own action rather
    * than a `setShapeField` case because the value is a boolean and the field takes strings.
    */
-  setExtractable: (on: boolean) => void;
+  setInterpretable: (on: boolean) => void;
   /**
    * The open draft would be extracted into, and has no field to recognise what it already wrote.
    *
@@ -264,7 +264,7 @@ export interface ShapeStore {
    * duplicates everything on every pass — so this is a warning beside the switch, and the wizard
    * saves either way.
    */
-  extractionNeedsIdentity: Accessor<boolean>;
+  interpretationNeedsIdentity: Accessor<boolean>;
   addProperty: () => void;
   addRelationship: () => void;
   removeMember: (rowId: string) => void;
@@ -438,9 +438,9 @@ export function ShapeStoreProvider(props: ParentProps) {
 
   /*
     Filled in by SpaceStore, which owns the `Space` record and mounts below this store — see
-    `provideExtractionEnroller`. Unset until it does, and a save before then simply does not enrol.
+    `provideInterpretationEnroller`. Unset until it does, and a save before then simply does not enrol.
   */
-  const extractionEnroller = hostSlot<(entity: string) => Promise<void>>();
+  const interpretationEnroller = hostSlot<(entity: string) => Promise<void>>();
 
   const schemas = () => session.backendPorts()?.schemas;
   const handle = () => datasetStore.currentDataset()?.handle;
@@ -465,7 +465,7 @@ export function ShapeStoreProvider(props: ParentProps) {
   ]);
 
   /** Core vocabulary that declares itself extractable — `TaskBlock`, `EventBlock` and `Relationship` today. */
-  const coreExtractionTargets = extractableEntities(CORE_MANIFEST);
+  const coreInterpretationTargets = interpretableEntities(CORE_MANIFEST);
 
   /*
     What could be extracted in this space: core vocabulary plus the shapes this community adopted.
@@ -481,11 +481,11 @@ export function ShapeStoreProvider(props: ParentProps) {
   */
   /*
     Then the classes the space already had: every SHACL class WE did not write, apart from WE's own
-    plumbing, those carrying an interpretation hint first — see `foreignExtractionCandidates`. Last,
+    plumbing, those carrying an interpretation hint first — see `foreignInterpretationCandidates`. Last,
     so WE's own read first.
   */
   const foreignCandidates = createMemo(() =>
-    foreignExtractionCandidates(datasetStore.currentDatasetEntities(), {
+    foreignInterpretationCandidates(datasetStore.currentDatasetEntities(), {
       taken: [...Object.keys(CORE_MANIFEST.entities), ...getRegisteredEntityNames()],
       adopted: spaceShapes().map((shape) => shape.name),
     }),
@@ -499,10 +499,10 @@ export function ShapeStoreProvider(props: ParentProps) {
       );
   });
 
-  const extractionCandidates = createMemo<string[]>(() => {
+  const interpretationCandidates = createMemo<string[]>(() => {
     const names = [
-      ...coreExtractionTargets,
-      ...spaceShapes().flatMap((shape) => (shape.manifest ? extractableEntities(shape.manifest) : [])),
+      ...coreInterpretationTargets,
+      ...spaceShapes().flatMap((shape) => (shape.manifest ? interpretableEntities(shape.manifest) : [])),
       ...foreignCandidates().offered,
     ];
     return [...new Set(names)];
@@ -515,7 +515,7 @@ export function ShapeStoreProvider(props: ParentProps) {
     the provider tree, so it cannot read a shape. The accessor rather than the value, so it follows
     a community defining a model without anything re-registering.
   */
-  onCleanup(datasetStore.provideExtractionCandidates(extractionCandidates));
+  onCleanup(datasetStore.provideInterpretationCandidates(interpretationCandidates));
 
   /**
    * What a relationship may point at here, grouped by where it comes from and labelled for the
@@ -856,12 +856,12 @@ export function ShapeStoreProvider(props: ParentProps) {
     if (draft) setShapeDraft({ ...draft, nameMember: rowId === 'none' ? '' : rowId });
   }
 
-  function setExtractable(on: boolean): void {
+  function setInterpretable(on: boolean): void {
     const draft = shapeDraft();
     if (draft) setShapeDraft({ ...draft, extractable: on });
   }
 
-  const extractionNeedsIdentity = createMemo(() => {
+  const interpretationNeedsIdentity = createMemo(() => {
     const draft = shapeDraft();
     return Boolean(draft?.extractable) && !draft?.identityMember;
   });
@@ -1051,7 +1051,7 @@ export function ShapeStoreProvider(props: ParentProps) {
     const askedFor = [
       authored.name && `The model is called "${authored.name}".`,
       authored.description && `Description: ${authored.description}`,
-      authored.classHint && `Guidance for AI extraction: ${authored.classHint}`,
+      authored.classHint && `Guidance for AI interpretation: ${authored.classHint}`,
     ].filter(Boolean);
     /*
       Nothing of the author's left to go on — they generated a model and then deleted the name they
@@ -1063,7 +1063,7 @@ export function ShapeStoreProvider(props: ParentProps) {
       : [
           draft.name.trim() && `The model is called "${draft.name.trim()}".`,
           draft.description.trim() && `Description: ${draft.description.trim()}`,
-          draft.classHint.trim() && `Guidance for AI extraction: ${draft.classHint.trim()}`,
+          draft.classHint.trim() && `Guidance for AI interpretation: ${draft.classHint.trim()}`,
         ]
           .filter(Boolean)
           .join('\n');
@@ -1177,7 +1177,7 @@ export function ShapeStoreProvider(props: ParentProps) {
       */
       if (draft.extractable) {
         try {
-          await extractionEnroller.get()?.(entityName);
+          await interpretationEnroller.get()?.(entityName);
         } catch (err) {
           console.warn('ShapeStore: could not add the new model to this space’s extraction targets', err);
         }
@@ -1402,8 +1402,8 @@ export function ShapeStoreProvider(props: ParentProps) {
     aiAvailable,
     generating,
     hintEntities,
-    extractionCandidates,
-    provideExtractionEnroller: extractionEnroller.provide,
+    interpretationCandidates,
+    provideInterpretationEnroller: interpretationEnroller.provide,
     relationshipTargets,
     identityOptions,
     nameOptions,
@@ -1415,8 +1415,8 @@ export function ShapeStoreProvider(props: ParentProps) {
     setShapeField,
     setIdentityMember,
     setNameMember,
-    setExtractable,
-    extractionNeedsIdentity,
+    setInterpretable,
+    interpretationNeedsIdentity,
     addProperty,
     addRelationship,
     removeMember,

@@ -115,8 +115,8 @@ export interface ModuleHostServices {
   /** The suggestions staged on one collection's contents. Absent means a host that cannot narrow. */
   proposalsForCollection?: (dataset: DatasetHandle, collectionId: string) => Promise<InterpretationProposal[]>;
   /** What one call extracts and what else it could. Absent reads as an empty list. */
-  extractionTargets?: (collectionId: string) => { entity: string; selected: boolean }[];
-  setExtractionTarget?: (collectionId: string, entity: string, on: boolean) => Promise<void>;
+  interpretationTargets?: (collectionId: string) => { entity: string; selected: boolean }[];
+  setInterpretationTarget?: (collectionId: string, entity: string, on: boolean) => Promise<void>;
   /** `dataset` absent means the space on screen. */
   watchCollection?: (collectionId: string, dataset?: DatasetHandle) => Promise<void>;
   unwatchCollection?: (collectionId: string, dataset?: DatasetHandle) => Promise<void>;
@@ -575,13 +575,13 @@ export function createModuleStoreDeps(framework: {
       autoEnabled: (collectionId) => services.autoInterpretEnabled?.(collectionId) ?? false,
       setAuto: async (collectionId, on) => {
         const set = services.setAutoInterpret;
-        if (!set) throw new Error('interpretation: this host cannot record a call’s extraction settings');
+        if (!set) throw new Error('interpretation: this host cannot record a call’s interpretation settings');
         await set(collectionId, on);
       },
-      targets: (collectionId) => services.extractionTargets?.(collectionId) ?? [],
+      targets: (collectionId) => services.interpretationTargets?.(collectionId) ?? [],
       setTarget: async (collectionId, entity, on) => {
-        const set = services.setExtractionTarget;
-        if (!set) throw new Error('interpretation: this host cannot record a call’s extraction targets');
+        const set = services.setInterpretationTarget;
+        if (!set) throw new Error('interpretation: this host cannot record a call’s interpretation targets');
         await set(collectionId, entity, on);
       },
       runOnCollection: async (collectionId) => {

@@ -653,7 +653,7 @@ describe('the workshop template’s call selection', () => {
     );
   });
 
-  it('draws the canvas off the call’s own list of what is being extracted', () => {
+  it('draws the canvas off the call’s own list of what is being interpreted', () => {
     /*
       What a space extracts is a community decision, changeable mid-call from the chips the
       extraction panel draws. Anything downstream that named the kinds itself was therefore a bug
@@ -669,7 +669,7 @@ describe('the workshop template’s call selection', () => {
 
     // Every kind the space could extract, whether or not a call has it ticked now — the canvas is the
     // space's, and over the space collection rather than inside the canvas record.
-    expect(json).toContain('"contains":{"$":"shapeStore.extractionCandidates"}');
+    expect(json).toContain('"contains":{"$":"shapeStore.interpretationCandidates"}');
     expect(json).toContain('"members":{"id":{"$":"spaceStore.root"},"via":"children"}');
     expect(json).not.toContain('"TaskBlock","EventBlock"');
   });
@@ -874,15 +874,15 @@ describe('the workshop template’s call selection', () => {
 
   it('accounts for both of the module’s panels, so neither is drawn twice', () => {
     /*
-      The transcript entry named the module and the extraction entry named nothing, so the module's
-      own extraction surface had no counterpart here — it opened *beside* this template's version the
+      The transcript entry named the module and the interpretation entry named nothing, so the module's
+      own interpretation surface had no counterpart here — it opened *beside* this template's version the
       moment a pass ran. Two entries naming two docks line up one-to-one with what the module
       contributes, which is what makes placing them mean something.
     */
     const panels = workshop.meta?.panels ?? [];
     const placed = panels.filter((panel) => panel.module === 'transcribe');
 
-    expect(placed.map((panel) => panel.dock).sort()).toEqual(['extraction', 'transcript']);
+    expect(placed.map((panel) => panel.dock).sort()).toEqual(['interpretation', 'transcript']);
   });
 
   it('offers a delete on every card, not only on the unsettled ones', () => {
@@ -1004,7 +1004,7 @@ describe('the workshop’s left-hand lane', () => {
   const left = (workshop.meta?.panels ?? []).filter((panel) => panel.snap === 'left');
 
   it('is one sidebar cut in two — both displacing, sharing a band', () => {
-    expect(left.map((panel) => panel.id)).toEqual(['transcript', 'extraction']);
+    expect(left.map((panel) => panel.id)).toEqual(['transcript', 'interpretation']);
     expect(left.every((panel) => panel.displace && panel.band === 0)).toBe(true);
     expect(left.map((panel) => panel.order)).toEqual([0, 1]);
   });
@@ -1375,7 +1375,7 @@ describe('the workshop’s key', () => {
     */
     const key = panel('key');
 
-    expect(key).toContain(`(shapeStore.extractionCandidates).filter(k, k != '${LINK_ENTITY}')"`);
+    expect(key).toContain(`(shapeStore.interpretationCandidates).filter(k, k != '${LINK_ENTITY}')"`);
     expect(key).toContain(`local.placements.map(p, p.nodeType)).filter(k, k != '${LINK_ENTITY}')`);
   });
 
@@ -1653,7 +1653,7 @@ describe('the workshop’s canvas', () => {
 
     expect(key).not.toContain('"found":{"entity":{"$":"kind"}');
     expect(key).not.toContain('placement.nodeType != prev.nodeType');
-    expect(key).toContain('"onCall":{"entity":{"$":"(shapeStore.extractionCandidates)');
+    expect(key).toContain('"onCall":{"entity":{"$":"(shapeStore.interpretationCandidates)');
     expect(key).toContain('distinct(local.onCall.map(r, r.__subjectClass), local.placements.map(p, p.nodeType))');
     expect(key).toContain("'CollectionBlock' ? 'Note'");
   });
@@ -1689,7 +1689,7 @@ describe('the workshop’s people', () => {
     expect(kanban).toContain('card.extractedFrom');
     // Pressing a card opens it in the inspector through the same parameters the canvas writes.
     expect(kanban).toContain('"$invoke":"routeStore.setParam","args":["card",{"$":"card.id"}]');
-    expect(kanban).toContain('Extracted from the conversation');
+    expect(kanban).toContain('Interpreted from the conversation');
   });
 
   it('keeps a card selected while its own menus are open, and lets go on a press anywhere else', () => {
@@ -1905,9 +1905,9 @@ describe('the workshop inspector’s people', () => {
 
   it('says where the record came from, which a card’s face no longer does', () => {
     expect(inspector).toContain('row.id in first(local.inspectedCall).extracted');
-    expect(inspector).toContain('Extracted from the conversation');
+    expect(inspector).toContain('Interpreted from the conversation');
     // Under the title and description, ahead of People, rather than at the foot of the panel.
-    expect(inspector.indexOf('Extracted from the conversation')).toBeLessThan(inspector.indexOf('involvementMenu('));
+    expect(inspector.indexOf('Interpreted from the conversation')).toBeLessThan(inspector.indexOf('involvementMenu('));
   });
 
   it('wraps where the record came from at words, with the glyph on its first line', () => {

@@ -978,7 +978,7 @@ describe('chrome a floating panel must clear', () => {
 
   it('grows the band when a module says its chrome did', () => {
     // What the constant could not do. It was sized for the call bar alone, and the transcribe module
-    // contributes an extraction panel into the same fixed column — above the bar, so the band grows.
+    // contributes an interpretation panel into the same fixed column — above the bar, so the band grows.
     // Asserted as the difference rather than an absolute, so the floating panel's own edge gap stays
     // one number in one place instead of being restated here.
     const taller: ContentInset = { ...chrome, bottom: BOTTOM_CHROME_PX + 56 };
@@ -1074,7 +1074,7 @@ describe('the band under the module rail', () => {
   });
 
   it('clears the whole column, not one bar of it', () => {
-    // The call bar with the extraction panel stacked under it. The cap used to be one bar deep, so
+    // The call bar with the interpretation panel stacked under it. The cap used to be one bar deep, so
     // the rail moved and stayed overlapping the thing it had moved for.
     const stacked = { height: 74 + 56, width: 520 };
     expect(railBand(desktop, inset({ right: 900 }), stacked)).toBe(stacked.height - RAIL_TOP_PX);
@@ -1410,7 +1410,7 @@ describe('what floating panels cover', () => {
     const covered = coveredInset(
       [
         dock({ id: 'transcript', placement: floating({ snap: 'left', w: 320 }) }),
-        dock({ id: 'extraction', placement: floating({ snap: 'left', w: 240 }) }),
+        dock({ id: 'interpretation', placement: floating({ snap: 'left', w: 240 }) }),
       ],
       desktop,
     );

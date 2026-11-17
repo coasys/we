@@ -148,7 +148,7 @@ export async function signUp(executor, email, password = 'test123') {
 
 /**
  * Makes an OpenAI-compatible endpoint the executor's default language model — the one call
- * extraction runs on. Needs the admin client: the default is the executor's, not one account's.
+ * interpretation runs on. Needs the admin client: the default is the executor's, not one account's.
  * Resolves with the model's id.
  */
 export async function registerLlm(admin, { name = 'we-live-llm', baseUrl, apiKey = 'none', model }) {

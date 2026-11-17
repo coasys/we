@@ -2228,7 +2228,7 @@ const coasysCallBar = (): Scenario => {
     stores: {
       routeStore: { params: {}, templateSegments: [], setParam: () => {}, navigate: () => {} },
       shellStore: { collapsedLanes: [] },
-      modules: { call: { liveCalls: [{ recordId: 'call-1', count: 2 }] }, transcribe: { extractionOpen: false } },
+      modules: { call: { liveCalls: [{ recordId: 'call-1', count: 2 }] }, transcribe: { interpretationOpen: false } },
       spaceStore: {
         exportCallTranscript: (id: string) => ((globalThis as { __exported?: string }).__exported = id),
         launchModule: (id: string) => ((globalThis as { __launched?: string }).__launched = id),

@@ -11,7 +11,7 @@ const ONLY = (process.env.COASYS_SPACES_ONLY ?? '')
 
 const VERTICALS = [
   ['v1', './v1-space.live.mjs'],
-  ['v2', './v2-call-extraction.live.mjs'],
+  ['v2', './v2-call-interpretation.live.mjs'],
   ['v3', './v3-social-dna.live.mjs'],
   ['v4', './v4-decide-flow.live.mjs'],
   ['v5', './v5-build-agent.live.mjs'],
