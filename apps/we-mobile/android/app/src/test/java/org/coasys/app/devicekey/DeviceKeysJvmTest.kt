@@ -98,7 +98,7 @@ class DeviceKeysJvmTest {
 
     // A claim opens the device key once, and the Rust wipes it as soon as the claim is signed.
     val offer = offerString(STORE)
-    val prepared = keys.prepareClaim("https://id.coasys.org/o#${offer.text}", "Test phone")
+    val prepared = keys.prepareClaim("https://coasys.id/o#${offer.text}", "Test phone")
     assertEquals(0, sealer.keptForWipe())
     assertEquals("did:scid:coasys:1:${offer.scid}", prepared.did)
     assertEquals("$STORE/v1/offers/${offer.scid}/${offer.offerId}/claim", prepared.claimUrl)
