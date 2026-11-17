@@ -90,6 +90,16 @@ export const CHANNEL = { $: CHANNEL_EXPR };
 export const IN_ROOT_EXPR = `(${CHANNEL_EXPR}) == spaceStore.root`;
 
 /**
+ * Whether `IN_ROOT_EXPR` can be answered yet: the space's root has been read.
+ *
+ * A channel's address names it (`?channel=<id>`), General's included, and `root` is '' until it has
+ * been read. So for that moment General's own address compared unequal to `root`, and the view drew
+ * General as a sub-channel — mounting the sub-channel chat, sending its reads — then tore it down and
+ * drew the Feed when `root` arrived. Choose between them only once this is true.
+ */
+export const ROOT_KNOWN_EXPR = 'spaceStore.rootLoaded';
+
+/**
  * A channel's address, General's included: always `?channel=<id>`.
  *
  * Not the bare space path for General, though that also shows it: navigating to a bare path brings

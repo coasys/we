@@ -114,6 +114,11 @@ export interface DatasetStore {
   currentDatasetUri: Accessor<string | undefined>;
   currentDatasetCid: Accessor<string | undefined>;
   currentDatasetEntities: Accessor<EntityManifestEntry[]>;
+  /**
+   * The current dataset's foreign models have been read. They are read after the switch is shown,
+   * so until then an empty list — or the previous space's — says nothing about this one.
+   */
+  currentDatasetEntitiesLoaded: Accessor<boolean>;
   /** True once the current dataset is confirmed to have WE's `Space` schema installed. */
   isWeSpace: Accessor<boolean>;
   joinedSpaceCids: Accessor<string[]>;
@@ -221,9 +226,11 @@ export interface DatasetStore {
   unwatchConversation: (collectionId: string, dataset?: DatasetHandle) => Promise<void>;
   /**
    * ShapeStore supplies "which entities *could* be extracted here" — core vocabulary that declares
-   * itself extractable, plus this space's adopted shapes. Unset reads as none.
+   * itself extractable, plus this space's adopted shapes — and whether that list is whole yet. The
+   * list is lent as it arrives, so a picker shows the core classes at once; only what writes from it
+   * waits for `loaded`. Unset reads as none, and as not loaded.
    */
-  provideExtractionCandidates: (candidates: () => string[]) => () => void;
+  provideExtractionCandidates: (candidates: () => string[], loaded: () => boolean) => () => void;
   /**
    * SpaceStore supplies what one collection extracts, and how to change it.
    *
@@ -270,6 +277,17 @@ export function DatasetStoreProvider(props: ParentProps) {
    */
   const [currentDataset, setCurrentDataset] = createSignal<AppDataset | null>(null, { equals: sameDataset });
   const [currentDatasetEntities, setCurrentDatasetEntities] = createSignal<EntityManifestEntry[]>([]);
+  /** The dataset `currentDatasetEntities` was last read for — see `currentDatasetEntitiesLoaded`. */
+  const [entitiesReadFor, setEntitiesReadFor] = createSignal<string | null>(null);
+  /**
+   * Which publish the read in flight belongs to. Opening a space again starts a new read, and an
+   * older read of the same space finishing must not say the newer one is done.
+   */
+  let entitiesRead = 0;
+  const currentDatasetEntitiesLoaded = (): boolean => {
+    const id = currentDataset()?.id;
+    return Boolean(id) && entitiesReadFor() === id;
+  };
   const [isWeSpace, setIsWeSpace] = createSignal<boolean>(false);
   const [rootDataset, setRootDataset] = createSignal<AppDataset | null>(null);
   const [personalDataset, setPersonalDataset] = createSignal<AppDataset | null>(null);
@@ -305,6 +323,24 @@ export function DatasetStoreProvider(props: ParentProps) {
     community had turned everything off.
   */
   const extractionCandidatesGate = hostSlot<() => string[]>();
+
+  /*
+    Whether that list is whole yet, lent beside it. Readers do not wait for it — a picker showing the
+    core classes while the space's own are read is true as far as it goes. A watch registered from
+    the part that had arrived was removed and written again when the rest came, so registrars wait.
+    Unset reads as *not* loaded: with nothing lent the list is empty, and an empty list read as
+    whole would register a watch for nothing.
+  */
+  const extractionCandidatesLoadedGate = hostSlot<() => boolean>();
+
+  const provideExtractionCandidates = (candidates: () => string[], loaded: () => boolean): (() => void) => {
+    const releaseCandidates = extractionCandidatesGate.provide(candidates);
+    const releaseLoaded = extractionCandidatesLoadedGate.provide(loaded);
+    return () => {
+      releaseCandidates();
+      releaseLoaded();
+    };
+  };
 
   /*
     What one collection extracts, and how to change it — the layer below candidacy.
@@ -491,6 +527,13 @@ export function DatasetStoreProvider(props: ParentProps) {
           selected: active.includes(entity),
         }));
       },
+      /*
+        Whether that list is the whole of it yet. A space's own models and the classes it already had
+        are read a few round trips after its core vocabulary is known, and a watch registered from the
+        part that had arrived was removed and registered again when the rest did. The list above does
+        not wait for this; what registers from it does.
+      */
+      extractionTargetsLoaded: () => extractionCandidatesLoadedGate.get()?.() ?? false,
       setAutoInterpret: async (collectionId: string, on: boolean) => {
         const extraction = collectionExtraction.get();
         if (!extraction) throw new Error('interpretation: this host cannot record a collection’s extraction settings');
@@ -1236,9 +1279,12 @@ export function DatasetStoreProvider(props: ParentProps) {
       // SDNA is installed — switch immediately so WE templates render. WE model classes
       // are pre-registered at module load; foreign (non-WE) model resolution isn't needed
       // for the visible switch at all — it's only consumed below, in the background.
+      // A new read starts below, so whatever was read before — even for this same space — is not it.
+      const read = ++entitiesRead;
       batch(() => {
         setIsWeSpace(weSpace);
         setCurrentDataset(app);
+        setEntitiesReadFor(null);
       });
       trace('dataset', 'switch:published', {
         dataset: uuid,
@@ -1253,10 +1299,19 @@ export function DatasetStoreProvider(props: ParentProps) {
       void (async () => {
         try {
           const manifest = await schemas.foreignSchemas(handle);
-          if (currentDataset()?.id === uuid) setCurrentDatasetEntities(manifest);
+          if (read === entitiesRead && currentDataset()?.id === uuid)
+            batch(() => {
+              setCurrentDatasetEntities(manifest);
+              setEntitiesReadFor(uuid);
+            });
         } catch (err) {
           console.warn('DatasetStore: foreignSchemas failed', err);
-          if (currentDataset()?.id === uuid) setCurrentDatasetEntities([]);
+          // Read, and answered with nothing: a failed read must not hold back everything that waits on it.
+          if (read === entitiesRead && currentDataset()?.id === uuid)
+            batch(() => {
+              setCurrentDatasetEntities([]);
+              setEntitiesReadFor(uuid);
+            });
         }
       })();
     } catch (error) {
@@ -1304,6 +1359,7 @@ export function DatasetStoreProvider(props: ParentProps) {
     currentDatasetUri,
     currentDatasetCid,
     currentDatasetEntities,
+    currentDatasetEntitiesLoaded,
     isWeSpace,
     joinedSpaceCids,
     datasetsLoaded,
@@ -1345,7 +1401,7 @@ export function DatasetStoreProvider(props: ParentProps) {
     provideAutoInterpretGate: autoInterpretGate.provide,
     watchConversation,
     unwatchConversation,
-    provideExtractionCandidates: extractionCandidatesGate.provide,
+    provideExtractionCandidates,
     provideCollectionExtraction: collectionExtraction.provide,
   };
 

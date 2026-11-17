@@ -289,6 +289,7 @@ export const storeEntries: StoreEntry[] = [
       currentDataset: { type: 'object', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
       currentDatasetCid: { type: 'string' },
       currentDatasetEntities: { type: 'array' },
+      currentDatasetEntitiesLoaded: { type: 'boolean' },
       isWeSpace: { type: 'boolean' },
       joinedSpaceCids: { type: 'array' },
       datasetsLoaded: { type: 'boolean' },
@@ -489,6 +490,8 @@ export const storeEntries: StoreEntry[] = [
       },
       taskStatesLoaded: { type: 'boolean' },
       root: { type: 'string' },
+      rootLoaded: { type: 'boolean' },
+      firstScreenOpen: { type: 'boolean' },
       landmarks: { type: 'object' },
       landmarksLoaded: { type: 'boolean' },
       starterChoices: { type: 'array' },
@@ -605,6 +608,7 @@ export const storeEntries: StoreEntry[] = [
       generating: { type: 'boolean' },
       hintEntities: { type: 'array', properties: ['entity', 'source'] },
       extractionCandidates: { type: 'array' },
+      extractionCandidatesLoaded: { type: 'boolean' },
       extractionNeedsIdentity: { type: 'boolean' },
       relationshipTargets: { type: 'array', properties: ['label', 'value'] },
       identityOptions: { type: 'array', properties: ['label', 'value'] },
@@ -1129,6 +1133,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       currentDatasetCid: 'string | undefined — the neighbourhood CID of the current dataset (prefix stripped)',
       currentDatasetEntities:
         'EntityManifestEntry[] (non-WE SHACL models from the current dataset; injected as externalEntities into AI messages)',
+      currentDatasetEntitiesLoaded:
+        'boolean — currentDatasetEntities has been read for the dataset on screen. They arrive a few round trips after the switch, so until this is true an empty list means "not read yet" rather than "none"',
       isWeSpace:
         "boolean — true once the current dataset is confirmed to have WE's Space SDNA installed (false for a joined-but-foreign dataset, e.g. one synced in from Flux)",
       joinedSpaceCids: 'string[] — CIDs of every joined shared dataset',
@@ -1413,6 +1419,10 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       myMentions:
         "{ id, author, createdAt, verdict? }[] — messages in this space that mention this agent — posts and transcript or Feed lines alike — newest first, the fifty most recent. createdAt is the backend’s comparable timestamp. verdict is present only where the backend could not confirm the signing device spoke for its person: 'cantCheck' or 'flagged', drawn as a quiet mark beside the byline. Asked from the agent’s end through the backend’s references, one lookup per space",
       root: "string — the id of this space's collection: the one CollectionBlock (kind 'space') everything top-level hangs off — calls, loose messages, posts, channels, extracted items, the canvas. Scope a top-level read through it: { anchor: 'CollectionBlock', via: 'children', anchorId: spaceStore.root }. Empty outside a space, and in a space made before spaces had one",
+      rootLoaded:
+        "boolean — root has answered for the space on screen. Until then an empty root is not yet an answer, so gate anything that compares an address with root on it — { $: 'spaceStore.rootLoaded' } around an $if on `channel == spaceStore.root` — or the wrong branch mounts, reads, and is torn down when root arrives",
+      firstScreenOpen:
+        "boolean — the first screen after boot is up: the Feed's first page drawn, or the screen drawn with no Feed on it. True from then on. Put it as the `when` of a $queries read the opening screen does not draw (a sidebar's list) so the read starts after that screen rather than beside it — { when: { $: 'spaceStore.firstScreenOpen' } }",
       landmarks:
         "Record<name, id> — the records this space names as its landmarks, e.g. spaceStore.landmarks.canvas is the space's canvas. Written by the space's starter at creation. A landmark can be absent — a space can switch template and a template must never assume what another set up — so guard every read",
       landmarksLoaded:
@@ -1789,6 +1799,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       generating: 'boolean — an AI generation is in flight',
       extractionCandidates:
         "string[] — entity names an extraction pass COULD write here: core vocabulary that declares itself extractable, plus every adopted shape that does. Candidacy, not a decision — which of these a collection actually looks for is two layers down (spaceStore.extractionTargets, the default a new collection copies, then the collection's own list). Read it to offer a choice, and to display findings: a card should show a record somebody extracted an hour ago even if the target has since been switched off",
+      extractionCandidatesLoaded:
+        "boolean — extractionCandidates is the whole list: the space's models and the classes it already had have both been read. Until then the list is missing members that are coming; wait for this before treating the list as decided",
       extractionNeedsIdentity:
         'boolean — the open draft would be extracted into and has no field to recognise what it already wrote, so every pass duplicates everything. A warning to put beside the switch, not a refusal: the wizard saves either way',
       hintEditorDirty:

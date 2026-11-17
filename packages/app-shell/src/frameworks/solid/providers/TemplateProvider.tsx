@@ -3,7 +3,7 @@ import { datasetAddressedBy } from '@shared/datasetIdentity';
 import { collectionFacts } from '@shared/destructiveFacts';
 import { involvementOptimism } from '@shared/involvementOptimism';
 import { linkNewMentions, type MentionWriter, prepareMentionUpdate } from '@shared/lineMentions';
-import { findEntityRows, subscribeEntityRows } from '@shared/recordsRead';
+import { findEntityRows, moduleQueryAsOrm, subscribeEntityRows } from '@shared/recordsRead';
 import { appFrame, declareAppEdges, declareAppFrame } from '@shared/registries/appFrame';
 import { HOST_PART_SLOTS } from '@shared/registries/hostParts';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
@@ -230,17 +230,6 @@ export default function TemplateProvider() {
     } catch {
       return '';
     }
-  }
-
-  /**
-   * A module's `within` as the ORM's `parent`: the container, by containment, which is one predicate
-   * on every backend. See `RecordQuery.within`.
-   */
-  function withinAsParent(query: unknown): Record<string, unknown> {
-    const { within, ...rest } = (query ?? {}) as { within?: unknown } & Record<string, unknown>;
-    return typeof within === 'string' && within
-      ? { ...rest, parent: { id: within, relation: 'children', entity: 'CollectionBlock' } }
-      : rest;
   }
 
   /**
@@ -487,12 +476,12 @@ export default function TemplateProvider() {
       findEntities: async (entity, query, options) => {
         const p = moduleTarget(options?.dataset);
         if (!p) return [];
-        return findEntityRows(entity, p, withinAsParent(query));
+        return findEntityRows(entity, p, moduleQueryAsOrm(query));
       },
       subscribeEntities: (entity, query, cb, options) => {
         const p = moduleTarget(options?.dataset);
         if (!p) return () => {};
-        return subscribeEntityRows(entity, p, withinAsParent(query), cb);
+        return subscribeEntityRows(entity, p, moduleQueryAsOrm(query), cb);
       },
     }),
   );

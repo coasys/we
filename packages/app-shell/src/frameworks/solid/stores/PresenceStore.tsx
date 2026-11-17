@@ -49,6 +49,7 @@
 import { MAX_LEASES, presentAs, reconcileLeases, unionPeers, wantedUris } from '@shared/presenceScope';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { createTabCoordinator } from '@shared/tabCoordinator';
+import { firstScreen } from '@solid/firstScreen';
 import { useDatasetStore } from '@solid/stores/DatasetStore';
 import { useProfileStore } from '@solid/stores/ProfileStore';
 import { useRouteStore } from '@solid/stores/RouteStore';
@@ -345,7 +346,11 @@ export function PresenceStoreProvider(props: ParentProps) {
    */
   createEffect(() => {
     const did = myDid();
-    const want = did ? wanted() : [];
+    /*
+      No presence until the first screen is up (`shared/firstScreen.ts`): opening a source subscribes
+      and broadcasts, and the first page draws nobody's presence. Opened then for what is wanted then.
+    */
+    const want = did && firstScreen.open() ? wanted() : [];
     const refs = datasetStore.datasets();
     // The space on screen was read fresh when it was switched to, so its handle is the one most
     // likely to know it is shared. Preferred over the list's copy, which can lag behind a publish.

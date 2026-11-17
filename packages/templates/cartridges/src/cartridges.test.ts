@@ -132,6 +132,22 @@ describe('the Coasys cartridge', () => {
   });
 
   /*
+    The AI chat sparkle sat in the rail's `header`, which `railShell` places without the `px` the
+    items and footer columns get — a railItem's own `railInset` is measured *against* that edge
+    padding, so without it the glyph sat one inset left of every row below. The header keeps its
+    place; the row inside it regains the edge it was counted against.
+  */
+  it('aligns the AI chat row with the rail rows below it', () => {
+    const path = pathTo(coasys.app!, (n) => (n.props as { label?: unknown } | undefined)?.label === 'AI chat')!;
+    expect(path.at(-1), 'no AI chat row in the rail').toBeDefined();
+    const edge = path
+      .slice(0, -1)
+      .reverse()
+      .find((n) => (n.props as { px?: unknown } | undefined)?.px !== undefined);
+    expect((edge?.props as { px?: unknown } | undefined)?.px, 'no ancestor restores the rail edge').toBe('200');
+  });
+
+  /*
     It defines no kinds of record of its own, so there is no gap to record: every template it brings
     must validate as it stands — the app around every space, the space template with its pages, and
     the pages of the app's own.
@@ -269,6 +285,42 @@ describe('the Coasys cartridge', () => {
     have it, so the two lists offer the same things; the tree's list is the ones somebody would switch
     between in this space, not every built-in the deployment carries.
   */
+  describe('a call running in the space', () => {
+    /** The tree's `$if` gated on a live call — the subtree that is the running-call entry. */
+    const running = () =>
+      findNode(
+        treeSection,
+        (n) =>
+          n.type === '$if' &&
+          JSON.stringify((n.props as { condition?: unknown } | undefined)?.condition) ===
+            JSON.stringify({ $: 'count(modules.call.liveCalls)' }),
+      )!;
+
+    it('is a single entry that joins or opens it — not a line beside a second affordance', () => {
+      const subtree = running();
+      const json = JSON.stringify(subtree);
+      /*
+        One way in, branching at press time like the row's label does: "Join" joins the call
+        running here through `goToCall`, and "Open" — shown to somebody already in it — navigates
+        to the call's own page, which is what it did before the row was unified and what the
+        review asked back. A second destination beside the text is still the repeat it refuses.
+      */
+      expect(json).toContain('modules.call.goToCall');
+      expect(json).toContain('routeStore.navigate');
+      expect(json).not.toContain('modules.call.joinCall');
+
+      // The Open branch goes to the call's record page — the address its own view answers.
+      expect(json).toContain('record/CollectionBlock?kind=call&id=');
+
+      // The line itself is the entry: "Call running · N in it" lives inside the one button, not
+      // next to it, so pressing anywhere on the row does the thing the row reports.
+      const buttons = findAll(subtree, (n) => n.type === 'we-button');
+      expect(buttons, 'the entry is more than one control').toHaveLength(1);
+      const text = findAll(buttons[0], (n) => n.type === 'we-text' && JSON.stringify(n).includes('Call running'));
+      expect(text, 'the call-running line is not inside the entry').toHaveLength(1);
+    });
+  });
+
   describe('templates and themes in the tree', () => {
     const evaluate = (source: string, roots: Record<string, unknown>) =>
       evaluateExpression(parseExpression(source), {
@@ -777,6 +829,28 @@ function findNode(root: unknown, match: (node: { type?: string; props?: unknown 
   return walk(root);
 }
 
+/** The node `match` accepts plus every ancestor above it, root first — `findNode` with a lineage. */
+function pathTo(root: unknown, match: (node: { type?: string; props?: unknown }) => boolean) {
+  const walk = (node: unknown): { type?: string; props?: unknown }[] | undefined => {
+    if (!node || typeof node !== 'object') return undefined;
+    if (Array.isArray(node)) {
+      for (const child of node) {
+        const found = walk(child);
+        if (found) return found;
+      }
+      return undefined;
+    }
+    const n = node as { type?: string; props?: unknown };
+    if (match(n)) return [n];
+    for (const value of Object.values(node)) {
+      const found = walk(value);
+      if (found) return [n, ...found];
+    }
+    return undefined;
+  };
+  return walk(root);
+}
+
 /** Every node under `root` that `match` accepts, depth first, including those inside one that matched. */
 function findAll(root: unknown, match: (node: { type?: string; props?: unknown }) => boolean) {
   const found: { type?: string; props?: unknown }[] = [];
@@ -835,5 +909,140 @@ describe('the cartridges as bundles', () => {
     const shell = fieldGuideBundle.templates!.find((template) => template.id === 'shell')!;
     expect(shell.meta.requires?.modules).toContain('globe');
     expect(JSON.stringify(fieldGuideBundle)).not.toContain('Levels Naturalists');
+  });
+});
+
+describe('the Coasys space chat: one mount for the channel on screen', () => {
+  /*
+    A recorded cold open, at General's own address (`?channel=<root>`), sent the sub-channel chat's
+    reads — the channel record and the transcript's lines — then cancelled them 135 ms later and sent
+    the Feed's. `root` is '' until the space's collection has been read, so for that moment General's
+    address compared unequal to it and the view drew General as a sub-channel. The renderer is walked
+    here as it walks the route: an `$if` mounts the branch its condition picks, a query runs when its
+    `when` holds.
+  */
+  const FEED = 'ad4m://obj/feed';
+  const chatRoute = spaceRoutes.find((route) => route.path === '/')!;
+
+  const evaluate = (source: string, spaceStore: Record<string, unknown>) =>
+    evaluateExpression(parseExpression(source), {
+      root: (name) => ({
+        bound: true,
+        value: {
+          routeStore: { params: { channel: FEED }, templateSegments: [] },
+          spaceStore,
+          local: {},
+          modules: { transcribe: {}, call: {} },
+        }[name],
+      }),
+      call: (name, args) =>
+        listFunctions()
+          .find((f) => f.name === name)
+          ?.impl(args, { context: {}, stores: {} }),
+    });
+
+  /** The host parts the route mounts, and the queries it runs, for one state of the space store. */
+  function mounted(spaceStore: Record<string, unknown>) {
+    const parts: string[] = [];
+    const icons: unknown[] = [];
+    const texts: string[] = [];
+    const walk = (node: unknown): void => {
+      if (typeof node === 'string') return void texts.push(node);
+      if (!node || typeof node !== 'object') return;
+      if (Array.isArray(node)) return node.forEach(walk);
+      const n = node as { type?: string; props?: Record<string, unknown>; children?: unknown };
+      if (n.type === 'we-icon') {
+        const name = n.props?.name as string | { $: string } | undefined;
+        icons.push(typeof name === 'object' && name ? evaluate(name.$, spaceStore) : name);
+      }
+      if (n.type === '$if') {
+        const props = n.props as { condition: { $: string }; then?: unknown; else?: unknown };
+        return walk(evaluate(props.condition.$, spaceStore) ? props.then : props.else);
+      }
+      if (n.type === '$part') parts.push((n.props as { id: string }).id);
+      walk(n.children);
+    };
+    walk(chatRoute.children);
+    const queries = Object.entries(chatRoute.$queries ?? {})
+      .filter(([, q]) => {
+        const when = (q as { when?: { $: string } }).when;
+        return !when || Boolean(evaluate(when.$, spaceStore));
+      })
+      .map(([name]) => name);
+    return { parts, queries, icons, texts };
+  }
+
+  it('mounts nothing for the channel until the root is known, then the Feed alone', () => {
+    const before = mounted({ root: '', rootLoaded: false });
+    expect(before.parts).toEqual([]);
+    expect(before.queries).not.toContain('channelRecord');
+
+    const after = mounted({ root: FEED, rootLoaded: true });
+    expect(after.parts).toEqual(['feed.feedView']);
+    expect(after.queries).not.toContain('channelRecord');
+  });
+
+  it('draws the bar’s glyph and its way back to Channels only once the root is known', () => {
+    /*
+      The same moment as above, in the bar: General's address compared unequal to an unread root, so
+      the bar drew a channel's `hash` and a "Channels" crumb, then swapped both for the Feed's own.
+    */
+    const before = mounted({ root: '', rootLoaded: false });
+    expect(before.icons).not.toContain('hash');
+    expect(before.icons).not.toContain('chats-circle');
+    expect(before.texts).not.toContain('Channels');
+
+    const general = mounted({ root: FEED, rootLoaded: true });
+    expect(general.icons).toContain('chats-circle');
+    expect(general.texts).not.toContain('Channels');
+
+    const sub = mounted({ root: 'ad4m://obj/other-root', rootLoaded: true });
+    expect(sub.icons).toContain('hash');
+    expect(sub.texts).toContain('Channels');
+  });
+
+  it('still opens a real sub-channel as chat once the root is known', () => {
+    const sub = mounted({ root: 'ad4m://obj/other-root', rootLoaded: true });
+    expect(sub.parts).toEqual(['transcribe.transcriptFeed']);
+    expect(sub.queries).toContain('channelRecord');
+  });
+});
+
+describe('the Coasys space’s lists of calls', () => {
+  /*
+    A recorded cold open read the space's calls whole three times over — the sidebar's twelve, and
+    one more for the empty-space prompt — and a whole call carries the id of every line said in it.
+    The lists draw a call's id, title and time; the prompt only asks whether there is one.
+  */
+  const callQueries = (node: unknown, found: Record<string, unknown>[] = []): Record<string, unknown>[] => {
+    if (!node || typeof node !== 'object') return found;
+    if (Array.isArray(node)) {
+      for (const child of node) callQueries(child, found);
+      return found;
+    }
+    const n = node as Record<string, unknown>;
+    if (n.entity === 'CollectionBlock' && (n.where as { kind?: unknown } | undefined)?.kind === 'call') found.push(n);
+    for (const value of Object.values(n)) callQueries(value, found);
+    return found;
+  };
+
+  it('asks for only the fields a call row draws', () => {
+    const queries = callQueries([treeSection, spaceRoutes]);
+    expect(queries.length).toBeGreaterThanOrEqual(3);
+    for (const query of queries) expect(query.select).toEqual(['title', 'createdAt']);
+  });
+
+  it('asks the empty-space prompt’s question as the sidebar asks it, so the two are one subscription', () => {
+    const chatRoute = spaceRoutes.find((route) => route.path === '/')!;
+    // The renderer shares a subscription between nodes asking the same question, keyed by it as JSON.
+    expect(JSON.stringify(chatRoute.$queries?.anyCall)).toBe(JSON.stringify(treeSection.$queries?.calls));
+  });
+
+  it('reads the sidebar’s calls once the first screen is up, not beside the Feed’s first page', () => {
+    /*
+      The Feed reads its own calls for its window; the sidebar's list and the empty-space prompt are
+      not on its first page, and the executor answers one read at a time.
+    */
+    expect(treeSection.$queries?.calls).toMatchObject({ when: { $: 'spaceStore.firstScreenOpen' } });
   });
 });

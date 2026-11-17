@@ -25,6 +25,7 @@
 import { watchPassRecord } from '@shared/interpretation/activityView';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { holdSubscription } from '@shared/utils';
+import { firstScreen } from '@solid/firstScreen';
 import { useDatasetStore } from '@solid/stores/DatasetStore';
 import { useProfileStore } from '@solid/stores/ProfileStore';
 import { useSessionStore } from '@solid/stores/SessionStore';
@@ -225,6 +226,8 @@ export function InterpretationStoreProvider(props: ParentProps) {
   const [proposalsRevision, setProposalsRevision] = createSignal(0);
 
   let relay: InterpretationRelay | null = null;
+  /** The space and connection the revision was last bumped for — see the effect below. */
+  let revisedFor: { handle: unknown; ports: unknown } | null = null;
 
   /*
     One relay and one subscription per space, torn down and rebuilt when the space changes.
@@ -246,9 +249,19 @@ export function InterpretationStoreProvider(props: ParentProps) {
     setCapable(true);
     // The suggestions on screen are a different set in a different space, so say so: a surface that
     // asked about the space on screen asks again rather than marking this one's cards from the last.
-    setProposalsRevision((n) => n + 1);
+    // Only for a new space or connection: this effect also re-runs when the first screen opens, and
+    // a bump then made the Feed read its whole window again for suggestions that had not moved.
+    if (revisedFor?.handle !== handle || revisedFor?.ports !== ports) {
+      revisedFor = { handle, ports };
+      setProposalsRevision((n) => n + 1);
+    }
 
-    if (!handle || !ports?.interpretation) return;
+    /*
+      Not before the first screen is up (`shared/firstScreen.ts`): the availability probe and the
+      staged-suggestion watch are the largest reads at boot, and nothing on the first page uses them.
+      Started later, this effect builds for the space on screen then, the same as after a switch.
+    */
+    if (!handle || !ports?.interpretation || !firstScreen.open()) return;
 
     /*
       Ask the executor what it can do, before anything offers it.

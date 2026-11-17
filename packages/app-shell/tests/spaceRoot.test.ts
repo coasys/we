@@ -16,7 +16,7 @@ vi.mock('@we/entities', () => ({
   SpaceLandmark: {},
 }));
 
-const { readSpaceRoot, seedSpaceRoot } = await import('../src/shared/spaceLandmarks');
+const { readSpaceRoot, seedSpaceRoot, shareListedSpace } = await import('../src/shared/spaceLandmarks');
 
 const dataset = () => ({}) as never;
 
@@ -136,5 +136,46 @@ describe('seedSpaceRoot', () => {
 
     expect(await reading).toEqual({ id: 'space', root: 'root' });
     expect(await readSpaceRoot(here)).toEqual({ id: 'space', root: 'root' });
+  });
+});
+
+describe('shareListedSpace', () => {
+  /*
+    A recorded cold open read the open space's record four times. One was this: the space list's
+    read of the record was still in flight — the list publishes only when every space has answered —
+    so the space opened with nothing to seed from and read its record again, 1.5 s on a busy executor,
+    before the Feed knew which collection to read.
+  */
+  it('opening a space while the list is reading it waits for that read instead of reading again', async () => {
+    let land!: (row: unknown) => void;
+    const here = dataset();
+    shareListedSpace(here, new Promise((resolve) => (land = (row) => resolve(row as { id: string; root: string }))));
+
+    const opening = readSpaceRoot(here);
+    land({ id: 'space', root: 'root' });
+
+    expect(await opening).toEqual({ id: 'space', root: 'root' });
+    expect(findOne).not.toHaveBeenCalled();
+  });
+
+  it('keeps the listed row the moment it lands', async () => {
+    const here = dataset();
+    shareListedSpace(here, Promise.resolve({ id: 'space', root: { id: 'root' } }));
+    await Promise.resolve();
+
+    expect(await readSpaceRoot(here)).toEqual({ id: 'space', root: 'root' });
+    expect(findOne).not.toHaveBeenCalled();
+  });
+
+  it('reads for itself when the listed row has no collection, or the list could not read it', async () => {
+    findOne.mockResolvedValue({ id: 'space', root: { id: 'root' } });
+    const noRoot = dataset();
+    const failed = dataset();
+    shareListedSpace(noRoot, Promise.resolve({ id: 'space' }));
+    shareListedSpace(failed, Promise.reject(new Error('no shape')));
+
+    expect(await readSpaceRoot(noRoot)).toEqual({ id: 'space', root: 'root' });
+    expect(await readSpaceRoot(failed)).toEqual({ id: 'space', root: 'root' });
+    expect(findOne).toHaveBeenCalledTimes(2);
   });
 });

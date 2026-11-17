@@ -51,6 +51,7 @@ import {
   deleteChat,
   startChat,
 } from '../../../shared/editorChats';
+import { firstScreen } from '../firstScreen';
 import { createEditTarget, EditTargetContext } from './editTarget';
 
 export interface ChatMessage {
@@ -318,6 +319,9 @@ export function EditorStoreProvider(props: ParentProps) {
     // When the port arrives — so the answer is ready before anyone opens the chat — and each time
     // the panel opens, since that is when a stale answer would be read.
     languageModel();
+    // Not before the first screen is up: nobody can have opened the chat yet, and the model reads
+    // would sit beside the first page. See `shared/firstScreen.ts`.
+    if (!firstScreen.open()) return;
     if (isOpen() || !assistantStatus()) void refreshAssistant();
   });
 

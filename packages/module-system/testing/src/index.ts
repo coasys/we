@@ -86,6 +86,18 @@ function matches(row: Record<string, unknown>, where: Record<string, unknown> | 
 const sortText = (value: unknown): string =>
   typeof value === 'string' ? value : typeof value === 'number' || typeof value === 'boolean' ? String(value) : '';
 
+/**
+ * A row with only the fields a query's `select` named, as a narrowed read answers it: `id` always,
+ * `author` (which the fake stamps on every row), and the fake's own `__` bookkeeping. A field left
+ * out reads as absent, so a module that reads one it did not select fails here as it would live.
+ */
+function narrowed(row: FakeRow, fields: readonly string[]): FakeRow {
+  const kept = Object.entries(row).filter(
+    ([key]) => key === 'id' || key === 'author' || key.startsWith('__') || fields.includes(key),
+  );
+  return Object.fromEntries(kept) as FakeRow;
+}
+
 function select(rows: FakeRow[], query: RecordQuery | undefined): FakeRow[] {
   let out = rows.filter((row) => matches(row, query?.where) && (!query?.within || row.__parent === query.within));
   const order = Object.entries(query?.order ?? {})[0];
@@ -99,6 +111,8 @@ function select(rows: FakeRow[], query: RecordQuery | undefined): FakeRow[] {
   }
   if (query?.offset) out = out.slice(query.offset);
   if (query?.limit !== undefined) out = out.slice(0, query.limit);
+  const fields = query?.select;
+  if (fields) out = out.map((row) => narrowed(row, fields));
   return out;
 }
 
