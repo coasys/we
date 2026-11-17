@@ -28,7 +28,12 @@ import {
 
 import { createAd4mDataBindings } from './ad4mAdapter';
 import { createAd4mEphemeralPort } from './ad4mEphemeralAdapter';
-import { createFileExpression, getProfile, publishProfileToPublicPerspective } from './agentHelpers';
+import {
+  createFileExpression,
+  ensureFileStorageLanguage,
+  getProfile,
+  publishProfileToPublicPerspective,
+} from './agentHelpers';
 import { createAd4mAgentPort } from './agentPort';
 import { createAd4mCallPort } from './callPort';
 import { installClearOnEmpty } from './clearOnEmpty';
@@ -179,6 +184,11 @@ export interface Ad4mConnectionOptions {
    * and it is what signs the next login.
    */
   identityClient?: unknown;
+  /**
+   * The connector's connection already found the agent unlocked — see `Ad4mAgentSessionOptions`.
+   * Only a connector that waited for that answer may set it.
+   */
+  unlockedAtConnect?: boolean;
 }
 
 export function createAd4mBackendPorts(
@@ -220,7 +230,11 @@ export function createAd4mBackendPorts(
   // File storage the same way: format:'file' properties resolve their bytes through this backend's
   // file-storage language, and the address shape is this backend's own.
   registerFileStore({
-    store: (dataset, file) => (dataset as PerspectiveProxy).createExpression(file, FILE_STORAGE_LANGUAGE),
+    store: async (dataset, file) => {
+      // The boot installs the language only after the first screen — see `createFileExpression`.
+      await ensureFileStorageLanguage(backendClient);
+      return (dataset as PerspectiveProxy).createExpression(file, FILE_STORAGE_LANGUAGE);
+    },
     fetch: async (dataset, address) => {
       const expr = await (dataset as PerspectiveProxy).getExpression(address);
       if (!expr?.data) return null;
@@ -237,7 +251,10 @@ export function createAd4mBackendPorts(
   const ephemeral = createAd4mEphemeralPort(ctx.selfId);
 
   return {
-    agentSession: createAd4mAgentSession(backendClient),
+    agentSession: createAd4mAgentSession(backendClient, {
+      unlockedAtConnect: options.unlockedAtConnect,
+      afterFirstScreen: ctx.afterFirstScreen,
+    }),
     lifecycle: createAd4mDatasetLifecycle(backendClient, options),
     schemas: createAd4mSchemaPort(backendClient),
     profiles: createAd4mProfileDirectory(backendClient),

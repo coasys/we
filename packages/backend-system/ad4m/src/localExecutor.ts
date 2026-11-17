@@ -72,7 +72,7 @@ export function createLocalAd4mConnector(
     /** How a client on a server is opened; the SDK's, outside tests. */
     connectRemote?: ConnectRemote;
     /** How this computer's executor is reached once its port is known; the SDK's, outside tests. */
-    connectLocal?: (port: number, token: string) => Promise<{ client: unknown }>;
+    connectLocal?: (port: number, token: string) => Promise<{ client: unknown; status?: AgentStatus }>;
   } & Ad4mLifecycleOptions = {},
 ) {
   return {
@@ -86,7 +86,7 @@ export function createLocalAd4mConnector(
       const delay = options.startupDelayMs ?? 1000;
       if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
 
-      const { client } = await (options.connectLocal ?? connectToLocalExecutor)(port, token);
+      const { client, status } = await (options.connectLocal ?? connectToLocalExecutor)(port, token);
       const local = { url: `http://localhost:${port}`, token };
       const shared = {
         linkServerUrl: options.linkServerUrl,
@@ -102,6 +102,8 @@ export function createLocalAd4mConnector(
             ...shared,
             connection: () => local,
             ...(served ? { serving: served } : {}),
+            // The status the connection waited for is the session's first: asking again was a second request.
+            unlockedAtConnect: Boolean(status?.isInitialized && status?.isUnlocked),
           }),
           // Forwarded to hosted app iframes by the embed bridge.
           connection: { port, token },
@@ -120,6 +122,8 @@ export function createLocalAd4mConnector(
           // The server's own settings are for the person who runs it; an agent it serves gets none.
           administersNode: session.role === 'operator',
           onThisMachine: false,
+          // No `unlockedAtConnect`: the status the connection waited for is this computer's agent, not
+          // the one the server serves, so the session asks the server on its first `status()`.
         }),
         connection: {
           port: Number(remote.port) || (remote.protocol === 'https:' ? 443 : 80),

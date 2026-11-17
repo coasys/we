@@ -53,7 +53,12 @@ export {
   CORE_VOCABULARY,
   manifestToEntries,
 } from './manifestCompiler';
-export { type Ad4mLifecycleOptions, createAd4mAgentSession, createAd4mDatasetLifecycle } from './lifecycleAdapter';
+export {
+  type Ad4mAgentSessionOptions,
+  type Ad4mLifecycleOptions,
+  createAd4mAgentSession,
+  createAd4mDatasetLifecycle,
+} from './lifecycleAdapter';
 export { createAd4mModelAdmin } from './modelAdminAdapter';
 export { type Ad4mRuntimeOptions, createAd4mRuntimeAdmin } from './runtimeAdminAdapter';
 export {

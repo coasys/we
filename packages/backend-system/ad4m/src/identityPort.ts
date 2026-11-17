@@ -35,6 +35,7 @@ import {
   THIS_COMPUTER_ID,
 } from '@we/backend-shared';
 
+import { sharedInFlight } from './inFlight';
 import {
   type ConnectRemote,
   type KeySession,
@@ -214,11 +215,14 @@ export function createAd4mIdentityPort(
 ): IdentityPort {
   const client = backendClient as IdentityClientLike & Partial<Ad4mClient>;
 
+  // `capabilities` and `status` both read `identity.status`, and the shell asks both at startup.
+  const readStatus = () => sharedInFlight(client, 'identity.status', () => client.identity.status());
+
   const port: IdentityPort = {
     async capabilities(): Promise<IdentityCapabilities> {
       let status: IdentityStatusView;
       try {
-        status = readIdentityStatus(await client.identity.status());
+        status = readIdentityStatus(await readStatus());
       } catch (error) {
         recordMissingMethod(error);
         return NO_IDENTITY_CAPABILITIES;
@@ -238,7 +242,7 @@ export function createAd4mIdentityPort(
     },
 
     async status() {
-      return readIdentityStatus(await client.identity.status());
+      return readIdentityStatus(await readStatus());
     },
 
     async log(did: string) {
