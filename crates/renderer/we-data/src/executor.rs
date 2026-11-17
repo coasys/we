@@ -65,7 +65,11 @@ pub use we_template::QueryIr;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Write {
     pub op: WriteOp,
-    /// The write's body: class, id, fields — the recipe's payload.
+    /// The write's body: class, id, fields — the recipe's payload, in the
+    /// shape the validated write RPC takes:
+    /// - `Create`: `{ "className": str, "properties"?: object, "parent"?: str }`
+    /// - `Update`: `{ "className": str, "baseUri": str, "properties": object }`
+    /// - `Remove`: `{ "className": str, "baseUri": str }`
     pub body: serde_json::Value,
 }
 
@@ -183,6 +187,14 @@ pub enum ExecutorError {
     /// The executor answered with an error.
     #[error("{0}")]
     Other(String),
+    /// The executor refused the call (`RpcCallError`): its code, its own
+    /// message, and the `data` it attached (`InstanceError` for a write).
+    #[error("{message}")]
+    Rejected {
+        code: i32,
+        message: String,
+        data: Option<serde_json::Value>,
+    },
 }
 
 pub type Result<T> = std::result::Result<T, ExecutorError>;
@@ -236,4 +248,22 @@ pub trait Executor {
     async fn flow(&self, space: &SpaceId, call: FlowCall) -> Result<Value>;
     /// A class's shape, for building forms.
     async fn shape(&self, space: &SpaceId, class: &str) -> Result<ClassShape>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rejected_displays_the_executors_message() {
+        let e = ExecutorError::Rejected {
+            code: 422,
+            message: "Validation failed for class 'X': a (wrongType)".into(),
+            data: None,
+        };
+        assert_eq!(
+            e.to_string(),
+            "Validation failed for class 'X': a (wrongType)"
+        );
+    }
 }

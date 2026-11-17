@@ -4,8 +4,8 @@
 //! - [`Ad4mQuerySource`] answers the template's `$queries`:
 //!   `perspective.modelSubscribe` pushes into the session inbox, so a record
 //!   created anywhere reaches the resolved tree without polling.
-//! - [`Ad4mExecutor`] is [`we_data::Executor`] over the same socket —
-//!   read-only (writes are E11).
+//! - [`Ad4mExecutor`] is [`we_data::Executor`] over the same socket: reads,
+//!   and writes through the validated write RPC (`perspective.instance*`).
 //! - [`connect::ConnectFlow`] runs `ad4m-connect` for the connect screen;
 //!   [`list_spaces`] lists what the picker offers.
 //! - [`live::LiveMembers`] serves the store map's `modelRead` rows (M2)
