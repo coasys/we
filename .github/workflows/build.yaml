@@ -371,6 +371,59 @@ jobs:
             crates/custody/target
           key: custody-${{ runner.os }}-${{ hashFiles('crates/custody/Cargo.lock', 'crates/custody/rust-toolchain.toml') }}
 
+  renderer:
+    name: Rust renderer (fmt, clippy, tests, wasm)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: crates/renderer
+    steps:
+      - uses: actions/checkout@v7
+
+      # rustup reads the channel and the wasm target from `rust-toolchain.toml`.
+      - name: Install the pinned toolchain
+        run: rustup toolchain install --component clippy --component rustfmt
+
+      - name: Restore the cargo cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            crates/renderer/target
+          key: renderer-${{ runner.os }}-${{ hashFiles('crates/renderer/Cargo.lock', 'crates/renderer/rust-toolchain.toml') }}
+          restore-keys: renderer-${{ runner.os }}-
+
+      # egui needs the X11/GL dev libraries to compile on Linux.
+      - name: Install egui system packages
+        run: |
+          sudo apt-get update >/dev/null
+          sudo apt-get install -y --no-install-recommends \
+            libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+            libxkbcommon-dev libssl-dev libasound2-dev pkg-config >/dev/null
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      - name: Test
+        run: cargo test --locked
+
+      - name: wasm32 check
+        run: cargo check --locked --target wasm32-unknown-unknown
+
+      - name: Save the cargo cache
+        if: github.ref == 'refs/heads/dev'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            crates/renderer/target
+          key: renderer-${{ runner.os }}-${{ hashFiles('crates/renderer/Cargo.lock', 'crates/renderer/rust-toolchain.toml') }}
+
   schemas:
     name: Validate schemas
     needs: build

@@ -1,0 +1,12 @@
+[package]
+name = "we-style"
+version = "0.1.0"
+edition = "2021"
+description = "Design-system props -> Style: tokens, themes, presets"
+publish = false
+
+[dependencies]
+we-expr.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+indexmap.workspace = true
