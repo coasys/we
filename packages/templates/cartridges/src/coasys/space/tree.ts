@@ -709,12 +709,46 @@ const purpose: SchemaNode = {
 
 /**
  * d12's "Find or ask": one field for finding something in the space and asking the space's assistant.
- * Drawn and not yet answered — what it searches, and how a question becomes one, are still to come.
+ *
+ * Typing only holds the draft on `local.findQuery` — nothing searches as it is typed.
+ * Enter asks: the question opens a chat scoped to this one perspective, a window over the space
+ * (a sheet on a phone) whose tools may not reach any other.
  */
 const findOrAsk: SchemaNode = {
   type: 'Column',
   props: { px: INSET, pb: '500' },
-  children: [{ type: 'Search', props: { placeholder: 'Find or ask' } }],
+  $localState: { findQuery: { type: 'string', initial: '' } },
+  children: [
+    {
+      type: 'we-input',
+      props: {
+        placeholder: 'Find or ask',
+        value: { $: 'local.findQuery' },
+        onInput: { $setLocal: 'findQuery', value: { $: 'event.detail' } },
+        onKeyDown: {
+          $if: {
+            // `isComposing` rides the detail now (we-input forwards it): an Enter still in an IME
+            // composition is the IME's, not an ask.
+            condition: { $: "event.detail.key == 'Enter' && !event.detail.isComposing && trim(local.findQuery)" },
+            then: [
+              {
+                $invoke: 'chatStore.openChat',
+                args: [
+                  {
+                    $: `{ perspectiveUuid: datasetStore.currentDataset.id, spaceName: spaceStore.currentSpace.name, draft: local.findQuery }`,
+                  },
+                ],
+              },
+              { $setLocal: 'findQuery', value: '' },
+            ],
+          },
+        },
+      },
+      children: [
+        { type: 'we-icon', slot: 'start', props: { name: 'magnifying-glass', color: 'text-muted', mr: '200' } },
+      ],
+    },
+  ],
 };
 
 /** Start a call here, or join the one running — whichever there is to do. */
@@ -742,40 +776,64 @@ const callButton: SchemaNode = {
 const IN_IT = 'modules.call.active && !modules.call.elsewhere';
 
 /**
- * A call running in this space, under its name, as d12's tree draws it: "Call running · 3 in it",
- * and the way to it — Open its page for somebody in it, Join for somebody who is not. The controls
- * themselves are the call module's bar, on every page.
+ * A call running in this space, under its name, as d12's tree draws it: "Call running · 3 in it".
+ * One entry, pressed once — `goToCall` joins it for somebody not in it and opens it for somebody
+ * who is, so the row offers the verb rather than a second destination beside the text.
  */
 const callRunning: SchemaNode = {
   type: '$if',
   props: {
     condition: { $: 'count(modules.call.liveCalls)' },
     then: {
-      type: 'Row',
-      props: { gap: '200', ay: 'center', px: INSET, pb: '300' },
+      type: 'Column',
+      props: { px: INSET, pb: '300' },
       children: [
-        { ...liveDot, props: { ...liveDot.props, size: 'xs' } },
-        {
-          type: 'we-text',
-          props: { variant: 'footnote', color: 'text-muted', flex: '1', minWidth: '0', truncate: true },
-          children: [{ $: '`Call running · ${first(modules.call.liveCalls).count} in it`' }],
-        },
+        /*
+          One entry, not a line with a button beside it: `goToCall` already carries the branch —
+          it joins the call running here when you are not in it, and brings it up when you are —
+          so the row asks for the verb and nothing else. The trailing word still says which of
+          the two it will do.
+        */
         {
           type: 'we-button',
           props: {
-            size: 'xs',
-            variant: { $: `${IN_IT} ? 'soft' : 'solid'` },
+            variant: 'ghost',
+            width: '100%',
+            ax: 'start',
+            gap: '200',
+            /*
+              Branched at press time, like the trailing word says it is: "Join" is `goToCall`, and
+              "Open" — for somebody already in it — navigates to the call's own page, the reading
+              the entry had before the two ways in were one and the one the review asked back.
+            */
             onClick: [
               {
                 $if: {
                   condition: { $: IN_IT },
-                  then: { $invoke: 'routeStore.navigate', args: [{ $: callPath('modules.call.callRecordId') }] },
+                  then: [
+                    { $invoke: 'routeStore.navigate', args: [{ $: callPath('modules.call.callRecordId') }] },
+                    // And the stage, for the reason every other way in raises it: "Open" asked
+                    // for the call, not for the page with the call still folded away.
+                    { $invoke: 'modules.call.goToCall' },
+                  ],
                   else: { $invoke: 'modules.call.goToCall' },
                 },
               },
             ],
           },
-          children: [{ $: `${IN_IT} ? 'Open' : 'Join'` }],
+          children: [
+            { ...liveDot, props: { ...liveDot.props, size: 'xs' } },
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-muted', flex: '1', minWidth: '0', truncate: true, ta: 'left' },
+              children: [{ $: '`Call running · ${first(modules.call.liveCalls).count} in it`' }],
+            },
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'accent' },
+              children: [{ $: `${IN_IT} ? 'Open' : 'Join'` }],
+            },
+          ],
         },
       ],
     },

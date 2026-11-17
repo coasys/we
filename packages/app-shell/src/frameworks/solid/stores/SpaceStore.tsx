@@ -5011,7 +5011,18 @@ export function SpaceStoreProvider(props: ParentProps) {
     // registration, and the port replaces it when the list differs.
     if (root) void extractionTargetsFor(root);
     if (wanted) {
+      /*
+        Not before the list is whole. Core vocabulary is known at once and the space's own models and
+        foreign classes a few round trips later, so registering on the first answer wrote a watch
+        without them and then, when they came, removed it and wrote it again — on every visit, from
+        every member. Registered once it is whole, the port finds what is stored already says the
+        same and writes nothing.
+
+        Recorded as on before the wait, all the same: the watch is one row in the shared graph and
+        may be there from an earlier visit, so switching off during the wait must still remove it.
+      */
       looseWatchOn = { root, handle };
+      if (!shapeStore.extractionCandidatesLoaded()) return;
       void datasetStore.watchConversation(root, handle).catch((error: unknown) => {
         console.info('SpaceStore: the space’s loose messages cannot be watched here', error);
       });
@@ -5717,6 +5728,19 @@ export function SpaceStoreProvider(props: ParentProps) {
       return read(moduleId, moduleRegistry.get(moduleId)?.definition.contributes?.holds, false);
     });
   });
+
+  /*
+    And which perspective is on screen, for the instances bound to one — a space chat shows only
+    while its space is current. Same shape as the module gate, same reason: `ShellStore` mounts
+    above the store that knows.
+  */
+  /*
+    A chat is bound to the *local* perspective id, not `Space.uuid` — that field is the creator's
+    own local uuid, synced verbatim into every member's copy (see `spaceSelfWhere`). On a joined
+    space it names a perspective this device does not hold, so a gate on it would hide the chat of
+    every member but the creator, and the chat it did open would pin a session to nobody's graph.
+  */
+  shellStore.provideSpaceGate((perspectiveUuid: string) => datasetStore.currentDataset()?.id === perspectiveUuid);
 
   /*
     And the other thing the shell cannot see for itself: the template on screen and a library to

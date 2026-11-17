@@ -106,6 +106,22 @@ describe('the Coasys cartridge', () => {
   });
 
   /*
+    The AI chat sparkle sat in the rail's `header`, which `railShell` places without the `px` the
+    items and footer columns get — a railItem's own `railInset` is measured *against* that edge
+    padding, so without it the glyph sat one inset left of every row below. The header keeps its
+    place; the row inside it regains the edge it was counted against.
+  */
+  it('aligns the AI chat row with the rail rows below it', () => {
+    const path = pathTo(coasys.app!, (n) => (n.props as { label?: unknown } | undefined)?.label === 'AI chat')!;
+    expect(path.at(-1), 'no AI chat row in the rail').toBeDefined();
+    const edge = path
+      .slice(0, -1)
+      .reverse()
+      .find((n) => (n.props as { px?: unknown } | undefined)?.px !== undefined);
+    expect((edge?.props as { px?: unknown } | undefined)?.px, 'no ancestor restores the rail edge').toBe('200');
+  });
+
+  /*
     It defines no kinds of record of its own, so there is no gap to record: every template it brings
     must validate as it stands — the app around every space, the space template with its pages, and
     the pages of the app's own.
@@ -118,6 +134,46 @@ describe('the Coasys cartridge', () => {
         .map((e) => `${template.id}: ${e.path}: ${e.message}`),
     );
     expect(errors).toEqual([]);
+  });
+
+  /*
+    "Find or ask" scopes its chat to the member's *local* perspective id. `Space.uuid` is the
+    creator's own local uuid, synced verbatim into every member's copy — on a joined space it names
+    a perspective this device does not hold, so a chat pinned to it ran against nobody's graph (and
+    on the gate, hid itself for every member but the creator). Evaluated as the renderer does.
+  */
+  it('asks the space chat against the local perspective, never the synced Space.uuid', () => {
+    const input = findNode(
+      treeSection,
+      (n) => (n.props as { placeholder?: unknown } | undefined)?.placeholder === 'Find or ask',
+    )!;
+    const enter = (input.props as { onKeyDown: { $if: { then: { $invoke?: string; args?: { $: string }[] }[] } } })
+      .onKeyDown.$if.then[0];
+    expect(enter.$invoke).toBe('chatStore.openChat');
+    const source = enter.args![0].$;
+    expect(source).toContain('datasetStore.currentDataset.id');
+    expect(source).not.toContain('spaceStore.currentSpace.uuid');
+
+    const asked = evaluateExpression(parseExpression(source), {
+      root: (name) => ({
+        bound: true,
+        value: {
+          // A joined space: the local perspective id is not the uuid the creator's record synced in.
+          datasetStore: { currentDataset: { id: 'local-perspective-uuid', sharedId: 'we://shared-cid' } },
+          spaceStore: { currentSpace: { uuid: 'creator-uuid', name: 'Garden club' } },
+          local: { findQuery: 'what is growing?' },
+        }[name],
+      }),
+      call: (name, args) =>
+        listFunctions()
+          .find((f) => f.name === name)
+          ?.impl(args, { context: {}, stores: {} }),
+    });
+    expect(asked).toEqual({
+      perspectiveUuid: 'local-perspective-uuid',
+      spaceName: 'Garden club',
+      draft: 'what is growing?',
+    });
   });
 
   it('brings its own name, mark, sign-in screen and theme', () => {
@@ -203,6 +259,42 @@ describe('the Coasys cartridge', () => {
     have it, so the two lists offer the same things; the tree's list is the ones somebody would switch
     between in this space, not every built-in the deployment carries.
   */
+  describe('a call running in the space', () => {
+    /** The tree's `$if` gated on a live call — the subtree that is the running-call entry. */
+    const running = () =>
+      findNode(
+        treeSection,
+        (n) =>
+          n.type === '$if' &&
+          JSON.stringify((n.props as { condition?: unknown } | undefined)?.condition) ===
+            JSON.stringify({ $: 'count(modules.call.liveCalls)' }),
+      )!;
+
+    it('is a single entry that joins or opens it — not a line beside a second affordance', () => {
+      const subtree = running();
+      const json = JSON.stringify(subtree);
+      /*
+        One way in, branching at press time like the row's label does: "Join" joins the call
+        running here through `goToCall`, and "Open" — shown to somebody already in it — navigates
+        to the call's own page, which is what it did before the row was unified and what the
+        review asked back. A second destination beside the text is still the repeat it refuses.
+      */
+      expect(json).toContain('modules.call.goToCall');
+      expect(json).toContain('routeStore.navigate');
+      expect(json).not.toContain('modules.call.joinCall');
+
+      // The Open branch goes to the call's record page — the address its own view answers.
+      expect(json).toContain('record/CollectionBlock?kind=call&id=');
+
+      // The line itself is the entry: "Call running · N in it" lives inside the one button, not
+      // next to it, so pressing anywhere on the row does the thing the row reports.
+      const buttons = findAll(subtree, (n) => n.type === 'we-button');
+      expect(buttons, 'the entry is more than one control').toHaveLength(1);
+      const text = findAll(buttons[0], (n) => n.type === 'we-text' && JSON.stringify(n).includes('Call running'));
+      expect(text, 'the call-running line is not inside the entry').toHaveLength(1);
+    });
+  });
+
   describe('templates and themes in the tree', () => {
     const evaluate = (source: string, roots: Record<string, unknown>) =>
       evaluateExpression(parseExpression(source), {
@@ -606,6 +698,86 @@ describe('the Coasys cartridge', () => {
         ['settings', 'shell', 0, false],
       ]);
     });
+
+    /*
+      Reading the canvas as a tree — the workshop's second mode, shared through the kit. The same
+      failures worth guarding: a mode nothing on screen can turn off, an order the picker names and
+      the layout does not obey, a switch that remounts the graph and loses every placement.
+    */
+    describe('the canvas’s tree', () => {
+      const pane = JSON.stringify(canvasPane);
+      const graph = findNode(canvasPane, (n) => n.type === 'GraphView')!;
+      const graphJson = JSON.stringify(graph);
+
+      it('keeps the mode, the spine and the order in the address, so a link carries the reading', () => {
+        expect(pane).toContain('"treeMode":{"type":"boolean","initial":false,"syncParam":{"name":"tree","push":true}}');
+        expect(pane).toContain('"spine":{"type":"string","initial":"","syncParam":"spine"}');
+        expect(pane).toContain('"order":{"type":"string","initial":"manual","syncParam":"order"}');
+      });
+
+      it('puts the only way out of the mode on screen rather than in a panel', () => {
+        // A panel can be closed; a state the layout obeys has to be visible and reversible.
+        expect(pane).toContain('"$toggleLocal":"treeMode"');
+        expect(pane).toContain('"position":"absolute"');
+      });
+
+      it('swaps the layout rather than the graph, so a switch cannot cost a placement', () => {
+        /*
+          One `layout` prop holding both readings: two GraphViews would unmount one and mount the
+          other, throwing away the selection, the camera and every card's identity — and with them
+          the placements, which the freeform reading is the keeper of. The vocabulary map beside it
+          is a different graph with a layout of its own.
+        */
+        expect(graphJson.match(/"layout":/g)).toHaveLength(1);
+        expect(graphJson).toContain("{ type: 'forest', options: { spine: { field: 'data.relationshipTypeId'");
+        // Freeform as it was: manual, parked at the canvas's own card size. Nothing about the
+        // positions people arranged is read by the tree, so switching back finds every card.
+        expect(graphJson).toContain("{ type: 'manual', options: { size: { width: 200, height: 140 }");
+      });
+
+      it('swaps the gesture rather than listing both, and keeps writing coordinates only freeform', () => {
+        expect(graphJson).toContain("type: 'arrange-nodes'");
+        expect(graphJson).toContain("{ type: 'drag-node', options: { pin: true } }");
+        // `select` ahead of both: it does not claim the press, and needs to see it.
+        expect(graphJson).toContain("'select', { type: 'arrange-nodes'");
+        // A drag in the tree writes the structure the layout reads, not a position it then erases.
+        expect(graphJson).toContain('"onNodeArrange":{"$invoke":"recordStore.arrangeOnTree"');
+        expect(graphJson).toContain('{"$":"local.spine"}');
+        expect(graphJson).toContain('"onNodeDragEnd":{"$invoke":"recordStore.dragOnCanvas"');
+      });
+
+      it('gives every card one box in the tree, and its own on the canvas', () => {
+        expect(graphJson).toContain("local.treeMode ? ((local.cardSize == 'sm'");
+        expect(graphJson).toContain("{ from: 'data.canvasWidth' }");
+      });
+
+      it('draws the connections it is not following, faintly', () => {
+        expect(graphJson).toContain("{ 'data.relationshipTypeId': { not: local.spine } }");
+        expect(graphJson).toContain('opacity: 0.25');
+        expect(graphJson).toContain("sourceAnchor: 's', targetAnchor: 'n'");
+      });
+
+      it('fetches the reactions whenever the tree is up, so ordering by one is a re-sort and not a reload', () => {
+        expect(graphJson).toContain('"weigh":{"$":"(local.treeMode || local.order == \'signal\') && (');
+      });
+
+      it('hides the strip while the Social DNA map covers the canvas', () => {
+        // The strip sits under the `$if` that reads "not on the map".
+        const notOnMap = findNode(canvasPane, (n) => {
+          const condition = (n.props as { condition?: { $?: unknown } } | undefined)?.condition?.$;
+          return n.type === '$if' && condition === "!((routeStore.params.view == 'canvas') && routeStore.params.dna)";
+        });
+        expect(JSON.stringify(notOnMap)).toContain('"$toggleLocal":"treeMode"');
+      });
+
+      it('offers the spine and the order in the strip', () => {
+        expect(pane).toContain('"placeholder":"Any connection"');
+        expect(pane).toContain('local.relationshipKinds.map(k, { label: k.name, value: k.id, icon: k.icon })');
+        expect(pane).toContain('"value":"manual"');
+        expect(pane).toContain('"value":"date"');
+        expect(pane).toContain('"value":"newest"');
+      });
+    });
   });
 });
 
@@ -625,6 +797,28 @@ function findNode(root: unknown, match: (node: { type?: string; props?: unknown 
     for (const value of Object.values(node)) {
       const found = walk(value);
       if (found) return found;
+    }
+    return undefined;
+  };
+  return walk(root);
+}
+
+/** The node `match` accepts plus every ancestor above it, root first — `findNode` with a lineage. */
+function pathTo(root: unknown, match: (node: { type?: string; props?: unknown }) => boolean) {
+  const walk = (node: unknown): { type?: string; props?: unknown }[] | undefined => {
+    if (!node || typeof node !== 'object') return undefined;
+    if (Array.isArray(node)) {
+      for (const child of node) {
+        const found = walk(child);
+        if (found) return found;
+      }
+      return undefined;
+    }
+    const n = node as { type?: string; props?: unknown };
+    if (match(n)) return [n];
+    for (const value of Object.values(node)) {
+      const found = walk(value);
+      if (found) return [n, ...found];
     }
     return undefined;
   };

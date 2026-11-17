@@ -281,7 +281,9 @@ async fn make_link_and_revoke_through_the_custody_service() {
         eprintln!("skipped: set CUSTODY_LIVE=1 (see the header of tests/live.rs)");
         return;
     }
-    assert!(cfg!(feature = "cheap-kdf"), "run with --features cheap-kdf");
+    if !cfg!(feature = "cheap-kdf") {
+        panic!("run with --features cheap-kdf");
+    }
     let repo = ad4m_repo();
     let js = repo.join("tests/js");
     let agent_language =

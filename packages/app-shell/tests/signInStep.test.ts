@@ -6,7 +6,14 @@ import { type SignInFacts, signInStep } from '@shared/signInStep';
 import { describe, expect, it } from 'vitest';
 
 const at = (facts: Partial<SignInFacts>) =>
-  signInStep({ bootState: 'login', createAgentLoading: false, switching: false, creatingAccount: false, ...facts });
+  signInStep({
+    bootState: 'login',
+    createAgentLoading: false,
+    switching: false,
+    creatingAccount: false,
+    settingUpAi: false,
+    ...facts,
+  });
 
 describe('the step of signing in', () => {
   it('follows the boot state', () => {
@@ -22,6 +29,14 @@ describe('the step of signing in', () => {
     expect(at({ creatingAccount: true })).toBe('preparing');
     // The flag turns on while the boot state is still `createAgent`, so the form goes at the press.
     expect(at({ bootState: 'createAgent', createAgentLoading: true })).toBe('settingUp');
+  });
+
+  it('is choosing AI while a first run is held for it, once the identity is made', () => {
+    expect(at({ bootState: 'finishing', settingUpAi: true })).toBe('setUpAi');
+    // Only on a first run's last step: the hold means nothing before the identity exists, or after.
+    expect(at({ bootState: 'createAgent', createAgentLoading: true, settingUpAi: true })).toBe('settingUp');
+    expect(at({ bootState: 'ready', settingUpAi: true })).toBe('ready');
+    expect(at({ bootState: 'finishing', settingUpAi: true, switching: true })).toBe('switching');
   });
 
   it('is switching whichever step the switch began from', () => {

@@ -3,7 +3,7 @@ import { FLOWS_LOCALS, lineComposer, workflowsPage } from '@we/template-kit';
 
 import { viewBar } from './bar.ts';
 import { groupRoutes } from './groups.ts';
-import { liveDot } from './marks.ts';
+import { exportTranscriptButton, liveDot } from './marks.ts';
 import { CHANNEL, groupPath, IN_ROOT_EXPR } from './paths.ts';
 import { personRoute } from './person.ts';
 import { dnaRoute } from './socialDna.ts';
@@ -29,11 +29,13 @@ const channelQueries = {
 };
 
 /**
- * The bottom of a view, kept clear of the call bar.
+ * The bottom of a view, kept clear of whatever chrome covers it.
  *
- * The bar floats along the bottom of the window on every page while a call is up, so whatever a view
- * pins to its foot — the composer, the end of a transcript — rises above it, and settles back as the
- * bar goes. `--we-covered-bottom` is how much the host says is covered there.
+ * `--we-covered-bottom` is how much the host says is covered there — a band some other piece of
+ * chrome may float along the bottom of the window, so whatever a view pins to its foot — the
+ * composer, the end of a transcript — rises above it, and settles back as the chrome goes. Zero in
+ * the ordinary case, which is most of the point: the call's controls ride inside the call's own
+ * stage now rather than over every page.
  */
 const CLEAR_OF_THE_BAR = 'calc(var(--we-space-500) + var(--we-covered-bottom, 0px))';
 const LIFT = 'padding-bottom 300 ease';
@@ -297,8 +299,8 @@ const MINE = `modules.call.callRecordId == ${CALL_ID}`;
  * The end of a call's bar: Live while it runs, and the transcript to take away.
  *
  * The badge is `sm` so it stands the height of the Page / Canvas switch beside it rather than over
- * it. The export is offered whether the call is running or over, and to everyone: it reads the
- * shared record and writes to the reader's own device, so there is nobody else's account involved.
+ * it. The export is offered whether the call is running or over, to everyone — see
+ * `exportTranscriptButton`.
  */
 export const callBarAside = (callId: string): SchemaNode[] => [
   {
@@ -308,23 +310,7 @@ export const callBarAside = (callId: string): SchemaNode[] => [
       then: { type: 'we-badge', props: { tone: 'success', size: 'sm' }, children: [liveDot, 'Live'] },
     },
   },
-  {
-    type: 'we-tooltip',
-    props: { content: 'Export the transcript', placement: 'bottom' },
-    children: [
-      {
-        type: 'we-button',
-        props: {
-          variant: 'ghost',
-          size: 'md',
-          square: true,
-          label: 'Export the transcript',
-          onClick: { $invoke: 'spaceStore.exportCallTranscript', args: [{ $: callId }] },
-        },
-        children: [{ type: 'we-icon', props: { name: 'download-simple' } }],
-      },
-    ],
-  },
+  exportTranscriptButton(callId),
 ];
 
 /**

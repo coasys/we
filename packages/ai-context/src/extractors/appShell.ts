@@ -237,11 +237,11 @@ export function extractStores(storesDir: string): ExtractedStore[] {
  * the design-system packages; whatever is left is the shell/internal set that would otherwise be
  * reported as unknown.
  */
-export function extractRegisteredComponents(registryFile: string): string[] {
+export function extractRegisteredComponents(registryFile: string, declaration = 'componentRegistry'): string[] {
   const project = new Project({ skipAddingFilesFromTsConfig: true });
   const file = project.addSourceFileAtPath(registryFile);
 
-  const decl = file.getVariableDeclaration('componentRegistry');
+  const decl = file.getVariableDeclaration(declaration);
   const literal = decl?.getInitializerIfKind(SyntaxKind.ObjectLiteralExpression);
   if (!literal) return [];
 

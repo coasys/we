@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { capabilitiesFromToken, createCapabilityCheck } from '../src/capabilities';
+import { capabilitiesFromToken, createCapabilityCheck, holdsOperatorCredential } from '../src/capabilities';
 
 /** A JWT with the given payload. Unsigned — nothing here verifies, by design. */
 function token(payload: unknown): string {
@@ -59,6 +59,24 @@ describe('capabilitiesFromToken', () => {
       );
       expect(decoded).toHaveLength(1);
     }
+  });
+});
+
+describe('holdsOperatorCredential', () => {
+  // The executor's own rule: the admin credential is the operator, and so is no token on loopback
+  // where no credential is set. A JWT is a grant, and a grant never is, whatever it carries.
+  it.each([
+    ['the admin credential, which is not a JWT', 'some-shared-secret', true],
+    ['an empty token, the local case', '', true],
+    ['no token at all', undefined, true],
+    [
+      'a grant holding `*`',
+      token({ capabilities: { capabilities: [{ with: { domain: '*', pointers: ['*'] }, can: ['*'] }] } }),
+      false,
+    ],
+    ['a JWT carrying no capability list', token({ capabilities: { appName: 'WE' } }), false],
+  ])('answers for %s', (_case, value, expected) => {
+    expect(holdsOperatorCredential(value)).toBe(expected);
   });
 });
 

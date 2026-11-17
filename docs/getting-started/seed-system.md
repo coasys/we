@@ -222,8 +222,9 @@ gives it: `<bundle>--<template>`, so `coasys--space` for the Coasys bundle's.
 
 A bundle can bring starters of its own. While its app is in use, a new space gets the bundle's first
 starter rather than the seed's, so the Coasys seed has none: its app is Coasys, and every space made in
-it is a Coasys space. A deployment that builds an app in beside WE's own (WE's seed builds Coasys in)
-names `host.ui.app: "we-app"`, or everyone who has not chosen an app would open in the bundle's.
+it is a Coasys space. WE's own seed builds Coasys in and names no `host.ui.app`, so everyone who has
+not chosen an app opens in Coasys. A deployment that builds an app in but keeps WE's as its default
+names `host.ui.app: "we-app"`.
 
 ```json
 "bundles": ["field-guide"]
@@ -356,6 +357,10 @@ inside but not the binary somebody installed.
   runtime: `io.coasys.app` builds `io.coasys.app.electron` and
   `io.coasys.app.tauri`, so the two hosts install side by side. Defaults to
   `io.weco.we`.
+- `tauriId` — the identifier of the Tauri app, when it is not `<appId>.tauri`.
+  `seeds/coasys.seed.json` sets `org.coasys.app`: the Coasys desktop app. At its
+  first start, an app with a `tauriId` moves the webview's data folder from
+  `<appId>.tauri` to the new identifier (Linux), so local settings stay.
 - `icon` — an SVG, relative to the repository root, drawn as it is with a margin
   (`@we/brand` makes every size). Defaults to WE's mark on its themed tile.
 

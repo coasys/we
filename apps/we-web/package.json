@@ -10,7 +10,9 @@
     "build": "we-build",
     "serve": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:live": "node --test --test-concurrency=1 --test-timeout=1200000 tests/live/calls.live.mjs",
+    "test:spaces": "node --test --test-concurrency=1 --test-timeout=7200000 tests/live/coasys-spaces/all.live.mjs"
   },
   "dependencies": {
     "@we/app-shell": "workspace:*",
@@ -25,6 +27,7 @@
     "@we/csp": "workspace:*",
     "@we/globe-layers": "workspace:*",
     "@we/globe-widget": "workspace:*",
+    "playwright-core": "^1.64.1",
     "typescript": "^6.0.3",
     "vite": "^8.3.5",
     "vite-plugin-solid": "^2.11.15",

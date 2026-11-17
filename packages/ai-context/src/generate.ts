@@ -304,9 +304,21 @@ async function main() {
     report them as unknown, and derived from the registry rather than remembered: it is the single
     source for what a template may name, and a hand-copied subset of it drifted twice.
   */
-  const registered = extractRegisteredComponents(
-    resolve(repoRoot, 'packages/app-shell/src/frameworks/solid/registries/componentRegistry.tsx'),
-  );
+  /*
+    Two registries exist: `componentRegistry` is what a template's tree renders against, and
+    `chromeComponentRegistry` is its superset for host-owned schema (the app's own panels — the AI
+    chat lives there). The validator's vocabulary is the UNION: the app template itself is
+    validated and legitimately names chrome-only components. Which components a *space template*
+    may mount is still decided at render time by the registry its tree draws from — a template
+    writing a chrome-only name renders nothing, same as any unregistered component.
+  */
+  const registryFile = resolve(repoRoot, 'packages/app-shell/src/frameworks/solid/registries/componentRegistry.tsx');
+  const registered = [
+    ...new Set([
+      ...extractRegisteredComponents(registryFile, 'componentRegistry'),
+      ...extractRegisteredComponents(registryFile, 'chromeComponentRegistry'),
+    ]),
+  ].sort();
 
   /*
     The functions the host lends to expressions, read from its registry. Listed beside the built-in
