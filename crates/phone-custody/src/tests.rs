@@ -528,7 +528,7 @@ fn an_offer_link_to_a_store_that_is_not_http_is_refused() {
         Err(PhoneKeyError::Invalid { .. })
     ));
     assert!(matches!(
-        keys.prepare_claim("https://id.coasys.org/o#nonsense".into(), None),
+        keys.prepare_claim("https://coasys.id/o#nonsense".into(), None),
         Err(PhoneKeyError::Invalid { .. })
     ));
 }
