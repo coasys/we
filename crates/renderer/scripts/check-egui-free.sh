@@ -24,13 +24,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# port(split) interim: this layer of the split stack holds only some of the
-# crates, so the lists below are cut to the crates present. The full script
-# arrives with the layer that adds we-tui (port/split-widgets).
-core=""
-for p in we-session we-layout we-catalog we-data we-expr we-screen we-template we-style we-legacy we-metrics; do
-    [ -f "$p/Cargo.toml" ] && core="$core${core:+ }$p"
-done
+core="we-session we-layout we-catalog we-data we-expr we-screen we-template we-style we-legacy we-metrics"
 args=()
 for p in $core; do args+=(-p "$p"); done
 
@@ -48,8 +42,7 @@ if echo "$tree" | grep -E "\b(${deny}) +v[0-9]"; then
 fi
 
 # we-tui, host + the other native desktops — per-target.
-tui=""; [ -f we-tui/Cargo.toml ] && tui=" + we-tui"
-[ -f we-tui/Cargo.toml ] && for target in "" x86_64-pc-windows-msvc x86_64-apple-darwin; do
+for target in "" x86_64-pc-windows-msvc x86_64-apple-darwin; do
     if ! tree="$(cargo tree --locked --all-features -e normal,build ${target:+--target "$target"} -p we-tui)"; then
         echo "egui-free check FAILED: cargo tree --locked could not resolve we-tui${target:+ on $target}" >&2
         exit 1
@@ -72,4 +65,4 @@ if grep -rnE --include='*.rs' \
     exit 1
 fi
 
-echo "egui-free check passed: ${core}${tui:-} pull no ${deny//|/, } (core: all features, all targets; we-tui: per native target)"
+echo "egui-free check passed: ${core} + we-tui pull no ${deny//|/, } (core: all features, all targets; we-tui: per native target)"

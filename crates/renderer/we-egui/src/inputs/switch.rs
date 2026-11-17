@@ -1,0 +1,120 @@
+//! `we-switch` — a boolean toggle. `checked` (falling back to `value`) is
+//! the shown state; a click emits `onChange` `{detail: bool}` with the
+//! *next* state, the way the TS element does.
+use we_style::Style;
+use we_template::ResolvedNode;
+
+use crate::inputs::{access_label, disabled};
+use crate::props;
+use crate::{events, MeasureCx, PaintCx, Rect, Size, Widget, WidgetKind};
+
+pub struct Switch;
+
+impl Widget for Switch {
+    fn type_name(&self) -> &'static str {
+        "we-switch"
+    }
+
+    fn kind(&self) -> WidgetKind {
+        WidgetKind::Leaf
+    }
+
+    fn measure(&self, _cx: &MeasureCx, _node: &ResolvedNode, _style: &Style, _avail: Size) -> Size {
+        Size::new(36.0, 20.0)
+    }
+
+    fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, _style: &Style, rect: Rect) {
+        let on = props::prop_flag(node, "checked")
+            .or_else(|| props::prop_flag(node, "value"))
+            .unwrap_or_else(|| props::prop(node, "checked").truthy());
+        let label = access_label(cx, node);
+
+        // The pill hugs the rect's left edge — `from_center_size` on
+        // `left_center` alone would park half of it outside the column.
+        let switch_rect = Rect::from_center_size(
+            rect.left_center() + egui::vec2(18.0, 0.0),
+            Size::new(36.0, 20.0),
+        );
+        let response = cx.interact_label(
+            switch_rect,
+            &label,
+            egui::Role::CheckBox,
+            &node.id,
+            "switch",
+            !disabled(node),
+            Some(on),
+        );
+
+        let visuals = cx.ui.visuals().clone();
+        let fill = if disabled(node) {
+            visuals.widgets.noninteractive.bg_fill
+        } else if on {
+            visuals.widgets.active.bg_fill
+        } else {
+            visuals.widgets.inactive.bg_fill
+        };
+        // The theme's part rules reach the track/thumb where they are —
+        // no node addresses them, so the painter asks the stylesheet for
+        // `we-switch::part(track|thumb)` (retro: square faces carrying the
+        // Win95 bevel over the same fills).
+        let view = crate::defaults::view_of(cx.ui.ctx());
+        let track = crate::defaults::part_patch(cx.ui.ctx(), node, "track");
+        let thumb = crate::defaults::part_patch(cx.ui.ctx(), node, "thumb");
+        let corner = |p: &Option<we_style::StylePatch>, fallback: f32| {
+            p.as_ref()
+                .and_then(|p| p.paint.radius.top)
+                .and_then(|d| d.to_px(&view.metrics, view.viewport))
+                .unwrap_or(fallback)
+        };
+        let shadows = |p: &Option<we_style::StylePatch>, rect: Rect| {
+            if let Some(layers) = p.as_ref().and_then(|p| p.paint.shadows.clone()) {
+                let mut part = Style::default();
+                part.paint.shadows = Some(layers);
+                props::paint_box(cx.ui.painter(), rect, &part, egui::Color32::WHITE, view);
+            }
+        };
+        cx.ui
+            .painter()
+            .rect_filled(switch_rect, corner(&track, 10.0), fill);
+        shadows(&track, switch_rect);
+        let knob_center = egui::pos2(
+            if on {
+                switch_rect.max.x - 10.0
+            } else {
+                switch_rect.min.x + 10.0
+            },
+            switch_rect.center().y,
+        );
+        // The web part is the 16px block at 2px insets, which this centre
+        // reproduces; its corner is the part rule's radius, round without.
+        if thumb.is_some() {
+            let thumb_rect = Rect::from_center_size(knob_center, Size::new(16.0, 16.0));
+            cx.ui
+                .painter()
+                .rect_filled(thumb_rect, corner(&thumb, 8.0), egui::Color32::WHITE);
+            shadows(&thumb, thumb_rect);
+        } else {
+            cx.ui
+                .painter()
+                .circle_filled(knob_center, 8.0, egui::Color32::WHITE);
+        }
+        // The `labelOn`/`labelOff` text beside the pill.
+        let text = if on {
+            props::prop_string(node, "labelOn")
+        } else {
+            props::prop_string(node, "labelOff")
+        };
+        if let Some(t) = text {
+            cx.ui.painter().text(
+                egui::pos2(switch_rect.max.x + 8.0, switch_rect.center().y),
+                egui::Align2::LEFT_CENTER,
+                t,
+                egui::FontId::default(),
+                visuals.text_color(),
+            );
+        }
+        if response.clicked() && !disabled(node) {
+            cx.emit(&node.id, "onChange", events::detail_bool(!on));
+        }
+    }
+}

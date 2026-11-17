@@ -1,0 +1,33 @@
+[package]
+name = "we-tui"
+version = "0.1.0"
+edition = "2021"
+description = "Terminal frontend over we-session — renders a WE bundle's resolved tree as text cells with ratatui"
+publish = false
+
+# Native only: crossterm has no wasm32 backend, and a terminal frontend
+# has no browser to run in. On wasm32 the crate builds empty (lib.rs and
+# main.rs are cfg-gated), the way we-app's native-only main is.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+we-expr.workspace = true
+we-screen.workspace = true
+we-template.workspace = true
+we-session.workspace = true
+we-catalog.workspace = true
+we-style.workspace = true
+we-layout.workspace = true
+we-metrics.workspace = true
+we-data.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+indexmap.workspace = true
+unicode-width.workspace = true
+ratatui.workspace = true
+crossterm.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "we-tui"
+path = "src/main.rs"

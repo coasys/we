@@ -1,0 +1,149 @@
+//! `we-cli` — the headless frontend: load the bundle + snapshot through
+//! [`we_session::Session`], resolve, and print the tree as an indented
+//! outline. `we-catalog` supplies each node's text fallback — the same
+//! words a non-painting frontend would show.
+//!
+//! usage: we-cli [--bundle <path>] [--snapshot <path>] [--route <href>] [--viewport <px>]
+#![forbid(unsafe_code)]
+
+use std::sync::Arc;
+
+use serde::Deserialize;
+use we_screen::{ScreenSchema, ScreenState};
+use we_session::Session;
+use we_template::{Bundle, MountCx, ResolvedChild, ResolvedNode, RootSpec, SchemaNode, StoreBag};
+
+const DEFAULT_BUNDLE: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../bundles/coasys.bundle.json"
+);
+
+fn arg(flag: &str, default: Option<String>) -> Option<String> {
+    let mut args = std::env::args().skip(1);
+    while let Some(a) = args.next() {
+        if a == flag {
+            return args.next();
+        }
+    }
+    default
+}
+
+/// The bundle's `tree` panel schema — the same node `we-app` renders in its
+/// side panel.
+fn tree_schema(bundle: &Bundle) -> SchemaNode {
+    bundle
+        .templates
+        .as_deref()
+        .unwrap_or_default()
+        .first()
+        .and_then(|t| t.meta.get("panels"))
+        .and_then(|panels| panels.as_array())
+        .and_then(|panels| {
+            panels
+                .iter()
+                .find(|p| p.get("id").and_then(|i| i.as_str()) == Some("tree"))
+                .or_else(|| panels.first())
+        })
+        .and_then(|panel| SchemaNode::deserialize(panel.get("node").cloned()?).ok())
+        .unwrap_or_else(|| panic!("bundle has no panels to render"))
+}
+
+/// One resolved child → an indented line (nodes recurse; text children
+/// print inline).
+fn outline(node: &ResolvedNode, depth: usize, out: &mut String) {
+    let label = we_catalog::text_fallback(node);
+    let indent = "  ".repeat(depth);
+    out.push_str(&indent);
+    out.push_str(node.ty.as_ref());
+    // The whole fallback, not just its first line — a graph's outline, a
+    // block document, a multiline value all carry their following lines.
+    let mut lines = label.lines();
+    if let Some(first) = lines.next() {
+        out.push_str(&format!("  {first}"));
+    }
+    out.push('\n');
+    for line in lines {
+        out.push_str(&format!("{indent}  {line}\n"));
+    }
+    for child in &node.children {
+        match child {
+            ResolvedChild::Node(n) => outline(n, depth + 1, out),
+            ResolvedChild::Text(t) => {
+                let t = t.trim();
+                if !t.is_empty() {
+                    out.push_str(&format!("{}\"{t}\"\n", "  ".repeat(depth + 1)));
+                }
+            }
+        }
+    }
+}
+
+fn main() {
+    let bundle_path = arg("--bundle", Some(DEFAULT_BUNDLE.to_string())).unwrap();
+    let route = arg("--route", Some("/space/demo".to_string())).unwrap();
+    // The design's headless measure (6.2): dump/CLI report the mount's
+    // host surfaces at `--viewport`, 1440 when the caller does not say.
+    let viewport = arg("--viewport", Some("1440".to_string()))
+        .unwrap()
+        .parse::<f32>()
+        .unwrap_or_else(|e| panic!("--viewport needs a pixel width: {e}"));
+    let text = std::fs::read_to_string(&bundle_path)
+        .unwrap_or_else(|e| panic!("cannot read bundle {bundle_path}: {e}"));
+    let bundle = Bundle::parse(&text).unwrap_or_else(|e| panic!("bundle did not parse: {e}"));
+
+    let bag = match arg("--snapshot", None) {
+        Some(path) => {
+            let text = std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("cannot read snapshot {path}: {e}"));
+            let json: serde_json::Value =
+                serde_json::from_str(&text).unwrap_or_else(|e| panic!("snapshot parse: {e}"));
+            StoreBag::from_snapshot(&json).unwrap_or_else(|e| panic!("snapshot: {e}"))
+        }
+        None => StoreBag::new(),
+    };
+    let screen_schema = ScreenSchema {
+        pages: bundle
+            .pages
+            .as_deref()
+            .unwrap_or_default()
+            .iter()
+            .map(|p| p.id.clone())
+            .collect(),
+        ..ScreenSchema::default()
+    };
+    let screen = ScreenState::desktop(screen_schema, &route);
+
+    let mut session = Session::offline(
+        RootSpec::Single {
+            node: Box::new(tree_schema(&bundle)),
+            cx: MountCx::explicit("tree"),
+            declared: we_template::Declared::default(),
+        },
+        Arc::new(bag),
+        screen,
+    )
+    .with_dollar_types(|ty| we_catalog::entry(ty).is_some());
+    let mut root = session.resolve();
+    // E3c-13: the mount's host surfaces measure the viewport — the same
+    // box the egui frame offers — reported through the inbox like any
+    // frontend's `ResizeObserver`, then the poll below applies it.
+    session.report_host_surfaces(&root, viewport);
+    // The CLI's wake channel is the loop itself: poll until a quiet tick
+    // — a completion or a `set_root` landing between frames resolves
+    // before the tree prints.
+    for _ in 0..8 {
+        if !session.poll().dirty {
+            break;
+        }
+        root = session.resolve();
+    }
+
+    let mut out = String::new();
+    outline(&root, 0, &mut out);
+    print!("{out}");
+    let stats = session.stats();
+    eprintln!(
+        "resolved: {} nodes in {} resolve(s)",
+        stats.nodes, stats.resolves
+    );
+}
