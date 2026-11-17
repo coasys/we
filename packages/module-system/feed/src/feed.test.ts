@@ -87,6 +87,15 @@ describe('the feed window', () => {
     expect(callPages()).toBe(1);
   });
 
+  it('reads the calls by the fields it draws of them, not whole calls', async () => {
+    const { find, asked } = store(rows);
+    await readFeedWindow(find, { root: ROOT, shown: 10, fromStart: false, activityTypes: [] });
+    // A whole call carries the id of every line said in it; the window draws its title and time.
+    const callList = asked.filter((a) => a.entity === 'CollectionBlock');
+    expect(callList).toHaveLength(1);
+    expect(callList[0].query.select).toEqual(['title', 'createdAt']);
+  });
+
   it('reads the same from the start, oldest first', async () => {
     const { find } = store(rows);
     const { rows: drawn } = await readFeedWindow(find, { root: ROOT, shown: 10, fromStart: true, activityTypes: [] });

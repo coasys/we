@@ -53,6 +53,7 @@ import type {
 import { coalesceByKey } from '@we/module-shared';
 
 import { clockRegistry } from '../clocks';
+import type { FirstScreen } from '../firstScreen';
 import { addLiveMarks, addLivePointerListener } from '../liveView';
 
 /** What a store publishes here once it is live. All optional: a host need not provide any of it. */
@@ -355,6 +356,8 @@ export const HOST_KERNELS: readonly KernelName[] = [
 export function createModuleStoreDeps(framework: {
   signal: <T>(initial: T) => [() => T, (next: T) => void];
   effect: (fn: () => void) => void;
+  /** The host's first-screen gate — see `shared/firstScreen.ts`. Absent: nothing is held. */
+  firstScreen?: FirstScreen;
 }): ModuleStoreDeps {
   // A signal for the published stream, so a consumer reading `input()` inside a derived value re-runs
   // when the publisher changes it.
@@ -522,9 +525,12 @@ export function createModuleStoreDeps(framework: {
         if (!call) return Promise.reject(new Error('call: this host cannot run a call'));
         return call.session(callId, request);
       },
-      config: () => {
+      // A call's policy is read when a call starts, or a settings page opens — never for the first
+      // screen, so at cold boot it waits until that screen is up. See `shared/firstScreen.ts`.
+      config: async () => {
+        await framework.firstScreen?.whenOpen();
         const call = services.call;
-        if (!call) return Promise.reject(new Error('call: this host cannot read a call policy'));
+        if (!call) throw new Error('call: this host cannot read a call policy');
         return call.config();
       },
       setConfig: (config) => {
@@ -693,6 +699,9 @@ export function createModuleStoreDeps(framework: {
       openRef: (ref) => services.datasets?.openRef(ref),
       onRemoved: (cb) => services.datasets?.onRemoved?.(cb) ?? (() => {}),
     },
+    firstScreen: framework.firstScreen
+      ? { waiting: () => framework.firstScreen?.waiting(), answered: () => framework.firstScreen?.answered() }
+      : undefined,
     identities: {
       get: (agentId) => services.identities?.get(agentId),
       fetch: (agentId) => services.identities?.fetch(agentId),

@@ -811,3 +811,112 @@ describe('the cartridges as bundles', () => {
     expect(JSON.stringify(fieldGuideBundle)).not.toContain('Levels Naturalists');
   });
 });
+
+describe('the Coasys space chat: one mount for the channel on screen', () => {
+  /*
+    A recorded cold open, at General's own address (`?channel=<root>`), sent the sub-channel chat's
+    reads — the channel record and the transcript's lines — then cancelled them 135 ms later and sent
+    the Feed's. `root` is '' until the space's collection has been read, so for that moment General's
+    address compared unequal to it and the view drew General as a sub-channel. The renderer is walked
+    here as it walks the route: an `$if` mounts the branch its condition picks, a query runs when its
+    `when` holds.
+  */
+  const FEED = 'ad4m://obj/feed';
+  const chatRoute = spaceRoutes.find((route) => route.path === '/')!;
+
+  const evaluate = (source: string, spaceStore: Record<string, unknown>) =>
+    evaluateExpression(parseExpression(source), {
+      root: (name) => ({
+        bound: true,
+        value: {
+          routeStore: { params: { channel: FEED }, templateSegments: [] },
+          spaceStore,
+          local: {},
+          modules: { transcribe: {}, call: {} },
+        }[name],
+      }),
+      call: (name, args) =>
+        listFunctions()
+          .find((f) => f.name === name)
+          ?.impl(args, { context: {}, stores: {} }),
+    });
+
+  /** The host parts the route mounts, and the queries it runs, for one state of the space store. */
+  function mounted(spaceStore: Record<string, unknown>) {
+    const parts: string[] = [];
+    const walk = (node: unknown): void => {
+      if (!node || typeof node !== 'object') return;
+      if (Array.isArray(node)) return node.forEach(walk);
+      const n = node as { type?: string; props?: Record<string, unknown>; children?: unknown };
+      if (n.type === '$if') {
+        const props = n.props as { condition: { $: string }; then?: unknown; else?: unknown };
+        return walk(evaluate(props.condition.$, spaceStore) ? props.then : props.else);
+      }
+      if (n.type === '$part') parts.push((n.props as { id: string }).id);
+      walk(n.children);
+    };
+    walk(chatRoute.children);
+    const queries = Object.entries(chatRoute.$queries ?? {})
+      .filter(([, q]) => {
+        const when = (q as { when?: { $: string } }).when;
+        return !when || Boolean(evaluate(when.$, spaceStore));
+      })
+      .map(([name]) => name);
+    return { parts, queries };
+  }
+
+  it('mounts nothing for the channel until the root is known, then the Feed alone', () => {
+    const before = mounted({ root: '', rootLoaded: false });
+    expect(before.parts).toEqual([]);
+    expect(before.queries).not.toContain('channelRecord');
+
+    const after = mounted({ root: FEED, rootLoaded: true });
+    expect(after.parts).toEqual(['feed.feedView']);
+    expect(after.queries).not.toContain('channelRecord');
+  });
+
+  it('still opens a real sub-channel as chat once the root is known', () => {
+    const sub = mounted({ root: 'ad4m://obj/other-root', rootLoaded: true });
+    expect(sub.parts).toEqual(['transcribe.transcriptFeed']);
+    expect(sub.queries).toContain('channelRecord');
+  });
+});
+
+describe('the Coasys space’s lists of calls', () => {
+  /*
+    A recorded cold open read the space's calls whole three times over — the sidebar's twelve, and
+    one more for the empty-space prompt — and a whole call carries the id of every line said in it.
+    The lists draw a call's id, title and time; the prompt only asks whether there is one.
+  */
+  const callQueries = (node: unknown, found: Record<string, unknown>[] = []): Record<string, unknown>[] => {
+    if (!node || typeof node !== 'object') return found;
+    if (Array.isArray(node)) {
+      for (const child of node) callQueries(child, found);
+      return found;
+    }
+    const n = node as Record<string, unknown>;
+    if (n.entity === 'CollectionBlock' && (n.where as { kind?: unknown } | undefined)?.kind === 'call') found.push(n);
+    for (const value of Object.values(n)) callQueries(value, found);
+    return found;
+  };
+
+  it('asks for only the fields a call row draws', () => {
+    const queries = callQueries([treeSection, spaceRoutes]);
+    expect(queries.length).toBeGreaterThanOrEqual(3);
+    for (const query of queries) expect(query.select).toEqual(['title', 'createdAt']);
+  });
+
+  it('asks the empty-space prompt’s question as the sidebar asks it, so the two are one subscription', () => {
+    const chatRoute = spaceRoutes.find((route) => route.path === '/')!;
+    // The renderer shares a subscription between nodes asking the same question, keyed by it as JSON.
+    expect(JSON.stringify(chatRoute.$queries?.anyCall)).toBe(JSON.stringify(treeSection.$queries?.calls));
+  });
+
+  it('reads the sidebar’s calls once the first screen is up, not beside the Feed’s first page', () => {
+    /*
+      The Feed reads its own calls for its window; the sidebar's list and the empty-space prompt are
+      not on its first page, and the executor answers one read at a time.
+    */
+    expect(treeSection.$queries?.calls).toMatchObject({ when: { $: 'spaceStore.firstScreenOpen' } });
+  });
+});

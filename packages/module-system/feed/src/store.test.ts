@@ -41,15 +41,21 @@ function reactive() {
 
 type Created = { entity: string; fields: Record<string, unknown>; options: unknown };
 
-function harness(proposals: { id: string; kind: string }[] = [], moduleSettings: Record<string, unknown> = {}) {
+function harness(
+  proposals: { id: string; kind: string }[] = [],
+  moduleSettings: Record<string, unknown> = {},
+  find: () => Promise<Record<string, unknown>[]> = async () => [],
+) {
   const { signal, effect } = reactive();
   const created: Created[] = [];
   const updated: { entity: string; id: string; fields: Record<string, unknown> }[] = [];
   const subscriptions: string[] = [];
+  const subscribed: { entity: string; query: Record<string, unknown> }[] = [];
   const records = {
-    find: async () => [],
-    subscribe: (entity: string) => {
+    find,
+    subscribe: (entity: string, query: Record<string, unknown>) => {
       subscriptions.push(entity);
+      subscribed.push({ entity, query });
       return () => {};
     },
     create: async (entity: string, fields: Record<string, unknown>, options: unknown) => {
@@ -65,6 +71,7 @@ function harness(proposals: { id: string; kind: string }[] = [], moduleSettings:
     proposals: vi.fn(async () => proposals),
     proposalsRevision: () => 0,
   };
+  const firstScreen = { waiting: vi.fn(), answered: vi.fn() };
   const store = createFeedStore({
     signal,
     effect,
@@ -75,8 +82,9 @@ function harness(proposals: { id: string; kind: string }[] = [], moduleSettings:
     spaceRoot: () => 'root-1',
     settings: () => moduleSettings,
     kernels: { records, interpretation },
+    firstScreen,
   } as never) as Record<string, (...args: unknown[]) => unknown>;
-  return { store, created, updated, subscriptions, interpretation };
+  return { store, created, updated, subscriptions, subscribed, interpretation, firstScreen };
 }
 
 describe('messages written from the Feed', () => {
@@ -147,5 +155,67 @@ describe('staying live', () => {
     expect(h.interpretation.proposals).toHaveBeenCalledWith(undefined, undefined);
 
     vi.useRealTimers();
+  });
+
+  it('follows the newest call by the fields a window draws of it, not the whole call', async () => {
+    vi.useFakeTimers();
+    const h = harness();
+    h.store.watchFeed();
+    await vi.runAllTimersAsync();
+    /*
+      A whole call carries the id of every line said in it, which is most of what a call weighs. Its
+      title and time are what the window draws, and what a change worth a re-read moves.
+    */
+    const call = h.subscribed.find((s) => s.entity === 'CollectionBlock');
+    expect(call?.query).toMatchObject({ where: { kind: 'call' }, limit: 1, select: ['title', 'createdAt'] });
+    vi.useRealTimers();
+  });
+});
+
+describe('the first screen', () => {
+  /** A read held open until the test lets it land. */
+  function heldRead() {
+    let land!: () => void;
+    const landed = new Promise<void>((resolve) => (land = resolve));
+    return { find: async () => (await landed, []), land: () => land() };
+  }
+
+  it('says it is reading as it is drawn, and answered once its first page lands', async () => {
+    const read = heldRead();
+    const h = harness([], {}, read.find);
+    expect(h.firstScreen.waiting).not.toHaveBeenCalled();
+
+    h.store.watchFeed();
+    await Promise.resolve();
+    expect(h.firstScreen.waiting).toHaveBeenCalledTimes(1);
+    expect(h.firstScreen.answered).not.toHaveBeenCalled();
+
+    read.land();
+    await vi.waitFor(() => expect(h.firstScreen.answered).toHaveBeenCalledTimes(1));
+  });
+
+  it('says answered when its first read fails too: the reader is looking at an error, not waiting', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const h = harness([], {}, async () => {
+      throw new Error('executor gone');
+    });
+    h.store.watchFeed();
+    await vi.waitFor(() => expect(h.firstScreen.answered).toHaveBeenCalledTimes(1));
+    warn.mockRestore();
+  });
+
+  it('asks for the space’s suggestions after its first page, not beside it', async () => {
+    /*
+      The suggestions only re-mark rows already drawn, and asking for them reads the space's whole
+      schema — the largest answers at boot — on the same executor the first page is waiting on.
+    */
+    const read = heldRead();
+    const h = harness([{ id: 'kept-later', kind: 'create' }], {}, read.find);
+    h.store.watchFeed();
+    await Promise.resolve();
+    expect(h.interpretation.proposals).not.toHaveBeenCalled();
+
+    read.land();
+    await vi.waitFor(() => expect(h.interpretation.proposals).toHaveBeenCalledTimes(1));
   });
 });

@@ -16,6 +16,7 @@ import {
 } from '@we/backend-shared';
 
 import { ensureFileStorageLanguage } from './agentHelpers';
+import { sharedInFlight } from './inFlight';
 import { rpcStatus } from './rpcStatus';
 
 const SCHEME = 'neighbourhood://';
@@ -216,7 +217,7 @@ export function createAd4mDatasetLifecycle(
   async function resolveOwnProfileDatasetId(): Promise<void> {
     if (ownProfileResolved) return;
     try {
-      const me = await client.agent.me();
+      const me = await sharedInFlight(client, 'agent.me', () => client.agent.me());
       ownProfileDatasetId = (me.perspective as { uuid?: string } | undefined)?.uuid;
       ownProfileResolved = true;
     } catch {
@@ -487,8 +488,31 @@ export function createAd4mDatasetLifecycle(
   };
 }
 
-export function createAd4mAgentSession(backendClient: unknown): AgentSessionPort {
+export interface Ad4mAgentSessionOptions {
+  /**
+   * The connector already read `agent.status` and found the agent unlocked, before the port existed.
+   *
+   * ad4m-connect hands a web app its client only once `agent.status` has answered initialised and
+   * unlocked (`readAuth` → `authenticated`), so the shell's own first `status()` asked the executor a
+   * question the connection had just answered. With this set, that first answer is the one the
+   * connection got; every later `status()` asks the executor, so a lock afterwards is still seen.
+   */
+  unlockedAtConnect?: boolean;
+  /**
+   * Resolves once the host's first screen is up — `BackendPortsContext.afterFirstScreen`. The
+   * file-storage install found needed on a plain `status()` waits for it: an upload is never the
+   * first thing on screen, and the install's reads would otherwise sit beside the first page. On
+   * `signIn`/`signUp` it is still awaited at once, as before.
+   */
+  afterFirstScreen?: () => Promise<void>;
+}
+
+export function createAd4mAgentSession(
+  backendClient: unknown,
+  options: Ad4mAgentSessionOptions = {},
+): AgentSessionPort {
   const client = backendClient as Ad4mClient;
+  let knownUnlocked = !!options.unlockedAtConnect;
 
   /**
    * The file-storage language is installed lazily, on the first unlocked session — see
@@ -549,15 +573,26 @@ export function createAd4mAgentSession(backendClient: unknown): AgentSessionPort
     }
   }
 
+  /** The install a plain `status()` finds needed, after the first screen — see `afterFirstScreen`. */
+  function ensureFileStorageLater(): void {
+    const later = options.afterFirstScreen?.() ?? Promise.resolve();
+    void later.then(ensureFileStorage, ensureFileStorage);
+  }
+
   /** What `signIn` or `signUp` was given, held for `signOut` — and only here, never in the shell. */
   let passphrase = '';
 
   return {
     async status() {
+      if (knownUnlocked) {
+        knownUnlocked = false;
+        ensureFileStorageLater();
+        return { hasAgent: true, unlocked: true };
+      }
       const status = await client.agent.status();
       // Covers the boot path where the executor was left running and the agent is already
       // unlocked — neither signUp() nor signIn() is called in that case.
-      if (status.isUnlocked) void ensureFileStorage();
+      if (status.isUnlocked) ensureFileStorageLater();
       return { hasAgent: !!status.did, unlocked: !!status.isUnlocked };
     },
 
@@ -599,7 +634,8 @@ export function createAd4mAgentSession(backendClient: unknown): AgentSessionPort
      * this backend, and template-facing vocabulary (`$me.did`) reads it.
      */
     async me() {
-      const agent = await client.agent.me();
+      // Shared with the dataset lifecycle, which asks the same at the same moment at startup.
+      const agent = await sharedInFlight(client, 'agent.me', () => client.agent.me());
       return { ...(agent as unknown as Record<string, unknown>), id: agent.did };
     },
   };

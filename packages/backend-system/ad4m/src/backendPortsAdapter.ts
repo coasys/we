@@ -168,6 +168,11 @@ export interface Ad4mConnectionOptions {
    * executor. The identity port signs changes through it; without it, the identity is read-only.
    */
   custody?: Ad4mCustodyHost;
+  /**
+   * The connector's connection already found the agent unlocked — see `Ad4mAgentSessionOptions`.
+   * Only a connector that waited for that answer may set it.
+   */
+  unlockedAtConnect?: boolean;
 }
 
 export function createAd4mBackendPorts(
@@ -226,7 +231,10 @@ export function createAd4mBackendPorts(
   const ephemeral = createAd4mEphemeralPort(ctx.selfId);
 
   return {
-    agentSession: createAd4mAgentSession(backendClient),
+    agentSession: createAd4mAgentSession(backendClient, {
+      unlockedAtConnect: options.unlockedAtConnect,
+      afterFirstScreen: ctx.afterFirstScreen,
+    }),
     lifecycle: createAd4mDatasetLifecycle(backendClient, options),
     schemas: createAd4mSchemaPort(backendClient),
     profiles: createAd4mProfileDirectory(backendClient),

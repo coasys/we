@@ -746,8 +746,28 @@ export const SUB_CHANNELS = {
   when: { $: 'spaceStore.root' },
 };
 
-/** The space's calls, newest first. The tree lists the latest few; the Calls page more. */
-export const CALLS = { entity: 'CollectionBlock', where: { kind: 'call' }, order: { createdAt: 'desc' } };
+/**
+ * The space's calls, newest first. The tree lists the latest few; the Calls page more.
+ *
+ * By the fields a call row draws — its id, title and time (see `LIVE` and the rows above). A whole
+ * call also carries the id of every line said in it, which is most of what a call weighs.
+ */
+export const CALLS = {
+  entity: 'CollectionBlock',
+  where: { kind: 'call' },
+  order: { createdAt: 'desc' },
+  select: ['title', 'createdAt'],
+};
+
+/**
+ * The sidebar's latest calls. The Feed's empty-space prompt asks whether there is any call with this
+ * same question, so the renderer holds one subscription for both rather than a second for a count.
+ *
+ * Read once the first screen is up: neither is on the Feed's first page, and the executor answers one
+ * read at a time. The prompt waits for the answer (`anyCallLoaded`), so it is never shown wrongly
+ * meanwhile.
+ */
+export const LATEST_CALLS = { ...CALLS, limit: 12, when: { $: 'spaceStore.firstScreenOpen' } };
 
 /** The tree section, as the space template's left lane holds it — the lane paints the chrome behind it. */
 export const treeSection: SchemaNode = {
@@ -760,7 +780,7 @@ export const treeSection: SchemaNode = {
       persist: 'coasys.tree.open',
     },
   },
-  $queries: { calls: { ...CALLS, limit: 12 }, ...DNA_QUERIES },
+  $queries: { calls: LATEST_CALLS, ...DNA_QUERIES },
   children: [
     header,
     purpose,

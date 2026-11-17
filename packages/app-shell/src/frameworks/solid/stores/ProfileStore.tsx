@@ -19,11 +19,13 @@ import {
   createSignal,
   onCleanup,
   ParentProps,
+  untrack,
   useContext,
 } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 
 import { credential } from '../credential';
+import { firstScreen } from '../firstScreen';
 import { useAccountStore } from './AccountStore';
 import { useRuntimeStore } from './RuntimeStore';
 import { useSessionStore } from './SessionStore';
@@ -274,8 +276,17 @@ export function ProfileStoreProvider(props: ParentProps) {
     if (!profilePort) return;
 
     const startedAt = writeSequence;
-    const promise = profilePort
-      .get(cleanedDid)
+    /*
+      Somebody else's profile waits for the first screen (see `shared/firstScreen.ts`): before it is
+      up, the ones asked for are the members' and the people present, which the first page does not
+      draw. The Feed asks for its authors as its rows land, which is when the screen opens. This
+      agent's own is asked at once — the boot waits on it to know whether to ask for a name.
+    */
+    const ownDid = session.me()?.did?.replace('did://', '');
+    const read = () => profilePort.get(cleanedDid);
+    // Asked at once when it may be, rather than a turn later; untracked, as a caller's effect is not about the gate.
+    const now = cleanedDid === ownDid || untrack(() => firstScreen.open());
+    const promise = (now ? read() : firstScreen.whenOpen().then(read))
       .then((summary) => {
         // A local edit made since this fetch began is newer than what it read. Dropping the
         // response is correct: the next fetch will pick up the published value.

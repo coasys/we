@@ -635,6 +635,14 @@ export interface ModuleDataset {
   avatar?: string;
 }
 
+/** See {@link ModuleStoreDeps.firstScreen}. */
+export interface ModuleFirstScreen {
+  /** This module's part is on the first screen, reading what it shows. */
+  waiting: () => void;
+  /** That first read has landed, or failed. */
+  answered: () => void;
+}
+
 /**
  * What a host lends a module's store.
  *
@@ -706,6 +714,17 @@ export interface ModuleStoreDeps {
   identities?: ModuleIdentityAccess;
   /** Naming and reaching spaces. */
   datasets?: ModuleDatasetAccess;
+  /**
+   * The first screen after a cold boot — for a module whose part is what a person opened the app to
+   * read. While it is reading, the host holds back work that screen does not need (the sidebar's
+   * lists, the extraction panel, presence, settings reads), so the one executor answers this first.
+   *
+   * Say {@link ModuleFirstScreen.waiting} as the part starts its first read and
+   * {@link ModuleFirstScreen.answered} when that read lands or fails — both, or neither. A module
+   * that says `waiting` and never `answered` holds the rest of the app until the host's ceiling. Absent
+   * on a host with nothing to hold; both calls after the first screen are no-ops.
+   */
+  firstScreen?: ModuleFirstScreen;
 
   /** The kernels this module declared, and no others. See `kernels.ts`. */
   kernels: Partial<ModuleKernels>;

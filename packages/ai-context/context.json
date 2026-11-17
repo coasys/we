@@ -7987,6 +7987,12 @@
         "landmarksLoaded": {
           "type": "boolean"
         },
+        "rootLoaded": {
+          "type": "boolean"
+        },
+        "firstScreenOpen": {
+          "type": "boolean"
+        },
         "extractionTargets": {
           "type": "array"
         },
