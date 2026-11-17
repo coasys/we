@@ -82,7 +82,7 @@ export function createFeedStore(deps: ModuleStoreDeps) {
     const calls = shownCalls();
     return calls[calls.length - 1] ?? '';
   };
-  const { followingLive: _followingCall, ...call } = createFeed({
+  const { followingLive: followingCall, ...call } = createFeed({
     signal,
     effect,
     state: unmarked,
@@ -106,11 +106,22 @@ export function createFeedStore(deps: ModuleStoreDeps) {
     write: (collection, text, marks) =>
       writeMessage({ id: collection, relation: 'children', entity: 'CollectionBlock' }, text, marks),
   });
-  void _followingCall;
+  /*
+    Whether a reader at the newest line of the call on screen sees these lines arrive: each said in
+    that call, or already drawn in its window — a reply is said in no collection, and is drawn under
+    the line it answers.
+  */
+  const callShows = (lines: { id: string; call: string }[]) => {
+    const here = callRoot();
+    if (!here || !followingCall()) return false;
+    const drawn = new Set(call.feedRows().map((row) => row.id));
+    return lines.every((line) => line.call === here || drawn.has(line.id));
+  };
 
   /*
-    A bot answering in the space raises a notice while nobody is reading the Feed's newest line —
-    see `botWatch.ts`. On unless the reader turned it off (`botNotices`).
+    A bot answering in the space raises a notice while nobody is reading the newest line it landed
+    on — the Feed's, or the call's on screen when it answered in that call. See `botWatch.ts`. On
+    unless the reader turned it off (`botNotices`).
   */
   watchBotMessages({
     effect,
@@ -121,7 +132,7 @@ export function createFeedStore(deps: ModuleStoreDeps) {
     selfId: deps.selfId,
     notify: deps.notify,
     enabled: () => settings?.().botNotices !== false,
-    readingLive: followingLive,
+    readingLive: (lines) => followingLive() || callShows(lines),
     /*
       A spoken line a hidden transcript already keeps from the reader is not unseen activity to
       raise a notice about — the same call the list's filter makes, made here.

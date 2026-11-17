@@ -95,7 +95,7 @@ export interface FeedWindowOptions {
   /**
    * Where what extraction found is kept, when that is not `root` — the space collection, for the
    * Feed of one call. Then only what was extracted from `root` is drawn: the same groups the space's
-   * Feed draws for that call, read the same way and kept by their origin.
+   * Feed draws for that call, read by the ids the call's own `extracted` names.
    */
   activityRoot?: string;
   /** What an activity row calls `root` — "the space", or "this call". */
@@ -262,6 +262,23 @@ export async function readFeedWindow(
     include: repliesInclude(),
   });
 
+  /*
+    Of one call, what its passes wrote, by id — the call's own `extracted`, which each record's
+    `extractedFrom` reads backwards. Asked of the call rather than kept from the space's newest page:
+    that page is the newest records of every call, so an older call's were behind a later one's and
+    never reached the window. `null` for the space's own window, which reads them all.
+  */
+  const foundIn: Promise<string[] | null> =
+    activityRoot === root || !options.activityTypes.length
+      ? Promise.resolve(null)
+      : find('CollectionBlock', { where: { id: root }, select: ['extracted'], limit: 1 }).then(
+          ([call]) => [call?.extracted ?? []].flat().map(idOf).filter(Boolean),
+          (error: unknown) => {
+            console.warn('[feed] could not read what the call found', error);
+            return [];
+          },
+        );
+
   const [loose, calls, ...extracted] = await Promise.all([
     find('TextBlock', page(root)),
     /*
@@ -286,14 +303,16 @@ export async function readFeedWindow(
       in it: about 18 KB a row, near a megabyte a page, re-read on every refresh.
     */
     ...options.activityTypes.map((entity) =>
-      find(entity, { within: activityRoot, order: { createdAt: order }, limit: shown })
+      foundIn
         // Of one call, only what was found in it — the rows the space's Feed groups under that call.
-        .then((rows) =>
-          (activityRoot === root ? rows : rows.filter((row) => idOf(row.extractedFrom) === root)).map((row) => ({
-            row,
-            entity,
-          })),
+        .then((ids) =>
+          ids === null
+            ? find(entity, { within: activityRoot, order: { createdAt: order }, limit: shown })
+            : ids.length
+              ? find(entity, { within: activityRoot, where: { id: ids }, order: { createdAt: order }, limit: shown })
+              : [],
         )
+        .then((rows) => rows.map((row) => ({ row, entity })))
         /*
           One kind that cannot be read drops only its own rows. A class the space lists as an
           extraction target can be one this client cannot resolve, and the finds all landing in the
@@ -315,8 +334,11 @@ export async function readFeedWindow(
   const titles = new Map<string, string>(calls.map((call) => [text(call.id), text(call.title) || 'A call']));
   titles.set(root, options.rootTitle ?? 'the space');
 
-  // A source that filled its page may hold more than it answered with.
-  let filled = loose.length >= shown;
+  /*
+    A source that filled its page may hold more than it answered with — a kind of record too: a
+    pass's records draw as one row, so a full page of them leaves the window looking roomy.
+  */
+  let filled = loose.length >= shown || extracted.some((kind) => kind.length >= shown);
   /*
     A spoken line this reader keeps hidden goes here, before the cut — only what the window can
     draw counts toward filling it (and toward a later call being out of reach). A reply stays: its

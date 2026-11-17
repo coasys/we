@@ -4,6 +4,8 @@
 import { markAction, markState } from '@we/module-shared';
 import { describe, expect, it, vi } from 'vitest';
 
+import { BOT_BURST_MS } from './botWatch';
+import { FEED_FIRST_PAGE, FEED_PAGE } from './feed';
 import { createFeedStore } from './store';
 
 /** Signals and effects that track each other, so the store's effects rerun as they do in the app. */
@@ -49,6 +51,8 @@ function harness(
     | ((entity: string, query: Record<string, unknown>) => Promise<Record<string, unknown>[]>)
     | Record<string, Record<string, unknown>[]> = async () => [],
   spaceRoot: () => string = () => 'root-1',
+  /** The kinds of record extraction writes in this space. */
+  targets: string[] = [],
 ) {
   const held = typeof reads === 'function' ? null : reads;
   const find =
@@ -57,6 +61,11 @@ function harness(
       : async (entity: string, query: Record<string, unknown>) =>
           entity === 'TextBlock' ? (held?.[String(query.within ?? '')] ?? []) : [];
   const { signal, effect } = reactive();
+  // The space's collection as the host resolves it — late, sometimes. `setSpaceRoot` moves it.
+  const [resolvedRoot, setSpaceRoot] = signal<string | null>(null);
+  /** What each subscription is told, by the order it was opened in — a test answers through these. */
+  const answer: ((rows: Record<string, unknown>[]) => void)[] = [];
+  const notices: { message: string; options?: unknown }[] = [];
   const created: Created[] = [];
   const updated: { entity: string; id: string; fields: Record<string, unknown> }[] = [];
   const subscriptions: string[] = [];
@@ -71,9 +80,14 @@ function harness(
       finds.push({ entity, within: query.within as string | undefined });
       return find(entity, query);
     },
-    subscribe: (entity: string, query: Record<string, unknown> = {}) => {
+    subscribe: (
+      entity: string,
+      query: Record<string, unknown> = {},
+      cb: (rows: Record<string, unknown>[]) => void = () => {},
+    ) => {
       subscriptions.push(entity);
       subscribed.push({ entity, query });
+      answer.push(cb);
       const sub = { entity, within: query.within as string | undefined };
       live.add(sub);
       return () => live.delete(sub);
@@ -90,7 +104,7 @@ function harness(
     },
   };
   const interpretation = {
-    targets: () => [],
+    targets: () => targets.map((entity) => ({ entity })),
     proposals: vi.fn(async () => proposals),
     proposalsRevision: () => 0,
   };
@@ -107,14 +121,19 @@ function harness(
     action: markAction,
     onDispose: (stop: () => void) => void disposers.push(stop),
     dataset: () => 'space-1',
-    spaceRoot,
+    spaceRoot: () => resolvedRoot() ?? spaceRoot(),
     settings: () => moduleSettings,
     identities: { get: (id: string) => identities.get(id), fetch: () => {} },
+    selfId: () => 'did:me',
+    notify: (_tone: string, message: string, options?: unknown) => void notices.push({ message, options }),
     kernels: { records, interpretation },
     firstScreen,
   } as never) as Record<string, (...args: unknown[]) => unknown>;
   return {
     store,
+    setSpaceRoot,
+    answer,
+    notices,
     created,
     updated,
     subscriptions,
@@ -455,5 +474,112 @@ describe('the Feed of one call', () => {
     h.store.startReply({ id: 'line-1', text: 'who?', author: 'did:ann', surface: 'callFeed' });
     h.store.watchCallFeed('call-10');
     expect(h.store.replyingTo()).toBeNull();
+  });
+
+  it('opens the next call at its newest page, however far the last one was read', async () => {
+    /*
+      The window's size and anchor were the last call's: paged out to 250 from its start, the next
+      call opened read 250 of its lines from its own start.
+    */
+    vi.useFakeTimers();
+    const asked: Record<string, unknown>[] = [];
+    const h = harness([], {}, async (entity, query) => {
+      if (entity === 'TextBlock') asked.push({ within: query.within, limit: query.limit, order: query.order });
+      return [];
+    });
+    h.store.watchCallFeed('call-9');
+    await vi.runAllTimersAsync();
+    h.store.readCallFeedFromStart();
+    h.store.showMoreCallFeed();
+    h.store.showMoreCallFeed();
+    await vi.runAllTimersAsync();
+    expect(asked.at(-1)).toEqual({
+      within: 'call-9',
+      limit: FEED_FIRST_PAGE + 2 * FEED_PAGE,
+      order: { createdAt: 'asc' },
+    });
+
+    h.store.unwatchCallFeed('call-9');
+    h.store.watchCallFeed('call-10');
+    await vi.runAllTimersAsync();
+
+    expect(h.store.callFeedFromStart()).toBe(false);
+    expect(asked.at(-1)).toEqual({ within: 'call-10', limit: FEED_FIRST_PAGE, order: { createdAt: 'desc' } });
+    vi.useRealTimers();
+  });
+
+  it('reads what the call found once the space’s collection is known, though its lines came first', async () => {
+    /*
+      What extraction found is held in the space. A call page opened before the host knew the space's
+      collection read its lines and nothing found — and nothing said to read again once it was known.
+    */
+    vi.useFakeTimers();
+    const h = harness(
+      [],
+      {},
+      async (entity, query) => {
+        const where = query.where as Record<string, unknown> | undefined;
+        if (entity === 'CollectionBlock' && where?.id === 'call-9') return [{ id: 'call-9', extracted: ['task-1'] }];
+        if (entity === 'TaskBlock' && query.within === 'root-1')
+          return [{ id: 'task-1', title: 'Ship', createdAt: 5, extractedFrom: 'call-9' }];
+        if (entity === 'TextBlock' && query.within === 'call-9') return CALL_LINES['call-9'];
+        return [];
+      },
+      () => '',
+      ['TaskBlock'],
+    );
+    h.store.watchCallFeed('call-9');
+    await vi.runAllTimersAsync();
+    expect((h.store.callFeedRows() as { kind: string }[]).map((r) => r.kind)).toEqual(['line', 'line', 'line']);
+
+    h.setSpaceRoot('root-1');
+    await vi.runAllTimersAsync();
+
+    const found = (h.store.callFeedRows() as { kind: string; summary?: string }[]).filter((r) => r.kind === 'activity');
+    expect(found).toMatchObject([{ summary: '1 task' }]);
+    vi.useRealTimers();
+  });
+
+  it('raises no notice for a bot answering in the call whose newest line the reader is on', async () => {
+    /*
+      Somebody on a call's page, at its newest line, sees the bot answer there. Asked only about the
+      space's Feed, the watch told them anyway — with an Open that took them away from the call.
+    */
+    vi.useFakeTimers();
+    const h = harness([], {}, CALL_LINES);
+    h.store.watchCallFeed('call-9');
+    await vi.runAllTimersAsync();
+    expect(h.store.callFeedLoaded()).toBe(true);
+    const watch = h.subscribed.findIndex((s) => s.entity === 'TextBlock' && s.query.limit === 20);
+    h.answer[watch]([]);
+
+    h.answer[watch]([{ id: 'bot-2', author: 'did:bot', text: 'here it is again', partOf: 'call-9' }]);
+    await vi.advanceTimersByTimeAsync(BOT_BURST_MS);
+    expect(h.notices).toEqual([]);
+
+    // In another call, or read from the call's start, it is news.
+    h.answer[watch]([{ id: 'bot-3', author: 'did:bot', text: 'elsewhere', partOf: 'call-3' }]);
+    await vi.advanceTimersByTimeAsync(BOT_BURST_MS);
+    h.store.readCallFeedFromStart();
+    await vi.runAllTimersAsync();
+    h.answer[watch]([{ id: 'bot-4', author: 'did:bot', text: 'later on', partOf: 'call-9' }]);
+    await vi.advanceTimersByTimeAsync(BOT_BURST_MS);
+    expect(h.notices.map((n) => n.message)).toEqual(['elsewhere', 'later on']);
+    vi.useRealTimers();
+  });
+
+  it('listens for new lines within the call, not across the whole space', async () => {
+    /*
+      A second space-wide newest-line subscription made every line said anywhere in the space a
+      re-read of the call's page. The call holds every line said or typed in it; a reply lands in
+      the thread of a line on screen, which the subscription over those lines hears.
+    */
+    vi.useFakeTimers();
+    const h = harness([], {}, CALL_LINES);
+    h.store.watchCallFeed('call-9');
+    await vi.runAllTimersAsync();
+    const newest = h.subscribed.filter((s) => s.entity === 'TextBlock' && s.query.limit === 1);
+    expect(newest.map((s) => s.query.within)).toEqual(['call-9']);
+    vi.useRealTimers();
   });
 });

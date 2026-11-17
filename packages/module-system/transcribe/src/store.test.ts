@@ -12,7 +12,7 @@
  */
 import type { Activity, Peer } from '@we/backend-shared';
 import { markAction, markState, type ModuleStoreDeps } from '@we/module-shared';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 
 import { createTranscribeStore, TRANSCRIBE_ACTIVITY } from './store';
 
@@ -2838,16 +2838,37 @@ describe('typing into a transcript', () => {
     await Promise.resolve();
 
     expect(h.created.find((c) => c.entity === 'TextBlock')?.options?.parent).toMatchObject({ id: 'past-call' });
-    expect(h.linked.filter((l) => l.id === 'past-call')).toEqual([]);
+    // The store can link — it put this agent on the roster of the call it is in — and did not for this one.
+    expect(h.linked).toEqual([{ entity: 'CollectionBlock', id: RECORD, relation: 'participants', value: ME }]);
   });
 
   it('does put somebody who messages the call they are in on its roster', async () => {
-    const h = harness(inCall);
+    /*
+      The standing roster effect links this agent as soon as the store starts, so a link seen after
+      the message proves nothing about the message. Here that first link fails — which clears the
+      guard, as a lost write does — and the message is what has to put the agent on the roster.
+    */
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+    onTestFinished(() => quiet.mockRestore());
+    const linked: Linked[] = [];
+    let attempts = 0;
+    const h = harness(inCall, {
+      records: {
+        link: async (entity: string, id: string, relation: string, value: string) => {
+          attempts += 1;
+          if (attempts === 1) throw new Error('the executor dropped it');
+          linked.push({ entity, id, relation, value });
+        },
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(attempts).toBe(1);
+    expect(linked).toEqual([]);
 
     await h.store.addMessage(RECORD, 'Sam is joining late');
     await Promise.resolve();
 
-    expect(h.linked).toContainEqual({ entity: 'CollectionBlock', id: RECORD, relation: 'participants', value: ME });
+    expect(linked).toEqual([{ entity: 'CollectionBlock', id: RECORD, relation: 'participants', value: ME }]);
   });
 });
 

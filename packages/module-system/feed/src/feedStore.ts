@@ -7,7 +7,8 @@
  * ## Staying live, cheaply
  *
  * The window is read whole (see `readFeedWindow`) and read again when something it shows may have
- * changed: the newest line written anywhere in the space (a message, a call's line or a reply), the newest
+ * changed: the newest line written anywhere in the space (a message, a call's line or a reply) — or,
+ * for one call's window, in that call — the newest
  * call started, an edit to any line it is showing, and the suggestions settling. Each of those is a one-row subscription
  * rather than a subscription over everything, and a burst of them is one re-read, not one each. Only
  * while somebody is looking — the panel open, or the Feed placed on screen as a part (a space's main
@@ -85,6 +86,12 @@ export function createFeed(deps: FeedDeps) {
   const [unconfirmed, setUnconfirmed] = signal<string[]>([]);
   /** The space's collection — the one fact the Feed starts from. The host's, so it is never read twice. */
   const root = () => (deps.dataset?.() ? (deps.spaceRoot?.() ?? '') : '');
+  /*
+    Where what extraction found is read from — the space's collection, for a call's window. Part of
+    what the window is: the host can learn the space's collection after a call's page first reads,
+    and that read had only the call to look in.
+  */
+  const activityHeldIn = () => deps.activityRoot?.() || root();
   const [shown, setShown] = signal(FEED_FIRST_PAGE);
   const [fromStart, setFromStart] = signal(false);
   /** This reader's transcripts choice — everything said, unless they said to keep spoken lines out. */
@@ -112,12 +119,22 @@ export function createFeed(deps: FeedDeps) {
 
   // Forgotten whenever the dataset or the collection changes, so a switch never draws the last
   // space's rows, or the last call's, under the new one's name.
+  let rootWas = '';
   effect?.(() => {
     void deps.dataset?.();
-    void root();
+    const now = root();
     setRows([]);
     setLoaded(false);
     setAnswered(false);
+    /*
+      And how far it was read, when the collection is another one: a window paged out to 250 from the
+      start of one call opened the next at 250 from its start. Not on the dataset alone answering
+      again for the same collection, which is not somewhere new.
+    */
+    if (now === rootWas) return;
+    rootWas = now;
+    setShown(FEED_FIRST_PAGE);
+    setFromStart(false);
   });
 
   /*
@@ -199,9 +216,14 @@ export function createFeed(deps: FeedDeps) {
     const size = shown();
     const anchoredAtStart = fromStart();
     const spoken = showSpoken();
+    const activityRoot = activityHeldIn();
     const same = () =>
-      !disposed && root() === space && shown() === size && fromStart() === anchoredAtStart && showSpoken() === spoken;
-    const activityRoot = deps.activityRoot?.() || space;
+      !disposed &&
+      root() === space &&
+      activityHeldIn() === activityRoot &&
+      shown() === size &&
+      fromStart() === anchoredAtStart &&
+      showSpoken() === spoken;
     const activityTypes = (deps.interpretation?.targets(activityRoot) ?? []).map((t) => t.entity);
     try {
       const result = await readFeedWindow((entity, query) => records?.find(entity, query) ?? Promise.resolve([]), {
@@ -264,7 +286,7 @@ export function createFeed(deps: FeedDeps) {
 
   // Read when the window moves, and when somebody starts looking at one that is owed a read.
   effect?.(() => {
-    const key = `${root()}|${shown()}|${fromStart()}|${showSpoken()}`;
+    const key = `${root()}|${activityHeldIn()}|${shown()}|${fromStart()}|${showSpoken()}`;
     if (key !== windowKey) {
       windowKey = key;
       dirty = true;
@@ -355,7 +377,13 @@ export function createFeed(deps: FeedDeps) {
     unsubscribe();
     if (!space || typeof records?.subscribe !== 'function') return;
     const newest = { order: { createdAt: 'desc' as const }, limit: 1 };
-    stops.push(records.subscribe('TextBlock', newest, onChange()));
+    /*
+      A window of one collection inside the space — a call's, whose activity is held in the space —
+      listens within it. It holds every line said or typed there, and a reply is heard through the
+      lines on screen below; space-wide, every line said anywhere would re-read the call's page.
+    */
+    const ownLines = deps.activityRoot ? { within: space } : {};
+    stops.push(records.subscribe('TextBlock', { ...ownLines, ...newest }, onChange()));
     // The fields a window draws of a call: a new call or a renamed one moves them, and a line said in
     // one is heard by the TextBlock subscription above rather than through the call's line list.
     stops.push(
