@@ -83,7 +83,7 @@ const BUNDLE: &str = include_str!(concat!(
 const SNAPSHOT: &str = include_str!("../../fixtures/coasys/snapshot.json");
 
 /// sha256 of `fixtures/coasys/snapshot.json` — asserted before any read.
-const SNAPSHOT_SHA256: &str = "3119d84aaaddc4eee363493f427eb0d3d9a832cf197fb8ccc91292d30531b0b3";
+const SNAPSHOT_SHA256: &str = "094f945e4beec830ef889da925e4efad21fce4d11a100cd736c648a844f72a45";
 
 /// The theme C2a recorded (`meta.captureTheme` and every route's `theme`).
 /// Its token table is the suffix after `--` — `coasys--glow` → `glow`.
@@ -631,7 +631,7 @@ fn snapshot_policy_checks_env_and_never_writes() {
 #[test]
 fn pinned_clock_moves_timestamp_text() {
     let truth = truth();
-    let app = app_for(&truth, "index");
+    let app = app_for(&truth, "calls");
     let mut harness = pixel_harness(app);
     we_egui::pin_now(&harness.ctx, Some(0.0)); // 1970-01-01T00:00:00Z
     settle_frame(&mut harness);

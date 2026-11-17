@@ -1718,6 +1718,7 @@
     ]
    },
    "root": "coasys-root",
+   "rootLoaded": true,
    "spaceDefaultTemplateId": "coasys--space",
    "spaceDefaultThemeId": "coasys--glow",
    "spacePath": "/space/preview-coasys",
@@ -2140,149 +2141,36 @@
  "queries": {
   "anyCall": [
    {
-    "amendments": [],
-    "arranges": [],
-    "author": "did:agent:mara",
-    "children": [
-     "coasys-utt-101",
-     "coasys-utt-102",
-     "coasys-utt-103",
-     "coasys-utt-104",
-     "coasys-utt-105",
-     "coasys-utt-106"
-    ],
     "createdAt": "2025-10-06T15:00:00.000Z",
-    "description": "",
-    "editorState": null,
-    "extracted": [],
-    "extractionTargets": "",
     "id": "coasys-call-weekly-sync",
-    "kind": "call",
-    "mentions": [],
-    "mode": "feed",
-    "partOf": "coasys-root",
-    "participants": [],
-    "recognised": [],
-    "responses": [],
-    "runs": [],
-    "signals": [],
-    "slug": "",
-    "sourceName": "",
-    "sourceRef": "",
-    "textContent": "",
-    "thread": [],
-    "timestamp": "2025-10-06T15:00:00.000Z",
-    "title": "Weekly sync",
-    "updatedAt": "2025-10-06T15:00:00.000Z",
-    "version": 0
+    "title": "Weekly sync"
+   },
+   {
+    "createdAt": "2025-10-02T14:00:00.000Z",
+    "id": "coasys-call-design-review",
+    "title": "Design review"
+   },
+   {
+    "createdAt": "2025-09-29T17:00:00.000Z",
+    "id": "coasys-call-pilot-kickoff",
+    "title": "Pilot kickoff"
    }
   ],
   "calls": [
    {
-    "amendments": [],
-    "arranges": [],
-    "author": "did:agent:mara",
-    "children": [
-     "coasys-utt-101",
-     "coasys-utt-102",
-     "coasys-utt-103",
-     "coasys-utt-104",
-     "coasys-utt-105",
-     "coasys-utt-106"
-    ],
     "createdAt": "2025-10-06T15:00:00.000Z",
-    "description": "",
-    "editorState": null,
-    "extracted": [],
-    "extractionTargets": "",
     "id": "coasys-call-weekly-sync",
-    "kind": "call",
-    "mentions": [],
-    "mode": "feed",
-    "partOf": "coasys-root",
-    "participants": [],
-    "recognised": [],
-    "responses": [],
-    "runs": [],
-    "signals": [],
-    "slug": "",
-    "sourceName": "",
-    "sourceRef": "",
-    "textContent": "",
-    "thread": [],
-    "timestamp": "2025-10-06T15:00:00.000Z",
-    "title": "Weekly sync",
-    "updatedAt": "2025-10-06T15:00:00.000Z",
-    "version": 0
+    "title": "Weekly sync"
    },
    {
-    "amendments": [],
-    "arranges": [],
-    "author": "did:agent:juni",
-    "children": [
-     "coasys-utt-201",
-     "coasys-utt-202",
-     "coasys-utt-203",
-     "coasys-utt-204"
-    ],
     "createdAt": "2025-10-02T14:00:00.000Z",
-    "description": "",
-    "editorState": null,
-    "extracted": [],
-    "extractionTargets": "",
     "id": "coasys-call-design-review",
-    "kind": "call",
-    "mentions": [],
-    "mode": "feed",
-    "partOf": "coasys-root",
-    "participants": [],
-    "recognised": [],
-    "responses": [],
-    "runs": [],
-    "signals": [],
-    "slug": "",
-    "sourceName": "",
-    "sourceRef": "",
-    "textContent": "",
-    "thread": [],
-    "timestamp": "2025-10-02T14:00:00.000Z",
-    "title": "Design review",
-    "updatedAt": "2025-10-02T14:00:00.000Z",
-    "version": 0
+    "title": "Design review"
    },
    {
-    "amendments": [],
-    "arranges": [],
-    "author": "did:agent:mara",
-    "children": [
-     "coasys-utt-301",
-     "coasys-utt-302",
-     "coasys-utt-303"
-    ],
     "createdAt": "2025-09-29T17:00:00.000Z",
-    "description": "",
-    "editorState": null,
-    "extracted": [],
-    "extractionTargets": "",
     "id": "coasys-call-pilot-kickoff",
-    "kind": "call",
-    "mentions": [],
-    "mode": "feed",
-    "partOf": "coasys-root",
-    "participants": [],
-    "recognised": [],
-    "responses": [],
-    "runs": [],
-    "signals": [],
-    "slug": "",
-    "sourceName": "",
-    "sourceRef": "",
-    "textContent": "",
-    "thread": [],
-    "timestamp": "2025-09-29T17:00:00.000Z",
-    "title": "Pilot kickoff",
-    "updatedAt": "2025-09-29T17:00:00.000Z",
-    "version": 0
+    "title": "Pilot kickoff"
    }
   ],
   "relationshipKinds": [
@@ -4894,6 +4782,7 @@
       ]
      },
      "root": "coasys-root",
+     "rootLoaded": true,
      "spaceDefaultTemplateId": "coasys--space",
      "spaceDefaultThemeId": "coasys--glow",
      "spacePath": "/space/preview-coasys",
@@ -5321,48 +5210,33 @@
      "name": "anyCall",
      "request": {
       "entity": "CollectionBlock",
-      "limit": 1,
+      "limit": 12,
+      "order": {
+       "createdAt": "desc"
+      },
+      "select": [
+       "title",
+       "createdAt"
+      ],
       "where": {
        "kind": "call"
       }
      },
      "rows": [
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-101",
-        "coasys-utt-102",
-        "coasys-utt-103",
-        "coasys-utt-104",
-        "coasys-utt-105",
-        "coasys-utt-106"
-       ],
        "createdAt": "2025-10-06T15:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-weekly-sync",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-06T15:00:00.000Z",
-       "title": "Weekly sync",
-       "updatedAt": "2025-10-06T15:00:00.000Z",
-       "version": 0
+       "title": "Weekly sync"
+      },
+      {
+       "createdAt": "2025-10-02T14:00:00.000Z",
+       "id": "coasys-call-design-review",
+       "title": "Design review"
+      },
+      {
+       "createdAt": "2025-09-29T17:00:00.000Z",
+       "id": "coasys-call-pilot-kickoff",
+       "title": "Pilot kickoff"
       }
      ],
      "scope": "template.routes[/]",
@@ -5405,116 +5279,29 @@
       "order": {
        "createdAt": "desc"
       },
+      "select": [
+       "title",
+       "createdAt"
+      ],
       "where": {
        "kind": "call"
       }
      },
      "rows": [
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-101",
-        "coasys-utt-102",
-        "coasys-utt-103",
-        "coasys-utt-104",
-        "coasys-utt-105",
-        "coasys-utt-106"
-       ],
        "createdAt": "2025-10-06T15:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-weekly-sync",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-06T15:00:00.000Z",
-       "title": "Weekly sync",
-       "updatedAt": "2025-10-06T15:00:00.000Z",
-       "version": 0
+       "title": "Weekly sync"
       },
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:juni",
-       "children": [
-        "coasys-utt-201",
-        "coasys-utt-202",
-        "coasys-utt-203",
-        "coasys-utt-204"
-       ],
        "createdAt": "2025-10-02T14:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-design-review",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-02T14:00:00.000Z",
-       "title": "Design review",
-       "updatedAt": "2025-10-02T14:00:00.000Z",
-       "version": 0
+       "title": "Design review"
       },
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-301",
-        "coasys-utt-302",
-        "coasys-utt-303"
-       ],
        "createdAt": "2025-09-29T17:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-pilot-kickoff",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-09-29T17:00:00.000Z",
-       "title": "Pilot kickoff",
-       "updatedAt": "2025-09-29T17:00:00.000Z",
-       "version": 0
+       "title": "Pilot kickoff"
       }
      ],
      "scope": "template.meta.panels[tree].node",
@@ -5532,116 +5319,29 @@
       "order": {
        "createdAt": "desc"
       },
+      "select": [
+       "title",
+       "createdAt"
+      ],
       "where": {
        "kind": "call"
       }
      },
      "rows": [
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-101",
-        "coasys-utt-102",
-        "coasys-utt-103",
-        "coasys-utt-104",
-        "coasys-utt-105",
-        "coasys-utt-106"
-       ],
        "createdAt": "2025-10-06T15:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-weekly-sync",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-06T15:00:00.000Z",
-       "title": "Weekly sync",
-       "updatedAt": "2025-10-06T15:00:00.000Z",
-       "version": 0
+       "title": "Weekly sync"
       },
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:juni",
-       "children": [
-        "coasys-utt-201",
-        "coasys-utt-202",
-        "coasys-utt-203",
-        "coasys-utt-204"
-       ],
        "createdAt": "2025-10-02T14:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-design-review",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-02T14:00:00.000Z",
-       "title": "Design review",
-       "updatedAt": "2025-10-02T14:00:00.000Z",
-       "version": 0
+       "title": "Design review"
       },
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-301",
-        "coasys-utt-302",
-        "coasys-utt-303"
-       ],
        "createdAt": "2025-09-29T17:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-pilot-kickoff",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-09-29T17:00:00.000Z",
-       "title": "Pilot kickoff",
-       "updatedAt": "2025-09-29T17:00:00.000Z",
-       "version": 0
+       "title": "Pilot kickoff"
       }
      ],
      "scope": "template.routes[/calls]",
@@ -5710,7 +5410,7 @@
       "entity": "CollectionBlock",
       "limit": 1,
       "when": {
-       "$": "!((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root)"
+       "$": "spaceStore.rootLoaded && !((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root)"
       },
       "where": {
        "id": {
@@ -9256,6 +8956,7 @@
       ]
      },
      "root": "coasys-root",
+     "rootLoaded": true,
      "spaceDefaultTemplateId": "coasys--space",
      "spaceDefaultThemeId": "coasys--glow",
      "spacePath": "/space/preview-coasys",
@@ -9683,48 +9384,33 @@
      "name": "anyCall",
      "request": {
       "entity": "CollectionBlock",
-      "limit": 1,
+      "limit": 12,
+      "order": {
+       "createdAt": "desc"
+      },
+      "select": [
+       "title",
+       "createdAt"
+      ],
       "where": {
        "kind": "call"
       }
      },
      "rows": [
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-101",
-        "coasys-utt-102",
-        "coasys-utt-103",
-        "coasys-utt-104",
-        "coasys-utt-105",
-        "coasys-utt-106"
-       ],
        "createdAt": "2025-10-06T15:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-weekly-sync",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-06T15:00:00.000Z",
-       "title": "Weekly sync",
-       "updatedAt": "2025-10-06T15:00:00.000Z",
-       "version": 0
+       "title": "Weekly sync"
+      },
+      {
+       "createdAt": "2025-10-02T14:00:00.000Z",
+       "id": "coasys-call-design-review",
+       "title": "Design review"
+      },
+      {
+       "createdAt": "2025-09-29T17:00:00.000Z",
+       "id": "coasys-call-pilot-kickoff",
+       "title": "Pilot kickoff"
       }
      ],
      "scope": "template.routes[/]",
@@ -9766,116 +9452,29 @@
       "order": {
        "createdAt": "desc"
       },
+      "select": [
+       "title",
+       "createdAt"
+      ],
       "where": {
        "kind": "call"
       }
      },
      "rows": [
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-101",
-        "coasys-utt-102",
-        "coasys-utt-103",
-        "coasys-utt-104",
-        "coasys-utt-105",
-        "coasys-utt-106"
-       ],
        "createdAt": "2025-10-06T15:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-weekly-sync",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-06T15:00:00.000Z",
-       "title": "Weekly sync",
-       "updatedAt": "2025-10-06T15:00:00.000Z",
-       "version": 0
+       "title": "Weekly sync"
       },
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:juni",
-       "children": [
-        "coasys-utt-201",
-        "coasys-utt-202",
-        "coasys-utt-203",
-        "coasys-utt-204"
-       ],
        "createdAt": "2025-10-02T14:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-design-review",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-02T14:00:00.000Z",
-       "title": "Design review",
-       "updatedAt": "2025-10-02T14:00:00.000Z",
-       "version": 0
+       "title": "Design review"
       },
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-301",
-        "coasys-utt-302",
-        "coasys-utt-303"
-       ],
        "createdAt": "2025-09-29T17:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-pilot-kickoff",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-09-29T17:00:00.000Z",
-       "title": "Pilot kickoff",
-       "updatedAt": "2025-09-29T17:00:00.000Z",
-       "version": 0
+       "title": "Pilot kickoff"
       }
      ],
      "scope": "template.meta.panels[tree].node",
@@ -9893,116 +9492,29 @@
       "order": {
        "createdAt": "desc"
       },
+      "select": [
+       "title",
+       "createdAt"
+      ],
       "where": {
        "kind": "call"
       }
      },
      "rows": [
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-101",
-        "coasys-utt-102",
-        "coasys-utt-103",
-        "coasys-utt-104",
-        "coasys-utt-105",
-        "coasys-utt-106"
-       ],
        "createdAt": "2025-10-06T15:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-weekly-sync",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-06T15:00:00.000Z",
-       "title": "Weekly sync",
-       "updatedAt": "2025-10-06T15:00:00.000Z",
-       "version": 0
+       "title": "Weekly sync"
       },
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:juni",
-       "children": [
-        "coasys-utt-201",
-        "coasys-utt-202",
-        "coasys-utt-203",
-        "coasys-utt-204"
-       ],
        "createdAt": "2025-10-02T14:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-design-review",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-02T14:00:00.000Z",
-       "title": "Design review",
-       "updatedAt": "2025-10-02T14:00:00.000Z",
-       "version": 0
+       "title": "Design review"
       },
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-301",
-        "coasys-utt-302",
-        "coasys-utt-303"
-       ],
        "createdAt": "2025-09-29T17:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-pilot-kickoff",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-09-29T17:00:00.000Z",
-       "title": "Pilot kickoff",
-       "updatedAt": "2025-09-29T17:00:00.000Z",
-       "version": 0
+       "title": "Pilot kickoff"
       }
      ],
      "scope": "template.routes[/calls]",
@@ -10071,7 +9583,7 @@
       "entity": "CollectionBlock",
       "limit": 1,
       "when": {
-       "$": "!((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root)"
+       "$": "spaceStore.rootLoaded && !((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root)"
       },
       "where": {
        "id": {
@@ -13616,6 +13128,7 @@
       ]
      },
      "root": "coasys-root",
+     "rootLoaded": true,
      "spaceDefaultTemplateId": "coasys--space",
      "spaceDefaultThemeId": "coasys--glow",
      "spacePath": "/space/preview-coasys",
@@ -14043,48 +13556,33 @@
      "name": "anyCall",
      "request": {
       "entity": "CollectionBlock",
-      "limit": 1,
+      "limit": 12,
+      "order": {
+       "createdAt": "desc"
+      },
+      "select": [
+       "title",
+       "createdAt"
+      ],
       "where": {
        "kind": "call"
       }
      },
      "rows": [
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-101",
-        "coasys-utt-102",
-        "coasys-utt-103",
-        "coasys-utt-104",
-        "coasys-utt-105",
-        "coasys-utt-106"
-       ],
        "createdAt": "2025-10-06T15:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-weekly-sync",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-06T15:00:00.000Z",
-       "title": "Weekly sync",
-       "updatedAt": "2025-10-06T15:00:00.000Z",
-       "version": 0
+       "title": "Weekly sync"
+      },
+      {
+       "createdAt": "2025-10-02T14:00:00.000Z",
+       "id": "coasys-call-design-review",
+       "title": "Design review"
+      },
+      {
+       "createdAt": "2025-09-29T17:00:00.000Z",
+       "id": "coasys-call-pilot-kickoff",
+       "title": "Pilot kickoff"
       }
      ],
      "scope": "template.routes[/]",
@@ -14126,116 +13624,29 @@
       "order": {
        "createdAt": "desc"
       },
+      "select": [
+       "title",
+       "createdAt"
+      ],
       "where": {
        "kind": "call"
       }
      },
      "rows": [
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-101",
-        "coasys-utt-102",
-        "coasys-utt-103",
-        "coasys-utt-104",
-        "coasys-utt-105",
-        "coasys-utt-106"
-       ],
        "createdAt": "2025-10-06T15:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-weekly-sync",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-06T15:00:00.000Z",
-       "title": "Weekly sync",
-       "updatedAt": "2025-10-06T15:00:00.000Z",
-       "version": 0
+       "title": "Weekly sync"
       },
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:juni",
-       "children": [
-        "coasys-utt-201",
-        "coasys-utt-202",
-        "coasys-utt-203",
-        "coasys-utt-204"
-       ],
        "createdAt": "2025-10-02T14:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-design-review",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-02T14:00:00.000Z",
-       "title": "Design review",
-       "updatedAt": "2025-10-02T14:00:00.000Z",
-       "version": 0
+       "title": "Design review"
       },
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-301",
-        "coasys-utt-302",
-        "coasys-utt-303"
-       ],
        "createdAt": "2025-09-29T17:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-pilot-kickoff",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-09-29T17:00:00.000Z",
-       "title": "Pilot kickoff",
-       "updatedAt": "2025-09-29T17:00:00.000Z",
-       "version": 0
+       "title": "Pilot kickoff"
       }
      ],
      "scope": "template.meta.panels[tree].node",
@@ -14253,116 +13664,29 @@
       "order": {
        "createdAt": "desc"
       },
+      "select": [
+       "title",
+       "createdAt"
+      ],
       "where": {
        "kind": "call"
       }
      },
      "rows": [
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-101",
-        "coasys-utt-102",
-        "coasys-utt-103",
-        "coasys-utt-104",
-        "coasys-utt-105",
-        "coasys-utt-106"
-       ],
        "createdAt": "2025-10-06T15:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-weekly-sync",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-06T15:00:00.000Z",
-       "title": "Weekly sync",
-       "updatedAt": "2025-10-06T15:00:00.000Z",
-       "version": 0
+       "title": "Weekly sync"
       },
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:juni",
-       "children": [
-        "coasys-utt-201",
-        "coasys-utt-202",
-        "coasys-utt-203",
-        "coasys-utt-204"
-       ],
        "createdAt": "2025-10-02T14:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-design-review",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-02T14:00:00.000Z",
-       "title": "Design review",
-       "updatedAt": "2025-10-02T14:00:00.000Z",
-       "version": 0
+       "title": "Design review"
       },
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-301",
-        "coasys-utt-302",
-        "coasys-utt-303"
-       ],
        "createdAt": "2025-09-29T17:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-pilot-kickoff",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-09-29T17:00:00.000Z",
-       "title": "Pilot kickoff",
-       "updatedAt": "2025-09-29T17:00:00.000Z",
-       "version": 0
+       "title": "Pilot kickoff"
       }
      ],
      "scope": "template.routes[/calls]",
@@ -14431,7 +13755,7 @@
       "entity": "CollectionBlock",
       "limit": 1,
       "when": {
-       "$": "!((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root)"
+       "$": "spaceStore.rootLoaded && !((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root)"
       },
       "where": {
        "id": {
@@ -17973,6 +17297,7 @@
       ]
      },
      "root": "coasys-root",
+     "rootLoaded": true,
      "spaceDefaultTemplateId": "coasys--space",
      "spaceDefaultThemeId": "coasys--glow",
      "spacePath": "/space/preview-coasys",
@@ -18402,48 +17727,33 @@
      "name": "anyCall",
      "request": {
       "entity": "CollectionBlock",
-      "limit": 1,
+      "limit": 12,
+      "order": {
+       "createdAt": "desc"
+      },
+      "select": [
+       "title",
+       "createdAt"
+      ],
       "where": {
        "kind": "call"
       }
      },
      "rows": [
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-101",
-        "coasys-utt-102",
-        "coasys-utt-103",
-        "coasys-utt-104",
-        "coasys-utt-105",
-        "coasys-utt-106"
-       ],
        "createdAt": "2025-10-06T15:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-weekly-sync",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-06T15:00:00.000Z",
-       "title": "Weekly sync",
-       "updatedAt": "2025-10-06T15:00:00.000Z",
-       "version": 0
+       "title": "Weekly sync"
+      },
+      {
+       "createdAt": "2025-10-02T14:00:00.000Z",
+       "id": "coasys-call-design-review",
+       "title": "Design review"
+      },
+      {
+       "createdAt": "2025-09-29T17:00:00.000Z",
+       "id": "coasys-call-pilot-kickoff",
+       "title": "Pilot kickoff"
       }
      ],
      "scope": "template.routes[/]",
@@ -18486,116 +17796,29 @@
       "order": {
        "createdAt": "desc"
       },
+      "select": [
+       "title",
+       "createdAt"
+      ],
       "where": {
        "kind": "call"
       }
      },
      "rows": [
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-101",
-        "coasys-utt-102",
-        "coasys-utt-103",
-        "coasys-utt-104",
-        "coasys-utt-105",
-        "coasys-utt-106"
-       ],
        "createdAt": "2025-10-06T15:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-weekly-sync",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-06T15:00:00.000Z",
-       "title": "Weekly sync",
-       "updatedAt": "2025-10-06T15:00:00.000Z",
-       "version": 0
+       "title": "Weekly sync"
       },
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:juni",
-       "children": [
-        "coasys-utt-201",
-        "coasys-utt-202",
-        "coasys-utt-203",
-        "coasys-utt-204"
-       ],
        "createdAt": "2025-10-02T14:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-design-review",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-02T14:00:00.000Z",
-       "title": "Design review",
-       "updatedAt": "2025-10-02T14:00:00.000Z",
-       "version": 0
+       "title": "Design review"
       },
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-301",
-        "coasys-utt-302",
-        "coasys-utt-303"
-       ],
        "createdAt": "2025-09-29T17:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-pilot-kickoff",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-09-29T17:00:00.000Z",
-       "title": "Pilot kickoff",
-       "updatedAt": "2025-09-29T17:00:00.000Z",
-       "version": 0
+       "title": "Pilot kickoff"
       }
      ],
      "scope": "template.meta.panels[tree].node",
@@ -18613,116 +17836,29 @@
       "order": {
        "createdAt": "desc"
       },
+      "select": [
+       "title",
+       "createdAt"
+      ],
       "where": {
        "kind": "call"
       }
      },
      "rows": [
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-101",
-        "coasys-utt-102",
-        "coasys-utt-103",
-        "coasys-utt-104",
-        "coasys-utt-105",
-        "coasys-utt-106"
-       ],
        "createdAt": "2025-10-06T15:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-weekly-sync",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-06T15:00:00.000Z",
-       "title": "Weekly sync",
-       "updatedAt": "2025-10-06T15:00:00.000Z",
-       "version": 0
+       "title": "Weekly sync"
       },
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:juni",
-       "children": [
-        "coasys-utt-201",
-        "coasys-utt-202",
-        "coasys-utt-203",
-        "coasys-utt-204"
-       ],
        "createdAt": "2025-10-02T14:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-design-review",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-02T14:00:00.000Z",
-       "title": "Design review",
-       "updatedAt": "2025-10-02T14:00:00.000Z",
-       "version": 0
+       "title": "Design review"
       },
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-301",
-        "coasys-utt-302",
-        "coasys-utt-303"
-       ],
        "createdAt": "2025-09-29T17:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-pilot-kickoff",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-09-29T17:00:00.000Z",
-       "title": "Pilot kickoff",
-       "updatedAt": "2025-09-29T17:00:00.000Z",
-       "version": 0
+       "title": "Pilot kickoff"
       }
      ],
      "scope": "template.routes[/calls]",
@@ -22363,6 +21499,7 @@
       ]
      },
      "root": "coasys-root",
+     "rootLoaded": true,
      "spaceDefaultTemplateId": "coasys--space",
      "spaceDefaultThemeId": "coasys--glow",
      "spacePath": "/space/preview-coasys",
@@ -22790,48 +21927,33 @@
      "name": "anyCall",
      "request": {
       "entity": "CollectionBlock",
-      "limit": 1,
+      "limit": 12,
+      "order": {
+       "createdAt": "desc"
+      },
+      "select": [
+       "title",
+       "createdAt"
+      ],
       "where": {
        "kind": "call"
       }
      },
      "rows": [
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-101",
-        "coasys-utt-102",
-        "coasys-utt-103",
-        "coasys-utt-104",
-        "coasys-utt-105",
-        "coasys-utt-106"
-       ],
        "createdAt": "2025-10-06T15:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-weekly-sync",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-06T15:00:00.000Z",
-       "title": "Weekly sync",
-       "updatedAt": "2025-10-06T15:00:00.000Z",
-       "version": 0
+       "title": "Weekly sync"
+      },
+      {
+       "createdAt": "2025-10-02T14:00:00.000Z",
+       "id": "coasys-call-design-review",
+       "title": "Design review"
+      },
+      {
+       "createdAt": "2025-09-29T17:00:00.000Z",
+       "id": "coasys-call-pilot-kickoff",
+       "title": "Pilot kickoff"
       }
      ],
      "scope": "template.routes[/]",
@@ -22873,116 +21995,29 @@
       "order": {
        "createdAt": "desc"
       },
+      "select": [
+       "title",
+       "createdAt"
+      ],
       "where": {
        "kind": "call"
       }
      },
      "rows": [
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-101",
-        "coasys-utt-102",
-        "coasys-utt-103",
-        "coasys-utt-104",
-        "coasys-utt-105",
-        "coasys-utt-106"
-       ],
        "createdAt": "2025-10-06T15:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-weekly-sync",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-06T15:00:00.000Z",
-       "title": "Weekly sync",
-       "updatedAt": "2025-10-06T15:00:00.000Z",
-       "version": 0
+       "title": "Weekly sync"
       },
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:juni",
-       "children": [
-        "coasys-utt-201",
-        "coasys-utt-202",
-        "coasys-utt-203",
-        "coasys-utt-204"
-       ],
        "createdAt": "2025-10-02T14:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-design-review",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-02T14:00:00.000Z",
-       "title": "Design review",
-       "updatedAt": "2025-10-02T14:00:00.000Z",
-       "version": 0
+       "title": "Design review"
       },
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-301",
-        "coasys-utt-302",
-        "coasys-utt-303"
-       ],
        "createdAt": "2025-09-29T17:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-pilot-kickoff",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-09-29T17:00:00.000Z",
-       "title": "Pilot kickoff",
-       "updatedAt": "2025-09-29T17:00:00.000Z",
-       "version": 0
+       "title": "Pilot kickoff"
       }
      ],
      "scope": "template.meta.panels[tree].node",
@@ -23000,116 +22035,29 @@
       "order": {
        "createdAt": "desc"
       },
+      "select": [
+       "title",
+       "createdAt"
+      ],
       "where": {
        "kind": "call"
       }
      },
      "rows": [
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-101",
-        "coasys-utt-102",
-        "coasys-utt-103",
-        "coasys-utt-104",
-        "coasys-utt-105",
-        "coasys-utt-106"
-       ],
        "createdAt": "2025-10-06T15:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-weekly-sync",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-06T15:00:00.000Z",
-       "title": "Weekly sync",
-       "updatedAt": "2025-10-06T15:00:00.000Z",
-       "version": 0
+       "title": "Weekly sync"
       },
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:juni",
-       "children": [
-        "coasys-utt-201",
-        "coasys-utt-202",
-        "coasys-utt-203",
-        "coasys-utt-204"
-       ],
        "createdAt": "2025-10-02T14:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-design-review",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-02T14:00:00.000Z",
-       "title": "Design review",
-       "updatedAt": "2025-10-02T14:00:00.000Z",
-       "version": 0
+       "title": "Design review"
       },
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-301",
-        "coasys-utt-302",
-        "coasys-utt-303"
-       ],
        "createdAt": "2025-09-29T17:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-pilot-kickoff",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-09-29T17:00:00.000Z",
-       "title": "Pilot kickoff",
-       "updatedAt": "2025-09-29T17:00:00.000Z",
-       "version": 0
+       "title": "Pilot kickoff"
       }
      ],
      "scope": "template.routes[/calls]",
@@ -23179,7 +22127,7 @@
       "entity": "CollectionBlock",
       "limit": 1,
       "when": {
-       "$": "!((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root)"
+       "$": "spaceStore.rootLoaded && !((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root)"
       },
       "where": {
        "id": {
@@ -26722,6 +25670,7 @@
       ]
      },
      "root": "coasys-root",
+     "rootLoaded": true,
      "spaceDefaultTemplateId": "coasys--space",
      "spaceDefaultThemeId": "coasys--glow",
      "spacePath": "/space/preview-coasys",
@@ -27152,48 +26101,33 @@
      "name": "anyCall",
      "request": {
       "entity": "CollectionBlock",
-      "limit": 1,
+      "limit": 12,
+      "order": {
+       "createdAt": "desc"
+      },
+      "select": [
+       "title",
+       "createdAt"
+      ],
       "where": {
        "kind": "call"
       }
      },
      "rows": [
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-101",
-        "coasys-utt-102",
-        "coasys-utt-103",
-        "coasys-utt-104",
-        "coasys-utt-105",
-        "coasys-utt-106"
-       ],
        "createdAt": "2025-10-06T15:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-weekly-sync",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-06T15:00:00.000Z",
-       "title": "Weekly sync",
-       "updatedAt": "2025-10-06T15:00:00.000Z",
-       "version": 0
+       "title": "Weekly sync"
+      },
+      {
+       "createdAt": "2025-10-02T14:00:00.000Z",
+       "id": "coasys-call-design-review",
+       "title": "Design review"
+      },
+      {
+       "createdAt": "2025-09-29T17:00:00.000Z",
+       "id": "coasys-call-pilot-kickoff",
+       "title": "Pilot kickoff"
       }
      ],
      "scope": "template.routes[/]",
@@ -27265,116 +26199,29 @@
       "order": {
        "createdAt": "desc"
       },
+      "select": [
+       "title",
+       "createdAt"
+      ],
       "where": {
        "kind": "call"
       }
      },
      "rows": [
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-101",
-        "coasys-utt-102",
-        "coasys-utt-103",
-        "coasys-utt-104",
-        "coasys-utt-105",
-        "coasys-utt-106"
-       ],
        "createdAt": "2025-10-06T15:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-weekly-sync",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-06T15:00:00.000Z",
-       "title": "Weekly sync",
-       "updatedAt": "2025-10-06T15:00:00.000Z",
-       "version": 0
+       "title": "Weekly sync"
       },
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:juni",
-       "children": [
-        "coasys-utt-201",
-        "coasys-utt-202",
-        "coasys-utt-203",
-        "coasys-utt-204"
-       ],
        "createdAt": "2025-10-02T14:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-design-review",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-02T14:00:00.000Z",
-       "title": "Design review",
-       "updatedAt": "2025-10-02T14:00:00.000Z",
-       "version": 0
+       "title": "Design review"
       },
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-301",
-        "coasys-utt-302",
-        "coasys-utt-303"
-       ],
        "createdAt": "2025-09-29T17:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-pilot-kickoff",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-09-29T17:00:00.000Z",
-       "title": "Pilot kickoff",
-       "updatedAt": "2025-09-29T17:00:00.000Z",
-       "version": 0
+       "title": "Pilot kickoff"
       }
      ],
      "scope": "template.meta.panels[tree].node",
@@ -27392,116 +26239,29 @@
       "order": {
        "createdAt": "desc"
       },
+      "select": [
+       "title",
+       "createdAt"
+      ],
       "where": {
        "kind": "call"
       }
      },
      "rows": [
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-101",
-        "coasys-utt-102",
-        "coasys-utt-103",
-        "coasys-utt-104",
-        "coasys-utt-105",
-        "coasys-utt-106"
-       ],
        "createdAt": "2025-10-06T15:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-weekly-sync",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-06T15:00:00.000Z",
-       "title": "Weekly sync",
-       "updatedAt": "2025-10-06T15:00:00.000Z",
-       "version": 0
+       "title": "Weekly sync"
       },
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:juni",
-       "children": [
-        "coasys-utt-201",
-        "coasys-utt-202",
-        "coasys-utt-203",
-        "coasys-utt-204"
-       ],
        "createdAt": "2025-10-02T14:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-design-review",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-02T14:00:00.000Z",
-       "title": "Design review",
-       "updatedAt": "2025-10-02T14:00:00.000Z",
-       "version": 0
+       "title": "Design review"
       },
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-301",
-        "coasys-utt-302",
-        "coasys-utt-303"
-       ],
        "createdAt": "2025-09-29T17:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-pilot-kickoff",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-09-29T17:00:00.000Z",
-       "title": "Pilot kickoff",
-       "updatedAt": "2025-09-29T17:00:00.000Z",
-       "version": 0
+       "title": "Pilot kickoff"
       }
      ],
      "scope": "template.routes[/calls]",
@@ -27570,7 +26330,7 @@
       "entity": "CollectionBlock",
       "limit": 1,
       "when": {
-       "$": "!((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root)"
+       "$": "spaceStore.rootLoaded && !((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root)"
       },
       "where": {
        "id": {
@@ -31131,6 +29891,7 @@
       ]
      },
      "root": "coasys-root",
+     "rootLoaded": true,
      "spaceDefaultTemplateId": "coasys--space",
      "spaceDefaultThemeId": "coasys--glow",
      "spacePath": "/space/preview-coasys",
@@ -31558,48 +30319,33 @@
      "name": "anyCall",
      "request": {
       "entity": "CollectionBlock",
-      "limit": 1,
+      "limit": 12,
+      "order": {
+       "createdAt": "desc"
+      },
+      "select": [
+       "title",
+       "createdAt"
+      ],
       "where": {
        "kind": "call"
       }
      },
      "rows": [
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-101",
-        "coasys-utt-102",
-        "coasys-utt-103",
-        "coasys-utt-104",
-        "coasys-utt-105",
-        "coasys-utt-106"
-       ],
        "createdAt": "2025-10-06T15:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-weekly-sync",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-06T15:00:00.000Z",
-       "title": "Weekly sync",
-       "updatedAt": "2025-10-06T15:00:00.000Z",
-       "version": 0
+       "title": "Weekly sync"
+      },
+      {
+       "createdAt": "2025-10-02T14:00:00.000Z",
+       "id": "coasys-call-design-review",
+       "title": "Design review"
+      },
+      {
+       "createdAt": "2025-09-29T17:00:00.000Z",
+       "id": "coasys-call-pilot-kickoff",
+       "title": "Pilot kickoff"
       }
      ],
      "scope": "template.routes[/]",
@@ -31641,116 +30387,29 @@
       "order": {
        "createdAt": "desc"
       },
+      "select": [
+       "title",
+       "createdAt"
+      ],
       "where": {
        "kind": "call"
       }
      },
      "rows": [
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-101",
-        "coasys-utt-102",
-        "coasys-utt-103",
-        "coasys-utt-104",
-        "coasys-utt-105",
-        "coasys-utt-106"
-       ],
        "createdAt": "2025-10-06T15:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-weekly-sync",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-06T15:00:00.000Z",
-       "title": "Weekly sync",
-       "updatedAt": "2025-10-06T15:00:00.000Z",
-       "version": 0
+       "title": "Weekly sync"
       },
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:juni",
-       "children": [
-        "coasys-utt-201",
-        "coasys-utt-202",
-        "coasys-utt-203",
-        "coasys-utt-204"
-       ],
        "createdAt": "2025-10-02T14:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-design-review",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-02T14:00:00.000Z",
-       "title": "Design review",
-       "updatedAt": "2025-10-02T14:00:00.000Z",
-       "version": 0
+       "title": "Design review"
       },
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-301",
-        "coasys-utt-302",
-        "coasys-utt-303"
-       ],
        "createdAt": "2025-09-29T17:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-pilot-kickoff",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-09-29T17:00:00.000Z",
-       "title": "Pilot kickoff",
-       "updatedAt": "2025-09-29T17:00:00.000Z",
-       "version": 0
+       "title": "Pilot kickoff"
       }
      ],
      "scope": "template.meta.panels[tree].node",
@@ -31768,116 +30427,29 @@
       "order": {
        "createdAt": "desc"
       },
+      "select": [
+       "title",
+       "createdAt"
+      ],
       "where": {
        "kind": "call"
       }
      },
      "rows": [
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-101",
-        "coasys-utt-102",
-        "coasys-utt-103",
-        "coasys-utt-104",
-        "coasys-utt-105",
-        "coasys-utt-106"
-       ],
        "createdAt": "2025-10-06T15:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-weekly-sync",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-06T15:00:00.000Z",
-       "title": "Weekly sync",
-       "updatedAt": "2025-10-06T15:00:00.000Z",
-       "version": 0
+       "title": "Weekly sync"
       },
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:juni",
-       "children": [
-        "coasys-utt-201",
-        "coasys-utt-202",
-        "coasys-utt-203",
-        "coasys-utt-204"
-       ],
        "createdAt": "2025-10-02T14:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-design-review",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-02T14:00:00.000Z",
-       "title": "Design review",
-       "updatedAt": "2025-10-02T14:00:00.000Z",
-       "version": 0
+       "title": "Design review"
       },
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-301",
-        "coasys-utt-302",
-        "coasys-utt-303"
-       ],
        "createdAt": "2025-09-29T17:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-pilot-kickoff",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-09-29T17:00:00.000Z",
-       "title": "Pilot kickoff",
-       "updatedAt": "2025-09-29T17:00:00.000Z",
-       "version": 0
+       "title": "Pilot kickoff"
       }
      ],
      "scope": "template.routes[/calls]",
@@ -31946,7 +30518,7 @@
       "entity": "CollectionBlock",
       "limit": 1,
       "when": {
-       "$": "!((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root)"
+       "$": "spaceStore.rootLoaded && !((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root)"
       },
       "where": {
        "id": {
@@ -35491,6 +34063,7 @@
       ]
      },
      "root": "coasys-root",
+     "rootLoaded": true,
      "spaceDefaultTemplateId": "coasys--space",
      "spaceDefaultThemeId": "coasys--glow",
      "spacePath": "/space/preview-coasys",
@@ -35918,48 +34491,33 @@
      "name": "anyCall",
      "request": {
       "entity": "CollectionBlock",
-      "limit": 1,
+      "limit": 12,
+      "order": {
+       "createdAt": "desc"
+      },
+      "select": [
+       "title",
+       "createdAt"
+      ],
       "where": {
        "kind": "call"
       }
      },
      "rows": [
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-101",
-        "coasys-utt-102",
-        "coasys-utt-103",
-        "coasys-utt-104",
-        "coasys-utt-105",
-        "coasys-utt-106"
-       ],
        "createdAt": "2025-10-06T15:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-weekly-sync",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-06T15:00:00.000Z",
-       "title": "Weekly sync",
-       "updatedAt": "2025-10-06T15:00:00.000Z",
-       "version": 0
+       "title": "Weekly sync"
+      },
+      {
+       "createdAt": "2025-10-02T14:00:00.000Z",
+       "id": "coasys-call-design-review",
+       "title": "Design review"
+      },
+      {
+       "createdAt": "2025-09-29T17:00:00.000Z",
+       "id": "coasys-call-pilot-kickoff",
+       "title": "Pilot kickoff"
       }
      ],
      "scope": "template.routes[/]",
@@ -36001,116 +34559,29 @@
       "order": {
        "createdAt": "desc"
       },
+      "select": [
+       "title",
+       "createdAt"
+      ],
       "where": {
        "kind": "call"
       }
      },
      "rows": [
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-101",
-        "coasys-utt-102",
-        "coasys-utt-103",
-        "coasys-utt-104",
-        "coasys-utt-105",
-        "coasys-utt-106"
-       ],
        "createdAt": "2025-10-06T15:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-weekly-sync",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-06T15:00:00.000Z",
-       "title": "Weekly sync",
-       "updatedAt": "2025-10-06T15:00:00.000Z",
-       "version": 0
+       "title": "Weekly sync"
       },
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:juni",
-       "children": [
-        "coasys-utt-201",
-        "coasys-utt-202",
-        "coasys-utt-203",
-        "coasys-utt-204"
-       ],
        "createdAt": "2025-10-02T14:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-design-review",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-02T14:00:00.000Z",
-       "title": "Design review",
-       "updatedAt": "2025-10-02T14:00:00.000Z",
-       "version": 0
+       "title": "Design review"
       },
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-301",
-        "coasys-utt-302",
-        "coasys-utt-303"
-       ],
        "createdAt": "2025-09-29T17:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-pilot-kickoff",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-09-29T17:00:00.000Z",
-       "title": "Pilot kickoff",
-       "updatedAt": "2025-09-29T17:00:00.000Z",
-       "version": 0
+       "title": "Pilot kickoff"
       }
      ],
      "scope": "template.meta.panels[tree].node",
@@ -36128,116 +34599,29 @@
       "order": {
        "createdAt": "desc"
       },
+      "select": [
+       "title",
+       "createdAt"
+      ],
       "where": {
        "kind": "call"
       }
      },
      "rows": [
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-101",
-        "coasys-utt-102",
-        "coasys-utt-103",
-        "coasys-utt-104",
-        "coasys-utt-105",
-        "coasys-utt-106"
-       ],
        "createdAt": "2025-10-06T15:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-weekly-sync",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-06T15:00:00.000Z",
-       "title": "Weekly sync",
-       "updatedAt": "2025-10-06T15:00:00.000Z",
-       "version": 0
+       "title": "Weekly sync"
       },
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:juni",
-       "children": [
-        "coasys-utt-201",
-        "coasys-utt-202",
-        "coasys-utt-203",
-        "coasys-utt-204"
-       ],
        "createdAt": "2025-10-02T14:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-design-review",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-02T14:00:00.000Z",
-       "title": "Design review",
-       "updatedAt": "2025-10-02T14:00:00.000Z",
-       "version": 0
+       "title": "Design review"
       },
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-301",
-        "coasys-utt-302",
-        "coasys-utt-303"
-       ],
        "createdAt": "2025-09-29T17:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-pilot-kickoff",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-09-29T17:00:00.000Z",
-       "title": "Pilot kickoff",
-       "updatedAt": "2025-09-29T17:00:00.000Z",
-       "version": 0
+       "title": "Pilot kickoff"
       }
      ],
      "scope": "template.routes[/calls]",
@@ -36306,7 +34690,7 @@
       "entity": "CollectionBlock",
       "limit": 1,
       "when": {
-       "$": "!((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root)"
+       "$": "spaceStore.rootLoaded && !((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root)"
       },
       "where": {
        "id": {
@@ -39863,6 +38247,7 @@
       ]
      },
      "root": "coasys-root",
+     "rootLoaded": true,
      "spaceDefaultTemplateId": "coasys--space",
      "spaceDefaultThemeId": "coasys--glow",
      "spacePath": "/space/preview-coasys",
@@ -40292,48 +38677,33 @@
      "name": "anyCall",
      "request": {
       "entity": "CollectionBlock",
-      "limit": 1,
+      "limit": 12,
+      "order": {
+       "createdAt": "desc"
+      },
+      "select": [
+       "title",
+       "createdAt"
+      ],
       "where": {
        "kind": "call"
       }
      },
      "rows": [
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-101",
-        "coasys-utt-102",
-        "coasys-utt-103",
-        "coasys-utt-104",
-        "coasys-utt-105",
-        "coasys-utt-106"
-       ],
        "createdAt": "2025-10-06T15:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-weekly-sync",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-06T15:00:00.000Z",
-       "title": "Weekly sync",
-       "updatedAt": "2025-10-06T15:00:00.000Z",
-       "version": 0
+       "title": "Weekly sync"
+      },
+      {
+       "createdAt": "2025-10-02T14:00:00.000Z",
+       "id": "coasys-call-design-review",
+       "title": "Design review"
+      },
+      {
+       "createdAt": "2025-09-29T17:00:00.000Z",
+       "id": "coasys-call-pilot-kickoff",
+       "title": "Pilot kickoff"
       }
      ],
      "scope": "template.routes[/]",
@@ -40375,116 +38745,29 @@
       "order": {
        "createdAt": "desc"
       },
+      "select": [
+       "title",
+       "createdAt"
+      ],
       "where": {
        "kind": "call"
       }
      },
      "rows": [
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-101",
-        "coasys-utt-102",
-        "coasys-utt-103",
-        "coasys-utt-104",
-        "coasys-utt-105",
-        "coasys-utt-106"
-       ],
        "createdAt": "2025-10-06T15:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-weekly-sync",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-06T15:00:00.000Z",
-       "title": "Weekly sync",
-       "updatedAt": "2025-10-06T15:00:00.000Z",
-       "version": 0
+       "title": "Weekly sync"
       },
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:juni",
-       "children": [
-        "coasys-utt-201",
-        "coasys-utt-202",
-        "coasys-utt-203",
-        "coasys-utt-204"
-       ],
        "createdAt": "2025-10-02T14:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-design-review",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-02T14:00:00.000Z",
-       "title": "Design review",
-       "updatedAt": "2025-10-02T14:00:00.000Z",
-       "version": 0
+       "title": "Design review"
       },
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-301",
-        "coasys-utt-302",
-        "coasys-utt-303"
-       ],
        "createdAt": "2025-09-29T17:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-pilot-kickoff",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-09-29T17:00:00.000Z",
-       "title": "Pilot kickoff",
-       "updatedAt": "2025-09-29T17:00:00.000Z",
-       "version": 0
+       "title": "Pilot kickoff"
       }
      ],
      "scope": "template.meta.panels[tree].node",
@@ -40502,116 +38785,29 @@
       "order": {
        "createdAt": "desc"
       },
+      "select": [
+       "title",
+       "createdAt"
+      ],
       "where": {
        "kind": "call"
       }
      },
      "rows": [
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-101",
-        "coasys-utt-102",
-        "coasys-utt-103",
-        "coasys-utt-104",
-        "coasys-utt-105",
-        "coasys-utt-106"
-       ],
        "createdAt": "2025-10-06T15:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-weekly-sync",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-06T15:00:00.000Z",
-       "title": "Weekly sync",
-       "updatedAt": "2025-10-06T15:00:00.000Z",
-       "version": 0
+       "title": "Weekly sync"
       },
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:juni",
-       "children": [
-        "coasys-utt-201",
-        "coasys-utt-202",
-        "coasys-utt-203",
-        "coasys-utt-204"
-       ],
        "createdAt": "2025-10-02T14:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-design-review",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-10-02T14:00:00.000Z",
-       "title": "Design review",
-       "updatedAt": "2025-10-02T14:00:00.000Z",
-       "version": 0
+       "title": "Design review"
       },
       {
-       "amendments": [],
-       "arranges": [],
-       "author": "did:agent:mara",
-       "children": [
-        "coasys-utt-301",
-        "coasys-utt-302",
-        "coasys-utt-303"
-       ],
        "createdAt": "2025-09-29T17:00:00.000Z",
-       "description": "",
-       "editorState": null,
-       "extracted": [],
-       "extractionTargets": "",
        "id": "coasys-call-pilot-kickoff",
-       "kind": "call",
-       "mentions": [],
-       "mode": "feed",
-       "partOf": "coasys-root",
-       "participants": [],
-       "recognised": [],
-       "responses": [],
-       "runs": [],
-       "signals": [],
-       "slug": "",
-       "sourceName": "",
-       "sourceRef": "",
-       "textContent": "",
-       "thread": [],
-       "timestamp": "2025-09-29T17:00:00.000Z",
-       "title": "Pilot kickoff",
-       "updatedAt": "2025-09-29T17:00:00.000Z",
-       "version": 0
+       "title": "Pilot kickoff"
       }
      ],
      "scope": "template.routes[/calls]",
@@ -40680,7 +38876,7 @@
       "entity": "CollectionBlock",
       "limit": 1,
       "when": {
-       "$": "!((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root)"
+       "$": "spaceStore.rootLoaded && !((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root)"
       },
       "where": {
        "id": {
