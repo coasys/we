@@ -429,6 +429,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     currentDatasetUri: state('content'),
     currentDatasetCid: state('content'),
     currentDatasetEntities: state('content'),
+    currentDatasetEntitiesLoaded: state('content'),
     isWeSpace: state('navigation'),
     joinedSpaceCids: state('navigation'),
     datasetsLoaded: state('navigation'),
@@ -550,6 +551,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // Where a space's things are and which record plays which part — read by any template that
     // shows the space at all, so `content` for the reason the space's vocabulary is.
     root: state('content'),
+    rootLoaded: state('content'),
+    firstScreenOpen: state('content'),
     landmarks: state('content'),
     landmarksLoaded: state('content'),
     taskWorkflowEnabled: state('content'),
@@ -825,6 +828,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       wizard would make an ordinary card list ask for the capability that edits a space's vocabulary.
     */
     extractionCandidates: state('content'),
+    extractionCandidatesLoaded: state('content'),
     provideExtractionEnroller: WIRING,
     extractionNeedsIdentity: state('space-settings'),
     relationshipTargets: state('space-settings'),

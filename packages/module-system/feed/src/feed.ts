@@ -228,6 +228,9 @@ export function markPending(rows: FeedRow[], pending: ReadonlySet<string>): Feed
   return moved ? marked : rows;
 }
 
+/** The fields the Feed reads of a call — for its title and its place in time. `id` always comes. */
+export const CALL_FIELDS = ['title', 'createdAt'];
+
 /**
  * One window of the Feed: the rows to draw, in the order the window grows (newest first from the
  * live end, oldest first from the start), and whether there is more beyond it.
@@ -260,6 +263,9 @@ export async function readFeedWindow(
       where: { kind: 'call' },
       order: { createdAt: order },
       limit: CALL_WINDOW,
+      // What the window reads of a call: its id, its title and when it began. A whole call also
+      // carries the id of every line said in it — most of its weight, read for nothing here.
+      select: CALL_FIELDS,
     }),
     /*
       What extraction found, per kind. No `include`: a row carries `extractedFrom` as the source's
