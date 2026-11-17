@@ -241,7 +241,14 @@ rust-executor` is empty (brief §0.3), so it matches the client pin
 1. (§6 Q3, default kept) `--write` refuses a shared space until the policy
    check is ported.
 2. (§6 Q4, default kept) Cancel settles `onError` with `kind: "cancelled"`;
-   TS resolves `undefined` (onSuccess). See step 0.5.
+   TS resolves `undefined` (onSuccess). See step 0.5. Lal's review (Q3)
+   names what this changes: in TS, Cancel runs `onSuccess`, so
+   `EdgeDetail` (`templates/views/src/views/GraphView/EdgeDetail.ts:315`)
+   closes and bumps its revision, and `installedList`
+   (`templates/kit/src/we/installedList.ts:200`) refreshes, on a cancelled
+   delete; in Rust neither happens. The inspector has neither callback, so
+   it is unaffected. Still open for Nico: keep cancel-as-error as a new
+   contract, or match TS.
 3. (§6 Q5, default kept) `fieldValue` reads the bundle's displays, so a
    community shape's fields are sent as strings.
 4. (§6 Q6, Q7, Q8) unchanged: one grant per space; no connection rekey; the
@@ -410,3 +417,230 @@ Red line, the updateRecordField row renamed:
 thread 'edit_and_delete_from_the_inspector' (410947) panicked at we-app/tests/e11_live.rs:141:9:
 the executor has the new title: not after 2s
 ```
+
+## Round 2 (Lal and Astra's review at `dcb44044b`)
+
+The review is `/tmp/lal-e11.md`. Every finding was right about the code; none
+is skipped. One commit per finding, each test written and run red first
+(red outputs below, in full in `/tmp/e11r2/`):
+
+| finding     | commit      | what                                                                                       |
+| ----------- | ----------- | ------------------------------------------------------------------------------------------ |
+| P1          | `d728a8755` | writes bound to the granted space; another space opens read-only, and says why            |
+| P2 lifecycle | `71e926040` | local refusals settle through the `Completer`; a second confirmation cancels the first    |
+| P2 clear    | `0a2d06556` | emptying a field is refused (`clear-unsupported`), nothing sent                            |
+| P3          | `c147bdae3` | an update left empty by `null`/`undefined` is a no-op success, no RPC                      |
+| notes       | this file   |                                                                                            |
+
+### P1: the grant names one space, and so does the window
+
+`Access::Write` now carries the granted perspective uuid
+(`Access::Write(SpaceId)`, built by `Access::write(uuid)`; `writes(space)`,
+`in_space(space)`, `granted()`). Two checks, both local, so they hold on an
+operator connection (no admin credential, no scoped token) as well as on a
+scoped token:
+
+- `live_space_app` opens any space but the granted one **read-only**
+  (`LiveSpace::access` is `ReadOnly`, so the status bar —
+  `LiveSpace::access_label`, moved out of `connected.rs` — says
+  `read-only`, never `writes: <other space>`), and pushes the notice
+  "This space is read-only: this window may change only space <A>. Start it
+  with --write --space <B> to change this one." A shared space other than the
+  granted one now opens read-only instead of being refused; the granted space
+  shared is still refused (`SHARED_WRITE_REFUSED`).
+- `WriteHost::act` refuses a write unless `access.writes(self.space)`, with
+  the same notice (`read_only_notice`). The host keeps the grant itself, so
+  the notice can name it.
+
+Tests: `e11_live::switching_space_keeps_the_grant_operator` and
+`…_scoped_token` (a window granted A opens B: read-only, labelled so, the
+notice names A, an inspector edit leaves B unchanged; back in A an edit
+lands), and `e11_writes::a_grant_for_another_space_refuses_here` (the host
+alone). The last was written after the change.
+
+Red, as written (`access` assertion first):
+```
+thread 'switching_space_keeps_the_grant_scoped_token' panicked at we-app/tests/e11_live.rs:481:5:
+assertion `left == right` failed: B opens read-only
+  left: Write
+ right: ReadOnly
+thread 'switching_space_keeps_the_grant_operator' panicked at we-app/tests/e11_live.rs:481:5:
+assertion `left == right` failed: B opens read-only
+  left: Write
+ right: ReadOnly
+```
+Red with the `access` assertions removed, to see what the edit does — the
+operator connection **wrote B**, the scoped token was refused by the
+executor while the label said `writes: B`:
+```
+thread 'switching_space_keeps_the_grant_operator' panicked at we-app/tests/e11_live.rs:495:5:
+assertion `left == right` failed: B unchanged
+  left: Some(String("Changed in B"))
+ right: Some(String("Task in B"))
+thread 'switching_space_keeps_the_grant_scoped_token' panicked at we-app/tests/e11_live.rs:496:5:
+[Notice { text: "Could not save that change. Capability is not matched, … expected: Capability { with: Resource { domain: \"perspective\", pointers: [\"348b3da0-…\"] }, can: [\"UPDATE\"] }", … }]
+```
+Green:
+```
+test switching_space_keeps_the_grant_operator ... ok
+test switching_space_keeps_the_grant_scoped_token ... ok
+test a_grant_for_another_space_refuses_here ... ok
+```
+
+### P2: local refusals run `onError` and `onFinally`
+
+`WriteHost` now answers every refusal it makes itself — read-only (or
+another space), a planner error — by completing the `Completer` with the
+error value and returning `Invoked::Pending` (`refuse`), so the runtime runs
+`onError` then `onFinally` exactly as for an executor's refusal.
+`Invoked::Done` is left to the fallback (no write row), as before.
+
+The "busy" refusal is gone. A second destructive call while a confirmation
+is open does what TS's `requestDestructive` does
+(`ShellStore.tsx:1254–1258`): the open one is answered "no" — settled
+`Err({ kind: "cancelled" })`, so its `onError`/`onFinally` run — and the new
+one takes the slot and is the question on screen.
+
+Tests (`e11_writes`; every test template now counts `onFinally` runs as
+`fin`): `a_read_only_refusal_runs_on_error_and_on_finally`,
+`a_planner_error_runs_on_error_and_on_finally` (`record.update` with a
+`dataset` option), `a_second_confirmation_cancels_the_first` (two
+`record.delete`s in one `onClick`: the first settles `kind=cancelled fin=1`,
+the second is pending; answering yes runs it, `ok=true`, `fin=2`, the record
+is gone).
+
+Red:
+```
+thread 'a_read_only_refusal_runs_on_error_and_on_finally' panicked at we-ad4m/tests/e11_writes.rs:299:9:
+"kind=read-only fin=1" not in the tree after 5s: {… "ok=false msg= kind= fin=0" …}
+thread 'a_second_confirmation_cancels_the_first' panicked at we-ad4m/tests/e11_writes.rs:299:9:
+"kind=cancelled fin=1" not in the tree after 5s: {… "ok=false msg= kind= fin=0" …}
+thread 'a_planner_error_runs_on_error_and_on_finally' panicked at we-ad4m/tests/e11_writes.rs:299:9:
+"kind=plan fin=1" not in the tree after 5s: {… "ok=false msg= kind= fin=0" …}
+test result: FAILED. 9 passed; 3 failed
+```
+Green: `test result: ok. 12 passed; 0 failed` (`e11_writes` at that commit).
+
+### P2: emptying a field
+
+**Does #1762 have a validated way to remove a property? No.** In
+`/home/data/code/ad4m-e11/rust-executor/src/perspectives/instances/`:
+`validate.rs:185` refuses `null` (`ValidationProblem::Null`, "omit the
+property instead"); `write.rs`'s `update` sends every validated value
+through `update_subject` (the setters); the WS API
+(`api/perspective_instances_ws.rs:250–270`) has create, update, remove,
+addToCollection and removeFromCollection — the last for collections only.
+So `''` is stored as a value. Observed before the fix, after
+`record.update(…, { title: "" })` on a call titled "A":
+```
+RED record.update: title=Some("") title_links=1 rows=[{… "title": String(""), …}]
+```
+— the property is present with an empty value, where WE's `clearOnEmpty`
+leaves it absent (no link).
+
+So the planner refuses it: `we_data::writes::plan` now returns
+`Result<WritePlan, PlanError>` (`PlanError { kind, message }`; kinds `plan`
+and `clear-unsupported`). An **update** whose properties hold `''` is refused
+whole — nothing in the call is sent — with "Emptying a field is not possible
+yet (<fields>): this app cannot remove a value, so it is left as it was."
+The notice is the row's `fail` sentence then that; `onError` gets
+`kind: "clear-unsupported"`, then `onFinally`. Covers `record.update` and
+`recordStore.updateRecordField` (a text field's `''`; an emptied **number**
+field is still skipped, as TS skips it). A create's `''` is not a clear and
+is left as it was.
+
+**Executor follow-up (ad4m):** a validated property clear — e.g.
+`perspective.instanceUpdate` taking a `clear: [<property>]` list, or a
+`perspective.instanceClearProperty` — that checks the property is a
+writable, optional, single-valued property of the class and removes its
+links in the update's batch. Once it exists, the planner sends `''` fields
+there instead of refusing. The renderer does not write raw link removals.
+
+Tests: `e11_writes::clearing_a_field_is_refused_and_nothing_is_sent` (both
+targets; the title stays "A", one `we://title` link, one notice naming
+`title`, `kind=clear-unsupported`, `fin=1`) and
+`writes::emptying_a_field_is_refused` (planner).
+
+Red (live, before the change — the executor took it):
+```
+thread 'clearing_a_field_is_refused_and_nothing_is_sent' panicked at we-ad4m/tests/e11_writes.rs:579:9:
+record.update: {… "ok=true msg= kind= fin=1" …}
+```
+Red line for the planner test (the check disabled; the test was written with
+`PlanError`, so its first run was a compile error):
+```
+thread 'emptying_a_field_is_refused' panicked at we-data/tests/writes.rs:262:32:
+called `Result::unwrap_err()` on an `Ok` value: WritePlan { writes: [Write { op: Update, body: Object {"className": String("TaskBlock"), "baseUri": String("t1"), "properties": Object {"title": String(""), "status": String("done")}} }], … }
+```
+Green: `test clearing_a_field_is_refused_and_nothing_is_sent ... ok`;
+`writes`: `test result: ok. 8 passed`.
+
+### P3: an update left empty
+
+When dropping `null`/`undefined` leaves an update's `properties` empty, the
+planner leaves the write out; a plan with no writes answers `undefined`
+(`onSuccess`) and sends nothing. A create is unchanged (the executor judges
+it).
+
+Tests: `writes::an_update_left_empty_is_a_no_op` (null-only, and
+undefined-only built as a `Value` — JSON cannot hold `undefined`) and
+`e11_writes::an_update_with_only_null_is_a_no_op` (live: `ok=true`, no
+notice, title unchanged).
+
+Red:
+```
+thread 'an_update_left_empty_is_a_no_op' panicked at we-data/tests/writes.rs:286:5:
+null only: WritePlan { writes: [Write { op: Update, body: Object {"className": String("TaskBlock"), "baseUri": String("t1"), "properties": Object {}} }], … }
+thread 'an_update_with_only_null_is_a_no_op' panicked at we-ad4m/tests/e11_writes.rs:614:5:
+{… "ok=false msg=properties is empty kind=emptyProperties fin=1" …}
+```
+Green: `writes`: `ok. 9 passed`; `e11_writes`: `ok. 14 passed`.
+
+### Not changed
+
+- Cancel still settles `Err({ kind: "cancelled" })` (Open question 2, now
+  citing Lal's Q3).
+- Q2/Q4/Q5 of the review asked questions and found nothing to fix beyond
+  P1/P2; the confirmation slot's "busy" is replaced as above.
+
+### Commands run (brief §4), round 2, 2026-11-17
+
+From `crates/renderer`, `CARGO_TARGET_DIR=/home/data/code/we-e11-target`;
+the live block with `EXECUTOR_PATH=/home/data/code/ad4m-e11/bin/ad4m-executor`
+and `AD4M_REQUIRE_EXECUTOR=1`. Every one exited 0. No pixel baseline changed.
+
+```
+$ cargo build --locked -p we-app
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.21s
+$ cargo test --locked
+175 test binaries: 1031 passed, 0 failed, 3 ignored (exit 0)
+$ cargo test --locked -p we-data --test writes
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.24s
+$ cargo test --locked -p we-app --test e11_notices
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+$ (live) cargo test --locked -p we-ad4m -p we-app --test e11_writes --test connect_flow --test e11_live --test live_executor --test live_members --test pin --test template_queries --test e7_live --test e7_connect_ui -- --nocapture
+connect_flow     test result: ok. 8 passed; 0 failed; 0 ignored
+e11_writes       test result: ok. 14 passed; 0 failed; 0 ignored
+  record.update settled in 1.466833ms; the refusal reached onError in 1.515904ms
+  createSignalType settled in 6.805225ms; record.delete settled in 1.810645ms
+live_executor    test result: ok. 2 passed; 0 failed; 0 ignored
+live_members     test result: ok. 1 passed; 0 failed; 0 ignored
+pin              test result: ok. 1 passed; 0 failed; 0 ignored
+template_queries test result: ok. 2 passed; 0 failed; 0 ignored
+e11_live         test result: ok. 5 passed; 0 failed; 1 ignored
+  refusal: the notice in 20.076904ms
+  edit: on the executor in 21.818992ms, on screen in 71.196506ms
+  delete: gone from the executor in 21.050825ms, from the screen in 448.069958ms
+e7_connect_ui    test result: ok. 3 passed; 0 failed; 0 ignored
+e7_live          test result: ok. 2 passed; 0 failed; 0 ignored
+$ cargo fmt --all -- --check
+exit 0
+$ cargo clippy --all-targets --locked -- -D warnings
+exit 0
+$ cargo check --locked --target wasm32-unknown-unknown
+exit 0
+$ bash scripts/check-egui-free.sh
+egui-free check passed: we-session we-layout we-catalog we-data we-expr we-screen we-template we-style we-legacy we-metrics + we-tui pull no egui, eframe, epaint, emath, winit, tokio (core: all features, all targets; we-tui: per native target)
+```
+The "Try it" commands were not run (no launcher session to approve in), as
+in round 1.
