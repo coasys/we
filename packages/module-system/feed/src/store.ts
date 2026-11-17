@@ -217,8 +217,10 @@ export function createFeedStore(deps: ModuleStoreDeps) {
         console.warn('[feed] a reply has no line to answer, so it was not sent');
         return;
       }
+      const answering = reply;
       await writeMessage({ id: parentId, relation: 'responses' }, text, marks);
-      setReply(null);
+      // A reply started while this one was sending stays up.
+      if (reply === answering) setReply(null);
     }, 'Answers one line with a typed line of its own, linked from it as a reply.'),
     /*
       Correct the words on a line. Anybody may, as in a transcript, and it is not hidden: a heard line

@@ -181,6 +181,15 @@ describe('messages written from the Feed', () => {
     expect(h.store.replyingTo()).toBeNull();
   });
 
+  it('keeps a reply started while an earlier one was still sending', async () => {
+    const h = harness();
+    h.store.startReply({ id: 'line-1', text: 'who?', author: 'did:ann', surface: 'callFeed' });
+    const sending = h.store.reply('line-1', 'I do');
+    h.store.startReply({ id: 'line-2', text: 'what?', author: 'did:ann', surface: 'feed' });
+    await sending;
+    expect(h.store.replyingTo()).toMatchObject({ id: 'line-2', surface: 'feed' });
+  });
+
   it('marks a heard line corrected when somebody mends it, and leaves a typed one typed', async () => {
     const h = harness();
     await h.store.editUtterance('heard', 'Ana, not Anna', 'spoken');
