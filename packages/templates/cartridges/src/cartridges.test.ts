@@ -28,13 +28,12 @@ import {
   SPACE_TEMPLATE_CHOICES,
   templateChoice,
   themeChoice,
-  VOCABULARY_BUCKETS,
 } from '@we/template-kit';
 import { describe, expect, it } from 'vitest';
 
 import { coasysFirstRun } from './coasys/firstRun.ts';
 import { canvasPane } from './coasys/space/canvas.ts';
-import { DNA_LISTS, OTHER_CLASSES } from './coasys/space/dna.ts';
+import { CLASS_GROUPS, CLASS_ROWS, OTHER_CLASSES } from './coasys/space/dna.ts';
 import { callPath, groupPath, personPath, SELECTED_EXPR } from './coasys/space/paths.ts';
 import { treeSection } from './coasys/space/tree.ts';
 import { callPage, spaceRoutes } from './coasys/space/views.ts';
@@ -425,10 +424,10 @@ describe('the Coasys cartridge', () => {
           .filter((n) => (resolveStyle(n as never, rules as never) as { opacity?: number }).opacity === FOCUS_DIM)
           .map((n) => n.id);
       };
-      // A kind: the others dimmed, and nothing of its own.
-      expect(dimmed({ dna: 'signal' })).toEqual(['states', 'rule']);
-      // A definition: its siblings as well, while what it opened into stays whole.
-      expect(dimmed({ dna: 'signal|like' })).toEqual(['rating', 'states', 'rule']);
+      // A class: the others dimmed, and nothing of its own.
+      expect(dimmed({ dna: 'model|SignalType' })).toEqual(['states', 'rule']);
+      // One of its records: its siblings as well, while what it opened into stays whole.
+      expect(dimmed({ dna: 'model|SignalType|like' })).toEqual(['rating', 'states', 'rule']);
       // The policy is Social DNA too: one rule, by its words.
       expect(dimmed({ dna: 'policy|Members can make anything.' })).toEqual(['signals', 'like', 'rating', 'states']);
       // All of it, nothing dimmed.
@@ -437,17 +436,28 @@ describe('the Coasys cartridge', () => {
       // What the tree chose is centred: a definition, or a kind's bucket; all of it, nothing.
       const focus = (vocab.props as { focus: unknown; focusCentre: boolean }).focus;
       expect((vocab.props as { focusCentre: boolean }).focusCentre).toBe(true);
-      expect(at([], { view: 'canvas', dna: 'signal|like' })(focus)).toBe('like');
-      expect(at([], { view: 'canvas', dna: 'signal' })(focus)).toBe('we-graph://cluster/vocabulary/signals');
+      expect(at([], { view: 'canvas', dna: 'model|SignalType|like' })(focus)).toBe('like');
+      expect(at([], { view: 'canvas', dna: 'model|SignalType' })(focus)).toBe('we-graph://cluster/vocabulary/signals');
       expect(at([], { view: 'canvas', dna: 'policy|Members can make anything.' })(focus)).toBe(
         'policy:Members can make anything.',
       );
       expect(at([], { view: 'canvas', dna: 'all' })(focus)).toBe('');
 
-      // The chosen definition is opened into what it is, beside its kind.
-      expect(at([], { view: 'canvas', dna: 'signal|like' })(props.open)).toEqual([
+      // The chosen record is opened into what it is, beside its class's bucket.
+      expect(at([], { view: 'canvas', dna: 'model|SignalType|like' })(props.open)).toEqual([
         'we-graph://cluster/vocabulary/signals',
         'like',
+      ]);
+      // A class of the space's own or of another app is a model on the map: centred, and opened into its records.
+      const models = { recordStore: { creatableEntities: [{ value: 'Sighting', group: 'This space' }] } };
+      expect(at([], { view: 'canvas', dna: 'model|Sighting' }, models)(focus)).toBe('Sighting');
+      expect(at([], { view: 'canvas', dna: 'model|Sighting' }, models)(props.open)).toEqual([
+        'we-graph://cluster/vocabulary/models',
+        'Sighting',
+      ]);
+      expect(at([], { view: 'canvas', dna: 'model|Question' }, models)(props.open)).toEqual([
+        'we-graph://cluster/vocabulary/other',
+        'Question',
       ]);
     });
 
@@ -472,7 +482,7 @@ describe('the Coasys cartridge', () => {
       expect(pressed('Recipe', '$schema')).toBe(false);
 
       // Read beside a page, a definition lights its own row.
-      expect(at(['feed'], { card: 'like', cardType: 'SignalType' })({ $: SELECTED_EXPR })).toBe('dna|signal|like');
+      expect(at(['feed'], { card: 'like', cardType: 'SignalType' })({ $: SELECTED_EXPR })).toBe('dna|model|SignalType');
       expect(at(['feed'], { card: 't1', cardType: 'TaskBlock' })({ $: SELECTED_EXPR })).not.toContain('dna|');
       // The policy is still lit by its words on the canvas.
       expect(at([], { view: 'canvas', dna: 'policy|Members can make anything.' })({ $: SELECTED_EXPR })).toBe(
@@ -491,13 +501,20 @@ describe('the Coasys cartridge', () => {
       const press = (vocab.props as { onNodeClick: { $if: { condition: unknown; then: { args: unknown[] } } }[] })
         .onNodeClick[0].$if;
       const focusOf = (event: Record<string, unknown>) => {
-        const evaluate = at([], { view: 'canvas', dna: 'state' }, { event });
+        const evaluate = at([], { view: 'canvas', dna: 'model|TaskState' }, { event });
         return evaluate(press.condition) ? [press.then.args[0], evaluate(press.then.args[1])] : null;
       };
-      expect(focusOf({ type: 'vocabulary', kind: 'cluster', data: { bucket: 'signals' } })).toEqual(['dna', 'signal']);
+      expect(focusOf({ type: 'vocabulary', kind: 'cluster', data: { bucket: 'signals' } })).toEqual([
+        'dna',
+        'model|SignalType',
+      ]);
       expect(focusOf({ type: 'SignalType', recordId: 'like', data: { bucket: 'signals' } })).toEqual([
         'dna',
-        'signal|like',
+        'model|SignalType|like',
+      ]);
+      expect(focusOf({ type: '$schema', data: { bucket: 'other', entity: 'Question' } })).toEqual([
+        'dna',
+        'model|Question',
       ]);
       expect(focusOf({ type: '$schema', data: { bucket: 'models', entity: 'TaskBlock' } })).toEqual([
         'dna',
@@ -510,39 +527,63 @@ describe('the Coasys cartridge', () => {
       // What a definition is used for leaves the focus where it was.
       expect(focusOf({ type: 'TaskBlock', recordId: 't1', data: {} })).toBeNull();
 
-      // The tree opens Social DNA and the kind around a definition in focus, and nothing else.
+      // The tree opens Social DNA and the group around a class in focus, and nothing else.
       const row = (value: string) =>
         findNode(treeSection, (n) =>
           String(JSON.stringify((n.props as { open?: unknown } | undefined)?.open)).includes(
             `((${value}) in local.openRows)`,
           ),
         )!;
-      const open = (value: string, params: Record<string, string>) =>
-        at([], params, { local: { openRows: [] } })((row(value).props as { open: unknown }).open);
-      const onCanvas = { view: 'canvas', dna: 'signal|like' };
+      const open = (value: string, params: Record<string, string>, extra = {}) =>
+        at([], params, { local: { openRows: [] }, ...extra })((row(value).props as { open: unknown }).open);
+      const onCanvas = { view: 'canvas', dna: 'model|SignalType|like' };
+      const we = { group: { key: 'we', classes: [{ id: 'SignalType' }, { id: 'TaskBlock' }] } };
+      const other = { group: { key: 'other', classes: [{ id: 'Question' }] } };
       expect(open("'group|dna'", onCanvas)).toBe(true);
-      expect(open("'dnakind|signal'", onCanvas)).toBe(true);
-      expect(open("'dnakind|state'", onCanvas)).toBe(false);
-      expect(open("'dnakind|signal'", { view: 'canvas', dna: 'all' })).toBe(false);
+      expect(open("'dnagroup|' + group.key", onCanvas, we)).toBe(true);
+      expect(open("'dnagroup|' + group.key", onCanvas, other)).toBe(false);
+      expect(open("'dnagroup|' + group.key", { view: 'canvas', dna: 'all' }, we)).toBe(false);
     });
 
-    it('lists every model the map does under Models, by name', () => {
-      const models = DNA_LISTS.find((list) => list.kind === 'model')!;
+    /*
+      One tree of classes: the space's own models, other apps' classes and WE's — WE's vocabulary
+      first, in the settings' order and words, then its built-in blocks. There is no Models category
+      and no second reading to switch to.
+    */
+    it('lists Social DNA as classes in three groups, with no lens to switch', () => {
       const evaluate = at(
         [],
         {},
         {
           recordStore: {
-            creatableEntities: [{ value: 'TaskBlock', label: 'Task', icon: 'check', description: 'Work' }],
+            creatableEntities: [
+              { value: 'Sighting', label: 'Sighting', icon: 'binoculars', group: 'This space' },
+              { value: 'TaskBlock', label: 'Task', icon: 'check', group: 'Built in' },
+            ],
+            plumbingClasses: [],
+            displays: {},
           },
+          datasetStore: { currentDatasetEntities: [{ name: 'Question', targetClass: 'conv://Question' }] },
         },
       );
-      expect(evaluate({ $: models.items })).toEqual([
-        { id: 'TaskBlock', name: 'Task', icon: 'check', description: 'Work' },
+      const groups = evaluate({ $: CLASS_GROUPS }) as {
+        key: string;
+        label: string;
+        classes: { id: string; label: string }[];
+      }[];
+      expect(groups.map((g) => g.label)).toEqual(['This space', 'Other apps', 'WE']);
+      expect(groups[2].classes.map((c) => [c.id, c.label])).toEqual([
+        ['SignalType', 'Signal types'],
+        ['RelationshipType', 'Connection types'],
+        ['TaskState', 'Task states'],
+        ['InvolvementType', 'Involvement'],
+        ['Topic', 'Topics'],
+        ['TaskBlock', 'Task'],
       ]);
-      expect(JSON.stringify(VOCABULARY_BUCKETS)).toContain(
-        "key: 'models', label: 'Models', models: recordStore.creatableEntities",
-      );
+      const tree = JSON.stringify(treeSection);
+      expect(tree).not.toContain('dnaLens');
+      expect(tree).not.toContain('dnakind|signal');
+      expect(tree).toContain("'dna|model|' + cls.id");
     });
 
     /*
@@ -554,9 +595,11 @@ describe('the Coasys cartridge', () => {
       expect(JSON.stringify(treeSection)).not.toContain('"shellStore.openSpaceSettings","args":["vocabulary"');
       expect(spaceRoutes.map((route) => route.path)).toContain('/dna');
       expect(at(['dna'], { dna: 'all' })({ $: SELECTED_EXPR })).toBe('group|dna');
-      expect(at(['dna'], { dna: 'signal' })({ $: SELECTED_EXPR })).toBe('dnakind|signal');
+      expect(at(['dna'], { dna: 'model|SignalType' })({ $: SELECTED_EXPR })).toBe('dna|model|SignalType');
+      expect(at(['dna'], { dna: 'model|SignalType|like' })({ $: SELECTED_EXPR })).toBe('dna|model|SignalType');
+      expect(at(['dna'], { dna: 'policy' })({ $: SELECTED_EXPR })).toBe('dnakind|policy');
       // Anywhere else in Page mode, a leftover focus lights nothing.
-      expect(at(['people'], { dna: 'signal' })({ $: SELECTED_EXPR })).toBe('group|people');
+      expect(at(['people'], { dna: 'model|SignalType' })({ $: SELECTED_EXPR })).toBe('group|people');
     });
 
     /*
@@ -567,28 +610,29 @@ describe('the Coasys cartridge', () => {
     it('lists Social DNA on its page, where the canvas draws the map', () => {
       const page = spaceRoutes.find((route) => route.path === '/dna')!;
       expect(findNode(page, (n) => n.type === 'GraphView')).toBeUndefined();
-      const sections = findAll(page, (n) => n.type === '$if' && JSON.stringify(n.props).includes("== 'all' && count("))
-        .map((n) => (n.props as { condition: unknown }).condition)
-        .filter((condition) => !JSON.stringify(condition).includes('== 0'));
+      // A class's page reads the store's list where one is named — Task states in the community's
+      // order, one a slug — and queries the class otherwise.
+      const query = (page.$queries as Record<string, { when: unknown }>).classRows;
       const data = {
-        local: { signalTypes: [{ id: 'like', name: 'Like' }], relationshipTypes: [], topics: [{ id: 'x', name: 'X' }] },
         spaceStore: {
           spacePath: '/space/s1',
-          taskStates: [],
-          involvementTypes: [],
-          policy: { sentences: ['A rule.'] },
+          taskStates: [
+            { id: 'b', name: 'Doing' },
+            { id: 'a', name: 'Done' },
+          ],
         },
+        local: { classRows: [{ id: 'q1', body: 'Why?' }] },
       };
-      const shown = (dna?: string) => sections.map((condition) => at(['dna'], dna ? { dna } : {}, data)(condition));
-      // Every kind with something in it; one kind alone, even an empty one; a definition, its kind.
-      expect(shown()).toEqual([true, false, false, false, true, false, true]);
-      expect(shown('state')).toEqual([false, false, true, false, false, false, false]);
-      expect(shown('signal|like')).toEqual([true, false, false, false, false, false, false]);
-      // The chosen card is outlined.
-      const card = findNode(page, (n) => n.type === 'Card' && JSON.stringify(n.props).includes("== 'signal'"))!;
+      expect(at(['dna'], { dna: 'model|TaskState' }, data)({ $: CLASS_ROWS })).toEqual(data.spaceStore.taskStates);
+      expect(at(['dna'], { dna: 'model|TaskState' }, data)(query.when)).toBe(false);
+      expect(at(['dna'], { dna: 'model|Question' }, data)({ $: CLASS_ROWS })).toEqual(data.local.classRows);
+      expect(at(['dna'], { dna: 'model|Question' }, data)(query.when)).toBe(true);
+      expect(at(['dna'], { dna: 'all' }, data)(query.when)).toBe(false);
+      // The record chosen is outlined.
+      const card = findNode(page, (n) => n.type === 'Card' && JSON.stringify(n.props).includes('row.id'))!;
       const border = (card.props as { border: unknown }).border;
-      expect(at(['dna'], { dna: 'signal|like' }, { def: { id: 'like' } })(border)).toBe('1px solid accent');
-      expect(at(['dna'], { dna: 'signal|like' }, { def: { id: 'love' } })(border)).toBe('1px solid transparent');
+      expect(at(['dna'], { dna: 'model|Question|q1' }, { row: { id: 'q1' } })(border)).toBe('1px solid accent');
+      expect(at(['dna'], { dna: 'model|Question|q1' }, { row: { id: 'q2' } })(border)).toBe('1px solid transparent');
     });
 
     /*
@@ -631,7 +675,8 @@ describe('the Coasys cartridge', () => {
         trail(bar(node), at(path, params, { shellStore: { collapsedLanes: [] }, ...extra }));
       const route = (path: string) => spaceRoutes.find((r) => r.path === path)! as SchemaNode;
       const dnaData = {
-        local: { signalTypes: [{ id: 'like', name: 'Like' }], relationshipTypes: [], topics: [] },
+        local: { classRows: [{ id: 'like', name: 'Like' }] },
+        recordStore: { displays: { SignalType: { label: 'Signal type', title: 'name' } } },
         spaceStore: { spacePath: '/space/s1', taskStates: [], involvementTypes: [], policy: { sentences: [] } },
       };
 
@@ -652,17 +697,22 @@ describe('the Coasys cartridge', () => {
         expect(trailAt(route('/calls'), ['calls'], {})).toEqual([{ label: 'Calls' }]);
       });
 
-      it('goes back up through Social DNA, a kind of it and a definition, on its page or the canvas', () => {
-        expect(trailAt(route('/dna'), ['dna'], { dna: 'signal|like' }, dnaData)).toEqual([
+      it('goes back up through Social DNA, a class and one of its records, on its page or the canvas', () => {
+        expect(trailAt(route('/dna'), ['dna'], { dna: 'model|SignalType|like' }, dnaData)).toEqual([
           { label: 'Social DNA', to: '/space/s1/dna?dna=all' },
-          { label: 'Signal types', to: '/space/s1/dna?dna=signal' },
+          { label: 'Signal types', to: '/space/s1/dna?dna=model%7CSignalType' },
           { label: 'Like' },
+        ]);
+        expect(trailAt(route('/dna'), ['dna'], { dna: 'policy|A rule.' }, dnaData)).toEqual([
+          { label: 'Social DNA', to: '/space/s1/dna?dna=all' },
+          { label: 'Policy', to: '/space/s1/dna?dna=policy' },
+          { label: 'A rule.' },
         ]);
         expect(trailAt(route('/dna'), ['dna'], { dna: 'all' }, dnaData)).toEqual([{ label: 'Social DNA' }]);
         // On the canvas the same steps, which stay on it.
-        expect(trailAt(canvasPane, [], { view: 'canvas', dna: 'signal|like' }, dnaData)).toEqual([
+        expect(trailAt(canvasPane, [], { view: 'canvas', dna: 'model|SignalType|like' }, dnaData)).toEqual([
           { label: 'Social DNA', to: '?dna=all' },
-          { label: 'Signal types', to: '?dna=signal' },
+          { label: 'Signal types', to: '?dna=model|SignalType' },
           { label: 'Like' },
         ]);
         expect(
@@ -855,6 +905,7 @@ describe("Social DNA's classes from other apps", () => {
           { name: 'Question', targetClass: 'conv://Question' },
           { name: 'Sighting', targetClass: 'birds://Sighting' },
           { name: 'Space', targetClass: 'old://Space' },
+          { name: 'Topic', targetClass: 'old://Topic' },
         ],
       },
       recordStore: {
@@ -877,15 +928,16 @@ describe("Social DNA's classes from other apps", () => {
 
   it('lists them flat, in the order the store gives them, each with its namespace as secondary text', () => {
     expect(evaluate(OTHER_CLASSES)).toEqual([
-      { name: 'Channel', label: 'Channel', icon: 'cube', namespace: 'flux://' },
-      { name: 'Nest', label: 'Nest', icon: 'cube', namespace: 'birds://' },
-      { name: 'Question', label: 'Question', icon: 'cube', namespace: 'conv://' },
+      { id: 'Channel', label: 'Channel', icon: 'cube', namespace: 'flux://' },
+      { id: 'Nest', label: 'Nest', icon: 'cube', namespace: 'birds://' },
+      { id: 'Question', label: 'Question', icon: 'cube', namespace: 'conv://' },
     ]);
   });
 
-  it("leaves WE's plumbing out, and lists a class once — not again where the space's own model has its name", () => {
-    const names = (evaluate(OTHER_CLASSES) as { name: string }[]).map((c) => c.name);
+  it("leaves WE's plumbing out, and lists a class once — not again where the space's or WE's has its name", () => {
+    const names = (evaluate(OTHER_CLASSES) as { id: string }[]).map((c) => c.id);
     expect(names).not.toContain('Space');
+    expect(names).not.toContain('Topic');
     expect(names).not.toContain('Sighting');
     expect(names.filter((n) => n === 'Nest')).toHaveLength(1);
   });

@@ -13,16 +13,7 @@ import {
   treeRow,
 } from '@we/template-kit';
 
-import {
-  CLASS_COUNT,
-  CLASS_GROUPS,
-  CLASSES,
-  DNA_LISTS,
-  DNA_QUERIES,
-  type DnaList,
-  POLICY,
-  POLICY_RULES,
-} from './dna.ts';
+import { CLASS_COUNT, CLASS_GROUPS, MODEL, POLICY, POLICY_RULES } from './dna.ts';
 import { countPill, liveDot } from './marks.ts';
 import {
   callPath,
@@ -30,10 +21,7 @@ import {
   DNA_FOCUS,
   DNA_PARAM,
   DNA_SHOWN,
-  dnaEntityOf,
-  dnaPage,
   GROUP_PAGES,
-  inspect,
   personPath,
   ROW_ID,
   SELECTED_EXPR,
@@ -215,14 +203,14 @@ const people = group(
 );
 
 /*
-  Social DNA: everything the space has defined about itself, as the vocabulary settings list it, and
-  its policy. Four levels — the group, each kind of definition, each definition, and what it says —
-  so the tree is the space's own graph read as an outline, the same things the canvas draws.
+  Social DNA: the classes the space has, in three groups — its own models, other apps' classes, WE's —
+  and its policy. Four levels — the group, each group of classes, each class, and for the policy each
+  rule — so the tree is the space's own graph read as an outline, the same things the canvas draws.
 
-  Values are `dnakind|<kind>` for a kind, `dna|<kind>|<id>` for a definition and `dnaprop|policy|<rule>`
-  for one rule of the policy. A definition is a leaf: what it is goes in the inspector beside the view
-  (its fields), and what it is used for on the vocabulary map (its uses) — never as rows under it here,
-  which listed a hand-picked few of its fields and drifted from what the definition holds.
+  Values are `dnagroup|<group>` for a group of classes, `dna|model|<name>` for a class — any class,
+  whoever wrote it — and `dnaprop|policy|<rule>` for one rule of the policy. A class is a leaf: its
+  records are on its page (or on the vocabulary map, in Canvas mode), never rows under it here, since
+  a class can hold thousands.
 */
 
 /**
@@ -249,36 +237,54 @@ const revealing = (value: string, inside: string, up: string) => {
   };
 };
 
-/** One kind of definition: a row with its count, and a row for each definition, bound as `def`. */
-const dnaKind = (list: DnaList): SchemaNode => {
-  const kindValue = `'dnakind|${list.kind}'`;
-  return treeRow({
-    nested: true,
-    value: { $: kindValue },
-    label: list.label,
-    icon: list.icon,
-    ...revealing(kindValue, `startsWith(${DNA_FOCUS}, '${list.kind}|')`, `'${list.kind}'`),
-    expandable: { $: `count(${list.items}) > 0` },
-    badge: countPill(`count(${list.items})`),
-    children: [
-      {
-        type: '$each',
-        props: { items: { $: list.items }, as: 'def' },
-        children: [
-          treeRow({
-            nested: true,
-            value: { $: `'dna|${list.kind}|' + def.id` },
-            label: { $: 'def.name' },
-            icon: { $: list.itemIcon },
-          }),
-        ],
-      },
-    ],
-  });
+/** Another app's class says its namespace after its name, quietly — two apps can name a class alike. */
+const namespace: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'cls.namespace' },
+    then: {
+      type: 'we-text',
+      props: { variant: 'footnote', color: 'text-faint', truncate: true, maxWidth: '96px' },
+      children: [{ $: 'cls.namespace' }],
+    },
+  },
 };
 
-/** The space's own definitions, in the order the vocabulary settings show them. */
-const DNA_KINDS: SchemaNode[] = DNA_LISTS.map(dnaKind);
+/** A group of classes, open while a class in it is in focus, a row a class. */
+const classGroups: SchemaNode = {
+  type: '$each',
+  props: { items: { $: CLASS_GROUPS }, as: 'group' },
+  children: [
+    treeRow({
+      nested: true,
+      value: { $: "'dnagroup|' + group.key" },
+      label: { $: 'group.label' },
+      icon: { $: "group.key == 'we' ? 'cube' : group.key == 'space' ? 'users-three' : 'package'" },
+      ...revealing(
+        "'dnagroup|' + group.key",
+        `startsWith(${DNA_FOCUS}, '${MODEL}|') && group.classes.exists(c, c.id == split(${DNA_FOCUS}, '|')[1])`,
+        "'all'",
+      ),
+      expandable: { $: 'count(group.classes) > 0' },
+      badge: countPill('count(group.classes)'),
+      children: [
+        {
+          type: '$each',
+          props: { items: { $: 'group.classes' }, as: 'cls' },
+          children: [
+            treeRow({
+              nested: true,
+              value: { $: `'dna|${MODEL}|' + cls.id` },
+              label: { $: 'cls.label' },
+              icon: { $: 'cls.icon' },
+              badge: namespace,
+            }),
+          ],
+        },
+      ],
+    }),
+  ],
+};
 
 /** The space's policy: who may do what, one rule a row, as the people settings word them. */
 const policyKind: SchemaNode = treeRow({
@@ -299,110 +305,12 @@ const policyKind: SchemaNode = treeRow({
   ],
 });
 
-/** Every definition there is, across the kinds and the policy: the group's count. */
-const DNA_COUNT = [...DNA_LISTS.map((list) => list.items), POLICY_RULES].map((list) => `count(${list})`).join(' + ');
-
-/*
-  The default way in: every class the space has — its own models, other apps' classes, WE's built-ins
-  (`CLASS_GROUPS`). A space's DNA is whatever classes it
-  carries, written by WE or not; a class opens its records on the Social DNA page. The kinds above —
-  signal types, task states and the rest — are one way of reading the same space, the Categories lens,
-  switched to from the group's row and remembered on this device.
-
-  Values are `dnaorigin|<origin>` for an origin and `dna|class|<name>` for a class, so a class page in
-  the address lights its row as a definition's does.
-*/
-
-/** Which way Social DNA is read: `classes` (every class, by origin) or `categories` (the kinds above). */
-const LENS = 'local.dnaLens';
-const IN_CATEGORIES = `${LENS} == 'categories'`;
-
-/** Another app's class says its namespace after its name, quietly — two apps can name a class alike. */
-const namespace = (cls: string): SchemaNode => ({
-  type: '$if',
-  props: {
-    condition: { $: `${cls}.namespace` },
-    then: {
-      type: 'we-text',
-      props: { variant: 'footnote', color: 'text-faint', truncate: true, maxWidth: '96px' },
-      children: [{ $: `${cls}.namespace` }],
-    },
-  },
-});
-
-const classOrigins: SchemaNode = {
-  type: '$each',
-  props: { items: { $: CLASS_GROUPS }, as: 'origin' },
-  children: [
-    treeRow({
-      nested: true,
-      value: { $: "'dnaorigin|' + origin.key" },
-      label: { $: 'origin.label' },
-      icon: { $: "origin.key == 'we' ? 'cube' : origin.key == 'space' ? 'users-three' : 'package'" },
-      open: {
-        $: `startsWith(${DNA_FOCUS} ?? '', 'class|') && origin.classes.exists(c, 'class|' + c.name == ${DNA_FOCUS}) || ('dnaorigin|' + origin.key) in ${OPEN}`,
-      },
-      onOpenChange: toggle({ $: "'dnaorigin|' + origin.key" }),
-      expandable: { $: 'count(origin.classes) > 0' },
-      badge: countPill('count(origin.classes)'),
-      children: [
-        {
-          type: '$each',
-          props: { items: { $: 'origin.classes' }, as: 'cls' },
-          children: [
-            treeRow({
-              nested: true,
-              value: { $: "'dna|class|' + cls.name" },
-              label: { $: 'cls.label' },
-              icon: { $: 'cls.icon' },
-              badge: namespace('cls'),
-            }),
-          ],
-        },
-      ],
-    }),
-  ],
-};
-
-/** The switch between the two readings, beside the group's count. */
-const lensSwitch: SchemaNode = {
-  type: 'we-tooltip',
-  props: { content: { $: `${IN_CATEGORIES} ? 'Show every class' : 'Show categories'` }, placement: 'right' },
-  children: [
-    {
-      type: 'we-button',
-      props: {
-        variant: 'ghost',
-        size: 'xs',
-        square: true,
-        label: { $: `${IN_CATEGORIES} ? 'Show every class' : 'Show categories'` },
-        onClick: { $setLocal: 'dnaLens', value: { $: `${IN_CATEGORIES} ? 'classes' : 'categories'` } },
-      },
-      children: [{ type: 'we-icon', props: { name: { $: `${IN_CATEGORIES} ? 'list' : 'squares-four'` } } }],
-    },
-  ],
-};
-
 /** Everything the space has defined about itself — see above. */
-const socialDna = group(
-  'dna',
-  'Social DNA',
-  'dna',
-  [
-    { type: '$if', props: { condition: { $: `!(${IN_CATEGORIES})` }, then: classOrigins } },
-    // One condition a row, not a wrapper round them: a nested row places itself in the group's slot.
-    ...[...DNA_KINDS, policyKind].map((row): SchemaNode => ({
-      type: '$if',
-      props: { condition: { $: IN_CATEGORIES }, then: row },
-    })),
-  ],
-  {
-    count: `(${IN_CATEGORIES} ? ${DNA_COUNT} : ${CLASS_COUNT})`,
-    action: lensSwitch,
-    // Open while anything in it is in focus; closing it then shows all of it.
-    openness: revealing("'group|dna'", `${DNA_FOCUS} != 'all'`, "'all'"),
-  },
-);
+const socialDna = group('dna', 'Social DNA', 'dna', [classGroups, policyKind], {
+  count: CLASS_COUNT,
+  // Open while anything in it is in focus; closing it then shows all of it.
+  openness: revealing("'group|dna'", `${DNA_FOCUS} != 'all'`, "'all'"),
+});
 
 /*
   How the space looks: the templates and the themes somebody would switch between here, each with the
@@ -474,7 +382,7 @@ const themesGroup = group(
   },
 );
 
-/** A definition row's kind and id — `dna|<kind>|<id>`. */
+/** A class row's kind and name — `dna|model|<name>`. */
 const DEF_KIND = "split(event.detail.value, '|')[1]";
 const DEF_ID = "split(event.detail.value, '|')[2]";
 
@@ -548,32 +456,18 @@ const onSelect: SchemaProp = [
     },
   },
   /*
-    A definition is lit on the vocabulary map, opened into its uses, and opens in the inspector beside
-    it — what it is. A model is a Shape, which the inspector does not read; the map's bar has the way
-    to where it is edited.
+    A class is lit on the vocabulary map in Canvas mode and is its page in Page mode, where its records
+    are. A group of classes opens as a group does.
   */
   {
     $if: {
-      condition: { $: `startsWith(event.detail.value, 'dna|') && ${DEF_KIND} != '${CLASSES.kind}'` },
+      condition: { $: "startsWith(event.detail.value, 'dna|')" },
       then: showDna(`${DEF_KIND} + '|' + ${DEF_ID}`),
     },
   },
   {
     $if: {
-      condition: { $: `startsWith(event.detail.value, 'dna|') && !(${DEF_KIND} in ['model', '${CLASSES.kind}'])` },
-      then: inspect(DEF_ID, { $: dnaEntityOf(DEF_KIND) }),
-    },
-  },
-  // A class opens its records, on its own page in either mode: the vocabulary map draws kinds, not records.
-  {
-    $if: {
-      condition: { $: `startsWith(event.detail.value, 'dna|${CLASSES.kind}|')` },
-      then: dnaPage(`'${CLASSES.kind}|' + ${DEF_ID}`),
-    },
-  },
-  {
-    $if: {
-      condition: { $: "startsWith(event.detail.value, 'dnaorigin|')" },
+      condition: { $: "startsWith(event.detail.value, 'dnagroup|')" },
       then: { $toggleLocalIn: 'openRows', value: { $: 'event.detail.value' } },
     },
   },
@@ -921,9 +815,8 @@ export const treeSection: SchemaNode = {
       initial: ['group|calls', 'group|workflows'],
       persist: 'coasys.tree.open',
     },
-    dnaLens: { type: 'string', initial: 'classes', persist: 'coasys.tree.dnaLens' },
   },
-  $queries: { calls: LATEST_CALLS, ...DNA_QUERIES },
+  $queries: { calls: LATEST_CALLS },
   children: [
     header,
     purpose,

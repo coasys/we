@@ -1,6 +1,8 @@
 import type { SchemaProp } from '@we/schema-shared';
 import { openRecord } from '@we/template-kit';
 
+import { VOCABULARY_NAMES } from './vocabulary.ts';
+
 /**
  * Where a Coasys space's things live, named once.
  *
@@ -23,8 +25,8 @@ export const withView = (pathExpr: string): string =>
   `(${pathExpr}) + ((${IN_CANVAS}) ? (contains(${pathExpr}, '?') ? '&' : '?') + '${VIEW_PARAM}=canvas' : '')`;
 
 /**
- * The Social DNA in focus — `all`, a kind (`signal`), a definition (`signal|<id>`) or a rule of the
- * policy (`policy|<rule>`) — drawn as the vocabulary map: over the canvas in Canvas mode, as its own
+ * The Social DNA in focus — `all`, a class (`model|<name>`), one of its records (`model|<name>|<id>`),
+ * the policy (`policy`) or one rule of it (`policy|<rule>`) — drawn as the vocabulary map: over the canvas in Canvas mode, as its own
  * page (`/dna`) in Page mode. A definition is read in the inspector as well, which follows `card`.
  */
 export const DNA_PARAM = 'dna';
@@ -52,21 +54,6 @@ export const dnaPage = (focus: string): SchemaProp => ({
   args: [{ $: "spaceStore.spacePath + '/dna'" }, { $: `{ query: { ${DNA_PARAM}: ${focus} } }` }],
 });
 
-/** The record type of each kind of definition the tree lists (a model is a Shape, which it opens elsewhere). */
-const DNA_ENTITIES: Record<string, string> = {
-  signal: 'SignalType',
-  connection: 'RelationshipType',
-  state: 'TaskState',
-  involvement: 'InvolvementType',
-  topic: 'Topic',
-};
-const table = (entries: [string, string][]) => `{ ${entries.map(([k, v]) => `${k}: '${v}'`).join(', ')} }`;
-/** A kind of definition's record type, as an expression over an expression naming the kind. */
-export const dnaEntityOf = (kind: string): string => `${table(Object.entries(DNA_ENTITIES))}[${kind}]`;
-/** The kind of definition a record type is, or nothing. */
-export const dnaKindOf = (entity: string): string =>
-  `${table(Object.entries(DNA_ENTITIES).map(([k, v]) => [v, k]))}[${entity}]`;
-
 /** The inspector's panel id, as the space declares it — see `shell.ts`. */
 export const INSPECTOR_PANEL = 'inspector';
 
@@ -79,8 +66,8 @@ export const inspect = (id: string, type: SchemaProp): SchemaProp[] => [
   { $invoke: 'shellStore.openTemplatePanel', args: [INSPECTOR_PANEL] },
 ];
 
-/** A definition in the inspector, as its tree row — so a definition read beside a page is lit. */
-const INSPECTED_DNA = dnaKindOf('routeStore.params.cardType');
+/** A definition read in the inspector beside a page lights its class's row. */
+const INSPECTED_DNA = `routeStore.params.cardType in ${VOCABULARY_NAMES}`;
 
 /** The channel on screen: the one the address names, or the space's own collection, its root channel. */
 export const CHANNEL_EXPR = 'routeStore.params.channel ? routeStore.params.channel : spaceStore.root';
@@ -136,9 +123,10 @@ export const groupPath = (page: GroupPage): string => withView(`spaceStore.space
  */
 export const SELECTED_EXPR = [
   // Social DNA in focus, on the canvas or its page.
-  `${DNA_SHOWN} ? (${DNA_FOCUS} == 'all' ? 'group|dna' : contains(${DNA_FOCUS}, '|') ? (startsWith(${DNA_FOCUS}, 'policy|') ? 'dnaprop|' : 'dna|') + ${DNA_FOCUS} : 'dnakind|' + ${DNA_FOCUS})`,
+  // A class lights its row, with one of its records chosen as well.
+  `${DNA_SHOWN} ? (${DNA_FOCUS} == 'all' ? 'group|dna' : startsWith(${DNA_FOCUS}, 'policy|') ? 'dnaprop|' + ${DNA_FOCUS} : startsWith(${DNA_FOCUS}, 'model|') ? 'dna|model|' + split(${DNA_FOCUS}, '|')[1] : 'dnakind|' + ${DNA_FOCUS})`,
   `:`,
-  `routeStore.params.card && ${INSPECTED_DNA} ? 'dna|' + ${INSPECTED_DNA} + '|' + routeStore.params.card`,
+  `routeStore.params.card && ${INSPECTED_DNA} ? 'dna|model|' + routeStore.params.cardType`,
   `: (${PAGE_EXPR}) == 'record' ? 'call|' + routeStore.params.id`,
   `: (${PAGE_EXPR}) == 'person' ? 'person|' + routeStore.params.did`,
   `: (${PAGE_EXPR}) == 'workflows' ? (workflowStore.open ? 'workflow|' + workflowStore.open.name : 'group|workflows')`,

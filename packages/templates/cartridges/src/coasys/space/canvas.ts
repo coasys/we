@@ -32,7 +32,18 @@ import {
 } from '@we/template-kit';
 
 import { type Crumb, viewBar } from './bar.ts';
-import { BUCKET, DNA_AT, DNA_ID, DNA_KIND, DNA_QUERIES, dnaCrumbs, dnaFocusOf, editDna } from './dna.ts';
+import {
+  BUCKET,
+  CLASS_QUERIES,
+  DNA_AT,
+  DNA_ID,
+  DNA_KIND,
+  DNA_RECORD,
+  dnaCrumbs,
+  dnaFocusOf,
+  editDna,
+  ON_MAP_MODEL,
+} from './dna.ts';
 import { DNA_FOCUS, DNA_PARAM, IN_CANVAS, inspect, PAGE_EXPR, withView } from './paths.ts';
 
 /**
@@ -81,24 +92,31 @@ const ON_DNA = `(${IN_CANVAS}) && ${DNA_FOCUS}`;
 const BUCKET_NODE = `'we-graph://cluster/vocabulary/' + ${BUCKET}`;
 
 /**
- * Social DNA in focus, as two dimmings: everything in the other kinds, and — with one definition
- * chosen — the others of its kind. Naming what to dim rather than what to keep, so what a chosen
- * definition opens into (its fields, its records) stays whole. A definition is a record by its id, a
- * model by its name, a rule of the policy by its words.
+ * Social DNA in focus, as two dimmings: everything in the other buckets, and — with one thing in a
+ * bucket chosen — the others in it. Naming what to dim rather than what to keep, so what a chosen
+ * definition opens into (its fields, its records) stays whole. A record is chosen by its id, a class
+ * that is a model on the map by its name, a rule of the policy by its words.
  */
 const OTHER_KINDS = `{ 'data.bucket': { exists: true, not: ${BUCKET} } }`;
 const SIBLING = (key: string, value: string) =>
   `{ 'data.bucket': ${BUCKET}, type: { not: 'vocabulary' }, '${key}': { not: ${value} } }`;
-const SIBLINGS = `(${DNA_KIND} == 'model' ? ${SIBLING('data.entity', DNA_ID)} : ${DNA_KIND} == 'policy' ? ${SIBLING('data.item', DNA_ID)} : ${SIBLING('data.recordId', DNA_ID)})`;
+const SIBLINGS = `(${DNA_RECORD} ? ${SIBLING('data.recordId', DNA_RECORD)} : ${DNA_KIND} == 'policy' ? ${SIBLING('data.item', DNA_ID)} : ${SIBLING('data.entity', DNA_ID)})`;
+/** One thing in a bucket is chosen: a record, a rule, or a model. A class of WE's vocabulary alone is its whole bucket. */
+const ONE_CHOSEN = `${DNA_RECORD} || (${DNA_KIND} == 'policy' && ${DNA_ID}) || (${ON_MAP_MODEL})`;
 
-/** The definition chosen, opened: a record or a model by what the graph's `open` takes; a rule has nothing inside. */
-const OPEN_DEFINITION = `${DNA_ID} && ${DNA_KIND} != 'policy' ? [${DNA_ID}] : []`;
+/** What is chosen, opened: a record or a model by what the graph's `open` takes; a rule has nothing inside. */
+const OPEN_DEFINITION = `${DNA_RECORD} ? [${DNA_RECORD}] : ${ON_MAP_MODEL} ? [${DNA_ID}] : []`;
 
 /**
- * What the map centres on: a definition (a model by its name), a rule of the policy by its key on the
- * map (`policy:<rule>`), or a kind's bucket. All of it, nothing.
+ * What the map centres on: a record, a model by its name, a rule of the policy by its key on the map
+ * (`policy:<rule>`), or a bucket — the policy's, or a class of WE's vocabulary's. All of it, nothing.
  */
-const FOCUS = `${DNA_AT} == 'all' ? '' : !(${DNA_ID}) ? ${BUCKET_NODE} : ${DNA_KIND} == 'policy' ? 'policy:' + ${DNA_ID} : ${DNA_ID}`;
+const FOCUS = [
+  `${DNA_AT} == 'all' ? ''`,
+  `: ${DNA_RECORD} ? ${DNA_RECORD}`,
+  `: ${DNA_KIND} == 'policy' ? (${DNA_ID} ? 'policy:' + ${DNA_ID} : ${BUCKET_NODE})`,
+  `: ${ON_MAP_MODEL} ? ${DNA_ID} : ${BUCKET_NODE}`,
+].join(' ');
 
 /** A node pressed, opened in the inspector — when it stands for a record the inspector reads. */
 const OPEN_IN_INSPECTOR: SchemaProp = {
@@ -141,7 +159,7 @@ const dnaMap: SchemaNode = vocabularyMap({
     },
     OPEN_IN_INSPECTOR,
   ],
-  focusRules: [focusDimWhere(`${DNA_AT} != 'all'`, OTHER_KINDS), focusDimWhere(DNA_ID, SIBLINGS)],
+  focusRules: [focusDimWhere(`${DNA_AT} != 'all'`, OTHER_KINDS), focusDimWhere(ONE_CHOSEN, SIBLINGS)],
 });
 
 /** The group of the tree what is in focus belongs to — the page a crumb goes back to — or nothing. */
@@ -205,9 +223,12 @@ export const canvasPane: SchemaNode = {
     // The vocabularies the strip's pickers offer — the connection kinds a spine is chosen from, the
     // reactions an order is weighed by. See `TREE_QUERIES`.
     ...TREE_QUERIES,
-    // What the Social DNA crumbs name a definition by, asked only while it is on the canvas.
+    // What the Social DNA crumbs name a record by, asked only while it is on the canvas.
     ...Object.fromEntries(
-      Object.entries(DNA_QUERIES).map(([name, query]) => [name, { ...query, when: { $: ON_DNA } }]),
+      Object.entries(CLASS_QUERIES).map(([name, query]) => [
+        name,
+        { ...query, when: { $: `(${ON_DNA}) && (${query.when.$})` } },
+      ]),
     ),
     // The space's colours by kind, which the cards and the chooser below are drawn in.
     typeStyles: KIND_STYLES_QUERY,
