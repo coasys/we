@@ -56,13 +56,27 @@ export interface SpaceRoot {
 */
 const spaceRoots = new WeakMap<object, Promise<SpaceRoot | null>>();
 
+/**
+ * The space list's read of each dataset's own record, while it is the newest one asked.
+ *
+ * The list reads every space's record at boot. When a space opens before its row has arrived — the
+ * list publishes only once every space has answered — `readSpaceRoot` used to read the same record
+ * again. It waits for the list's read of that dataset instead, and reads for itself only when the
+ * row carries no collection.
+ */
+const listedSpaces = new WeakMap<object, Promise<{ id?: string; root?: unknown } | null | undefined>>();
+
 /** The space's record id and its collection's id — one read per dataset, shared and kept. */
 export function readSpaceRoot(dataset: DatasetProxy): Promise<SpaceRoot | null> {
   // A dataset handle is an object whatever the backend; `DatasetProxy` is opaque to say no more.
   const key = dataset as object;
   const known = spaceRoots.get(key);
   if (known) return known;
+  const listed = listedSpaces.get(key);
   const read = (async (): Promise<SpaceRoot | null> => {
+    const row = listed ? await listed.catch(() => null) : null;
+    const rowRoot = relationId(row?.root);
+    if (row?.id && rowRoot) return { id: row.id, root: rowRoot };
     const space = await Space.findOne(dataset, { include: { root: true } });
     if (!space) return null;
     return { id: space.id, root: relationId(space.root) };
@@ -91,6 +105,25 @@ export function seedSpaceRoot(dataset: DatasetProxy, space: { id?: string; root?
   const root = relationId(space?.root);
   if (!space?.id || !root || spaceRoots.has(key)) return;
   spaceRoots.set(key, Promise.resolve({ id: space.id, root }));
+}
+
+/**
+ * The space list's read of this dataset's own record, handed over while it is still in flight.
+ *
+ * Kept as the answer the moment it arrives (see `seedSpaceRoot`), and until then the read
+ * `readSpaceRoot` waits on rather than repeating. The caller vouches, as for `seedSpaceRoot`, that
+ * the row is the dataset's own space.
+ */
+export function shareListedSpace(
+  dataset: DatasetProxy,
+  row: Promise<{ id?: string; root?: unknown } | null | undefined>,
+): void {
+  const key = dataset as object;
+  listedSpaces.set(key, row);
+  row.then(
+    (space) => seedSpaceRoot(dataset, space),
+    () => {},
+  );
 }
 
 /** A to-one relation's id, however a row carries it: the id, a one-element list, or the record. */
