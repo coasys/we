@@ -29167,7 +29167,9 @@ export const seedBundles: Bundle[] = [
                                               $invoke: 'routeStore.setParam',
                                               args: [
                                                 'cardType',
-                                                "{ signal: 'SignalType', connection: 'RelationshipType', state: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }['signal']",
+                                                {
+                                                  $: "{ signal: 'SignalType', connection: 'RelationshipType', state: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }['signal']",
+                                                },
                                               ],
                                             },
                                             { $invoke: 'routeStore.setParam', args: ['card', { $: 'def.id' }] },
@@ -29305,7 +29307,9 @@ export const seedBundles: Bundle[] = [
                                               $invoke: 'routeStore.setParam',
                                               args: [
                                                 'cardType',
-                                                "{ signal: 'SignalType', connection: 'RelationshipType', state: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }['connection']",
+                                                {
+                                                  $: "{ signal: 'SignalType', connection: 'RelationshipType', state: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }['connection']",
+                                                },
                                               ],
                                             },
                                             { $invoke: 'routeStore.setParam', args: ['card', { $: 'def.id' }] },
@@ -29440,7 +29444,9 @@ export const seedBundles: Bundle[] = [
                                               $invoke: 'routeStore.setParam',
                                               args: [
                                                 'cardType',
-                                                "{ signal: 'SignalType', connection: 'RelationshipType', state: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }['state']",
+                                                {
+                                                  $: "{ signal: 'SignalType', connection: 'RelationshipType', state: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }['state']",
+                                                },
                                               ],
                                             },
                                             { $invoke: 'routeStore.setParam', args: ['card', { $: 'def.id' }] },
@@ -29578,7 +29584,9 @@ export const seedBundles: Bundle[] = [
                                               $invoke: 'routeStore.setParam',
                                               args: [
                                                 'cardType',
-                                                "{ signal: 'SignalType', connection: 'RelationshipType', state: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }['involvement']",
+                                                {
+                                                  $: "{ signal: 'SignalType', connection: 'RelationshipType', state: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }['involvement']",
+                                                },
                                               ],
                                             },
                                             { $invoke: 'routeStore.setParam', args: ['card', { $: 'def.id' }] },
@@ -29713,7 +29721,9 @@ export const seedBundles: Bundle[] = [
                                               $invoke: 'routeStore.setParam',
                                               args: [
                                                 'cardType',
-                                                "{ signal: 'SignalType', connection: 'RelationshipType', state: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }['topic']",
+                                                {
+                                                  $: "{ signal: 'SignalType', connection: 'RelationshipType', state: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }['topic']",
+                                                },
                                               ],
                                             },
                                             { $invoke: 'routeStore.setParam', args: ['card', { $: 'def.id' }] },

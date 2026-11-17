@@ -82,7 +82,7 @@ const section = (opts: {
 /** A definition, focused on this page and — unless it is a model, which the inspector does not read — opened beside it. */
 const choose = (list: DnaList): SchemaProp => [
   dnaPage(`'${list.kind}|' + def.id`),
-  ...(list.kind === 'model' ? [] : inspect('def.id', dnaEntityOf(`'${list.kind}'`))),
+  ...(list.kind === 'model' ? [] : inspect('def.id', { $: dnaEntityOf(`'${list.kind}'`) })),
 ];
 
 const kindSection = (list: DnaList): SchemaNode =>
