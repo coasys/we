@@ -171,6 +171,41 @@ pub const SIGNAL_TYPE_SDNA: &str = r#"{
   ]
 }"#;
 
+/// WE's `TaskBlock`, cut to `title`, `status` and `priority` (predicates
+/// from `packages/entities/src/manifest/TaskBlock.ts`). It leaves out
+/// `description` on purpose: the inspector offers it (from
+/// `recordStore.displays`), so a write to it is one the executor refuses.
+pub const TASK_SDNA: &str = r#"{
+  "target_class": "we://TaskBlock",
+  "constructor_actions": [
+    {"action": "addLink", "source": "this", "predicate": "we://title", "target": "placeholder"}
+  ],
+  "properties": [
+    {"path": "we://title", "name": "title", "min_count": 1, "max_count": 1, "setter": [{"action": "setSingleTarget", "source": "this", "predicate": "we://title", "target": "value"}]},
+    {"path": "we://status", "name": "status", "min_count": 0, "max_count": 1, "setter": [{"action": "setSingleTarget", "source": "this", "predicate": "we://status", "target": "value"}]},
+    {"path": "we://priority", "name": "priority", "min_count": 0, "max_count": 1, "setter": [{"action": "setSingleTarget", "source": "this", "predicate": "we://priority", "target": "value"}]}
+  ]
+}"#;
+
+/// A `TaskBlock` titled `title`, written by another client as links.
+/// Returns its id (the base URI).
+pub fn create_task(rt: &Runtime, conn: &Connection, uuid: &str, title: &str) -> String {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let base = format!("e11test://task/{}-{n}", std::process::id());
+    add_links(
+        rt,
+        conn,
+        uuid,
+        &base,
+        &[
+            ("we://title", literal(title)),
+            ("we://status", literal("todo")),
+        ],
+    );
+    base
+}
+
 /// Every instance of `class` in `uuid`, as `modelQuery` rows.
 pub fn query_rows(rt: &Runtime, conn: &Connection, uuid: &str, class: &str) -> Vec<Value> {
     let model = ad4m_client::model::Model::new(conn.ws(), uuid, class.to_string());
