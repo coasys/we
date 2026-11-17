@@ -6783,7 +6783,7 @@
         "displays": {
           "type": "object"
         },
-        "spaceClasses": {
+        "plumbingClasses": {
           "type": "array"
         },
         "kinds": {

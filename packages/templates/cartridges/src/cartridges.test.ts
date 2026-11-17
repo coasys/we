@@ -34,7 +34,7 @@ import { describe, expect, it } from 'vitest';
 
 import { coasysFirstRun } from './coasys/firstRun.ts';
 import { canvasPane } from './coasys/space/canvas.ts';
-import { DNA_LISTS } from './coasys/space/dna.ts';
+import { DNA_LISTS, OTHER_CLASSES } from './coasys/space/dna.ts';
 import { callPath, groupPath, personPath, SELECTED_EXPR } from './coasys/space/paths.ts';
 import { treeSection } from './coasys/space/tree.ts';
 import { callPage, spaceRoutes } from './coasys/space/views.ts';
@@ -837,6 +837,59 @@ function findAll(root: unknown, match: (node: { type?: string; props?: unknown }
   walk(root);
   return found;
 }
+
+/*
+  Another app's classes, as Social DNA lists them: one template expression over the classes the space
+  carries, rather than a store member grouping them — WE's plumbing is the one value it reads that a
+  template could not name for itself.
+*/
+describe("Social DNA's classes from other apps", () => {
+  const evaluate = (source: string) => {
+    const roots: Record<string, unknown> = {
+      datasetStore: {
+        // By name, as the store publishes them.
+        currentDatasetEntities: [
+          { name: 'Channel', targetClass: 'flux://Channel' },
+          { name: 'Nest', targetClass: 'birds://Nest' },
+          { name: 'Nest', targetClass: 'birds://Nest' },
+          { name: 'Question', targetClass: 'conv://Question' },
+          { name: 'Sighting', targetClass: 'birds://Sighting' },
+          { name: 'Space', targetClass: 'old://Space' },
+        ],
+      },
+      recordStore: {
+        creatableEntities: [
+          { value: 'Sighting', label: 'Sighting', icon: 'binoculars', group: 'This space' },
+          { value: 'TaskBlock', label: 'Task', icon: 'check-square', group: 'Built in' },
+        ],
+        plumbingClasses: ['Space', 'SignalType'],
+        displays: { Channel: { label: 'Channel' }, Question: { label: 'Question' } },
+      },
+    };
+    return evaluateExpression(parseExpression(source), {
+      root: (name) => ({ bound: name in roots, value: roots[name] }),
+      call: (name, args) =>
+        listFunctions()
+          .find((f) => f.name === name)
+          ?.impl(args, { context: {}, stores: {} }),
+    });
+  };
+
+  it('lists them flat, in the order the store gives them, each with its namespace as secondary text', () => {
+    expect(evaluate(OTHER_CLASSES)).toEqual([
+      { name: 'Channel', label: 'Channel', icon: 'cube', namespace: 'flux://' },
+      { name: 'Nest', label: 'Nest', icon: 'cube', namespace: 'birds://' },
+      { name: 'Question', label: 'Question', icon: 'cube', namespace: 'conv://' },
+    ]);
+  });
+
+  it("leaves WE's plumbing out, and lists a class once — not again where the space's own model has its name", () => {
+    const names = (evaluate(OTHER_CLASSES) as { name: string }[]).map((c) => c.name);
+    expect(names).not.toContain('Space');
+    expect(names).not.toContain('Sighting');
+    expect(names.filter((n) => n === 'Nest')).toHaveLength(1);
+  });
+});
 
 describe('the lookup that read every tool as available', () => {
   /*

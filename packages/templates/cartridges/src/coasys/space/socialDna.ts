@@ -153,7 +153,7 @@ const classesSection: SchemaNode = {
                       tile({
                         lead: glyph({ $: 'cls.icon' }),
                         title: { $: 'cls.label' },
-                        detail: detail({ $: "cls.hinted ? 'Says how to read it' : cls.name" }),
+                        detail: detail({ $: 'cls.namespace ? cls.namespace : cls.name' }),
                         onClick: dnaPage(`'${CLASSES.kind}|' + cls.name`),
                       }),
                     ],

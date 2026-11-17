@@ -1951,7 +1951,7 @@ export const seedBundles: Bundle[] = [
                                 },
                               },
                               expandable: {
-                                $: "(local.dnaLens == 'categories' ? count(local.signalTypes) + count(local.relationshipTypes) + count(spaceStore.taskStates) + count(spaceStore.involvementTypes) + count(local.topics) + count(recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description })) + count(spaceStore.policy.sentences) : sum(recordStore.spaceClasses.map(g, count(g.classes)))) > 0",
+                                $: "(local.dnaLens == 'categories' ? count(local.signalTypes) + count(local.relationshipTypes) + count(spaceStore.taskStates) + count(spaceStore.involvementTypes) + count(local.topics) + count(recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description })) + count(spaceStore.policy.sentences) : sum([{ key: 'space', label: 'This space', classes: recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { name: k.value, label: k.label, icon: k.icon }) }, { key: 'other', label: 'Other apps', classes: distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses)).map(e, e.name)).map(n, { name: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' }) }, { key: 'we', label: 'WE', classes: recordStore.creatableEntities.filter(k, k.group != 'This space').map(k, { name: k.value, label: k.label, icon: k.icon }) }].filter(g, count(g.classes) > 0).map(g, count(g.classes)))) > 0",
                               },
                             },
                             children: [
@@ -1973,14 +1973,14 @@ export const seedBundles: Bundle[] = [
                                         type: '$if',
                                         props: {
                                           condition: {
-                                            $: "(local.dnaLens == 'categories' ? count(local.signalTypes) + count(local.relationshipTypes) + count(spaceStore.taskStates) + count(spaceStore.involvementTypes) + count(local.topics) + count(recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description })) + count(spaceStore.policy.sentences) : sum(recordStore.spaceClasses.map(g, count(g.classes))))",
+                                            $: "(local.dnaLens == 'categories' ? count(local.signalTypes) + count(local.relationshipTypes) + count(spaceStore.taskStates) + count(spaceStore.involvementTypes) + count(local.topics) + count(recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description })) + count(spaceStore.policy.sentences) : sum([{ key: 'space', label: 'This space', classes: recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { name: k.value, label: k.label, icon: k.icon }) }, { key: 'other', label: 'Other apps', classes: distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses)).map(e, e.name)).map(n, { name: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' }) }, { key: 'we', label: 'WE', classes: recordStore.creatableEntities.filter(k, k.group != 'This space').map(k, { name: k.value, label: k.label, icon: k.icon }) }].filter(g, count(g.classes) > 0).map(g, count(g.classes))))",
                                           },
                                           then: {
                                             type: 'we-badge',
                                             props: { variant: 'soft', size: 'xs' },
                                             children: [
                                               {
-                                                $: "(local.dnaLens == 'categories' ? count(local.signalTypes) + count(local.relationshipTypes) + count(spaceStore.taskStates) + count(spaceStore.involvementTypes) + count(local.topics) + count(recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description })) + count(spaceStore.policy.sentences) : sum(recordStore.spaceClasses.map(g, count(g.classes))))",
+                                                $: "(local.dnaLens == 'categories' ? count(local.signalTypes) + count(local.relationshipTypes) + count(spaceStore.taskStates) + count(spaceStore.involvementTypes) + count(local.topics) + count(recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description })) + count(spaceStore.policy.sentences) : sum([{ key: 'space', label: 'This space', classes: recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { name: k.value, label: k.label, icon: k.icon }) }, { key: 'other', label: 'Other apps', classes: distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses)).map(e, e.name)).map(n, { name: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' }) }, { key: 'we', label: 'WE', classes: recordStore.creatableEntities.filter(k, k.group != 'This space').map(k, { name: k.value, label: k.label, icon: k.icon }) }].filter(g, count(g.classes) > 0).map(g, count(g.classes))))",
                                               },
                                             ],
                                           },
@@ -2034,7 +2034,12 @@ export const seedBundles: Bundle[] = [
                                   condition: { $: "!(local.dnaLens == 'categories')" },
                                   then: {
                                     type: '$each',
-                                    props: { items: { $: 'recordStore.spaceClasses' }, as: 'origin' },
+                                    props: {
+                                      items: {
+                                        $: "[{ key: 'space', label: 'This space', classes: recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { name: k.value, label: k.label, icon: k.icon }) }, { key: 'other', label: 'Other apps', classes: distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses)).map(e, e.name)).map(n, { name: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' }) }, { key: 'we', label: 'WE', classes: recordStore.creatableEntities.filter(k, k.group != 'This space').map(k, { name: k.value, label: k.label, icon: k.icon }) }].filter(g, count(g.classes) > 0)",
+                                      },
+                                      as: 'origin',
+                                    },
                                     children: [
                                       {
                                         type: 'we-tree-item',
@@ -2108,6 +2113,22 @@ export const seedBundles: Bundle[] = [
                                                         type: 'we-text',
                                                         props: { truncate: true, flex: '1', minWidth: '0' },
                                                         children: [{ $: 'cls.label' }],
+                                                      },
+                                                      {
+                                                        type: '$if',
+                                                        props: {
+                                                          condition: { $: 'cls.namespace' },
+                                                          then: {
+                                                            type: 'we-text',
+                                                            props: {
+                                                              variant: 'footnote',
+                                                              color: 'text-faint',
+                                                              truncate: true,
+                                                              maxWidth: '96px',
+                                                            },
+                                                            children: [{ $: 'cls.namespace' }],
+                                                          },
+                                                        },
                                                       },
                                                     ],
                                                   },
@@ -29296,7 +29317,7 @@ export const seedBundles: Bundle[] = [
                     type: '$if',
                     props: {
                       condition: {
-                        $: "(routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(local.signalTypes) == 0 && count(local.relationshipTypes) == 0 && count(spaceStore.taskStates) == 0 && count(spaceStore.involvementTypes) == 0 && count(local.topics) == 0 && count(recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description })) == 0 && count(spaceStore.policy.sentences) == 0 && sum(recordStore.spaceClasses.map(g, count(g.classes))) == 0",
+                        $: "(routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(local.signalTypes) == 0 && count(local.relationshipTypes) == 0 && count(spaceStore.taskStates) == 0 && count(spaceStore.involvementTypes) == 0 && count(local.topics) == 0 && count(recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description })) == 0 && count(spaceStore.policy.sentences) == 0 && sum([{ key: 'space', label: 'This space', classes: recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { name: k.value, label: k.label, icon: k.icon }) }, { key: 'other', label: 'Other apps', classes: distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses)).map(e, e.name)).map(n, { name: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' }) }, { key: 'we', label: 'WE', classes: recordStore.creatableEntities.filter(k, k.group != 'This space').map(k, { name: k.value, label: k.label, icon: k.icon }) }].filter(g, count(g.classes) > 0).map(g, count(g.classes))) == 0",
                       },
                       then: {
                         type: 'we-text',
@@ -29311,7 +29332,7 @@ export const seedBundles: Bundle[] = [
                     type: '$if',
                     props: {
                       condition: {
-                        $: "((routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && sum(recordStore.spaceClasses.map(g, count(g.classes))) > 0) || (routeStore.params.dna ? routeStore.params.dna : 'all') == 'class'",
+                        $: "((routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && sum([{ key: 'space', label: 'This space', classes: recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { name: k.value, label: k.label, icon: k.icon }) }, { key: 'other', label: 'Other apps', classes: distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses)).map(e, e.name)).map(n, { name: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' }) }, { key: 'we', label: 'WE', classes: recordStore.creatableEntities.filter(k, k.group != 'This space').map(k, { name: k.value, label: k.label, icon: k.icon }) }].filter(g, count(g.classes) > 0).map(g, count(g.classes))) > 0) || (routeStore.params.dna ? routeStore.params.dna : 'all') == 'class'",
                       },
                       then: {
                         type: 'Column',
@@ -29341,7 +29362,11 @@ export const seedBundles: Bundle[] = [
                                   {
                                     type: 'we-text',
                                     props: { color: 'text-muted' },
-                                    children: [{ $: 'sum(recordStore.spaceClasses.map(g, count(g.classes)))' }],
+                                    children: [
+                                      {
+                                        $: "sum([{ key: 'space', label: 'This space', classes: recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { name: k.value, label: k.label, icon: k.icon }) }, { key: 'other', label: 'Other apps', classes: distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses)).map(e, e.name)).map(n, { name: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' }) }, { key: 'we', label: 'WE', classes: recordStore.creatableEntities.filter(k, k.group != 'This space').map(k, { name: k.value, label: k.label, icon: k.icon }) }].filter(g, count(g.classes) > 0).map(g, count(g.classes)))",
+                                      },
+                                    ],
                                   },
                                 ],
                               },
@@ -29349,7 +29374,12 @@ export const seedBundles: Bundle[] = [
                           },
                           {
                             type: '$each',
-                            props: { items: { $: 'recordStore.spaceClasses' }, as: 'origin' },
+                            props: {
+                              items: {
+                                $: "[{ key: 'space', label: 'This space', classes: recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { name: k.value, label: k.label, icon: k.icon }) }, { key: 'other', label: 'Other apps', classes: distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses)).map(e, e.name)).map(n, { name: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' }) }, { key: 'we', label: 'WE', classes: recordStore.creatableEntities.filter(k, k.group != 'This space').map(k, { name: k.value, label: k.label, icon: k.icon }) }].filter(g, count(g.classes) > 0)",
+                              },
+                              as: 'origin',
+                            },
                             children: [
                               {
                                 type: 'Column',
@@ -29419,9 +29449,7 @@ export const seedBundles: Bundle[] = [
                                                           color: 'text-muted',
                                                           truncate: true,
                                                         },
-                                                        children: [
-                                                          { $: "cls.hinted ? 'Says how to read it' : cls.name" },
-                                                        ],
+                                                        children: [{ $: 'cls.namespace ? cls.namespace : cls.name' }],
                                                       },
                                                     ],
                                                   },

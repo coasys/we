@@ -1299,7 +1299,8 @@ export function DatasetStoreProvider(props: ParentProps) {
           const manifest = await schemas.foreignSchemas(handle);
           if (read === entitiesRead && currentDataset()?.id === uuid)
             batch(() => {
-              setCurrentDatasetEntities(manifest);
+              // By name, so a list of them — another app's classes in Social DNA — is in order with no sort of its own.
+              setCurrentDatasetEntities([...manifest].sort((a, b) => a.name.localeCompare(b.name)));
               setEntitiesReadFor(uuid);
             });
         } catch (err) {

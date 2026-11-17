@@ -2562,7 +2562,7 @@ export const contextData: ContextData = {
         recordDraft: { type: 'object' },
         recordDraftDirty: { type: 'boolean' },
         displays: { type: 'object' },
-        spaceClasses: { type: 'array' },
+        plumbingClasses: { type: 'array' },
         kinds: { type: 'array' },
         recordErrors: { type: 'array' },
         savingRecord: { type: 'boolean' },

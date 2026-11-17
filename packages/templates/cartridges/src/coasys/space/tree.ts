@@ -303,8 +303,8 @@ const policyKind: SchemaNode = treeRow({
 const DNA_COUNT = [...DNA_LISTS.map((list) => list.items), POLICY_RULES].map((list) => `count(${list})`).join(' + ');
 
 /*
-  The default way in: every class the space has, by where it comes from — its own models, each other
-  app's namespace, WE's built-ins (`recordStore.spaceClasses`). A space's DNA is whatever classes it
+  The default way in: every class the space has — its own models, other apps' classes, WE's built-ins
+  (`CLASS_GROUPS`). A space's DNA is whatever classes it
   carries, written by WE or not; a class opens its records on the Social DNA page. The kinds above —
   signal types, task states and the rest — are one way of reading the same space, the Categories lens,
   switched to from the group's row and remembered on this device.
@@ -316,6 +316,19 @@ const DNA_COUNT = [...DNA_LISTS.map((list) => list.items), POLICY_RULES].map((li
 /** Which way Social DNA is read: `classes` (every class, by origin) or `categories` (the kinds above). */
 const LENS = 'local.dnaLens';
 const IN_CATEGORIES = `${LENS} == 'categories'`;
+
+/** Another app's class says its namespace after its name, quietly — two apps can name a class alike. */
+const namespace = (cls: string): SchemaNode => ({
+  type: '$if',
+  props: {
+    condition: { $: `${cls}.namespace` },
+    then: {
+      type: 'we-text',
+      props: { variant: 'footnote', color: 'text-faint', truncate: true, maxWidth: '96px' },
+      children: [{ $: `${cls}.namespace` }],
+    },
+  },
+});
 
 const classOrigins: SchemaNode = {
   type: '$each',
@@ -342,6 +355,7 @@ const classOrigins: SchemaNode = {
               value: { $: "'dna|class|' + cls.name" },
               label: { $: 'cls.label' },
               icon: { $: 'cls.icon' },
+              badge: namespace('cls'),
             }),
           ],
         },

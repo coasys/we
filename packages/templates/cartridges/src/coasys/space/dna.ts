@@ -76,12 +76,33 @@ export const POLICY = { kind: 'policy', bucket: 'policy', label: SOCIAL_DNA_LABE
 export const POLICY_RULES = 'spaceStore.policy.sentences';
 
 /**
- * Every class the space has, by where it comes from — what the tree lists by default, where the kinds
- * above are a lens (Categories) over the same space. A class in focus is `class|<name>`, and its page
- * lists its records.
+ * Every class the space has — what the tree lists by default, where the kinds above are a lens
+ * (Categories) over the same space. A class in focus is `class|<name>`, and its page lists its records.
  */
 export const CLASSES = { kind: 'class', bucket: 'models', label: 'Classes', icon: 'cube' } as const;
-export const CLASS_GROUPS = 'recordStore.spaceClasses';
+
+/** The space's own models, as the record lists know them. */
+const SPACE_CLASSES =
+  "recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { name: k.value, label: k.label, icon: k.icon })";
+/** WE's own: its built-in blocks. */
+const WE_CLASSES =
+  "recordStore.creatableEntities.filter(k, k.group != 'This space').map(k, { name: k.value, label: k.label, icon: k.icon })";
+
+/**
+ * Another app's classes, flat and by name, as the store publishes them: every class the space carries
+ * that is not one of its own models or WE's, and not WE's plumbing — a `Space` an older version wrote
+ * under another IRI is still WE's. Each once, with its namespace (the class IRI before its name) to
+ * tell two apps' classes apart. Where they come from is not recorded anywhere, so it is shown rather
+ * than grouped by.
+ */
+const OTHER_ENTITIES = 'datasetStore.currentDatasetEntities';
+export const OTHER_CLASSES = [
+  `distinct(${OTHER_ENTITIES}.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses)).map(e, e.name))`,
+  `.map(n, { name: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(${OTHER_ENTITIES}, { name: n }).targetClass, n)) ?? '' })`,
+].join('');
+
+/** The groups the classes are listed in: the space's own, other apps', WE's — those with any. */
+export const CLASS_GROUPS = `[{ key: 'space', label: 'This space', classes: ${SPACE_CLASSES} }, { key: 'other', label: 'Other apps', classes: ${OTHER_CLASSES} }, { key: 'we', label: 'WE', classes: ${WE_CLASSES} }].filter(g, count(g.classes) > 0)`;
 export const CLASS_COUNT = `sum(${CLASS_GROUPS}.map(g, count(g.classes)))`;
 
 /** The focus, as `all` where the address names none — the Social DNA page reached without one. */
