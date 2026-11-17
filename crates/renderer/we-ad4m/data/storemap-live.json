@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "note": "The store map rows a connected app (E7) serves live, beside the offline seed map. modelRead rows with a query object are we-ad4m's: each is one executor read (modelSubscribe when live), shaped by `pick`, answering `initial` until it has. A row may also name `loaded`, a flag member that turns true with the first answer. derived rows are the offline loader's, as in the seed map. A member with no row here still comes from the snapshot, and the debug panel says so. `ref` is the TS store code the row mirrors.",
+  "members": {
+    "spaceStore.currentSpace": {
+      "kind": "modelRead",
+      "live": true,
+      "query": { "entity": "Space", "where": { "$self": true }, "include": { "location": true } },
+      "pick": "first",
+      "initial": null,
+      "ref": "SpaceStore.tsx:6126 — Space.query({ where: spaceSelfWhere(ds), include: { location: true } }).subscribe"
+    },
+    "spaceStore.root": {
+      "kind": "modelRead",
+      "live": true,
+      "query": { "entity": "Space", "where": { "$self": true } },
+      "pick": "first.root",
+      "initial": "",
+      "ref": "spaceLandmarks.ts:66 — Space.findOne(dataset, { include: { root: true } }).root"
+    },
+    "spaceStore.landmarks": {
+      "kind": "modelRead",
+      "live": true,
+      "query": { "entity": "SpaceLandmark" },
+      "pick": "landmarksByName",
+      "initial": {},
+      "loaded": "spaceStore.landmarksLoaded",
+      "ref": "spaceLandmarks.ts:17 — landmarksByName(SpaceLandmark.findAll(dataset))"
+    },
+    "spaceStore.taskStates": {
+      "kind": "modelRead",
+      "live": true,
+      "query": { "entity": "TaskState" },
+      "pick": "taskStates",
+      "initial": [],
+      "loaded": "spaceStore.taskStatesLoaded",
+      "ref": "SpaceStore.tsx:3412 applyTaskStates + :3556 taskStates memo (semantic order; the community's own order is not applied yet)"
+    },
+    "spaceStore.offeredTaskStates": {
+      "kind": "derived",
+      "expr": "spaceStore.taskStates.filter(s, !s.retired)",
+      "ref": "SpaceStore.tsx — taskStates().filter(s => !s.retired)"
+    },
+    "spaceStore.involvementTypes": {
+      "kind": "modelRead",
+      "live": true,
+      "query": { "entity": "InvolvementType" },
+      "pick": "involvementTypes",
+      "initial": [],
+      "loaded": "spaceStore.involvementTypesLoaded",
+      "ref": "SpaceStore.tsx:4135 — InvolvementType.findAll, sorted by creation, mapped to views"
+    },
+    "themeStore.spaceThemes": {
+      "kind": "modelRead",
+      "live": true,
+      "query": { "entity": "Theme" },
+      "pick": "rows",
+      "initial": [],
+      "ref": "ThemeStore.tsx:607 — Theme.findAll on the space perspective"
+    },
+    "sessionStore.me": {
+      "kind": "modelRead",
+      "native": "agent.me",
+      "initial": null,
+      "ref": "SessionStore — client.agent.me() (agent.get)"
+    },
+    "spaceStore.memberDids": {
+      "kind": "modelRead",
+      "native": "neighbourhood.memberDids",
+      "initial": [],
+      "ref": "SpaceStore.tsx:6292 — neighbourhood otherAgents() plus me"
+    }
+  }
+}
