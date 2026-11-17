@@ -20,6 +20,8 @@ const SOLID_TESTS = [
   'tests/profileStore.test.tsx',
   // Mounts the profile store and holds the app's first-screen gate: real signals and real promises.
   'tests/firstScreenDeferral.test.tsx',
+  // The same gate and store: this agent's own profile, asked for before `me()` answered.
+  'tests/firstScreenOwnProfile.test.tsx',
   // Mounts the interpretation store under the held gate and watches what it tells modules.
   'tests/firstScreenInterpretation.test.tsx',
   // Counts effect re-runs through a real provider. The node project resolves solid-js to its SSR

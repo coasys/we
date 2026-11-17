@@ -844,10 +844,17 @@ describe('the Coasys space chat: one mount for the channel on screen', () => {
   /** The host parts the route mounts, and the queries it runs, for one state of the space store. */
   function mounted(spaceStore: Record<string, unknown>) {
     const parts: string[] = [];
+    const icons: unknown[] = [];
+    const texts: string[] = [];
     const walk = (node: unknown): void => {
+      if (typeof node === 'string') return void texts.push(node);
       if (!node || typeof node !== 'object') return;
       if (Array.isArray(node)) return node.forEach(walk);
       const n = node as { type?: string; props?: Record<string, unknown>; children?: unknown };
+      if (n.type === 'we-icon') {
+        const name = n.props?.name as string | { $: string } | undefined;
+        icons.push(typeof name === 'object' && name ? evaluate(name.$, spaceStore) : name);
+      }
       if (n.type === '$if') {
         const props = n.props as { condition: { $: string }; then?: unknown; else?: unknown };
         return walk(evaluate(props.condition.$, spaceStore) ? props.then : props.else);
@@ -862,7 +869,7 @@ describe('the Coasys space chat: one mount for the channel on screen', () => {
         return !when || Boolean(evaluate(when.$, spaceStore));
       })
       .map(([name]) => name);
-    return { parts, queries };
+    return { parts, queries, icons, texts };
   }
 
   it('mounts nothing for the channel until the root is known, then the Feed alone', () => {
@@ -873,6 +880,25 @@ describe('the Coasys space chat: one mount for the channel on screen', () => {
     const after = mounted({ root: FEED, rootLoaded: true });
     expect(after.parts).toEqual(['feed.feedView']);
     expect(after.queries).not.toContain('channelRecord');
+  });
+
+  it('draws the bar’s glyph and its way back to Channels only once the root is known', () => {
+    /*
+      The same moment as above, in the bar: General's address compared unequal to an unread root, so
+      the bar drew a channel's `hash` and a "Channels" crumb, then swapped both for the Feed's own.
+    */
+    const before = mounted({ root: '', rootLoaded: false });
+    expect(before.icons).not.toContain('hash');
+    expect(before.icons).not.toContain('chats-circle');
+    expect(before.texts).not.toContain('Channels');
+
+    const general = mounted({ root: FEED, rootLoaded: true });
+    expect(general.icons).toContain('chats-circle');
+    expect(general.texts).not.toContain('Channels');
+
+    const sub = mounted({ root: 'ad4m://obj/other-root', rootLoaded: true });
+    expect(sub.icons).toContain('hash');
+    expect(sub.texts).toContain('Channels');
   });
 
   it('still opens a real sub-channel as chat once the root is known', () => {

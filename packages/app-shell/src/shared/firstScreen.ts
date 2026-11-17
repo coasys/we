@@ -19,9 +19,11 @@
  *
  * - **Never held** — open from the start. A host that does not boot through `BootController`, and
  *   every test that does not call {@link FirstScreen.hold}, waits on nothing.
- * - **Held, then the Feed's first page lands.** The Feed says {@link FirstScreen.waiting} as it is
- *   drawn and {@link FirstScreen.answered} when its first read has landed or failed. A failure opens
- *   it too: the reader is looking at an error, not waiting for a page.
+ * - **Held, then the Feed's first page lands.** The Feed says {@link FirstScreen.waiting} as its first
+ *   read leaves and {@link FirstScreen.answered} when that read has landed or failed. A failure opens
+ *   it too: the reader is looking at an error, not waiting for a page. So does the Feed no longer
+ *   waiting — taken down before its page landed, or in a space with no collection to read — since a
+ *   waiter that no longer waits must not hold the rest of the app.
  * - **Held, then the host has drawn the first screen with nothing on it waiting.** A space whose
  *   opening view is not the Feed does not wait for one. {@link FirstScreen.drawn} looks again after
  *   the current turn, so a part that mounts in the same pass as the route still counts.

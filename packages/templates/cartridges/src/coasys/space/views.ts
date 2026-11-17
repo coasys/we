@@ -237,11 +237,17 @@ const chatRoute: RouteSchema = {
   children: [
     viewBar(
       [
-        // The Feed is the space's own; a channel under it is one of the Channels.
-        { label: 'Channels', onClick: navigateTo(groupPath('channels')), when: `!(${IN_ROOT_EXPR})` },
+        // The Feed is the space's own; a channel under it is one of the Channels. Like the view below,
+        // neither the crumb nor the glyph is chosen before the root is known (`ROOT_KNOWN_EXPR`): until
+        // then General's own address reads as a sub-channel's, and the bar drew one, then swapped it.
+        {
+          label: 'Channels',
+          onClick: navigateTo(groupPath('channels')),
+          when: `(${ROOT_KNOWN_EXPR}) && !(${IN_ROOT_EXPR})`,
+        },
         { label: { $: CHANNEL_TITLE } },
       ],
-      { $: `(${IN_ROOT_EXPR}) ? 'chats-circle' : 'hash'` },
+      { $: `!(${ROOT_KNOWN_EXPR}) ? '' : (${IN_ROOT_EXPR}) ? 'chats-circle' : 'hash'` },
     ),
     {
       // One mount: which of the two this channel is, is decided once the root is known — see

@@ -45,6 +45,7 @@ function harness(
   proposals: { id: string; kind: string }[] = [],
   moduleSettings: Record<string, unknown> = {},
   find: () => Promise<Record<string, unknown>[]> = async () => [],
+  spaceRoot: () => string = () => 'root-1',
 ) {
   const { signal, effect } = reactive();
   const created: Created[] = [];
@@ -72,19 +73,21 @@ function harness(
     proposalsRevision: () => 0,
   };
   const firstScreen = { waiting: vi.fn(), answered: vi.fn() };
+  const disposers: (() => void)[] = [];
+  const dispose = () => disposers.forEach((stop) => stop());
   const store = createFeedStore({
     signal,
     effect,
     state: markState,
     action: markAction,
-    onDispose: () => {},
+    onDispose: (stop: () => void) => void disposers.push(stop),
     dataset: () => 'space-1',
-    spaceRoot: () => 'root-1',
+    spaceRoot,
     settings: () => moduleSettings,
     kernels: { records, interpretation },
     firstScreen,
   } as never) as Record<string, (...args: unknown[]) => unknown>;
-  return { store, created, updated, subscriptions, subscribed, interpretation, firstScreen };
+  return { store, created, updated, subscriptions, subscribed, interpretation, firstScreen, dispose };
 }
 
 describe('messages written from the Feed', () => {
@@ -180,7 +183,7 @@ describe('the first screen', () => {
     return { find: async () => (await landed, []), land: () => land() };
   }
 
-  it('says it is reading as it is drawn, and answered once its first page lands', async () => {
+  it('says it is reading as its first read leaves on being drawn, and answered once that page lands', async () => {
     const read = heldRead();
     const h = harness([], {}, read.find);
     expect(h.firstScreen.waiting).not.toHaveBeenCalled();
@@ -202,6 +205,51 @@ describe('the first screen', () => {
     h.store.watchFeed();
     await vi.waitFor(() => expect(h.firstScreen.answered).toHaveBeenCalledTimes(1));
     warn.mockRestore();
+  });
+
+  it('never says it is reading in a space without a collection, where no read ever leaves', async () => {
+    /*
+      A space made before spaces had a collection: the Feed is drawn, but there is nothing to read
+      from. Saying "waiting" there held the rest of the app until the gate's ceiling.
+    */
+    const find = vi.fn(async () => []);
+    const h = harness([], {}, find, () => '');
+    h.store.watchFeed();
+    await Promise.resolve();
+    expect(find).not.toHaveBeenCalled();
+    expect(h.firstScreen.waiting).not.toHaveBeenCalled();
+  });
+
+  it('says answered when the reader leaves before its first page lands, and only once', async () => {
+    /*
+      Leaving stops the read (`FeedReadStopped`), so it never lands or fails — and the next screen's
+      `drawn` cannot open a gate the Feed still says it is waiting on.
+    */
+    const read = heldRead();
+    const h = harness([], {}, read.find);
+    h.store.watchFeed();
+    await Promise.resolve();
+    expect(h.firstScreen.waiting).toHaveBeenCalledTimes(1);
+
+    h.store.unwatchFeed();
+    expect(h.firstScreen.answered).toHaveBeenCalledTimes(1);
+
+    read.land();
+    h.store.watchFeed();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // Coming back is not a first screen: said once, for the life of the store.
+    expect(h.firstScreen.waiting).toHaveBeenCalledTimes(1);
+    expect(h.firstScreen.answered).toHaveBeenCalledTimes(1);
+  });
+
+  it('says answered when it is taken down while its first page is still reading', async () => {
+    const read = heldRead();
+    const h = harness([], {}, read.find);
+    h.store.watchFeed();
+    await Promise.resolve();
+    expect(h.firstScreen.waiting).toHaveBeenCalledTimes(1);
+    h.dispose();
+    expect(h.firstScreen.answered).toHaveBeenCalledTimes(1);
   });
 
   it('asks for the space’s suggestions after its first page, not beside it', async () => {

@@ -134,11 +134,22 @@ export function createFeed(deps: FeedDeps) {
   */
   /*
     The Feed is very often what a person opened the app to read, so it tells the host when its first
-    page is up: from the first look until that read lands or fails, the host holds back the reads the
-    first screen does not need (`ModuleStoreDeps.firstScreen`). Said once each, for the life of the
-    store — a later space switch is not a first screen.
+    page is up: from the moment its first read leaves until that read lands or fails, the host holds
+    back the reads the first screen does not need (`ModuleStoreDeps.firstScreen`). Said once each, for
+    the life of the store — a later space switch is not a first screen.
+
+    Waiting is said where a request leaves, not where somebody starts looking: a Feed with nothing to
+    read (a space made before spaces had a collection) never sends one, and so never holds the gate.
+    And a Feed that stops waiting before its page lands — nobody looking any more, the space on screen
+    has no collection, or the store is gone — says answered then, because nothing else would: its read
+    is stopped, and the next screen's `drawn` cannot open a gate somebody still says they wait on.
   */
   let firstPageReported: 'not yet' | 'waiting' | 'answered' = 'not yet';
+  const firstPageWaiting = () => {
+    if (firstPageReported !== 'not yet') return;
+    firstPageReported = 'waiting';
+    deps.firstScreen?.waiting();
+  };
   const firstPageAnswered = () => {
     if (firstPageReported !== 'waiting') return;
     firstPageReported = 'answered';
@@ -161,6 +172,7 @@ export function createFeed(deps: FeedDeps) {
     dirty = false;
     setFailed(false);
     reading = true;
+    firstPageWaiting();
     const space = root();
     const size = shown();
     const anchoredAtStart = fromStart();
@@ -237,10 +249,8 @@ export function createFeed(deps: FeedDeps) {
     // lasts (this effect also re-runs on what the read itself reads, and a lasting error would loop).
     if (now && !wasLooking && lastReadFailed) dirty = true;
     wasLooking = now;
-    if (now && firstPageReported === 'not yet') {
-      firstPageReported = 'waiting';
-      deps.firstScreen?.waiting();
-    }
+    // Nobody waits on a first page that nobody is looking at, or that has no space to be read from.
+    if (!now || !root()) firstPageAnswered();
     if (now) start();
   });
 
@@ -357,6 +367,7 @@ export function createFeed(deps: FeedDeps) {
   });
   deps.onDispose?.(() => {
     disposed = true;
+    firstPageAnswered();
     unsubscribe();
     shownStop?.();
     if (pending) clearTimeout(pending);

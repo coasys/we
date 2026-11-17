@@ -7,6 +7,8 @@ import {
   provideModuleHostServices,
   resetModuleHostServices,
 } from '@shared/registries/moduleHostServices';
+import { createFeedStore } from '@we/module-feed';
+import { markAction, markState } from '@we/module-shared';
 import { describe, expect, it, vi } from 'vitest';
 
 /** A plain cell in a signal's shape — the gate's own logic, without a framework. */
@@ -160,5 +162,89 @@ describe('when the first screen is drawn', () => {
     const home = { rootLoaded: true, segments: [], addresses: () => false };
     expect(firstScreenDrawn({ ...home, templateId: 'home' })).toBe(true);
     expect(firstScreenDrawn({ ...home, templateId: undefined })).toBe(false);
+  });
+});
+
+/** Signals and effects that track each other, so the Feed's effects re-run as they do in the app. */
+function reactive() {
+  let running: (() => void) | null = null;
+  const signal = <T>(initial: T): [() => T, (next: T) => void] => {
+    let value = initial;
+    const readers = new Set<() => void>();
+    return [
+      () => {
+        if (running) readers.add(running);
+        return value;
+      },
+      (next: T) => {
+        if (Object.is(next, value)) return;
+        value = next;
+        for (const reader of [...readers]) reader();
+      },
+    ];
+  };
+  const effect = (fn: () => void) => {
+    const run = () => {
+      const outer = running;
+      running = run;
+      try {
+        fn();
+      } finally {
+        running = outer;
+      }
+    };
+    run();
+  };
+  return { signal, effect };
+}
+
+/** The real Feed store over the real gate, as the host wires them: the gate held at cold boot. */
+function feedOnFirstScreen(spaceRoot: string, find: () => Promise<Record<string, unknown>[]>) {
+  const { screen, timers } = gate();
+  screen.hold();
+  const { signal, effect } = reactive();
+  const feed = createFeedStore({
+    signal,
+    effect,
+    state: markState,
+    action: markAction,
+    onDispose: () => {},
+    dataset: () => 'space-1',
+    spaceRoot: () => spaceRoot,
+    settings: () => ({}),
+    kernels: { records: { find, subscribe: () => () => {} } },
+    firstScreen: screen,
+  } as never);
+  return { screen, timers, feed };
+}
+
+describe('the Feed on the first screen', () => {
+  /** A read that never lands — a cold executor still working on the first page. */
+  const never = () => new Promise<Record<string, unknown>[]>(() => {});
+
+  it('opens at the draw in a space without a collection, not at the ceiling', async () => {
+    const { screen, timers, feed } = feedOnFirstScreen('', never);
+    feed.watchFeed();
+    screen.drawn();
+    await settled();
+    expect(screen.open()).toBe(true);
+    // Opened by the draw: the ceiling was cleared, never run.
+    expect(timers[0].cleared).toBe(true);
+  });
+
+  it('opens when the reader leaves the Feed before its first page lands, not at the ceiling', async () => {
+    const { screen, timers, feed } = feedOnFirstScreen('root-1', never);
+    feed.watchFeed();
+    screen.drawn();
+    await settled();
+    // The Feed is reading the page the reader opened the app for: the rest waits.
+    expect(screen.open()).toBe(false);
+
+    // A sub-channel clicked during boot: the Feed is taken down and the new route is drawn.
+    feed.unwatchFeed();
+    screen.drawn();
+    await settled();
+    expect(screen.open()).toBe(true);
+    expect(timers[0].cleared).toBe(true);
   });
 });

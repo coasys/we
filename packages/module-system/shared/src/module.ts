@@ -719,9 +719,11 @@ export interface ModuleStoreDeps {
    * read. While it is reading, the host holds back work that screen does not need (the sidebar's
    * lists, the extraction panel, presence, settings reads), so the one executor answers this first.
    *
-   * Say {@link ModuleFirstScreen.waiting} as the part starts its first read and
-   * {@link ModuleFirstScreen.answered} when that read lands or fails — both, or neither. A module
-   * that says `waiting` and never `answered` holds the rest of the app until the host's ceiling. Absent
+   * Say {@link ModuleFirstScreen.waiting} as the part's first read leaves — not as the part is drawn,
+   * since a part with nothing to read must not hold anything — and {@link ModuleFirstScreen.answered}
+   * when that read lands or fails, or as soon as nothing waits on it any more (the part taken down, the
+   * store disposed): both, or neither. A module that says `waiting` and never `answered` holds the rest
+   * of the app until the host's ceiling. Absent
    * on a host with nothing to hold; both calls after the first screen are no-ops.
    */
   firstScreen?: ModuleFirstScreen;

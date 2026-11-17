@@ -24940,7 +24940,7 @@ export const seedBundles: Bundle[] = [
                     type: 'we-icon',
                     props: {
                       name: {
-                        $: "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? 'chats-circle' : 'hash'",
+                        $: "!(spaceStore.rootLoaded) ? '' : ((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? 'chats-circle' : 'hash'",
                       },
                       color: 'text-muted',
                     },
@@ -24953,7 +24953,7 @@ export const seedBundles: Bundle[] = [
                         type: '$if',
                         props: {
                           condition: {
-                            $: '!((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root)',
+                            $: '(spaceStore.rootLoaded) && !((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root)',
                           },
                           then: {
                             type: 'Row',
