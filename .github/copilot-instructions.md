@@ -4087,6 +4087,7 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - level — Microphone loudness as the voice detector measures it, 0–1.
   - levelPercent — The microphone level as a CSS width for a meter.
   - listening — True only while actually transcribing — what a record button highlights on.
+  - liveCallRecords — The record of every call somebody is in right now.
   - liveCollectionId — The record the call this agent is in is writing into, or empty when there is none.
   - modelMissing — No transcription model is installed on this node, as last read.
   - modelUnready — A transcription model is installed and cannot run yet — still downloading, or its server is not answering.
