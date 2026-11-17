@@ -276,3 +276,37 @@ fn emptying_a_field_is_refused() {
     )
     .is_ok());
 }
+
+/// An update whose every property is `null` or `undefined` has nothing
+/// left to send: no write, and the call answers `undefined` (TS's model
+/// update skips both). Sending `{ properties: {} }` would be refused.
+#[test]
+fn an_update_left_empty_is_a_no_op() {
+    let p = run(
+        "record.update",
+        json!(["TaskBlock", "t1", { "description": null }]),
+    )
+    .unwrap();
+    assert!(p.writes.is_empty(), "null only: {p:?}");
+
+    let d = displays();
+    let rows = rows();
+    let mut props = indexmap::IndexMap::new();
+    props.insert("description".into(), Value::Undefined);
+    let a = vec![
+        Value::Str("TaskBlock".into()),
+        Value::Str("t1".into()),
+        Value::Obj(std::sync::Arc::new(props)),
+    ];
+    let p = plan(
+        rows.get("record.update").unwrap(),
+        &a,
+        &PlanCx { displays: &d },
+    )
+    .unwrap();
+    assert!(p.writes.is_empty(), "undefined only: {p:?}");
+
+    // Not an update: a create with nothing in it is still the executor's to refuse.
+    let p = run("record.create", json!(["TaskBlock", { "title": null }])).unwrap();
+    assert_eq!(p.writes.len(), 1, "{p:?}");
+}

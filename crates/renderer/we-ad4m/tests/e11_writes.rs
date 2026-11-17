@@ -594,3 +594,28 @@ fn clearing_a_field_is_refused_and_nothing_is_sent() {
         );
     }
 }
+
+/// `record.update` with only `null`: nothing to send, so nothing is sent
+/// — the call settles `onSuccess` (as TS's skipped fields do) rather than
+/// the executor refusing an empty update.
+#[test]
+fn an_update_with_only_null_is_a_no_op() {
+    let Some(r) = rig("e11-null-update") else {
+        return;
+    };
+    let spec = button(invoke(
+        "record.update",
+        json!(["CollectionBlock", r.id, { "title": null }]),
+    ));
+    let (mut s, wake) = session(&r, Access::write(r.uuid.as_str()), spec);
+    click(&mut s);
+    wait_for(&mut s, &wake, "fin=1", Duration::from_secs(5));
+    let t = text(&mut s);
+    assert!(t.contains("ok=true msg= kind="), "{t}");
+    assert!(
+        host(&s).notices().list().is_empty(),
+        "{:?}",
+        host(&s).notices().list()
+    );
+    assert_eq!(r.title().as_deref(), Some("A"));
+}

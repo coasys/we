@@ -262,6 +262,12 @@ fn plan_row(row: &MemberRow, args: &[Value], cx: &PlanCx) -> Result<WritePlan, S
         }
         if r.op != WriteOp::Remove {
             if let Some(props) = properties(r, &env, target)? {
+                // Every field `null` or `undefined`: nothing to change, so
+                // nothing is sent (TS's model update skips both fields; an
+                // empty `properties` would be refused).
+                if r.op == WriteOp::Update && props.as_object().is_some_and(|o| o.is_empty()) {
+                    continue;
+                }
                 body["properties"] = props;
             } else if r.op == WriteOp::Update {
                 return Err(format!("{target}: missing properties"));
