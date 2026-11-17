@@ -146,6 +146,56 @@ pub const COLLECTION_SDNA: &str = r#"{
   ]
 }"#;
 
+/// WE's `SignalType`, cut to the fields the "New signal type" form writes.
+/// Predicates from `packages/entities/src/manifest/SignalType.ts`, in the
+/// style of [`COLLECTION_SDNA`]; the number fields carry the datatype WE's
+/// manifest compiler gives a `number` (`xsd://decimal`), or they read back
+/// as text. The constructor writes `we://name` (WE's own class is flagged
+/// with `we://flag`; this one is not).
+pub const SIGNAL_TYPE_SDNA: &str = r#"{
+  "target_class": "we://SignalType",
+  "constructor_actions": [
+    {"action": "addLink", "source": "this", "predicate": "we://name", "target": "placeholder"}
+  ],
+  "properties": [
+    {"path": "we://name", "name": "name", "min_count": 1, "max_count": 1, "setter": [{"action": "setSingleTarget", "source": "this", "predicate": "we://name", "target": "value"}]},
+    {"path": "we://slug", "name": "slug", "min_count": 0, "max_count": 1, "setter": [{"action": "setSingleTarget", "source": "this", "predicate": "we://slug", "target": "value"}]},
+    {"path": "we://description", "name": "description", "min_count": 0, "max_count": 1, "setter": [{"action": "setSingleTarget", "source": "this", "predicate": "we://description", "target": "value"}]},
+    {"path": "we://icon", "name": "icon", "min_count": 0, "max_count": 1, "setter": [{"action": "setSingleTarget", "source": "this", "predicate": "we://icon", "target": "value"}]},
+    {"path": "we://icon_secondary", "name": "iconSecondary", "min_count": 0, "max_count": 1, "setter": [{"action": "setSingleTarget", "source": "this", "predicate": "we://icon_secondary", "target": "value"}]},
+    {"path": "we://mode", "name": "mode", "min_count": 0, "max_count": 1, "setter": [{"action": "setSingleTarget", "source": "this", "predicate": "we://mode", "target": "value"}]},
+    {"path": "we://aggregate", "name": "aggregate", "min_count": 0, "max_count": 1, "setter": [{"action": "setSingleTarget", "source": "this", "predicate": "we://aggregate", "target": "value"}]},
+    {"path": "we://range_min", "name": "rangeMin", "datatype": "xsd://decimal", "min_count": 0, "max_count": 1, "setter": [{"action": "setSingleTarget", "source": "this", "predicate": "we://range_min", "target": "value"}]},
+    {"path": "we://range_max", "name": "rangeMax", "datatype": "xsd://decimal", "min_count": 0, "max_count": 1, "setter": [{"action": "setSingleTarget", "source": "this", "predicate": "we://range_max", "target": "value"}]},
+    {"path": "we://step", "name": "step", "datatype": "xsd://decimal", "min_count": 0, "max_count": 1, "setter": [{"action": "setSingleTarget", "source": "this", "predicate": "we://step", "target": "value"}]}
+  ]
+}"#;
+
+/// Every instance of `class` in `uuid`, as `modelQuery` rows.
+pub fn query_rows(rt: &Runtime, conn: &Connection, uuid: &str, class: &str) -> Vec<Value> {
+    let model = ad4m_client::model::Model::new(conn.ws(), uuid, class.to_string());
+    let result = rt
+        .block_on(conn.run(async move { model.query(&Default::default()).await }))
+        .unwrap_or_else(|e| panic!("modelQuery {class}: {e:#}"));
+    result.instances
+}
+
+/// The ids of the `class` instances whose `title_field` is `title`.
+pub fn find_ids(
+    rt: &Runtime,
+    conn: &Connection,
+    uuid: &str,
+    class: &str,
+    title_field: &str,
+    title: &str,
+) -> Vec<String> {
+    query_rows(rt, conn, uuid, class)
+        .into_iter()
+        .filter(|r| r.get(title_field).and_then(Value::as_str) == Some(title))
+        .filter_map(|r| r.get("id").and_then(Value::as_str).map(str::to_string))
+        .collect()
+}
+
 /// Mint the agent and add an empty perspective. Returns its uuid.
 pub fn new_space(rt: &Runtime, conn: &Connection, name: &str) -> String {
     let client = conn.client();

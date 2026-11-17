@@ -153,3 +153,291 @@ fn a_refusal_keeps_the_code_message_and_kind() {
         other => panic!("expected a Rejected, got {other:?}"),
     }
 }
+
+// ---- Step 3: the WriteHost, driven through a session --------------------
+
+use std::sync::mpsc;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+use we_ad4m::{Access, WriteHost};
+use we_screen::{ScreenSchema, ScreenState};
+use we_session::Session;
+use we_template::{MountCx, ResolvedChild, ResolvedNode, RootSpec, StaticHost, StoreBag};
+
+/// A space with `CollectionBlock` and one call in it, created through the
+/// write RPC; `None` when the executor has none. Returns the call's id.
+struct Rig {
+    _executor: kit::Executor,
+    rt: we_ad4m::Runtime,
+    conn: we_ad4m::Connection,
+    uuid: String,
+    id: String,
+}
+
+fn rig(name: &str) -> Option<Rig> {
+    let executor = kit::start_executor()?;
+    let rt = we_ad4m::Runtime::new().unwrap();
+    let conn = kit::connect(&rt, &executor.url);
+    let uuid = kit::seed_space(&rt, &conn, name);
+    let exec = we_ad4m::Ad4mExecutor::new(conn.clone());
+    let created = match rt.block_on(exec.write(
+        &SpaceId::new(uuid.as_str()),
+        write(
+            WriteOp::Create,
+            json!({ "className": "CollectionBlock", "properties": { "kind": "call", "title": "A" } }),
+        ),
+    )) {
+        Ok(v) => v,
+        Err(e) if skip_without_write_rpc(&e) => return None,
+        Err(e) => panic!("create: {e}"),
+    };
+    Some(Rig {
+        id: id_of(&created),
+        _executor: executor,
+        rt,
+        conn,
+        uuid,
+    })
+}
+
+impl Rig {
+    fn title(&self) -> Option<String> {
+        kit::query_rows(&self.rt, &self.conn, &self.uuid, "CollectionBlock")
+            .into_iter()
+            .find(|r| r["id"] == json!(self.id))
+            .map(|r| r["title"].as_str().unwrap_or_default().to_string())
+    }
+}
+
+/// One button invoking `invoke`, and a text showing `local.ok` / `local.msg`
+/// / `local.kind` — what its lifecycle wrote.
+fn button(invoke: serde_json::Value) -> RootSpec {
+    let node = json!({
+        "type": "Column",
+        "$localState": {
+            "ok": { "type": "boolean", "initial": false },
+            "msg": { "type": "string", "initial": "" },
+            "kind": { "type": "string", "initial": "" }
+        },
+        "children": [
+            { "type": "we-button", "props": { "onClick": invoke }, "children": ["Go"] },
+            { "type": "we-text", "children": [{ "$": "`ok=${local.ok} msg=${local.msg} kind=${local.kind}`" }] }
+        ]
+    });
+    RootSpec::Single {
+        node: Box::new(serde_json::from_value(node).unwrap()),
+        cx: MountCx::explicit("test"),
+        declared: we_template::Declared::default(),
+    }
+}
+
+/// The lifecycle every test template's invoke carries.
+fn invoke(target: &str, args: serde_json::Value) -> serde_json::Value {
+    json!({
+        "$invoke": target, "args": args,
+        "onSuccess": [{ "$setLocal": "ok", "value": true }],
+        "onError": [
+            { "$setLocal": "msg", "value": { "$": "result.message" } },
+            { "$setLocal": "kind", "value": { "$": "result.kind" } }
+        ]
+    })
+}
+
+fn session(r: &Rig, access: Access, spec: RootSpec) -> (Session, mpsc::Receiver<()>) {
+    let bag = Arc::new(StoreBag::new());
+    let host = WriteHost::new(
+        StaticHost::new(bag.clone()),
+        r.conn.clone(),
+        SpaceId::new(r.uuid.as_str()),
+        bag.clone(),
+        access,
+    );
+    let screen = ScreenState::desktop(ScreenSchema::default(), "/");
+    let mut s = Session::new(spec, bag, screen, Box::new(host));
+    let (tx, rx) = mpsc::channel();
+    let tx = std::sync::Mutex::new(tx);
+    s.set_waker(Arc::new(move || {
+        let _ = tx.lock().unwrap().send(());
+    }));
+    (s, rx)
+}
+
+fn find<'a>(n: &'a ResolvedNode, ty: &str) -> Option<&'a ResolvedNode> {
+    if n.ty.as_ref() == ty {
+        return Some(n);
+    }
+    n.children.iter().find_map(|c| match c {
+        ResolvedChild::Node(c) => find(c, ty),
+        ResolvedChild::Text(_) => None,
+    })
+}
+
+fn click(s: &mut Session) {
+    let root = s.resolve();
+    let id = find(&root, "we-button").expect("the button").id.clone();
+    s.dispatch(&id, "onClick", Value::Null);
+}
+
+fn text(s: &mut Session) -> String {
+    we_template::normal_form(&s.resolve()).to_string()
+}
+
+/// Resolve on every wake until the tree contains `want`.
+fn wait_for(s: &mut Session, wake: &mpsc::Receiver<()>, want: &str, limit: Duration) -> Duration {
+    let start = Instant::now();
+    loop {
+        s.poll();
+        let t = text(s);
+        if t.contains(want) {
+            return start.elapsed();
+        }
+        let left = limit.saturating_sub(start.elapsed());
+        assert!(
+            !left.is_zero(),
+            "{want:?} not in the tree after {limit:?}: {t}"
+        );
+        let _ = wake.recv_timeout(left.min(Duration::from_millis(100)));
+    }
+}
+
+fn host(s: &Session) -> &WriteHost {
+    s.host_as::<WriteHost>().expect("a WriteHost")
+}
+
+#[test]
+fn a_target_with_no_row_falls_back() {
+    let Some(r) = rig("e11-fallback") else { return };
+    let (mut s, _wake) = session(
+        &r,
+        Access::Write,
+        button(invoke("routeStore.unknownThing", json!([]))),
+    );
+    click(&mut s);
+    assert_eq!(host(&s).fallback.dropped, ["routeStore.unknownThing"]);
+    // A sync Done runs no lifecycle.
+    assert!(
+        text(&mut s).contains("ok=false msg= kind="),
+        "{}",
+        text(&mut s)
+    );
+}
+
+#[test]
+fn a_write_row_reaches_the_executor_and_settles_ok() {
+    let Some(r) = rig("e11-update") else { return };
+    let spec = button(invoke(
+        "record.update",
+        json!(["CollectionBlock", r.id, { "title": "B" }]),
+    ));
+    let (mut s, wake) = session(&r, Access::Write, spec);
+    click(&mut s);
+    let took = wait_for(&mut s, &wake, "ok=true", Duration::from_secs(5));
+    eprintln!("record.update settled in {took:?}");
+    assert_eq!(r.title().as_deref(), Some("B"));
+    assert!(host(&s).notices().list().is_empty());
+}
+
+#[test]
+fn a_refused_write_runs_on_error_and_leaves_a_notice() {
+    let Some(r) = rig("e11-refused") else { return };
+    let spec = button(invoke(
+        "record.update",
+        json!(["CollectionBlock", r.id, { "nope": 1 }]),
+    ));
+    let (mut s, wake) = session(&r, Access::Write, spec);
+    click(&mut s);
+    let took = wait_for(
+        &mut s,
+        &wake,
+        "msg=Validation failed",
+        Duration::from_secs(5),
+    );
+    eprintln!("the refusal reached onError in {took:?}");
+    let t = text(&mut s);
+    assert!(t.contains("kind=validation"), "{t}");
+    let notices = host(&s).notices().list();
+    assert_eq!(notices.len(), 1, "{notices:?}");
+    assert!(
+        notices[0]
+            .text
+            .starts_with("Could not save that change. Validation failed"),
+        "{}",
+        notices[0].text
+    );
+    assert_eq!(r.title().as_deref(), Some("A"));
+}
+
+#[test]
+fn read_only_refuses_without_calling_the_executor() {
+    let Some(r) = rig("e11-readonly") else { return };
+    let spec = button(invoke(
+        "record.update",
+        json!(["CollectionBlock", r.id, { "title": "B" }]),
+    ));
+    let (mut s, _wake) = session(&r, Access::ReadOnly, spec);
+    click(&mut s);
+    std::thread::sleep(Duration::from_millis(500));
+    s.poll();
+    assert_eq!(r.title().as_deref(), Some("A"), "unchanged");
+    let notices = host(&s).notices().list();
+    assert!(
+        notices.iter().any(|n| n.text.contains("read-only")),
+        "{notices:?}"
+    );
+    assert!(text(&mut s).contains("ok=false"));
+}
+
+#[test]
+fn a_delete_waits_for_the_answer() {
+    let Some(r) = rig("e11-delete") else { return };
+    let spec = button(invoke("record.delete", json!(["CollectionBlock", r.id])));
+    let (mut s, wake) = session(&r, Access::Write, spec);
+    click(&mut s);
+    let c = host(&s).pending_confirm().expect("asks first");
+    assert_eq!(c.title, "Delete this CollectionBlock?");
+    std::thread::sleep(Duration::from_millis(500));
+    assert!(r.title().is_some(), "not removed before the answer");
+
+    s.host_mut_as::<WriteHost>().unwrap().answer_confirm(false);
+    wait_for(&mut s, &wake, "kind=cancelled", Duration::from_secs(5));
+    assert!(host(&s).pending_confirm().is_none());
+    assert!(r.title().is_some(), "cancel keeps it");
+    assert!(
+        host(&s).notices().list().is_empty(),
+        "a cancel says nothing"
+    );
+
+    click(&mut s);
+    assert!(host(&s).pending_confirm().is_some());
+    s.host_mut_as::<WriteHost>().unwrap().answer_confirm(true);
+    let took = wait_for(&mut s, &wake, "ok=true", Duration::from_secs(5));
+    eprintln!("record.delete settled in {took:?}");
+    assert!(r.title().is_none(), "removed");
+}
+
+#[test]
+fn create_signal_type_writes_one_signal_type() {
+    let Some(r) = rig("e11-signal-type") else {
+        return;
+    };
+    kit::add_class(&r.rt, &r.conn, &r.uuid, "SignalType", kit::SIGNAL_TYPE_SDNA);
+    let fresh = json!({
+        "name": "Upvote", "slug": "", "description": "", "icon": "❤️", "iconSecondary": "",
+        "mode": "toggle", "rangeMin": 0, "rangeMax": 1, "step": 1
+    });
+    let spec = button(invoke("spaceStore.createSignalType", json!([fresh])));
+    let (mut s, wake) = session(&r, Access::Write, spec);
+    click(&mut s);
+    let took = wait_for(&mut s, &wake, "ok=true", Duration::from_secs(5));
+    eprintln!("createSignalType settled in {took:?}");
+    let rows = kit::query_rows(&r.rt, &r.conn, &r.uuid, "SignalType");
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    let row = &rows[0];
+    assert_eq!(row["name"], "Upvote", "{row}");
+    assert_eq!(row["slug"], "upvote", "{row}");
+    assert_eq!(row["mode"], "toggle", "{row}");
+    assert_eq!(row["aggregate"], "count", "{row}");
+    assert_eq!(row["rangeMin"], 0, "{row}");
+    assert_eq!(row["rangeMax"], 1, "{row}");
+}

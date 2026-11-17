@@ -6,6 +6,9 @@
 //!   created anywhere reaches the resolved tree without polling.
 //! - [`Ad4mExecutor`] is [`we_data::Executor`] over the same socket: reads,
 //!   and writes through the validated write RPC (`perspective.instance*`).
+//! - [`WriteHost`] runs a connected window's `$invoke`s: the store map's
+//!   `modelWrite` rows (`data/storemap-writes.json`) become validated
+//!   writes; everything else is dropped and logged, as offline.
 //! - [`connect::ConnectFlow`] runs `ad4m-connect` for the connect screen;
 //!   [`list_spaces`] lists what the picker offers.
 //! - [`live::LiveMembers`] serves the store map's `modelRead` rows (M2)
@@ -35,6 +38,8 @@ mod spaces;
 pub mod testkit;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod translate;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod write_host;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use connection::{Connection, Runtime};
@@ -46,3 +51,5 @@ pub use relations::Relations;
 pub use source::{Ad4mQuerySource, SourceStats, SpaceBinding};
 #[cfg(not(target_arch = "wasm32"))]
 pub use spaces::{list_spaces, SpaceRow};
+#[cfg(not(target_arch = "wasm32"))]
+pub use write_host::{Access, Notice, Notices, PendingConfirm, WriteHost};
