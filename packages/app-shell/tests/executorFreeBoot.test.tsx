@@ -1571,6 +1571,34 @@ describe('following a space from the rows its live queries push', () => {
     reads.mockRestore();
   }, 10000);
 
+  it('takes the task-state order from the space record it follows, reading the space no more for it', async () => {
+    /*
+      A recorded cold open read the open space's record a fourth time, `include: { taskStates }`, for
+      the order of its states — a record the live query had just delivered. The live query carries
+      the order now, so neither opening the space nor a reorder reads the record for it.
+    */
+    let spaceReads: ReturnType<typeof vi.spyOn> | undefined;
+    const { stores, handle } = await openSpace('Pushed Order', () => {
+      spaceReads = vi.spyOn(getEntity('Space') as unknown as { findOne: (...a: unknown[]) => unknown }, 'findOne');
+    });
+    for (const slug of ['todo', 'doing', 'done'])
+      await getEntity('TaskState').create(handle, { name: slug, slug, semantic: slug } as never);
+    await vi.waitFor(() => expect(stores.spaces.taskStates().length).toBeGreaterThanOrEqual(3));
+    const orderReads = () =>
+      spaceReads!.mock.calls.filter((call: unknown[]) =>
+        Boolean((call[1] as { include?: { taskStates?: unknown } } | undefined)?.include?.taskStates),
+      );
+    const slugs = stores.spaces.taskStates().map((s) => s.slug);
+    expect(slugs.length).toBeGreaterThan(1);
+    expect(orderReads()).toEqual([]);
+
+    const reversed = [...slugs].reverse();
+    await stores.spaces.reorderTaskStates(reversed);
+    await vi.waitFor(() => expect(stores.spaces.taskStates().map((s) => s.slug)).toEqual(reversed));
+    expect(orderReads()).toEqual([]);
+    spaceReads!.mockRestore();
+  }, 10000);
+
   it('hears a new role and a new grant without reading either again', async () => {
     const { stores, handle } = await openSpace('Pushed Roles');
     await vi.waitFor(() => expect(stores.spaces.roles().length).toBeGreaterThan(0));
@@ -1719,6 +1747,26 @@ describe('entering a space: its collection and its landmarks', () => {
     await vi.waitFor(() => expect(stores.spaces.landmarksLoaded()).toBe(true));
     expect(stores.spaces.landmarks().board).toBe(board.id);
     landmarks.spy.mockRestore();
+  }, 10000);
+
+  it('says the collection is not known yet until it has answered, so a template does not guess', async () => {
+    // A template compares the address with `root`; an empty `root` it cannot tell from "not read yet".
+    const { stores, ref } = await listedSpace('Root Gate');
+    const spaceRow = stores.spaces.mySpaces().find((s) => s.name === 'Root Gate') as unknown as { root?: unknown };
+    const carried = spaceRow.root;
+    spaceRow.root = undefined;
+    const spaceReads = hold('Space', 'findOne');
+
+    await stores.datasets.switchDataset(ref.id);
+    await vi.waitFor(() => expect(spaceReads.spy.mock.calls.some(isRootRead)).toBe(true));
+    expect(stores.spaces.root()).toBe('');
+    expect(stores.spaces.rootLoaded()).toBe(false);
+
+    spaceReads.release();
+    await vi.waitFor(() => expect(stores.spaces.rootLoaded()).toBe(true));
+    expect(stores.spaces.root()).not.toBe('');
+    spaceRow.root = carried;
+    spaceReads.spy.mockRestore();
   }, 10000);
 
   it('asks for the collection and the landmarks at once when it has to read the collection', async () => {

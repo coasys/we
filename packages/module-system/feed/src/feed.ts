@@ -87,8 +87,19 @@ export type FeedRow = FeedLine | FeedActivity;
 export type FeedFind = (entity: string, query: RecordQuery) => Promise<Row[]>;
 
 export interface FeedWindowOptions {
-  /** The space collection. */
+  /**
+   * The collection the window is of: the space collection, or one call's. A call holds every line
+   * said and typed in it, and no calls of its own, so the same read is that call's Feed.
+   */
   root: string;
+  /**
+   * Where what extraction found is kept, when that is not `root` — the space collection, for the
+   * Feed of one call. Then only what was extracted from `root` is drawn: the same groups the space's
+   * Feed draws for that call, read the same way and kept by their origin.
+   */
+  activityRoot?: string;
+  /** What an activity row calls `root` — "the space", or "this call". */
+  rootTitle?: string;
   /** How many rows the window holds. */
   shown: number;
   /** Anchored at the oldest end rather than the newest. */
@@ -228,6 +239,9 @@ export function markPending(rows: FeedRow[], pending: ReadonlySet<string>): Feed
   return moved ? marked : rows;
 }
 
+/** The fields the Feed reads of a call — for its title and its place in time. `id` always comes. */
+export const CALL_FIELDS = ['title', 'createdAt'];
+
 /**
  * One window of the Feed: the rows to draw, in the order the window grows (newest first from the
  * live end, oldest first from the start), and whether there is more beyond it.
@@ -238,6 +252,7 @@ export async function readFeedWindow(
 ): Promise<{ rows: FeedRow[]; hasMore: boolean }> {
   const { root, shown, fromStart } = options;
   if (!root) return { rows: [], hasMore: false };
+  const activityRoot = options.activityRoot || root;
   const order: 'asc' | 'desc' = fromStart ? 'asc' : 'desc';
   const before = (a: number, b: number) => (fromStart ? a < b : a > b);
   const page = (within: string): RecordQuery => ({
@@ -260,6 +275,9 @@ export async function readFeedWindow(
       where: { kind: 'call' },
       order: { createdAt: order },
       limit: CALL_WINDOW,
+      // What the window reads of a call: its id, its title and when it began. A whole call also
+      // carries the id of every line said in it — most of its weight, read for nothing here.
+      select: CALL_FIELDS,
     }),
     /*
       What extraction found, per kind. No `include`: a row carries `extractedFrom` as the source's
@@ -268,8 +286,14 @@ export async function readFeedWindow(
       in it: about 18 KB a row, near a megabyte a page, re-read on every refresh.
     */
     ...options.activityTypes.map((entity) =>
-      find(entity, { within: root, order: { createdAt: order }, limit: shown })
-        .then((rows) => rows.map((row) => ({ row, entity })))
+      find(entity, { within: activityRoot, order: { createdAt: order }, limit: shown })
+        // Of one call, only what was found in it — the rows the space's Feed groups under that call.
+        .then((rows) =>
+          (activityRoot === root ? rows : rows.filter((row) => idOf(row.extractedFrom) === root)).map((row) => ({
+            row,
+            entity,
+          })),
+        )
         /*
           One kind that cannot be read drops only its own rows. A class the space lists as an
           extraction target can be one this client cannot resolve, and the finds all landing in the
@@ -289,7 +313,7 @@ export async function readFeedWindow(
   };
   stop();
   const titles = new Map<string, string>(calls.map((call) => [text(call.id), text(call.title) || 'A call']));
-  titles.set(root, 'the space');
+  titles.set(root, options.rootTitle ?? 'the space');
 
   // A source that filled its page may hold more than it answered with.
   let filled = loose.length >= shown;

@@ -207,6 +207,12 @@ export interface DataBindingDeps {
 export interface BackendPortsContext {
   /** The authenticated agent's id, read lazily (undefined until the session is usable). */
   selfId: () => string | undefined;
+  /**
+   * Resolves once the host's first screen is up. Best-effort setup that nothing on that screen waits
+   * on — installing a language for later uploads — runs after it, so the first page has the backend
+   * to itself. Absent: such setup runs at once.
+   */
+  afterFirstScreen?: () => Promise<void>;
 }
 
 export interface BackendPorts {

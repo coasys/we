@@ -87,6 +87,15 @@ describe('the feed window', () => {
     expect(callPages()).toBe(1);
   });
 
+  it('reads the calls by the fields it draws of them, not whole calls', async () => {
+    const { find, asked } = store(rows);
+    await readFeedWindow(find, { root: ROOT, shown: 10, fromStart: false, activityTypes: [] });
+    // A whole call carries the id of every line said in it; the window draws its title and time.
+    const callList = asked.filter((a) => a.entity === 'CollectionBlock');
+    expect(callList).toHaveLength(1);
+    expect(callList[0].query.select).toEqual(['title', 'createdAt']);
+  });
+
   it('reads the same from the start, oldest first', async () => {
     const { find } = store(rows);
     const { rows: drawn } = await readFeedWindow(find, { root: ROOT, shown: 10, fromStart: true, activityTypes: [] });
@@ -303,6 +312,69 @@ describe('the feed window', () => {
         activityTypes: ['TaskBlock'],
       }),
     ).rejects.toThrow('executor unreachable');
+  });
+});
+
+describe('the feed of one call', () => {
+  /*
+    The same read with a call as its root: a call holds every line said and typed in it, and no calls
+    of its own. What extraction found is kept in the space, so it is read there and kept by origin.
+  */
+  const callRows: StoredRow[] = [
+    { entity: 'CollectionBlock', id: 'standup', in: ROOT, kind: 'call', title: 'Standup', createdAt: t(0) },
+    {
+      entity: 'TextBlock',
+      id: 's1',
+      in: 'standup',
+      text: 'said',
+      source: 'spoken',
+      author: 'did:ann',
+      createdAt: t(1),
+    },
+    {
+      entity: 'TextBlock',
+      id: 'm1',
+      in: 'standup',
+      text: 'typed',
+      source: 'typed',
+      author: 'did:ben',
+      createdAt: t(2),
+    },
+    { entity: 'TextBlock', id: 'b1', in: 'standup', text: 'a bot', author: 'did:bot', createdAt: t(3) },
+    // Typed into the space, outside the call: not this call's.
+    { entity: 'TextBlock', id: 'loose', in: ROOT, text: 'elsewhere', source: 'typed', createdAt: t(4) },
+    { entity: 'TaskBlock', id: 'k1', in: ROOT, title: 'Ship', createdAt: t(5), extractedFrom: 'standup' },
+    { entity: 'TaskBlock', id: 'k2', in: ROOT, title: 'Other', createdAt: t(5), extractedFrom: 'monday' },
+  ];
+
+  it('draws every line said and typed in the call, and nothing typed outside it', async () => {
+    const { find } = store(callRows);
+    const { rows: drawn } = await readFeedWindow(find, {
+      root: 'standup',
+      activityRoot: ROOT,
+      rootTitle: 'this call',
+      shown: 10,
+      fromStart: true,
+      activityTypes: [],
+    });
+    expect(drawn.map((r) => r.id)).toEqual(['s1', 'm1', 'b1']);
+    expect(drawn.every((r) => r.kind === 'line' && r.call === '')).toBe(true);
+  });
+
+  it('draws what was found in this call, read in the space, and not what another call found', async () => {
+    const { find, asked } = store(callRows);
+    const { rows: drawn } = await readFeedWindow(find, {
+      root: 'standup',
+      activityRoot: ROOT,
+      rootTitle: 'this call',
+      shown: 10,
+      fromStart: true,
+      activityTypes: ['TaskBlock'],
+    });
+    const activity = drawn.filter((r): r is FeedActivity => r.kind === 'activity');
+    expect(activity).toHaveLength(1);
+    expect(activity[0]).toMatchObject({ origin: 'standup', originTitle: 'this call', summary: '1 task' });
+    expect(asked.find((a) => a.entity === 'TaskBlock')?.query.within).toBe(ROOT);
   });
 });
 

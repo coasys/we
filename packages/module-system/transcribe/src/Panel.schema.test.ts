@@ -22,6 +22,7 @@ import {
 } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
+import { CALL_CONTROLS_ANCHOR, callControl } from './CallControl.schema';
 import { extractionActivity } from './ExtractionStatus.schema';
 import { transcribeModule } from './index';
 import {
@@ -94,12 +95,9 @@ describe('the module declaration', () => {
     const panels = transcribeModule.contributes?.panels ?? [];
     const surface = storeSurface(bareStore());
 
-    expect(panels.map((p) => p.name)).toEqual(['transcript', 'extraction', 'messages']);
+    expect(panels.map((p) => p.name)).toEqual(['transcript', 'extraction']);
     for (const p of panels) {
-      // Messages is opened from the call bar's button, which also counts what is unread — a rail
-      // button would be a second way in that shows neither.
-      if (p.name === 'messages') expect(p.icon).toBeUndefined();
-      else expect(p.icon).toBeTruthy();
+      expect(p.icon).toBeTruthy();
       expect(surface[p.open ?? '']?.kind).toBe('state');
       expect(surface[p.show ?? '']?.kind).toBe('action');
       expect(surface[p.close ?? '']?.kind).toBe('action');
@@ -108,6 +106,21 @@ describe('the module declaration', () => {
     expect(surface[panels[1].busyWhen ?? '']?.kind).toBe('state');
     // And no launchers of its own: a panel's rail button is derived from the panel.
     expect(transcribeModule.contributes?.launchers).toBeUndefined();
+  });
+
+  it('puts one control in the call bar, the record button, and no second way into the call’s messages', () => {
+    /*
+      A call's messages are the Feed's, scoped to the call — read and written on the call's page and
+      in the Feed itself. A button of its own in the call bar would be a second, different surface
+      for the same lines.
+    */
+    const inBar = (transcribeModule.contributes?.slots ?? []).filter((s) => s.anchor === CALL_CONTROLS_ANCHOR);
+    expect(inBar.map((s) => s.node)).toEqual([callControl]);
+    expect(Object.keys(transcribeModule.contributes?.parts ?? {})).not.toContain('callMessages');
+    const surface = storeSurface(bareStore());
+    for (const gone of ['messagesOpen', 'openMessages', 'closeMessages', 'toggleMessages', 'unreadMessages']) {
+      expect(surface[gone], gone).toBeUndefined();
+    }
   });
 
   it('marks every member its own fragments name, so a placed part can still read it', () => {
