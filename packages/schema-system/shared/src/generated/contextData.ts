@@ -90,6 +90,7 @@ export const contextData: ContextData = {
         { name: 'loading', type: 'boolean', optional: false, default: 'false' },
         { name: 'gradient', type: 'boolean', optional: false, default: 'false' },
         { name: 'square', type: 'boolean', optional: false, default: 'false' },
+        { name: 'autofocus', type: 'boolean', optional: false, default: 'false' },
       ],
     },
     {
@@ -4583,6 +4584,7 @@ export const contextData: ContextData = {
           kind: 'state',
           doc: 'True only while actually transcribing — what a record button highlights on.',
         },
+        { name: 'liveCallRecords', kind: 'state', doc: 'The record of every call somebody is in right now.' },
         {
           name: 'liveCollectionId',
           kind: 'state',
