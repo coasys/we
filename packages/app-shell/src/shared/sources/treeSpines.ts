@@ -7,9 +7,10 @@
  *
  * The two halves come from different places — kinds are records a `$query` subscribes to, model
  * relations are a manifest — and an expression cannot concatenate two lists. Merging them here also
- * lets the value encoding live in one place: `rel:` prefixed so the layout's `spine` selector and
- * `arrangeOnTree` both read which kind of claim was picked off the same string, and a bare id stays
- * a connection kind, exactly as an address bar saved before this existed spells it.
+ * lets the value encoding live in one place: a picker value is a string (`rel:` prefixed for a model
+ * relation, a bare id for a connection kind, exactly as an address bar saved before this existed
+ * spells it), and {@link parseSpine} is the one codec that turns it into the typed {@link Spine} the
+ * layout's selector and `arrangeOnTree` read, so nothing compares the spelling again.
  *
  * ## What it decides
  *
@@ -19,7 +20,7 @@
  * - **The models are the merged manifest** — core entities, then the space's own shapes, then the
  *   foreign schemas it installed — the same precedence the graph's `models` answers, so a shape that
  *   shadows a core name picks the same relation the canvas follows.
- * - **"All model relations" is one choice**, spelled `rel:*`. It filters the tree to edges typed
+ * - **"All model relations" is one choice**, the `relation` spine with no class or property (picker value `rel:*`). It filters the tree to edges typed
  *   `relation` — the claims the models hold — where the empty choice ("Any connection") follows
  *   every line there is, relations and connections alike.
  */

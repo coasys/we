@@ -943,16 +943,15 @@ export function canvasSeed(): SeedSource {
         Children nobody placed — the pull half of `relations`.
 
         Round-wise, the way the entity expander walks a level: every card the last round produced
-        becomes a parent to check, in the two directions a child can arrive by —
-        what points at it through a forward to-one on the *child's* class (`Reply.replyTo`), and
-        what it lists through a to-many or `belongsTo` of its own (`Comment.responses`). The former
-        batches every parent of a type into one `where` read, the way the connections round batches
-        its ends; the latter drills per parent through `scope`, the only spelling of "the children
-        this relation names" that works on both backends — a `belongsToMany` is a getter on AD4M
-        and a foreign key stamped under the relation's own name in memory, and `scope` already
-        knows both. New answers are drawn as unplaced cards — the layout positions them — and become
-        the next round's parents, until a round produces nothing new or `max` is hit. `onCanvas`
-        doubles as the visited set, so a loop in the data terminates rather than walking forever.
+        becomes a parent to check, in the two directions a child can arrive by — what points at it
+        through a forward to-one on the *child's* class (`Reply.replyTo`), and what it lists through a
+        forward to-many of its own (`Meeting.items`). Both go through the shared relation reader,
+        which asks once per relation for every parent of a type at a time: the to-one as an inbound
+        read over the whole list of parents, the to-many as a forward `include` on the parents'
+        own rows. A reverse (`belongsTo`) is never read; the forward that writes the link is. New
+        answers are drawn as unplaced cards — the layout positions them — and become the next
+        round's parents, until a round produces nothing new or `max` is hit. `onCanvas` doubles as
+        the visited set, so a loop in the data terminates rather than walking forever.
       */
       if (pullChildren && onCanvas.size) {
         let frontier = [...onCanvas].map((id) => ({ id, type: typeOf.get(id)! }));

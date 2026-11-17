@@ -1983,7 +1983,7 @@ export function RecordStoreProvider(props: ParentProps) {
   async function arrangeOnRelationTree(
     canvas: string,
     handle: unknown,
-    spine: string,
+    spine: Spine,
     event: {
       recordId?: string;
       recordType?: string;
@@ -2021,7 +2021,7 @@ export function RecordStoreProvider(props: ParentProps) {
     const byName = (name: string) => followed.find((relation) => `${relation.holder}.${relation.name}` === name);
     const hungBy =
       event.edge?.type === 'relation' && typeof event.edge.data?.relation === 'string' ? event.edge.data.relation : '';
-    const named = hungBy || (spine !== '*' ? spine : '');
+    const named = hungBy || (spine.kind === 'relation' && spine.class ? `${spine.class}.${spine.prop}` : '');
     let relation = named ? byName(named) : undefined;
     /*
       The parent the tree drew the card under, when the edge it was dragged by is this relation's: a
@@ -2253,12 +2253,7 @@ export function RecordStoreProvider(props: ParentProps) {
         relation spine takes the spine's. Everything else is a connection somebody drew.
       */
       if (event.edge?.type === 'relation' || spine.kind === 'relation') {
-        await arrangeOnRelationTree(
-          canvas,
-          handle,
-          spine.kind === 'relation' && spine.class ? `${spine.class}.${spine.prop}` : '*',
-          event,
-        );
+        await arrangeOnRelationTree(canvas, handle, spine, event);
         return;
       }
       const links = await spineLinks(handle, relationshipTypeId);

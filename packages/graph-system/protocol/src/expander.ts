@@ -155,10 +155,6 @@ export interface ExpanderQuery {
 export type WatchQuery = Omit<ExpanderQuery, 'signal'>;
 
 /**
- * An entity type as the engine sees it — the neutral projection of whatever the backend calls a
- * schema. Enough to build a generic node from an instance nobody wrote code for.
- */
-/**
  * Whether the record holding a declared link is the tree's *child* — the one direction rule.
  *
  * A link is read from its forward declaration (a reverse is never followed; see
@@ -186,6 +182,10 @@ export function treeEnds(
   return heldByChild(relation) ? { parent: value, child: holder } : { parent: holder, child: value };
 }
 
+/**
+ * An entity type as the engine sees it — the neutral projection of whatever the backend calls a
+ * schema. Enough to build a generic node from an instance nobody wrote code for.
+ */
 export interface EntityShape {
   name: string;
   /** Scalar fields, in declaration order. */
