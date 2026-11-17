@@ -13,7 +13,7 @@ use serde_json::{json, Value};
 use zeroize::Zeroizing;
 
 /// The platform in production. `WE_PLATFORM_URL` replaces it (staging, a local platform).
-pub const DEFAULT_PLATFORM_URL: &str = "https://api.coasys.org";
+pub const DEFAULT_PLATFORM_URL: &str = "https://api.coasys.app";
 
 /// The environment variable that sets the platform's base URL.
 pub const PLATFORM_URL_VAR: &str = "WE_PLATFORM_URL";
@@ -58,7 +58,7 @@ struct Issued {
 }
 
 impl Platform {
-    /// The platform at `base` (`https://api.coasys.org`); a trailing `/` is removed.
+    /// The platform at `base` (`https://api.coasys.app`); a trailing `/` is removed.
     pub fn new(base: &str) -> Self {
         let http = reqwest::Client::builder()
             .timeout(TIMEOUT)
