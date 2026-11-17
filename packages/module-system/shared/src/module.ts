@@ -183,6 +183,13 @@ export interface PanelContribution {
   show?: string;
   /** A store key naming the action that closes it. Only with `open`. */
   close?: string;
+  /**
+   * A store key the host watches: a change while the panel is open asks for it to come forward —
+   * unhidden, unstowed, raised. An `open` flag cannot carry the ask: "still open" is no change.
+   * The call bumps a counter on every way back to the stage, which is why the value is
+   * `{@link ModuleStore.state}` rather than `action` — the ask is observed, not called.
+   */
+  reveal?: string;
   /** Ties break on module id, exactly as {@link SlotContribution.order} does. */
   order?: number;
 }

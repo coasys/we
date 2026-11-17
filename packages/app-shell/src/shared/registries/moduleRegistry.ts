@@ -132,6 +132,13 @@ export interface PanelControls {
   open: () => void;
   close: () => void;
   toggle: () => void;
+  /**
+   * The module's re-ask, if it declared `reveal`: read the store key reactively, and a changed
+   * value while `isOpen()` is the module asking for the panel to come forward. `undefined` for a
+   * panel with nothing to re-ask about — and a `reveal` key without `open` resolves the same way,
+   * since the host's own flag knows when it changed.
+   */
+  revealRequest?: () => unknown;
   /** `edge` / `size` / `float` / `aspect` / `min` as accessors — what `DockEntry.store` points at. */
   store: Record<string, unknown>;
 }
@@ -376,6 +383,9 @@ function panelPlumbing(
     open,
     close,
     toggle: () => (isOpen() ? close() : open()),
+    // The ask is a read, not a call: a flag that is already true has no event to fire, so the
+    // module re-asks by changing a value — a counter — and the host's watcher does the rest.
+    ...(panel.reveal ? { revealRequest: () => call(store, panel.reveal) } : {}),
     store: {
       // `null` while closed: a panel's visibility and its placement are one question, and the shell
       // reads this one key for both.
