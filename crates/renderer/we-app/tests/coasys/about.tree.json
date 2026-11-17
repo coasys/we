@@ -75,49 +75,58 @@
                           ]
                         },
                         {
-                          "type": "we-button",
+                          "type": "Column",
                           "props": {
-                            "variant": "ghost",
-                            "size": "lg",
-                            "width": "100%",
-                            "height": "auto",
-                            "ax": "start",
-                            "ay": "center",
-                            "gap": "200",
-                            "py": "300",
-                            "px": "calc((72px - 1px - 2rem) / 2 - var(--we-space-200))",
-                            "label": "AI chat",
-                            "bg": "",
-                            "color": "text-muted",
-                            "hoverProps": {
-                              "bg": "surface-hover",
-                              "color": "text"
-                            },
-                            "activeProps": {
-                              "bg": "surface-active",
-                              "color": "text"
-                            }
+                            "px": "200",
+                            "width": "100%"
                           },
-                          "on": [
-                            "onClick"
-                          ],
                           "children": [
                             {
-                              "type": "Row",
+                              "type": "we-button",
                               "props": {
-                                "width": "2rem",
-                                "height": "2rem",
-                                "ax": "center",
+                                "variant": "ghost",
+                                "size": "lg",
+                                "width": "100%",
+                                "height": "auto",
+                                "ax": "start",
                                 "ay": "center",
-                                "flexShrink": "0"
+                                "gap": "200",
+                                "py": "300",
+                                "px": "calc((72px - 1px - 2rem) / 2 - var(--we-space-200))",
+                                "label": "AI chat",
+                                "bg": "",
+                                "color": "text-muted",
+                                "hoverProps": {
+                                  "bg": "surface-hover",
+                                  "color": "text"
+                                },
+                                "activeProps": {
+                                  "bg": "surface-active",
+                                  "color": "text"
+                                }
                               },
+                              "on": [
+                                "onClick"
+                              ],
                               "children": [
                                 {
-                                  "type": "we-icon",
+                                  "type": "Row",
                                   "props": {
-                                    "name": "sparkle",
-                                    "size": "sm"
-                                  }
+                                    "width": "2rem",
+                                    "height": "2rem",
+                                    "ax": "center",
+                                    "ay": "center",
+                                    "flexShrink": "0"
+                                  },
+                                  "children": [
+                                    {
+                                      "type": "we-icon",
+                                      "props": {
+                                        "name": "sparkle",
+                                        "size": "sm"
+                                      }
+                                    }
+                                  ]
                                 }
                               ]
                             }
