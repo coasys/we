@@ -25,6 +25,7 @@ members = [
     "we-cli",
     "we-tui",
     "we-ad4m",
+    "we-app",
 ]
 
 [workspace.dependencies]

@@ -84,5 +84,7 @@ describe('the guest connector', () => {
       await createGuestConnector('https://node.example.org').initialize({} as never);
     }
     expect(created.options.map((o) => o.operator)).toEqual([false, false]);
-  });
+    // The first `import('./guestConnector')` transforms its whole module graph cold, which on a CI
+    // runner can pass vitest's 5 s default on its own.
+  }, 30_000);
 });

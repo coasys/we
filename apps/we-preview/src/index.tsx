@@ -20,7 +20,8 @@ import {
 import { RenderSchema } from '@we/schema-solid';
 import rootSeed from '@we/seed-file';
 import { datasetIdFor, type Fixture } from '@we/template-fixtures';
-import { render } from 'solid-js/web';
+import { type Component, createSignal, Show } from 'solid-js';
+import { Dynamic, render } from 'solid-js/web';
 
 import { bareNode, type ExternalTemplate } from './bare';
 import { inMemoryConnector, requestedFixture, startRoute, useExternalFixture } from './platform/inMemoryConnector';
@@ -149,6 +150,17 @@ const previewSeed: WeSeedFile = {
 const fixture = requestedFixture();
 const routeOverride = params.get('route');
 
+/*
+  `?record=1` mounts the recorder bridge — and only ever in a dev build. The dynamic import is
+  the point: `import.meta.env.DEV` folds away in a production bundle, so the bridge module —
+  `__weRecord`, `evaluateRaw`, `runQuery` and all — is not merely unmounted but absent from the
+  build entirely. See RecorderBridge.tsx.
+*/
+const [recordBridge, setRecordBridge] = createSignal<Component | null>(null);
+if (import.meta.env.DEV && params.get('record') === '1') {
+  void import('./RecorderBridge').then((module) => setRecordBridge(() => module.RecorderBridge));
+}
+
 /**
  * The root, composed rather than the packaged `<App/>`.
  *
@@ -189,6 +201,8 @@ if (bare) {
           <PreviewBootstrap datasetId={datasetIdFor(fixture)} route={startRoute(fixture)} />
           <TemplateProvider />
           <ToastContainer />
+          {/* `?record=1` — the recorder bridge, dev builds only, imported on demand. */}
+          <Show when={recordBridge()}>{(Bridge) => <Dynamic component={Bridge()} />}</Show>
         </StoreProvider>
       </PlatformProvider>
     ),

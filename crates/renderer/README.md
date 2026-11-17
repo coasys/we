@@ -34,7 +34,14 @@ we-style depends on we-expr only; we-ad4m depends on we-store.
 ```bash
 cargo run -p we-app -- --offline                 # bundle at ../../bundles/coasys.bundle.json
 cargo run -p we-app -- --offline --bundle PATH   # another bundle
+cargo run --release -p we-app -- --coasys people --theme glow   # the whole Coasys app at a recorded route
 ```
+
+`--coasys <route>` opens the full app at one of the ten routes recorded in
+`fixtures/coasys/snapshot.json` (`index`, `workflows`, `channels`,
+`channel-design`, `calls`, `call`, `people`, `dna`, `person`, `about`), set up
+the way `we-app/tests/coasys_shots.rs` sets up the frames it screenshots.
+`--theme` picks light, dark, black, retro, cyberpunk or glow.
 
 The window opens titled with the bundle's `name` (`Coasys`). `--offline` is the
 only mode for now — there is no executor yet, so a bundle parses but nothing

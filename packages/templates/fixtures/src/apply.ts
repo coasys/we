@@ -97,12 +97,32 @@ export async function applyFixture(deps: ApplyDeps, fixture: Fixture): Promise<A
   /** Per-kind counter, so a node with no title still gets a stable id from its position. */
   const counters = new Map<string, number>();
 
+  /*
+    A record's three stamps (`createdAt`, `timestamp`, `updatedAt`) all default to the moment of the
+    `create` call. A fixture that declares `createdAt` opts in to a deterministic epoch — every
+    write is stamped across all three from the node's/record's/type's own `createdAt`, else the
+    epoch — so two boots of the same fixture read byte-identical rows.
+
+    A fixture without one is written exactly as it always was: a node's own `createdAt` sets
+    `createdAt` and `timestamp` and nothing else — no `updatedAt`, no time inherited by signals
+    or carried records. The epoch is opt-in because the wider policy changes rows a fixture
+    never asked to change.
+  */
+  const epoch = fixture.createdAt;
+  const stamp = epoch
+    ? (at?: string) => {
+        const time = at ?? epoch;
+        return { createdAt: time, timestamp: time, updatedAt: time };
+      }
+    : (at?: string) => (at ? { createdAt: at, timestamp: at } : {});
+
   const space = await getEntity('Space').create(dataset, {
     id: `${fixture.id}-space`,
     uuid: datasetId,
     ...(deps.sharedId ? { url: deps.sharedId } : {}),
     name: fixture.space.name,
     description: fixture.space.description,
+    ...stamp(),
     ...(fixture.space.avatar ? { avatar: fixture.space.avatar } : {}),
     discovery: 'hidden',
     // What the space opens as. Without these the preview shows whichever template the *agent*
@@ -147,6 +167,7 @@ export async function applyFixture(deps: ApplyDeps, fixture: Fixture): Promise<A
       aggregate: 'count',
       allowChange: true,
       valueType: 'numeric',
+      ...stamp(type.createdAt),
     });
     signalTypeIds.set(type.slug, instance.id);
   }
@@ -175,7 +196,7 @@ export async function applyFixture(deps: ApplyDeps, fixture: Fixture): Promise<A
       // diary, and a feed where every row was written this instant sorts arbitrarily and reads
       // "just now" all the way down.
       ...(node.author ? { author: node.author } : {}),
-      ...(node.createdAt ? { createdAt: node.createdAt, timestamp: node.createdAt } : {}),
+      ...stamp(node.createdAt),
     });
 
     created.push({ id, kind: node.kind, ...(node.title ? { title: node.title } : {}) });
@@ -193,7 +214,7 @@ export async function applyFixture(deps: ApplyDeps, fixture: Fixture): Promise<A
         style: 'normal',
         text: paragraph,
         ...(node.author ? { author: node.author } : {}),
-        ...(node.createdAt ? { createdAt: node.createdAt, timestamp: node.createdAt } : {}),
+        ...stamp(node.createdAt),
       });
       await instance.addChildren?.(block);
     }
@@ -206,7 +227,7 @@ export async function applyFixture(deps: ApplyDeps, fixture: Fixture): Promise<A
         ...(image.width ? { width: image.width } : {}),
         ...(image.height ? { height: image.height } : {}),
         ...(node.author ? { author: node.author } : {}),
-        ...(node.createdAt ? { createdAt: node.createdAt, timestamp: node.createdAt } : {}),
+        ...stamp(node.createdAt),
       });
       await instance.addChildren?.(block);
     }
@@ -222,6 +243,9 @@ export async function applyFixture(deps: ApplyDeps, fixture: Fixture): Promise<A
           signalTypeId,
           value: 1,
           author: did,
+          // Parent-time signals are epoch policy: without an epoch a signal keeps the
+          // creation-time stamps it always had.
+          ...(epoch ? stamp(node.createdAt) : {}),
         });
         await instance.addSignals?.(value);
       }
@@ -274,6 +298,18 @@ async function writeCarried(
   getEntity: (name: string) => EntityClass,
 ): Promise<void> {
   const { dataset } = deps;
+  /*
+    Same opt-in as the caller's: a carried template, theme, shape or record gets the epoch's
+    three-field stamp only when the fixture declared `createdAt`. Without one the record's own
+    `createdAt` sets `createdAt`/`timestamp` and nothing else.
+  */
+  const epoch = fixture.createdAt;
+  const stamp = epoch
+    ? (at?: string) => {
+        const time = at ?? epoch;
+        return { createdAt: time, timestamp: time, updatedAt: time };
+      }
+    : (at?: string) => (at ? { createdAt: at, timestamp: at } : {});
 
   for (const template of fixture.templates ?? []) {
     const meta = template.meta as { name?: string; description?: string; icon?: string; role?: string };
@@ -287,6 +323,7 @@ async function writeCarried(
       slug: template.id,
       ...(meta.role ? { role: meta.role } : {}),
       schema: asFile(template),
+      ...stamp(),
     });
   }
 
@@ -300,6 +337,7 @@ async function writeCarried(
       version: 1,
       slug: id,
       overrides: asFile(JSON.stringify(overrides)),
+      ...stamp(),
     });
   }
 
@@ -321,6 +359,7 @@ async function writeCarried(
       shapeId,
       version: 1,
       definition: asFile(shape.manifest),
+      ...stamp(),
     });
     await deps.declareShape(shape.manifest, `shape/${shapeId}`);
   }
@@ -336,7 +375,10 @@ async function writeCarried(
       id: record.id,
       ...(record.fields ?? {}),
       ...(record.author ? { author: record.author } : {}),
-      ...(record.createdAt ? { createdAt: record.createdAt, timestamp: record.createdAt } : {}),
+      ...stamp(record.createdAt),
+      // An `updatedAt` the record's fields set explicitly is its truth — the stamp fills
+      // the field only when the record leaves it unset.
+      ...(record.fields?.updatedAt !== undefined ? { updatedAt: record.fields.updatedAt } : {}),
     });
     instances.set(record.id, instance as RecordInstance & Record<string, unknown>);
   }
