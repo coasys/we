@@ -125,7 +125,7 @@ describe('joining an identity on the phone', () => {
 
     const noHost = await transport.step({
       kind: 'offer',
-      link: 'https://id.coasys.org/o#coasys:offer:1:x',
+      link: 'https://coasys.id/o#coasys:offer:1:x',
       host: 'executor',
     });
     expect(noHost).toMatchObject({ screen: 'enter-offer', host: 'executor' });
@@ -134,7 +134,7 @@ describe('joining an identity on the phone', () => {
 
     const match = await transport.step({
       kind: 'offer',
-      link: 'https://id.coasys.org/o#coasys:offer:1:x',
+      link: 'https://coasys.id/o#coasys:offer:1:x',
       host: 'https://executor.example/',
     });
     expect(match).toEqual({
@@ -146,7 +146,7 @@ describe('joining an identity on the phone', () => {
       confirmed: false,
     });
     expect(calls.find(([m]) => m === 'join')?.[1]).toEqual({
-      link: 'https://id.coasys.org/o#coasys:offer:1:x',
+      link: 'https://coasys.id/o#coasys:offer:1:x',
       hint: 'Phone',
     });
     expect(kept).toEqual(['https://executor.example']);
