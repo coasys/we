@@ -126,11 +126,16 @@ describe('the Coasys cartridge', () => {
     panel's dock — so a press toggles and an open-but-hidden panel is brought forward, not closed.
   */
   it('opens the extraction panel from a call’s bar, the rail’s own way', () => {
-    const button = findNode(
-      { children: callBarAside("'call-1'") },
-      (n) => (n.props as { label?: string } | undefined)?.label === 'Extraction',
-    )!;
+    const aside = { children: callBarAside("'call-1'") };
+    const button = findNode(aside, (n) => (n.props as { label?: string } | undefined)?.label === 'Interpretation')!;
     expect(button).toBeDefined();
+    // "Interpretation" is the word the team agreed on; its tooltip says the same as its label.
+    const tooltip = findNode(
+      aside,
+      (n) => n.type === 'we-tooltip' && (n as { children?: unknown[] }).children?.[0] === button,
+    );
+    expect((tooltip?.props as { content?: unknown } | undefined)?.content).toBe('Interpretation');
+    expect(JSON.stringify(callBarAside("'call-1'"))).not.toContain('Extraction');
     expect(JSON.stringify(button.props)).toContain('spaceStore.launchModule');
     expect(JSON.stringify(button.props)).toContain('transcribe:extraction');
     // The panel's own glyph, and its state on the button.

@@ -294,16 +294,17 @@ const CALL_ID = 'routeStore.params.id';
 const MINE = `modules.call.callRecordId == ${CALL_ID}`;
 
 /**
- * The end of a call's bar: Live while it runs, the pass log, and the transcript to take away.
+ * The end of a call's bar: Live while it runs, the way to the interpretation panel, and the
+ * transcript to take away.
  *
  * The badge is `sm` so it stands the height of the Page / Canvas switch beside it rather than over
  * it. The export is offered whether the call is running or over, and to everyone: it reads the
  * shared record and writes to the reader's own device, so there is nobody else's account involved.
  *
- * Extraction's button does what its rail entry does in WE — `launchModule` on the panel's dock id,
- * so a press toggles it and an open-but-hidden one is brought forward rather than closed — because
- * this interface has no rail for it to live on. Without it the panel could not be got back after a
- * reload unless a pass happened to start.
+ * The Interpretation button does what the panel's rail entry does in WE — `launchModule` on the
+ * panel's dock id, so a press toggles it and an open-but-hidden one is brought forward rather than
+ * closed — because this interface has no rail for it to live on. The panel opens only by hand, so
+ * without it there would be no way to it at all.
  */
 export const callBarAside = (callId: string): SchemaNode[] => [
   {
@@ -315,7 +316,7 @@ export const callBarAside = (callId: string): SchemaNode[] => [
   },
   {
     type: 'we-tooltip',
-    props: { content: 'Extraction', placement: 'bottom' },
+    props: { content: 'Interpretation', placement: 'bottom' },
     children: [
       {
         type: 'we-button',
@@ -323,7 +324,7 @@ export const callBarAside = (callId: string): SchemaNode[] => [
           variant: 'ghost',
           size: 'md',
           square: true,
-          label: 'Extraction',
+          label: 'Interpretation',
           expanded: { $: 'modules.transcribe.extractionOpen' },
           onClick: { $invoke: 'spaceStore.launchModule', args: ['transcribe:extraction'] },
         },

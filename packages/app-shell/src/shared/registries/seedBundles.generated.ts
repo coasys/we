@@ -21063,7 +21063,7 @@ export const seedBundles: Bundle[] = [
                     },
                     {
                       type: 'we-tooltip',
-                      props: { content: 'Extraction', placement: 'bottom' },
+                      props: { content: 'Interpretation', placement: 'bottom' },
                       children: [
                         {
                           type: 'we-button',
@@ -21071,7 +21071,7 @@ export const seedBundles: Bundle[] = [
                             variant: 'ghost',
                             size: 'md',
                             square: true,
-                            label: 'Extraction',
+                            label: 'Interpretation',
                             expanded: { $: 'modules.transcribe.extractionOpen' },
                             onClick: { $invoke: 'spaceStore.launchModule', args: ['transcribe:extraction'] },
                           },

@@ -2206,7 +2206,7 @@ const coasysBar = (): Scenario => {
 };
 
 /**
- * A running call's bar: Live, the way to the extraction panel and the transcript export at its end,
+ * A running call's bar: Live, the way to the interpretation panel and the transcript export at its end,
  * beside Page and Canvas, in Glow.
  */
 const coasysCallBar = (): Scenario => {
