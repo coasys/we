@@ -1,0 +1,945 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "q.minimal",
+      "note": "resolveQueryProp: a $query object becomes a query descriptor",
+      "op": "query",
+      "query": {
+        "entity": "TaskBlock"
+      },
+      "descriptor": {
+        "entity": "TaskBlock",
+        "params": {},
+        "subscribe": true,
+        "dataset": {
+          "$undefined": true
+        }
+      }
+    },
+    {
+      "id": "q.where",
+      "note": "resolveQueryProp: a $query object becomes a query descriptor",
+      "op": "query",
+      "query": {
+        "entity": "TaskBlock",
+        "where": {
+          "state": "open"
+        }
+      },
+      "descriptor": {
+        "entity": "TaskBlock",
+        "params": {
+          "where": {
+            "state": "open"
+          }
+        },
+        "subscribe": true,
+        "dataset": {
+          "$undefined": true
+        }
+      }
+    },
+    {
+      "id": "q.order-limit",
+      "note": "resolveQueryProp: a $query object becomes a query descriptor",
+      "op": "query",
+      "query": {
+        "entity": "Post",
+        "order": {
+          "created": "desc"
+        },
+        "limit": 20
+      },
+      "descriptor": {
+        "entity": "Post",
+        "params": {
+          "order": {
+            "created": "desc"
+          },
+          "limit": 20
+        },
+        "subscribe": true,
+        "dataset": {
+          "$undefined": true
+        }
+      }
+    },
+    {
+      "id": "q.subscribe-false",
+      "note": "resolveQueryProp: a $query object becomes a query descriptor",
+      "op": "query",
+      "query": {
+        "entity": "Post",
+        "subscribe": false
+      },
+      "descriptor": {
+        "entity": "Post",
+        "params": {},
+        "subscribe": false,
+        "dataset": {
+          "$undefined": true
+        }
+      }
+    },
+    {
+      "id": "q.subscribe-true",
+      "note": "resolveQueryProp: a $query object becomes a query descriptor",
+      "op": "query",
+      "query": {
+        "entity": "Post",
+        "subscribe": true
+      },
+      "descriptor": {
+        "entity": "Post",
+        "params": {},
+        "subscribe": true,
+        "dataset": {
+          "$undefined": true
+        }
+      }
+    },
+    {
+      "id": "q.dataset",
+      "note": "resolveQueryProp: a $query object becomes a query descriptor",
+      "op": "query",
+      "query": {
+        "entity": "Post",
+        "dataset": "personal"
+      },
+      "descriptor": {
+        "entity": "Post",
+        "params": {},
+        "subscribe": true,
+        "dataset": "personal"
+      }
+    },
+    {
+      "id": "q.include",
+      "note": "resolveQueryProp: a $query object becomes a query descriptor",
+      "op": "query",
+      "query": {
+        "entity": "Post",
+        "include": {
+          "signals": true,
+          "author": {
+            "level": 2
+          }
+        }
+      },
+      "descriptor": {
+        "entity": "Post",
+        "params": {},
+        "subscribe": true,
+        "dataset": {
+          "$undefined": true
+        },
+        "include": {
+          "signals": true,
+          "author": {
+            "level": 2
+          }
+        }
+      }
+    },
+    {
+      "id": "q.when",
+      "note": "resolveQueryProp: a $query object becomes a query descriptor",
+      "op": "query",
+      "query": {
+        "entity": "Post",
+        "when": "local.ready"
+      },
+      "descriptor": {
+        "entity": "Post",
+        "params": {},
+        "subscribe": true,
+        "dataset": {
+          "$undefined": true
+        },
+        "when": "local.ready"
+      }
+    },
+    {
+      "id": "q.when-false",
+      "note": "resolveQueryProp: a $query object becomes a query descriptor",
+      "op": "query",
+      "query": {
+        "entity": "Post",
+        "when": false
+      },
+      "descriptor": {
+        "entity": "Post",
+        "params": {},
+        "subscribe": true,
+        "dataset": {
+          "$undefined": true
+        },
+        "when": false
+      }
+    },
+    {
+      "id": "q.scope",
+      "note": "resolveQueryProp: a $query object becomes a query descriptor",
+      "op": "query",
+      "query": {
+        "entity": "Comment",
+        "scope": {
+          "anchorId": "we://p/1",
+          "predicate": "comment"
+        }
+      },
+      "descriptor": {
+        "entity": "Comment",
+        "params": {
+          "scope": {
+            "anchorId": "we://p/1",
+            "predicate": "comment"
+          }
+        },
+        "subscribe": true,
+        "dataset": {
+          "$undefined": true
+        }
+      }
+    },
+    {
+      "id": "q.everything",
+      "note": "resolveQueryProp: a $query object becomes a query descriptor",
+      "op": "query",
+      "query": {
+        "entity": "TaskBlock",
+        "dataset": "space",
+        "subscribe": false,
+        "include": {
+          "signals": true
+        },
+        "when": "local.x",
+        "where": {
+          "state": "open"
+        },
+        "order": {
+          "name": "asc"
+        },
+        "limit": 5,
+        "offset": 10,
+        "select": ["id", "name"],
+        "custom": "kept"
+      },
+      "descriptor": {
+        "entity": "TaskBlock",
+        "params": {
+          "where": {
+            "state": "open"
+          },
+          "order": {
+            "name": "asc"
+          },
+          "limit": 5,
+          "offset": 10,
+          "select": ["id", "name"],
+          "custom": "kept"
+        },
+        "subscribe": false,
+        "dataset": "space",
+        "include": {
+          "signals": true
+        },
+        "when": "local.x"
+      }
+    },
+    {
+      "id": "q.where-in",
+      "note": "resolveQueryProp: a $query object becomes a query descriptor",
+      "op": "query",
+      "query": {
+        "entity": "E",
+        "where": {
+          "state": {
+            "in": ["open", "wip"]
+          }
+        }
+      },
+      "descriptor": {
+        "entity": "E",
+        "params": {
+          "where": {
+            "state": {
+              "in": ["open", "wip"]
+            }
+          }
+        },
+        "subscribe": true,
+        "dataset": {
+          "$undefined": true
+        }
+      }
+    },
+    {
+      "id": "q.expr-entity",
+      "note": "resolveQueryProp: a $query object becomes a query descriptor",
+      "op": "query",
+      "query": {
+        "entity": {
+          "$": "local.entity"
+        }
+      },
+      "descriptor": {
+        "entity": {
+          "$": "local.entity"
+        },
+        "params": {},
+        "subscribe": true,
+        "dataset": {
+          "$undefined": true
+        }
+      }
+    },
+    {
+      "id": "q.where-ops",
+      "note": "resolveQueryProp: a $query object becomes a query descriptor",
+      "op": "query",
+      "query": {
+        "entity": "E",
+        "where": {
+          "a": {
+            "not": "x"
+          },
+          "b": {
+            "contains": "y"
+          }
+        }
+      },
+      "descriptor": {
+        "entity": "E",
+        "params": {
+          "where": {
+            "a": {
+              "not": "x"
+            },
+            "b": {
+              "contains": "y"
+            }
+          }
+        },
+        "subscribe": true,
+        "dataset": {
+          "$undefined": true
+        }
+      }
+    },
+    {
+      "id": "q.empty",
+      "note": "resolveQueryProp: a $query object becomes a query descriptor",
+      "op": "query",
+      "query": {},
+      "descriptor": {
+        "entity": {
+          "$undefined": true
+        },
+        "params": {},
+        "subscribe": true,
+        "dataset": {
+          "$undefined": true
+        }
+      }
+    },
+    {
+      "id": "w.clean",
+      "note": "pruneUnresolvedWhere: unresolved holes widen, they never narrow",
+      "op": "where",
+      "where": {
+        "state": "open"
+      },
+      "pruned": {
+        "state": "open"
+      }
+    },
+    {
+      "id": "w.undefined-field",
+      "note": "pruneUnresolvedWhere: unresolved holes widen, they never narrow",
+      "op": "where",
+      "where": {
+        "state": "open",
+        "author": {
+          "$undefined": true
+        }
+      },
+      "pruned": {
+        "state": "open"
+      }
+    },
+    {
+      "id": "w.all-undefined",
+      "note": "pruneUnresolvedWhere: unresolved holes widen, they never narrow",
+      "op": "where",
+      "where": {
+        "a": {
+          "$undefined": true
+        },
+        "b": {
+          "$undefined": true
+        }
+      },
+      "pruned": {
+        "$undefined": true
+      }
+    },
+    {
+      "id": "w.empty",
+      "note": "pruneUnresolvedWhere: unresolved holes widen, they never narrow",
+      "op": "where",
+      "where": {},
+      "pruned": {
+        "$undefined": true
+      }
+    },
+    {
+      "id": "w.null-stays",
+      "note": "pruneUnresolvedWhere: unresolved holes widen, they never narrow",
+      "op": "where",
+      "where": {
+        "parent": null
+      },
+      "pruned": {
+        "parent": null
+      }
+    },
+    {
+      "id": "w.empty-string-stays",
+      "note": "pruneUnresolvedWhere: unresolved holes widen, they never narrow",
+      "op": "where",
+      "where": {
+        "text": ""
+      },
+      "pruned": {
+        "text": ""
+      }
+    },
+    {
+      "id": "w.false-stays",
+      "note": "pruneUnresolvedWhere: unresolved holes widen, they never narrow",
+      "op": "where",
+      "where": {
+        "retired": false
+      },
+      "pruned": {
+        "retired": false
+      }
+    },
+    {
+      "id": "w.zero-stays",
+      "note": "pruneUnresolvedWhere: unresolved holes widen, they never narrow",
+      "op": "where",
+      "where": {
+        "level": 0
+      },
+      "pruned": {
+        "level": 0
+      }
+    },
+    {
+      "id": "w.list-operand",
+      "note": "pruneUnresolvedWhere: unresolved holes widen, they never narrow",
+      "op": "where",
+      "where": {
+        "author": {
+          "not": ["did:a", "did:b"]
+        }
+      },
+      "pruned": {
+        "author": {
+          "not": ["did:a", "did:b"]
+        }
+      }
+    },
+    {
+      "id": "w.in",
+      "note": "pruneUnresolvedWhere: unresolved holes widen, they never narrow",
+      "op": "where",
+      "where": {
+        "state": {
+          "in": ["open", "wip"]
+        }
+      },
+      "pruned": {
+        "state": {
+          "in": ["open", "wip"]
+        }
+      }
+    },
+    {
+      "id": "w.in-undefined",
+      "note": "pruneUnresolvedWhere: unresolved holes widen, they never narrow",
+      "op": "where",
+      "where": {
+        "state": {
+          "in": {
+            "$undefined": true
+          }
+        }
+      },
+      "pruned": {
+        "$undefined": true
+      }
+    },
+    {
+      "id": "w.not-empty-list",
+      "note": "pruneUnresolvedWhere: unresolved holes widen, they never narrow",
+      "op": "where",
+      "where": {
+        "author": {
+          "not": []
+        },
+        "state": "open"
+      },
+      "pruned": {
+        "state": "open"
+      }
+    },
+    {
+      "id": "w.not-only-empty-list",
+      "note": "pruneUnresolvedWhere: unresolved holes widen, they never narrow",
+      "op": "where",
+      "where": {
+        "author": {
+          "not": []
+        }
+      },
+      "pruned": {
+        "$undefined": true
+      }
+    },
+    {
+      "id": "w.op-object",
+      "note": "pruneUnresolvedWhere: unresolved holes widen, they never narrow",
+      "op": "where",
+      "where": {
+        "name": {
+          "contains": "x",
+          "startsWith": "a"
+        }
+      },
+      "pruned": {
+        "name": {
+          "contains": "x",
+          "startsWith": "a"
+        }
+      }
+    },
+    {
+      "id": "w.op-undefined-operand",
+      "note": "pruneUnresolvedWhere: unresolved holes widen, they never narrow",
+      "op": "where",
+      "where": {
+        "name": {
+          "contains": {
+            "$undefined": true
+          },
+          "startsWith": "a"
+        }
+      },
+      "pruned": {
+        "name": {
+          "startsWith": "a"
+        }
+      }
+    },
+    {
+      "id": "w.op-all-undefined",
+      "note": "pruneUnresolvedWhere: unresolved holes widen, they never narrow",
+      "op": "where",
+      "where": {
+        "name": {
+          "contains": {
+            "$undefined": true
+          }
+        }
+      },
+      "pruned": {
+        "$undefined": true
+      }
+    },
+    {
+      "id": "w.exists-false",
+      "note": "pruneUnresolvedWhere: unresolved holes widen, they never narrow",
+      "op": "where",
+      "where": {
+        "tags": {
+          "exists": false
+        }
+      },
+      "pruned": {
+        "tags": {
+          "exists": false
+        }
+      }
+    },
+    {
+      "id": "w.range",
+      "note": "pruneUnresolvedWhere: unresolved holes widen, they never narrow",
+      "op": "where",
+      "where": {
+        "seats": {
+          "gt": 5,
+          "lte": 20
+        }
+      },
+      "pruned": {
+        "seats": {
+          "gt": 5,
+          "lte": 20
+        }
+      }
+    },
+    {
+      "id": "w.or-clean",
+      "note": "pruneUnresolvedWhere: unresolved holes widen, they never narrow",
+      "op": "where",
+      "where": {
+        "OR": [
+          {
+            "name": "Bob"
+          },
+          {
+            "name": "Anna"
+          }
+        ]
+      },
+      "pruned": {
+        "OR": [
+          {
+            "name": "Bob"
+          },
+          {
+            "name": "Anna"
+          }
+        ]
+      }
+    },
+    {
+      "id": "w.or-pruned-branch",
+      "note": "pruneUnresolvedWhere: unresolved holes widen, they never narrow",
+      "op": "where",
+      "where": {
+        "OR": [
+          {
+            "name": "Bob"
+          },
+          {
+            "name": {
+              "$undefined": true
+            }
+          }
+        ],
+        "state": "x"
+      },
+      "pruned": {
+        "OR": [
+          {
+            "name": "Bob"
+          }
+        ],
+        "state": "x"
+      }
+    },
+    {
+      "id": "w.or-all-pruned",
+      "note": "pruneUnresolvedWhere: unresolved holes widen, they never narrow",
+      "op": "where",
+      "where": {
+        "OR": [
+          {
+            "a": {
+              "$undefined": true
+            }
+          },
+          {
+            "b": {
+              "$undefined": true
+            }
+          }
+        ]
+      },
+      "pruned": {
+        "$undefined": true
+      }
+    },
+    {
+      "id": "w.or-non-branch",
+      "note": "pruneUnresolvedWhere: unresolved holes widen, they never narrow",
+      "op": "where",
+      "where": {
+        "OR": [
+          {
+            "a": 1
+          },
+          "stray",
+          {
+            "b": 2
+          }
+        ]
+      },
+      "pruned": {
+        "OR": [
+          {
+            "a": 1
+          },
+          {
+            "b": 2
+          }
+        ]
+      }
+    },
+    {
+      "id": "w.and-mixed",
+      "note": "pruneUnresolvedWhere: unresolved holes widen, they never narrow",
+      "op": "where",
+      "where": {
+        "AND": [
+          {
+            "a": {
+              "$undefined": true
+            },
+            "b": 1
+          },
+          {
+            "c": {
+              "$undefined": true
+            }
+          }
+        ]
+      },
+      "pruned": {
+        "AND": [
+          {
+            "b": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "w.not-clause",
+      "note": "pruneUnresolvedWhere: unresolved holes widen, they never narrow",
+      "op": "where",
+      "where": {
+        "NOT": {
+          "state": "done"
+        }
+      },
+      "pruned": {
+        "NOT": {
+          "state": "done"
+        }
+      }
+    },
+    {
+      "id": "w.not-pruned",
+      "note": "pruneUnresolvedWhere: unresolved holes widen, they never narrow",
+      "op": "where",
+      "where": {
+        "NOT": {
+          "state": {
+            "$undefined": true
+          }
+        }
+      },
+      "pruned": {
+        "$undefined": true
+      }
+    },
+    {
+      "id": "w.not-nonobject",
+      "note": "pruneUnresolvedWhere: unresolved holes widen, they never narrow",
+      "op": "where",
+      "where": {
+        "NOT": "x"
+      },
+      "pruned": {
+        "$undefined": true
+      }
+    },
+    {
+      "id": "w.nested-logic",
+      "note": "pruneUnresolvedWhere: unresolved holes widen, they never narrow",
+      "op": "where",
+      "where": {
+        "OR": [
+          {
+            "AND": [
+              {
+                "a": 1
+              },
+              {
+                "b": {
+                  "$undefined": true
+                }
+              }
+            ]
+          },
+          {
+            "NOT": {
+              "c": {
+                "$undefined": true
+              }
+            }
+          }
+        ],
+        "keep": true
+      },
+      "pruned": {
+        "OR": [
+          {
+            "AND": [
+              {
+                "a": 1
+              }
+            ]
+          }
+        ],
+        "keep": true
+      }
+    },
+    {
+      "id": "w.field-list",
+      "note": "pruneUnresolvedWhere: unresolved holes widen, they never narrow",
+      "op": "where",
+      "where": {
+        "tags": ["a", "b"]
+      },
+      "pruned": {
+        "tags": ["a", "b"]
+      }
+    },
+    {
+      "id": "w.date-range",
+      "note": "pruneUnresolvedWhere: unresolved holes widen, they never narrow",
+      "op": "where",
+      "where": {
+        "startDate": {
+          "gte": "2026-09-15",
+          "lt": "2026-10-01"
+        }
+      },
+      "pruned": {
+        "startDate": {
+          "gte": "2026-09-15",
+          "lt": "2026-10-01"
+        }
+      }
+    },
+    {
+      "id": "w.mixed",
+      "note": "pruneUnresolvedWhere: unresolved holes widen, they never narrow",
+      "op": "where",
+      "where": {
+        "a": {
+          "$undefined": true
+        },
+        "b": {
+          "not": []
+        },
+        "c": null,
+        "d": "",
+        "e": {
+          "contains": "x"
+        }
+      },
+      "pruned": {
+        "c": null,
+        "d": "",
+        "e": {
+          "contains": "x"
+        }
+      }
+    },
+    {
+      "id": "s.string",
+      "note": "scopeIsAnchored: absent/empty anchor widens; an empty anchor list is still anchored",
+      "op": "scope",
+      "scope": {
+        "anchorId": "we://p/1"
+      },
+      "anchored": true
+    },
+    {
+      "id": "s.empty-string",
+      "note": "scopeIsAnchored: absent/empty anchor widens; an empty anchor list is still anchored",
+      "op": "scope",
+      "scope": {
+        "anchorId": ""
+      },
+      "anchored": false
+    },
+    {
+      "id": "s.null",
+      "note": "scopeIsAnchored: absent/empty anchor widens; an empty anchor list is still anchored",
+      "op": "scope",
+      "scope": {
+        "anchorId": null
+      },
+      "anchored": false
+    },
+    {
+      "id": "s.undefined",
+      "note": "scopeIsAnchored: absent/empty anchor widens; an empty anchor list is still anchored",
+      "op": "scope",
+      "scope": {
+        "anchorId": {
+          "$undefined": true
+        }
+      },
+      "anchored": false
+    },
+    {
+      "id": "s.absent",
+      "note": "scopeIsAnchored: absent/empty anchor widens; an empty anchor list is still anchored",
+      "op": "scope",
+      "scope": {
+        "predicate": "comment"
+      },
+      "anchored": false
+    },
+    {
+      "id": "s.empty-list",
+      "note": "scopeIsAnchored: absent/empty anchor widens; an empty anchor list is still anchored",
+      "op": "scope",
+      "scope": {
+        "anchorId": []
+      },
+      "anchored": true
+    },
+    {
+      "id": "s.list",
+      "note": "scopeIsAnchored: absent/empty anchor widens; an empty anchor list is still anchored",
+      "op": "scope",
+      "scope": {
+        "anchorId": ["a", "b"]
+      },
+      "anchored": true
+    },
+    {
+      "id": "s.nonobject",
+      "note": "scopeIsAnchored: absent/empty anchor widens; an empty anchor list is still anchored",
+      "op": "scope",
+      "scope": "anchor",
+      "anchored": false
+    },
+    {
+      "id": "s.null-scope",
+      "note": "scopeIsAnchored: absent/empty anchor widens; an empty anchor list is still anchored",
+      "op": "scope",
+      "scope": null,
+      "anchored": false
+    },
+    {
+      "id": "s.zero-anchor",
+      "note": "scopeIsAnchored: absent/empty anchor widens; an empty anchor list is still anchored",
+      "op": "scope",
+      "scope": {
+        "anchorId": 0
+      },
+      "anchored": true
+    }
+  ]
+}

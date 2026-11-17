@@ -1,0 +1,4677 @@
+{
+  "version": 1,
+  "envs": {
+    "stock": {
+      "stores": {
+        "spaceStore": {
+          "members": [
+            {
+              "id": "did:a",
+              "role": "admin",
+              "name": "Ada"
+            },
+            {
+              "id": "did:b",
+              "role": "member",
+              "name": "Bram"
+            }
+          ],
+          "policy": "member",
+          "root": "space://root",
+          "taskStates": [
+            {
+              "id": "st:1",
+              "name": "Open"
+            }
+          ],
+          "mutedDids": [],
+          "offeredInvolvementTypes": [
+            {
+              "id": "it:1",
+              "semantic": "assignee"
+            }
+          ],
+          "currentSpace": {
+            "id": "sp:1",
+            "name": "Coasys"
+          }
+        },
+        "recordStore": {
+          "creatableEntities": [
+            {
+              "value": "NoteBlock",
+              "label": "Note",
+              "via": "composer",
+              "group": "This space",
+              "description": "a note",
+              "icon": "note"
+            },
+            {
+              "value": "TaskBlock",
+              "label": "Task",
+              "via": "space",
+              "group": "This space",
+              "description": "a task",
+              "icon": "task"
+            }
+          ],
+          "displays": {
+            "TaskBlock": {
+              "title": "name",
+              "label": "Task",
+              "icon": "task"
+            }
+          }
+        },
+        "routeStore": {
+          "params": {
+            "view": "canvas",
+            "id": "we://a-call",
+            "cardType": "SignalType",
+            "card": "sig:1",
+            "channel": "ch:1"
+          },
+          "templateSegments": ["channels"]
+        },
+        "workflowStore": {
+          "startable": [
+            {
+              "name": "review",
+              "label": "Review",
+              "entities": ["TaskBlock"]
+            }
+          ],
+          "recordWorkflows": {
+            "row:1": [
+              {
+                "workflow": "review"
+              }
+            ]
+          },
+          "open": {
+            "$undefined": true
+          }
+        },
+        "modules": {
+          "transcribe": {
+            "changedIds": ["row:1"],
+            "pendingProposals": [
+              {
+                "id": "row:1",
+                "fields": [
+                  {
+                    "name": "text",
+                    "value": "x"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "datasetStore": {
+          "currentDatasetCid": "we://ds"
+        },
+        "$me": {
+          "did": "did:me"
+        }
+      },
+      "local": {
+        "search": "ta",
+        "typeSearch": "",
+        "changesOpen": false,
+        "link": [
+          {
+            "source": "we://s",
+            "sourceType": "TaskBlock",
+            "target": "we://t",
+            "targetType": "TextBlock"
+          }
+        ],
+        "voices": "did:a=50",
+        "monthOffset": 2
+      },
+      "context": {
+        "arg": {
+          "detail": {
+            "key": "Enter"
+          },
+          "value": "x",
+          "id": "r:1",
+          "kind": "assignee"
+        },
+        "event": {
+          "detail": "e:1"
+        },
+        "item": {
+          "role": "admin",
+          "id": "we://another",
+          "n": 2,
+          "ok": false
+        },
+        "row": {
+          "id": "row:1",
+          "name": "Row",
+          "signals": []
+        },
+        "post": {
+          "title": "Hello",
+          "done": false,
+          "count": 3,
+          "tags": ["a"]
+        },
+        "sig": {
+          "id": "sig:1",
+          "aggregate": "sum"
+        },
+        "voice": {
+          "did": "did:a",
+          "weight": 50
+        },
+        "items": [
+          {
+            "n": 1,
+            "ok": true
+          },
+          {
+            "n": 2,
+            "ok": false
+          }
+        ],
+        "rows": [
+          {
+            "kids": [1, 2]
+          },
+          {
+            "kids": []
+          },
+          {
+            "kids": [3]
+          }
+        ],
+        "x": "outer",
+        "nothing": {
+          "$undefined": true
+        },
+        "missing": {
+          "$undefined": true
+        },
+        "list": ["a", "x", "b"]
+      }
+    },
+    "callback": {
+      "stores": {
+        "$me": {
+          "did": "did:me"
+        },
+        "$clock": {
+          "$thunk": "tick:tock"
+        },
+        "$item": {
+          "role": "global-shadowed"
+        },
+        "counter": {
+          "value": 7,
+          "fn": {
+            "$thunk": "unreachable"
+          }
+        }
+      },
+      "local": {
+        "page": 2,
+        "dirty": false
+      },
+      "context": {
+        "event": {
+          "id": "ev:9",
+          "detail": {
+            "key": "Enter"
+          },
+          "save": {
+            "$callable": "save"
+          },
+          "tick": {
+            "$accessor": "sig:1"
+          }
+        },
+        "result": {
+          "id": "res:1",
+          "done": {
+            "$callable": "done"
+          }
+        },
+        "$item": {
+          "role": "skipped"
+        },
+        "item": {
+          "role": "visible"
+        }
+      }
+    },
+    "keyed": {
+      "stores": {
+        "store": {
+          "byId": {
+            "$namespace": {
+              "we://a-call": {
+                "targets": ["we://a-call"],
+                "canExtract": true
+              },
+              "we://another": {
+                "targets": ["we://another"],
+                "canExtract": true
+              },
+              "empty": {
+                "targets": ["empty"],
+                "canExtract": false
+              }
+            }
+          }
+        }
+      },
+      "context": {
+        "item": {
+          "id": "we://another"
+        }
+      }
+    },
+    "where": {
+      "context": {
+        "items": [
+          {
+            "name": "Anna",
+            "tags": ["a"]
+          },
+          {
+            "name": "Bob"
+          }
+        ],
+        "events": [
+          {
+            "id": "a",
+            "startDate": "2026-09-14",
+            "seats": 4
+          },
+          {
+            "id": "b",
+            "startDate": "2026-09-30T18:00",
+            "seats": "12"
+          },
+          {
+            "id": "c",
+            "startDate": "2026-10-02",
+            "seats": 20
+          }
+        ]
+      }
+    },
+    "distinct": {
+      "context": {
+        "found": [
+          {
+            "__subjectClass": "TaskBlock"
+          },
+          {
+            "__subjectClass": "EventBlock"
+          },
+          {
+            "__subjectClass": "TaskBlock"
+          }
+        ],
+        "placements": [
+          {
+            "nodeType": "NoteBlock"
+          },
+          {
+            "nodeType": "EventBlock"
+          }
+        ],
+        "a": [
+          {
+            "id": 1,
+            "v": "x"
+          }
+        ],
+        "b": [
+          {
+            "id": 1,
+            "v": "y"
+          },
+          {
+            "id": 2,
+            "v": "z"
+          }
+        ],
+        "nothing": {
+          "$undefined": true
+        }
+      }
+    }
+  },
+  "cases": [
+    {
+      "id": "print.member-eq",
+      "note": "the printer: parse(source) → printExpression reproduces this string",
+      "source": "a.b == 'x'",
+      "result": false,
+      "print": "a.b == 'x'"
+    },
+    {
+      "id": "print.precedence",
+      "note": "the printer: parse(source) → printExpression reproduces this string",
+      "source": "!a || b && c",
+      "result": true,
+      "print": "!a || b && c"
+    },
+    {
+      "id": "print.parens",
+      "note": "the printer: parse(source) → printExpression reproduces this string",
+      "source": "(a || b) && c",
+      "result": false,
+      "print": "(a || b) && c"
+    },
+    {
+      "id": "print.conditional-chain",
+      "note": "the printer: parse(source) → printExpression reproduces this string",
+      "source": "a ? b : c ? d : e",
+      "result": {
+        "$undefined": true
+      },
+      "print": "a ? b : c ? d : e"
+    },
+    {
+      "id": "print.conditional-binary",
+      "note": "the printer: parse(source) → printExpression reproduces this string",
+      "source": "(a ? b : c) == d",
+      "result": true,
+      "print": "(a ? b : c) == d"
+    },
+    {
+      "id": "print.sub-group",
+      "note": "the printer: parse(source) → printExpression reproduces this string",
+      "source": "a - (b - c)",
+      "result": 0,
+      "print": "a - (b - c)"
+    },
+    {
+      "id": "print.sub-left",
+      "note": "the printer: parse(source) → printExpression reproduces this string",
+      "source": "a - b - c",
+      "result": 0,
+      "print": "a - b - c"
+    },
+    {
+      "id": "print.unary-arith",
+      "note": "the printer: parse(source) → printExpression reproduces this string",
+      "source": "-a * 2 + 1",
+      "result": 1,
+      "print": "-a * 2 + 1"
+    },
+    {
+      "id": "print.call-in",
+      "note": "the printer: parse(source) → printExpression reproduces this string",
+      "source": "count(items) > 0 && 'x' in list",
+      "result": false,
+      "print": "count(items) > 0 && 'x' in list"
+    },
+    {
+      "id": "print.macro-count",
+      "note": "the printer: parse(source) → printExpression reproduces this string",
+      "source": "items.filter(x, x.done).count()",
+      "result": 0,
+      "print": "items.filter(x, x.done).count()"
+    },
+    {
+      "id": "print.filter-where",
+      "note": "the printer: parse(source) → printExpression reproduces this string",
+      "source": "items.filter({ role: 'admin' }, 2)",
+      "result": [],
+      "print": "items.filter({ role: 'admin' }, 2)"
+    },
+    {
+      "id": "print.template",
+      "note": "the printer: parse(source) → printExpression reproduces this string",
+      "source": "`hi ${me.handle}!`",
+      "result": "hi !",
+      "print": "`hi ${me.handle}!`"
+    },
+    {
+      "id": "print.index-mixed",
+      "note": "the printer: parse(source) → printExpression reproduces this string",
+      "source": "a[0].b[\"c-d\"]",
+      "result": {
+        "$undefined": true
+      },
+      "print": "a[0].b['c-d']"
+    },
+    {
+      "id": "print.object",
+      "note": "the printer: parse(source) → printExpression reproduces this string",
+      "source": "{ 'a-b': 1, c: [1, 2] }",
+      "result": {
+        "a-b": 1,
+        "c": [1, 2]
+      },
+      "print": "{ 'a-b': 1, c: [1, 2] }"
+    },
+    {
+      "id": "print.nullish",
+      "note": "the printer: parse(source) → printExpression reproduces this string",
+      "source": "a ?? b",
+      "result": {
+        "$undefined": true
+      },
+      "print": "a ?? b"
+    },
+    {
+      "id": "print.neq-null",
+      "note": "the printer: parse(source) → printExpression reproduces this string",
+      "source": "local.x != null",
+      "result": true,
+      "print": "local.x != null"
+    },
+    {
+      "id": "eval.filter-count",
+      "note": "evaluation over the named env",
+      "source": "filter(spaceStore.members, { role: 'admin' }).count()",
+      "env": "stock",
+      "result": 1,
+      "print": "filter(spaceStore.members, { role: 'admin' }).count()"
+    },
+    {
+      "id": "eval.sum-map",
+      "note": "evaluation over the named env",
+      "source": "sum(rows.map(r, count(r.kids)))",
+      "env": "stock",
+      "result": 3,
+      "print": "sum(rows.map(r, count(r.kids)))"
+    },
+    {
+      "id": "eval.reverse-list",
+      "note": "evaluation over the named env",
+      "source": "reverse([1, 2, 3])",
+      "result": [3, 2, 1],
+      "print": "reverse([1, 2, 3])"
+    },
+    {
+      "id": "eval.reverse-rows",
+      "note": "evaluation over the named env",
+      "source": "reverse(rows)",
+      "env": "stock",
+      "result": [
+        {
+          "kids": [3]
+        },
+        {
+          "kids": []
+        },
+        {
+          "kids": [1, 2]
+        }
+      ],
+      "print": "reverse(rows)"
+    },
+    {
+      "id": "eval.reverse-nothing",
+      "note": "evaluation over the named env",
+      "source": "reverse(nothing)",
+      "env": "stock",
+      "result": [],
+      "print": "reverse(nothing)"
+    },
+    {
+      "id": "eval.reverse-string",
+      "note": "evaluation over the named env",
+      "source": "reverse('abc')",
+      "result": [],
+      "print": "reverse('abc')"
+    },
+    {
+      "id": "eval.count-gt",
+      "note": "evaluation over the named env",
+      "source": "spaceStore.members.count() > 1",
+      "env": "stock",
+      "result": true,
+      "print": "spaceStore.members.count() > 1"
+    },
+    {
+      "id": "eval.ns-fn-member",
+      "note": "evaluation over the named env",
+      "source": "spaceStore.logout",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "spaceStore.logout"
+    },
+    {
+      "id": "eval.ns-bare",
+      "note": "evaluation over the named env",
+      "source": "spaceStore",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "spaceStore"
+    },
+    {
+      "id": "eval.role-eq",
+      "note": "evaluation over the named env",
+      "source": "item.role == 'admin'",
+      "env": "stock",
+      "result": true,
+      "print": "item.role == 'admin'"
+    },
+    {
+      "id": "eval.index-ns",
+      "note": "evaluation over the named env",
+      "source": "store.byId['we://a-call'].targets",
+      "env": "keyed",
+      "result": ["we://a-call"],
+      "print": "store.byId['we://a-call'].targets"
+    },
+    {
+      "id": "eval.index-ns-flag",
+      "note": "evaluation over the named env",
+      "source": "store.byId['we://a-call'].canExtract",
+      "env": "keyed",
+      "result": true,
+      "print": "store.byId['we://a-call'].canExtract"
+    },
+    {
+      "id": "eval.index-computed",
+      "note": "evaluation over the named env",
+      "source": "store.byId[item.id].targets",
+      "env": "keyed",
+      "result": ["we://another"],
+      "print": "store.byId[item.id].targets"
+    },
+    {
+      "id": "eval.index-count",
+      "note": "evaluation over the named env",
+      "source": "count(store.byId['we://a-call'].targets)",
+      "env": "keyed",
+      "result": 1,
+      "print": "count(store.byId['we://a-call'].targets)"
+    },
+    {
+      "id": "eval.split",
+      "note": "evaluation over the named env",
+      "source": "split('ImageBlock, TextBlock')",
+      "result": ["ImageBlock", "TextBlock"],
+      "print": "split('ImageBlock, TextBlock')"
+    },
+    {
+      "id": "eval.split-empty",
+      "note": "evaluation over the named env",
+      "source": "split('')",
+      "result": [],
+      "print": "split('')"
+    },
+    {
+      "id": "eval.split-sep",
+      "note": "evaluation over the named env",
+      "source": "split('a|b', '|')",
+      "result": ["a", "b"],
+      "print": "split('a|b', '|')"
+    },
+    {
+      "id": "eval.join-split",
+      "note": "evaluation over the named env",
+      "source": "join(split('a,,b'), ',')",
+      "result": "a,b",
+      "print": "join(split('a,,b'), ',')"
+    },
+    {
+      "id": "eval.in-split",
+      "note": "evaluation over the named env",
+      "source": "'b' in split('a,b')",
+      "result": true,
+      "print": "'b' in split('a,b')"
+    },
+    {
+      "id": "eval.missing-deep",
+      "note": "evaluation over the named env",
+      "source": "missing.deep.path",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "missing.deep.path"
+    },
+    {
+      "id": "eval.div-zero",
+      "note": "evaluation over the named env",
+      "source": "1 / 0",
+      "result": 0,
+      "print": "1 / 0"
+    },
+    {
+      "id": "eval.concat-mixed",
+      "note": "evaluation over the named env",
+      "source": "'a' + 1",
+      "result": "a1",
+      "print": "'a' + 1"
+    },
+    {
+      "id": "eval.null-arith",
+      "note": "evaluation over the named env",
+      "source": "null + 1",
+      "result": 1,
+      "print": "null + 1"
+    },
+    {
+      "id": "eval.in-string",
+      "note": "evaluation over the named env",
+      "source": "'x' in 'xyz'",
+      "result": false,
+      "print": "'x' in 'xyz'"
+    },
+    {
+      "id": "eval.count-num",
+      "note": "evaluation over the named env",
+      "source": "count(5)",
+      "result": 0,
+      "print": "count(5)"
+    },
+    {
+      "id": "eval.sum-bad",
+      "note": "evaluation over the named env",
+      "source": "sum('nonsense')",
+      "result": 0,
+      "print": "sum('nonsense')"
+    },
+    {
+      "id": "eval.sum-mixed",
+      "note": "evaluation over the named env",
+      "source": "sum([1, \"two\", 3])",
+      "result": 4,
+      "print": "sum([1, 'two', 3])"
+    },
+    {
+      "id": "eval.macro-nonlist-filter",
+      "note": "evaluation over the named env",
+      "source": "nothing.filter(x, x)",
+      "env": "stock",
+      "result": [],
+      "print": "nothing.filter(x, x)"
+    },
+    {
+      "id": "eval.macro-nonlist-map",
+      "note": "evaluation over the named env",
+      "source": "nothing.map(x, x)",
+      "env": "stock",
+      "result": [],
+      "print": "nothing.map(x, x)"
+    },
+    {
+      "id": "eval.macro-nonlist-all",
+      "note": "evaluation over the named env",
+      "source": "nothing.all(x, x)",
+      "env": "stock",
+      "result": true,
+      "print": "nothing.all(x, x)"
+    },
+    {
+      "id": "eval.or-fallback",
+      "note": "evaluation over the named env",
+      "source": "'' || 'fallback'",
+      "result": true,
+      "print": "'' || 'fallback'"
+    },
+    {
+      "id": "eval.and",
+      "note": "evaluation over the named env",
+      "source": "'x' && 'y'",
+      "result": true,
+      "print": "'x' && 'y'"
+    },
+    {
+      "id": "eval.and-empty",
+      "note": "evaluation over the named env",
+      "source": "'' && 'y'",
+      "result": false,
+      "print": "'' && 'y'"
+    },
+    {
+      "id": "eval.nullish-empty",
+      "note": "evaluation over the named env",
+      "source": "'' ?? 'fallback'",
+      "result": "",
+      "print": "'' ?? 'fallback'"
+    },
+    {
+      "id": "eval.nullish-missing",
+      "note": "evaluation over the named env",
+      "source": "missing ?? 'fallback'",
+      "env": "stock",
+      "result": "fallback",
+      "print": "missing ?? 'fallback'"
+    },
+    {
+      "id": "eval.and-shortcircuit",
+      "note": "evaluation over the named env",
+      "source": "0 && missing.thing",
+      "env": "stock",
+      "result": false,
+      "print": "0 && missing.thing"
+    },
+    {
+      "id": "eval.template-count",
+      "note": "evaluation over the named env",
+      "source": "`${count(items)} ${plural(count(items), \"one\", \"many\")}`",
+      "env": "stock",
+      "result": "2 many",
+      "print": "`${count(items)} ${plural(count(items), 'one', 'many')}`"
+    },
+    {
+      "id": "eval.template-missing",
+      "note": "evaluation over the named env",
+      "source": "`${missing}`",
+      "env": "stock",
+      "result": "",
+      "print": "`${missing}`"
+    },
+    {
+      "id": "eval.macro-chain",
+      "note": "evaluation over the named env",
+      "source": "items.filter(x, x.ok).map(x, x.n)",
+      "env": "stock",
+      "result": [1],
+      "print": "items.filter(x, x.ok).map(x, x.n)"
+    },
+    {
+      "id": "eval.macro-scope",
+      "note": "evaluation over the named env",
+      "source": "items.map(y, x)",
+      "env": "stock",
+      "result": ["outer", "outer"],
+      "print": "items.map(y, x)"
+    },
+    {
+      "id": "eval.exists",
+      "note": "evaluation over the named env",
+      "source": "items.exists(x, x.n == 2)",
+      "env": "stock",
+      "result": true,
+      "print": "items.exists(x, x.n == 2)"
+    },
+    {
+      "id": "eval.find-member",
+      "note": "evaluation over the named env",
+      "source": "items.find(x, x.n == 2).n",
+      "env": "stock",
+      "result": 2,
+      "print": "items.find(x, x.n == 2).n"
+    },
+    {
+      "id": "eval.map-object",
+      "note": "evaluation over the named env",
+      "source": "{ a: 1 }.map(x, x.a)",
+      "result": 1,
+      "print": "{ a: 1 }.map(x, x.a)"
+    },
+    {
+      "id": "eval.distinct-kinds",
+      "note": "evaluation over the named env",
+      "source": "distinct(found.map(r, r.__subjectClass), placements.map(p, p.nodeType))",
+      "env": "distinct",
+      "result": ["TaskBlock", "EventBlock", "NoteBlock"],
+      "print": "distinct(found.map(r, r.__subjectClass), placements.map(p, p.nodeType))"
+    },
+    {
+      "id": "eval.distinct-records",
+      "note": "evaluation over the named env",
+      "source": "distinct(a, b).map(r, r.v)",
+      "env": "distinct",
+      "result": ["x", "z"],
+      "print": "distinct(a, b).map(r, r.v)"
+    },
+    {
+      "id": "eval.distinct-mixed",
+      "note": "evaluation over the named env",
+      "source": "distinct(nothing, [1, 1, 2])",
+      "env": "stock",
+      "result": [1, 2],
+      "print": "distinct(nothing, [1, 1, 2])"
+    },
+    {
+      "id": "eval.distinct-none",
+      "note": "evaluation over the named env",
+      "source": "distinct()",
+      "result": [],
+      "print": "distinct()"
+    },
+    {
+      "id": "eval.where-contains",
+      "note": "evaluation over the named env",
+      "source": "filter(items, { name: { contains: 'AN' } }).count()",
+      "env": "where",
+      "result": 1,
+      "print": "filter(items, { name: { contains: 'AN' } }).count()"
+    },
+    {
+      "id": "eval.where-or",
+      "note": "evaluation over the named env",
+      "source": "filter(items, { OR: [{ name: 'Bob' }, { name: 'Anna' }] }).count()",
+      "env": "where",
+      "result": 2,
+      "print": "filter(items, { OR: [{ name: 'Bob' }, { name: 'Anna' }] }).count()"
+    },
+    {
+      "id": "eval.where-exists",
+      "note": "evaluation over the named env",
+      "source": "find(items, { tags: { exists: false } }).name",
+      "env": "where",
+      "result": "Bob",
+      "print": "find(items, { tags: { exists: false } }).name"
+    },
+    {
+      "id": "eval.where-miss",
+      "note": "evaluation over the named env",
+      "source": "find(items, { name: 'Zed' }).name",
+      "env": "where",
+      "result": {
+        "$undefined": true
+      },
+      "print": "find(items, { name: 'Zed' }).name"
+    },
+    {
+      "id": "eval.where-range",
+      "note": "evaluation over the named env",
+      "source": "filter(events, { startDate: { gte: '2026-09-15', lt: '2026-10-01' } }).map(e, e.id)",
+      "env": "where",
+      "result": ["b"],
+      "print": "filter(events, { startDate: { gte: '2026-09-15', lt: '2026-10-01' } }).map(e, e.id)"
+    },
+    {
+      "id": "eval.where-numeric",
+      "note": "evaluation over the named env",
+      "source": "filter(events, { seats: { gt: 5 } }).map(e, e.id)",
+      "env": "where",
+      "result": ["c"],
+      "print": "filter(events, { seats: { gt: 5 } }).map(e, e.id)"
+    },
+    {
+      "id": "eval.host-source",
+      "note": "evaluation over the named env",
+      "source": "calendarMonth({ month: 8 })",
+      "result": [
+        {
+          "date": "1969-12-28",
+          "day": 28,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "1969-12-29",
+          "day": 29,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "1969-12-30",
+          "day": 30,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "1969-12-31",
+          "day": 31,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "1970-01-01",
+          "day": 1,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "1970-01-02",
+          "day": 2,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "1970-01-03",
+          "day": 3,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "1970-01-04",
+          "day": 4,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "1970-01-05",
+          "day": 5,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "1970-01-06",
+          "day": 6,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "1970-01-07",
+          "day": 7,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "1970-01-08",
+          "day": 8,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "1970-01-09",
+          "day": 9,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "1970-01-10",
+          "day": 10,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "1970-01-11",
+          "day": 11,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "1970-01-12",
+          "day": 12,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "1970-01-13",
+          "day": 13,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "1970-01-14",
+          "day": 14,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "1970-01-15",
+          "day": 15,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "1970-01-16",
+          "day": 16,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "1970-01-17",
+          "day": 17,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "1970-01-18",
+          "day": 18,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "1970-01-19",
+          "day": 19,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "1970-01-20",
+          "day": 20,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "1970-01-21",
+          "day": 21,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "1970-01-22",
+          "day": 22,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "1970-01-23",
+          "day": 23,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "1970-01-24",
+          "day": 24,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "1970-01-25",
+          "day": 25,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "1970-01-26",
+          "day": 26,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "1970-01-27",
+          "day": 27,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "1970-01-28",
+          "day": 28,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "1970-01-29",
+          "day": 29,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "1970-01-30",
+          "day": 30,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "1970-01-31",
+          "day": 31,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "1970-02-01",
+          "day": 1,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "1970-02-02",
+          "day": 2,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "1970-02-03",
+          "day": 3,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "1970-02-04",
+          "day": 4,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "1970-02-05",
+          "day": 5,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "1970-02-06",
+          "day": 6,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "1970-02-07",
+          "day": 7,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 6
+        }
+      ],
+      "print": "calendarMonth({ month: 8 })"
+    },
+    {
+      "id": "eval.host-source-month-iso",
+      "note": "evaluation over the named env",
+      "source": "calendarMonth({ month: '2025-08-15' })",
+      "result": [
+        {
+          "date": "2025-07-27",
+          "day": 27,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-07-28",
+          "day": 28,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-07-29",
+          "day": 29,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-07-30",
+          "day": 30,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-07-31",
+          "day": 31,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-08-01",
+          "day": 1,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-08-02",
+          "day": 2,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-08-03",
+          "day": 3,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-08-04",
+          "day": 4,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-08-05",
+          "day": 5,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-08-06",
+          "day": 6,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-08-07",
+          "day": 7,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-08-08",
+          "day": 8,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-08-09",
+          "day": 9,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-08-10",
+          "day": 10,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-08-11",
+          "day": 11,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-08-12",
+          "day": 12,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-08-13",
+          "day": 13,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-08-14",
+          "day": 14,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-08-15",
+          "day": 15,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-08-16",
+          "day": 16,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-08-17",
+          "day": 17,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-08-18",
+          "day": 18,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-08-19",
+          "day": 19,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-08-20",
+          "day": 20,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-08-21",
+          "day": 21,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-08-22",
+          "day": 22,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-08-23",
+          "day": 23,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-08-24",
+          "day": 24,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-08-25",
+          "day": 25,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-08-26",
+          "day": 26,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-08-27",
+          "day": 27,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-08-28",
+          "day": 28,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-08-29",
+          "day": 29,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-08-30",
+          "day": 30,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-08-31",
+          "day": 31,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-09-01",
+          "day": 1,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-09-02",
+          "day": 2,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-09-03",
+          "day": 3,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-09-04",
+          "day": 4,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-09-05",
+          "day": 5,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-09-06",
+          "day": 6,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 6
+        }
+      ],
+      "print": "calendarMonth({ month: '2025-08-15' })"
+    },
+    {
+      "id": "eval.host-source-month-noon",
+      "note": "evaluation over the named env",
+      "source": "calendarMonth({ month: '2025-08-01T12:00:00' })",
+      "result": [
+        {
+          "date": "2025-07-27",
+          "day": 27,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-07-28",
+          "day": 28,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-07-29",
+          "day": 29,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-07-30",
+          "day": 30,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-07-31",
+          "day": 31,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-08-01",
+          "day": 1,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-08-02",
+          "day": 2,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-08-03",
+          "day": 3,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-08-04",
+          "day": 4,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-08-05",
+          "day": 5,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-08-06",
+          "day": 6,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-08-07",
+          "day": 7,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-08-08",
+          "day": 8,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-08-09",
+          "day": 9,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-08-10",
+          "day": 10,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-08-11",
+          "day": 11,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-08-12",
+          "day": 12,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-08-13",
+          "day": 13,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-08-14",
+          "day": 14,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-08-15",
+          "day": 15,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-08-16",
+          "day": 16,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-08-17",
+          "day": 17,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-08-18",
+          "day": 18,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-08-19",
+          "day": 19,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-08-20",
+          "day": 20,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-08-21",
+          "day": 21,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-08-22",
+          "day": 22,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-08-23",
+          "day": 23,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-08-24",
+          "day": 24,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-08-25",
+          "day": 25,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-08-26",
+          "day": 26,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-08-27",
+          "day": 27,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-08-28",
+          "day": 28,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-08-29",
+          "day": 29,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-08-30",
+          "day": 30,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-08-31",
+          "day": 31,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-09-01",
+          "day": 1,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-09-02",
+          "day": 2,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-09-03",
+          "day": 3,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-09-04",
+          "day": 4,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-09-05",
+          "day": 5,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-09-06",
+          "day": 6,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 6
+        }
+      ],
+      "print": "calendarMonth({ month: '2025-08-01T12:00:00' })"
+    },
+    {
+      "id": "eval.host-source-month-offset",
+      "note": "evaluation over the named env",
+      "source": "calendarMonth({ month: '2025-08-15', offset: 3, weekStartsOn: 1 })",
+      "result": [
+        {
+          "date": "2025-10-27",
+          "day": 27,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-10-28",
+          "day": 28,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-10-29",
+          "day": 29,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-10-30",
+          "day": 30,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-10-31",
+          "day": 31,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-11-01",
+          "day": 1,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-11-02",
+          "day": 2,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-11-03",
+          "day": 3,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-11-04",
+          "day": 4,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-11-05",
+          "day": 5,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-11-06",
+          "day": 6,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-11-07",
+          "day": 7,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-11-08",
+          "day": 8,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-11-09",
+          "day": 9,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-11-10",
+          "day": 10,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-11-11",
+          "day": 11,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-11-12",
+          "day": 12,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-11-13",
+          "day": 13,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-11-14",
+          "day": 14,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-11-15",
+          "day": 15,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-11-16",
+          "day": 16,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-11-17",
+          "day": 17,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-11-18",
+          "day": 18,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-11-19",
+          "day": 19,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-11-20",
+          "day": 20,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-11-21",
+          "day": 21,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-11-22",
+          "day": 22,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-11-23",
+          "day": 23,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-11-24",
+          "day": 24,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-11-25",
+          "day": 25,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-11-26",
+          "day": 26,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-11-27",
+          "day": 27,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-11-28",
+          "day": 28,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-11-29",
+          "day": 29,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-11-30",
+          "day": 30,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-12-01",
+          "day": 1,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-12-02",
+          "day": 2,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-12-03",
+          "day": 3,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-12-04",
+          "day": 4,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-12-05",
+          "day": 5,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-12-06",
+          "day": 6,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-12-07",
+          "day": 7,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 0
+        }
+      ],
+      "print": "calendarMonth({ month: '2025-08-15', offset: 3, weekStartsOn: 1 })"
+    },
+    {
+      "id": "env.local-accessor",
+      "note": "a buildEnvironment root rule, under a callback context",
+      "source": "local.page + 1",
+      "env": "callback",
+      "result": 3,
+      "print": "local.page + 1"
+    },
+    {
+      "id": "env.local-undeclared",
+      "note": "a buildEnvironment root rule, under a callback context",
+      "source": "local.nope",
+      "env": "callback",
+      "result": {
+        "$undefined": true
+      },
+      "print": "local.nope"
+    },
+    {
+      "id": "env.callback-member",
+      "note": "a buildEnvironment root rule, under a callback context",
+      "source": "event.detail.key",
+      "env": "callback",
+      "result": "Enter",
+      "print": "event.detail.key"
+    },
+    {
+      "id": "env.callback-fn-read",
+      "note": "a buildEnvironment root rule, under a callback context",
+      "source": "event.save",
+      "env": "callback",
+      "result": {
+        "$callable": "bound"
+      },
+      "print": "event.save"
+    },
+    {
+      "id": "env.callback-accessor",
+      "note": "a buildEnvironment root rule, under a callback context",
+      "source": "event.tick",
+      "env": "callback",
+      "result": "sig:1",
+      "print": "event.tick"
+    },
+    {
+      "id": "env.callback-raw",
+      "note": "a buildEnvironment root rule, under a callback context",
+      "source": "event",
+      "env": "callback",
+      "result": {
+        "id": "ev:9",
+        "detail": {
+          "key": "Enter"
+        },
+        "save": {
+          "$callable": "save"
+        },
+        "tick": {
+          "$callable": "anonymous"
+        }
+      },
+      "print": "event"
+    },
+    {
+      "id": "env.arg-fallback",
+      "note": "a buildEnvironment root rule, under a callback context",
+      "source": "arg.id",
+      "env": "callback",
+      "result": "ev:9",
+      "print": "arg.id"
+    },
+    {
+      "id": "env.arg-direct",
+      "note": "a buildEnvironment root rule, under a callback context",
+      "source": "arg.id",
+      "env": "stock",
+      "result": "r:1",
+      "print": "arg.id"
+    },
+    {
+      "id": "env.result-root",
+      "note": "a buildEnvironment root rule, under a callback context",
+      "source": "result.id",
+      "env": "callback",
+      "result": "res:1",
+      "print": "result.id"
+    },
+    {
+      "id": "env.result-fn",
+      "note": "a buildEnvironment root rule, under a callback context",
+      "source": "result.done",
+      "env": "callback",
+      "result": {
+        "$callable": "bound"
+      },
+      "print": "result.done"
+    },
+    {
+      "id": "env.dollar-key-skipped",
+      "note": "a buildEnvironment root rule, under a callback context",
+      "source": "$item.role",
+      "env": "callback",
+      "result": "global-shadowed",
+      "print": "$item.role"
+    },
+    {
+      "id": "env.context-key",
+      "note": "a buildEnvironment root rule, under a callback context",
+      "source": "item.role",
+      "env": "callback",
+      "result": "visible",
+      "print": "item.role"
+    },
+    {
+      "id": "env.function-global",
+      "note": "a buildEnvironment root rule, under a callback context",
+      "source": "clock",
+      "env": "callback",
+      "result": "tick:tock",
+      "print": "clock"
+    },
+    {
+      "id": "env.object-global",
+      "note": "a buildEnvironment root rule, under a callback context",
+      "source": "me.did",
+      "env": "callback",
+      "result": "did:me",
+      "print": "me.did"
+    },
+    {
+      "id": "env.store-member",
+      "note": "a buildEnvironment root rule, under a callback context",
+      "source": "counter.value",
+      "env": "callback",
+      "result": 7,
+      "print": "counter.value"
+    },
+    {
+      "id": "env.store-fn-refused",
+      "note": "a buildEnvironment root rule, under a callback context",
+      "source": "counter.fn",
+      "env": "callback",
+      "result": {
+        "$undefined": true
+      },
+      "print": "counter.fn"
+    },
+    {
+      "id": "env.local-with-callback",
+      "note": "a buildEnvironment root rule, under a callback context",
+      "source": "local.dirty ? 'd' : event.id",
+      "env": "callback",
+      "result": "ev:9",
+      "print": "local.dirty ? 'd' : event.id"
+    },
+    {
+      "id": "op.mod",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "7 % 3",
+      "result": 1,
+      "print": "7 % 3"
+    },
+    {
+      "id": "op.mod-zero",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "7 % 0",
+      "result": 0,
+      "print": "7 % 0"
+    },
+    {
+      "id": "op.div",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "7 / 2",
+      "result": 3.5,
+      "print": "7 / 2"
+    },
+    {
+      "id": "op.div-zero",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "7 / 0",
+      "result": 0,
+      "print": "7 / 0"
+    },
+    {
+      "id": "op.div-zero-string",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "'x' / 0",
+      "result": 0,
+      "print": "'x' / 0"
+    },
+    {
+      "id": "op.mul",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "3 * 4",
+      "result": 12,
+      "print": "3 * 4"
+    },
+    {
+      "id": "op.mul-string",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "'3' * '4'",
+      "result": 12,
+      "print": "'3' * '4'"
+    },
+    {
+      "id": "op.sub",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "10 - 4",
+      "result": 6,
+      "print": "10 - 4"
+    },
+    {
+      "id": "op.sub-string",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "'10' - 4",
+      "result": 6,
+      "print": "'10' - 4"
+    },
+    {
+      "id": "op.add-nums",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "1 + 2",
+      "result": 3,
+      "print": "1 + 2"
+    },
+    {
+      "id": "op.add-strings",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "'a' + 'b'",
+      "result": "ab",
+      "print": "'a' + 'b'"
+    },
+    {
+      "id": "op.add-bool",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "true + 1",
+      "result": 2,
+      "print": "true + 1"
+    },
+    {
+      "id": "op.add-undef",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "missing + 1",
+      "env": "stock",
+      "result": 1,
+      "print": "missing + 1"
+    },
+    {
+      "id": "op.lt",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "1 < 2",
+      "result": true,
+      "print": "1 < 2"
+    },
+    {
+      "id": "op.lt-strings",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "'b' < 'a'",
+      "result": false,
+      "print": "'b' < 'a'"
+    },
+    {
+      "id": "op.lte",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "2 <= 2",
+      "result": true,
+      "print": "2 <= 2"
+    },
+    {
+      "id": "op.gt",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "3 > 2",
+      "result": true,
+      "print": "3 > 2"
+    },
+    {
+      "id": "op.gte",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "2 >= 3",
+      "result": false,
+      "print": "2 >= 3"
+    },
+    {
+      "id": "op.eq-null",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "null == null",
+      "result": true,
+      "print": "null == null"
+    },
+    {
+      "id": "op.eq-null-undef",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "null == missing",
+      "env": "stock",
+      "result": false,
+      "print": "null == missing"
+    },
+    {
+      "id": "op.eq-coerce",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "1 == '1'",
+      "result": false,
+      "print": "1 == '1'"
+    },
+    {
+      "id": "op.neq",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "1 != '1'",
+      "result": true,
+      "print": "1 != '1'"
+    },
+    {
+      "id": "op.neq-obj",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "{a:1} != {a:1}",
+      "result": true,
+      "print": "{ a: 1 } != { a: 1 }"
+    },
+    {
+      "id": "op.eq-obj",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "item == item",
+      "env": "stock",
+      "result": true,
+      "print": "item == item"
+    },
+    {
+      "id": "op.in-arr",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "'a' in ['a','b']",
+      "result": true,
+      "print": "'a' in ['a', 'b']"
+    },
+    {
+      "id": "op.in-obj",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "'a' in {a:1}",
+      "result": false,
+      "print": "'a' in { a: 1 }"
+    },
+    {
+      "id": "op.in-num",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "1 in [1,2]",
+      "result": true,
+      "print": "1 in [1, 2]"
+    },
+    {
+      "id": "op.in-undef",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "'a' in missing",
+      "env": "stock",
+      "result": false,
+      "print": "'a' in missing"
+    },
+    {
+      "id": "op.not",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "!false",
+      "result": true,
+      "print": "!false"
+    },
+    {
+      "id": "op.not-num",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "!0",
+      "result": true,
+      "print": "!0"
+    },
+    {
+      "id": "op.not-str",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "!''",
+      "result": true,
+      "print": "!''"
+    },
+    {
+      "id": "op.neg",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "-5",
+      "result": -5,
+      "print": "-5"
+    },
+    {
+      "id": "op.neg-str",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "-'3'",
+      "result": -3,
+      "print": "-'3'"
+    },
+    {
+      "id": "op.neg-undef",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "-missing",
+      "env": "stock",
+      "result": {
+        "$number": "-0"
+      },
+      "print": "-missing"
+    },
+    {
+      "id": "op.cond",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "true ? 1 : 2",
+      "result": 1,
+      "print": "true ? 1 : 2"
+    },
+    {
+      "id": "op.cond-false",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "false ? 1 : 2",
+      "result": 2,
+      "print": "false ? 1 : 2"
+    },
+    {
+      "id": "op.cond-nested",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "missing ? 1 : 0 ? 2 : 3",
+      "env": "stock",
+      "result": 3,
+      "print": "missing ? 1 : 0 ? 2 : 3"
+    },
+    {
+      "id": "op.template-parts",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "`a${1}b${'x'}c`",
+      "result": "a1bxc",
+      "print": "`a${1}b${'x'}c`"
+    },
+    {
+      "id": "op.template-list",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "`${[1,2]}`",
+      "result": "1,2",
+      "print": "`${[1, 2]}`"
+    },
+    {
+      "id": "op.template-bool",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "`${true}`",
+      "result": "true",
+      "print": "`${true}`"
+    },
+    {
+      "id": "op.list",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "[1, 'x', [2]]",
+      "result": [1, "x", [2]],
+      "print": "[1, 'x', [2]]"
+    },
+    {
+      "id": "op.object",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "{ a: 1, 'b c': [true] }",
+      "result": {
+        "a": 1,
+        "b c": [true]
+      },
+      "print": "{ a: 1, 'b c': [true] }"
+    },
+    {
+      "id": "op.index-num",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "[7,8,9][1]",
+      "result": 8,
+      "print": "[7, 8, 9][1]"
+    },
+    {
+      "id": "op.index-neg",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "[7,8,9][-1]",
+      "result": {
+        "$undefined": true
+      },
+      "print": "[7, 8, 9][-1]"
+    },
+    {
+      "id": "op.index-str",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "'abc'[1]",
+      "result": "b",
+      "print": "'abc'[1]"
+    },
+    {
+      "id": "op.index-str-key",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "{ 'x-y': 5 }['x-y']",
+      "result": 5,
+      "print": "{ 'x-y': 5 }['x-y']"
+    },
+    {
+      "id": "op.index-undef",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "missing[0]",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "missing[0]"
+    },
+    {
+      "id": "op.member-proto",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "a.__proto__",
+      "error": "syntax",
+      "message": "\"__proto__\" is not a readable property",
+      "span": [2, 11]
+    },
+    {
+      "id": "op.index-proto",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "a['constructor']",
+      "error": "syntax",
+      "message": "\"constructor\" is not a readable property",
+      "span": [2, 15]
+    },
+    {
+      "id": "op.object-proto",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "{ __proto__: 1 }",
+      "error": "syntax",
+      "message": "\"__proto__\" is not a readable property",
+      "span": [2, 11]
+    },
+    {
+      "id": "op.too-deep",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "(((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((a))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+      "error": "syntax",
+      "message": "Expression is nested too deeply",
+      "span": [20, 21]
+    },
+    {
+      "id": "op.member-str-length",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "'abc'.length",
+      "result": 3,
+      "print": "'abc'.length"
+    },
+    {
+      "id": "op.member-num",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "item.n.toString",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "item.n.toString"
+    },
+    {
+      "id": "op.member-deep-miss",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "item.a.b.c.d",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "item.a.b.c.d"
+    },
+    {
+      "id": "op.call-unknown",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "notAFunction(1)",
+      "result": {
+        "$undefined": true
+      },
+      "print": "notAFunction(1)"
+    },
+    {
+      "id": "op.call-receiver",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "first(list, {x:'a'}).count()",
+      "env": "stock",
+      "result": 0,
+      "print": "first(list, { x: 'a' }).count()"
+    },
+    {
+      "id": "op.macro-find-miss",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "items.find(x, x.n == 9)",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "items.find(x, x.n == 9)"
+    },
+    {
+      "id": "op.macro-exists-false",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "items.exists(x, x.n == 9)",
+      "env": "stock",
+      "result": false,
+      "print": "items.exists(x, x.n == 9)"
+    },
+    {
+      "id": "op.macro-nonlist-find",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "missing.find(x, x)",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "missing.find(x, x)"
+    },
+    {
+      "id": "op.macro-nonlist-exists",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "missing.exists(x, x)",
+      "env": "stock",
+      "result": false,
+      "print": "missing.exists(x, x)"
+    },
+    {
+      "id": "op.macro-map-num",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "(5).map(x, x)",
+      "result": [],
+      "print": "5.map(x, x)"
+    },
+    {
+      "id": "op.and-list",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "[1] && [2]",
+      "result": true,
+      "print": "[1] && [2]"
+    },
+    {
+      "id": "op.or-obj",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "{a:1} || false",
+      "result": true,
+      "print": "{ a: 1 } || false"
+    },
+    {
+      "id": "op.nullish-zero",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "0 ?? 9",
+      "result": 0,
+      "print": "0 ?? 9"
+    },
+    {
+      "id": "op.nullish-null",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "null ?? 9",
+      "result": 9,
+      "print": "null ?? 9"
+    },
+    {
+      "id": "op.nullish-false",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "false ?? 9",
+      "result": false,
+      "print": "false ?? 9"
+    },
+    {
+      "id": "op.eq-bool",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "true == true",
+      "result": true,
+      "print": "true == true"
+    },
+    {
+      "id": "op.eq-arr",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "[1] == [1]",
+      "result": false,
+      "print": "[1] == [1]"
+    },
+    {
+      "id": "op.mixed-chain",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "1 + 2 * 3 - 4 / 2 % 3",
+      "result": 5,
+      "print": "1 + 2 * 3 - 4 / 2 % 3"
+    },
+    {
+      "id": "op.parens-num",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "(1 + 2) * 3",
+      "result": 9,
+      "print": "(1 + 2) * 3"
+    },
+    {
+      "id": "op.not-eq",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "!('a' == 'a')",
+      "result": false,
+      "print": "!('a' == 'a')"
+    },
+    {
+      "id": "op.cond-cond",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "1 ? 2 ? 'a' : 'b' : 'c'",
+      "result": "a",
+      "print": "1 ? 2 ? 'a' : 'b' : 'c'"
+    },
+    {
+      "id": "op.big-or",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "false || false || 'x'",
+      "result": true,
+      "print": "false || false || 'x'"
+    },
+    {
+      "id": "op.big-and",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "true && 1 && 'x'",
+      "result": true,
+      "print": "true && 1 && 'x'"
+    },
+    {
+      "id": "bundle.000",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "count(distinct(['TaskBlock', 'EventBlock', 'ImageBlock', 'AudioBlock', 'VideoBlock', 'TextBlock', 'FileBlock', 'LocationBlock', 'LinkBlock', 'CodeBlock', 'TagBlock', 'CalloutBlock'], recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).map(k, k.value)).filter(n, recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).exists(k, k.value == n && k.via != 'composer' && k.group != 'This space')).map(n, find(recordStore.creatableEntities, { value: n })))",
+      "env": "stock",
+      "result": 0,
+      "print": "count(distinct(['TaskBlock', 'EventBlock', 'ImageBlock', 'AudioBlock', 'VideoBlock', 'TextBlock', 'FileBlock', 'LocationBlock', 'LinkBlock', 'CodeBlock', 'TagBlock', 'CalloutBlock'], recordStore.creatableEntities.filter(k, contains(k.via == 'composer' ? 'Note' : k.label, local.typeSearch) || contains(k.description, local.typeSearch)).map(k, k.value)).filter(n, recordStore.creatableEntities.filter(k, contains(k.via == 'composer' ? 'Note' : k.label, local.typeSearch) || contains(k.description, local.typeSearch)).exists(k, k.value == n && k.via != 'composer' && k.group != 'This space')).map(n, find(recordStore.creatableEntities, { value: n })))"
+    },
+    {
+      "id": "bundle.001",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "first(distinct(recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via == 'composer'), recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via != 'composer' && k.group == 'This space'), distinct(['TaskBlock', 'EventBlock', 'ImageBlock', 'AudioBlock', 'VideoBlock', 'TextBlock', 'FileBlock', 'LocationBlock', 'LinkBlock', 'CodeBlock', 'TagBlock', 'CalloutBlock'], recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).map(k, k.value)).filter(n, recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).exists(k, k.value == n && k.via != 'composer' && k.group != 'This space')).map(n, find(recordStore.creatableEntities, { value: n })))).value",
+      "env": "stock",
+      "result": "NoteBlock",
+      "print": "first(distinct(recordStore.creatableEntities.filter(k, contains(k.via == 'composer' ? 'Note' : k.label, local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via == 'composer'), recordStore.creatableEntities.filter(k, contains(k.via == 'composer' ? 'Note' : k.label, local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via != 'composer' && k.group == 'This space'), distinct(['TaskBlock', 'EventBlock', 'ImageBlock', 'AudioBlock', 'VideoBlock', 'TextBlock', 'FileBlock', 'LocationBlock', 'LinkBlock', 'CodeBlock', 'TagBlock', 'CalloutBlock'], recordStore.creatableEntities.filter(k, contains(k.via == 'composer' ? 'Note' : k.label, local.typeSearch) || contains(k.description, local.typeSearch)).map(k, k.value)).filter(n, recordStore.creatableEntities.filter(k, contains(k.via == 'composer' ? 'Note' : k.label, local.typeSearch) || contains(k.description, local.typeSearch)).exists(k, k.value == n && k.via != 'composer' && k.group != 'This space')).map(n, find(recordStore.creatableEntities, { value: n })))).value"
+    },
+    {
+      "id": "bundle.002",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "first(distinct(recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via == 'composer'), recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via != 'composer' && k.group == 'This space'), distinct(['TaskBlock', 'EventBlock', 'ImageBlock', 'AudioBlock', 'VideoBlock', 'TextBlock', 'FileBlock', 'LocationBlock', 'LinkBlock', 'CodeBlock', 'TagBlock', 'CalloutBlock'], recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).map(k, k.value)).filter(n, recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).exists(k, k.value == n && k.via != 'composer' && k.group != 'This space')).map(n, find(recordStore.creatableEntities, { value: n })))).via == 'composer'",
+      "env": "stock",
+      "result": true,
+      "print": "first(distinct(recordStore.creatableEntities.filter(k, contains(k.via == 'composer' ? 'Note' : k.label, local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via == 'composer'), recordStore.creatableEntities.filter(k, contains(k.via == 'composer' ? 'Note' : k.label, local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via != 'composer' && k.group == 'This space'), distinct(['TaskBlock', 'EventBlock', 'ImageBlock', 'AudioBlock', 'VideoBlock', 'TextBlock', 'FileBlock', 'LocationBlock', 'LinkBlock', 'CodeBlock', 'TagBlock', 'CalloutBlock'], recordStore.creatableEntities.filter(k, contains(k.via == 'composer' ? 'Note' : k.label, local.typeSearch) || contains(k.description, local.typeSearch)).map(k, k.value)).filter(n, recordStore.creatableEntities.filter(k, contains(k.via == 'composer' ? 'Note' : k.label, local.typeSearch) || contains(k.description, local.typeSearch)).exists(k, k.value == n && k.via != 'composer' && k.group != 'This space')).map(n, find(recordStore.creatableEntities, { value: n })))).via == 'composer'"
+    },
+    {
+      "id": "bundle.003",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "arg.detail.key == 'Enter' && count(distinct(recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via == 'composer'), recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via != 'composer' && k.group == 'This space'), distinct(['TaskBlock', 'EventBlock', 'ImageBlock', 'AudioBlock', 'VideoBlock', 'TextBlock', 'FileBlock', 'LocationBlock', 'LinkBlock', 'CodeBlock', 'TagBlock', 'CalloutBlock'], recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).map(k, k.value)).filter(n, recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).exists(k, k.value == n && k.via != 'composer' && k.group != 'This space')).map(n, find(recordStore.creatableEntities, { value: n }))))",
+      "env": "stock",
+      "result": true,
+      "print": "arg.detail.key == 'Enter' && count(distinct(recordStore.creatableEntities.filter(k, contains(k.via == 'composer' ? 'Note' : k.label, local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via == 'composer'), recordStore.creatableEntities.filter(k, contains(k.via == 'composer' ? 'Note' : k.label, local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via != 'composer' && k.group == 'This space'), distinct(['TaskBlock', 'EventBlock', 'ImageBlock', 'AudioBlock', 'VideoBlock', 'TextBlock', 'FileBlock', 'LocationBlock', 'LinkBlock', 'CodeBlock', 'TagBlock', 'CalloutBlock'], recordStore.creatableEntities.filter(k, contains(k.via == 'composer' ? 'Note' : k.label, local.typeSearch) || contains(k.description, local.typeSearch)).map(k, k.value)).filter(n, recordStore.creatableEntities.filter(k, contains(k.via == 'composer' ? 'Note' : k.label, local.typeSearch) || contains(k.description, local.typeSearch)).exists(k, k.value == n && k.via != 'composer' && k.group != 'This space')).map(n, find(recordStore.creatableEntities, { value: n }))))"
+    },
+    {
+      "id": "bundle.004",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "distinct(['TaskBlock', 'EventBlock', 'ImageBlock', 'AudioBlock', 'VideoBlock', 'TextBlock', 'FileBlock', 'LocationBlock', 'LinkBlock', 'CodeBlock', 'TagBlock', 'CalloutBlock'], recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).map(k, k.value)).filter(n, recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).exists(k, k.value == n && k.via != 'composer' && k.group != 'This space')).map(n, find(recordStore.creatableEntities, { value: n }))",
+      "env": "stock",
+      "result": [],
+      "print": "distinct(['TaskBlock', 'EventBlock', 'ImageBlock', 'AudioBlock', 'VideoBlock', 'TextBlock', 'FileBlock', 'LocationBlock', 'LinkBlock', 'CodeBlock', 'TagBlock', 'CalloutBlock'], recordStore.creatableEntities.filter(k, contains(k.via == 'composer' ? 'Note' : k.label, local.typeSearch) || contains(k.description, local.typeSearch)).map(k, k.value)).filter(n, recordStore.creatableEntities.filter(k, contains(k.via == 'composer' ? 'Note' : k.label, local.typeSearch) || contains(k.description, local.typeSearch)).exists(k, k.value == n && k.via != 'composer' && k.group != 'This space')).map(n, find(recordStore.creatableEntities, { value: n }))"
+    },
+    {
+      "id": "bundle.005",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "count(((row.id in modules.transcribe.changedIds) ? find(modules.transcribe.pendingProposals, { id: row.id }).fields.filter(f, ('' + row[f.name]) != f.value) : [])) <= 6 || local.changesOpen",
+      "env": "stock",
+      "result": true,
+      "print": "count(row.id in modules.transcribe.changedIds ? find(modules.transcribe.pendingProposals, { id: row.id }).fields.filter(f, '' + row[f.name] != f.value) : []) <= 6 || local.changesOpen"
+    },
+    {
+      "id": "bundle.006",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "workflowStore.startable.filter(f, (routeStore.params.cardType in f.entities || !count(f.entities)) && !(workflowStore.recordWorkflows[row.id] ?? []).exists(c, c.workflow == f.name)).map(f, { id: f.name, label: f.label })",
+      "env": "stock",
+      "result": [],
+      "print": "workflowStore.startable.filter(f, (routeStore.params.cardType in f.entities || !count(f.entities)) && !(workflowStore.recordWorkflows[row.id] ?? []).exists(c, c.workflow == f.name)).map(f, { id: f.name, label: f.label })"
+    },
+    {
+      "id": "bundle.007",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "`${count(((row.id in modules.transcribe.changedIds) ? find(modules.transcribe.pendingProposals, { id: row.id }).fields.filter(f, ('' + row[f.name]) != f.value) : []))} pending ${plural(count(((row.id in modules.transcribe.changedIds) ? find(modules.transcribe.pendingProposals, { id: row.id }).fields.filter(f, ('' + row[f.name]) != f.value) : [])), 'change', 'changes')}`",
+      "env": "stock",
+      "result": "1 pending change",
+      "print": "`${count(row.id in modules.transcribe.changedIds ? find(modules.transcribe.pendingProposals, { id: row.id }).fields.filter(f, '' + row[f.name] != f.value) : [])} pending ${plural(count(row.id in modules.transcribe.changedIds ? find(modules.transcribe.pendingProposals, { id: row.id }).fields.filter(f, '' + row[f.name] != f.value) : []), 'change', 'changes')}`"
+    },
+    {
+      "id": "bundle.008",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "count(((row.id in modules.transcribe.changedIds) ? find(modules.transcribe.pendingProposals, { id: row.id }).fields.filter(f, ('' + row[f.name]) != f.value) : [])) > 6",
+      "env": "stock",
+      "result": false,
+      "print": "count(row.id in modules.transcribe.changedIds ? find(modules.transcribe.pendingProposals, { id: row.id }).fields.filter(f, '' + row[f.name] != f.value) : []) > 6"
+    },
+    {
+      "id": "bundle.009",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "count(((row.id in modules.transcribe.changedIds) ? find(modules.transcribe.pendingProposals, { id: row.id }).fields.filter(f, ('' + row[f.name]) != f.value) : [])) > 1",
+      "env": "stock",
+      "result": false,
+      "print": "count(row.id in modules.transcribe.changedIds ? find(modules.transcribe.pendingProposals, { id: row.id }).fields.filter(f, '' + row[f.name] != f.value) : []) > 1"
+    },
+    {
+      "id": "bundle.010",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna ? (routeStore.params.dna == 'all' ? 'group|dna' : contains(routeStore.params.dna, '|') ? (startsWith(routeStore.params.dna, 'policy|') ? 'dnaprop|' : 'dna|') + routeStore.params.dna : 'dnakind|' + routeStore.params.dna) : routeStore.params.card && { SignalType: 'signal', RelationshipType: 'connection', TaskState: 'state', InvolvementType: 'involvement', Topic: 'topic' }[routeStore.params.cardType] ? 'dna|' + { SignalType: 'signal', RelationshipType: 'connection', TaskState: 'state', InvolvementType: 'involvement', Topic: 'topic' }[routeStore.params.cardType] + '|' + routeStore.params.card : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' ? 'call|' + routeStore.params.id : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? 'person|' + routeStore.params.did : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' ? (workflowStore.open ? 'workflow|' + workflowStore.open.name : 'group|workflows') : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') in ['channels', 'calls', 'people'] ? 'group|' + (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') : 'channel|' + (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)",
+      "env": "stock",
+      "result": "dna|signal|sig:1",
+      "print": "(routeStore.params.view == 'canvas' || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna ? routeStore.params.dna == 'all' ? 'group|dna' : contains(routeStore.params.dna, '|') ? (startsWith(routeStore.params.dna, 'policy|') ? 'dnaprop|' : 'dna|') + routeStore.params.dna : 'dnakind|' + routeStore.params.dna : routeStore.params.card && { SignalType: 'signal', RelationshipType: 'connection', TaskState: 'state', InvolvementType: 'involvement', Topic: 'topic' }[routeStore.params.cardType] ? 'dna|' + { SignalType: 'signal', RelationshipType: 'connection', TaskState: 'state', InvolvementType: 'involvement', Topic: 'topic' }[routeStore.params.cardType] + '|' + routeStore.params.card : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' ? 'call|' + routeStore.params.id : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? 'person|' + routeStore.params.did : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' ? workflowStore.open ? 'workflow|' + workflowStore.open.name : 'group|workflows' : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') in ['channels', 'calls', 'people'] ? 'group|' + (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') : 'channel|' + (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)"
+    },
+    {
+      "id": "bundle.011",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "count(((row.id in modules.transcribe.changedIds) ? find(modules.transcribe.pendingProposals, { id: row.id }).fields.filter(f, ('' + row[f.name]) != f.value) : []))",
+      "env": "stock",
+      "result": 1,
+      "print": "count(row.id in modules.transcribe.changedIds ? find(modules.transcribe.pendingProposals, { id: row.id }).fields.filter(f, '' + row[f.name] != f.value) : [])"
+    },
+    {
+      "id": "bundle.012",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "((routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description })) > 0) || split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'model'",
+      "env": "stock",
+      "result": true,
+      "print": "(routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description })) > 0 || split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[0] == 'model'"
+    },
+    {
+      "id": "bundle.013",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "count(local.link) ? [{ role: 'From', end: first(local.link).source, stored: first(local.link).sourceType }, { role: 'To', end: first(local.link).target, stored: first(local.link).targetType }].map(e, { role: e.role, end: e.end, type: (e.stored ? e.stored : e.end.__subjectClass) }).map(e, { role: e.role, id: e.end.id ?? e.end, type: e.type, name: (!e.end ? 'Removed' : e.end[recordStore.displays[e.type].title] ? e.end[recordStore.displays[e.type].title] : e.end.textContent ? e.end.textContent : (e.type == 'CollectionBlock' ? 'Note' : recordStore.displays[e.type].label ? recordStore.displays[e.type].label : e.type)), icon: (e.type == 'CollectionBlock' ? 'note' : recordStore.displays[e.type].icon) }) : []",
+      "env": "stock",
+      "result": [
+        {
+          "role": "From",
+          "id": "we://s",
+          "type": "TaskBlock",
+          "name": "Task",
+          "icon": "task"
+        },
+        {
+          "role": "To",
+          "id": "we://t",
+          "type": "TextBlock",
+          "name": "TextBlock",
+          "icon": {
+            "$undefined": true
+          }
+        }
+      ],
+      "print": "count(local.link) ? [{ role: 'From', end: first(local.link).source, stored: first(local.link).sourceType }, { role: 'To', end: first(local.link).target, stored: first(local.link).targetType }].map(e, { role: e.role, end: e.end, type: e.stored ? e.stored : e.end.__subjectClass }).map(e, { role: e.role, id: e.end.id ?? e.end, type: e.type, name: !e.end ? 'Removed' : e.end[recordStore.displays[e.type].title] ? e.end[recordStore.displays[e.type].title] : e.end.textContent ? e.end.textContent : e.type == 'CollectionBlock' ? 'Note' : recordStore.displays[e.type].label ? recordStore.displays[e.type].label : e.type, icon: e.type == 'CollectionBlock' ? 'note' : recordStore.displays[e.type].icon }) : []"
+    },
+    {
+      "id": "bundle.014",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "!((((routeStore.params.view == 'canvas') && routeStore.params.dna) && split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]) || (!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '')) != '') || (!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open)) || (!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '')) == ''))",
+      "env": "stock",
+      "result": false,
+      "print": "!(routeStore.params.view == 'canvas' && routeStore.params.dna && split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[1] || !(routeStore.params.view == 'canvas' && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : { calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '') != '' || !(routeStore.params.view == 'canvas' && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open) || !(routeStore.params.view == 'canvas' && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : { calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '') == '')"
+    },
+    {
+      "id": "bundle.015",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "!((((routeStore.params.view == 'canvas') && routeStore.params.dna) && (routeStore.params.dna ? routeStore.params.dna : 'all') != 'all') || (((routeStore.params.view == 'canvas') && routeStore.params.dna) && split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]) || (!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '')) != '') || (!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open)) || (!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '')) == ''))",
+      "env": "stock",
+      "result": false,
+      "print": "!(routeStore.params.view == 'canvas' && routeStore.params.dna && (routeStore.params.dna ? routeStore.params.dna : 'all') != 'all' || routeStore.params.view == 'canvas' && routeStore.params.dna && split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[1] || !(routeStore.params.view == 'canvas' && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : { calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '') != '' || !(routeStore.params.view == 'canvas' && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open) || !(routeStore.params.view == 'canvas' && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : { calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '') == '')"
+    },
+    {
+      "id": "bundle.016",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "((row.id in modules.transcribe.changedIds) ? find(modules.transcribe.pendingProposals, { id: row.id }).fields.filter(f, ('' + row[f.name]) != f.value) : [])",
+      "env": "stock",
+      "result": [
+        {
+          "name": "text",
+          "value": "x"
+        }
+      ],
+      "print": "row.id in modules.transcribe.changedIds ? find(modules.transcribe.pendingProposals, { id: row.id }).fields.filter(f, '' + row[f.name] != f.value) : []"
+    },
+    {
+      "id": "bundle.017",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "count(local.card) && (count(recordStore.displays[routeStore.params.cardType].fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json']))) || first(local.card).editorState)",
+      "env": "stock",
+      "result": false,
+      "print": "count(local.card) && (count(recordStore.displays[routeStore.params.cardType].fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json']))) || first(local.card).editorState)"
+    },
+    {
+      "id": "bundle.018",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "local.display.fields.filter(f, f.role == 'detail' && f.kind != 'relation' && row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, routeStore.params.cardType in k.appliesTo || !count(k.appliesTo)))))",
+      "env": "stock",
+      "result": [],
+      "print": "local.display.fields.filter(f, f.role == 'detail' && f.kind != 'relation' && row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, routeStore.params.cardType in k.appliesTo || !count(k.appliesTo)))))"
+    },
+    {
+      "id": "bundle.019",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "local.display.fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json']) && !row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, routeStore.params.cardType in k.appliesTo || !count(k.appliesTo)))))",
+      "env": "stock",
+      "result": [],
+      "print": "local.display.fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json']) && !row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, routeStore.params.cardType in k.appliesTo || !count(k.appliesTo)))))"
+    },
+    {
+      "id": "bundle.020",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "count(local.display.fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json']) && !row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, routeStore.params.cardType in k.appliesTo || !count(k.appliesTo))))))",
+      "env": "stock",
+      "result": 0,
+      "print": "count(local.display.fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json']) && !row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, routeStore.params.cardType in k.appliesTo || !count(k.appliesTo))))))"
+    },
+    {
+      "id": "bundle.021",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total == 1 || sig.id in local.expandedReactors || trim(local.reactorSearch) != ''",
+      "env": "stock",
+      "result": false,
+      "print": "reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total == 1 || sig.id in local.expandedReactors || trim(local.reactorSearch) != ''"
+    },
+    {
+      "id": "bundle.022",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "reactors({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total == 1 || replySig.id in local.expandedReactors || trim(local.reactorSearch) != ''",
+      "env": "stock",
+      "result": false,
+      "print": "reactors({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total == 1 || replySig.id in local.expandedReactors || trim(local.reactorSearch) != ''"
+    },
+    {
+      "id": "bundle.023",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "reactors({ signals: reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total == 1 || reply2Sig.id in local.expandedReactors || trim(local.reactorSearch) != ''",
+      "env": "stock",
+      "result": false,
+      "print": "reactors({ signals: reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total == 1 || reply2Sig.id in local.expandedReactors || trim(local.reactorSearch) != ''"
+    },
+    {
+      "id": "bundle.024",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "reactors({ signals: reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total == 1 || reply3Sig.id in local.expandedReactors || trim(local.reactorSearch) != ''",
+      "env": "stock",
+      "result": false,
+      "print": "reactors({ signals: reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total == 1 || reply3Sig.id in local.expandedReactors || trim(local.reactorSearch) != ''"
+    },
+    {
+      "id": "bundle.025",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "reactors({ signals: reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total == 1 || focusedSig.id in local.expandedReactors || trim(local.reactorSearch) != ''",
+      "env": "stock",
+      "result": false,
+      "print": "reactors({ signals: reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total == 1 || focusedSig.id in local.expandedReactors || trim(local.reactorSearch) != ''"
+    },
+    {
+      "id": "bundle.026",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "distinct(local.vocabOpen, (routeStore.params.dna ? routeStore.params.dna : 'all') != 'all' ? ['we-graph://cluster/vocabulary/' + { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]]] : [], split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1] && split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] != 'policy' ? [split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]] : [])",
+      "env": "stock",
+      "result": [],
+      "print": "distinct(local.vocabOpen, (routeStore.params.dna ? routeStore.params.dna : 'all') != 'all' ? ['we-graph://cluster/vocabulary/' + { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[0]]] : [], split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[1] && split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[0] != 'policy' ? [split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[1]] : [])"
+    },
+    {
+      "id": "bundle.027",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "(split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'policy' ? split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1] : { signal: local.signalTypes, connection: local.relationshipTypes, state: spaceStore.taskStates, involvement: spaceStore.involvementTypes, topic: local.topics, model: recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description }), policy: [] }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]].find(d, d.id == (split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1])).name) ?? 'Definition'",
+      "env": "stock",
+      "result": "Definition",
+      "print": "(split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[0] == 'policy' ? split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[1] : { signal: local.signalTypes, connection: local.relationshipTypes, state: spaceStore.taskStates, involvement: spaceStore.involvementTypes, topic: local.topics, model: recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description }), policy: [] }[split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[0]].find(d, d.id == split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[1]).name) ?? 'Definition'"
+    },
+    {
+      "id": "bundle.028",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "!((!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '')) != '') || (!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open)) || (!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '')) == ''))",
+      "env": "stock",
+      "result": false,
+      "print": "!(!(routeStore.params.view == 'canvas' && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : { calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '') != '' || !(routeStore.params.view == 'canvas' && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open) || !(routeStore.params.view == 'canvas' && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : { calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '') == '')"
+    },
+    {
+      "id": "bundle.029",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "[\n  { key: 'signals', label: 'Signal types', entity: 'SignalType', opens: { entity: recordStore.creatableEntities.map(k, k.value), through: 'signals', field: 'signalTypeId', key: 'id', label: 'reacted to', limit: 12 } },\n  { key: 'connections', label: 'Connection types', entity: 'RelationshipType', opens: { entity: 'Relationship', field: 'relationshipTypeId', key: 'id', pair: ['source', 'target'], label: 'connects', limit: 12 } },\n  { key: 'states', label: 'Task states', entity: 'TaskState', opens: { entity: 'TaskBlock', field: 'status', key: 'slug', label: 'in it', limit: 12 } },\n  { key: 'kinds', label: 'Involvement', entity: 'InvolvementType', opens: { entity: 'Involvement', field: 'kind', key: 'slug', follow: 'node', label: 'involved in', limit: 12 } },\n  { key: 'topics', label: 'Topics', entity: 'Topic', opens: { entity: 'Relationship', through: 'target', field: 'id', key: 'id', follow: 'source', label: 'about it', limit: 12 } },\n  { key: 'models', label: 'Models', models: recordStore.creatableEntities.map(k, { name: k.value, label: k.label }) },\n  { key: 'other', label: 'From other apps', models: datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value))).map(e, { name: e.name }) },\n  { key: 'workflows', label: 'Workflows', workflows: workflowStore.workflows.map(f, { name: f.name, label: f.label, steps: f.steps, moves: f.moves }) },\n  { key: 'policy', label: 'Policy', items: spaceStore.policy.sentences.map(s, { id: s, label: s }) }\n].filter(b, b.key != 'other' || count(b.models))",
+      "env": "stock",
+      "result": [
+        {
+          "key": "signals",
+          "label": "Signal types",
+          "entity": "SignalType",
+          "opens": {
+            "entity": ["NoteBlock", "TaskBlock"],
+            "through": "signals",
+            "field": "signalTypeId",
+            "key": "id",
+            "label": "reacted to",
+            "limit": 12
+          }
+        },
+        {
+          "key": "connections",
+          "label": "Connection types",
+          "entity": "RelationshipType",
+          "opens": {
+            "entity": "Relationship",
+            "field": "relationshipTypeId",
+            "key": "id",
+            "pair": ["source", "target"],
+            "label": "connects",
+            "limit": 12
+          }
+        },
+        {
+          "key": "states",
+          "label": "Task states",
+          "entity": "TaskState",
+          "opens": {
+            "entity": "TaskBlock",
+            "field": "status",
+            "key": "slug",
+            "label": "in it",
+            "limit": 12
+          }
+        },
+        {
+          "key": "kinds",
+          "label": "Involvement",
+          "entity": "InvolvementType",
+          "opens": {
+            "entity": "Involvement",
+            "field": "kind",
+            "key": "slug",
+            "follow": "node",
+            "label": "involved in",
+            "limit": 12
+          }
+        },
+        {
+          "key": "topics",
+          "label": "Topics",
+          "entity": "Topic",
+          "opens": {
+            "entity": "Relationship",
+            "through": "target",
+            "field": "id",
+            "key": "id",
+            "follow": "source",
+            "label": "about it",
+            "limit": 12
+          }
+        },
+        {
+          "key": "models",
+          "label": "Models",
+          "models": [
+            {
+              "name": "NoteBlock",
+              "label": "Note"
+            },
+            {
+              "name": "TaskBlock",
+              "label": "Task"
+            }
+          ]
+        },
+        {
+          "key": "workflows",
+          "label": "Workflows",
+          "workflows": []
+        },
+        {
+          "key": "policy",
+          "label": "Policy",
+          "items": []
+        }
+      ],
+      "print": "[{ key: 'signals', label: 'Signal types', entity: 'SignalType', opens: { entity: recordStore.creatableEntities.map(k, k.value), through: 'signals', field: 'signalTypeId', key: 'id', label: 'reacted to', limit: 12 } }, { key: 'connections', label: 'Connection types', entity: 'RelationshipType', opens: { entity: 'Relationship', field: 'relationshipTypeId', key: 'id', pair: ['source', 'target'], label: 'connects', limit: 12 } }, { key: 'states', label: 'Task states', entity: 'TaskState', opens: { entity: 'TaskBlock', field: 'status', key: 'slug', label: 'in it', limit: 12 } }, { key: 'kinds', label: 'Involvement', entity: 'InvolvementType', opens: { entity: 'Involvement', field: 'kind', key: 'slug', follow: 'node', label: 'involved in', limit: 12 } }, { key: 'topics', label: 'Topics', entity: 'Topic', opens: { entity: 'Relationship', through: 'target', field: 'id', key: 'id', follow: 'source', label: 'about it', limit: 12 } }, { key: 'models', label: 'Models', models: recordStore.creatableEntities.map(k, { name: k.value, label: k.label }) }, { key: 'other', label: 'From other apps', models: datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value))).map(e, { name: e.name }) }, { key: 'workflows', label: 'Workflows', workflows: workflowStore.workflows.map(f, { name: f.name, label: f.label, steps: f.steps, moves: f.moves }) }, { key: 'policy', label: 'Policy', items: spaceStore.policy.sentences.map(s, { id: s, label: s }) }].filter(b, b.key != 'other' || count(b.models))"
+    },
+    {
+      "id": "bundle.030",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "((routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(local.topics) > 0) || split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'topic'",
+      "env": "stock",
+      "result": false,
+      "print": "(routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(local.topics) > 0 || split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[0] == 'topic'"
+    },
+    {
+      "id": "bundle.031",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "((routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(local.signalTypes) > 0) || split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'signal'",
+      "env": "stock",
+      "result": false,
+      "print": "(routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(local.signalTypes) > 0 || split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[0] == 'signal'"
+    },
+    {
+      "id": "bundle.032",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "((routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(spaceStore.taskStates) > 0) || split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'state'",
+      "env": "stock",
+      "result": true,
+      "print": "(routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(spaceStore.taskStates) > 0 || split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[0] == 'state'"
+    },
+    {
+      "id": "bundle.033",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "((routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(local.relationshipTypes) > 0) || split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'connection'",
+      "env": "stock",
+      "result": false,
+      "print": "(routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(local.relationshipTypes) > 0 || split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[0] == 'connection'"
+    },
+    {
+      "id": "bundle.034",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "((routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(spaceStore.policy.sentences) > 0) || split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'policy'",
+      "env": "stock",
+      "result": false,
+      "print": "(routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(spaceStore.policy.sentences) > 0 || split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[0] == 'policy'"
+    },
+    {
+      "id": "bundle.035",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "((routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(spaceStore.involvementTypes) > 0) || split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'involvement'",
+      "env": "stock",
+      "result": false,
+      "print": "(routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(spaceStore.involvementTypes) > 0 || split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[0] == 'involvement'"
+    },
+    {
+      "id": "bundle.036",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "local.display.fields.filter(f, f.kind != 'relation' && row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, routeStore.params.cardType in k.appliesTo || !count(k.appliesTo)))))",
+      "env": "stock",
+      "result": [],
+      "print": "local.display.fields.filter(f, f.kind != 'relation' && row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, routeStore.params.cardType in k.appliesTo || !count(k.appliesTo)))))"
+    },
+    {
+      "id": "bundle.037",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "recordStore.recordDraft.fields.filter(f, !(recordStore.recordDraft.fields.exists(f, f.name == 'latitude') && recordStore.recordDraft.fields.exists(f, f.name == 'longitude')) || !(f.name in ['latitude', 'longitude']))",
+      "env": "stock",
+      "result": [],
+      "print": "recordStore.recordDraft.fields.filter(f, !(recordStore.recordDraft.fields.exists(f, f.name == 'latitude') && recordStore.recordDraft.fields.exists(f, f.name == 'longitude')) || !(f.name in ['latitude', 'longitude']))"
+    },
+    {
+      "id": "bundle.038",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "count(recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via != 'composer' && k.group == 'This space'))",
+      "env": "stock",
+      "result": 1,
+      "print": "count(recordStore.creatableEntities.filter(k, contains(k.via == 'composer' ? 'Note' : k.label, local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via != 'composer' && k.group == 'This space'))"
+    },
+    {
+      "id": "bundle.039",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "(local.discussionRoot ? count(first(local.discussionFocus).responses) : count(row.responses)) - count(local.threadRows.filter(r, r.respondsTo.id == (local.discussionRoot ? local.discussionRoot : row.id) && r.kind == 'reply')) > 0",
+      "env": "stock",
+      "result": false,
+      "print": "(local.discussionRoot ? count(first(local.discussionFocus).responses) : count(row.responses)) - count(local.threadRows.filter(r, r.respondsTo.id == (local.discussionRoot ? local.discussionRoot : row.id) && r.kind == 'reply')) > 0"
+    },
+    {
+      "id": "bundle.040",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "(workflowStore.open.steps ?? []).map(s, { id: 'step:' + s.name, kind: 'cluster', type: 'workflow-step', label: s.label + (count(s.requires) ? '\\n' + join(s.requires, '\\n') : '') + (s.hint ? '\\n' + s.hint : ''), data: { final: s.final } })",
+      "env": "stock",
+      "result": [],
+      "print": "(workflowStore.open.steps ?? []).map(s, { id: 'step:' + s.name, kind: 'cluster', type: 'workflow-step', label: s.label + (count(s.requires) ? '\\n' + join(s.requires, '\\n') : '') + (s.hint ? '\\n' + s.hint : ''), data: { final: s.final } })"
+    },
+    {
+      "id": "bundle.041",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "spaceStore.offeredInvolvementTypes.filter(k, routeStore.params.cardType in k.appliesTo || !count(k.appliesTo)).filter(k, count(involvement({ rows: local.involvements, types: spaceStore.involvementTypes, me: me.did }).byNode[row.id].people.filter(p, p.kind == k.slug)))",
+      "env": "stock",
+      "result": [],
+      "print": "spaceStore.offeredInvolvementTypes.filter(k, routeStore.params.cardType in k.appliesTo || !count(k.appliesTo)).filter(k, count(involvement({ rows: local.involvements, types: spaceStore.involvementTypes, me: me.did }).byNode[row.id].people.filter(p, p.kind == k.slug)))"
+    },
+    {
+      "id": "bundle.042",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "row.extractedFrom || row.id in first(local.inspectedCall).extracted ? `Extracted from the conversation · run by ${author.name} · ` : generatedRun({ record: row }) ? `Written by AI · run by ${author.name} · ` : `Added by ${author.did == me.did ? 'you' : author.name} · `",
+      "env": "stock",
+      "result": "Added by  · ",
+      "print": "row.extractedFrom || row.id in first(local.inspectedCall).extracted ? `Extracted from the conversation · run by ${author.name} · ` : generatedRun({ record: row }) ? `Written by AI · run by ${author.name} · ` : `Added by ${author.did == me.did ? 'you' : author.name} · `"
+    },
+    {
+      "id": "bundle.043",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "(find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).mine ? (find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).name + ' (you)' : (find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).name",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid }).mine ? find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid }).name + ' (you)' : find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid }).name"
+    },
+    {
+      "id": "bundle.044",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "`${(lane.column - 1) * 228 + 90}px`",
+      "env": "stock",
+      "result": "-138px",
+      "print": "`${(lane.column - 1) * 228 + 90}px`"
+    },
+    {
+      "id": "bundle.045",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "!lane.main && lane.rejoinsLane >= 0 && lane.rejoinsColumn > lane.lastColumn",
+      "env": "stock",
+      "result": false,
+      "print": "!lane.main && lane.rejoinsLane >= 0 && lane.rejoinsColumn > lane.lastColumn"
+    },
+    {
+      "id": "bundle.046",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "sigWho.value < 0 && sig.iconSecondary ? sig.iconSecondary : sig.icon",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "sigWho.value < 0 && sig.iconSecondary ? sig.iconSecondary : sig.icon"
+    },
+    {
+      "id": "bundle.047",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "signalTypesByUse({ of: row.id, types: filter(local.signalTypes, { retired: { not: true } }), signals: row.signals, muted: spaceStore.mutedDids })",
+      "env": "stock",
+      "result": [],
+      "print": "signalTypesByUse({ of: row.id, types: filter(local.signalTypes, { retired: { not: true } }), signals: row.signals, muted: spaceStore.mutedDids })"
+    },
+    {
+      "id": "bundle.048",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "signalTally({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), type: replySig })",
+      "env": "stock",
+      "result": 0,
+      "print": "signalTally({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), type: replySig })"
+    },
+    {
+      "id": "bundle.049",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "voicesParam({ param: local.voices, only: voiceDid, voices: voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }) })",
+      "env": "stock",
+      "result": "did:a=50",
+      "print": "voicesParam({ param: local.voices, only: voiceDid, voices: voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }) })"
+    },
+    {
+      "id": "bundle.050",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "`Add ${lower(field.targetLabel)}`",
+      "env": "stock",
+      "result": "Add ",
+      "print": "`Add ${lower(field.targetLabel)}`"
+    },
+    {
+      "id": "bundle.051",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "involvementMenu({ node: row.id, entity: routeStore.params.cardType, rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did, said: row.assignee })",
+      "env": "stock",
+      "result": [],
+      "print": "involvementMenu({ node: row.id, entity: routeStore.params.cardType, rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did, said: row.assignee })"
+    },
+    {
+      "id": "bundle.052",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "arg",
+      "env": "stock",
+      "result": {
+        "detail": {
+          "key": "Enter"
+        },
+        "value": "x",
+        "id": "r:1",
+        "kind": "assignee"
+      },
+      "print": "arg"
+    },
+    {
+      "id": "bundle.053",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "sig",
+      "env": "stock",
+      "result": {
+        "id": "sig:1",
+        "aggregate": "sum"
+      },
+      "print": "sig"
+    },
+    {
+      "id": "bundle.054",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "rule",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "rule"
+    },
+    {
+      "id": "bundle.055",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "true",
+      "env": "stock",
+      "result": true,
+      "print": "true"
+    },
+    {
+      "id": "bundle.056",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "need",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "need"
+    },
+    {
+      "id": "bundle.057",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "'all'",
+      "env": "stock",
+      "result": "all",
+      "print": "'all'"
+    },
+    {
+      "id": "bundle.058",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "event",
+      "env": "stock",
+      "result": {
+        "detail": "e:1"
+      },
+      "print": "event"
+    },
+    {
+      "id": "bundle.059",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "index",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "index"
+    },
+    {
+      "id": "bundle.060",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "false",
+      "env": "stock",
+      "result": false,
+      "print": "false"
+    },
+    {
+      "id": "bundle.061",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "me.did",
+      "env": "stock",
+      "result": "did:me",
+      "print": "me.did"
+    },
+    {
+      "id": "bundle.062",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "row.id",
+      "env": "stock",
+      "result": "row:1",
+      "print": "row.id"
+    },
+    {
+      "id": "bundle.063",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "arg.id",
+      "env": "stock",
+      "result": "r:1",
+      "print": "arg.id"
+    },
+    {
+      "id": "bundle.064",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "ask.to",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "ask.to"
+    },
+    {
+      "id": "bundle.065",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "end.id",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "end.id"
+    },
+    {
+      "id": "bundle.066",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "sig.id",
+      "env": "stock",
+      "result": "sig:1",
+      "print": "sig.id"
+    },
+    {
+      "id": "bundle.067",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "def.id",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "def.id"
+    },
+    {
+      "id": "bundle.068",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "'hash'",
+      "env": "stock",
+      "result": "hash",
+      "print": "'hash'"
+    },
+    {
+      "id": "bundle.069",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "!end.id",
+      "env": "stock",
+      "result": true,
+      "print": "!end.id"
+    },
+    {
+      "id": "bundle.070",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "to.name",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "to.name"
+    },
+    {
+      "id": "bundle.071",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "conn.id",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "conn.id"
+    },
+    {
+      "id": "bundle.072",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "event.x",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "event.x"
+    },
+    {
+      "id": "bundle.073",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "event.y",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "event.y"
+    },
+    {
+      "id": "bundle.074",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "move.to",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "move.to"
+    },
+    {
+      "id": "bundle.075",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "'state'",
+      "env": "stock",
+      "result": "state",
+      "print": "'state'"
+    },
+    {
+      "id": "bundle.076",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "'topic'",
+      "env": "stock",
+      "result": "topic",
+      "print": "'topic'"
+    },
+    {
+      "id": "bundle.077",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "'model'",
+      "env": "stock",
+      "result": "model",
+      "print": "'model'"
+    },
+    {
+      "id": "bundle.078",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "problem",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "problem"
+    },
+    {
+      "id": "bundle.079",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "'138px'",
+      "env": "stock",
+      "result": "138px",
+      "print": "'138px'"
+    },
+    {
+      "id": "bundle.080",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "def.name",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "def.name"
+    },
+    {
+      "id": "bundle.081",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "theme.id",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "theme.id"
+    },
+    {
+      "id": "bundle.082",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "arg.kind",
+      "env": "stock",
+      "result": "assignee",
+      "print": "arg.kind"
+    },
+    {
+      "id": "bundle.083",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "ask.mine",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "ask.mine"
+    },
+    {
+      "id": "bundle.084",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "to.label",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "to.label"
+    },
+    {
+      "id": "bundle.085",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "end.type",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "end.type"
+    },
+    {
+      "id": "bundle.086",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "end.role",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "end.role"
+    },
+    {
+      "id": "bundle.087",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "end.icon",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "end.icon"
+    },
+    {
+      "id": "bundle.088",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "end.name",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "end.name"
+    },
+    {
+      "id": "bundle.089",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "sig.icon",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "sig.icon"
+    },
+    {
+      "id": "bundle.090",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "sig.name",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "sig.name"
+    },
+    {
+      "id": "bundle.091",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "!(false)",
+      "env": "stock",
+      "result": true,
+      "print": "!false"
+    },
+    {
+      "id": "bundle.092",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "reply.id",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "reply.id"
+    },
+    {
+      "id": "bundle.093",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "rec.walk",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "rec.walk"
+    },
+    {
+      "id": "bundle.094",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "rec.next",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "rec.next"
+    },
+    {
+      "id": "bundle.095",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "'signal'",
+      "env": "stock",
+      "result": "signal",
+      "print": "'signal'"
+    },
+    {
+      "id": "bundle.096",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "'policy'",
+      "env": "stock",
+      "result": "policy",
+      "print": "'policy'"
+    },
+    {
+      "id": "bundle.097",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "replySig",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "replySig"
+    },
+    {
+      "id": "bundle.098",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "voiceDid",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "voiceDid"
+    },
+    {
+      "id": "bundle.099",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "index > 0",
+      "env": "stock",
+      "result": false,
+      "print": "index > 0"
+    },
+    {
+      "id": "bundle.100",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "part.name",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "part.name"
+    },
+    {
+      "id": "bundle.101",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "conn.icon",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "conn.icon"
+    },
+    {
+      "id": "bundle.102",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "conn.name",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "conn.name"
+    },
+    {
+      "id": "bundle.103",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "reply2.id",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "reply2.id"
+    },
+    {
+      "id": "bundle.104",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "reply3.id",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "reply3.id"
+    },
+    {
+      "id": "bundle.105",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "entry.key",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "entry.key"
+    },
+    {
+      "id": "bundle.106",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "step.hint",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "step.hint"
+    },
+    {
+      "id": "bundle.107",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "step.name",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "step.name"
+    },
+    {
+      "id": "bundle.108",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "move.from",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "move.from"
+    },
+    {
+      "id": "bundle.109",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "move.mine",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "move.mine"
+    },
+    {
+      "id": "bundle.110",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "step.when",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "step.when"
+    },
+    {
+      "id": "bundle.111",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "reply2Sig",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "reply2Sig"
+    },
+    {
+      "id": "bundle.112",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "reply3Sig",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "reply3Sig"
+    },
+    {
+      "id": "bundle.113",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "!lane.main",
+      "env": "stock",
+      "result": true,
+      "print": "!lane.main"
+    },
+    {
+      "id": "bundle.114",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "arg.detail",
+      "env": "stock",
+      "result": {
+        "key": "Enter"
+      },
+      "print": "arg.detail"
+    },
+    {
+      "id": "bundle.115",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "space.uuid",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "space.uuid"
+    },
+    {
+      "id": "bundle.116",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "space.name",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "space.name"
+    },
+    {
+      "id": "bundle.117",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "person.did",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "person.did"
+    },
+    {
+      "id": "bundle.118",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "theme.name",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "theme.name"
+    },
+    {
+      "id": "bundle.119",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "local.card",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "local.card"
+    },
+    {
+      "id": "bundle.120",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "field.name",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "field.name"
+    },
+    {
+      "id": "bundle.121",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "event.save",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "event.save"
+    },
+    {
+      "id": "bundle.122",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "row.author",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "row.author"
+    },
+    {
+      "id": "bundle.123",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "holder.did",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "holder.did"
+    },
+    {
+      "id": "bundle.124",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "conn.arrow",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "conn.arrow"
+    },
+    {
+      "id": "bundle.125",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "sigWho.did",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "sigWho.did"
+    },
+    {
+      "id": "bundle.126",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "local.name",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "local.name"
+    },
+    {
+      "id": "bundle.127",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "local.slug",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "local.slug"
+    },
+    {
+      "id": "bundle.128",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "local.mode",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "local.mode"
+    },
+    {
+      "id": "bundle.129",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "local.icon",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "local.icon"
+    },
+    {
+      "id": "bundle.130",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "local.step",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "local.step"
+    },
+    {
+      "id": "bundle.131",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "focused.id",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "focused.id"
+    },
+    {
+      "id": "bundle.132",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "author.did",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "author.did"
+    },
+    {
+      "id": "bundle.133",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "field.many",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "field.many"
+    },
+    {
+      "id": "bundle.134",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "kind.value",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "kind.value"
+    },
+    {
+      "id": "bundle.135",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "event.text",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "event.text"
+    },
+    {
+      "id": "bundle.136",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "lane.steps",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "lane.steps"
+    },
+    {
+      "id": "bundle.137",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "step.label",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "step.label"
+    },
+    {
+      "id": "bundle.138",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "step.final",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "step.final"
+    },
+    {
+      "id": "bundle.139",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "lane.index",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "lane.index"
+    },
+    {
+      "id": "bundle.140",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "rec.record",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "rec.record"
+    },
+    {
+      "id": "bundle.141",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "person.bio",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "person.bio"
+    },
+    {
+      "id": "bundle.142",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "focusedSig",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "focusedSig"
+    },
+    {
+      "id": "bundle.143",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "!local.name",
+      "env": "stock",
+      "result": true,
+      "print": "!local.name"
+    },
+    {
+      "id": "bundle.144",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "local.calls",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "local.calls"
+    },
+    {
+      "id": "bundle.145",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "person.name",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "person.name"
+    },
+    {
+      "id": "bundle.146",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "template.id",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "template.id"
+    },
+    {
+      "id": "bundle.147",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "change.name",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "change.name"
+    },
+    {
+      "id": "bundle.148",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "field.label",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "field.label"
+    },
+    {
+      "id": "bundle.149",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "picture.src",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "picture.src"
+    },
+    {
+      "id": "bundle.150",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "holder.kind",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "holder.kind"
+    },
+    {
+      "id": "bundle.151",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "author.name",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "author.name"
+    },
+    {
+      "id": "bundle.152",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "replySig.id",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "replySig.id"
+    },
+    {
+      "id": "bundle.153",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "event.value",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "event.value"
+    },
+    {
+      "id": "bundle.154",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "local.spine",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "local.spine"
+    },
+    {
+      "id": "bundle.155",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "local.order",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "local.order"
+    },
+    {
+      "id": "bundle.156",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "field.value",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "field.value"
+    },
+    {
+      "id": "bundle.157",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "entry.label",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "entry.label"
+    },
+    {
+      "id": "bundle.158",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "local.newAt",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "local.newAt"
+    },
+    {
+      "id": "bundle.159",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "event.focus",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "event.focus"
+    },
+    {
+      "id": "bundle.160",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "event.marks",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "event.marks"
+    },
+    {
+      "id": "bundle.161",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "local.excTo",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "local.excTo"
+    },
+    {
+      "id": "bundle.162",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "rec.stalled",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "rec.stalled"
+    },
+    {
+      "id": "bundle.163",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "rec.waiting",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "rec.waiting"
+    },
+    {
+      "id": "bundle.164",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "'group|dna'",
+      "env": "stock",
+      "result": "group|dna",
+      "print": "'group|dna'"
+    },
+    {
+      "id": "bundle.165",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "!arg.checked",
+      "env": "stock",
+      "result": true,
+      "print": "!arg.checked"
+    },
+    {
+      "id": "bundle.166",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "panel.inputs",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "panel.inputs"
+    },
+    {
+      "id": "bundle.167",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "space.avatar",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "space.avatar"
+    },
+    {
+      "id": "bundle.168",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "event.detail",
+      "env": "stock",
+      "result": "e:1",
+      "print": "event.detail"
+    },
+    {
+      "id": "bundle.169",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "local.topics",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "local.topics"
+    },
+    {
+      "id": "bundle.170",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "field.target",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "field.target"
+    },
+    {
+      "id": "bundle.171",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "local.linked",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "local.linked"
+    },
+    {
+      "id": "bundle.172",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "conn.otherId",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "conn.otherId"
+    },
+    {
+      "id": "bundle.173",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "sigWho.value",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "sigWho.value"
+    },
+    {
+      "id": "bundle.174",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "reply.author",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "reply.author"
+    },
+    {
+      "id": "bundle.175",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "reply2Sig.id",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "reply2Sig.id"
+    },
+    {
+      "id": "bundle.176",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "reply3Sig.id",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "reply3Sig.id"
+    },
+    {
+      "id": "bundle.177",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "local.voices",
+      "env": "stock",
+      "result": "did:a=50",
+      "print": "local.voices"
+    },
+    {
+      "id": "bundle.178",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "event.action",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "event.action"
+    },
+    {
+      "id": "bundle.179",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "field.accept",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "field.accept"
+    },
+    {
+      "id": "bundle.180",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "event.submit",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "event.submit"
+    },
+    {
+      "id": "bundle.181",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "lane.rejoins",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "lane.rejoins"
+    },
+    {
+      "id": "bundle.182",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "'connection'",
+      "env": "stock",
+      "result": "connection",
+      "print": "'connection'"
+    },
+    {
+      "id": "bundle.183",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "!conn.otherId",
+      "env": "stock",
+      "result": true,
+      "print": "!conn.otherId"
+    },
+    {
+      "id": "bundle.184",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "!local.voices",
+      "env": "stock",
+      "result": false,
+      "print": "!local.voices"
+    },
+    {
+      "id": "bundle.185",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "space.spaceId",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "space.spaceId"
+    },
+    {
+      "id": "bundle.186",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "person.avatar",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "person.avatar"
+    },
+    {
+      "id": "bundle.187",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "template.icon",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "template.icon"
+    },
+    {
+      "id": "bundle.188",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "template.name",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "template.name"
+    },
+    {
+      "id": "bundle.189",
+      "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
+      "source": "local.editing",
+      "env": "stock",
+      "result": {
+        "$undefined": true
+      },
+      "print": "local.editing"
+    }
+  ]
+}
