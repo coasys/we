@@ -192,7 +192,9 @@ fn space_demo_loads_the_populated_queries() {
     assert!(!text.contains("Minimal"));
 
     let cells = cells(&session);
-    assert_eq!(rows(&cells, "anyCall").len(), 1, "anyCall populates");
+    // `anyCall` asks the tree's own question (the 12 newest calls, title and
+    // date), so the two share one cell and the name that stays is `calls`.
+    assert!(!cells.contains_key("anyCall"), "anyCall shares calls' cell");
     assert_eq!(rows(&cells, "calls").len(), 2);
     assert_eq!(rows(&cells, "signalTypes").len(), 2);
     assert_eq!(rows(&cells, "topics").len(), 1);

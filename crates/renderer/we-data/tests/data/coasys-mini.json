@@ -16,6 +16,7 @@
     },
     "spaceStore": {
       "root": "demo",
+      "firstScreenOpen": true,
       "spacePath": "/space/demo",
       "canAdministerCurrentSpace": true,
       "spaceDefaultTemplateId": "tpl-default",
