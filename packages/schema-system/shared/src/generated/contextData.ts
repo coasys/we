@@ -3361,6 +3361,8 @@ export const contextData: ContextData = {
         root: { type: 'string' },
         landmarks: { type: 'object' },
         landmarksLoaded: { type: 'boolean' },
+        rootLoaded: { type: 'boolean' },
+        firstScreenOpen: { type: 'boolean' },
         extractionTargets: { type: 'array' },
         taskWorkflowRule: { type: 'string' },
         taskWorkflowEnabled: { type: 'boolean' },

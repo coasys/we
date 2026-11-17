@@ -34,6 +34,19 @@ describe('fakeRecords', () => {
     await records.kernel.create('TextBlock', { text: 'x' }, { dataset: 'neighbourhood://there' });
     expect(records.writes[0].dataset).toBe('neighbourhood://there');
   });
+
+  it('answers a narrowed read with only the fields it selected, and the id', async () => {
+    const records = fakeRecords({ author: 'did:a' });
+    await records.kernel.create('CollectionBlock', { kind: 'call', title: 'Standup', children: ['l1', 'l2'] });
+
+    const [call] = await records.kernel.find('CollectionBlock', { where: { kind: 'call' }, select: ['title'] });
+    expect(call).toMatchObject({ id: 'CollectionBlock-1', title: 'Standup', author: 'did:a' });
+    // A field left out reads as absent, as it does from a backend.
+    expect(call).not.toHaveProperty('children');
+    expect(call).not.toHaveProperty('kind');
+    // The stored row is untouched.
+    expect(records.rows[0].children).toEqual(['l1', 'l2']);
+  });
 });
 
 describe('fakePresence', () => {

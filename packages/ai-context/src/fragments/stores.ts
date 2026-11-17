@@ -490,6 +490,8 @@ export const storeEntries: StoreEntry[] = [
       },
       taskStatesLoaded: { type: 'boolean' },
       root: { type: 'string' },
+      rootLoaded: { type: 'boolean' },
+      firstScreenOpen: { type: 'boolean' },
       landmarks: { type: 'object' },
       landmarksLoaded: { type: 'boolean' },
       starterChoices: { type: 'array' },
@@ -1417,6 +1419,10 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       myMentions:
         '{ id, author, createdAt }[] — messages in this space that mention this agent — posts and transcript or Feed lines alike — newest first, the fifty most recent. createdAt is the backend’s comparable timestamp. Asked from the agent’s end through the backend’s references, one lookup per space',
       root: "string — the id of this space's collection: the one CollectionBlock (kind 'space') everything top-level hangs off — calls, loose messages, posts, channels, extracted items, the canvas. Scope a top-level read through it: { anchor: 'CollectionBlock', via: 'children', anchorId: spaceStore.root }. Empty outside a space, and in a space made before spaces had one",
+      rootLoaded:
+        "boolean — root has answered for the space on screen. Until then an empty root is not yet an answer, so gate anything that compares an address with root on it — { $: 'spaceStore.rootLoaded' } around an $if on `channel == spaceStore.root` — or the wrong branch mounts, reads, and is torn down when root arrives",
+      firstScreenOpen:
+        "boolean — the first screen after boot is up: the Feed's first page drawn, or the screen drawn with no Feed on it. True from then on. Put it as the `when` of a $queries read the opening screen does not draw (a sidebar's list) so the read starts after that screen rather than beside it — { when: { $: 'spaceStore.firstScreenOpen' } }",
       landmarks:
         "Record<name, id> — the records this space names as its landmarks, e.g. spaceStore.landmarks.canvas is the space's canvas. Written by the space's starter at creation. A landmark can be absent — a space can switch template and a template must never assume what another set up — so guard every read",
       landmarksLoaded:
