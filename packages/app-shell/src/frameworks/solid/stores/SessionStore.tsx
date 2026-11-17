@@ -36,6 +36,7 @@ import {
 import type { BackendAccountInfo, BackendHostInfo } from '../../../shared/backend/types';
 import { type SignInStep, signInStep as stepOf } from '../../../shared/signInStep';
 import { credential } from '../credential';
+import { firstScreen } from '../firstScreen';
 import { useBackend, usePlatform } from '../providers/PlatformProvider';
 import { startAppBridge } from '../services/appBridge';
 import { useAccountStore } from './AccountStore';
@@ -363,6 +364,12 @@ export function SessionStoreProvider(props: ParentProps) {
 
   async function initialise(): Promise<void> {
     const started = performance.now();
+    /*
+      From here until the first screen is drawn, the reads it does not need wait — see
+      `shared/firstScreen.ts`. Before the backend comes up, because the backend's own setup is among
+      them. Once per app: initialising again finds it already open.
+    */
+    firstScreen.hold();
     try {
       // The connector owns the entire connection choreography (spawn/attach, auth, credential
       // acquisition, settling delays) — the shell receives a ready backend and runs the session
@@ -375,7 +382,7 @@ export function SessionStoreProvider(props: ParentProps) {
         host: hostInfo,
         account,
         guest,
-      } = await backend.initialize({ selfId: () => me()?.did });
+      } = await backend.initialize({ selfId: () => me()?.did, afterFirstScreen: () => firstScreen.whenOpen() });
       disconnectBackend = disconnect ?? null;
       setHost(hostInfo);
       setHostAccount(account);

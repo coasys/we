@@ -4,9 +4,10 @@ import { FLOWS_LOCALS, lineComposer, workflowsPage } from '@we/template-kit';
 import { viewBar } from './bar.ts';
 import { groupRoutes } from './groups.ts';
 import { exportTranscriptButton, liveDot } from './marks.ts';
-import { CHANNEL, groupPath, IN_ROOT_EXPR } from './paths.ts';
+import { CHANNEL, groupPath, IN_ROOT_EXPR, ROOT_KNOWN_EXPR } from './paths.ts';
 import { personRoute } from './person.ts';
 import { dnaRoute } from './socialDna.ts';
+import { LATEST_CALLS } from './tree.ts';
 
 /**
  * The pages beside the tree: the Feed, the space's workflows, and — as its own page — a call. Each is
@@ -24,7 +25,8 @@ const channelQueries = {
     entity: 'CollectionBlock',
     where: { id: CHANNEL },
     limit: 1,
-    when: { $: `!(${IN_ROOT_EXPR})` },
+    // Only a channel that is not the root — which cannot be told until the root is known.
+    when: { $: `${ROOT_KNOWN_EXPR} && !(${IN_ROOT_EXPR})` },
   },
 };
 
@@ -227,7 +229,8 @@ const chatRoute: RouteSchema = {
   props: { width: '100%', height: '100%' },
   $queries: {
     ...channelQueries,
-    anyCall: { entity: 'CollectionBlock', where: { kind: 'call' }, limit: 1 },
+    // Whether the space has a call yet: the sidebar's question, so one subscription answers both.
+    anyCall: LATEST_CALLS,
   },
   $localState: {
     sending: { type: 'boolean', initial: false },
@@ -236,18 +239,32 @@ const chatRoute: RouteSchema = {
   children: [
     viewBar(
       [
-        // The Feed is the space's own; a channel under it is one of the Channels.
-        { label: 'Channels', onClick: navigateTo(groupPath('channels')), when: `!(${IN_ROOT_EXPR})` },
+        // The Feed is the space's own; a channel under it is one of the Channels. Like the view below,
+        // neither the crumb nor the glyph is chosen before the root is known (`ROOT_KNOWN_EXPR`): until
+        // then General's own address reads as a sub-channel's, and the bar drew one, then swapped it.
+        {
+          label: 'Channels',
+          onClick: navigateTo(groupPath('channels')),
+          when: `(${ROOT_KNOWN_EXPR}) && !(${IN_ROOT_EXPR})`,
+        },
         { label: { $: CHANNEL_TITLE } },
       ],
-      { $: `(${IN_ROOT_EXPR}) ? 'chats-circle' : 'hash'` },
+      { $: `!(${ROOT_KNOWN_EXPR}) ? '' : (${IN_ROOT_EXPR}) ? 'chats-circle' : 'hash'` },
     ),
     {
+      // One mount: which of the two this channel is, is decided once the root is known — see
+      // `ROOT_KNOWN_EXPR`.
       type: '$if',
       props: {
-        condition: { $: IN_ROOT_EXPR },
-        then: rootFeed,
-        else: subChannelChat,
+        condition: { $: ROOT_KNOWN_EXPR },
+        then: {
+          type: '$if',
+          props: {
+            condition: { $: IN_ROOT_EXPR },
+            then: rootFeed,
+            else: subChannelChat,
+          },
+        },
       },
     },
   ],
