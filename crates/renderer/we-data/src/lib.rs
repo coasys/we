@@ -26,6 +26,7 @@ mod provenance;
 mod query_source;
 mod route;
 mod storemap;
+pub mod writes;
 
 pub use executor::{
     ClassSel, ClassShape, Executor, ExecutorError, FlowCall, LiveQuery, LiveQueryId, QueryIr,

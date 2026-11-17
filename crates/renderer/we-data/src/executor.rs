@@ -62,7 +62,7 @@ pub use we_template::QueryIr;
 
 /// One write the validated write RPC performs (AD4M task A3). The recipe is
 /// data — see the `modelWrite`/`command` rows in the store map.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Write {
     pub op: WriteOp,
     /// The write's body: class, id, fields — the recipe's payload, in the

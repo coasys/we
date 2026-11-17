@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "note": "The modelWrite rows a connected app with --write runs (E11). Each field of a write is an expression evaluated with `args` (the $invoke's arguments) and the planner's functions. A write whose `skipIf` is truthy is not sent, and the call answers undefined. `confirm` makes the host ask first (protected-pieces: the host confirms every destructive action). `fail` is the first sentence of the notice a refused write shows; the executor's message follows it.",
+  "members": {
+    "record.create": {
+      "kind": "modelWrite",
+      "ref": "TemplateProvider.tsx:183 recordActions.create (without withCollectionDefaults / threadResponse)",
+      "dataset": "args[2].dataset",
+      "writes": [{ "op": "create", "class": "args[0]", "properties": "args[1]" }],
+      "fail": "Could not save that."
+    },
+    "record.update": {
+      "kind": "modelWrite",
+      "ref": "TemplateProvider.tsx:191 recordActions.update",
+      "dataset": "args[3].dataset",
+      "writes": [{ "op": "update", "class": "args[0]", "id": "args[1]", "properties": "args[2]" }],
+      "fail": "Could not save that change."
+    },
+    "record.delete": {
+      "kind": "modelWrite",
+      "ref": "TemplateProvider.tsx:195 recordActions.delete; destructiveWording.ts:46",
+      "dataset": "args[2].dataset",
+      "writes": [{ "op": "remove", "class": "args[0]", "id": "args[1]" }],
+      "confirm": {
+        "title": "args[0] ? `Delete this ${args[0]}?` : 'Delete this record?'",
+        "body": "'It will be removed for everyone in this space. This cannot be undone.'"
+      },
+      "fail": "Could not delete that."
+    },
+    "recordStore.updateRecordField": {
+      "kind": "modelWrite",
+      "ref": "RecordStore.tsx:2863 updateRecordField (without the connection rekey)",
+      "writes": [{
+        "op": "update", "class": "args[0]", "id": "args[1]",
+        "property": "args[2]", "value": "fieldValue(args[0], args[2], args[3])",
+        "skipIf": "!args[0] || !args[1] || !args[2] || fieldValue(args[0], args[2], args[3]) == undefined"
+      }],
+      "fail": "Could not save that change."
+    },
+    "spaceStore.createSignalType": {
+      "kind": "modelWrite",
+      "ref": "SpaceStore.tsx:2902 createSignalType",
+      "writes": [{ "op": "create", "class": "'SignalType'", "properties": "signalTypeFields(args[0])" }],
+      "fail": "Could not create that signal type."
+    }
+  }
+}
