@@ -1,9 +1,9 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { SOCIAL_DNA_LABELS } from '@we/template-kit';
+import { OTHER_APP_CLASS_NAMES, SOCIAL_DNA_LABELS } from '@we/template-kit';
 
 import type { Crumb } from './bar.ts';
 import { DNA_AT, showDna } from './paths.ts';
-import { VOCABULARY_NAMES, WE_VOCABULARY } from './vocabulary.ts';
+import { WE_VOCABULARY } from './vocabulary.ts';
 
 /**
  * The space's Social DNA, named once for the three places that draw it: the tree lists it, the Social
@@ -47,11 +47,11 @@ export const WE_CLASSES = `distinct([${WE_VOCABULARY.map(
  * under another IRI is still WE's. Each name once, with the namespace (the class IRI before its name) of the first
  * that carries it, shown as secondary text. A name resolves to one class, so two apps' classes of one
  * name are one row, under whichever namespace comes first. Where a class comes from is not recorded
- * anywhere, so it is shown rather than grouped by.
+ * anywhere, so it is shown rather than grouped by. The names are the vocabulary map's own (`OTHER_APP_CLASS_NAMES`).
  */
 const OTHER_ENTITIES = 'datasetStore.currentDatasetEntities';
 export const OTHER_CLASSES = [
-  `distinct(${OTHER_ENTITIES}.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ${VOCABULARY_NAMES})).map(e, e.name))`,
+  OTHER_APP_CLASS_NAMES,
   `.map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(${OTHER_ENTITIES}, { name: n }).targetClass, n)) ?? '' })`,
 ].join('');
 

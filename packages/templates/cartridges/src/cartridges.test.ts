@@ -25,9 +25,11 @@ import {
   chooseTemplate,
   chooseTheme,
   FOCUS_DIM,
+  OTHER_APP_CLASS_NAMES,
   SPACE_TEMPLATE_CHOICES,
   templateChoice,
   themeChoice,
+  VOCABULARY_OPENS,
 } from '@we/template-kit';
 import { describe, expect, it } from 'vitest';
 
@@ -37,6 +39,7 @@ import { CLASS_GROUPS, CLASS_ROWS, CLASS_ROWS_COUNT, DNA_AT, dnaCrumbs, OTHER_CL
 import { callPath, groupPath, personPath, SELECTED_EXPR } from './coasys/space/paths.ts';
 import { treeSection } from './coasys/space/tree.ts';
 import { callPage, spaceRoutes } from './coasys/space/views.ts';
+import { WE_VOCABULARY } from './coasys/space/vocabulary.ts';
 import { bundleFileName, type Cartridge, cartridgeBundles, coasys, fieldGuide, toolLibrary } from './index.ts';
 
 const contextData = JSON.parse(readFileSync(resolve(import.meta.dirname, '../../../ai-context/context.json'), 'utf-8'));
@@ -999,6 +1002,11 @@ describe("Social DNA's classes from other apps", () => {
       { id: 'Nest', label: 'Nest', icon: 'cube', namespace: 'birds://' },
       { id: 'Question', label: 'Question', icon: 'cube', namespace: 'conv://' },
     ]);
+  });
+
+  it("reads the same names as the vocabulary map's other bucket, and WE's vocabulary is the kit's", () => {
+    expect(WE_VOCABULARY.map((c) => c.name)).toEqual(Object.keys(VOCABULARY_OPENS));
+    expect(OTHER_CLASSES.startsWith(OTHER_APP_CLASS_NAMES)).toBe(true);
   });
 
   it("leaves WE's plumbing out, and lists a class once — not again where the space's or WE's has its name", () => {

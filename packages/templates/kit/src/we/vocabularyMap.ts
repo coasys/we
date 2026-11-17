@@ -56,6 +56,18 @@ const classBucket = (key: keyof typeof L, entity: keyof typeof VOCABULARY_OPENS)
   `{ key: '${key}', label: '${L[key]}', entity: '${entity}', opens: ${VOCABULARY_OPENS[entity]} }`;
 
 /**
+ * The names of another app's classes: every class the space carries that is not one of its own models,
+ * not one of WE's vocabulary, and not WE's plumbing — a `Space` an older version wrote under another IRI
+ * is still WE's. Each name once. One expression, read by this map's "From other apps" bucket and by a
+ * space's tree alike, so the two cannot list different classes.
+ */
+export const OTHER_APP_CLASS_NAMES = `distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in [${Object.keys(
+  VOCABULARY_OPENS,
+)
+  .map((name) => `'${name}'`)
+  .join(', ')}])).map(e, e.name))`;
+
+/**
  * The buckets, as an expression the vocabulary seed takes. Each definition opens into its uses (see
  * `VOCABULARY_OPENS`); what a definition *is* is on its card.
  */
@@ -66,7 +78,7 @@ export const VOCABULARY_BUCKETS = `[
   ${classBucket('kinds', 'InvolvementType')},
   ${classBucket('topics', 'Topic')},
   { key: 'models', label: '${L.models}', models: recordStore.creatableEntities.map(k, { name: k.value, label: k.label }) },
-  { key: 'other', label: 'From other apps', models: datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value))).map(e, { name: e.name }) },
+  { key: 'other', label: 'From other apps', models: ${OTHER_APP_CLASS_NAMES}.map(n, { name: n }) },
   { key: 'workflows', label: '${L.workflows}', workflows: workflowStore.workflows.map(f, { name: f.name, label: f.label, steps: f.steps, moves: f.moves }) },
   { key: 'policy', label: '${L.policy}', items: spaceStore.policy.sentences.map(s, { id: s, label: s }) }
 ].filter(b, b.key != 'other' || count(b.models))`;
