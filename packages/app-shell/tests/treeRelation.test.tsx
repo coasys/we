@@ -699,6 +699,31 @@ describe('a tree drop on a model relation', () => {
     expect(world.rows.get('row-pos3')!.rank!).toBeLessThan(world.rows.get('row-pos1')!.rank!);
   });
 
+  it('puts a reorder back on undo and does it again on redo', async () => {
+    // A reorder moves no link, only ranks — so redo is the ranks the drop wrote, not the ones it replaced.
+    world.positions.set('pos3', { id: 'pos3', text: 'Later', about: 't2' });
+    world.rows.get('row-pos1')!.rank = 1;
+    place('pos3', 2);
+    const store = mount();
+    await store.arrangeOnTree(CANVAS, SPINE, {
+      recordId: 'pos3',
+      recordType: 'Position',
+      into: 'sibling',
+      targetId: 'pos1',
+      targetType: 'Position',
+      before: true,
+      order: ['pos3', 'pos1'],
+      edge: hangsBy('Position.about', 'pos3', 't2'),
+    });
+    const after = world.rows.get('row-pos3')!.rank;
+    expect(after).toBeLessThan(world.rows.get('row-pos1')!.rank!);
+
+    await store.undoCanvas(CANVAS);
+    expect(world.rows.get('row-pos3')!.rank).toBe(2);
+    await store.redoCanvas(CANVAS);
+    expect(world.rows.get('row-pos3')!.rank).toBe(after);
+  });
+
   it('writes no rank at a sibling the seed pulled in rather than anybody placed', async () => {
     // The usual case for extracted items: pos1 hangs under t2 by its field and has no placement.
     world.rows.delete('row-pos1');
