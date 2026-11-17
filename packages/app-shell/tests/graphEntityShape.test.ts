@@ -11,8 +11,11 @@
  * and reported the record as missing an endpoint even though both ends existed and were readable.
  * A shape is data rather than behaviour, so nothing failed — the graph simply drew less than it had.
  */
+import { buildEntityManifest } from '@we/backend-ad4m';
 import { manifestEntries } from '@we/backend-shared';
 import { CORE_MANIFEST } from '@we/entities/manifest';
+import { entityExpander } from '@we/graph-expanders';
+import { entityAddress, type ExpanderContext } from '@we/graph-protocol';
 import { describe, expect, it } from 'vitest';
 
 import { toEntityShape } from '../src/shared/graphEntityShape';
@@ -134,5 +137,70 @@ describe('the name a node is captioned with', () => {
       ],
     });
     expect(foreign.nameProperty).toBe('caption');
+  });
+});
+
+/**
+ * The graph's relation readers over a shape an installed SDNA declares the way AD4M's model API
+ * writes one: the link as a typed `hasOne` naming `target_class_name`, and no `sh:class`.
+ *
+ * Read through the same steps the app takes — the backend's manifest, then the graph's shape — so the
+ * entity expander is answering from what an executor would actually report. Before the manifest read
+ * `target_class_name`, the relation reached the graph with an empty target, and the expander walked
+ * neither way along it.
+ */
+describe('a model relation declared by target class name, as the entity expander reads it', () => {
+  const shape = {
+    nodeShapeUri: 'PositionShape',
+    targetClass: 'x://Position',
+    properties: [
+      { name: 'about', path: 'x://about', nodeKind: 'IRI', relationKind: 'hasOne', targetClassName: 'Topic' },
+    ],
+    parentShapes: [],
+  } as unknown as Parameters<typeof buildEntityManifest>[0][number]['shape'];
+  const topic = { nodeShapeUri: 'TopicShape', targetClass: 'x://Topic', properties: [], parentShapes: [] } as never;
+  const shapes = buildEntityManifest([
+    { name: 'Position', shape },
+    { name: 'Topic', shape: topic },
+  ]).map(toEntityShape);
+
+  const contextFor = (answer: (query: Record<string, unknown>) => Record<string, unknown>[]) => {
+    const asked: Record<string, unknown>[] = [];
+    const context = {
+      defaultDataset: () => 'ds',
+      models: () => shapes,
+      warn: () => {},
+      query: async (query: Record<string, unknown>) => {
+        asked.push(query);
+        return answer(query);
+      },
+    } as unknown as ExpanderContext;
+    return { asked, context };
+  };
+
+  it('follows it forward, from the position to its topic', async () => {
+    const { asked, context } = contextFor((q) =>
+      q.entity === 'Position' ? [{ id: 'p1', about: { id: 't1', title: 'Roadmap' } }] : [],
+    );
+    const result = await entityExpander().expand(
+      { id: entityAddress('ds', 'Position', 'p1'), direction: 'out' },
+      context,
+    );
+    expect(asked[0]).toMatchObject({ entity: 'Position', include: { about: true } });
+    expect(result.edges).toEqual([
+      expect.objectContaining({ type: 'about', target: entityAddress('ds', 'Topic', 't1') }),
+    ]);
+  });
+
+  it('follows it backward, from the topic to what is about it', async () => {
+    const { asked, context } = contextFor((q) => (q.entity === 'Position' ? [{ id: 'p1', about: 't1' }] : []));
+    const result = await entityExpander().expand({ id: entityAddress('ds', 'Topic', 't1'), direction: 'in' }, context);
+    expect(asked).toEqual([
+      expect.objectContaining({
+        entity: 'Position',
+        scope: expect.objectContaining({ anchor: 'Topic', via: 'about' }),
+      }),
+    ]);
+    expect(result.edges).toEqual([expect.objectContaining({ source: entityAddress('ds', 'Position', 'p1') })]);
   });
 });
