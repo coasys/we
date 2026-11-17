@@ -236,6 +236,14 @@ export interface SpaceListEntry {
   kind: 'shared' | 'personal' | 'foreign';
   /** False for a joined dataset with no WE Space record — the "initialize" state. */
   isWeSpace: boolean;
+  /**
+   * This row's Space record has not been read yet, so `isWeSpace` and `kind` do not know yet.
+   *
+   * True only for the first seconds of a boot: the space on screen is read before the app appears,
+   * and the others after its first screen has drawn (see `BootController`). A row that is loading is
+   * not a dataset from another app, so a page must not say it is one.
+   */
+  loading: boolean;
   /** Whether this agent may change what everyone here sees. See {@link SpaceStore.canAdministerSpace}. */
   canAdminister: boolean;
   /**
@@ -583,6 +591,9 @@ const joinErrorMessage = (error: unknown): string =>
 
 /** One button in the module rail. See `SpaceStore.moduleLaunchers`. */
 type LauncherRow = { id: string; icon: string; label: string; active: boolean; busy: boolean; concealed: boolean };
+
+/** A space's own record, beside the dataset it was read from. */
+type SpaceRow = { ds: AppDataset; space: Space };
 
 export interface SpaceStore {
   // State
@@ -1186,14 +1197,17 @@ export interface SpaceStore {
   updateSpaceInCache: (dataset: AppDataset, updates: Partial<Space>) => void;
 
   // Boot wiring (used by the boot controller, not by schemas)
-  /** Given the dataset list, reads spaces from it rather than from the published one — see there. */
-  loadSpaces: (candidates?: readonly AppDataset[] | null) => Promise<void>;
+  /**
+   * Read the Space record of every space the agent holds, for the sidebar and the spaces list, from
+   * the published dataset list as it is when called. A space already held is not read again.
+   */
+  loadSpaces: () => Promise<void>;
   /**
    * Start what opening the space at this address needs — its templates and its schema reads — for a
-   * boot that is about to open it. Answers nothing, and does nothing for an address that is not a
-   * space among these datasets.
+   * boot that is about to open it, and read its Space record. Resolves when that record is held, at
+   * once for an address that is not a space among these datasets.
    */
-  prepareSpaceAt: (path: string, datasets: readonly AppDataset[]) => void;
+  prepareSpaceAt: (path: string, datasets: readonly AppDataset[]) => Promise<void>;
 
   // Testing
 }
@@ -1242,6 +1256,12 @@ export function SpaceStoreProvider(props: ParentProps) {
   const shellStore = useShellStore();
 
   const [mySpaces, setMySpaces] = createSignal<Space[]>([]);
+  /**
+   * Every space the agent holds has been asked for its record this session — `loadSpaces` has
+   * answered. Until then a dataset without a record in `mySpaces` is not yet known to be from another
+   * app: see `SpaceListEntry.loading`.
+   */
+  const [spacesListed, setSpacesListed] = createSignal(false);
 
   /** What a space made now can start with, the default first. See `bundleStarter.ts`. */
   const starterChoiceList = createMemo(() =>
@@ -1624,6 +1644,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         avatar: space?.avatar ?? '',
         kind: !space ? 'foreign' : space.url ? 'shared' : 'personal',
         isWeSpace: Boolean(space),
+        loading: !space && !spacesListed(),
         canAdminister: space ? canAdministerSpace(space.uuid) : false,
         modules: space ? moduleSettingsFrom(space.enabledModules, installedSet(), new Set(mutedModulesFor(ds.id))) : [],
         // Per row rather than a "current space" memo, for the reason this whole page exists: it
@@ -1689,9 +1710,19 @@ export function SpaceStoreProvider(props: ParentProps) {
     }),
   );
 
+  /*
+    Counted up each time the agent locks. `loadSpaces` runs after the app appears, so its reads can
+    still be out when somebody locks and signs in again; what they find belongs to the session that
+    started them, and the count is how `loadSpaces` knows that session has ended.
+  */
+  let sessionsEnded = 0;
+
   // Locking the agent clears the loaded spaces along with the session.
   createEffect(() => {
-    if (session.bootState() === 'login') setMySpaces([]);
+    if (session.bootState() !== 'login') return;
+    sessionsEnded++;
+    setMySpaces([]);
+    setSpacesListed(false);
   });
 
   // Derived: all non-system datasets with Space avatar/name when available, plain dataset data
@@ -1813,50 +1844,94 @@ export function SpaceStoreProvider(props: ParentProps) {
   });
 
   /**
-   * Load the Space model from every candidate dataset.
+   * Load the Space model from every dataset the agent holds — the sidebar's and the spaces list's
+   * names and pictures.
    *
-   * From the published dataset list, or from one handed in: a boot passes the list it just read, so
-   * this runs while the system datasets come up rather than after — it only ever reads datasets that
-   * already exist, and a system dataset made by the boot is never a candidate.
+   * From the published dataset list as it is when this runs. A boot calls this once the first screen
+   * is up, seconds after the list was read, so a space that arrived in between is read too. It
+   * merges into what is held rather than replacing it, and a space already held — the space on
+   * screen, read as the boot opened it — is not read again.
+   *
+   * The sharing options start beside the reads: they are one call that does not depend on them.
+   * Whatever happens to the reads, the rows stop saying they are loading.
    */
-  async function loadSpaces(from?: readonly AppDataset[] | null): Promise<void> {
+  async function loadSpaces(): Promise<void> {
+    const started = sessionsEnded;
+    void loadSharingOptions();
     try {
-      // System datasets hold no Space record — the root and the sandbox have no Space SDNA at all,
-      // so `Space.findOne` on them is an RPC 500 "No SHACL shape" error — and none is a space.
-      const candidates = (from ?? datasetStore.datasets()).filter((d) => !isSystemDataset(d.name));
-      // Any other joined dataset without Space SDNA installed (e.g. a Flux
-      // neighbourhood) would throw the same "No SHACL shape" error. Since these run in a
-      // Promise.all, one rejection would otherwise abort the whole batch and hide every
-      // real space's data (including avatars) until each is visited individually. Catch
-      // per-dataset so one bad dataset can't poison the rest.
-      const spaces = await Promise.all(
-        candidates.map((ds) => {
+      // A space already held is skipped: its row came from a newer read — the space on screen, read
+      // as the boot opened it and followed live since, or one made or joined a moment ago.
+      const held = untrack(mySpaces);
+      const read = await readSpaceRows(
+        datasetStore.datasets().filter((ds) => !held.some((space) => isSpaceSelf(space, ds))),
+      );
+      // Locked while the reads were out: what they found belongs to a session that has ended.
+      if (started !== sessionsEnded) return;
+      // A space can have been left while the reads were out.
+      holdSpaceRows(read, datasetStore.datasetsLoaded() ? datasetStore.datasets() : undefined);
+    } catch (error) {
+      console.error('SpaceStore: loadSpaces error', error);
+    } finally {
+      if (started === sessionsEnded) setSpacesListed(true);
+    }
+  }
+
+  /**
+   * Each candidate's own Space record, as the spaces list reads it.
+   *
+   * System datasets hold no Space record — the root and the sandbox have no Space SDNA at all, so
+   * `Space.findOne` on them is an RPC 500 "No SHACL shape" error — and none is a space, so they are
+   * never asked. Any other joined dataset without Space SDNA installed (e.g. a Flux neighbourhood)
+   * would throw the same error. Since these run in a Promise.all, one rejection would otherwise abort
+   * the whole batch and hide every real space's data (including avatars) until each is visited
+   * individually. Caught per dataset so one bad dataset can't poison the rest.
+   */
+  async function readSpaceRows(candidates: readonly AppDataset[]): Promise<SpaceRow[]> {
+    const rows = await Promise.all(
+      candidates
+        .filter((ds) => !isSystemDataset(ds.name))
+        .map((ds) => {
           const row = Space.findOne(ds.handle, { where: spaceSelfWhere(ds), include: { location: true } }).catch(
             () => null,
           );
           // Each row as it lands, not when the slowest space has answered: a space opened in the
           // meantime takes its collection from this read rather than reading its record again.
           shareListedSpace(ds.handle, row);
-          return row;
+          return row.then((space) => (space ? { ds, space } : null));
         }),
-      );
-      const filteredSpaces = spaces
-        .filter((s): s is Space => !!s)
-        .sort((a, b) => Number(a.createdAt) - Number(b.createdAt));
-      setMySpaces(filteredSpaces);
-      void loadSharingOptions();
-    } catch (error) {
-      console.error('SpaceStore: loadSpaces error', error);
-    }
+    );
+    return rows.filter((row): row is SpaceRow => !!row);
   }
 
-  function prepareSpaceAt(path: string, datasets: readonly AppDataset[]): void {
+  /**
+   * Put rows just read into `mySpaces` beside what is already held, oldest space first.
+   *
+   * Merged, never replaced: the list is read after the app has appeared, by which time the space on
+   * screen, a space joined from a guest link, or one made a moment ago may already be held — and
+   * each of those is newer than this read, so it wins. With `present`, a row whose dataset has gone
+   * since the read started is dropped rather than brought back.
+   */
+  function holdSpaceRows(read: readonly SpaceRow[], present?: readonly AppDataset[]): void {
+    setMySpaces((prev) => {
+      const fresh = read
+        .filter(({ ds }) => !present || present.some((d) => d.id === ds.id))
+        .filter(({ ds }) => !prev.some((space) => isSpaceSelf(space, ds)))
+        .map(({ space }) => space);
+      if (!fresh.length) return prev;
+      return [...prev, ...fresh].sort((a, b) => Number(a.createdAt) - Number(b.createdAt));
+    });
+  }
+
+  async function prepareSpaceAt(path: string, datasets: readonly AppDataset[]): Promise<void> {
     const [first, segment] = path.split(/[?#]/)[0].split('/').filter(Boolean);
     if (first !== 'space' || !segment) return;
     const ds = datasets.find((d) => datasetAddressedBy(d, segment));
     if (!ds) return;
     datasetStore.prepareDataset(ds);
     void templateStore.preloadSpaceTemplates(ds).catch(() => {});
+    // Its record too: the template it shows is named there, and its collection — what the Feed
+    // reads — is taken from this read rather than read again. The other spaces wait for the list.
+    holdSpaceRows(await readSpaceRows([ds]));
   }
 
   const [sharingOptions, setSharingOptions] = createSignal<SharingPickerOption[]>([]);

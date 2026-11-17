@@ -3285,6 +3285,7 @@ export const contextData: ContextData = {
             'avatar',
             'kind',
             'isWeSpace',
+            'loading',
             'canAdminister',
             'modules',
             'shareLink',
