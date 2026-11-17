@@ -246,6 +246,7 @@ so the wasm build never compiles tokio.
 8. **`$invoke` in a live space** goes to an offline `StaticHost` with no
    canned replies since round 2: every call is dropped (listed in the panel).
    E11 replaces this with real writes.
+   Answered in E11: see NOTES-e11.md.
 9. **Route key.** The app routes a space by its perspective uuid. WE's own
    URL uses the neighbourhood id for a shared space. The source answers to
    both, but links the template builds follow the uuid.
