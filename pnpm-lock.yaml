@@ -81,11 +81,11 @@ importers:
   apps/coasys:
     dependencies:
       '@coasys/ad4m':
-        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@1689ed67732c35cc0a41588041dea41e7902690a
-        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@1689ed67732c35cc0a41588041dea41e7902690a
+        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@658e2941cec73a6cf397a58f7dca90c281ad7b42
+        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@658e2941cec73a6cf397a58f7dca90c281ad7b42
       '@coasys/ad4m-connect':
-        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@1689ed67732c35cc0a41588041dea41e7902690a
-        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@1689ed67732c35cc0a41588041dea41e7902690a
+        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@658e2941cec73a6cf397a58f7dca90c281ad7b42
+        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@658e2941cec73a6cf397a58f7dca90c281ad7b42
       '@we/app-shell':
         specifier: workspace:*
         version: link:../../packages/app-shell
@@ -2636,11 +2636,11 @@ packages:
     engines: {node: '>=22.0.0'}
 
   '@coasys/ad4m-connect@https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@658e2941cec73a6cf397a58f7dca90c281ad7b42':
-    resolution: {integrity: sha512-1USsMDw8AGRDiDNyvpdCz7BeRI8DNzA5GMcn8sJTYaxfX3h1/MZwE5PfgkyLS7Hxj6o3UW4nYEioFiktTIgXFQ==, tarball: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@658e2941cec73a6cf397a58f7dca90c281ad7b42}
+    resolution: {tarball: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@658e2941cec73a6cf397a58f7dca90c281ad7b42}
     version: 0.13.1-staging.11
 
   '@coasys/ad4m@https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@658e2941cec73a6cf397a58f7dca90c281ad7b42':
-    resolution: {integrity: sha512-pl8KkkWCJW7Zf9LlojgnooxWWbjR1dr0y4gLlWdfoV6Xg1Q14BMWyBZSh7acKMK/tD9zkC5OSsXTBsC3Cs0Gnw==, tarball: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@658e2941cec73a6cf397a58f7dca90c281ad7b42}
+    resolution: {tarball: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@658e2941cec73a6cf397a58f7dca90c281ad7b42}
     version: 0.13.1-staging.11
     engines: {node: '>=22'}
 
