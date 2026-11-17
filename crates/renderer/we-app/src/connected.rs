@@ -548,15 +548,15 @@ fn space_screen(
             let room = ui.max_rect().size();
             live.app.frame_body_in(ui, room);
         });
-    // What went wrong with a write: top right, below the status bar, gone
-    // after eight seconds unless dismissed sooner.
+    // What went wrong with a write: bottom right, where it covers neither the
+    // status bar nor the inspector's header buttons, gone after eight
+    // seconds unless dismissed sooner.
     let notices = live.notice_list().clone();
     notices.expire(NOTICE_LIFE);
     if !notices.list().is_empty() {
-        let top = ui.max_rect().top() + 40.0;
         egui::Area::new(egui::Id::unique("we-write-notices"))
             .order(egui::Order::Foreground)
-            .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-12.0, top))
+            .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-12.0, -12.0))
             .show(ui.ctx(), |ui| draw_notices(ui, &notices, &live.app.theme));
         ui.ctx().request_repaint_after(NOTICE_LIFE);
     }
