@@ -291,7 +291,7 @@ function resolveScopeToParent(
     name ? models.find((m) => m.name === name)?.properties.find((p) => p.name === scope.via) : undefined;
   /*
     `direction: 'in'` reads `result --via--> anchor`, so the relation is often the *result's* own —
-    "what points at this topic through `about`" names the position's field, not the topic's. The
+    "what points at this message through `replyTo`" names the reply's field, not the message's. The
     anchor is asked first, which keeps a tree read through one relation (`children` from both ends)
     exactly as it was; the entity being read answers where the anchor declares no such relation.
   */
