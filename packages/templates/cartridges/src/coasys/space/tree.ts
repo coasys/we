@@ -237,7 +237,7 @@ const revealing = (value: string, inside: string, up: string) => {
   };
 };
 
-/** Another app's class says its namespace after its name, quietly — two apps can name a class alike. */
+/** Another app's class says its namespace after its name, quietly — the first to carry that name; one name is one row. */
 const namespace: SchemaNode = {
   type: '$if',
   props: {

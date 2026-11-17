@@ -27,7 +27,8 @@ const table = (entries: [string, string][]) => `{ ${entries.map(([k, v]) => `${k
 
 /*
   The three groups. Each class is `{ id, label, icon }` — `id` its name, which is also what `distinct`
-  tells two apart by — and another app's carries its `namespace` as well.
+  lists each by, so two apps' classes of one name are one row — and another app's carries its
+  `namespace` as well, shown for the reader, not used to tell classes apart.
 */
 
 const asClass = 'k, { id: k.value, label: k.label, icon: k.icon }';
@@ -43,9 +44,10 @@ export const WE_CLASSES = `distinct([${WE_VOCABULARY.map(
 /**
  * Another app's classes, flat and by name, as the store publishes them: every class the space carries
  * that is not one of its own models or WE's, and not WE's plumbing — a `Space` an older version wrote
- * under another IRI is still WE's. Each once, with its namespace (the class IRI before its name) to
- * tell two apps' classes apart. Where a class comes from is not recorded anywhere, so it is shown
- * rather than grouped by.
+ * under another IRI is still WE's. Each name once, with the namespace (the class IRI before its name) of the first
+ * that carries it, shown as secondary text. A name resolves to one class, so two apps' classes of one
+ * name are one row, under whichever namespace comes first. Where a class comes from is not recorded
+ * anywhere, so it is shown rather than grouped by.
  */
 const OTHER_ENTITIES = 'datasetStore.currentDatasetEntities';
 export const OTHER_CLASSES = [
