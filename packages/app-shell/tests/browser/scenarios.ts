@@ -2185,7 +2185,10 @@ const coasysBar = (): Scenario => {
         viewBar(
           [
             { label: 'Social DNA', onClick: { $invoke: 'routeStore.navigate', args: ['/dna'] } },
-            { label: 'Signal types', onClick: { $invoke: 'routeStore.navigate', args: ['/dna?dna=signal'] } },
+            {
+              label: 'Signal types',
+              onClick: { $invoke: 'routeStore.navigate', args: ['/dna?dna=model%7CSignalType'] },
+            },
             { label: 'Like' },
           ],
           'dna',
