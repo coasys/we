@@ -76,6 +76,9 @@ export const ad4mConnector: BackendConnector = {
         // executor keeps some calls (installing local AI, for one) to the operator alone.
         operator: holdsOperatorCredential(core.token),
         capabilities,
+        // ad4m-connect reaches 'authenticated' only after `agent.status` answered initialised and
+        // unlocked, and hands the client over only then — so the session's first status is known.
+        unlockedAtConnect: core.authState === 'authenticated',
         linkServerUrl: (weSeed.ad4m as { linkServerUrl?: string }).linkServerUrl,
         // Read on each use: ad4m-connect replaces the token when a session is re-authorised.
         connection: () => (core.baseUrl ? { url: core.baseUrl, token: core.token } : null),

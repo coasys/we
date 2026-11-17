@@ -50,6 +50,7 @@ import {
   type WorkflowEditorView,
   type WorkflowLabels,
 } from '@shared/workflowViews';
+import { firstScreen } from '@solid/firstScreen';
 import { useDatasetStore } from '@solid/stores/DatasetStore';
 import { useSessionStore } from '@solid/stores/SessionStore';
 import { useSpaceStore } from '@solid/stores/SpaceStore';
@@ -293,11 +294,17 @@ export function WorkflowStoreProvider(props: ParentProps) {
     }
   }
 
-  // Asked again whenever the space changes; after a write, the write asks.
+  /*
+    Asked again whenever the space changes; after a write, the write asks. Not before the first screen
+    is up (`shared/firstScreen.ts`): the list is the sidebar's, and each workflow brings a definition
+    read. Started late, it reads the space on screen then — and `workflowsLoaded` stays false until
+    it has, so nothing reads "no workflows" meanwhile.
+  */
   createEffect(() => {
     datasetId();
     available();
     untrack(() => setSummaries([]));
+    if (!firstScreen.open()) return;
     void untrack(refreshWorkflows);
   });
 
