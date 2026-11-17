@@ -5263,7 +5263,7 @@ mod tests {
 
     #[test]
     fn an_offer_link_becomes_a_qr_code() {
-        let svg = qr_svg("https://id.coasys.org/o#coasys:offer:1:abc");
+        let svg = qr_svg("https://coasys.id/o#coasys:offer:1:abc");
         assert!(svg.starts_with("<?xml") || svg.starts_with("<svg"));
     }
 
