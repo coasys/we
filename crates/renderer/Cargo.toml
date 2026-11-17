@@ -3,21 +3,19 @@
 # own Cargo.lock; nothing here is published.
 #
 # Dependency direction, never the other way:
-#   we-expr <- we-screen <- we-template <- we-store <- we-widgets <- we-app
-#   we-style depends on we-expr only; we-ad4m depends on we-store.
-# we-expr, we-screen, we-template, we-store and we-style must build for
-# wasm32-unknown-unknown and must not depend on tokio.
+#   we-expr <- we-screen <- we-template <- we-data <- we-layout <- we-egui <- we-app
+#   we-metrics is a leaf below we-style, we-template and we-layout; we-style
+#   otherwise depends on we-expr only; we-ad4m depends on we-data.
+# we-expr, we-screen, we-template, we-data, we-style, we-layout and we-metrics
+# must build for wasm32-unknown-unknown and must not depend on tokio.
 [workspace]
 resolver = "2"
 members = [
+    "we-metrics",
     "we-expr",
     "we-screen",
     "we-template",
-    "we-store",
     "we-style",
-    "we-widgets",
-    "we-ad4m",
-    "we-app",
 ]
 
 [workspace.dependencies]
@@ -27,16 +25,23 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 indexmap = { version = "2", features = ["serde"] }
 thiserror = "2"
+log = "0.4"
 async-trait = "0.1"
-egui = "0.37"
+unicode-normalization = "0.1"
+egui = { version = "0.37", features = ["default_fonts"] }
 eframe = "0.37"
 taffy = "0.15"
 egui_kittest = "0.37"
+egui-pop-phosphor = { version = "0.15", default-features = false, features = ["regular", "bold", "fill"] }
+base64 = "0.22"
+egui_extras = { version = "0.37", default-features = false, features = ["image", "http", "webp", "svg"] }
+ratatui = "0.30.2"
+crossterm = "0.29.0"
+unicode-width = "0.2"
+smallvec = "1"
 
+we-metrics = { path = "we-metrics" }
 we-expr = { path = "we-expr" }
 we-screen = { path = "we-screen" }
 we-template = { path = "we-template" }
-we-store = { path = "we-store" }
 we-style = { path = "we-style" }
-we-widgets = { path = "we-widgets" }
-we-ad4m = { path = "we-ad4m" }

@@ -6,10 +6,8 @@
 //! handler lists — stay as raw [`serde_json::Value`]: a token is data, and the
 //! evaluator resolves its parts when it fires, lazily, not at parse time.
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use we_expr::Value;
 
 use crate::node::JsonMap;
-use crate::resolved::NodeId;
 
 /// One handler token. Unknown verbs land in [`HandlerToken::Other`] verbatim —
 /// a token this build does not know is still data, and still round-trips.
@@ -240,55 +238,8 @@ impl<'de> Deserialize<'de> for HandlerToken {
     }
 }
 
-/// A pending call's ticket. [`crate::Runtime`]-like code (E3) finishes it
-/// later with `complete(call_id, result)` — nothing in the resolver or the
-/// widgets blocks on it.
+/// A pending call's ticket, minted by core when it hands an action to the
+/// [`crate::Host`]; the host's [`crate::Completer`] settles it later —
+/// nothing in the resolver or the widgets blocks on it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct CallId(pub u64);
-
-/// What `Host::invoke` answered: the call settled already (with an `Ok` or an
-/// `Err` value — an error is a value here), or it is pending under a [`CallId`].
-#[derive(Debug)]
-pub enum Invoked {
-    Done(Result<Value, Value>),
-    Pending(CallId),
-}
-
-/// The host a handler runs against: the store bag's methods, and each node's
-/// `$localState`.
-///
-/// ```
-/// use std::collections::HashMap;
-/// use we_expr::Value;
-/// use we_template::{Host, Invoked, NodeId};
-///
-/// struct DemoHost {
-///     fields: HashMap<String, Value>,
-/// }
-/// impl Host for DemoHost {
-///     fn invoke(&mut self, _target: &str, _args: Vec<Value>) -> Invoked {
-///         Invoked::Done(Ok(Value::Null))
-///     }
-///     fn set_local(&mut self, node: &NodeId, field: &str, value: Value) {
-///         self.fields.insert(format!("{}:{field}", node.as_str()), value);
-///     }
-///     fn get_local(&self, node: &NodeId, field: &str) -> Value {
-///         self.fields
-///             .get(&format!("{}:{field}", node.as_str()))
-///             .cloned()
-///             .unwrap_or(Value::Undefined)
-///     }
-/// }
-///
-/// let mut host = DemoHost { fields: HashMap::new() };
-/// host.set_local(&"n1".into(), "open", true.into());
-/// assert!(host.get_local(&"n1".into(), "open").strict_eq(&true.into()));
-/// ```
-pub trait Host {
-    /// Call `target` — a store member like `spaceStore.create` — with `args`.
-    fn invoke(&mut self, target: &str, args: Vec<Value>) -> Invoked;
-    /// Write `node`'s `$localState` field.
-    fn set_local(&mut self, node: &NodeId, field: &str, value: Value);
-    /// Read `node`'s `$localState` field; `Undefined` when unset.
-    fn get_local(&self, node: &NodeId, field: &str) -> Value;
-}

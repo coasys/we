@@ -396,6 +396,12 @@ jobs:
       - name: Install the pinned toolchain
         run: rustup toolchain install --component clippy --component rustfmt
 
+      # we-legacy's surface test runs `scripts/gen-legacy-surface.mjs --check`
+      # (Node built-ins only), so the job pins Node like the others do.
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
       - name: Restore the cargo cache
         uses: actions/cache/restore@v6
         with:
@@ -406,13 +412,16 @@ jobs:
           key: renderer-${{ runner.os }}-${{ hashFiles('crates/renderer/Cargo.lock', 'crates/renderer/rust-toolchain.toml') }}
           restore-keys: renderer-${{ runner.os }}-
 
-      # egui needs the X11/GL dev libraries to compile on Linux.
+      # egui needs the X11/GL dev libraries to compile on Linux. The snapshot
+      # tests render through wgpu, and the runner has no GPU: mesa-vulkan-drivers
+      # gives it lavapipe, the CPU Vulkan adapter egui_kittest picks.
       - name: Install egui system packages
         run: |
           sudo apt-get update >/dev/null
           sudo apt-get install -y --no-install-recommends \
             libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
-            libxkbcommon-dev libssl-dev libasound2-dev pkg-config >/dev/null
+            libxkbcommon-dev libssl-dev libasound2-dev pkg-config \
+            mesa-vulkan-drivers >/dev/null
 
       - name: Format
         run: cargo fmt --all -- --check
@@ -423,8 +432,28 @@ jobs:
       - name: Test
         run: cargo test --locked
 
+      # A pixel snapshot that fails only here (lavapipe on this runner's mesa)
+      # cannot be reproduced from the log alone: keep what it drew and where it
+      # differed.
+      - name: Upload snapshot diffs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: renderer-snapshot-diffs
+          path: |
+            crates/renderer/**/tests/snapshots/*.diff.png
+            crates/renderer/**/tests/snapshots/*.new.png
+          if-no-files-found: ignore
+          retention-days: 14
+
       - name: wasm32 check
         run: cargo check --locked --target wasm32-unknown-unknown
+
+      # The core crates must stay UI-toolkit-free — a TUI/CLI frontend
+      # reuses them. The script greps the resolved trees for
+      # egui/eframe/winit/tokio, transitive edges included.
+      - name: Core crates stay egui-free
+        run: scripts/check-egui-free.sh
 
       - name: Save the cargo cache
         if: github.ref == 'refs/heads/dev'

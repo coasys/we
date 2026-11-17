@@ -9,10 +9,13 @@ use std::sync::Arc;
 
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
+use smallvec::SmallVec;
 use we_expr::Value;
 
 use crate::handler::HandlerToken;
 use crate::node::JsonMap;
+use crate::query::SlotRef;
+use crate::surface::SurfaceTag;
 
 /// A node's stable identity: template id + child path + `$each` keys.
 #[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -70,6 +73,15 @@ pub struct ResolvedNode {
     pub slot: Option<Arc<str>>,
     /// `Node` children and text runs, in order.
     pub children: Vec<ResolvedChild>,
+    /// The surfaces this node answers for — a `$surface`'s own tag, or on
+    /// the runtime's synthetic content-viewport wrapper the host tags of
+    /// the mounts it frames (E3c-13). Never a mount's host tag on a
+    /// template node: the host is the boundary around the template
+    /// (`Runtime::host_surfaces`). The frontend reports the node's
+    /// content-box width against each; the generation keeps a remount's
+    /// measures apart. Identity detail like `id` — not part of the
+    /// [`normal_form`].
+    pub surfaces: SmallVec<[SurfaceTag; 2]>,
     /// From `$if` / `$animate`; paint-only.
     pub transition: Option<Transition>,
 }
@@ -89,43 +101,130 @@ pub struct HandlerRef {
     pub tokens: Vec<HandlerToken>,
     /// The bindings in scope where the handler was written.
     pub scope: Scope,
+    /// The frame the handler was resolved in (design 4.6.3): dispatch and
+    /// any completion it starts run under this authority — never under a
+    /// mount the frontend or completer happens to name.
+    pub frame: crate::gate::Frame,
 }
 
 /// The bindings a handler carries out of the node it was written on:
 /// name → value, innermost last. Read before the store bag and the built-ins
 /// when the handler runs.
 #[derive(Debug, Clone, Default)]
-pub struct Scope(pub Vec<(Arc<str>, Value)>);
+pub struct Scope {
+    /// name → value (and the conduit mark, see [`Scope::bind_conduit`]),
+    /// innermost last.
+    binds: Vec<Bind>,
+}
+
+/// One scope binding. `conduit` marks the resolver's synthesized boxes —
+/// `local`, a `$surface` measure, `$nav`, an unresolved `$agent` stub —
+/// objects the resolve rebuilds every pass where WE keeps one context
+/// object alive for the mount: reading the box itself subscribes to
+/// nothing, so a tracked initial may not count a rebuilt box as a moved
+/// dependency. Reads THROUGH the box (`local.src`, `surface.tier`) remain
+/// real dependencies.
+#[derive(Debug, Clone)]
+struct Bind {
+    name: Arc<str>,
+    value: Value,
+    conduit: bool,
+    /// The query slots the value was read out of — an `$each` row of
+    /// `local.board` reads the board's slot whatever it is called.
+    slots: Arc<[SlotRef]>,
+}
 
 impl Scope {
     /// The innermost binding for `name`, if any.
     pub fn get(&self, name: &str) -> Option<&Value> {
-        self.0
+        self.binds
             .iter()
             .rev()
-            .find(|(n, _)| n.as_ref() == name)
-            .map(|(_, v)| v)
+            .find(|b| b.name.as_ref() == name)
+            .map(|b| &b.value)
     }
 
     /// Push a binding on top.
     pub fn bind(&mut self, name: impl Into<Arc<str>>, value: Value) {
-        self.0.push((name.into(), value));
+        self.binds.push(Bind {
+            name: name.into(),
+            value,
+            conduit: false,
+            slots: Arc::new([]),
+        });
+    }
+
+    /// Push a binding whose value came out of the query slots `slots`.
+    pub fn bind_from_slots(
+        &mut self,
+        name: impl Into<Arc<str>>,
+        value: Value,
+        slots: Arc<[SlotRef]>,
+    ) {
+        self.binds.push(Bind {
+            name: name.into(),
+            value,
+            conduit: false,
+            slots,
+        });
+    }
+
+    /// The query slots `name`'s innermost binding was read out of.
+    pub fn slots_of(&self, name: &str) -> &[SlotRef] {
+        self.binds
+            .iter()
+            .rev()
+            .find(|b| b.name.as_ref() == name)
+            .map(|b| &*b.slots)
+            .unwrap_or(&[])
+    }
+
+    /// A synthesized box — the name reads like any binding; the mark only
+    /// tells a tracked evaluation that the box is not itself a dependency.
+    pub fn bind_conduit(&mut self, name: impl Into<Arc<str>>, value: Value) {
+        self.binds.push(Bind {
+            name: name.into(),
+            value,
+            conduit: true,
+            slots: Arc::new([]),
+        });
+    }
+
+    /// Whether `name`'s innermost binding is a conduit box — the check a
+    /// tracked read makes before recording a bare root read: `[local]` is
+    /// no dependency, `local.src` still is.
+    pub fn is_conduit(&self, name: &str) -> bool {
+        self.binds
+            .iter()
+            .rev()
+            .find(|b| b.name.as_ref() == name)
+            .is_some_and(|b| b.conduit)
     }
 
     pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
+        self.binds.is_empty()
     }
 
     pub fn len(&self) -> usize {
-        self.0.len()
+        self.binds.len()
     }
 }
 
-/// What `$if`/`$animate` leave for the painter: enter and exit effect lists.
+/// What `$if`/`$animate` leave for the painter: enter and exit effect lists,
+/// and `$animate`'s open state when it authors a `condition` — the child is
+/// mounted either way; the painter draws hidden/visual state from `open`.
 #[derive(Debug, Clone, Default)]
 pub struct Transition {
     pub enter: Option<Vec<TransitionEffect>>,
     pub exit: Option<Vec<TransitionEffect>>,
+    /// `$animate`'s evaluated `condition` (`Some` when authored): the painter
+    /// draws the open or hidden style — the subtree is present regardless.
+    /// `None` for a mount/scroll-driven animation and for `$if`.
+    pub open: Option<bool>,
+    /// The `$if` this is the `then` branch of, by the `$if`'s own id — the
+    /// key its condition is kept under in [`crate::Runtime::conditions`].
+    /// `None` for `$animate`.
+    pub site: Option<NodeId>,
 }
 
 /// One animation effect (`TransitionEffect` in `types.ts`). `distance` is text
@@ -181,7 +280,12 @@ impl Transition {
         };
         let enter = read("enterTransition");
         let exit = read("exitTransition");
-        (enter.is_some() || exit.is_some()).then_some(Transition { enter, exit })
+        (enter.is_some() || exit.is_some()).then_some(Transition {
+            enter,
+            exit,
+            open: None,
+            site: None,
+        })
     }
 }
 

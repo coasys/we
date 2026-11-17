@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use indexmap::IndexMap;
 
-use crate::{CallFn, Value};
+use crate::{CallFn, CallableKind, CallableRef, Namespace, Value};
 
 /// The environment an expression is evaluated against.
 ///
@@ -39,7 +39,22 @@ pub trait Env {
     /// A built-in or host-registered function. `Undefined` for a name nothing
     /// provides.
     fn call(&self, name: &str, args: &[Value]) -> Value;
+    /// The read observer this env wants, if any — called once per read the
+    /// evaluator performs, with `(path, effective value)`: the read's name
+    /// (`store`, `store.items`, `items.0.sig`) and the value the expression
+    /// sees, so an accessor is invoked once for the one syntactic read it
+    /// stands for and the answer reported is the same value the expression
+    /// holds. This is how a tracked evaluation learns its inputs without
+    /// the evaluator wrapping values — identity is preserved end to end.
+    /// The default `None` means untracked: evaluation pays only the check.
+    fn read_observer(&self) -> Option<&ReadObserver<'_>> {
+        None
+    }
 }
+
+/// The callback [`Env::read_observer`] may install — `observe(path, value)`
+/// once per read the evaluator performs.
+pub type ReadObserver<'a> = dyn Fn(&str, &Value) + 'a;
 
 /// An [`Env`] over two maps — roots and functions — for tests and for the
 /// vector loader.
@@ -83,5 +98,73 @@ impl Env for MapEnv {
             .get(name)
             .map(|f| f(args))
             .unwrap_or(Value::Undefined)
+    }
+}
+
+/// The value of a call-time root — `event`, `arg`, `result` — as an
+/// expression reads it (`callbackValue` in `evaluate.ts`).
+///
+/// An object is wrapped in a namespace whose members are read as data: a
+/// function member comes back [`CallableKind::Callback`]-tagged (a composer's
+/// `save()` is let through on purpose), an accessor member passes through so
+/// `readValue` invokes it, and anything else is wrapped recursively. The
+/// namespace settles back to the raw object — `event` alone is the event,
+/// not a store. Any non-object is itself, unwrapped.
+///
+/// ```
+/// use indexmap::IndexMap;
+/// use std::sync::Arc;
+/// use we_expr::{callback_value, eval, parse, MapEnv, Value};
+///
+/// let event: Value = Value::Obj(Arc::new(IndexMap::from([
+///     ("id".into(), "ev:9".into()),
+/// ])));
+/// let env = MapEnv::new().with_root("event", callback_value(&event));
+/// assert!(eval(&parse("event.id").unwrap(), &env).strict_eq(&"ev:9".into()));
+/// // `event` itself settles back to the raw object.
+/// assert_eq!(
+///     eval(&parse("event").unwrap(), &env).to_json(),
+///     event.to_json()
+/// );
+/// ```
+pub fn callback_value(value: &Value) -> Value {
+    match value {
+        Value::Obj(_) => Value::Namespace(Arc::new(CallbackNamespace { raw: value.clone() })),
+        _ => value.clone(),
+    }
+}
+
+/// The namespace `callback_value` wraps an object in — `CallbackNamespace` in
+/// `evaluate.ts`. Member reads go through [`Namespace::get`]; [`raw`] keeps
+/// the value it wraps so `settle` hands the object itself back.
+///
+/// [`raw`]: Namespace::raw
+#[derive(Debug)]
+struct CallbackNamespace {
+    raw: Value,
+}
+
+impl Namespace for CallbackNamespace {
+    fn get(&self, property: &str) -> Value {
+        let Value::Obj(raw) = &self.raw else {
+            return Value::Undefined;
+        };
+        let member = raw.get(property).cloned().unwrap_or(Value::Undefined);
+        match member {
+            Value::Callable(c) => match c.kind() {
+                // A signal stays itself — `readValue` calls it.
+                CallableKind::Accessor => Value::Callable(c),
+                // Any other function comes back bound to the payload and
+                // callback-tagged — `readValue` lets it through. (`bound` is
+                // the name JavaScript reports for the bound function, and
+                // what the vectors re-encode.)
+                _ => Value::Callable(CallableRef::callback("bound", move |args| c.call(args))),
+            },
+            member => callback_value(&member),
+        }
+    }
+
+    fn raw(&self) -> Option<Value> {
+        Some(self.raw.clone())
     }
 }

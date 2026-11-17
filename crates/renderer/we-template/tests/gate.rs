@@ -1,0 +1,1337 @@
+//! E3c-8a — the read boundary. Design 4.6.1's rows, 4.6.3's frames and
+//! 4.6.5's handle taint, exercised through a `BindingSource` test double
+//! and the real `Gate`.
+
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
+
+use indexmap::IndexMap;
+use serde_json::json;
+use we_expr::{HandleKind, HandleTable, MapNamespace, MountCx, Value};
+use we_screen::{ScreenSchema, ScreenState};
+use we_template::{
+    inert, root_domain, taint_handles, BindingSource, Bound, DataRevision, DatasetHandle,
+    DatasetSel, Declared, Gate, Invalidator, MemberTiers, PartDef, PartSource, RootLayer, Roots,
+    SchemaNode, StaticHost, StoreBag, Tier,
+};
+use we_template::{LocalState, ResolvedChild, ResolvedNode, RootSpec, Runtime};
+
+fn map(pairs: &[(&str, Value)]) -> Value {
+    Value::Namespace(Arc::new(MapNamespace::new(
+        pairs
+            .iter()
+            .map(|(k, v)| (Arc::from(*k), v.clone()))
+            .collect::<IndexMap<Arc<str>, Value>>(),
+    )))
+}
+
+/// The F2 double: a source that answers the v2 root names it knows,
+/// profiles from its own bag's `profiles` root, and counts
+/// subscriptions — the read-identity contract without a session.
+#[derive(Debug)]
+struct Double {
+    bag: StoreBag,
+    rev: AtomicU64,
+    subs: AtomicU64,
+    /// `name → (value, members)` — a root absent here is unserved.
+    roots: Mutex<ServedMap>,
+}
+
+type ServedMap = IndexMap<Arc<str>, (Value, Option<MemberTiers>)>;
+
+impl Double {
+    fn new() -> Self {
+        Double {
+            bag: StoreBag::new(),
+            rev: AtomicU64::new(1),
+            subs: AtomicU64::new(0),
+            roots: Mutex::new(ServedMap::new()),
+        }
+    }
+    fn serve(&self, name: &str, value: Value, members: Option<MemberTiers>) {
+        self.roots
+            .lock()
+            .unwrap()
+            .insert(name.into(), (value, members));
+    }
+    fn bump(&self) {
+        self.rev.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+impl DataRevision for Double {
+    fn revision(&self) -> u64 {
+        self.rev.load(Ordering::Relaxed)
+    }
+    fn subscribe(&self, _inv: Invalidator) {
+        self.subs.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+impl BindingSource for Double {
+    fn root(&self, name: &str, _mount: &MountCx) -> Option<Bound> {
+        self.roots
+            .lock()
+            .unwrap()
+            .get(name)
+            .map(|(value, members)| Bound {
+                value: value.clone(),
+                members: members.clone(),
+                domain: None,
+            })
+    }
+    fn profile(&self, did: &str, _mount: &MountCx) -> Option<Value> {
+        match self.bag.root("profiles") {
+            Some(Value::Namespace(ns)) => match ns.get(did) {
+                Value::Undefined => None,
+                v => Some(v),
+            },
+            _ => None,
+        }
+    }
+    fn ready(&self) -> bool {
+        true
+    }
+    fn compat_roots(&self) -> &[Arc<str>] {
+        &[]
+    }
+}
+
+fn space_auth() -> MountCx {
+    MountCx::explicit("space-mount")
+}
+fn app_auth() -> MountCx {
+    MountCx::explicit_app("app-mount")
+}
+
+fn gated<'a>(
+    layer: &'a RootLayer,
+    bag: &'a StoreBag,
+    src: &'a Double,
+    gate: &'a Arc<Gate>,
+    auth: MountCx,
+) -> Roots<'a> {
+    Roots::new(layer, bag).gated(src, gate, src.compat_roots(), auth, Declared::default())
+}
+
+fn get(v: &Value, key: &str) -> Value {
+    match v {
+        Value::Namespace(ns) => ns.get(key),
+        Value::Obj(o) => o.get(key).cloned().unwrap_or(Value::Undefined),
+        _ => Value::Undefined,
+    }
+}
+
+fn obj(pairs: &[(&str, Value)]) -> Value {
+    Value::Obj(Arc::new(
+        pairs
+            .iter()
+            .map(|(k, v)| (Arc::from(*k), v.clone()))
+            .collect::<IndexMap<Arc<str>, Value>>(),
+    ))
+}
+
+fn rig() -> (Arc<StoreBag>, RootLayer, StoreBag, Double, Arc<Gate>) {
+    // RootLayer borrows its bag — keep the bag Arc so callers can clone it.
+    let layer_bag = Arc::new(StoreBag::new());
+    (
+        layer_bag.clone(),
+        RootLayer::new(&layer_bag),
+        StoreBag::new(),
+        Double::new(),
+        Arc::new(Gate::new(HandleTable::new())),
+    )
+}
+
+// ── 4.6.1 root rows ─────────────────────────────────────────────────
+
+#[test]
+fn space_tier_cannot_read_the_app_root() {
+    let (layer_bag, layer, bag, src, gate) = rig();
+    let _ = &layer_bag;
+    src.serve("app", map(&[("token", Value::from("secret"))]), None);
+
+    let denied = gated(&layer, &bag, &src, &gate, space_auth());
+    assert!(denied.root("app").is_none());
+    assert_eq!(gate.denial_count(), 1);
+
+    let allowed = gated(&layer, &bag, &src, &gate, app_auth());
+    let app = allowed.root("app").expect("app tier reads app");
+    assert!(get(&app, "token").strict_eq(&Value::from("secret")));
+}
+
+#[test]
+fn space_tier_reads_the_space_domain_roots() {
+    let (layer_bag, layer, bag, src, gate) = rig();
+    let _ = &layer_bag;
+    for name in ["space", "me", "system"] {
+        src.serve(name, map(&[("id", Value::from(name))]), None);
+        let roots = gated(&layer, &bag, &src, &gate, space_auth());
+        assert!(
+            get(&roots.root(name).unwrap_or_else(|| panic!("{name}")), "id")
+                .strict_eq(&Value::from(name))
+        );
+    }
+    assert_eq!(gate.denial_count(), 0);
+}
+
+#[test]
+fn an_unknown_root_is_absent_and_never_served() {
+    let (layer_bag, layer, bag, src, gate) = rig();
+    let _ = &layer_bag;
+    // The source knows nothing called `nonsense`; core's table neither.
+    assert_eq!(root_domain("nonsense", &[]), None);
+    let roots = gated(&layer, &bag, &src, &gate, space_auth());
+    assert!(roots.root("nonsense").is_none());
+    // And a source that invents an unclassifiable answer is refused too:
+    // the Bound domain is the only way a name the table missed is served.
+    src.serve("exotic", map(&[]), None);
+    let roots = gated(&layer, &bag, &src, &gate, space_auth());
+    // `domain: None` on an unclassified name → no domain → absent.
+    assert!(roots.root("exotic").is_none());
+    // Both refusals are counted (Lal, missing (b)): an unknown root has a
+    // verdict — one diagnostic per (mount, name) — not a silent `None`.
+    assert_eq!(gate.denial_count(), 2, "unknown roots are counted");
+    // Asked again, still one line each.
+    assert!(roots.root("nonsense").is_none());
+    assert_eq!(gate.denial_count(), 2);
+}
+
+// ── 4.6.1 member rows ───────────────────────────────────────────────
+
+#[test]
+fn screen_members_filter_by_the_core_table() {
+    let (layer_bag, layer, bag, src, gate) = rig();
+    let _ = &layer_bag;
+    src.serve(
+        "screen",
+        map(&[
+            ("params", map(&[("id", Value::from("s1"))])),
+            ("activeShellView", Value::from("dock")),
+        ]),
+        // A source's own table never weakens core's: even one that would
+        // allow everything is overridden by `screen`'s fixed table.
+        Some(MemberTiers::from_rows(&[("activeShellView", Tier::Space)])),
+    );
+
+    let space = gated(&layer, &bag, &src, &gate, space_auth())
+        .root("screen")
+        .expect("screen serves at space tier");
+    // Space member — readable.
+    assert!(get(&get(&space, "params"), "id").strict_eq(&Value::from("s1")));
+    // App member — Undefined for space, denial counted.
+    assert!(get(&space, "activeShellView").strict_eq(&Value::Undefined));
+    // Enumeration does not leak the denied member's name.
+    let keys = match &space {
+        Value::Namespace(ns) => ns.keys(),
+        _ => vec![],
+    };
+    assert!(!keys.iter().any(|k| k.as_ref() == "activeShellView"));
+
+    let app = gated(&layer, &bag, &src, &gate, app_auth())
+        .root("screen")
+        .unwrap();
+    assert!(get(&app, "activeShellView").strict_eq(&Value::from("dock")));
+}
+
+#[test]
+fn screen_panels_are_filtered_to_declared_ids() {
+    let (layer_bag, layer, bag, src, gate) = rig();
+    let _ = &layer_bag;
+    src.serve(
+        "screen",
+        map(&[(
+            "panels",
+            map(&[
+                ("p-mine", map(&[("open", Value::from(true))])),
+                ("p-theirs", map(&[("open", Value::from(true))])),
+            ]),
+        )]),
+        None,
+    );
+    let declared = Declared {
+        panels: Arc::from(["p-mine".into()]),
+        dialogs: Arc::from([]),
+        lanes: Arc::from([]),
+    };
+    let roots =
+        Roots::new(&layer, &bag).gated(&src, &gate, src.compat_roots(), space_auth(), declared);
+    let panels = get(&roots.root("screen").unwrap(), "panels");
+    assert!(get(&get(&panels, "p-mine"), "open").strict_eq(&Value::from(true)));
+    assert!(get(&panels, "p-theirs").strict_eq(&Value::Undefined));
+    let keys = match &panels {
+        Value::Namespace(ns) => ns.keys(),
+        _ => vec![],
+    };
+    assert_eq!(keys, vec![Arc::<str>::from("p-mine")]);
+}
+
+#[test]
+fn a_compat_root_without_a_table_is_refused_wholesale() {
+    let (layer_bag, layer, bag, src, gate) = rig();
+    let _ = &layer_bag;
+    // `legacy` is core-classified Compat; the source serves it bare.
+    src.serve("legacy", map(&[("sessionStore", map(&[]))]), None);
+    let roots = gated(&layer, &bag, &src, &gate, space_auth());
+    assert!(roots.root("legacy").is_none());
+    assert_eq!(gate.denial_count(), 1);
+}
+
+#[test]
+fn compat_members_respect_the_table_at_both_tiers() {
+    let (layer_bag, layer, bag, src, gate) = rig();
+    let _ = &layer_bag;
+    let compat: Arc<Vec<Arc<str>>> = Arc::new(vec!["sessionStore".into()]);
+    src.serve(
+        "sessionStore",
+        map(&[
+            ("loggedIn", Value::from(true)),
+            ("agentUrl", Value::from("wss://x")),
+        ]),
+        Some(MemberTiers::from_rows(&[
+            ("loggedIn", Tier::Space),
+            ("agentUrl", Tier::App),
+        ])),
+    );
+    let roots = Roots::new(&layer, &bag).gated(
+        &src,
+        &gate,
+        compat.as_ref(),
+        space_auth(),
+        Declared::default(),
+    );
+    let session = roots.root("sessionStore").expect("compat root serves");
+    assert!(get(&session, "loggedIn").strict_eq(&Value::from(true)));
+    assert!(get(&session, "agentUrl").strict_eq(&Value::Undefined));
+    // Unlisted member — denied.
+    assert!(get(&session, "unlisted").strict_eq(&Value::Undefined));
+
+    let app_roots = Roots::new(&layer, &bag).gated(
+        &src,
+        &gate,
+        compat.as_ref(),
+        app_auth(),
+        Declared::default(),
+    );
+    assert!(get(&app_roots.root("sessionStore").unwrap(), "agentUrl")
+        .strict_eq(&Value::from("wss://x")));
+}
+
+// ── 4.6.3 frames ────────────────────────────────────────────────────
+
+#[test]
+fn a_space_tier_part_cannot_read_its_callers_app_roots() {
+    struct Parts;
+    impl PartSource for Parts {
+        fn part(&self, id: &str) -> Option<PartDef> {
+            (id == "mod-widget").then(|| PartDef {
+                schema: Arc::new(
+                    serde_json::from_value::<SchemaNode>(json!({
+                        "type": "Text",
+                        "props": { "t": { "$": "app.token" } }
+                    }))
+                    .unwrap(),
+                ),
+                // The module's own stamp — Space; the caller is App.
+                tier: Tier::Space,
+                module: "mod".into(),
+                needs: Arc::from([]),
+            })
+        }
+    }
+    let bag = StoreBag::from_snapshot(&json!({
+        "stores": { "app": { "token": "secret" } }, "queries": {}, "invokes": {}
+    }))
+    .unwrap();
+    let node: SchemaNode = serde_json::from_value(json!({
+        "type": "Column",
+        "children": [
+            { "type": "Text", "props": { "t": { "$": "app.token" } } },
+            { "type": "$part", "props": { "id": "mod-widget" } }
+        ]
+    }))
+    .unwrap();
+    let bag = Arc::new(bag);
+    let mut rt = Runtime::from_spec(
+        RootSpec::Single {
+            node: Box::new(node),
+            cx: app_auth(),
+            declared: we_template::Declared::default(),
+        },
+        bag.clone(),
+        LocalState::new(),
+    )
+    .with_sources(None, Arc::new(Parts));
+    // Gate the runtime: the default `BagBindings` serves the bag's `app`
+    // root — denied at the part's space tier, allowed at the caller's.
+    let mut host = StaticHost::new(bag);
+    let screen = ScreenState::desktop(ScreenSchema::default(), "/");
+    let root = rt.frame(&mut host, &screen).clone();
+
+    // The caller's own read resolves; the part's is Undefined (inert
+    // text falls through to the placeholder empty string).
+    fn texts(n: &ResolvedNode, out: &mut Vec<(String, Value)>) {
+        if let Some(v) = n.props.get("t") {
+            out.push((n.ty.to_string(), v.clone()));
+        }
+        for c in &n.children {
+            if let ResolvedChild::Node(n) = c {
+                texts(n, out);
+            }
+        }
+    }
+    let mut ts = Vec::new();
+    texts(&root, &mut ts);
+    assert!(ts[0].1.strict_eq(&Value::from("secret")));
+    assert!(ts[1].1.strict_eq(&Value::Undefined));
+    assert!(rt.gate().denial_count() >= 1);
+}
+
+#[test]
+fn values_crossing_into_a_part_are_made_inert() {
+    let table = HandleTable::new();
+    let h = table.mint(HandleKind::Dataset, "d");
+
+    // A namespace — a root, a filtered view — never crosses.
+    let ns = map(&[("token", Value::from("x"))]);
+    assert!(inert(&ns).strict_eq(&Value::Undefined));
+    // A handle crosses tainted: held and compared, never usable.
+    let crossed = inert(&Value::handle(h));
+    match &crossed {
+        Value::Namespace(ns) => assert!(ns.as_handle().unwrap().is_tainted()),
+        _ => panic!("handle expected"),
+    }
+    // Plain data survives whole; the inside of containers is scrubbed.
+    let data = Value::List(Arc::new(vec![
+        Value::from("a"),
+        obj(&[("ok", Value::from(1.0)), ("ns", ns)]),
+    ]));
+    let out = inert(&data);
+    let Value::List(items) = &out else {
+        panic!("list")
+    };
+    assert!(items[0].strict_eq(&Value::from("a")));
+    assert!(get(&items[1], "ok").strict_eq(&Value::from(1.0)));
+    assert!(get(&items[1], "ns").strict_eq(&Value::Undefined));
+}
+
+// ── 4.6.5 handles ───────────────────────────────────────────────────
+
+#[test]
+fn dataset_selection_denies_space_and_foreign_or_tainted_handles() {
+    let table = HandleTable::new();
+    let gate = Gate::new(table.clone());
+
+    // `Here` is always allowed — both tiers.
+    assert!(gate.dataset(&space_auth(), &DatasetSel::Here).allowed());
+    assert!(gate.dataset(&app_auth(), &DatasetSel::Here).allowed());
+
+    // A named dataset needs App tier AND a handle this table knows.
+    let h = table.mint(HandleKind::Dataset, "ds1");
+    let sel = DatasetSel::Named(DatasetHandle::from_handle(h));
+    assert!(!gate.dataset(&space_auth(), &sel).allowed());
+    assert!(gate.dataset(&app_auth(), &sel).allowed());
+
+    // A foreign table's handle — minted elsewhere — is refused.
+    let foreign = HandleTable::new().mint(HandleKind::Dataset, "ds1");
+    let sel = DatasetSel::Named(DatasetHandle::from_handle(foreign));
+    assert!(!gate.dataset(&app_auth(), &sel).allowed());
+
+    // A tainted handle is refused even at App tier.
+    let tainted = table.mint(HandleKind::Dataset, "ds2").tainted();
+    let sel = DatasetSel::Named(DatasetHandle::from_handle(tainted));
+    assert!(!gate.dataset(&app_auth(), &sel).allowed());
+}
+
+#[test]
+fn taint_handles_recurses_and_leaves_plain_data_alone() {
+    let table = HandleTable::new();
+    let h = table.mint(HandleKind::Dataset, "d");
+    let v = Value::List(Arc::new(vec![
+        Value::handle(h.clone()),
+        obj(&[("inner", Value::handle(h))]),
+        Value::from("plain"),
+    ]));
+    let out = taint_handles(&v);
+    let Value::List(items) = &out else {
+        panic!("list")
+    };
+    match &items[0] {
+        Value::Namespace(ns) => assert!(ns.as_handle().expect("handle").is_tainted()),
+        _ => panic!("handle namespace expected"),
+    }
+    match get(&items[1], "inner") {
+        Value::Namespace(ns) => assert!(ns.as_handle().expect("handle").is_tainted()),
+        _ => panic!("tainted handle inside the object expected"),
+    }
+    assert!(items[2].strict_eq(&Value::from("plain")));
+}
+
+// ── the source contract (F2's read identity, on the trait) ──────────
+
+#[test]
+fn the_source_answers_profiles_revisions_and_subscriptions() {
+    let mut src = Double::new();
+    src.bag = StoreBag::from_snapshot(&json!({
+        "stores": { "profiles": { "did:1": { "name": "Ana" } } },
+        "queries": {}, "invokes": {}
+    }))
+    .unwrap();
+    let src = src;
+    let layer_bag = Arc::new(StoreBag::new());
+    let (layer, bag) = (RootLayer::new(&layer_bag), StoreBag::new());
+    let gate = Arc::new(Gate::new(HandleTable::new()));
+    let roots = gated(&layer, &bag, &src, &gate, space_auth());
+
+    // `$agent`'s read — the source's `profile`, not a `profileStore` root.
+    let p = roots.profile("did:1").expect("profile served");
+    assert!(get(&p, "name").strict_eq(&Value::from("Ana")));
+    assert!(roots.profile("did:none").is_none());
+
+    // Revision is the source's word — it moves only when the source says.
+    let before = src.revision();
+    src.bump();
+    assert_eq!(src.revision(), before + 1);
+}
+
+#[test]
+fn two_views_one_source_stay_isolated_by_authority() {
+    // E3c-6 across the boundary: two sessions share one bag+source; the
+    // gate, not the store, decides who reads `app`. Neither view can
+    // widen the other.
+    let (layer_bag, layer, bag, src, gate) = rig();
+    let _ = &layer_bag;
+    src.serve("app", map(&[("token", Value::from("t"))]), None);
+    src.serve("space", map(&[("id", Value::from("s"))]), None);
+
+    let space_view = gated(&layer, &bag, &src, &gate, space_auth());
+    let app_view = gated(&layer, &bag, &src, &gate, app_auth());
+
+    assert!(space_view.root("app").is_none());
+    assert!(app_view.root("app").is_some());
+    // The space view still reads what its tier grants.
+    assert!(space_view.root("space").is_some());
+    // One denial, for the space view's `app` ask — the app view's ask
+    // logged none.
+    assert_eq!(gate.denial_count(), 1);
+}
+
+// ── Round 2 (Lal) ───────────────────────────────────────────────────
+
+/// A source that refuses everything — every root, every profile — for
+/// every mount: the deliberate denial a gated path must treat as final.
+#[derive(Debug)]
+struct Refusing;
+
+impl DataRevision for Refusing {
+    fn revision(&self) -> u64 {
+        1
+    }
+    fn subscribe(&self, _inv: Invalidator) {}
+}
+
+impl BindingSource for Refusing {
+    fn root(&self, _name: &str, _mount: &MountCx) -> Option<Bound> {
+        None
+    }
+    fn profile(&self, _did: &str, _mount: &MountCx) -> Option<Value> {
+        None
+    }
+}
+
+fn texts(n: &ResolvedNode, out: &mut Vec<Value>) {
+    if let Some(v) = n.props.get("t") {
+        out.push(v.clone());
+    }
+    for c in &n.children {
+        if let ResolvedChild::Node(n) = c {
+            texts(n, out);
+        }
+    }
+}
+
+/// F1 (Lal): a source's profile refusal is final. The shared bag holds
+/// the profile (another consumer cached it); a Space mount and a module
+/// part, both behind a source that refuses the DID, must bind the `{did}`
+/// stub — never the bag's row.
+#[test]
+fn a_refused_profile_is_not_read_from_the_bag() {
+    struct Parts;
+    impl PartSource for Parts {
+        fn part(&self, id: &str) -> Option<PartDef> {
+            (id == "card").then(|| PartDef {
+                schema: Arc::new(
+                    serde_json::from_value::<SchemaNode>(json!({
+                        "type": "$agent", "props": { "did": "did:a" },
+                        "children": [{ "type": "Text", "props": { "t": { "$": "agent.name" } } }]
+                    }))
+                    .unwrap(),
+                ),
+                tier: Tier::Space,
+                module: "mod".into(),
+                needs: Arc::from([]),
+            })
+        }
+    }
+    let bag = Arc::new(
+        StoreBag::from_snapshot(&json!({
+            "stores": { "profileStore": { "profiles": { "did:a": { "did": "did:a", "name": "Ana" } } } },
+            "queries": {}, "invokes": {}
+        }))
+        .unwrap(),
+    );
+    let node: SchemaNode = serde_json::from_value(json!({
+        "type": "Column",
+        "children": [
+            { "type": "$agent", "props": { "did": "did:a" },
+              "children": [{ "type": "Text", "props": { "t": { "$": "agent.name" } } }] },
+            { "type": "$part", "props": { "id": "card" } }
+        ]
+    }))
+    .unwrap();
+    let mut rt = Runtime::from_spec(
+        RootSpec::Single {
+            node: Box::new(node),
+            cx: space_auth(),
+            declared: Declared::default(),
+        },
+        bag.clone(),
+        LocalState::new(),
+    )
+    .with_sources(None, Arc::new(Parts));
+    rt.set_bindings(Arc::new(Refusing));
+    let mut host = StaticHost::new(bag);
+    let screen = ScreenState::desktop(ScreenSchema::default(), "/");
+    let root = rt.frame(&mut host, &screen).clone();
+    let mut ts = Vec::new();
+    texts(&root, &mut ts);
+    assert_eq!(ts.len(), 2, "both $agent bodies resolve: {ts:?}");
+    for t in &ts {
+        assert!(
+            t.strict_eq(&Value::Undefined),
+            "refused profile leaked from the bag: {ts:?}"
+        );
+    }
+}
+
+/// F3 (Lal): a bare `Runtime` — no classified source installed — must not
+/// serve a host's unclassified bag roots to a Space mount. The bag holds
+/// `sessionStore`; the default source has no member table for it, so the
+/// read is refused and counted, never labelled Space.
+#[test]
+fn a_bare_runtime_does_not_serve_unclassified_bag_roots_to_space() {
+    let bag = Arc::new(
+        StoreBag::from_snapshot(&json!({
+            "stores": { "sessionStore": { "bootState": "secret-boot" } },
+            "queries": {}, "invokes": {}
+        }))
+        .unwrap(),
+    );
+    let node: SchemaNode = serde_json::from_value(json!({
+        "type": "Text", "props": { "t": { "$": "sessionStore.bootState" } }
+    }))
+    .unwrap();
+    let mut rt = Runtime::new(node, "space-mount", bag.clone(), LocalState::new());
+    let mut host = StaticHost::new(bag);
+    let screen = ScreenState::desktop(ScreenSchema::default(), "/");
+    let root = rt.frame(&mut host, &screen).clone();
+    let mut ts = Vec::new();
+    texts(&root, &mut ts);
+    assert!(
+        ts[0].strict_eq(&Value::Undefined),
+        "unclassified bag root served to Space: {ts:?}"
+    );
+    assert_eq!(rt.gate().denial_count(), 1, "the refusal is counted");
+}
+
+// ── F4: cross-authority payloads ────────────────────────────────────
+
+/// A payload carrying another frame's authority three ways — a live
+/// App-filtered namespace (`app`, see [`live_app_token`]), a raw
+/// namespace and an accessor whose answer is App data — at the top and
+/// again under alternating list/object layers (`deep`).
+fn smuggling_payload(app: &Value) -> Value {
+    let raw = || map(&[("token", Value::from("raw-secret"))]);
+    obj(&[
+        ("app", app.clone()),
+        ("raw", raw()),
+        (
+            "acc",
+            Value::Callable(we_expr::CallableRef::accessor("acc", |_| {
+                Value::from("acc-secret")
+            })),
+        ),
+        (
+            "deep",
+            Value::List(Arc::new(vec![obj(&[(
+                "l",
+                Value::List(Arc::new(vec![obj(&[("app", app.clone()), ("raw", raw())])])),
+            )])])),
+        ),
+        ("plain", Value::from("ok")),
+    ])
+}
+
+/// Answers any request with the smuggling payload — as its one row, or
+/// as the query's error.
+struct Smuggler {
+    payload: Value,
+    fail: bool,
+}
+impl we_template::QuerySource for Smuggler {
+    fn open(
+        &self,
+        _ticket: we_template::SubTicket,
+        _request: &we_template::QueryRequest,
+        _handles: &HandleTable,
+        sink: we_template::QuerySink,
+    ) {
+        sink.deliver(if self.fail {
+            we_template::QueryEvent::Failed(self.payload.clone())
+        } else {
+            we_template::QueryEvent::Rows(Arc::new(vec![self.payload.clone()]))
+        });
+    }
+    fn close(&self, _ticket: we_template::SubTicket) {}
+}
+
+/// Parks every `$invoke` so the test completes it by hand.
+#[derive(Default)]
+struct Parking(Vec<we_template::Completer>);
+impl we_template::Host for Parking {
+    fn act(
+        &mut self,
+        _request: we_template::ActionRequest,
+        done: we_template::Completer,
+    ) -> we_template::Invoked {
+        self.0.push(done);
+        we_template::Invoked::Pending
+    }
+}
+
+/// The reads one delivered payload is judged by: four that must be
+/// Undefined, then the plain leaf.
+const SMUGGLED: [&str; 6] = [
+    "app.token",
+    "raw.token",
+    "acc",
+    "first(first(X.deep).l).app.token",
+    "first(first(X.deep).l).raw.token",
+    "plain",
+];
+
+fn smuggle_tree(fail: bool) -> SchemaNode {
+    let reads = |src: &str| -> Vec<serde_json::Value> {
+        SMUGGLED
+            .iter()
+            .map(|r| {
+                let expr = if r.contains('X') {
+                    r.replace('X', src)
+                } else {
+                    format!("{src}.{r}")
+                };
+                json!({ "type": "Text", "props": { "t": { "$": expr } } })
+            })
+            .collect()
+    };
+    let mut children = vec![json!({
+        "type": "Button",
+        "props": { "onClick": {
+            "$invoke": "storeX.slow",
+            "onSuccess": [{ "$setLocal": "got", "value": { "$": "result" } }],
+            "onError": [{ "$setLocal": "got", "value": { "$": "result" } }]
+        } }
+    })];
+    children.extend(reads(if fail {
+        "local.rowsError"
+    } else {
+        "first(local.rows)"
+    }));
+    children.extend(reads("local.got"));
+    serde_json::from_value(json!({
+        "type": "Column",
+        "$localState": { "got": { "type": "object", "initial": null } },
+        "$queries": { "rows": { "entity": "Task" } },
+        "children": children
+    }))
+    .unwrap()
+}
+
+/// The payload delivered into a mount at `cx` as a query answer and as a
+/// completion — rows and `onSuccess`, or (`fail`) the query's error and
+/// `onError` — read back: six reads of the query's delivery, six of the
+/// callback's.
+fn smuggled(cx: MountCx, fail: bool, app: &Value) -> Vec<Value> {
+    let bag = Arc::new(StoreBag::new());
+    let mut rt = Runtime::from_spec(
+        RootSpec::Single {
+            node: Box::new(smuggle_tree(fail)),
+            cx,
+            declared: Declared::default(),
+        },
+        bag.clone(),
+        LocalState::new(),
+    )
+    .with_sources(
+        Some(Arc::new(Smuggler {
+            payload: smuggling_payload(app),
+            fail,
+        })),
+        Arc::new(we_template::NoParts),
+    );
+    let mut host = Parking::default();
+    let mut screen = ScreenState::desktop(ScreenSchema::default(), "/");
+    let root = rt.frame(&mut host, &screen).clone();
+    let button = match &root.children[0] {
+        ResolvedChild::Node(n) => n.id.clone(),
+        _ => panic!("button"),
+    };
+    rt.dispatch(&mut host, &mut screen, &button, "onClick", Value::Null);
+    let done = host.0.pop().expect("parked");
+    let call = done.call_id();
+    let payload = smuggling_payload(app);
+    let result = if fail { Err(payload) } else { Ok(payload) };
+    rt.complete(&mut host, &mut screen, call, result);
+    let root = rt.frame(&mut host, &screen).clone();
+    let mut ts = Vec::new();
+    texts(&root, &mut ts);
+    assert_eq!(ts.len(), 2 * SMUGGLED.len(), "{ts:?}");
+    ts
+}
+
+/// F4 (Lal; N4 for the fixture): a payload delivered into a frame — a
+/// query's rows or error, an `onSuccess` or `onError` result — carries no
+/// other authority, at a Space recipient or an App one: a live
+/// App-filtered namespace, a raw namespace and an accessor inside it read
+/// Undefined there at any depth; plain data survives.
+#[test]
+fn query_rows_and_callback_payloads_carry_no_foreign_authority() {
+    // The gate is held for the whole test: its wrappers' back edge is
+    // weak (F8), so a dropped gate would make the fixture dead already.
+    let (_gate, app) = live_app_token();
+    assert!(
+        get(&app, "token").strict_eq(&Value::from("app-secret")),
+        "the App-filtered fixture is a live view before delivery"
+    );
+    let undefined = |v: &Value| v.strict_eq(&Value::Undefined);
+    for (cx, tier) in [(space_auth(), Tier::Space), (app_auth(), Tier::App)] {
+        for fail in [false, true] {
+            let ts = smuggled(cx.clone(), fail, &app);
+            let paths = if fail {
+                ["query error", "onError payload"]
+            } else {
+                ["query row", "onSuccess payload"]
+            };
+            for (path, at) in paths.into_iter().zip([0, SMUGGLED.len()]) {
+                assert!(
+                    ts[at..at + 5].iter().all(undefined),
+                    "{path} at {tier:?} carried a foreign authority: {ts:?}"
+                );
+                assert!(ts[at + 5].strict_eq(&Value::from("ok")), "{path}: {ts:?}");
+            }
+        }
+    }
+}
+
+// ── F2: one policy for screen facts ─────────────────────────────────
+
+/// F2 (Lal; decision: core's screen table is the policy for every
+/// spelling). The two screen facts TS grants at Space AND a shipped
+/// Coasys template reads at Space — `layoutDirty` (templates/0 panel
+/// body) and `collapsedLanes` (templates/0 routes and record view) — are
+/// Space in core's own table, the lane list filtered to declared lanes
+/// (N2, `we-legacy/tests/lanes.rs`); the rest of the chrome stays App.
+#[test]
+fn the_core_screen_table_grants_what_space_templates_read() {
+    let tiers = we_template::screen_tiers();
+    let tier = |m: &str| match tiers.rule(m) {
+        Some(we_template::MemberRule::Member { tier })
+        | Some(we_template::MemberRule::DeclaredLanes { tier }) => Some(*tier),
+        _ => None,
+    };
+    assert!(matches!(
+        tiers.rule("collapsedLanes"),
+        Some(we_template::MemberRule::DeclaredLanes { .. })
+    ));
+    assert_eq!(tier("layoutDirty"), Some(Tier::Space));
+    assert_eq!(tier("collapsedLanes"), Some(Tier::Space));
+    for chrome in [
+        "activeShellView",
+        "spaceSettingsOpen",
+        "spaceSettingsTab",
+        "panelsHidden",
+        "panelMaximised",
+        "createSpaceOpen",
+        "joinSpaceOpen",
+        "themeFork",
+    ] {
+        assert_eq!(tier(chrome), Some(Tier::App), "{chrome}");
+    }
+}
+
+// ── F5: taint by the receiving frame ────────────────────────────────
+
+/// Rows carrying a live handle minted in the runtime's own table.
+struct HandleRows;
+impl we_template::QuerySource for HandleRows {
+    fn open(
+        &self,
+        _ticket: we_template::SubTicket,
+        _request: &we_template::QueryRequest,
+        handles: &HandleTable,
+        sink: we_template::QuerySink,
+    ) {
+        let h = handles.mint(HandleKind::Dataset, "ds-1");
+        sink.deliver(we_template::QueryEvent::Rows(Arc::new(vec![obj(&[(
+            "h",
+            Value::handle(h),
+        )])])));
+    }
+    fn close(&self, _ticket: we_template::SubTicket) {}
+}
+
+/// A part at `tier` reading a handle from an inline `$each` query and a
+/// named `$queries` query.
+struct HandleParts(Tier);
+impl PartSource for HandleParts {
+    fn part(&self, id: &str) -> Option<PartDef> {
+        (id == "reader").then(|| PartDef {
+            schema: Arc::new(
+                serde_json::from_value::<SchemaNode>(json!({
+                    "type": "Column",
+                    "$queries": { "named": { "entity": "Task" } },
+                    "children": [
+                        { "type": "$each",
+                          "props": { "items": { "$query": { "entity": "Task" } } },
+                          "children": [{ "type": "Text", "props": { "t": { "$": "item.h" } } }] },
+                        { "type": "Text", "props": { "t": { "$": "first(local.named).h" } } }
+                    ]
+                }))
+                .unwrap(),
+            ),
+            tier: self.0,
+            module: "mod".into(),
+            needs: Arc::from([]),
+        })
+    }
+}
+
+fn part_handles(mount: MountCx, part: Tier) -> Vec<bool> {
+    let bag = Arc::new(StoreBag::new());
+    let node: SchemaNode =
+        serde_json::from_value(json!({ "type": "$part", "props": { "id": "reader" } })).unwrap();
+    let mut rt = Runtime::from_spec(
+        RootSpec::Single {
+            node: Box::new(node),
+            cx: mount,
+            declared: Declared::default(),
+        },
+        bag.clone(),
+        LocalState::new(),
+    )
+    .with_sources(Some(Arc::new(HandleRows)), Arc::new(HandleParts(part)));
+    let mut host = StaticHost::new(bag);
+    let screen = ScreenState::desktop(ScreenSchema::default(), "/");
+    let root = rt.frame(&mut host, &screen).clone();
+    let mut ts = Vec::new();
+    texts(&root, &mut ts);
+    ts.iter()
+        .map(|v| match v {
+            Value::Namespace(ns) => ns.as_handle().expect("a handle").is_tainted(),
+            other => panic!("handle expected, got {other:?}"),
+        })
+        .collect()
+}
+
+/// F5 (Lal): every delivery path taints by the RECEIVING frame — inline
+/// `$each.items` included. A Space part under an App mount gets tainted
+/// handles from both its inline and its named query; an App part under a
+/// Space mount gets usable ones.
+#[test]
+fn query_handles_are_tainted_by_the_receiving_frame() {
+    assert_eq!(
+        part_handles(app_auth(), Tier::Space),
+        vec![true, true],
+        "[inline, named] in a Space part under an App mount"
+    );
+    assert_eq!(
+        part_handles(space_auth(), Tier::App),
+        vec![false, false],
+        "[inline, named] in an App part under a Space mount"
+    );
+}
+
+// ── F6: declared ids over any map shape ─────────────────────────────
+
+/// F6 (Lal): a `DeclaredIds` member filters an ordinary object map the
+/// same as a namespace, and refuses a shape it cannot filter (a list).
+#[test]
+fn declared_ids_filter_plain_objects_and_refuse_lists() {
+    let (layer_bag, layer, bag, src, gate) = rig();
+    let _ = &layer_bag;
+    src.serve(
+        "screen",
+        map(&[
+            (
+                "panels",
+                obj(&[
+                    ("p-mine", obj(&[("open", Value::from(true))])),
+                    ("p-theirs", obj(&[("open", Value::from(true))])),
+                ]),
+            ),
+            (
+                "dialogs",
+                Value::List(Arc::new(vec![Value::from("d-theirs")])),
+            ),
+        ]),
+        None,
+    );
+    let declared = Declared {
+        panels: Arc::from(["p-mine".into()]),
+        dialogs: Arc::from([]),
+        lanes: Arc::from([]),
+    };
+    let roots =
+        Roots::new(&layer, &bag).gated(&src, &gate, src.compat_roots(), space_auth(), declared);
+    let screen = roots.root("screen").unwrap();
+    let panels = get(&screen, "panels");
+    assert!(get(&get(&panels, "p-mine"), "open").strict_eq(&Value::from(true)));
+    assert!(
+        get(&panels, "p-theirs").strict_eq(&Value::Undefined),
+        "an undeclared id in a plain object leaked: {panels:?}"
+    );
+    let shown: Vec<String> = match &panels {
+        Value::Namespace(ns) => ns.keys().iter().map(|k| k.to_string()).collect(),
+        Value::Obj(o) => o.keys().map(|k| k.to_string()).collect(),
+        _ => vec![],
+    };
+    assert_eq!(shown, vec!["p-mine".to_string()]);
+    assert!(
+        get(&screen, "dialogs").strict_eq(&Value::Undefined),
+        "a list-shaped id map is refused"
+    );
+}
+
+// ── F7: a wrapper follows its inner child and its policy ────────────
+
+/// A stable root whose `nav` child can be swapped in place.
+#[derive(Debug)]
+struct Swappable {
+    nav: Mutex<Value>,
+}
+impl we_expr::Namespace for Swappable {
+    fn get(&self, key: &str) -> Value {
+        match key {
+            "nav" => self.nav.lock().unwrap().clone(),
+            _ => Value::Undefined,
+        }
+    }
+    fn keys(&self) -> Vec<Arc<str>> {
+        vec!["nav".into()]
+    }
+}
+
+/// F7 (Lal): a filtered child is rewrapped when the inner child changes —
+/// the same root Arc with a new `nav` reads the new `nav`.
+#[test]
+fn a_filtered_child_follows_a_replaced_inner_child() {
+    let (layer_bag, layer, bag, src, gate) = rig();
+    let _ = &layer_bag;
+    let nav = |id: &str| map(&[("params", map(&[("id", Value::from(id))]))]);
+    let root = Arc::new(Swappable {
+        nav: Mutex::new(nav("a")),
+    });
+    src.serve("screen", Value::Namespace(root.clone()), None);
+    let read = || {
+        let screen = gated(&layer, &bag, &src, &gate, space_auth())
+            .root("screen")
+            .unwrap();
+        get(&get(&get(&screen, "nav"), "params"), "id")
+    };
+    assert!(read().strict_eq(&Value::from("a")));
+    *root.nav.lock().unwrap() = nav("b");
+    let after = read();
+    assert!(
+        after.strict_eq(&Value::from("b")),
+        "a stale child wrapper answered: {after:?}"
+    );
+}
+
+/// F7 (Lal): a policy tightened on the same inner Arc takes effect — the
+/// served wrapper is keyed by the policy as well as the value.
+#[test]
+fn a_tightened_member_policy_is_not_served_from_the_cache() {
+    let (layer_bag, layer, bag, src, gate) = rig();
+    let _ = &layer_bag;
+    let value = map(&[("token", Value::from("t"))]);
+    src.serve(
+        "space",
+        value.clone(),
+        Some(MemberTiers::from_rows(&[("token", Tier::Space)])),
+    );
+    let read = || {
+        let space = gated(&layer, &bag, &src, &gate, space_auth())
+            .root("space")
+            .unwrap();
+        get(&space, "token")
+    };
+    assert!(read().strict_eq(&Value::from("t")));
+    src.serve(
+        "space",
+        value,
+        Some(MemberTiers::from_rows(&[("token", Tier::App)])),
+    );
+    src.bump();
+    let after = read();
+    assert!(
+        after.strict_eq(&Value::Undefined),
+        "the old grant was served after the policy tightened: {after:?}"
+    );
+}
+
+// ── F9: part locals and the dirty aggregate ─────────────────────────
+
+struct CounterPart;
+impl PartSource for CounterPart {
+    fn part(&self, id: &str) -> Option<PartDef> {
+        (id == "counter").then(|| PartDef {
+            schema: Arc::new(
+                serde_json::from_value::<SchemaNode>(json!({
+                    "type": "Button",
+                    "$localState": { "n": { "type": "number", "initial": 0 } },
+                    "props": {
+                        "t": { "$": "local.n" },
+                        "onClick": { "$setLocal": "n", "value": { "$": "local.n + 1" } }
+                    }
+                }))
+                .unwrap(),
+            ),
+            tier: Tier::Space,
+            module: "mod".into(),
+            needs: Arc::from([]),
+        })
+    }
+}
+
+/// F9 (Lal): after a write to a part's own local, one resolve settles the
+/// runtime — `last` records the same frame-local aggregate `dirty`
+/// compares — and a part no longer mounted leaves no locals behind.
+#[test]
+fn a_part_local_write_settles_and_unmounted_parts_are_pruned() {
+    let bag = Arc::new(StoreBag::new());
+    let node: SchemaNode = serde_json::from_value(json!({
+        "type": "Column",
+        "children": [{ "type": "$if", "props": {
+            "condition": { "$": "screen.params.show == 'yes'" },
+            "then": { "type": "$part", "props": { "id": "counter" } }
+        } }]
+    }))
+    .unwrap();
+    let mut rt = Runtime::new(node, "space-mount", bag.clone(), LocalState::new())
+        .with_sources(None, Arc::new(CounterPart));
+    let mut host = StaticHost::new(bag);
+    let mut screen = ScreenState::desktop(ScreenSchema::default(), "/?show=yes");
+    let root = rt.frame(&mut host, &screen).clone();
+    fn find_button(n: &ResolvedNode) -> Option<we_template::NodeId> {
+        if n.ty.as_ref() == "Button" {
+            return Some(n.id.clone());
+        }
+        n.children.iter().find_map(|c| match c {
+            ResolvedChild::Node(n) => find_button(n),
+            _ => None,
+        })
+    }
+    let button = find_button(&root).expect("the part mounted");
+    rt.dispatch(&mut host, &mut screen, &button, "onClick", Value::Null);
+    let root = rt.frame(&mut host, &screen).clone();
+    let mut ts = Vec::new();
+    texts(&root, &mut ts);
+    assert!(
+        ts[0].strict_eq(&Value::from(1.0)),
+        "the write landed: {ts:?}"
+    );
+    let resolves = rt.stats().resolves;
+    assert!(
+        !rt.dirty(&screen),
+        "a settled runtime reports dirty after a part-local write"
+    );
+    let _ = rt.frame(&mut host, &screen);
+    assert_eq!(rt.stats().resolves, resolves, "no extra resolve");
+
+    // Unmount the part: its locals go with it.
+    rt.apply_screen(
+        &mut screen,
+        we_screen::ScreenOp::SetParam {
+            name: "show".into(),
+            value: Some("no".into()),
+            push: None,
+        },
+    );
+    let _ = rt.frame(&mut host, &screen);
+    assert_eq!(rt.frame_local_count(), 0, "unmounted part locals pruned");
+}
+
+// ── Round 3 (Lal N1): the event ingress ─────────────────────────────
+
+/// A live App view carrying `token`: the gate is returned with it, so
+/// the view stays readable for as long as the caller holds the gate (the
+/// wrapper's back edge is weak — F8).
+fn live_app_token() -> (Arc<Gate>, Value) {
+    let gate = Arc::new(Gate::new(HandleTable::new()));
+    let token = gate
+        .serve(
+            "x",
+            we_template::RootDomain::Space,
+            Bound {
+                value: map(&[("token", Value::from("app-secret"))]),
+                members: Some(MemberTiers::from_rows(&[("token", Tier::App)])),
+                domain: None,
+            },
+            &app_auth(),
+            &Declared::default(),
+        )
+        .expect("served at App");
+    (gate, token)
+}
+
+/// An event value a native producer could hand a handler: a live App
+/// view, an accessor, a live handle, a raw namespace two containers
+/// deep, and plain data.
+fn event_payload(app: &Value) -> Value {
+    let handles = HandleTable::new();
+    obj(&[
+        ("app", app.clone()),
+        (
+            "acc",
+            Value::Callable(we_expr::CallableRef::accessor("acc", |_| {
+                Value::from("acc-secret")
+            })),
+        ),
+        (
+            "h",
+            Value::handle(handles.mint(HandleKind::Dataset, "ds-1")),
+        ),
+        (
+            "deep",
+            Value::List(Arc::new(vec![obj(&[(
+                "ns",
+                map(&[("token", Value::from("raw-secret"))]),
+            )])])),
+        ),
+        ("plain", Value::from("ok")),
+    ])
+}
+
+fn event_tree() -> SchemaNode {
+    let reads = |src: &str| {
+        json!([
+            { "type": "Text", "props": { "t": { "$": format!("local.{src}.app.token") } } },
+            { "type": "Text", "props": { "t": { "$": format!("local.{src}.acc") } } },
+            { "type": "Text", "props": { "t": { "$": format!("first(local.{src}.deep).ns.token") } } },
+            { "type": "Text", "props": { "t": { "$": format!("local.{src}.h") } } },
+            { "type": "Text", "props": { "t": { "$": format!("local.{src}.plain") } } }
+        ])
+    };
+    let mut children = vec![
+        json!({ "type": "Button", "props": {
+            "onClick": [{ "$setLocal": "direct", "value": { "$": "event" } }]
+        } }),
+        // The event is captured into the pending call's scope and read
+        // back when the call settles.
+        json!({ "type": "Button", "props": { "onClick": {
+            "$invoke": "storeX.slow",
+            "onSuccess": [{ "$setLocal": "later", "value": { "$": "arg" } }]
+        } } }),
+    ];
+    children.extend(reads("direct").as_array().unwrap().clone());
+    children.extend(reads("later").as_array().unwrap().clone());
+    serde_json::from_value(json!({
+        "type": "Column",
+        "$localState": {
+            "direct": { "type": "object", "initial": null },
+            "later": { "type": "object", "initial": null }
+        },
+        "children": children
+    }))
+    .unwrap()
+}
+
+/// Dispatches the payload into a mount at `cx` both ways and answers the
+/// ten reads (five direct, five through the pending call).
+fn dispatched(cx: MountCx, app: &Value) -> Vec<Value> {
+    let bag = Arc::new(StoreBag::new());
+    let mut rt = Runtime::from_spec(
+        RootSpec::Single {
+            node: Box::new(event_tree()),
+            cx,
+            declared: Declared::default(),
+        },
+        bag,
+        LocalState::new(),
+    );
+    let mut host = Parking::default();
+    let mut screen = ScreenState::desktop(ScreenSchema::default(), "/");
+    let root = rt.frame(&mut host, &screen).clone();
+    let id = |i: usize| match &root.children[i] {
+        ResolvedChild::Node(n) => n.id.clone(),
+        _ => panic!("button"),
+    };
+    let (direct, later) = (id(0), id(1));
+    rt.dispatch(
+        &mut host,
+        &mut screen,
+        &direct,
+        "onClick",
+        event_payload(app),
+    );
+    rt.dispatch(
+        &mut host,
+        &mut screen,
+        &later,
+        "onClick",
+        event_payload(app),
+    );
+    let done = host.0.pop().expect("parked");
+    rt.complete(&mut host, &mut screen, done.call_id(), Ok(Value::Null));
+    let root = rt.frame(&mut host, &screen).clone();
+    let mut ts = Vec::new();
+    texts(&root, &mut ts);
+    assert_eq!(ts.len(), 10, "{ts:?}");
+    ts
+}
+
+fn tainted(v: &Value) -> Option<bool> {
+    match v {
+        Value::Namespace(ns) => ns.as_handle().map(|h| h.is_tainted()),
+        _ => None,
+    }
+}
+
+/// N1 (Lal): an event value delivered into a frame is a payload like a
+/// query row or a completion result — no namespace or callable at any
+/// depth survives, and a handle is tainted below App — whether the
+/// handler reads it at once or captures it into a pending call.
+#[test]
+fn an_event_value_carries_no_foreign_authority_into_its_frame() {
+    let (_gate, app) = live_app_token();
+    assert!(
+        get(&app, "token").strict_eq(&Value::from("app-secret")),
+        "the App view is live before delivery"
+    );
+    let undefined = |v: &Value| v.strict_eq(&Value::Undefined);
+    for (cx, tier) in [(space_auth(), Tier::Space), (app_auth(), Tier::App)] {
+        let ts = dispatched(cx, &app);
+        for (path, at) in [("direct", 0), ("pending", 5)] {
+            assert!(
+                ts[at..at + 3].iter().all(undefined),
+                "{path} event at {tier:?} carried a foreign authority: {ts:?}"
+            );
+            assert_eq!(
+                tainted(&ts[at + 3]),
+                Some(tier < Tier::App),
+                "{path} event handle at {tier:?}: {ts:?}"
+            );
+            assert!(ts[at + 4].strict_eq(&Value::from("ok")), "{ts:?}");
+        }
+    }
+}

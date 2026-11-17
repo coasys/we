@@ -1,0 +1,8 @@
+[package]
+name = "we-metrics"
+version = "0.1.0"
+edition = "2021"
+description = "Unit metrics, the responsive size tier and the terminal cell projection — the numbers every frontend resolves the same way"
+publish = false
+
+[dependencies]
