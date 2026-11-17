@@ -253,6 +253,16 @@ impl RendererApp {
     /// What a frame draws: resolve (cached) → apply queued route ops →
     /// layout (cached) → paint → dispatch the events it produced.
     pub fn frame_body(&mut self, ui: &mut egui::Ui) {
+        let viewport = ui.ctx().content_rect().size();
+        self.frame_body_in(ui, viewport);
+    }
+
+    /// [`frame_body`](Self::frame_body) with the page's viewport given: the
+    /// size `vw`/`vh` and a `position: fixed` band resolve against. The
+    /// window is the default; a host that docks a panel beside the page
+    /// passes the room the panel left, or a band sized in `vw` reaches
+    /// under it.
+    pub fn frame_body_in(&mut self, ui: &mut egui::Ui, viewport: Vec2) {
         if ui.input(|i| i.key_pressed(egui::Key::F12)) {
             self.debug = !self.debug;
         }
@@ -293,7 +303,7 @@ impl RendererApp {
             .auto_shrink([false, true])
             .show(ui, |ui| {
                 let width = ui.available_width();
-                let vp = ui.ctx().content_rect().size();
+                let vp = viewport;
                 // The containing block is the viewport: `width` fills it and
                 // `vp.y` floors the root (`min-height: 100vh`) so a `bg`
                 // covers a short panel's tail.

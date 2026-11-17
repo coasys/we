@@ -543,7 +543,11 @@ fn space_screen(
     }
     egui::CentralPanel::default()
         .frame(egui::Frame::NONE)
-        .show(ui, |ui| live.app.frame_body(ui));
+        .show(ui, |ui| {
+            // The page's viewport is what the panels left, not the window.
+            let room = ui.max_rect().size();
+            live.app.frame_body_in(ui, room);
+        });
     // What went wrong with a write: top right, below the status bar, gone
     // after eight seconds unless dismissed sooner.
     let notices = live.notice_list().clone();
