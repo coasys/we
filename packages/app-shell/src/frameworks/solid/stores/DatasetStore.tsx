@@ -46,6 +46,7 @@ import {
   useContext,
 } from 'solid-js';
 
+import { firstScreen } from '../firstScreen';
 import { useSessionStore } from './SessionStore';
 
 /*
@@ -198,7 +199,9 @@ export interface DatasetStore {
   readDatasets: () => Promise<AppDataset[] | null>;
   /**
    * Bring up the system datasets. Given the list `readDatasets` just read, works from that rather
-   * than reading it again. Resolves with every dataset it saw or made, for `loadDatasets`.
+   * than reading it again. Resolves with every dataset it saw or made, for `loadDatasets`, once the
+   * root is up; the personal space's schema is brought up after the first screen, and
+   * `personalDataset` is set when it is.
    */
   initSystemDatasets: (known?: AppDataset[] | null) => Promise<AppDataset[] | null>;
   /**
@@ -960,11 +963,16 @@ export function DatasetStoreProvider(props: ParentProps) {
     if (!refs) return null;
 
     // Side by side: the three share nothing but the list, and each is several round trips to the
-    // backend — one after another they were most of the wait before a space could open.
+    // backend — one after another they were most of the wait before a space could open. Only what
+    // the app needs to appear is waited for: the root, which holds the agent's settings, templates
+    // and per-space choices, and the datasets a first run has to make, so the list published holds them.
     const made: AppDataset[] = [];
     await Promise.all([
       initRootDataset(refs, made).catch((error) => console.error('DatasetStore: root dataset error', error)),
-      initPersonalDataset(refs, made).catch((error) => console.error('DatasetStore: personal dataset error', error)),
+      findPersonalDataset(refs, made).then(
+        (personal) => void initPersonalDataset(personal, made.includes(personal)),
+        (error) => console.error('DatasetStore: personal dataset error', error),
+      ),
       (async () => {
         const existingTest = refs.find((d) => d.name === SYSTEM_DATASET_NAMES.test);
         const test = existingTest ?? toApp(await lifecycle.create(SYSTEM_DATASET_NAMES.test));
@@ -1036,29 +1044,44 @@ export function DatasetStoreProvider(props: ParentProps) {
    * Pocket's effect fires the moment `personalDataset` is set, and a query ahead of the install
    * fails with "No SHACL shape" rather than returning nothing.
    *
+   * After the first screen (`shared/firstScreen.ts`), and not waited for by the boot: the space on
+   * screen reads nothing here, and these schema reads go to the same backend as its Feed's first
+   * page. What reads it — the Pocket, notes, agent-scoped modules — waits on `agentData.ready()`.
+   * A failure is logged and leaves `personalDataset` unset, as it always did.
+   *
    * No `Space` record. Nothing yet navigates into this dataset, and a record would put it in every
    * list that reads `Space` — which is exactly the listing a system dataset stays out of.
    */
-  async function initPersonalDataset(refs: AppDataset[], made: AppDataset[]): Promise<void> {
-    const lifecycle = session.lifecycle()!;
-    const schemas = session.backendPorts()!.schemas;
-    const existing = refs.find((d) => d.name === SYSTEM_DATASET_NAMES.personal);
-    const personal = existing ?? toApp(await lifecycle.create(SYSTEM_DATASET_NAMES.personal));
-    if (!existing) made.push(personal);
-    const moduleSchemas = [...moduleRegistry.moduleSchemas(schemas), ...moduleRegistry.agentSchemas(schemas)];
+  async function initPersonalDataset(personal: AppDataset, created: boolean): Promise<void> {
+    try {
+      await firstScreen.whenOpen();
+      const schemas = session.backendPorts()!.schemas;
+      const moduleSchemas = [...moduleRegistry.moduleSchemas(schemas), ...moduleRegistry.agentSchemas(schemas)];
 
-    if (!existing || !(await schemas.hasCoreSchema(personal.handle))) {
-      await schemas.installSpace(personal.handle, moduleSchemas);
-    } else {
-      // The same two catches a space gets on every switch, run together — see `switchDataset`.
-      await Promise.all([
-        schemas.installModules(personal.handle, moduleSchemas),
-        schemas.refreshSpace(personal.handle).catch((err) => {
-          console.error('DatasetStore: personal space schema refresh failed', err);
-        }),
-      ]);
+      if (created || !(await schemas.hasCoreSchema(personal.handle))) {
+        await schemas.installSpace(personal.handle, moduleSchemas);
+      } else {
+        // The same two catches a space gets on every switch, run together — see `switchDataset`.
+        await Promise.all([
+          schemas.installModules(personal.handle, moduleSchemas),
+          schemas.refreshSpace(personal.handle).catch((err) => {
+            console.error('DatasetStore: personal space schema refresh failed', err);
+          }),
+        ]);
+      }
+      setPersonalDataset(personal);
+    } catch (error) {
+      console.error('DatasetStore: personal dataset error', error);
     }
-    setPersonalDataset(personal);
+  }
+
+  /** The personal space, made if this agent has none yet — a first run — and then listed in `made`. */
+  async function findPersonalDataset(refs: AppDataset[], made: AppDataset[]): Promise<AppDataset> {
+    const existing = refs.find((d) => d.name === SYSTEM_DATASET_NAMES.personal);
+    if (existing) return existing;
+    const personal = toApp(await session.lifecycle()!.create(SYSTEM_DATASET_NAMES.personal));
+    made.push(personal);
+    return personal;
   }
 
   /**

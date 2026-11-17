@@ -11,6 +11,7 @@
 import { consumeGuestBootTarget } from '@shared/guestLink';
 import { trace } from '@we/backend-shared';
 
+import { firstScreen } from '../firstScreen';
 import { useDatasetStore } from '../stores/DatasetStore';
 import { useProfileStore } from '../stores/ProfileStore';
 import { useRouteStore } from '../stores/RouteStore';
@@ -50,10 +51,9 @@ export function BootController() {
 
       initSystemDatasets must complete before loadDatasets so that the published snapshot always
       includes we-root and we-test — even on first boot, when they have to be created — and it hands
-      back the list with what it made, so the snapshot costs no second read. Spaces are read from the
-      same list at the same time: a system dataset holds no Space, so none the boot creates can be
-      missed. And the space the address names starts loading its templates and schema reads now,
-      so the switch the route asks for once the list is published finds them done.
+      back the list with what it made, so the snapshot costs no second read. The space the address
+      names starts loading its templates, its schema reads and its own record now, so the switch the
+      route asks for once the list is published finds them done. The other spaces are read after.
     */
     /*
       Each step of loading somebody's data after unlock, under the `boot` scope: how long it took and
@@ -70,18 +70,33 @@ export function BootController() {
     trace('boot', 'unlocked', { sincePageStartMs: sincePageStartMs() });
     const me = timed('me', session.refreshMe());
     const listed = await timed('datasets:list', datasetStore.readDatasets());
-    if (listed) spaceStore.prepareSpaceAt(guestBoot ? `/space/${guestBoot.spaceId}` : (pendingDeepLink ?? ''), listed);
+    const opening = listed
+      ? spaceStore.prepareSpaceAt(guestBoot ? `/space/${guestBoot.spaceId}` : (pendingDeepLink ?? ''), listed)
+      : undefined;
     const [, known] = await Promise.all([
       me,
       timed('datasets:system', datasetStore.initSystemDatasets(listed)),
-      listed ? timed('spaces', spaceStore.loadSpaces(listed)) : undefined,
+      opening ? timed('space', opening) : undefined,
     ]);
     await timed('datasets:load', datasetStore.loadDatasets(known));
-    // The list could not be read up front, so spaces wait for the one loadDatasets published.
-    if (!listed) await timed('spaces', spaceStore.loadSpaces());
     datasetStore.subscribeToChanges();
     session.markReady();
     trace('boot', 'ready', { sincePageStartMs: sincePageStartMs() });
+
+    /*
+      The app appears with only what the space on screen needs: the agent, the dataset list, the root
+      (settings, templates, this agent's choices per space) and the open space's own record. Every
+      other space's record is for the sidebar and the spaces list — a read per space, each going to
+      the same backend as the Feed's first page — so they wait for the first screen, as the sidebar's
+      other reads do, and fill in when they land. Until then a row shows the dataset's name and says
+      it is loading (`SpaceListEntry.loading`). A failure is logged by `loadSpaces` and blocks nothing.
+
+      Given the list read above, the open space is not read again. Without it, the published one.
+    */
+    void firstScreen
+      .whenOpen()
+      .then(() => timed('spaces', spaceStore.loadSpaces(listed)))
+      .catch((error: unknown) => console.error('BootController: loading spaces failed', error));
 
     // Seed own profile into the cache from the public dataset
     const ownDid = session.me()?.did;
