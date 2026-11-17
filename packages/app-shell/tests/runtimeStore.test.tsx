@@ -75,6 +75,7 @@ vi.mock('../src/frameworks/solid/providers/PlatformProvider', () => ({
 }));
 
 import {
+  executorConfigRows,
   parsePeerInfos,
   type RuntimeStore,
   RuntimeStoreProvider,
@@ -302,6 +303,205 @@ describe('how the backend is started', () => {
 
     expect(exports).toBe(0);
     expect(store.backupStatus()).toBe('');
+  });
+});
+
+describe('a backend that keeps its own config file', () => {
+  /** A runtime port over a config file, recording the calls; the host only restarts and names files. */
+  function configBackend() {
+    const calls: string[] = [];
+    let values: Record<string, unknown> = { mcp_enabled: false, auto_permit_cap_requests: true };
+    let restartPending = false;
+    const runtime: NonNullable<BackendPorts['runtime']> = {
+      async executorConfig() {
+        return {
+          file: '/data/executor-config.json',
+          restartPending,
+          entries: [
+            { key: 'mcp_enabled', kind: 'boolean', value: values.mcp_enabled, writableFrom: 'anywhere', pinned: false },
+            { key: 'mcp_port', kind: 'number', value: values.mcp_port, writableFrom: 'anywhere', pinned: false },
+            { key: 'log_config', kind: 'object', value: values.log_config, writableFrom: 'anywhere', pinned: false },
+            {
+              key: 'auto_permit_cap_requests',
+              kind: 'boolean',
+              value: values.auto_permit_cap_requests,
+              writableFrom: 'anywhere',
+              pinned: false,
+            },
+            {
+              key: 'hc_admin_port',
+              kind: 'number',
+              value: values.hc_admin_port,
+              writableFrom: 'this-machine',
+              pinned: false,
+            },
+            { key: 'port', kind: 'number', value: undefined, writableFrom: 'this-machine', pinned: true },
+          ],
+        };
+      },
+      async setExecutorConfig(set, unset = []) {
+        calls.push(`set:${JSON.stringify(set)}:${unset.join(',')}`);
+        if (set.mcp_port === 80)
+          return { restartPending, refused: [{ key: 'mcp_port', reason: 'invalid', detail: 'below 1024' }] };
+        values = { ...values, ...set };
+        for (const key of unset) delete values[key];
+        restartPending = true;
+        return { restartPending, refused: [] };
+      },
+      async restartExecutor() {
+        calls.push('runtime.restart');
+      },
+      async executorLogTail(lines) {
+        calls.push(`tail:${lines}`);
+        return ['first', 'second'];
+      },
+    };
+    const host: ExecutorHost = {
+      async restart() {
+        calls.push('host.restart');
+      },
+    };
+    return { runtime, host, calls };
+  }
+
+  it('writes MCP and log levels into the file, and restarts through the backend', async () => {
+    const { runtime, host, calls } = configBackend();
+    executorHost = host;
+    ports = { runtime };
+    const store = mount();
+
+    await store.setMcpEnabled(true);
+    await store.setLogLevel('holochain', 'warn');
+    await store.removeLogLevel('holochain');
+
+    expect(calls).toEqual([
+      'set:{"mcp_enabled":true}:',
+      'set:{"log_config":{"holochain":"warn"}}:',
+      'set:{}:log_config',
+    ]);
+    expect(store.mcpEnabled()).toBe(true);
+    expect(store.executorRestartPending()).toBe(true);
+    expect(store.executorConfigFile()).toBe('/data/executor-config.json');
+
+    await store.restartExecutor();
+    // `runtime.restart`: the host starts the executor again with the same arguments.
+    expect(calls.at(-1)).toBe('runtime.restart');
+    expect(calls).not.toContain('host.restart');
+  });
+
+  // A refused restart leaves the settings not taken effect, so "Restart now" must not disappear.
+  it('keeps the restart pending when the backend refuses to restart', async () => {
+    const { runtime, host } = configBackend();
+    runtime.restartExecutor = async () => {
+      throw new Error('restart refused');
+    };
+    executorHost = host;
+    ports = { runtime };
+    const store = mount();
+
+    await store.setMcpEnabled(true);
+    expect(store.executorRestartPending()).toBe(true);
+
+    await store.restartExecutor();
+    expect(store.executorRestartPending()).toBe(true);
+    expect(store.error()).toMatch(/restart refused/);
+  });
+
+  it('shows every key as a row, editable unless a flag of this start sets it', async () => {
+    const { runtime, host } = configBackend();
+    executorHost = host;
+    setActiveShellView('settings');
+    ports = { runtime };
+    const store = mount();
+
+    await vi.waitFor(() => expect(store.executorConfigRows()).toHaveLength(6));
+    const row = (key: string) => store.executorConfigRows().find((r) => r.key === key);
+    expect(row('auto_permit_cap_requests')).toMatchObject({ kind: 'boolean', choice: 'on', editable: true });
+    expect(row('port')).toMatchObject({ kind: 'number', editable: false });
+    expect(row('port')?.note).toBe('Set automatically');
+
+    await store.setExecutorConfigValue('auto_permit_cap_requests', 'off');
+    expect(row('auto_permit_cap_requests')).toMatchObject({ choice: 'off' });
+    // A row no control is offered for is not written.
+    await store.setExecutorConfigValue('port', 12345);
+    expect(row('port')?.value).toBe('');
+  });
+
+  // `runtime.config` returns what the file holds, so a key the file leaves to its default has no
+  // value to tell its type by: the type comes with the key.
+  it('offers a key the file does not hold, and keeps its input once it is cleared', async () => {
+    const { runtime, host, calls } = configBackend();
+    executorHost = host;
+    setActiveShellView('settings');
+    ports = { runtime };
+    const store = mount();
+
+    await vi.waitFor(() => expect(store.executorConfigRows()).toHaveLength(6));
+    const row = (key: string) => store.executorConfigRows().find((r) => r.key === key);
+    expect(row('hc_admin_port')).toMatchObject({ kind: 'number', value: '', editable: true });
+
+    await store.setExecutorConfigValue('hc_admin_port', '4000');
+    expect(calls.at(-1)).toBe('set:{"hc_admin_port":4000}:');
+    expect(row('hc_admin_port')).toMatchObject({ kind: 'number', value: '4000', editable: true });
+
+    await store.setExecutorConfigValue('hc_admin_port', '');
+    expect(calls.at(-1)).toBe('set:{}:hc_admin_port');
+    expect(row('hc_admin_port')).toMatchObject({ kind: 'number', value: '', editable: true });
+  });
+
+  // The file holds no default, so a true/false key it leaves alone is neither on nor off.
+  it('offers Default, On and Off for a true/false key, and Default unsets it', async () => {
+    const { runtime, host, calls } = configBackend();
+    executorHost = host;
+    setActiveShellView('settings');
+    ports = { runtime };
+    const store = mount();
+
+    await vi.waitFor(() => expect(store.executorConfigRows()).toHaveLength(6));
+    const row = (key: string) => store.executorConfigRows().find((r) => r.key === key);
+    expect(row('mcp_enabled')).toMatchObject({ kind: 'boolean', choice: 'off', editable: true });
+
+    await store.setExecutorConfigValue('mcp_enabled', 'on');
+    expect(calls.at(-1)).toBe('set:{"mcp_enabled":true}:');
+    expect(row('mcp_enabled')).toMatchObject({ choice: 'on' });
+
+    await store.setExecutorConfigValue('mcp_enabled', 'default');
+    expect(calls.at(-1)).toBe('set:{}:mcp_enabled');
+    expect(row('mcp_enabled')).toMatchObject({ choice: 'default' });
+  });
+
+  it('shows a null value as unset', () => {
+    const rows = executorConfigRows({
+      file: '/tmp/executor-config.json',
+      restartPending: false,
+      entries: [
+        { key: 'mcp_port', kind: 'number', value: null, writableFrom: 'anywhere', pinned: false },
+        { key: 'localhost', kind: 'boolean', value: null, writableFrom: 'this-machine', pinned: false },
+      ],
+    });
+    expect(rows[0]).toMatchObject({ value: '' });
+    expect(rows[1]).toMatchObject({ choice: 'default' });
+  });
+
+  it('says which key the backend refused, and why', async () => {
+    const { runtime, host } = configBackend();
+    executorHost = host;
+    ports = { runtime };
+    const store = mount();
+
+    await store.setMcpPort(80);
+    expect(store.error()).toBe('mcp_port: invalid (below 1024)');
+  });
+
+  it('reads the log tail', async () => {
+    const { runtime, host, calls } = configBackend();
+    executorHost = host;
+    ports = { runtime };
+    const store = mount();
+
+    await store.loadExecutorLogTail();
+    expect(store.executorLogTail()).toBe('first\nsecond');
+    expect(calls).toContain('tail:200');
   });
 });
 
