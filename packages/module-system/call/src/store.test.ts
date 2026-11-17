@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest';
 
 import { DEFAULT_ICE_SERVERS } from './mesh';
 import { parseCallMessage } from './protocol';
-import { createCallStore, STAGE_GAP_PX, STAGE_PADDING_PX } from './store';
+import { createCallStore, STAGE_CONTROLS_PX, STAGE_GAP_PX, STAGE_PADDING_PX } from './store';
 
 /**
  * The reactivity a host lends a module, reduced to the smallest thing that satisfies it.
@@ -119,16 +119,22 @@ function fakeMicStream() {
 }
 
 describe('what the call still decides about its own video', () => {
-  it('separates whether the video shows from how much of the screen it has', () => {
-    // One button used to cycle visibility, placement and size together, so it could not have a clear
-    // icon and any given state took up to three clicks through states nobody wanted.
+  it('hides only the tiles, and never the panel that holds the controls', () => {
+    // The "Video" line used to toggle the whole stage — which took mute and Leave with it while the
+    // call kept running. The pictures are what is put away; the panel and its controls stay.
     const store = makeStore();
-    expect(store.stageOpen()).toBe(false);
+    store.openStage();
+    expect(store.stageOpen()).toBe(true);
+    expect(store.tilesHidden()).toBe(false);
 
     store.toggleStage();
+    expect(store.tilesHidden()).toBe(true);
+    // The stage, and so the bar inside it, never went anywhere.
     expect(store.stageOpen()).toBe(true);
+
     store.toggleStage();
-    expect(store.stageOpen()).toBe(false);
+    expect(store.tilesHidden()).toBe(false);
+    expect(store.stageOpen()).toBe(true);
   });
 
   it('asks for no room until it is opened', () => {
@@ -150,6 +156,47 @@ describe('what the call still decides about its own video', () => {
     expect(store.stageOpen()).toBe(true);
     store.closeStage();
     expect(store.stageOpen()).toBe(false);
+  });
+
+  it('opens and closes its settings through the store, so the menu can reach them too', () => {
+    /*
+      The gear folds into the More menu below `base` — and a menu line cannot write a `$localState`
+      declared in a sibling subtree, which is what `local.open` was. The flag lives here now, with
+      the same lifecycle as the rest of the bar's plumbing: `toggleCallSettings` flips it,
+      `closeCallSettings` lowers it, and a call that ends takes it down with it.
+    */
+    const store = makeStore();
+    expect(store.settingsOpen()).toBe(false);
+
+    store.toggleCallSettings();
+    expect(store.settingsOpen()).toBe(true);
+    store.toggleCallSettings();
+    expect(store.settingsOpen()).toBe(false);
+
+    store.toggleCallSettings();
+    store.closeCallSettings();
+    expect(store.settingsOpen()).toBe(false);
+  });
+
+  it('re-asks the host for the stage on every way back to it, even while already open', () => {
+    /*
+      `stageReveal` is the panel declaration's `reveal` key: a counter the host watches, because
+      "still open" is no change at all and cannot carry "bring it forward". Closing the panel's own
+      flag is the one way that does not ask — it is how you leave the stage, not how you reach it.
+    */
+    const store = makeStore();
+    const before = store.stageReveal() as number;
+
+    store.openStage();
+    expect(store.stageReveal()).toBeGreaterThan(before);
+
+    // Asked for again while open — a folded or out-of-sight stage is the case this exists for.
+    const opened = store.stageReveal() as number;
+    store.openStage();
+    expect(store.stageReveal()).toBeGreaterThan(opened);
+
+    store.closeStage();
+    expect(store.stageReveal() as number).toBe(store.stageReveal() as number);
   });
 
   it('always overlays, and leaves everything else about the panel to the host', () => {
@@ -243,10 +290,11 @@ describe('what a template may reach', () => {
     for (const name of [
       'stageBid',
       'stageOpen',
+      'stageReveal',
+      'tilesHidden',
       'openStage',
       'closeStage',
       'toggleStage',
-      'chromeReserve',
       'setStageBox',
       'stageTemplate',
       'stageRows',
@@ -256,6 +304,9 @@ describe('what a template may reach', () => {
       'stageOverflow',
       'tileFaces',
       'localAudio',
+      'settingsOpen',
+      'toggleCallSettings',
+      'closeCallSettings',
     ]) {
       expect(surface[name], name).toBeUndefined();
     }
@@ -297,7 +348,20 @@ describe('tile packing', () => {
 
     expect(aspect.ratio).toBeCloseTo(16 / 9);
     expect(aspect.insetX).toBe(STAGE_PADDING_PX * 2);
-    expect(aspect.insetY).toBe(STAGE_PADDING_PX * 2);
+    // The controls ride inside the panel now, under the tiles — "fit to content" has to cover them
+    // too, or the answer the host lands on squeezes the pictures by the bar's height.
+    expect(aspect.insetY).toBe(STAGE_PADDING_PX * 2 + STAGE_CONTROLS_PX);
+  });
+
+  it('reserves the status line and its gap in the height it asks for', () => {
+    /*
+      The controls column is two things, not one: the bar's 56px, and the `call-status` slot above
+      it, which opens a *second* `gap: '300'` the moment anything is contributed — the wheel
+      indicator, a problem line. A reserve that counted only the bar came out ~50px short exactly
+      then, and "fit to content" clipped the controls it was sizing for. The ~2px is the honest
+      remainder: text metrics the layout rounds up.
+    */
+    expect(STAGE_CONTROLS_PX).toBe(STAGE_GAP_PX + 56 + STAGE_GAP_PX + 36 + 2);
   });
 
   it('fits to the arrangement it is in, rather than solving a new one', () => {
@@ -309,7 +373,7 @@ describe('tile packing', () => {
 
     expect(aspect.ratio).toBeCloseTo((3 * 16) / (2 * 9));
     expect(aspect.insetX).toBe(STAGE_PADDING_PX * 2 + 2 * STAGE_GAP_PX);
-    expect(aspect.insetY).toBe(STAGE_PADDING_PX * 2 + 1 * STAGE_GAP_PX);
+    expect(aspect.insetY).toBe(STAGE_PADDING_PX * 2 + 1 * STAGE_GAP_PX + STAGE_CONTROLS_PX);
   });
 });
 
@@ -883,6 +947,28 @@ describe('transport and device lifetime', () => {
 
     expect(store.callId()).toBeNull();
     expect(scopeDisposals()).toBe(1);
+  });
+
+  it('starts the next call without the last call’s synthetic participants', async () => {
+    /*
+      The count used to persist — storage first, then a signal that outlived its call — so peers
+      summoned to look at one stage walked into the next call, in whatever space that call was in.
+      A fake participant is off unless asked, in an existing space and in a new one, which means the
+      count belongs to the call it was asked in and dies with it.
+    */
+    const { store } = callable();
+
+    await store.startCall();
+    await Promise.resolve();
+    // `addFakePeer` is absent rather than inert in a production build — see the conditional spread
+    // in the store — so the type is right to doubt it, and a test build has developer features.
+    store.addFakePeer!();
+    store.addFakePeer!();
+    expect(store.fakePeerCount!()).toBe(2);
+
+    store.leave();
+    await Promise.resolve();
+    expect(store.fakePeerCount!(), 'the count outlived its call').toBe(0);
   });
   describe('where a call looks for NAT traversal', () => {
     /**
@@ -1883,7 +1969,7 @@ describe('a call and the space it happens in', () => {
  * launcher names a method as a string and the host calls whatever it finds.
  */
 describe('going to the call', () => {
-  function railable() {
+  function railable(peers: unknown[] = []) {
     const signal = <T>(initial: T): [() => T, (next: T) => void] => {
       let value = initial;
       return [() => value, (next: T) => (value = next)];
@@ -1917,7 +2003,7 @@ describe('going to the call', () => {
       kernels: {
         ephemeral: () => scope,
         presence: {
-          peers: () => [],
+          peers: () => peers,
           setActivity: (activity: Record<string, unknown>) => activities.push(activity),
           clearActivity: () => {},
         },
@@ -2088,6 +2174,61 @@ describe('going to the call', () => {
     expect(store.active()).toBe(true);
   });
 
+  it('re-asks for the stage every time, so a call already open but out of sight comes forward', async () => {
+    /*
+      "Go to the call" while the stage is folded, stowed or behind another tab used to be a no-op:
+      the flag it set was already true. The `reveal` key is how the re-ask reaches the host — a
+      counter, since the ask is an event rather than a state.
+    */
+    const { store } = railable();
+
+    store.goToCall();
+    await Promise.resolve();
+    const afterFirst = store.stageReveal() as number;
+
+    // Open-but-out-of-sight: the flag stays true while the ask is repeated.
+    store.goToCall();
+    expect(store.stageOpen()).toBe(true);
+    expect(store.stageReveal() as number).toBeGreaterThan(afterFirst);
+  });
+
+  it('leaves the tiles showing for the next call', async () => {
+    // A "Video" pressed in one call must not follow into the next: the pictures come back with the
+    // stage on `join`, and the flag dies with the call it was set in — like the fake peers.
+    const { store } = railable();
+
+    store.goToCall();
+    await Promise.resolve();
+    store.toggleStage();
+    expect(store.tilesHidden()).toBe(true);
+
+    await store.leave();
+    expect(store.tilesHidden()).toBe(false);
+  });
+
+  it('joins the call already running here rather than starting a second beside it', async () => {
+    /*
+      The "second call" bug, at the store: a button wired to `startCall` makes another call even
+      while presence shows one running. `goToCall` takes the live one instead — which is why the
+      header's Call button is allowed to be a Join, and why a second meeting never appears.
+    */
+    const { store, recordsCreated } = railable([
+      {
+        agentId: 'did:test:them',
+        liveness: 'live',
+        activities: [{ type: 'call', id: 'call-theirs', record: 'rec-theirs' }],
+      },
+    ]);
+
+    store.goToCall();
+    await Promise.resolve();
+
+    expect(store.active()).toBe(true);
+    expect(store.callId()).toBe('call-theirs');
+    // And nothing minted: joining a call writes no record of its own.
+    expect(recordsCreated()).toBe(0);
+  });
+
   it('takes you back to a call happening in another space, rather than starting a second one', async () => {
     /*
       The worst of the three old readings. Navigating out of a call's space and pressing the rail
@@ -2209,7 +2350,7 @@ describe('the spotlight', () => {
 
     expect(aspect.ratio).toBeCloseTo(16 / 9);
     expect(aspect.insetX).toBe(STAGE_PADDING_PX * 2 + wide.width * 0.25 + STAGE_GAP_PX);
-    expect(aspect.insetY).toBe(STAGE_PADDING_PX * 2);
+    expect(aspect.insetY).toBe(STAGE_PADDING_PX * 2 + STAGE_CONTROLS_PX);
   });
 
   it('gives the whole stage to solo, on the axis the strip was on', () => {

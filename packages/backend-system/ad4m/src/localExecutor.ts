@@ -74,7 +74,7 @@ export function createLocalAd4mConnector(
       const delay = options.startupDelayMs ?? 1000;
       if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
 
-      const { client } = await connectToLocalExecutor(port, token);
+      const { client, status } = await connectToLocalExecutor(port, token);
 
       return {
         client,
@@ -83,6 +83,8 @@ export function createLocalAd4mConnector(
           devLinkLanguageBundle: options.devLinkLanguageBundle,
           connection: () => ({ url: `http://localhost:${port}`, token }),
           custody: options.custody,
+          // The status the connection waited for is the session's first: asking again was a second request.
+          unlockedAtConnect: Boolean(status.isInitialized && status.isUnlocked),
         }),
         // Forwarded to hosted app iframes by the embed bridge.
         connection: { port, token },

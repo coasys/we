@@ -32,6 +32,10 @@ function walk(node: unknown, out: SchemaNode[] = []): SchemaNode[] {
 }
 
 const slotNodes = (): SchemaNode[] => (callModule.contributes?.slots ?? []).map((slot) => slot.node);
+const stageNode = (): SchemaNode =>
+  callModule.contributes?.panels?.find((panel) => panel.name === 'stage')?.node as SchemaNode;
+/** Chrome and the stage — where the bar lives now that it has moved inside it. */
+const chrome = (): SchemaNode[] => [...slotNodes(), stageNode()];
 const part = (name: string) => callModule.contributes?.parts?.[name];
 
 describe('audio', () => {
@@ -145,149 +149,417 @@ describe('the bar keeps to the screen', () => {
   });
 });
 
-describe('the compact bar', () => {
-  const ROOMY = { $: "surface.tier != 'base'" };
-  const inCall = (): SchemaNode => walk(slotNodes()).find((node) => node.type === 'DropdownMenu') as SchemaNode;
+describe('the More menu', () => {
+  /** The menu itself — a `we-menu` inside the bar's `we-popover`, so children land in its light DOM. */
+  const menu = (): SchemaNode => walk(chrome()).find((node) => node.type === 'we-menu') as SchemaNode;
 
-  /** The `$if` gates above `target` that read the strip's tier, innermost last. */
-  const tierGates = (target: SchemaNode): SchemaNode[] =>
-    (lineage(slotNodes(), target) ?? []).filter(
-      (node) => node.type === '$if' && JSON.stringify(props(node).condition).includes('surface.tier'),
+  /** `we-menu-item` lines in the menu, optionally filtered by the action they invoke. */
+  const items = (action?: string): SchemaNode[] =>
+    walk(menu()).filter(
+      (node) =>
+        node.type === 'we-menu-item' &&
+        (action === undefined || JSON.stringify(props(node).onSelect) === JSON.stringify({ $invoke: action })),
     );
 
   const buttonFor = (action: string): SchemaNode =>
-    walk(slotNodes()).find(
+    walk(chrome()).find(
       (node) =>
         node.type === 'we-button' && JSON.stringify(props(node).onClick) === JSON.stringify({ $invoke: action }),
     ) as SchemaNode;
 
-  /** The menu's lines are a prop rather than child nodes, so they are read rather than walked. */
-  type MenuEntry = { id?: string; onToggle?: { $invoke: string }; onAction?: { $invoke: string }; hidden?: unknown };
-  const entries = (): MenuEntry[] => props(inCall()).items as MenuEntry[];
-
-  it('folds screen share, show/hide and solo into one menu below the base tier', () => {
-    const menu = inCall();
-    expect(menu).toBeDefined();
-
-    const toggles = entries().filter((entry) => entry.onToggle);
-    expect(toggles.map((entry) => entry.onToggle!.$invoke).sort()).toEqual([
-      'modules.call.toggleScreenShare',
-      'modules.call.toggleSolo',
-      'modules.call.toggleStage',
-    ]);
-
+  it('holds screen share, show/hide and solo as menu items', () => {
     /*
-      The fold is on the entries, not on the menu.
-
-      It used to be a `whenCompact` around the whole menu, which made the menu itself a thing that
-      only existed below `base` — see the next test for why that stopped being right. `hidden` says
-      the same thing one level down, so each of the three is still withdrawn from the menu at exactly
-      the width the row is showing it, and the invariant holds: the same three specs build both.
-
-      Tested as "the condition mentions the tier" rather than as its exact text, because solo's also
-      carries its own gate — it is offered only while something is focused — and that is a different
-      question from folding.
+      Behind the menu at every width, not only below `base` — the bar shows your own devices
+      directly and puts everything else a press away. A toggle in the menu keeps the same action as
+      the button it replaces, so choosing it there is indistinguishable from pressing the square.
     */
-    for (const entry of toggles) {
-      expect(JSON.stringify(entry.hidden), JSON.stringify(entry.onToggle)).toContain(ROOMY.$);
+    expect(menu(), 'no we-menu in the bar').toBeDefined();
+    for (const action of ['modules.call.toggleScreenShare', 'modules.call.toggleStage', 'modules.call.toggleSolo']) {
+      expect(items(action), action).toHaveLength(1);
     }
   });
 
-  it('keeps the menu at every width, because it holds more than the fold now', () => {
-    /*
-      Starting a second call mid-call had nowhere to live. The join bar offers a `+` for it, and only
-      somebody *not* in a call ever sees that — so on a wide screen the control did not exist and a
-      breakout meant hanging up first.
-
-      A menu that existed only below `base` was the wrong home for it, so the menu stands at every
-      width and the fold moved onto the entries. Asserted on the tier gates *above* the menu, since
-      the failure being guarded against is somebody restoring the `whenCompact` wrapper and taking
-      the start away from every desktop with it.
-    */
-    expect(tierGates(inCall())).toEqual([]);
-
-    // By id rather than "the first entry that does something": the menu holds more than one of
-    // those now, and a positional find would silently start asserting about whichever was added last.
-    const start = entries().find((entry) => entry.id === 'start-another');
-    // `''` is how the store spells "about the space rather than about a node in it".
-    expect(start?.onAction).toEqual({ $invoke: 'modules.call.startCall', args: [''] });
-    // Never folded: it is the one entry the row does not show somewhere else.
-    expect(start?.hidden).toBeUndefined();
+  it('keeps those three out of the row entirely, so nothing is shown twice', () => {
+    // No width shows them as buttons any more — the old `whenRoomy` fold is gone with the split it
+    // maintained: a control was either a square or a line at a given width, and a bug could lose it.
+    for (const action of ['modules.call.toggleScreenShare', 'modules.call.toggleStage', 'modules.call.toggleSolo']) {
+      expect(buttonFor(action), action).toBeUndefined();
+    }
   });
 
-  it('takes the same three out of the row at that tier, so nothing is shown twice', () => {
-    for (const action of ['modules.call.toggleScreenShare', 'modules.call.toggleStage', 'modules.call.toggleSolo']) {
+  it('keeps mute, camera and hang-up directly in the row', () => {
+    // They are the call. A menu between a person and their microphone is one step too many at the
+    // moment they need it — so their buttons are row children, never menu items.
+    for (const action of ['modules.call.toggleAudio', 'modules.call.toggleVideo', 'modules.call.leave']) {
       const button = buttonFor(action);
       expect(button, action).toBeDefined();
       expect(
-        tierGates(button).map((gate) => props(gate).condition),
-        `${action} is not withdrawn from the row when the menu holds it`,
-      ).toEqual([ROOMY]);
+        (lineage(chrome(), button) ?? []).some((node) => node.type === 'we-menu'),
+        `${action} ended up inside the menu`,
+      ).toBe(false);
     }
   });
 
-  /*
-    On a phone the row still overflowed after the first fold, and `safe center` aligns an overflowing
-    row to its start — so the control pushed off the right edge was hang-up, the last one. What was
-    left to fold was the relay readout, the quality button and the settings gear: everything the
-    settings popover already says or offers.
-  */
-  it('takes the relay readout, the quality button and the settings gear out of the row at that tier', () => {
-    const readout = walk(slotNodes()).find(
-      (node) => node.type === 'we-tooltip' && props(node).content === 'Peer-to-peer mesh',
-    ) as SchemaNode;
-    const gear = walk(slotNodes()).find(
-      (node) => node.type === 'we-button' && JSON.stringify(props(node).onClick)?.includes('settingsOpen'),
-    ) as SchemaNode;
-
-    for (const [name, node] of [
-      ['topology readout', readout],
-      ['quality button', buttonFor('modules.call.cycleQuality')],
-      ['settings gear', gear],
-    ] as const) {
-      expect(node, name).toBeDefined();
-      expect(
-        tierGates(node).map((gate) => props(gate).condition),
-        name,
-      ).toEqual([ROOMY]);
-    }
-  });
-
-  it('opens the call settings from the menu once the gear has folded into it', () => {
-    const entry = entries().find((candidate) => candidate.id === 'call-settings') as MenuEntry & {
-      onAction?: unknown;
-    };
-    expect(entry?.hidden).toEqual(ROOMY);
-    expect(entry?.onAction).toEqual({ $setLocal: 'settingsOpen', value: true });
-
-    // The state the line sets has to be in the menu's scope, so it is declared above the menu — on
-    // the bar — rather than on the popover beside it, where the menu could not reach it.
-    const holder = (lineage(slotNodes(), inCall()) ?? []).find(
-      (node) => (node as { $localState?: Record<string, unknown> }).$localState?.settingsOpen,
-    );
-    expect(holder).toBeDefined();
-    const body = walk(holder).find(
-      (node) => node.type === '$if' && JSON.stringify(props(node).condition) === '{"$":"local.settingsOpen"}',
-    );
-    expect(body).toBeDefined();
-  });
-
-  it('never folds mute, camera or hang-up', () => {
-    // They are the call. A menu between a person and their microphone is one step too many at the
-    // moment they need it.
-    for (const action of ['modules.call.toggleAudio', 'modules.call.toggleVideo', 'modules.call.leave']) {
-      expect(tierGates(buttonFor(action)), action).toEqual([]);
-    }
-  });
-
-  it('keeps contributed controls in the row at every width', () => {
-    // This module cannot fold chrome it does not know the meaning of, and a contributed square may be
-    // the loudest thing in the bar precisely because it has to be seen.
-    const slot = walk(slotNodes()).find(
+  it('keeps contributed controls in the row', () => {
+    // This module cannot put another module's chrome in its menu — it does not know what that chrome
+    // is, and a contributed square may be the loudest thing in the bar (a red "recording" button,
+    // say) precisely because it has to be seen.
+    const slot = walk(chrome()).find(
       (node) => node.type === '$slot' && props(node).anchor === 'call-controls',
     ) as SchemaNode;
     expect(slot).toBeDefined();
-    expect(tierGates(slot)).toEqual([]);
+    expect(
+      (lineage(chrome(), slot) ?? []).some((node) => node.type === 'we-menu'),
+      'the contributed-controls slot ended up inside the menu',
+    ).toBe(false);
+  });
+
+  it('opens a second anchor inside the menu, for lines another module writes as menu items', () => {
+    /*
+      Buttons stay in the row — but a contribution that *is* a line of text and an icon is better
+      placed in the menu, and "share your pointer" is exactly that. The `call-menu` anchor is where
+      those land, which is how the call can move less-used controls behind More without learning
+      which module owns them.
+    */
+    const slot = walk(menu()).find((node) => node.type === '$slot' && props(node).anchor === 'call-menu') as SchemaNode;
+    expect(slot, 'no call-menu slot inside the More menu').toBeDefined();
+  });
+
+  it('dismisses on an action line, and not on a toggle', () => {
+    /*
+      Choosing "Camera and microphone…" or "Leave and start a new call" is done once, so the menu
+      should go away with it — `we-menu-item`'s `dismiss` fires the popover's own dismiss contract.
+      A toggle is deliberately different: it is something a person may want to flip twice, so it
+      leaves the menu open.
+    */
+    const devices = items().find((node) =>
+      JSON.stringify(props(node).onSelect).includes('modules.call.openDeviceSettings'),
+    );
+    const start = items().find((node) => JSON.stringify(props(node).onSelect).includes('modules.call.startCall'));
+    expect(devices, 'no devices line').toBeDefined();
+    expect(start, 'no start-another line').toBeDefined();
+    expect(props(devices!).dismiss).toBe(true);
+    expect(props(start!).dismiss).toBe(true);
+    for (const toggle of items('modules.call.toggleScreenShare').concat(items('modules.call.toggleStage'))) {
+      expect(props(toggle).dismiss).toBeUndefined();
+    }
+  });
+
+  it('lets "Video" hide only the tiles, never the panel the menu itself sits in', () => {
+    /*
+      The line used to reflect `stageOpen`, so choosing it hid the stage — and with it the menu,
+      mute and Leave, while the call and its microphone carried on. What it governs is the
+      pictures: `tilesHidden`, a fact about the tiles rather than about the panel holding them.
+    */
+    const video = items('modules.call.toggleStage');
+    expect(video, 'no Video line in the menu').toHaveLength(1);
+    const json = JSON.stringify(video[0]);
+    expect(json).toContain('modules.call.tilesHidden');
+    expect(json).not.toContain('modules.call.stageOpen');
+  });
+});
+
+/**
+ * The gear, below `base`: a 390px bar has no room for it, but the settings still have to be
+ * reachable — which is the same job the menu already does for screen share, Video and solo.
+ *
+ * "Fold the gear into More below the narrow breakpoint" is also what unclips Leave: at `base` the
+ * row holds mute, camera, the contributed slot, More, the count and Leave and nothing else, so the
+ * back-to-call control of the elsewhere bar fits beside them.
+ */
+describe('the gear below the narrow breakpoint', () => {
+  /** The control row — the one holding the contributed-controls slot as a direct child. */
+  const row = (): SchemaNode =>
+    walk(chrome()).find(
+      (node) =>
+        node.type === 'Row' &&
+        ((node.children ?? []) as SchemaNode[]).some(
+          (child) => child?.type === '$slot' && props(child).anchor === 'call-controls',
+        ),
+    ) as SchemaNode;
+
+  const gear = (): SchemaNode =>
+    walk(row()).find(
+      (node) =>
+        node.type === 'we-button' && walk(node).some((icon) => icon.type === 'we-icon' && props(icon).name === 'gear'),
+    ) as SchemaNode;
+
+  it('leaves the row below `base`, where its seat costs Leave', () => {
+    // The trigger is gated on roomy — not removed, or the settings would open with no way in.
+    const trigger = gear();
+    expect(trigger, 'no gear in the bar at all').toBeDefined();
+    const gate = lineage(row(), trigger)?.find(
+      (node) => node.type === '$if' && JSON.stringify(props(node).condition).includes('surface.tier'),
+    );
+    expect(JSON.stringify(props(gate)?.condition)).toBe(JSON.stringify({ $: "surface.tier != 'base'" }));
+  });
+
+  it('shows the way back to the call as an icon below `base`, where its name costs Leave', () => {
+    // In a call from another space the back-to-call button joins the row; its name, even
+    // truncated, pushed Leave off a 390px bar. The icon stays at every width, the tooltip names it.
+    const back = walk(row()).find(
+      (node) =>
+        node.type === 'we-button' &&
+        walk(node).some((icon) => icon.type === 'we-icon' && props(icon).name === 'arrow-bend-up-left'),
+    ) as SchemaNode;
+    expect(back, 'no back-to-call button in the bar').toBeDefined();
+    const name = walk(back).find((node) => node.type === 'we-text') as SchemaNode;
+    expect(name, 'no name on the back-to-call button').toBeDefined();
+    const gate = lineage(back, name)?.find(
+      (node) => node.type === '$if' && JSON.stringify(props(node).condition).includes('surface.tier'),
+    );
+    expect(JSON.stringify(props(gate)?.condition)).toBe(JSON.stringify({ $: "surface.tier != 'base'" }));
+    const icon = walk(back).find((node) => node.type === 'we-icon') as SchemaNode;
+    expect(lineage(back, icon)?.some((node) => node.type === '$if')).toBe(false);
+    // Icon-only at `base`, so the button carries its own accessible name.
+    expect(JSON.stringify(props(back).label)).toContain('Back to the call');
+  });
+
+  it('keeps Call settings in the menu at the width that drops it', () => {
+    /*
+      The line exists *because* the gear is gone — so it is gated on the same tier, negated, and
+      reaches the same popover through the store: a menu line cannot write the `local.open` the
+      gear used to hold, which is why the flag moved.
+    */
+    const menu = walk(chrome()).find((node) => node.type === 'we-menu') as SchemaNode;
+    const line = walk(menu).find(
+      (node) =>
+        node.type === 'we-menu-item' &&
+        JSON.stringify(props(node).onSelect).includes('modules.call.toggleCallSettings'),
+    ) as SchemaNode;
+    expect(line, 'no Call settings line in the menu').toBeDefined();
+    const gate = lineage(menu, line)?.find(
+      (node) => node.type === '$if' && JSON.stringify(props(node).condition).includes('surface.tier'),
+    );
+    expect(JSON.stringify(props(gate)?.condition)).toBe(JSON.stringify({ $: "surface.tier == 'base'" }));
+    // And it is a pick-and-dismiss line, like the other actions — not a toggle.
+    expect(props(line).dismiss).toBe(true);
+  });
+
+  it('opens the popover off the store, which the menu can reach', () => {
+    const popover = walk(chrome()).find((node) => JSON.stringify(node).includes('Call settings')) as SchemaNode;
+    expect(JSON.stringify(popover)).toContain('modules.call.settingsOpen');
+    // Nothing in it may still write the local the gear used to own — two flags, one panel, is a
+    // desync waiting for the second press.
+    expect(JSON.stringify(popover)).not.toContain("$setLocal: 'open'");
+  });
+});
+
+/**
+ * The readouts the bar dropped.
+ *
+ * Two icons duplicated what the settings popover already says in words: a broadcast/graph glyph for
+ * the route, and a signal-strength glyph for the quality preference. A glyph with a tooltip is a
+ * sentence hiding behind a hover, and these were the bar's only controls that were never pressed —
+ * removing them loses nothing a reader could act on, which is the whole reason they could go.
+ */
+describe('the readouts the bar dropped', () => {
+  /** The control row — the one holding the contributed-controls slot as a direct child. */
+  const row = (): SchemaNode =>
+    walk(chrome()).find(
+      (node) =>
+        node.type === 'Row' &&
+        ((node.children ?? []) as SchemaNode[]).some(
+          (child) => child?.type === '$slot' && props(child).anchor === 'call-controls',
+        ),
+    ) as SchemaNode;
+
+  it('shows no topology or quality control in the row', () => {
+    // The settings popover is the one row child allowed to mention either path — it is where the
+    // readouts live now, behind the gear. Everything else in the row stays silent on the subject.
+    const children = ((row().children ?? []) as SchemaNode[]).filter(
+      (child) => !JSON.stringify(child).includes('Call settings'),
+    );
+    for (const child of children) {
+      const json = JSON.stringify(child);
+      expect(json).not.toContain('modules.call.topology');
+      expect(json).not.toContain('modules.call.qualityPreference');
+      expect(json).not.toContain('cycleQuality');
+    }
+  });
+
+  it('keeps the route and the quality as words inside call settings', () => {
+    // "Keep that relay information available inside call settings (or the quality section) as text."
+    const settings = walk(chrome()).find((node) => JSON.stringify(node).includes('Call settings')) as SchemaNode;
+    const json = JSON.stringify(settings);
+    expect(json).toContain('SFU relay');
+    expect(json).toContain('Peer-to-peer mesh');
+    expect(json).toContain('Quality preference');
+  });
+});
+
+/**
+ * Where the bar lives: inside the call view, under the video — not floating over every page.
+ *
+ * It used to be `position: fixed` chrome at the bottom of the window, which is where all three of
+ * the reported faults came from: centred on the window rather than on the video, scrolled with the
+ * page underneath it, and covering whatever a view did not pad for — the last row of the space
+ * settings was unreachable and the Feed kept a blank band for it. These pin the new arrangement.
+ */
+/**
+ * Who is in the call is the stage's to show, not the bar's.
+ *
+ * The bar carried a stack of faces and "N in the call" beside hang-up. The tiles above it already say
+ * who is here, each with a name, so the readout was the same fact twice in one panel (Josh, #487).
+ */
+describe('the bar without a participants readout', () => {
+  const row = (): SchemaNode =>
+    walk(chrome()).find(
+      (node) =>
+        node.type === 'Row' &&
+        ((node.children ?? []) as SchemaNode[]).some(
+          (child) => child?.type === '$slot' && props(child).anchor === 'call-controls',
+        ),
+    ) as SchemaNode;
+
+  it('draws no stack of faces in the bar', () => {
+    expect(walk(row()).filter((node) => node.type === 'AvatarStack')).toEqual([]);
+    expect(JSON.stringify(row())).not.toContain('modules.call.tileFaces');
+  });
+
+  it('says "in the call" nowhere in the call’s chrome', () => {
+    expect(JSON.stringify(chrome())).not.toContain(' in the call"');
+  });
+
+  it('keeps the faces the tiles draw, which still read tileFaces', () => {
+    expect(JSON.stringify(part('tile'))).toContain('modules.call.tileFaces');
+  });
+});
+
+describe('where the bar lives', () => {
+  /** Every chrome node that is not the stage — where the bar used to float. */
+  const offStage = (): SchemaNode[] => slotNodes();
+
+  it('holds the controls inside the stage, beneath the tiles', () => {
+    const stage = stageNode();
+    // The buttons that are the bar — hang-up, and the contributed-controls slot beside them.
+    const leave = walk(stage).find(
+      (node) => JSON.stringify(props(node).onClick) === JSON.stringify({ $invoke: 'modules.call.leave' }),
+    );
+    expect(leave, 'no leave button inside the stage').toBeDefined();
+    expect(
+      walk(stage).some((node) => node.type === '$slot' && props(node).anchor === 'call-controls'),
+      'no contributed-controls slot inside the stage',
+    ).toBe(true);
+
+    // Beneath the tiles literally: the grid and the row holding the controls share the stage's column.
+    const grid = walk(stage).find((node) => node.type === 'Grid');
+    const row = walk(stage).find((node) => node.type === 'Row' && lineage(stage, leave as SchemaNode)?.includes(node));
+    expect(grid, 'no tile grid in the stage').toBeDefined();
+    expect(row, 'the controls are not a row beside the grid').toBeDefined();
+    // The grid sits inside the same column as the controls — through its `tilesHidden` gate now,
+    // which is a node between them rather than a different parent.
+    expect(lineage(stage, grid!)?.some((node) => node.type === 'Column')).toBe(true);
+  });
+
+  it('floats nothing across the bottom of the window, except the strip standing in for a closed stage', () => {
+    // No fixed strip may hold a call control any more — that is the whole complaint, with one
+    // stated exception: the stage's own stand-in, which exists only while a call outlives its panel.
+    const floating = walk(offStage()).filter(
+      (node) =>
+        props(node).position === 'fixed' &&
+        walk(node).some(
+          (child) =>
+            JSON.stringify(props(child).onClick) === JSON.stringify({ $invoke: 'modules.call.leave' }) ||
+            JSON.stringify(props(child).onClick) === JSON.stringify({ $invoke: 'modules.call.toggleAudio' }),
+        ),
+    );
+    // Whatever qualifies has to be gated on "in a call and no stage to put the controls in" — any
+    // other floating control is the bug this test was written against.
+    for (const node of floating) {
+      const gated = walk(offStage()).some(
+        (gate) =>
+          gate.type === '$if' &&
+          walk(gate).includes(node) &&
+          JSON.stringify(props(gate).condition) ===
+            JSON.stringify({ $: 'modules.call.active && !modules.call.stageOpen' }),
+      );
+      expect(gated, 'a floating call control outside the stage-closed strip').toBe(true);
+    }
+    expect(floating.length, 'the strip exists at all').toBeGreaterThan(0);
+  });
+
+  it('reserves no band for a bar that no longer floats', () => {
+    // The reserve existed so floating panels and page bottoms kept clear of the bar. With the bar
+    // inside the stage there is nothing to clear, and a band still declared is the Feed's blank
+    // space all over again.
+    expect(callModule.contributes?.reserve).toBeUndefined();
+  });
+
+  it('wears the host’s surface rather than wrapping itself in a second', () => {
+    /*
+      `dockFrame` already renders every panel inside a `$surface` — it is how the bar reads
+      `surface.tier`, and the duplicate underneath bought nothing but a second container-query
+      box the theme had to style twice. One surface per panel, the host's own.
+    */
+    const stage = stageNode();
+    const surfaces = walk(stage).filter((node) => node.type === '$surface');
+    expect(surfaces, 'a second $surface inside the panel the host already surfaces').toHaveLength(0);
+    // And the bar still reads the tier the host's own surface publishes — that is the one thing
+    // the removed wrapper was load-bearing for.
+    expect(JSON.stringify(stage)).toContain('surface.tier');
+  });
+});
+
+/**
+ * The panel can be closed while the call is still going.
+ *
+ * The stage's titlebar close is the one way to put the stage away without leaving the call — and it
+ * does not end the call: the microphone, and so audio, lives in chrome mounted by `active`, not by
+ * `stageOpen`. What a closed stage may never take with it is the means to mute or hang up, so a
+ * compact strip stands in at the bottom of the view while, and only while, the call runs and the
+ * stage is not on screen.
+ */
+describe('when the stage is put away mid-call', () => {
+  /**
+   * The strip — the `$if` in chrome gated on `active && !stageOpen`. Nothing else under the chrome
+   * slots reads `stageOpen`, so the gate is its identifying mark.
+   */
+  const strip = (): SchemaNode =>
+    walk(chrome()).find(
+      (node) => node.type === '$if' && JSON.stringify(props(node).condition).includes('modules.call.stageOpen'),
+    ) as SchemaNode;
+
+  it('shows a compact strip only while in a call and the stage is not visible', () => {
+    expect(strip(), 'no stage-closed fallback strip in chrome').toBeDefined();
+    // The same condition, read the other way: while the stage is up the strip must not exist —
+    // nothing reserved, nothing overlapping the stage's own controls.
+    const gate = JSON.stringify(props(strip()).condition);
+    expect(gate).toContain('modules.call.active');
+    expect(gate).toContain('!modules.call.stageOpen');
+  });
+
+  it('keeps mute, hang-up and the way back to the stage on the strip', () => {
+    for (const action of ['modules.call.toggleAudio', 'modules.call.leave', 'modules.call.goToCall']) {
+      expect(
+        walk(strip()).some(
+          (node) =>
+            JSON.stringify(props(node).onClick) === JSON.stringify({ $invoke: action }) ||
+            JSON.stringify(props(node).onSelect) === JSON.stringify({ $invoke: action }),
+        ),
+        `the strip lost ${action}`,
+      ).toBe(true);
+    }
+  });
+
+  it('hides the pictures, not the row that holds the controls', () => {
+    /*
+      `toggleStage` now means "show the tiles or don't" — `tilesHidden` gates the grid and only the
+      grid. The controls' whole ancestry must stay ungated on it, or hiding video takes mute and
+      Leave with it and the bug is back under another name.
+    */
+    const stage = stageNode();
+    const grid = walk(stage).find((node) => node.type === 'Grid') as SchemaNode;
+    const gateOn = (node: SchemaNode | undefined): boolean =>
+      JSON.stringify(props(node as SchemaNode)?.condition ?? null).includes('tilesHidden');
+    expect(lineage(stage, grid)!.concat(grid).some(gateOn), 'the tile grid is not gated on tilesHidden').toBe(true);
+
+    const leave = walk(stage).find(
+      (node) => JSON.stringify(props(node).onClick) === JSON.stringify({ $invoke: 'modules.call.leave' }),
+    ) as SchemaNode;
+    expect(lineage(stage, leave)!.concat(leave).some(gateOn), 'a control ended up inside the tilesHidden gate').toBe(
+      false,
+    );
   });
 });
 
@@ -301,7 +573,7 @@ describe('the compact bar', () => {
 describe('how the bar reads left to right', () => {
   /** The control row — the one holding the contributed-controls slot as a direct child. */
   const row = (): SchemaNode =>
-    walk(slotNodes()).find(
+    walk(chrome()).find(
       (node) =>
         node.type === 'Row' &&
         ((node.children ?? []) as SchemaNode[]).some(
@@ -316,16 +588,16 @@ describe('how the bar reads left to right', () => {
       if (child.type === '$slot') return `slot:${String(props(child).anchor)}`;
       if (inner.some((node) => node.type === '$slot' && props(node).anchor === 'call-dev')) return 'dev';
       if (child.type === 'we-divider') return 'divider';
-      if (inner.some((node) => node.type === 'DropdownMenu')) return 'fold';
+      if (inner.some((node) => node.type === 'we-popover' && walk(node).some((m) => m.type === 'we-menu')))
+        return 'menu';
       const acted = inner.find((node) => typeof (props(node).onClick as { $invoke?: string })?.$invoke === 'string');
       return acted ? String((props(acted).onClick as { $invoke: string }).$invoke) : String(child.type ?? '');
     });
 
-  it('puts the fold after the controls it folds', () => {
+  it('puts the menu after the contributed controls it cannot hold', () => {
     const order = reading();
-    // `STAGE` is one of the things the menu swallows when the row is compact, so the button sits where
-    // its own contents just left rather than above them.
-    expect(order.indexOf('fold')).toBeGreaterThan(order.indexOf('modules.call.toggleStage'));
+    // The row's own region ends at the contributed slot; everything behind More follows it.
+    expect(order.indexOf('menu')).toBeGreaterThan(order.indexOf('slot:call-controls'));
   });
 
   it('puts the development group last, after everything a shipped build has', () => {
@@ -334,10 +606,10 @@ describe('how the bar reads left to right', () => {
     expect(dev).toBeGreaterThan(-1);
     /*
       The whole arrangement in one assertion: a user's bar and a developer's differ by one trailing
-      group. So nothing shipped may follow it except the rule and the readout that close the row.
+      group. So nothing shipped may follow it except the rule and the hang-up that close the row.
     */
-    expect(order.slice(dev + 1)).toEqual(['divider', 'we-tooltip', 'modules.call.leave']);
-    expect(order.indexOf('fold')).toBeLessThan(dev);
+    expect(order.slice(dev + 1)).toEqual(['divider', 'modules.call.leave']);
+    expect(order.indexOf('menu')).toBeLessThan(dev);
     expect(order.indexOf('slot:call-controls')).toBeLessThan(dev);
   });
 
@@ -400,8 +672,16 @@ describe('how the bar reads left to right', () => {
       registration and disappears with no error anywhere — which is the failure mode that cost a day
       when `view` was missing from the host's kernels.
     */
-    const drawn = walk(slotNodes()).some((node) => node.type === '$slot' && props(node).anchor === 'call-dev');
+    const drawn = walk(chrome()).some((node) => node.type === '$slot' && props(node).anchor === 'call-dev');
     expect(callModule.contributes?.anchors ?? []).toContain('call-dev');
+    expect(drawn).toBe(true);
+  });
+
+  it('declares the menu region it draws', () => {
+    // The same pairing as the dev region above: a slot drawn for an anchor the module never
+    // declared is a contribution point that refuses every contribution at registration.
+    const drawn = walk(chrome()).some((node) => node.type === '$slot' && props(node).anchor === 'call-menu');
+    expect(callModule.contributes?.anchors ?? []).toContain('call-menu');
     expect(drawn).toBe(true);
   });
 });
@@ -530,12 +810,24 @@ describe('the declaration', () => {
     expect(stage?.icon).toBeUndefined();
   });
 
+  it('declares the re-ask, so the host can bring an open-but-hidden stage forward', () => {
+    /*
+      `open` is a flag and `goToCall` sets it — but a stage already open is no change to observe,
+      and a folded, stowed or tab-behind one needs to come forward, not to be set to true again.
+      `reveal` names the store counter the call bumps on every way back: the event the host's
+      `revealDock` answers, alongside `open` which the flag answers.
+    */
+    const stage = contributes.panels?.find((panel) => panel.name === 'stage');
+    expect(stage?.reveal).toBe('stageReveal');
+  });
+
   it('keeps its chrome up while a call runs, by a bare store key', () => {
     // `holds` and `reserve` are keys into the store, not template paths — the one field that was
     // spelt `modules.call.active` now reads like every other.
     expect(contributes.holds).toBe('active');
-    expect(contributes.reserve).toBe('chromeReserve');
-    for (const key of [contributes.holds, contributes.reserve]) expect(key).not.toContain('.');
+    // No `reserve` any more: the bar floats over nothing now that it lives inside the stage.
+    expect(contributes.reserve).toBeUndefined();
+    expect(contributes.holds).not.toContain('.');
   });
 
   it('has one launcher, and it goes to the call', () => {
@@ -545,6 +837,15 @@ describe('the declaration', () => {
       activeWhen: 'active',
       availableWhen: 'canCall',
     });
+  });
+
+  it('makes the button a template places a "go to" too, so it joins rather than forks a call', () => {
+    // `startCallButton`'s own description has always promised "goes to the one running" — the
+    // action is what lagged. A header wired to it must not mint a second call while presence
+    // already shows one.
+    const json = JSON.stringify(part('startCallButton'));
+    expect(json).toContain('modules.call.goToCall');
+    expect(json).not.toContain('modules.call.startCall');
   });
 
   it('declares the activity the transcriber reads off its roster', () => {
@@ -570,17 +871,15 @@ describe('choosing a camera and microphone', () => {
       In the menu rather than beside the mute button, which the bar's own note explains: mute and
       camera never fold because "a menu between a person and their microphone is a step too many".
       Choosing a device is not that — it is done once and then forgotten.
-
-      Never hidden, unlike the two entries that fold when the row is roomy: those fold because the
-      row is showing them itself, and this one has no counterpart in the row at any width.
     */
-    const menu = walk(slotNodes()).find((node) => node.type === 'DropdownMenu') as SchemaNode;
-    const items = props(menu).items as { id?: string; onAction?: unknown; hidden?: unknown }[];
-    const entry = items.find((item) => item.id === 'devices');
+    const menu = walk(chrome()).find((node) => node.type === 'we-menu') as SchemaNode;
+    const entry = walk(menu).find(
+      (node) =>
+        node.type === 'we-menu-item' &&
+        JSON.stringify(props(node).onSelect) === JSON.stringify({ $invoke: 'modules.call.openDeviceSettings' }),
+    );
 
     expect(entry, 'the bar offers no way to change device').toBeDefined();
-    expect(entry?.onAction).toEqual({ $invoke: 'modules.call.openDeviceSettings' });
-    expect(entry?.hidden, 'the entry folds away at some width').toBeUndefined();
   });
 
   it('is published as a part, so a settings screen places the same one', () => {

@@ -169,32 +169,24 @@ export interface CallTileState {
 export const STAGE_PADDING_PX = 12;
 export const STAGE_GAP_PX = 12;
 
+/**
+ * How much height everything under the tiles takes, so "fit to content" counts all of it.
+ *
+ * `STAGE_GAP_PX` between the grid and the controls column, then the column itself, which is two
+ * things rather than one: the `call-status` slot above the bar — a 36px line when anything is
+ * contributed, plus the *second* `STAGE_GAP_PX` it opens between it and the row — then a row of
+ * `md` controls (40px) in a surface padded by `200` a side (8px twice). The `+ 2` is the honest
+ * remainder: text metrics the layout rounds up, and a reserve short by a fraction clips the
+ * bottom button border.
+ *
+ * Derived rather than chosen, for the same reason as the padding above: the aspect `stageBid`
+ * carries subtracts it so the height the host lands on fits the pictures *and* the bar beneath
+ * them, and it has to follow the schema's own sizes when they change.
+ */
+export const STAGE_CONTROLS_PX = STAGE_GAP_PX + 56 + STAGE_GAP_PX + 36 + 2;
+
 /** The tile aspect the whole stage is laid out from. */
 const TILE_ASPECT = 16 / 9;
-
-/**
- * How much of the bottom of the window the call bar occupies, for panels to keep clear of.
- *
- * `CALL_BAR_INSET` (10px) plus a row of `md` controls (40px) in a surface padded by `200` a side
- * (8px twice), plus a little air so a panel snapped above it does not touch. Derived rather than
- * chosen, like `CHROME_RAIL_WIDTH`: change the bar's size or padding and this has to follow, or
- * panels start landing underneath it again.
- *
- * The bottom, since the bar moved there. Lived in the shell as `TOP_CHROME_PX` until the bar
- * stopped being the only thing up there; see `chromeReserve` below.
- */
-export const CALL_BAR_RESERVE_PX = 74;
-
-/**
- * How wide the bar gets, at its widest — what lets the host tell "the module rail has slid left far
- * enough to hit the call controls" from "the rail is nowhere near them".
- *
- * Measured at about 440 with the standard controls and one contributed button, plus room for the
- * participant roster to grow. The bar is content-sized, so this cannot be exact — and the two errors
- * are not symmetrical: too wide moves the rail slightly earlier than it had to, too narrow puts the
- * rail across the controls. So it rounds up.
- */
-export const CALL_BAR_WIDTH_PX = 480;
 
 /** Which edge a stage occupies while it takes room. The host decides; this names the vocabulary. */
 export type CallDockEdge = 'left' | 'right' | 'top' | 'bottom';
@@ -359,6 +351,42 @@ export function createCallStore(deps: ModuleStoreDeps) {
    * in before one starts — a closed panel is simply not placed.
    */
   const [visible, setVisible] = signal(false);
+  /**
+   * Whether the pictures are hidden inside an open stage — what the "Video" menu line reads now.
+   *
+   * A separate flag because putting the tiles away and putting the stage away are different acts:
+   * the first leaves the person still able to mute and leave, the second removes both while the
+   * call runs on. `visible` is the stage's question and this one is the grid's.
+   */
+  const [tilesHidden, setTilesHidden] = signal(false);
+  /**
+   * How many times the stage has been asked for — the panel declaration's `reveal` key.
+   *
+   * A counter rather than the flag itself, because the host's watcher needs an event: "still open"
+   * is no change in `visible`, yet an open-but-folded or tab-behind stage is exactly what
+   * "go to the call" is meant to rescue. The host reads this reactively and reveals the panel when
+   * it moves; what moves it is any way back to the call, gathered into {@link showStage}.
+   */
+  const [stageReveal, setStageReveal] = signal(0);
+  /**
+   * Whether the call-settings popover is up — a store flag because its openers live in two
+   * subtrees: the gear the row draws while it has room, and the menu line that replaces it below
+   * `base`. A `$localState` on the gear's column answered the first of those and could not answer
+   * the second — a menu line cannot write a local declared in a sibling subtree.
+   */
+  const [settingsOpen, setSettingsOpen] = signal(false);
+  /**
+   * Every way back to the call ends here: show the stage, and tell the host to show it too.
+   *
+   * The bump is what makes a second press mean anything — `setVisible(true)` alone is a no-op once
+   * open, so a stage left folded or behind a tab stayed there while the button looked answered.
+   * Closing is deliberately not routed through this: `closeStage` is how you leave the stage, not
+   * how you reach it.
+   */
+  const showStage = () => {
+    setStageReveal(stageReveal() + 1);
+    setVisible(true);
+  };
   /**
    * Whose video the stage is giving most of its room to, or `null` for an even grid.
    *
@@ -821,9 +849,10 @@ export function createCallStore(deps: ModuleStoreDeps) {
   /*
     How many synthetic participants the call bar's dev controls have asked for — see `devPeers`.
 
-    A signal rather than a read of `localStorage` per rebuild, so pressing `+` re-solves the stage on
-    the click instead of waiting for whatever roster event happens next. Seeded from storage, which
-    is what makes the count survive the reloads a developer does while iterating.
+    A signal rather than a read per rebuild, so pressing `+` re-solves the stage on the click
+    instead of waiting for whatever roster event happens next. It belongs to the call it is
+    raised in — `teardown` zeroes it, because a count that outlives its call is a fake
+    participant joining the next one unasked.
   */
   const [fakePeerCount, setFakePeerCountSignal] = signal(readDevPeerCount());
 
@@ -1426,10 +1455,20 @@ export function createCallStore(deps: ModuleStoreDeps) {
     anchor = undefined;
     setCallRecord(null);
     setVisible(false);
+    setTilesHidden(false);
+    setSettingsOpen(false);
     setFocusedId(null);
     focusIsManual = false;
     sharingPeers = new Set();
     setTiles([]);
+    /*
+      Synthetic participants die with the call they were asked in — a fake participant is off
+      unless asked, and "asked" means asked *here*, never inherited from a call that is over or a
+      space that was visited before. `devPeers` holds the count in memory for the session, so the
+      same `+` press is the only way the next call gets one.
+    */
+    stopDevPeers();
+    setFakePeerCountSignal(writeDevPeerCount(0));
   }
 
   /**
@@ -1683,7 +1722,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
       sets this back off, so it means "this call is showing" rather than a preference that outlives
       the call it was made in.
     */
-    setVisible(true);
+    showStage();
 
     /*
       And the address names it — coasys/we#304.
@@ -2173,11 +2212,12 @@ export function createCallStore(deps: ModuleStoreDeps) {
    * height at which no band of empty panel is left above or below the pictures — the thing
    * hand-resizing can never quite land on. `cols × 16 / (rows × 9)` is that shape.
    *
-   * The insets are the stage's own fixed pixels: `STAGE_PADDING_PX` on each side and
-   * `STAGE_GAP_PX` between tiles. Left out — as they were at first — the host solved on the full
-   * panel width, made the box about twenty pixels too short for its pictures, and the tiles
-   * answered by shrinking to the height and leaving a gap down each side. They are constants at a
-   * given tile count, which is what lets this stay a value rather than a callback taking a width.
+   * The insets are the stage's own fixed pixels: `STAGE_PADDING_PX` on each side,
+   * `STAGE_GAP_PX` between tiles, and `STAGE_CONTROLS_PX` for the control row under them. Left
+   * out — as they were at first — the host solved on the full panel width, made the box about
+   * twenty pixels too short for its pictures, and the tiles answered by shrinking to the height
+   * and leaving a gap down each side. They are constants at a given tile count, which is what
+   * lets this stay a value rather than a callback taking a width.
    *
    * The arrangement is the one the stage is *currently in*, not one solved again here. That is
    * deliberate: with the width fixed, any column count can be made to fit perfectly, so "fit" that
@@ -2197,7 +2237,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
       return {
         ratio: TILE_ASPECT,
         insetX: STAGE_PADDING_PX * 2 + (beside ? band : 0),
-        insetY: STAGE_PADDING_PX * 2 + (!solo() && !strip.side ? band : 0),
+        insetY: STAGE_PADDING_PX * 2 + STAGE_CONTROLS_PX + (!solo() && !strip.side ? band : 0),
       };
     }
 
@@ -2205,7 +2245,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
     return {
       ratio: (columns * 16) / (rows * 9),
       insetX: STAGE_PADDING_PX * 2 + (columns - 1) * STAGE_GAP_PX,
-      insetY: STAGE_PADDING_PX * 2 + (rows - 1) * STAGE_GAP_PX,
+      insetY: STAGE_PADDING_PX * 2 + (rows - 1) * STAGE_GAP_PX + STAGE_CONTROLS_PX,
     };
   }
 
@@ -2346,11 +2386,32 @@ export function createCallStore(deps: ModuleStoreDeps) {
      */
     stageOpen: visible,
     /**
+     * Whether the tiles are hidden inside an open stage — the "Video" menu line's check.
+     *
+     * Unmarked, with `stageOpen`: plumbing a chrome-tier fragment reads, not state a template asks
+     * for — a space template hides a panel it does not own through `meta.panels`, never through
+     * this.
+     */
+    tilesHidden,
+    /**
+     * The panel declaration's `reveal` — bumped by every way back to the call, so the host can
+     * bring an open-but-out-of-sight stage forward. Unmarked, and never read into a schema: a
+     * counter's only reader is the host's watcher, which turns it into a reveal.
+     */
+    stageReveal,
+    /**
+     * Whether the call-settings popover is up — the gear's flag, now the menu line's too.
+     *
+     * Unmarked plumbing like `stageOpen`: a space template has no business reaching into the call's
+     * chrome, and it could not — `modules.call.*` outside the chrome surface is empty.
+     */
+    settingsOpen,
+    /**
      * Show the video. The panel declaration's `show` — a template's `meta.panels` entry naming this
      * module's stage calls it to open it, since the module owns the flag the host would otherwise
      * have set itself. Idempotent, like `goToCall`'s use of the same setter.
      */
-    openStage: () => setVisible(true),
+    openStage: showStage,
 
     // ── How the tiles pack ────────────────────────────────────────────────────
     /**
@@ -2568,25 +2629,6 @@ export function createCallStore(deps: ModuleStoreDeps) {
     }),
 
     /**
-     * The band this module's fixed chrome occupies, for panels to keep clear of.
-     *
-     * The bar is `position: fixed` at the top and paints above the panels, so a panel snapped to the
-     * top centre lands underneath it — including the panel's own grip and position menu, which are
-     * the two things it is dragged back out with. The host reserves this on every *floating* panel;
-     * a displacing one is unaffected, since it takes an edge this does not sit on.
-     *
-     * Reported rather than assumed, because the host cannot see whether the bar is up: the same
-     * value used to be a constant in the shell's geometry, reserving the band whether or not a call
-     * was running, and it could not grow when another module contributed into this bar's column.
-     *
-     * Non-zero whenever the bar is drawn at all, which includes the join prompt shown to somebody
-     * who is not in the call yet — that is the same object in the same place, so it takes the same
-     * room. `CALL_BAR_TOP` plus a row of `md` controls in a padded surface.
-     */
-    chromeReserve: () =>
-      callId() !== null || ongoingPeers().length > 0 ? { bottom: CALL_BAR_RESERVE_PX } : { bottom: 0 },
-
-    /**
      * The microphone this call is sending, for a module that wants to listen to it.
      *
      * Reached through the `media` kernel — `media.input()` — rather than off this store: every write
@@ -2688,12 +2730,12 @@ export function createCallStore(deps: ModuleStoreDeps) {
       // is left alone to be pure navigation — it is the bar's button, and the bar is already in the
       // call, so it has no business deciding whether the video is up.
       if (callIsElsewhere()) {
-        setVisible(true);
+        showStage();
         returnToCall();
         return;
       }
       // In the call, here. Nowhere to travel to, so the whole of "go to it" is having it on screen.
-      setVisible(true);
+      showStage();
     }, 'Go to the call: join the one running here, pick up the one on screen, or start one; in a call already, bring it up.'),
 
     /** Start a new call here, whether or not one is already running. Resolves once it is joined. */
@@ -2866,15 +2908,29 @@ export function createCallStore(deps: ModuleStoreDeps) {
       if ((await controller?.startScreenShare()) === 'failed') setProblem(SCREEN_UNAVAILABLE);
     }, 'Start or stop sharing this agent’s screen; sharing replaces the camera until it stops.'),
     /**
-     * Show the video, or put it away. The other half of what one button used to do alone.
+     * Show the pictures, or put them away. The other half of what one button used to do alone.
+     *
+     * It used to toggle the stage itself — which worked, and also put mute and Leave out of reach
+     * while the call ran on without its controls. The pictures are the only thing that answer:
+     * `tilesHidden` gates the grid and nothing else, so the panel the menu lives in stays up.
      *
      * Unmarked, with `closeStage` and `openStage`: the panel declaration names two of them and the
      * bar's Video toggle calls the third, all at chrome tier. A space template opens the stage by
      * declaring the panel in its `meta.panels`, which is the host's door, not this one.
      */
-    toggleStage: () => setVisible(!visible()),
+    toggleStage: () => setTilesHidden(!tilesHidden()),
     /** Put the video away. The panel declaration's `close`, so the titlebar has a way to dismiss it. */
     closeStage: () => setVisible(false),
+    /**
+     * Open or close the call-settings popover — the gear while the row is roomy, the menu line it
+     * folds into below `base`.
+     *
+     * Unmarked, like the stage plumbing beside it: chrome-tier vocabulary a fragment calls, not
+     * state a template asks for.
+     */
+    toggleCallSettings: () => setSettingsOpen(!settingsOpen()),
+    /** Close the popover outright — the panel's own ×, and teardown's. */
+    closeCallSettings: () => setSettingsOpen(false),
 
     /**
      * Give this participant the stage, or take it back if they already have it.

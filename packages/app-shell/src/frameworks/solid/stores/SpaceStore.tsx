@@ -58,6 +58,7 @@ import {
   readSpaceLandmarks,
   readSpaceRoot,
   seedSpaceRoot,
+  shareListedSpace,
   writeSpaceLandmark,
 } from '@shared/spaceLandmarks';
 import {
@@ -202,6 +203,7 @@ import { createStore, reconcile } from 'solid-js/store';
 import { oneAtATime } from '../../../shared/oneAtATime';
 import { signalOptimism } from '../../../shared/signalOptimism';
 import { signalOrder } from '../../../shared/signalOrder';
+import { firstScreen } from '../firstScreen';
 import { useAppStore } from './AppStore';
 import { type AppDataset, canonicalSpaceId, useDatasetStore } from './DatasetStore';
 import { useProfileStore } from './ProfileStore';
@@ -969,6 +971,20 @@ export interface SpaceStore {
    * known yet", not "none": gate a "there is no board" on this, never on `root`, which arrives first.
    */
   landmarksLoaded: Accessor<boolean>;
+  /**
+   * `root` has answered for the space on screen — the collection's id, or '' for a space with none.
+   * Until then an empty `root` means "not known yet". Gate anything that compares an address with
+   * `root` on this: deciding before it is known chose the wrong branch, mounted it, sent its reads,
+   * then tore it down and mounted the right one.
+   */
+  rootLoaded: Accessor<boolean>;
+  /**
+   * The first screen after boot is up — the Feed's first page drawn, or the screen drawn with no Feed
+   * on it; see `shared/firstScreen.ts`. True from then on, and true from the start when nothing held
+   * it. For a template's `when` on a read its first screen does not draw (a sidebar's list), so the
+   * read starts once that screen is up rather than beside it.
+   */
+  firstScreenOpen: Accessor<boolean>;
   /**
    * Whether one collection — a call, a channel, the space's own — is extracted as it grows: its own
    * answer, copied from the space's default when it was made. False until it has been read.
@@ -1814,12 +1830,15 @@ export function SpaceStoreProvider(props: ParentProps) {
       // real space's data (including avatars) until each is visited individually. Catch
       // per-dataset so one bad dataset can't poison the rest.
       const spaces = await Promise.all(
-        candidates.map(
-          async (ds) =>
-            await Space.findOne(ds.handle, { where: spaceSelfWhere(ds), include: { location: true } }).catch(
-              () => null,
-            ),
-        ),
+        candidates.map((ds) => {
+          const row = Space.findOne(ds.handle, { where: spaceSelfWhere(ds), include: { location: true } }).catch(
+            () => null,
+          );
+          // Each row as it lands, not when the slowest space has answered: a space opened in the
+          // meantime takes its collection from this read rather than reading its record again.
+          shareListedSpace(ds.handle, row);
+          return row;
+        }),
       );
       const filteredSpaces = spaces
         .filter((s): s is Space => !!s)
@@ -1844,6 +1863,9 @@ export function SpaceStoreProvider(props: ParentProps) {
   const [defaultSharing, setDefaultSharing] = createSignal('');
 
   async function loadSharingOptions(): Promise<void> {
+    // For the share picker, which nobody opens before the first screen is up — see
+    // `shared/firstScreen.ts`. Read as it is when it starts, so a session change meanwhile is seen.
+    await firstScreen.whenOpen();
     const lifecycle = session.lifecycle();
     if (!lifecycle?.sharingOptions) return;
     try {
@@ -3268,6 +3290,8 @@ export function SpaceStoreProvider(props: ParentProps) {
    * used to be what said so.
    */
   const [landmarksLoaded, setLandmarksLoaded] = createSignal(false);
+  /** `root` has answered for the space on screen. See the interface. */
+  const [rootLoaded, setRootLoaded] = createSignal(false);
   // The collection to modules too, so the Feed starts from this answer rather than reading the space
   // record again for it.
   onCleanup(provideModuleHostServices({ spaceRoot: () => spaceRoot() }));
@@ -3287,9 +3311,21 @@ export function SpaceStoreProvider(props: ParentProps) {
       dataset,
       untrack(mySpaces).find((space) => isSpaceSelf(space, ds)),
     );
-    const root = readSpaceRoot(dataset).then((space) => {
-      if (here()) setSpaceRoot(space?.root ?? '');
-    });
+    const root = readSpaceRoot(dataset).then(
+      (space) => {
+        if (!here()) return;
+        batch(() => {
+          setSpaceRoot(space?.root ?? '');
+          setRootLoaded(true);
+        });
+      },
+      (error: unknown) => {
+        // Answered, if with nothing: a template waiting on it shows the space without a collection
+        // rather than waiting for ever. The landmark watch reads it again when it next pushes.
+        if (here()) setRootLoaded(true);
+        throw error;
+      },
+    );
     const landmarks = readSpaceLandmarks(dataset).then((found) => {
       if (!here()) return;
       batch(() => {
@@ -3317,6 +3353,8 @@ export function SpaceStoreProvider(props: ParentProps) {
       watch?.dispose();
     });
     setSpaceRoot('');
+    // Nothing to wait for outside a WE space: its root is '' and stays so.
+    setRootLoaded(!(dataset && weSpace));
     setSpaceLandmarks({});
     setLandmarksLoaded(false);
     /*
@@ -3501,16 +3539,28 @@ export function SpaceStoreProvider(props: ParentProps) {
    * Re-run whenever the space record changes, which is how a peer's reorder reaches this screen, and
    * how this agent's own write is confirmed after `reorderTaskStates` has already shown it.
    */
+  /** Space records exactly as the live query delivered them — not a copy made for an optimistic write. */
+  const pushedSpaces = new WeakSet<Space>();
+
+  /** The state order a pushed record carries, or null for a record that is not a push or carries none. */
+  function pushedTaskStateOrder(space: Space): string[] | null {
+    if (!pushedSpaces.has(space) || !Array.isArray(space.taskStates)) return null;
+    return taskStateIds(space.taskStates);
+  }
+
+  function taskStateIds(rows: unknown): string[] {
+    return ((Array.isArray(rows) ? rows : []) as ({ id?: string } | string)[])
+      .map((row) => (typeof row === 'string' ? row : (row?.id ?? '')))
+      .filter(Boolean);
+  }
+
   async function loadTaskStateOrder(spaceId: string): Promise<void> {
     const dataset = datasetStore.currentDataset()?.handle;
     if (!dataset) return;
     try {
       const record = await Space.findOne(dataset, { where: { id: spaceId }, include: { taskStates: true } });
       if (currentSpace()?.id !== spaceId) return; // moved on while loading
-      const rows = (Array.isArray(record?.taskStates) ? record.taskStates : []) as unknown as (
-        { id?: string } | string
-      )[];
-      setTaskStateOrder(rows.map((row) => (typeof row === 'string' ? row : (row?.id ?? ''))).filter(Boolean));
+      setTaskStateOrder(taskStateIds(record?.taskStates));
     } catch (error) {
       console.warn('SpaceStore: could not read the task state order', error);
     }
@@ -3522,7 +3572,16 @@ export function SpaceStoreProvider(props: ParentProps) {
       setTaskStateOrder([]);
       return;
     }
-    void loadTaskStateOrder(space.id);
+    /*
+      A record the live query pushed carries the order already: the query includes `taskStates`, and
+      a push is the executor's hydrated, ordered read made after the change it reports — the same
+      answer the fresh read below gets. Opening a space read the record a second time for it, on the
+      path to the first feed page. A copy this store made for an optimistic write is not a push, and
+      its `taskStates` may predate a reorder, so that one is read fresh, as before.
+    */
+    const pushed = pushedTaskStateOrder(space);
+    if (pushed) setTaskStateOrder(pushed);
+    else void loadTaskStateOrder(space.id);
   });
 
   /**
@@ -5011,7 +5070,18 @@ export function SpaceStoreProvider(props: ParentProps) {
     // registration, and the port replaces it when the list differs.
     if (root) void extractionTargetsFor(root);
     if (wanted) {
+      /*
+        Not before the list is whole. Core vocabulary is known at once and the space's own models and
+        foreign classes a few round trips later, so registering on the first answer wrote a watch
+        without them and then, when they came, removed it and wrote it again — on every visit, from
+        every member. Registered once it is whole, the port finds what is stored already says the
+        same and writes nothing.
+
+        Recorded as on before the wait, all the same: the watch is one row in the shared graph and
+        may be there from an earlier visit, so switching off during the wait must still remove it.
+      */
       looseWatchOn = { root, handle };
+      if (!shapeStore.extractionCandidatesLoaded()) return;
       void datasetStore.watchConversation(root, handle).catch((error: unknown) => {
         console.info('SpaceStore: the space’s loose messages cannot be watched here', error);
       });
@@ -6129,8 +6199,17 @@ export function SpaceStoreProvider(props: ParentProps) {
       setCurrentSpace(null);
       return;
     }
-    const builder: LiveRows<Space> = Space.query(ds.handle, { where: spaceSelfWhere(ds), include: { location: true } });
-    const handleResult = (results: Space[]) => setCurrentSpace(results[0] ?? null);
+    // `taskStates` too: the order of the space's states rides on the same record — see the effect
+    // beside `loadTaskStateOrder`.
+    const builder: LiveRows<Space> = Space.query(ds.handle, {
+      where: spaceSelfWhere(ds),
+      include: { location: true, taskStates: true },
+    });
+    const handleResult = (results: Space[]) => {
+      const space = results[0] ?? null;
+      if (space) pushedSpaces.add(space);
+      setCurrentSpace(space);
+    };
     builder
       .subscribe(handleResult)
       .then(handleResult)
@@ -6288,12 +6367,16 @@ export function SpaceStoreProvider(props: ParentProps) {
     toastService.info(`Saved. You won't see it while you're using ${name} in this space.`, 8000, useSpaceTheme);
   }
 
-  // Load neighbourhood members whenever the current dataset changes
+  /*
+    Load neighbourhood members whenever the current dataset changes — once the first screen is up,
+    since the first page draws none of them and each brings a profile read (`shared/firstScreen.ts`).
+    Until then the list is this agent alone, which is what a space with nobody else in it shows.
+  */
   createEffect(() => {
     const ds = datasetStore.currentDataset();
     const lifecycle = session.lifecycle();
     const myDid = session.me()?.did;
-    if (!ds || !lifecycle?.members) {
+    if (!ds || !lifecycle?.members || !firstScreen.open()) {
       setMemberDids(myDid ? [myDid] : []);
       return;
     }
@@ -6529,6 +6612,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     root: spaceRoot,
     landmarks: spaceLandmarks,
     landmarksLoaded,
+    rootLoaded,
+    firstScreenOpen: () => firstScreen.open(),
     starterChoices,
     autoExtractFor,
     setAutoExtractFor,

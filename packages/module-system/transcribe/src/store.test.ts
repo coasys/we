@@ -977,9 +977,22 @@ describe('extraction', () => {
     const candidates = new Set(initialTargets);
     const defaults = [...initialTargets];
     const forCall = (collection: string) => targets.get(collection) ?? defaults.filter((e) => candidates.has(e));
+    /**
+     * Whether the host has finished reading what this space could extract. True unless a test holds
+     * it back: the class catalogue arrives in pieces — core vocabulary at once, a space's own and
+     * foreign classes a few round trips later.
+     */
+    let loaded = true;
+    /** The class list each registration was made with, in the same order as the registrations. */
+    const registered: string[][] = [];
     return {
       calls,
       watches,
+      registered,
+      /** Stand in for the catalogue still loading (`false`) and arriving (`true`). */
+      setLoaded: (next: boolean) => {
+        loaded = next;
+      },
       targetsSeen,
       reconciled,
       /** What the watch would currently be registered for — the module hands the host a collection. */
@@ -993,6 +1006,7 @@ describe('extraction', () => {
       },
       port: {
         available: () => available,
+        targetsLoaded: () => loaded,
         targets: (collection: string) => {
           const active = forCall(collection);
           return [...candidates].map((entity) => ({ entity, selected: active.includes(entity) }));
@@ -1011,6 +1025,7 @@ describe('extraction', () => {
         watchCollection: async (collectionId: string, target?: { dataset?: string }) => {
           watches.push(collectionId);
           targetsSeen.push(target?.dataset ?? '');
+          registered.push(forCall(collectionId));
         },
         unwatchCollection: async (collectionId: string, target?: { dataset?: string }) => {
           watches.push(`-${collectionId}`);
@@ -1367,6 +1382,93 @@ describe('extraction', () => {
       // Removed first, then registered again — a plain re-register would union the old list back in.
       expect(i.watches).toEqual([collection, `-${collection}`, collection]);
       expect(i.watchTargetsOf(collection)).toEqual(['TaskBlock']);
+    });
+
+    /*
+      The list is not an answer until the host has read all of it.
+
+      Core vocabulary is known at once; a space's own models and the classes it already had arrive a
+      few round trips later. A watch keyed on the list as it stood then registered the part that had
+      arrived, then removed it and registered the whole once the rest did — four writes to the shared
+      graph from every member who opened the call, ending where they started, and a second in between
+      in which the watch did not look for what had not arrived.
+    */
+    it('registers once, with the whole list, when what the space can extract arrives late', async () => {
+      const i = interpreter(undefined, true, ['EventBlock', 'TaskBlock']);
+      i.setLoaded(false);
+      const h = harness(inCall, { interpretation: i.port });
+      await h.say('we should ship the docs on friday');
+
+      expect(i.watches).toEqual([]);
+      // Nothing selected is not what an unread list means, so nobody is told so.
+      expect(h.notified).toEqual([]);
+
+      i.setCandidates(['EventBlock', 'Sighting', 'TaskBlock']);
+      i.setLoaded(true);
+      await h.settle();
+
+      expect(i.watches).toEqual([RECORD]);
+      expect(i.registered).toEqual([['EventBlock', 'Sighting', 'TaskBlock']]);
+    });
+
+    it('registers once the list is read even when reading it changed nothing', async () => {
+      // The list the call opened with was already the whole of it — only the flag moves.
+      const i = interpreter(undefined, true, ['EventBlock', 'TaskBlock']);
+      i.setLoaded(false);
+      const h = harness(inCall, { interpretation: i.port });
+      await h.say('we should ship the docs on friday');
+
+      i.setLoaded(true);
+      await h.settle();
+
+      expect(i.watches).toEqual([RECORD]);
+    });
+
+    it('still stops the watch when automatic extraction is switched off while the list is reloading', async () => {
+      // Off needs no list: waiting for one would leave the watch spending a pass per batch meanwhile.
+      const i = interpreter(undefined, true, ['EventBlock', 'TaskBlock']);
+      let auto = true;
+      const h = harness(inCall, { interpretation: { ...i.port, autoEnabled: () => auto } });
+      await h.say('we should ship the docs on friday');
+
+      i.setLoaded(false);
+      auto = false;
+      await h.settle();
+
+      expect(i.watches).toEqual([RECORD, `-${RECORD}`]);
+    });
+
+    it('stops a watch the call already had when extraction is switched off before the list is read', async () => {
+      // The call's watch is one row in the shared graph, so it can be there from an earlier visit or
+      // another member while this agent waits for the list. Off must still remove it.
+      const i = interpreter(undefined, true, ['EventBlock', 'TaskBlock']);
+      i.setLoaded(false);
+      let auto = true;
+      const h = harness(inCall, { interpretation: { ...i.port, autoEnabled: () => auto } });
+      await h.say('we should ship the docs on friday');
+      expect(i.watches).toEqual([]);
+
+      auto = false;
+      await h.settle();
+      expect(i.watches).toEqual([`-${RECORD}`]);
+
+      // Once only, and the same call target a registration names.
+      await h.settle();
+      auto = true;
+      i.setLoaded(true);
+      await h.settle();
+      expect(i.watches).toEqual([`-${RECORD}`, RECORD]);
+      expect(i.targetsSeen[0]).toBe(i.targetsSeen[1]);
+    });
+
+    it('removes nothing for a call that was off before this agent waited on it', async () => {
+      const i = interpreter(undefined, true, ['EventBlock', 'TaskBlock']);
+      i.setLoaded(false);
+      const h = harness(inCall, { interpretation: { ...i.port, autoEnabled: () => false } });
+      await h.say('we should ship the docs on friday');
+      await h.settle();
+
+      expect(i.watches).toEqual([]);
     });
 
     it('does not re-register when the list has not actually changed', async () => {
@@ -3469,5 +3571,101 @@ describe('replies', () => {
     onScreen = 'call-two';
     await h.settle();
     expect(h.store.replyingTo()).toBeNull();
+  });
+});
+
+/**
+ * Which call records somebody is in right now — what the transcript's `subscribe` tests its subject
+ * against.
+ *
+ * `callOnScreenLive` answers only for the call `?call=` names. The call page names its call with
+ * `?id=`, so on that page the live transcript was read once and never followed.
+ */
+describe('liveCallRecords', () => {
+  it('lists the record of every call somebody is in, whatever the address names', () => {
+    const h = harness(
+      [
+        peer(THEM, { type: 'call', id: CALL, record: RECORD }),
+        peer('did:key:other', { type: 'call', id: 'call:rec-2', record: 'rec-2' }),
+        // A call with no record yet names nothing to follow.
+        peer('did:key:third', { type: 'call', id: 'call:rec-3' }),
+      ],
+      { callOnScreen: () => null },
+    );
+
+    expect(h.store.liveCallRecords()).toEqual([RECORD, 'rec-2']);
+    // The address names no call, so the old member says nothing about the call page.
+    expect(h.store.callOnScreenLive()).toBe(false);
+  });
+
+  it('is empty when nobody is in a call', () => {
+    expect(harness([]).store.liveCallRecords()).toEqual([]);
+  });
+});
+
+/**
+ * Reading what is staged on one call, asked for by several callers at once.
+ *
+ * A pass settling, a collection being adopted and an extraction finishing all ask, and on opening a
+ * call they ask together. Each read is a SHACL dump and a class lookup on the backend, so three at
+ * once was three of each for one answer.
+ */
+describe('reading staged suggestions while a read is running', () => {
+  it('runs one read and one more after it, and answers every caller from a read made after it asked', async () => {
+    const answers: (() => void)[] = [];
+    let reads = 0;
+    const h = harness([], {
+      interpretation: {
+        available: () => true,
+        proposals: async () => {
+          reads += 1;
+          const label = `read ${reads}`;
+          await new Promise<void>((resolve) => answers.push(resolve));
+          return [{ id: 'p', kind: 'update', values: { title: label } }];
+        },
+        accept: async () => true,
+        reject: async () => true,
+      },
+    });
+    const byId = () => (h.store.proposalsFor() as { get: (key: string) => { summary: string }[] }).get('call-1');
+
+    const first = h.store.refreshProposals('call-1') as Promise<void>;
+    const second = h.store.refreshProposals('call-1') as Promise<void>;
+    const third = h.store.refreshProposals('call-1') as Promise<void>;
+    await Promise.resolve();
+    expect(reads).toBe(1);
+
+    let secondDone = false;
+    void second.then(() => (secondDone = true));
+    answers[0]();
+    await first;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // The second asked while the first read was running, so the first read cannot answer it.
+    expect(secondDone).toBe(false);
+    expect(reads).toBe(2);
+
+    answers[1]();
+    await Promise.all([second, third]);
+    expect(reads).toBe(2);
+    expect(byId()[0].summary).toBe('title: read 2');
+  });
+
+  it('reads two calls side by side — one call does not wait for another', async () => {
+    let reads = 0;
+    const h = harness([], {
+      interpretation: {
+        available: () => true,
+        proposals: async () => {
+          reads += 1;
+          return [];
+        },
+        accept: async () => true,
+        reject: async () => true,
+      },
+    });
+
+    await Promise.all([h.store.refreshProposals('call-1'), h.store.refreshProposals('call-2')]);
+
+    expect(reads).toBe(2);
   });
 });

@@ -1,63 +1,68 @@
 /**
- * Which executors this app may stop, and how it stops one — against real processes for the latter.
+ * How the app starts, supervises and stops its executor — against real processes for the stop.
  *
- * The selection is the part worth pinning: it used to be `pkill -f ad4m-executor`, which also ended
- * every other app's executor on the machine, a second WE checkout's, test executors and any command
- * line that merely mentioned the binary.
+ * It stops only its own child: startup once ran `pkill -f ad4m-executor`, which also ended every
+ * other app's executor on the machine, and later stopped any executor on its data folder. Another
+ * executor there now refuses to start beside it (exit 79), which `afterExecutorExit` reports.
  */
 import { spawn } from 'child_process';
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
-import { tmpdir } from 'os';
-import { join } from 'path';
-import { describe, expect, it } from 'vitest';
+import { EventEmitter } from 'events';
+import http from 'http';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import {
   afterExecutorExit,
+  crashBackoff,
+  executorArgs,
   executorEnv,
-  executorPidsFor,
-  restartBudget,
-  stopExecutorsFor,
+  executorHealthy,
+  EXIT,
+  initialExecutorConfig,
+  outputClosed,
+  outputTail,
+  startWithPortRetry,
+  stopChild,
   stopProcess,
+  waitForExecutorReady,
   waitUntilReady,
 } from './executorProcess.js';
 
-describe('restartBudget', () => {
+describe('crashBackoff', () => {
   const MIN = 60_000;
-  /** A budget on a clock the test moves, and `crash(upFor)`: an executor that ran `upFor` exits now. */
-  const setup = () => {
+  /** A backoff on a clock the test moves, and `crash(upFor)`: an executor that ran `upFor` exits now. */
+  const setup = (options = {}) => {
     let t = 0;
-    const mayRestart = restartBudget({ limit: 3, healthyMs: 5 * MIN, now: () => t });
+    const backoff = crashBackoff({ healthyMs: MIN, now: () => t, ...options });
     return (upFor) => {
       const startedAt = t;
       t += upFor;
-      return mayRestart(startedAt);
+      return backoff(startedAt);
     };
   };
 
-  it('allows three quick restarts in a row, then refuses', () => {
-    const crash = setup();
-    expect([crash(1_000), crash(1_000), crash(1_000), crash(1_000)]).toEqual([true, true, true, false]);
+  it('waits 1 s, 2 s, 4 s … up to the cap, then gives up', () => {
+    const crash = setup({ limit: 8 });
+    const delays = Array.from({ length: 9 }, () => crash(1_000));
+    expect(delays).toEqual([1_000, 2_000, 4_000, 8_000, 16_000, 30_000, 30_000, 30_000, null]);
   });
 
-  it('allows a restart again once an executor has run healthily', () => {
+  it('gives up after six crashes in a row by default', () => {
     const crash = setup();
-    expect([crash(1_000), crash(1_000), crash(1_000)]).toEqual([true, true, true]);
-    // Started by hand after the budget ran out, say, and stayed up.
-    expect(crash(5 * MIN)).toBe(true);
-    expect([crash(1_000), crash(1_000)]).toEqual([true, true]);
-    expect(crash(1_000)).toBe(false);
+    const delays = Array.from({ length: 7 }, () => crash(1_000));
+    expect(delays.at(-1)).toBeNull();
+    expect(delays.slice(0, 6).every((d) => typeof d === 'number')).toBe(true);
   });
 
-  it('allows an executor that crashes now and then, 30 min apart, to be restarted every time', () => {
+  it('starts from 1 s again once an executor has stayed up a minute', () => {
     const crash = setup();
-    for (let i = 0; i < 10; i++) expect(crash(30 * MIN)).toBe(true);
+    expect([crash(1_000), crash(1_000), crash(1_000)]).toEqual([1_000, 2_000, 4_000]);
+    expect(crash(MIN)).toBe(1_000);
+    expect(crash(1_000)).toBe(2_000);
   });
 
-  // A sliding 3-per-minute window never filled for this one, so it was restarted forever.
-  it('refuses an executor that crashes 30 s after every start, after three restarts', () => {
+  it('restarts an executor that crashes now and then, an hour apart, every time at once', () => {
     const crash = setup();
-    const allowed = Array.from({ length: 10 }, () => crash(30_000));
-    expect(allowed).toEqual([true, true, true, false, false, false, false, false, false, false]);
+    for (let i = 0; i < 10; i++) expect(crash(60 * MIN)).toBe(1_000);
   });
 });
 
@@ -66,60 +71,224 @@ describe('afterExecutorExit', () => {
     let asked = 0;
     const outcome = afterExecutorExit({ current: true, quitting: false, appUp: true, startedAt: 0, ...state }, () => {
       asked += 1;
-      return state.budgetLeft ?? true;
+      return state.delay === undefined ? 1_000 : state.delay;
     });
-    return { outcome, asked };
+    return { ...outcome, asked };
   };
 
-  it('restarts the current executor once the app is up, spending the budget', () => {
-    expect(exit({})).toEqual({ outcome: 'restart', asked: 1 });
+  it('restarts a crashed executor after the backoff, with a new port', () => {
+    expect(exit({ code: 1 })).toEqual({ action: 'restart', samePort: false, delayMs: 1_000, asked: 1 });
+    expect(exit({ code: null, signal: 'SIGKILL' })).toEqual({
+      action: 'restart',
+      samePort: false,
+      delayMs: 1_000,
+      asked: 1,
+    });
   });
 
-  it('gives up when the budget is spent', () => {
-    expect(exit({ budgetLeft: false })).toEqual({ outcome: 'give-up', asked: 1 });
+  it('gives up on a crash once the backoff does', () => {
+    expect(exit({ code: 1, delay: null })).toEqual({ action: 'give-up', asked: 1 });
   });
 
-  it('leaves an executor that this app stopped alone, without spending the budget', () => {
-    expect(exit({ current: false })).toEqual({ outcome: 'stopped', asked: 0 });
-    expect(exit({ quitting: true })).toEqual({ outcome: 'stopped', asked: 0 });
+  it('is done when the executor stopped because it was asked to (0)', () => {
+    expect(exit({ code: EXIT.STOPPED })).toEqual({ action: 'done', asked: 0 });
   });
 
-  // The first start is still waiting on it; a restart would start a second executor behind its back.
-  it('does not restart before the window exists', () => {
-    expect(exit({ appUp: false })).toEqual({ outcome: 'leave', asked: 0 });
+  it('starts it again at once with the same arguments for runtime.restart (75), not as a crash', () => {
+    expect(exit({ code: EXIT.RESTART })).toEqual({ action: 'restart', samePort: true, delayMs: 0, asked: 0 });
+  });
+
+  it('does not restart a refused config (78) or a data folder another executor holds (79)', () => {
+    expect(exit({ code: EXIT.CONFIG_REFUSED })).toEqual({ action: 'refused', asked: 0 });
+    expect(exit({ code: EXIT.DATA_FOLDER_BUSY })).toEqual({ action: 'busy', asked: 0 });
+  });
+
+  it('starts again on another port at once when the port is taken (80), counted against the backoff', () => {
+    expect(exit({ code: EXIT.PORT_TAKEN })).toEqual({ action: 'restart', samePort: false, delayMs: 0, asked: 1 });
+    expect(exit({ code: EXIT.PORT_TAKEN, delay: null })).toEqual({ action: 'give-up', asked: 1 });
+  });
+
+  // A signal is a crash whatever the code field says.
+  it('reads an exit by a signal as a crash', () => {
+    expect(exit({ code: null, signal: 'SIGSEGV' }).action).toBe('restart');
+  });
+
+  it('leaves an executor that this app stopped alone, without spending the backoff', () => {
+    expect(exit({ current: false, code: 1 })).toEqual({ action: 'stopped', asked: 0 });
+    expect(exit({ quitting: true, code: 1 })).toEqual({ action: 'stopped', asked: 0 });
+  });
+
+  // The first start is still waiting on it and reads the code itself.
+  it('does not act before the window exists', () => {
+    expect(exit({ appUp: false, code: 1 })).toEqual({ action: 'leave', asked: 0 });
   });
 });
 
-const ps = (...lines) => lines.join('\n');
-const exe = '/Applications/WE.app/Contents/Resources/ad4m-executor';
+describe('startWithPortRetry', () => {
+  /** A `startOnce` failing with these exit codes in turn (null: it starts), recording its calls. */
+  const starts = (...codes) => {
+    const calls = [];
+    const startOnce = async (options) => {
+      calls.push(options);
+      const code = codes[calls.length - 1];
+      if (code != null) throw Object.assign(new Error(`exit ${code}`), { exitCode: code });
+    };
+    return { startOnce, calls };
+  };
+
+  it('tries another port on the first start, when no window exists to restart from', async () => {
+    const { startOnce, calls } = starts(EXIT.PORT_TAKEN, EXIT.PORT_TAKEN, null);
+    await startWithPortRetry(startOnce, { samePort: true, appUp: () => false });
+    expect(calls).toEqual([{ samePort: true }, { samePort: false }, { samePort: false }]);
+  });
+
+  it('gives up on the first start after three taken ports', async () => {
+    const { startOnce, calls } = starts(EXIT.PORT_TAKEN, EXIT.PORT_TAKEN, EXIT.PORT_TAKEN, null);
+    await expect(startWithPortRetry(startOnce, { appUp: () => false })).rejects.toMatchObject({
+      exitCode: EXIT.PORT_TAKEN,
+    });
+    expect(calls).toHaveLength(3);
+  });
+
+  // Once the window exists the exit handler (`afterExecutorExit`) has already queued a restart for
+  // that exit, against the crash backoff. A second try here would start an executor the queued
+  // restart then stops, and would go on trying after the handler gave up.
+  it('leaves a taken port to the exit handler once the window exists', async () => {
+    const { startOnce, calls } = starts(EXIT.PORT_TAKEN, null);
+    await expect(startWithPortRetry(startOnce, { samePort: true, appUp: () => true })).rejects.toMatchObject({
+      exitCode: EXIT.PORT_TAKEN,
+    });
+    expect(calls).toEqual([{ samePort: true }]);
+  });
+
+  it('does not try again after any other failure', async () => {
+    const { startOnce, calls } = starts(EXIT.DATA_FOLDER_BUSY, null);
+    await expect(startWithPortRetry(startOnce, { appUp: () => false })).rejects.toMatchObject({
+      exitCode: EXIT.DATA_FOLDER_BUSY,
+    });
+    expect(calls).toHaveLength(1);
+  });
+});
+
+describe('executorArgs', () => {
+  const args = executorArgs({ port: 12001, dataPath: '/d/a b', configFile: '/d/a b/c.json', logDir: '/d/a b/logs' });
+
+  it('starts the executor under the run contract', () => {
+    const flag = (name) => args[args.indexOf(name) + 1];
+    expect(args[0]).toBe('run');
+    expect(flag('--port')).toBe('12001');
+    expect(flag('--watch-stdin')).toBe('true');
+    expect(flag('--config')).toBe('/d/a b/c.json');
+    expect(flag('--log-dir')).toBe('/d/a b/logs');
+    expect(flag('--custody-channel')).toBe('true');
+  });
+});
+
+describe('initialExecutorConfig', () => {
+  it('carries the settings an older build kept over into the file', () => {
+    expect(initialExecutorConfig({ mcpEnabled: true, mcpPort: 3005, logLevels: { holochain: 'warn' } })).toEqual({
+      mcp_enabled: true,
+      mcp_port: 3005,
+      log_config: { holochain: 'warn' },
+      auto_permit_cap_requests: true,
+    });
+  });
+
+  // With a config file the executor's default turns to false; an executor without one permits.
+  it('keeps capability requests permitted, as without a config file', () => {
+    expect(initialExecutorConfig()).toEqual({ mcp_enabled: false, auto_permit_cap_requests: true });
+  });
+});
+
+describe('outputTail', () => {
+  it('keeps the last whole lines, across chunks cut anywhere', () => {
+    const tail = outputTail(2);
+    tail.push('one\ntw');
+    tail.push('o\n\nthree\nfou');
+    expect(tail.lines()).toEqual(['three', 'fou']);
+    tail.push('r\n');
+    expect(tail.lines()).toEqual(['three', 'four']);
+  });
+});
+
+describe('outputClosed', () => {
+  // A refused start says why in its last line, and `exit` can come before that line is read.
+  // Node emits `exit` and `close` in that order, and stdio may still be open at `exit`: a process
+  // that does exactly that, its last line arriving between the two.
+  it('waits for the last of the output after the process exits', async () => {
+    const proc = new EventEmitter();
+    const tail = outputTail(2);
+    const outputDone = outputClosed(proc);
+    let shown = null;
+    proc.once('exit', () => void outputDone().then(() => (shown = tail.lines().at(-1))));
+    tail.push('starting\n');
+    proc.emit('exit', 78, null);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    tail.push('refused: the last line\n');
+    proc.emit('close', 78, null);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(shown).toBe('refused: the last line');
+  });
+
+  // A process the executor started can hold the pipes open after it has gone.
+  it('stops waiting after its time when the output never closes', async () => {
+    const proc = new EventEmitter();
+    const started = Date.now();
+    expect(await outputClosed(proc)(100)).toBe(false);
+    expect(Date.now() - started).toBeLessThan(1_000);
+  });
+});
 
 describe('executorEnv', () => {
-  it('tells the executor to end with this app, however the app ends', () => {
-    expect(executorEnv(undefined, { PATH: '/bin' })).toEqual({ PATH: '/bin', AD4M_EXIT_WITH_PARENT: 'true' });
+  // Nothing the executor reads: `--watch-stdin` is what ends it with this app, not a variable.
+  it('adds nothing to the inherited environment', () => {
+    expect(executorEnv({ PATH: '/bin' })).toEqual({ PATH: '/bin' });
   });
 
-  it('turns chosen log levels into RUST_LOG', () => {
-    const env = executorEnv({ rust_executor: 'debug', holochain: 'warn' }, {});
-    expect(env.RUST_LOG).toBe('rust_executor=debug,holochain=warn');
-    expect(env.AD4M_EXIT_WITH_PARENT).toBe('true');
+  it('passes an inherited RUST_LOG through', () => {
+    expect(executorEnv({ RUST_LOG: 'trace' }).RUST_LOG).toBe('trace');
+  });
+});
+
+describe('stopChild', () => {
+  /** A child that exits 0 when its stdin ends, as `--watch-stdin true` does, or one that ignores it. */
+  const watcher = (ignoreStdin) => {
+    const code = ignoreStdin
+      ? "process.stdin.resume(); console.log('up'); setInterval(() => {}, 1000)"
+      : "process.stdin.on('end', () => process.exit(0)); process.stdin.resume(); console.log('up')";
+    const proc = spawn(process.execPath, ['-e', code], { stdio: ['pipe', 'pipe', 'ignore'] });
+    return new Promise((resolve) => proc.stdout.once('data', () => resolve(proc)));
+  };
+
+  it('stops it by closing its stdin, without a signal', async () => {
+    const proc = await watcher(false);
+    const exited = new Promise((r) => proc.once('exit', (code, signal) => r({ code, signal })));
+    expect(await stopChild(proc, { timeoutMs: 5000 })).toBe('stdin');
+    expect(await exited).toEqual({ code: 0, signal: null });
   });
 
-  it('leaves an inherited RUST_LOG alone', () => {
-    expect(executorEnv({ rust_executor: 'debug' }, { RUST_LOG: 'trace' }).RUST_LOG).toBe('trace');
-  });
-
-  // To attach a debugger to the executor, or read its state after the app crashed.
-  it('leaves an inherited AD4M_EXIT_WITH_PARENT alone', () => {
-    expect(executorEnv(undefined, { AD4M_EXIT_WITH_PARENT: 'false' }).AD4M_EXIT_WITH_PARENT).toBe('false');
+  it('falls back to signals when it does not stop in time', async () => {
+    const proc = await watcher(true);
+    let fellBackFor = null;
+    const how = await stopChild(proc, {
+      timeoutMs: 200,
+      fallback: async (pid) => {
+        fellBackFor = pid;
+        proc.kill('SIGKILL');
+        return 'SIGKILL';
+      },
+    });
+    expect(how).toBe('SIGKILL');
+    expect(fellBackFor).toBe(proc.pid);
   });
 });
 
 describe('waitUntilReady', () => {
-  /** A probe answering `answers` in turn, and a wait that takes no time. */
+  /** A probe answering `answers` in turn, and a clock that moves only when the wait waits. */
   const setup = (answers) => {
     let asked = 0;
     const probe = async () => answers[asked++] ?? false;
-    return { probe, asked: () => asked, wait: async () => {} };
+    return { probe, asked: () => asked, ...clock() };
   };
 
   it('is ready once the probe answers', async () => {
@@ -128,15 +297,31 @@ describe('waitUntilReady', () => {
     expect(asked()).toBe(3);
   });
 
-  it('times out after its attempts', async () => {
-    const { probe, asked, wait } = setup([]);
-    expect(await waitUntilReady(probe, { attempts: 5, wait })).toBe('timeout');
+  it('times out once its time has passed', async () => {
+    const { probe, asked, wait, now } = setup([]);
+    expect(await waitUntilReady(probe, { timeoutMs: 2_500, interval: 500, wait, now })).toBe('timeout');
     expect(asked()).toBe(5);
+    expect(now()).toBe(2_500);
+  });
+
+  // Each probe of the executor may take 2 s, so 120 tries could run far past the 60 s the error
+  // names. The probe is given the time left, and the wait between probes stops at the deadline.
+  it('never runs past its time: a probe is given the time left, and the last wait is cut short', async () => {
+    const { wait, now, advance } = clock();
+    const given = [];
+    const probe = async (left) => {
+      given.push(left);
+      advance(Math.min(1_800, left));
+      return false;
+    };
+    expect(await waitUntilReady(probe, { timeoutMs: 5_000, interval: 500, wait, now })).toBe('timeout');
+    expect(given).toEqual([5_000, 2_700, 400]);
+    expect(now()).toBe(5_000);
   });
 
   // An executor that died while it started: on dev the wait polled its dead port for a minute.
   it('stops as soon as the process it waits on is gone', async () => {
-    const { probe, asked, wait } = setup([]);
+    const { probe, asked, wait, now } = setup([]);
     let exited = false;
     const outcome = waitUntilReady(
       async () => {
@@ -144,45 +329,146 @@ describe('waitUntilReady', () => {
         if (asked() === 2) exited = true;
         return answer;
       },
-      { gone: () => exited, wait },
+      { gone: () => exited, wait, now },
     );
     expect(await outcome).toBe('gone');
     expect(asked()).toBe(2);
   });
+
+  // Another executor on the port answers while this one exits 80: the answer is not this one's, and
+  // reading it as ready skipped the try on another port.
+  it('is not ready when the process went while the probe was answered', async () => {
+    const { wait, now } = clock();
+    let exited = false;
+    const probe = async () => {
+      exited = true;
+      return true;
+    };
+    expect(await waitUntilReady(probe, { gone: () => exited, wait, now })).toBe('gone');
+  });
 });
 
-describe('executorPidsFor', () => {
-  it('finds the executor running on this data path', () => {
-    const out = ps(
-      `  101 ${exe} run --port 12000 --admin-credential x --app-data-path /Users/a/.ad4m --run-dapp-server false`,
-      `  102 /usr/bin/other --app-data-path /Users/a/.ad4m`,
-    );
-    expect(executorPidsFor(out, '/Users/a/.ad4m')).toEqual([101]);
+/** A server on a free local port answering every request with `handler`. Resolves with its port. */
+function serve(handler) {
+  const server = http.createServer(handler);
+  return new Promise((resolve) =>
+    server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port })),
+  );
+}
+
+const reply =
+  (status, body, type = 'application/json') =>
+  (_req, res) => {
+    res.writeHead(status, { 'Content-Type': type });
+    res.end(body);
+  };
+
+/** A clock that moves only when `wait` waits or `advance` is called: the waits take no real time. */
+function clock() {
+  let t = 0;
+  const advance = (ms) => {
+    t += ms;
+  };
+  return { now: () => t, advance, wait: async (ms) => advance(ms) };
+}
+
+/** A wait whose clock moves only between probes: a server that is not the executor stays not ready. */
+const quick = () => {
+  const { now, wait } = clock();
+  return { timeoutMs: 1_500, now, wait };
+};
+
+describe('executorHealthy', () => {
+  const servers = [];
+  afterEach(() => {
+    for (const s of servers.splice(0)) s.close();
+  });
+  const up = async (handler) => {
+    const { server, port } = await serve(handler);
+    servers.push(server);
+    return port;
+  };
+
+  it('is true for GET /health answering 200 {"status":"ok"}, as the executor does', async () => {
+    const seen = [];
+    const port = await up((req, res) => {
+      seen.push(`${req.method} ${req.url}`);
+      if (req.method === 'GET' && req.url === '/health') reply(200, '{"status":"ok"}')(req, res);
+      else reply(404, 'not found', 'text/plain')(req, res);
+    });
+    expect(await executorHealthy(port)).toBe(true);
+    expect(seen).toEqual(['GET /health']);
   });
 
-  it('leaves executors on other data paths alone, including a path that only starts the same', () => {
-    const out = ps(
-      `  201 ${exe} run --port 12000 --app-data-path /Users/a/.ad4m-other --run-dapp-server false`,
-      `  202 ${exe} run --port 12400 --app-data-path /tmp/test/data`,
-      `  203 /Applications/ADAM Launcher.app/Contents/MacOS/ad4m-executor run --app-data-path /Users/a/.ad4m-launcher`,
-    );
-    expect(executorPidsFor(out, '/Users/a/.ad4m')).toEqual([]);
+  // Any answer once counted, so an unrelated server on the port — or the executor, which has no
+  // /graphql — passed as ready by its 404.
+  it('is false for a server that answers 404', async () => {
+    expect(await executorHealthy(await up(reply(404, 'not found', 'text/plain')))).toBe(false);
   });
 
-  it('matches the path as the last argument and a path with spaces', () => {
-    const out = ps(
-      `  301 ${exe} run --app-data-path /Users/a/My Data`,
-      `  302 ${exe} run --app-data-path /Users/a/My Data/sub --port 1`,
-    );
-    expect(executorPidsFor(out, '/Users/a/My Data')).toEqual([301]);
+  it('is false for a 200 that is not the executor saying ok', async () => {
+    expect(await executorHealthy(await up(reply(200, '<html></html>', 'text/html')))).toBe(false);
+    expect(await executorHealthy(await up(reply(200, '{"status":"starting"}')))).toBe(false);
+    expect(await executorHealthy(await up(reply(503, '{"status":"ok"}')))).toBe(false);
   });
 
-  it('ignores commands that only mention the binary', () => {
-    const out = ps(
-      `  401 cargo build --release -p ad4m --bin ad4m-executor --app-data-path /Users/a/.ad4m`,
-      `  402 tail -f /Users/a/.ad4m/ad4m-executor.log --app-data-path /Users/a/.ad4m`,
+  it('is false when nothing listens on the port', async () => {
+    const { server, port } = await serve(reply(200, '{"status":"ok"}'));
+    await new Promise((r) => server.close(r));
+    expect(await executorHealthy(port)).toBe(false);
+  });
+
+  // A body that keeps arriving keeps the socket busy, so its idle timeout never fired and the probe
+  // — and with it the 60 s the start waits — had no end.
+  it('is false, in its time, for a 200 whose body never ends', async () => {
+    const port = await up((_req, res) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      const drip = setInterval(() => res.write(' '), 20);
+      res.on('close', () => clearInterval(drip));
+    });
+    const started = Date.now();
+    expect(await executorHealthy(port, { timeoutMs: 300 })).toBe(false);
+    expect(Date.now() - started).toBeLessThan(1_500);
+  });
+
+  it('is false for a body far larger than the executor sends, without reading it all', async () => {
+    const port = await up((_req, res) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      const flood = setInterval(() => res.write('x'.repeat(64 * 1024)), 5);
+      res.on('close', () => clearInterval(flood));
+    });
+    const started = Date.now();
+    expect(await executorHealthy(port, { timeoutMs: 5_000 })).toBe(false);
+    expect(Date.now() - started).toBeLessThan(2_000);
+  });
+});
+
+describe('waitForExecutorReady', () => {
+  const servers = [];
+  afterEach(() => {
+    for (const s of servers.splice(0)) s.close();
+  });
+
+  it('resolves once /health answers ok', async () => {
+    const { server, port } = await serve(reply(200, '{"status":"ok"}'));
+    servers.push(server);
+    await expect(waitForExecutorReady(port, quick())).resolves.toBeUndefined();
+  });
+
+  it('does not treat a server answering 404 as the executor, and says it was not ready', async () => {
+    const { server, port } = await serve(reply(404, 'not found', 'text/plain'));
+    servers.push(server);
+    await expect(waitForExecutorReady(port, quick())).rejects.toThrow(
+      `It didn't respond within 1.5 seconds (port ${port}).`,
     );
-    expect(executorPidsFor(out, '/Users/a/.ad4m')).toEqual([]);
+  });
+
+  it('says the executor exited when the process it waits on is gone', async () => {
+    const { server, port } = await serve(reply(404, 'not found', 'text/plain'));
+    servers.push(server);
+    await expect(waitForExecutorReady(port, { ...quick(), gone: () => true })).rejects.toThrow(
+      `It stopped before it was ready (port ${port}).`,
+    );
   });
 });
 
@@ -230,34 +516,5 @@ describe.skipIf(process.platform === 'win32')('stopProcess', () => {
   // Signalling pid 1 as root would send init a SIGTERM, so only run this where it is refused.
   it.skipIf(process.getuid?.() === 0)('rejects for a running process it may not signal', async () => {
     await expect(stopProcess(1, { timeoutMs: 300 })).rejects.toMatchObject({ code: 'EPERM' });
-  });
-});
-
-describe.skipIf(process.platform === 'win32')('stopExecutorsFor', () => {
-  // `COLUMNS` makes `ps` cut each line to that width. The executor's data path comes after the
-  // binary path and the admin credential, so a cut line no longer names it and the match misses.
-  it('finds an executor whose data path is past the terminal width', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'we-executor-'));
-    const exePath = join(dir, 'ad4m-executor');
-    writeFileSync(exePath, "#!/bin/sh\ntrap 'exit 0' TERM\nwhile :; do sleep 0.1; done\n");
-    chmodSync(exePath, 0o755);
-    const dataPath = join(dir, 'data');
-    const proc = spawn(exePath, ['run', '--admin-credential', 'x'.repeat(80), '--app-data-path', dataPath], {
-      stdio: 'ignore',
-    });
-    const exited = new Promise((r) => proc.once('exit', r));
-    const columns = process.env.COLUMNS;
-    process.env.COLUMNS = '80';
-    try {
-      const lines = [];
-      await stopExecutorsFor(dataPath, (line) => lines.push(line));
-      expect(lines).toContain(`[main] Stopping the executor already running on ${dataPath} (pid ${proc.pid})`);
-      await exited;
-    } finally {
-      if (columns === undefined) delete process.env.COLUMNS;
-      else process.env.COLUMNS = columns;
-      proc.kill('SIGKILL');
-      rmSync(dir, { recursive: true, force: true });
-    }
   });
 });

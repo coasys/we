@@ -17,6 +17,7 @@ export type {
   CallSession,
   CallSessionRequest,
 } from './call';
+export { coalesceByKey } from './coalesce';
 export { DEV_FEATURES } from './devFeatures';
 export { DEV_TOOLS_KEY, devToolsEnabled, setDevToolsMuted } from './devTools';
 export type { InterpretationActivitySummary, InterpretationKernel } from './interpretation';
@@ -72,6 +73,7 @@ export type {
   ModuleDefinition,
   ModuleEmbed,
   ModuleEntities,
+  ModuleFirstScreen,
   ModuleFunction,
   ModuleHost,
   ModuleHostProfile,
