@@ -67,14 +67,18 @@ fn coasys_app_renders_a_live_space() {
         let _ = tx.send(());
     }));
 
-    // An empty space: the template's own empty state, from live (empty)
-    // answers — not the recording's calls.
-    wait_for(
-        &mut live,
-        &wake,
-        "A space starts with ",
-        Duration::from_secs(30),
-    );
+    // An empty space, on the Calls page (the sidebar lists no calls): the
+    // template's own empty state, from live (empty) answers — not the
+    // recording's calls.
+    live.app
+        .session
+        .apply_screen(we_screen::ScreenOp::Navigate {
+            to: "~/calls".into(),
+            query: None,
+            base_depth: None,
+            replace: false,
+        });
+    wait_for(&mut live, &wake, "No calls yet.", Duration::from_secs(30));
     assert!(
         !tree_text(&mut live).contains("Weekly sync"),
         "a recorded call leaked in"
