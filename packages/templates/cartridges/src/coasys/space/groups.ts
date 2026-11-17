@@ -2,7 +2,7 @@ import type { RouteSchema, SchemaNode, SchemaProp } from '@we/schema-shared';
 import { emptyNote } from '@we/template-kit';
 
 import { viewBar } from './bar.ts';
-import { liveDot } from './marks.ts';
+import { exportTranscriptButton, liveDot } from './marks.ts';
 import { callPath, channelPath, personPath } from './paths.ts';
 import { CALLS, LIVE, SUB_CHANNELS } from './tree.ts';
 
@@ -22,7 +22,14 @@ import { CALLS, LIVE, SUB_CHANNELS } from './tree.ts';
 /** What a node's children hold: text, a node, or an expression. */
 type Child = NonNullable<SchemaNode['children']>[number];
 
-/** `selected` is an expression: the card is where the address is, and is outlined as the tree's row is lit. */
+/**
+ * `selected` is an expression: the card is where the address is, and is outlined as the tree's row is lit.
+ *
+ * `action` is a control at the card's end — the call's transcript to take away. A button cannot hold
+ * another button, so a card with one is not one big button: its name side (lead, title, detail and
+ * badge) is what opens it, and the action stands beside that inside the card. A card without one is
+ * drawn exactly as before.
+ */
 export const tile = (opts: {
   lead: SchemaNode;
   title: Child;
@@ -32,7 +39,40 @@ export const tile = (opts: {
   selected?: string;
   /** Lines the title may wrap to, for a title that is a sentence; one, cut short, otherwise. */
   titleLines?: number;
+  /** A control at the card's end, outside what pressing the card does. */
+  action?: SchemaNode;
 }): SchemaNode => {
+  const body: SchemaNode[] = [
+    opts.lead,
+    {
+      type: 'Column',
+      props: { flex: '1', minWidth: '0', gap: '100' },
+      children: [
+        {
+          type: 'we-text',
+          props: { fontWeight: 'semibold', ...(opts.titleLines ? { lines: opts.titleLines } : { truncate: true }) },
+          children: [opts.title],
+        },
+        ...(opts.detail ? [opts.detail] : []),
+      ],
+    },
+    ...(opts.badge ? [opts.badge] : []),
+  ];
+  // With an action, only the name side is pressable; the row holds the same pieces the card would.
+  const pressable: SchemaNode | undefined =
+    opts.action && opts.onClick
+      ? {
+          type: 'Row',
+          props: { flex: '1', minWidth: '0' },
+          children: [
+            {
+              type: 'we-button',
+              props: { variant: 'bare', width: '100%', onClick: opts.onClick },
+              children: [{ type: 'Row', props: { gap: '300', width: '100%', ay: 'center' }, children: body }],
+            },
+          ],
+        }
+      : undefined;
   const card: SchemaNode = {
     type: 'Card',
     props: {
@@ -47,24 +87,9 @@ export const tile = (opts: {
         : '1px solid transparent',
       ...(opts.onClick ? { hoverProps: { border: '1px solid accent-border', shadow: 'glow' } } : {}),
     },
-    children: [
-      opts.lead,
-      {
-        type: 'Column',
-        props: { flex: '1', minWidth: '0', gap: '100' },
-        children: [
-          {
-            type: 'we-text',
-            props: { fontWeight: 'semibold', ...(opts.titleLines ? { lines: opts.titleLines } : { truncate: true }) },
-            children: [opts.title],
-          },
-          ...(opts.detail ? [opts.detail] : []),
-        ],
-      },
-      ...(opts.badge ? [opts.badge] : []),
-    ],
+    children: opts.action ? [...(pressable ? [pressable] : body), opts.action] : body,
   };
-  return opts.onClick
+  return opts.onClick && !opts.action
     ? { type: 'we-button', props: { variant: 'bare', width: '100%', onClick: opts.onClick }, children: [card] }
     : card;
 };
@@ -149,7 +174,7 @@ const channelsPage = groupPage({
   ],
 });
 
-/** Calls: every call held here, newest first, the one running marked Live. */
+/** Calls: every call held here, newest first, the one running marked Live, each with its transcript to take away. */
 const callsPage = groupPage({
   path: '/calls',
   title: 'Calls',
@@ -166,7 +191,15 @@ const callsPage = groupPage({
           title: { $: "call.title ? call.title : 'Call'" },
           detail: {
             type: 'we-timestamp',
-            props: { value: { $: 'call.createdAt' }, relative: true, color: 'text-muted', fontSize: '100' },
+            // Narrow, as the tree's: the card shares its width with Live and the export, and a
+            // timestamp overflows rather than truncating.
+            props: {
+              value: { $: 'call.createdAt' },
+              relative: true,
+              relativeStyle: 'narrow',
+              color: 'text-muted',
+              fontSize: '100',
+            },
           },
           badge: {
             type: '$if',
@@ -176,6 +209,7 @@ const callsPage = groupPage({
             },
           },
           onClick: { $invoke: 'routeStore.navigate', args: [{ $: callPath('call.id') }] },
+          action: exportTranscriptButton('call.id', 'sm', "call.title ? call.title : 'Call'"),
         }),
       ],
     },
