@@ -53,7 +53,7 @@ pub use query::{
     compile_query, compile_request, prune_where, query_descriptor, scope_anchored, CompileCx,
     Compiled, DatasetHandle, DatasetSel, HubCell, QueryEvent, QueryHub, QueryIr, QueryKey,
     QueryRequest, QuerySink, QuerySlot, QuerySource, SiteId, SiteSlot, SlotRef, SlotView,
-    SubTicket, RESERVED_IR_KEYS,
+    SubTicket, RESERVED_IR_KEYS, RETRY_COOLDOWN,
 };
 pub use resolve::{
     inert, resolve, strip_authority, taint_handles, NoParts, PartDef, PartSource, ResolveCx,

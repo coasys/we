@@ -1885,6 +1885,7 @@ fn flaky_opens(source: &Flaky) -> usize {
 fn a_failed_query_is_asked_again_when_a_page_holding_it_is_shown_again() {
     let source = Arc::new(Flaky::default());
     let mut hub = hub();
+    hub.set_retry_cooldown(std::time::Duration::ZERO);
     let sidebar = site("t:/sidebar", SiteSlot::Named("types".into()));
     let page = site("t:/page", SiteSlot::Named("types".into()));
 
@@ -1958,4 +1959,125 @@ fn an_answered_query_is_not_asked_again_by_a_new_holder() {
     hub.commit(source.clone());
     hub.drain();
     assert_eq!(flaky_opens(&source), 1, "an answered cell is not re-asked");
+}
+
+/// A source that answers when told to: `open` parks the sink, `answer` then
+/// delivers — so a test can put holders in between an ask and its answer.
+#[derive(Default)]
+struct Parked {
+    ok: std::sync::atomic::AtomicBool,
+    opens: std::sync::atomic::AtomicUsize,
+    sinks: Mutex<Vec<(SubTicket, QuerySink)>>,
+    closed: Mutex<Vec<SubTicket>>,
+}
+
+impl QuerySource for Parked {
+    fn open(&self, ticket: SubTicket, _: &QueryRequest, _: &HandleTable, sink: QuerySink) {
+        self.opens
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.sinks.lock().unwrap().push((ticket, sink));
+    }
+    fn close(&self, ticket: SubTicket) {
+        self.closed.lock().unwrap().push(ticket);
+    }
+}
+
+impl Parked {
+    /// Answer the newest ask: rows when `ok`, a failure otherwise.
+    fn answer(&self) {
+        let sinks = self.sinks.lock().unwrap();
+        let (_, sink) = sinks.last().unwrap();
+        if self.ok.load(std::sync::atomic::Ordering::Relaxed) {
+            sink.deliver(QueryEvent::Rows(Arc::new(vec![Value::from_json(
+                &json!({ "id": "t1" }),
+            )])));
+        } else {
+            sink.deliver(QueryEvent::Failed(Value::from("no such class")));
+        }
+    }
+    fn opens(&self) -> usize {
+        self.opens.load(std::sync::atomic::Ordering::Relaxed)
+    }
+}
+
+/// P2: a retry that has been asked and not yet answered is not cancelled by
+/// another site joining the cell — a page that churns would otherwise close
+/// every retry before it could land.
+#[test]
+fn a_holder_joining_before_the_retry_answers_does_not_cancel_it() {
+    let source = Arc::new(Parked::default());
+    let mut hub = hub();
+    hub.set_retry_cooldown(std::time::Duration::ZERO);
+    let side = site("t:/side", SiteSlot::Named("types".into()));
+    let page = site("t:/page", SiteSlot::Named("types".into()));
+    let other = site("t:/other", SiteSlot::Named("types".into()));
+
+    hub.claim(side.clone(), request("SignalType"), None);
+    hub.commit(source.clone());
+    source.answer(); // fails
+    hub.drain();
+    assert!(hub.cells()[0].view.error.is_some());
+
+    // The page is shown: the retry is asked, and not yet answered.
+    source.ok.store(true, std::sync::atomic::Ordering::Relaxed);
+    hub.begin_pass();
+    hub.claim(side.clone(), request("SignalType"), None);
+    hub.claim(page.clone(), request("SignalType"), None);
+    hub.commit(source.clone());
+    assert_eq!(source.opens(), 2, "the retry was asked");
+    let retry = hub.cells()[0].ticket;
+
+    // Another site joins before it answers: the retry stands.
+    hub.begin_pass();
+    hub.claim(side, request("SignalType"), None);
+    hub.claim(page, request("SignalType"), None);
+    hub.claim(other, request("SignalType"), None);
+    hub.commit(source.clone());
+    assert_eq!(source.opens(), 2, "no third ask");
+    assert_eq!(hub.cells()[0].ticket, retry, "the retry's ticket is kept");
+    assert!(
+        !source.closed.lock().unwrap().contains(&retry),
+        "the retry was not closed"
+    );
+
+    source.answer();
+    hub.drain();
+    let view = &hub.cells()[0].view;
+    assert!(view.error.is_none(), "the retry's answer landed");
+    assert_eq!(view.rows.len(), 1);
+}
+
+/// P2: a failure that does not go away is not asked again in a tight loop:
+/// a cell that has just failed waits out the cooldown before a site that
+/// newly holds it asks again.
+#[test]
+fn a_permanent_failure_is_not_retried_in_a_loop() {
+    let source = Arc::new(Parked::default());
+    let mut hub = hub();
+    hub.set_retry_cooldown(std::time::Duration::from_secs(3600));
+    let side = site("t:/side", SiteSlot::Named("types".into()));
+    let page = site("t:/page", SiteSlot::Named("types".into()));
+
+    hub.claim(side.clone(), request("SignalType"), None);
+    hub.commit(source.clone());
+    source.answer();
+    hub.drain();
+
+    // The page is shown and left twenty times in a row.
+    for _ in 0..20 {
+        hub.begin_pass();
+        hub.claim(side.clone(), request("SignalType"), None);
+        hub.claim(page.clone(), request("SignalType"), None);
+        hub.commit(source.clone());
+        hub.drain();
+        hub.begin_pass();
+        hub.claim(side.clone(), request("SignalType"), None);
+        hub.commit(source.clone());
+        hub.drain();
+    }
+    assert_eq!(
+        source.opens(),
+        1,
+        "inside the cooldown nothing is asked again"
+    );
 }

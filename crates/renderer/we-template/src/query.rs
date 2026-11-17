@@ -541,6 +541,11 @@ enum CellState {
     Failed(Value),
 }
 
+/// How long a failed cell is left alone before a new holder may retry it: a
+/// failure that is permanent must not be asked again every time a page is
+/// shown and left in quick succession.
+pub const RETRY_COOLDOWN: std::time::Duration = std::time::Duration::from_secs(1);
+
 /// One held key — the request that opened it, its newest answer, the
 /// claims count and the ticket the source knows it by.
 struct Entry {
@@ -551,6 +556,12 @@ struct Entry {
     holders: usize,
     /// The live subscription — `None` until the first claim commits.
     ticket: Option<SubTicket>,
+    /// A retry of a failed cell has been asked and not answered: nothing
+    /// cancels it, and nothing asks again, until its answer lands.
+    retrying: bool,
+    /// When the cell last answered with a failure — the cooldown counts
+    /// from here.
+    failed_at: Option<std::time::Instant>,
     /// A named claim added the `name_hint` this open cell lacked — the
     /// next commit closes and reopens it so a name-keyed source answers
     /// (Lal F5).
@@ -564,6 +575,8 @@ impl Entry {
             state: CellState::Loading,
             holders: 0,
             ticket: None,
+            retrying: false,
+            failed_at: None,
             reopen: false,
         }
     }
@@ -650,6 +663,8 @@ pub struct QueryHub {
     /// The source `commit` last ran against — kept so `Drop` can close and
     /// a swap can be told apart.
     source: Option<Arc<dyn QuerySource>>,
+    /// How long a failed cell waits before a new holder asks again.
+    retry_cooldown: std::time::Duration,
 }
 
 impl QueryHub {
@@ -664,7 +679,14 @@ impl QueryHub {
             inbox,
             handles,
             source: None,
+            retry_cooldown: RETRY_COOLDOWN,
         }
+    }
+
+    /// How long a cell that has just failed waits before a site newly
+    /// holding it asks again. [`RETRY_COOLDOWN`] by default.
+    pub fn set_retry_cooldown(&mut self, cooldown: std::time::Duration) {
+        self.retry_cooldown = cooldown;
     }
 
     /// A site's per-pass claim: `site → key`. `Ready` records the claim,
@@ -761,6 +783,7 @@ impl QueryHub {
                     // reopen below on the new source.
                     if let Some(entry) = self.entries.get_mut(&key) {
                         entry.ticket = None;
+                        entry.retrying = false;
                         entry.state = CellState::Loading;
                         reset = true;
                     }
@@ -832,16 +855,31 @@ impl QueryHub {
         // newly holding a failed key asks again: its ticket closes, and the
         // opens below mint a new one. The failure stays on screen until the
         // new answer replaces it, and holders that merely persist across
-        // passes ask nothing.
+        // passes ask nothing. Two limits keep this from becoming a loop: a
+        // retry in flight is left to answer however many sites join (a
+        // page that churns would otherwise close every retry before it
+        // landed), and a cell that has just failed is left alone for the
+        // cooldown, so a failure that does not go away is not asked again
+        // each time a page is shown and left.
+        let now = std::time::Instant::now();
+        let cooldown = self.retry_cooldown;
         for key in &joined {
             if let Some(entry) = self.entries.get_mut(key) {
-                if matches!(entry.state, CellState::Failed(_)) && entry.holders > 0 {
+                let cooled = entry
+                    .failed_at
+                    .is_none_or(|at| now.saturating_duration_since(at) >= cooldown);
+                if matches!(entry.state, CellState::Failed(_))
+                    && entry.holders > 0
+                    && !entry.retrying
+                    && cooled
+                {
                     if let Some(ticket) = entry.ticket.take() {
                         self.by_ticket.remove(&ticket);
                         if let Some(source) = &self.source {
                             source.close(ticket);
                         }
                     }
+                    entry.retrying = true;
                 }
             }
         }
@@ -909,6 +947,11 @@ impl QueryHub {
         let Some(entry) = self.entries.get_mut(&key) else {
             return false;
         };
+        // Whatever the answer, a retry asked of this cell has landed.
+        entry.retrying = false;
+        if matches!(event, QueryEvent::Failed(_)) {
+            entry.failed_at = Some(std::time::Instant::now());
+        }
         let applied = match (event, &entry.state) {
             (QueryEvent::Rows(rows), CellState::Rows(old)) if Arc::ptr_eq(&rows, old) => false,
             (QueryEvent::Rows(rows), _) => {

@@ -117,6 +117,9 @@ fn a_failed_query_reads_again_when_its_page_is_shown_again() {
     kit::add_class(&rt, &conn, &uuid, "TaskBlock", kit::TASK_SDNA);
     kit::create_task(&rt, &conn, &uuid, "Now it exists");
 
+    // Away and back — once the failure is past the hub's retry cooldown, so
+    // a failure that did not go away would not be asked again in a loop.
+    std::thread::sleep(we_template::RETRY_COOLDOWN + Duration::from_millis(200));
     // Away and back.
     session.apply_screen(navigate("/elsewhere"));
     wait_for(&mut session, &wake, "elsewhere", Duration::from_secs(10)).unwrap();
