@@ -33,8 +33,9 @@ use crate::executor::Ad4mExecutor;
 const ROWS: &str = include_str!("../data/storemap-writes.json");
 
 /// Whether this window may write.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Access {
+    #[default]
     ReadOnly,
     Write,
 }

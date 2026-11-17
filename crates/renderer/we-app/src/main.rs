@@ -9,7 +9,9 @@
 //! executor instead: it finds the executor (or takes `--executor-url`),
 //! asks for access once (approved in the AD4M launcher), lists the agent's
 //! spaces and renders the chosen one (`--space` skips the list) from live
-//! data, read-only.
+//! data, read-only. `--write --space <perspective uuid>` (E11) asks for a
+//! grant that may also change that one space, and the space's edit and
+//! delete controls then write through the validated write RPC.
 #![forbid(unsafe_code)]
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -59,6 +61,9 @@ struct Args {
     email: Option<String>,
     /// `--demo-recorded` — the recording under a live space.
     demo_recorded: bool,
+    /// `--write` — with `--connect --space <uuid>`: ask for the write grant
+    /// on that space and let the window change it.
+    write: bool,
 }
 
 /// Which `--gallery` showcase to open (`none` → render the bundle).
@@ -76,6 +81,33 @@ enum Gallery {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn parse_args() -> Args {
+    parse_args_from(std::env::args().skip(1)).unwrap_or_else(|e| {
+        eprintln!("we-app: {e}");
+        std::process::exit(2)
+    })
+}
+
+/// What `--write` says when it has no perspective uuid to name.
+#[cfg(not(target_arch = "wasm32"))]
+const WRITE_NEEDS_SPACE: &str =
+    "--write needs --space <perspective uuid>: the grant names the one space it may change";
+
+/// A perspective uuid: `8-4-4-4-12` hex digits.
+#[cfg(not(target_arch = "wasm32"))]
+fn is_uuid(s: &str) -> bool {
+    let groups: Vec<&str> = s.split('-').collect();
+    groups.len() == 5
+        && groups
+            .iter()
+            .zip([8, 4, 4, 4, 12])
+            .all(|(g, n)| g.len() == n && g.chars().all(|c| c.is_ascii_hexdigit()))
+}
+
+/// The arguments after the program name. A malformed flag still panics
+/// with its own message, as before; `--write` without a perspective uuid
+/// is an `Err`.
+#[cfg(not(target_arch = "wasm32"))]
+fn parse_args_from(argv: impl IntoIterator<Item = String>) -> Result<Args, String> {
     let mut args = Args {
         bundle: DEFAULT_BUNDLE.to_string(),
         snapshot: None,
@@ -92,8 +124,9 @@ fn parse_args() -> Args {
         space: None,
         email: None,
         demo_recorded: false,
+        write: false,
     };
-    let mut rest = std::env::args().skip(1).peekable();
+    let mut rest = argv.into_iter().peekable();
     if rest.peek().is_some_and(|a| a == "dump") {
         rest.next();
         args.dump = true;
@@ -144,6 +177,7 @@ fn parse_args() -> Args {
             "--offline" => {}
             "--connect" => args.connect = true,
             "--demo-recorded" => args.demo_recorded = true,
+            "--write" => args.write = true,
             "--executor-url" => {
                 args.executor_url = Some(
                     rest.next()
@@ -165,7 +199,7 @@ fn parse_args() -> Args {
             "--help" | "-h" => {
                 eprintln!(
                     "usage: we-app [dump] [--bundle <path>] [--snapshot <path>] [--route <href>] [--offline] [--theme <name>] [--coasys <route>] [--gallery style|widgets|inputs]\n       \
-                     we-app --connect [--executor-url <url>] [--space <uuid|name>] [--email <address>] [--theme <name>] [--demo-recorded]\n\n\
+                     we-app --connect [--executor-url <url>] [--space <uuid|name>] [--write] [--email <address>] [--theme <name>] [--demo-recorded]\n\n\
                      dump               resolve the app root once, print the normal-form tree, exit\n\
                      --bundle <path>    bundle to render (default: the repo's bundles/coasys.bundle.json)\n\
                      --snapshot <path>  offline data: stores/queries/invokes as JSON\n\
@@ -175,6 +209,8 @@ fn parse_args() -> Args {
                                         (approve in the AD4M launcher), pick a space, render it\n\
                      --executor-url <u> the executor to use instead of looking (http://127.0.0.1:12000)\n\
                      --space <id>       open this perspective (uuid or name) without the picker\n\
+                     --write            with --connect --space <uuid>: allow changes in that space\n\
+                                        (asks for a write grant once)\n\
                      --email <address>  the account on a multi-user executor\n\
                      --demo-recorded    with --connect: show the recorded Coasys data where the\n\
                                         live space has none (a demo mix; off by default)\n\
@@ -192,7 +228,27 @@ fn parse_args() -> Args {
             other => panic!("unknown flag {other:?}"),
         }
     }
-    args
+    if args.write && !args.space.as_deref().is_some_and(is_uuid) {
+        return Err(WRITE_NEEDS_SPACE.into());
+    }
+    Ok(args)
+}
+
+/// The grant `--connect` asks for, and what the window may do with it.
+#[cfg(not(target_arch = "wasm32"))]
+fn grant(args: &Args) -> (we_ad4m::connect::GrantScope, we_ad4m::Access) {
+    match (&args.space, args.write) {
+        (Some(space), true) => (
+            we_ad4m::connect::GrantScope::Write {
+                space: space.clone(),
+            },
+            we_ad4m::Access::Write,
+        ),
+        _ => (
+            we_ad4m::connect::GrantScope::ReadOnly,
+            we_ad4m::Access::ReadOnly,
+        ),
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -489,12 +545,15 @@ fn run_connected(args: Args) -> eframe::Result<()> {
     use we_app::connected::{ConnectArgs, ConnectedApp};
     let bundle = load_bundle(&args.bundle);
     let title = format!("{} — connected", bundle.name);
+    let (scope, access) = grant(&args);
     let connect = ConnectArgs {
         settings: we_ad4m::connect::ConnectSettings {
             url: args.executor_url.clone(),
             email: args.email.clone(),
+            scope,
             ..Default::default()
         },
+        access,
         space: args.space.clone(),
         theme: args.theme.clone(),
         data: if args.demo_recorded {
@@ -530,3 +589,51 @@ impl eframe::App for Connected {
 
 #[cfg(target_arch = "wasm32")]
 fn main() {}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests {
+    use super::*;
+
+    const UUID: &str = "0f8b2c1e-3a4d-4e5f-8a9b-0c1d2e3f4a5b";
+
+    fn parse(argv: &[&str]) -> Result<Args, String> {
+        parse_args_from(argv.iter().map(|s| s.to_string()))
+    }
+
+    #[test]
+    fn write_with_a_perspective_uuid_asks_for_the_write_grant() {
+        let args = parse(&["--connect", "--write", "--space", UUID]).unwrap();
+        assert!(args.write);
+        let (scope, access) = grant(&args);
+        assert_eq!(
+            scope,
+            we_ad4m::connect::GrantScope::Write { space: UUID.into() }
+        );
+        assert_eq!(access, we_ad4m::Access::Write);
+    }
+
+    #[test]
+    fn write_without_a_uuid_is_refused() {
+        for argv in [
+            &["--connect", "--write"][..],
+            &["--connect", "--write", "--space", "MySpace"][..],
+            &[
+                "--connect",
+                "--write",
+                "--space",
+                "0f8b2c1e-3a4d-4e5f-8a9b-0c1d2e3f4a5",
+            ][..],
+        ] {
+            let e = parse(argv).err().expect("refused");
+            assert!(e.contains("--write needs --space"), "{e}");
+        }
+    }
+
+    #[test]
+    fn connect_alone_stays_read_only() {
+        let args = parse(&["--connect", "--space", "MySpace"]).unwrap();
+        let (scope, access) = grant(&args);
+        assert_eq!(scope, we_ad4m::connect::GrantScope::ReadOnly);
+        assert_eq!(access, we_ad4m::Access::ReadOnly);
+    }
+}

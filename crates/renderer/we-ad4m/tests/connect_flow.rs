@@ -7,7 +7,7 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use serde_json::json;
-use we_ad4m::connect::{Ask, ConnectFlow, ConnectPhase, ConnectSettings};
+use we_ad4m::connect::{Ask, ConnectFlow, ConnectPhase, ConnectSettings, GrantScope};
 
 /// A flow with its own token directory and no launcher port file.
 fn flow(
@@ -15,11 +15,22 @@ fn flow(
     url: &str,
     tokens: &std::path::Path,
 ) -> (ConnectFlow, mpsc::Receiver<()>) {
+    flow_with(rt, url, tokens, GrantScope::ReadOnly)
+}
+
+/// [`flow`] asking for `scope`.
+fn flow_with(
+    rt: &we_ad4m::Runtime,
+    url: &str,
+    tokens: &std::path::Path,
+    scope: GrantScope,
+) -> (ConnectFlow, mpsc::Receiver<()>) {
     let (tx, rx) = mpsc::channel();
     let settings = ConnectSettings {
         url: Some(url.to_string()),
         token_dir: Some(tokens.to_path_buf()),
         port_file: Some(tokens.join("no-port-file")),
+        scope,
         ..ConnectSettings::default()
     };
     let flow = ConnectFlow::start(&rt.handle(), settings, move || {
@@ -97,7 +108,7 @@ fn capability_request_then_the_stored_token_needs_no_approval() {
         _ => None,
     });
     // The launcher's consent screen: approving mints the code.
-    let app = we_ad4m::connect::app_info();
+    let app = we_ad4m::connect::app_info(&GrantScope::ReadOnly);
     let auth = json!({
         "requestId": request_id,
         "auth": { "appName": app.name, "appDesc": app.description, "capabilities": app.capabilities },
@@ -209,7 +220,7 @@ fn a_cached_broad_grant_is_asked_for_again() {
     rt.block_on(admin.client().agent.generate("passphrase".into()))
         .unwrap();
     let tokens = tempfile::tempdir().unwrap();
-    let app = we_ad4m::connect::app_info();
+    let app = we_ad4m::connect::app_info(&GrantScope::ReadOnly);
     let broad = common::mint_token(
         &rt,
         &executor.url,
@@ -317,4 +328,200 @@ fn a_failed_url_is_shown_without_its_credentials() {
         assert!(!reason.contains(secret), "{secret:?} shown: {reason}");
     }
     assert!(reason.contains(&format!("127.0.0.1:{port}")), "{reason}");
+}
+
+// ---- E11: the write grant ------------------------------------------------
+
+/// Run a flow for `scope` to `Connected`, approving its request as the
+/// operator does in the launcher. The phases seen, and the connection.
+fn approve(
+    rt: &we_ad4m::Runtime,
+    url: &str,
+    admin: &we_ad4m::Connection,
+    tokens: &std::path::Path,
+    scope: GrantScope,
+) -> (Vec<ConnectPhase>, we_ad4m::Connection) {
+    let app = we_ad4m::connect::app_info(&scope);
+    let (flow, wake) = flow_with(rt, url, tokens, scope);
+    let mut seen = Vec::new();
+    let mut answered: Option<String> = None;
+    loop {
+        let (step, phases) = wait(&flow, &wake, Duration::from_secs(60), |p| match p {
+            ConnectPhase::Asking {
+                ask: Ask::CapabilityCode { request_id },
+                ..
+            } if answered.as_ref() != Some(request_id) => Some(Some(request_id.clone())),
+            ConnectPhase::Connected { .. } => Some(None),
+            ConnectPhase::Failed { reason } => panic!("connect failed: {reason}"),
+            _ => None,
+        });
+        seen.extend(phases);
+        let Some(request_id) = step else { break };
+        let auth = json!({
+            "requestId": request_id,
+            "auth": { "appName": app.name, "appDesc": app.description, "capabilities": app.capabilities },
+        })
+        .to_string();
+        let code: String = rt
+            .block_on(
+                admin
+                    .ws()
+                    .call("agent.permitCapability", json!({ "auth": auth })),
+            )
+            .unwrap();
+        flow.answer(code);
+        answered = Some(request_id);
+    }
+    let conn = flow.take_connection().expect("a connection once connected");
+    (seen, conn)
+}
+
+/// `perspective.instanceCreate` of a call in `uuid` on `conn`.
+fn create_call(
+    rt: &we_ad4m::Runtime,
+    conn: &we_ad4m::Connection,
+    uuid: &str,
+) -> anyhow::Result<serde_json::Value> {
+    rt.block_on(conn.ws().call(
+        "perspective.instanceCreate",
+        json!({ "uuid": uuid, "className": "CollectionBlock", "properties": { "kind": "call", "title": "w" } }),
+    ))
+}
+
+fn assert_forbidden(what: &str, r: anyhow::Result<serde_json::Value>) {
+    let e = r.expect_err(&format!("{what} should be refused"));
+    let code = e
+        .chain()
+        .find_map(|c| c.downcast_ref::<ad4m_client::ws_rpc::RpcCallError>())
+        .map(|c| c.code);
+    eprintln!("{what} refused: {e:#}");
+    assert_eq!(code, Some(403), "{what}: {e:#}");
+}
+
+#[test]
+fn the_write_grant_names_one_space() {
+    let Some(executor) = common::start_executor_with_admin("e11-admin") else {
+        return;
+    };
+    let rt = we_ad4m::Runtime::new().unwrap();
+    let admin = common::connect_as(&rt, &executor.url, "e11-admin");
+    rt.block_on(admin.client().agent.generate("passphrase".into()))
+        .unwrap();
+    let a = common::seed_space_as(&rt, &admin, "e11-a");
+    let b = common::seed_space_as(&rt, &admin, "e11-b");
+    let tokens = tempfile::tempdir().unwrap();
+    let scope = GrantScope::Write { space: a.clone() };
+    let app = we_ad4m::connect::app_info(&scope);
+    let (_, conn) = approve(&rt, &executor.url, &admin, tokens.path(), scope);
+
+    let apps: serde_json::Value = rt
+        .block_on(conn.ws().call("agent.getApps", json!({})))
+        .unwrap();
+    let ours: Vec<&serde_json::Value> = apps
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|x| x["auth"]["appName"] == json!(app.name))
+        .collect();
+    assert_eq!(ours.len(), 1, "{apps}");
+    assert_eq!(
+        ours[0]["auth"]["capabilities"],
+        json!([
+            { "with": { "domain": "agent", "pointers": ["*"] }, "can": ["READ"] },
+            { "with": { "domain": "perspective", "pointers": ["*"] }, "can": ["READ"] },
+            { "with": { "domain": "perspective", "pointers": [a] }, "can": ["UPDATE"] }
+        ])
+    );
+    match create_call(&rt, &conn, &a) {
+        Ok(v) => eprintln!("instanceCreate in the granted space: {v}"),
+        Err(e) => panic!("instanceCreate in {a} should pass: {e:#}"),
+    }
+    assert_forbidden(
+        "instanceCreate in another space",
+        create_call(&rt, &conn, &b),
+    );
+    assert_forbidden(
+        "neighbourhood.join",
+        rt.block_on(conn.ws().call(
+            "neighbourhood.join",
+            json!({ "url": "neighbourhood://nope" }),
+        )),
+    );
+}
+
+#[test]
+fn a_read_only_token_cannot_write() {
+    let Some(executor) = common::start_executor_with_admin("e11-admin") else {
+        return;
+    };
+    let rt = we_ad4m::Runtime::new().unwrap();
+    let admin = common::connect_as(&rt, &executor.url, "e11-admin");
+    rt.block_on(admin.client().agent.generate("passphrase".into()))
+        .unwrap();
+    let a = common::seed_space_as(&rt, &admin, "e11-a");
+    let tokens = tempfile::tempdir().unwrap();
+    let (_, conn) = approve(
+        &rt,
+        &executor.url,
+        &admin,
+        tokens.path(),
+        GrantScope::ReadOnly,
+    );
+    assert_forbidden(
+        "instanceCreate under the read-only grant",
+        create_call(&rt, &conn, &a),
+    );
+}
+
+#[test]
+fn a_write_token_for_another_space_is_not_reused() {
+    let Some(executor) = common::start_executor_with_admin("e11-admin") else {
+        return;
+    };
+    let rt = we_ad4m::Runtime::new().unwrap();
+    let admin = common::connect_as(&rt, &executor.url, "e11-admin");
+    rt.block_on(admin.client().agent.generate("passphrase".into()))
+        .unwrap();
+    let a = common::seed_space_as(&rt, &admin, "e11-a");
+    let b = common::seed_space_as(&rt, &admin, "e11-b");
+    let tokens = tempfile::tempdir().unwrap();
+    let (first, _) = approve(
+        &rt,
+        &executor.url,
+        &admin,
+        tokens.path(),
+        GrantScope::Write { space: a.clone() },
+    );
+    assert!(first
+        .iter()
+        .any(|p| matches!(p, ConnectPhase::Asking { .. })));
+    // The same space again: the stored token holds.
+    let (again, _) = approve(
+        &rt,
+        &executor.url,
+        &admin,
+        tokens.path(),
+        GrantScope::Write { space: a },
+    );
+    assert!(
+        !again
+            .iter()
+            .any(|p| matches!(p, ConnectPhase::Asking { .. })),
+        "the same space's token is reused: {again:?}"
+    );
+    // Another space: asked again.
+    let (other, conn) = approve(
+        &rt,
+        &executor.url,
+        &admin,
+        tokens.path(),
+        GrantScope::Write { space: b.clone() },
+    );
+    assert!(
+        other
+            .iter()
+            .any(|p| matches!(p, ConnectPhase::Asking { .. })),
+        "a token for another space must not be reused: {other:?}"
+    );
+    create_call(&rt, &conn, &b).expect("the new grant writes in b");
 }

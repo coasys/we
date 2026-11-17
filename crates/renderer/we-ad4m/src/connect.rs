@@ -21,6 +21,11 @@
 //!
 //! An executor with no admin credential lets a loopback caller in as the
 //! operator: the flow ends Connected at step 2 with nothing stored.
+//!
+//! [`ConnectSettings::scope`] picks the grant: read-only (agent and
+//! perspective READ, E7), or that plus perspective UPDATE on one perspective
+//! (`--write --space <uuid>`, E11), asked for as a separate app so neither
+//! token stands in for the other. See [`app_info`].
 use std::future::Future;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -65,6 +70,15 @@ pub enum ConnectPhase {
     Failed { reason: String },
 }
 
+/// Which grant this window asks for.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum GrantScope {
+    #[default]
+    ReadOnly,
+    /// Read everything, change one perspective.
+    Write { space: String },
+}
+
 /// What to connect to and as whom.
 #[derive(Debug, Clone, Default)]
 pub struct ConnectSettings {
@@ -76,10 +90,14 @@ pub struct ConnectSettings {
     pub token_dir: Option<PathBuf>,
     /// The launcher's port file; `None` is `~/.ad4m/executor-port`.
     pub port_file: Option<PathBuf>,
+    /// The grant to ask for: read-only (E7) or read plus one space (E11).
+    pub scope: GrantScope,
 }
 
-/// The app as the capability request names it, asking for what a
-/// read-only renderer uses and nothing else (Lal F1):
+/// The app as the capability request names it. Two grants, two apps:
+///
+/// **Read-only** (`--connect`, E7), asking for what a read-only renderer
+/// uses and nothing else (Lal F1):
 ///
 /// - `agent` READ: `agent.get` (who `me` is);
 /// - `perspective` READ: `perspective.all` for the picker, and
@@ -90,13 +108,27 @@ pub struct ConnectSettings {
 /// the executor also lets that capability call `neighbourhood.join`, which
 /// a read-only app must not be able to do. `spaceStore.memberDids` falls
 /// back to the agent alone when the executor refuses it.
-pub fn app_info() -> AppInfo {
-    AppInfo::new(
-        "WE (Rust renderer)",
-        "Reads your spaces to render them natively. Read-only.",
-        "https://github.com/coasys/we",
-    )
-    .capabilities(read_only_capabilities())
+///
+/// **Writes** (`--connect --write --space <uuid>`, E11): the same, plus
+/// `perspective` UPDATE on that one perspective, which is what the
+/// validated write RPC (`perspective.instance*`) is guarded by. A separate
+/// app name, so the token store (keyed by URL and app name) never hands
+/// the read-only window a write token or the other way round.
+pub fn app_info(scope: &GrantScope) -> AppInfo {
+    match scope {
+        GrantScope::ReadOnly => AppInfo::new(
+            "WE (Rust renderer)",
+            "Reads your spaces to render them natively. Read-only.",
+            "https://github.com/coasys/we",
+        )
+        .capabilities(read_only_capabilities()),
+        GrantScope::Write { space } => AppInfo::new(
+            "WE (Rust renderer, writes)",
+            format!("Renders your spaces natively and makes changes in one space: {space}."),
+            "https://github.com/coasys/we",
+        )
+        .capabilities(write_capabilities(space)),
+    }
 }
 
 /// The grant [`app_info`] asks for.
@@ -113,13 +145,45 @@ pub fn read_only_capabilities() -> Vec<CapabilityInput> {
         .collect()
 }
 
+/// The write grant: [`read_only_capabilities`] plus perspective UPDATE on
+/// `space` alone. No neighbourhood, no perspective CREATE or DELETE, no `*`
+/// UPDATE.
+pub fn write_capabilities(space: &str) -> Vec<CapabilityInput> {
+    let mut caps = read_only_capabilities();
+    caps.push(CapabilityInput {
+        can: vec!["UPDATE".to_string()],
+        with: ResourceInput {
+            domain: "perspective".to_string(),
+            pointers: vec![space.to_string()],
+        },
+    });
+    caps
+}
+
 /// Which grant a stored token for an executor was minted under — kept
 /// beside `ad4m-connect`'s token store, because the token itself carries no
 /// capabilities and there is no call that reads an app's own grant. A
 /// stored token without a current record came from an earlier build that
-/// asked for `*` on `*`: it is dropped and the read-only grant asked for.
+/// asked for `*` on `*`, or (for the write app) for another space: it is
+/// dropped and the grant asked for again.
 const GRANT_FILE: &str = "we-renderer-grants.json";
-const GRANT_VERSION: &str = "read-only-1";
+
+/// What the record says about a grant: `read-only-1`, or `write-1:<uuid>`.
+fn grant_tag(scope: &GrantScope) -> String {
+    match scope {
+        GrantScope::ReadOnly => "read-only-1".to_string(),
+        GrantScope::Write { space } => format!("write-1:{space}"),
+    }
+}
+
+/// Where the record keeps it: the URL for the read-only app,
+/// `<url>#writes` for the write app.
+fn grant_key(url: &str, scope: &GrantScope) -> String {
+    match scope {
+        GrantScope::ReadOnly => url.to_string(),
+        GrantScope::Write { .. } => format!("{url}#writes"),
+    }
+}
 
 fn grant_path(settings: &ConnectSettings) -> PathBuf {
     settings
@@ -136,13 +200,19 @@ fn grants(path: &std::path::Path) -> serde_json::Map<String, serde_json::Value> 
         .unwrap_or_default()
 }
 
-fn grant_is_current(path: &std::path::Path, url: &str) -> bool {
-    grants(path).get(url).and_then(|v| v.as_str()) == Some(GRANT_VERSION)
+fn grant_is_current(path: &std::path::Path, url: &str, scope: &GrantScope) -> bool {
+    grants(path)
+        .get(&grant_key(url, scope))
+        .and_then(|v| v.as_str())
+        == Some(grant_tag(scope).as_str())
 }
 
-fn record_grant(path: &std::path::Path, url: &str) {
+fn record_grant(path: &std::path::Path, url: &str, scope: &GrantScope) {
     let mut all = grants(path);
-    all.insert(url.to_string(), serde_json::Value::from(GRANT_VERSION));
+    all.insert(
+        grant_key(url, scope),
+        serde_json::Value::from(grant_tag(scope)),
+    );
     let write = || -> std::io::Result<()> {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir)?;
@@ -405,7 +475,8 @@ async fn run(
     handle: tokio::runtime::Handle,
 ) {
     let grant_file = grant_path(&settings);
-    let mut opts = ConnectOptions::new(app_info());
+    let scope = settings.scope.clone();
+    let mut opts = ConnectOptions::new(app_info(&scope));
     // Userinfo, query and fragment mean nothing to an executor (the token is
     // the credential), and kept they would ride into every message and log
     // line `ad4m-connect` prints — so they never reach it.
@@ -439,18 +510,20 @@ async fn run(
         Err(e) => return shared.set(ConnectPhase::Failed { reason: reason(&e) }),
     };
     let mut url = session.url().unwrap_or_default().to_string();
-    let app = app_info().name;
+    let app = app_info(&scope).name;
     let stored = |s: &Ad4mConnect<Io>, url: &str| s.store().token(url, &app).ok().flatten();
-    // A stored token this build did not ask for may hold a broader grant:
-    // drop it and ask for the read-only one.
+    // A stored token this build did not ask for may hold another grant (a
+    // broader one, or the write grant for another space): drop it and ask
+    // for the one this window wants.
     if state == AuthState::Authenticated
         && !prompts.asked
         && stored(&session, &url).is_some()
-        && !grant_is_current(&grant_file, &url)
+        && !grant_is_current(&grant_file, &url, &scope)
     {
         log::warn!(
-            "we-ad4m: the stored token for {} predates the read-only grant; asking again",
-            redact_url(&url)
+            "we-ad4m: the stored token for {} is not for the grant this window asks ({}); asking again",
+            redact_url(&url),
+            grant_tag(&scope)
         );
         if let Err(e) = session.disconnect().await {
             return shared.set(ConnectPhase::Failed { reason: reason(&e) });
@@ -462,7 +535,7 @@ async fn run(
         url = session.url().unwrap_or_default().to_string();
     }
     if prompts.asked && state != AuthState::Unauthenticated && stored(&session, &url).is_some() {
-        record_grant(&grant_file, &url);
+        record_grant(&grant_file, &url, &scope);
     }
     match state {
         AuthState::Authenticated => {
@@ -536,5 +609,35 @@ mod redact_tests {
             scrub("WebSocket to ws://a:b@h:1/?t=x failed; tried http://c@d:2."),
             "WebSocket to ws://h:1/ failed; tried http://d:2."
         );
+    }
+}
+
+#[cfg(test)]
+mod grant_tests {
+    use super::*;
+
+    #[test]
+    fn grant_tag_and_key_per_scope() {
+        let write = GrantScope::Write { space: "u".into() };
+        assert_eq!(grant_tag(&GrantScope::ReadOnly), "read-only-1");
+        assert_eq!(grant_tag(&write), "write-1:u");
+        assert_eq!(grant_key("http://h:1", &GrantScope::ReadOnly), "http://h:1");
+        assert_eq!(grant_key("http://h:1", &write), "http://h:1#writes");
+    }
+
+    #[test]
+    fn the_write_grant_is_read_plus_update_on_one_space() {
+        let caps = serde_json::to_value(write_capabilities("u")).unwrap();
+        assert_eq!(
+            caps,
+            serde_json::json!([
+                { "with": { "domain": "agent", "pointers": ["*"] }, "can": ["READ"] },
+                { "with": { "domain": "perspective", "pointers": ["*"] }, "can": ["READ"] },
+                { "with": { "domain": "perspective", "pointers": ["u"] }, "can": ["UPDATE"] }
+            ])
+        );
+        let app = app_info(&GrantScope::Write { space: "u".into() });
+        assert_eq!(app.name, "WE (Rust renderer, writes)");
+        assert_ne!(app.name, app_info(&GrantScope::ReadOnly).name);
     }
 }

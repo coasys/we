@@ -51,6 +51,7 @@ fn connect_pick_and_render() {
         space: None,
         theme: "dark".into(),
         data: Default::default(),
+        access: we_ad4m::Access::ReadOnly,
     };
     let bundle = we_template::Bundle::parse(BUNDLE).unwrap();
     let mut h = egui_kittest::Harness::builder()
@@ -98,6 +99,7 @@ fn app_for(url: &str, tokens: &std::path::Path) -> H<'static> {
         space: None,
         theme: "dark".into(),
         data: Default::default(),
+        access: we_ad4m::Access::ReadOnly,
     };
     let bundle = we_template::Bundle::parse(BUNDLE).unwrap();
     egui_kittest::Harness::builder()
@@ -182,7 +184,7 @@ fn a_revoked_grant_returns_to_the_connect_screen() {
             true
         },
     );
-    let app = we_ad4m::connect::app_info();
+    let app = we_ad4m::connect::app_info(&we_ad4m::connect::GrantScope::ReadOnly);
     let auth = serde_json::json!({
         "requestId": request_id,
         "auth": { "appName": app.name, "appDesc": app.description, "capabilities": app.capabilities },

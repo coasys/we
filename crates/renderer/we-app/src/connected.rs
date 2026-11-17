@@ -14,7 +14,7 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
 use egui::{Color32, RichText};
-use we_ad4m::connect::{Ask, ConnectFlow, ConnectPhase, ConnectSettings};
+use we_ad4m::connect::{Ask, ConnectFlow, ConnectPhase, ConnectSettings, GrantScope};
 use we_ad4m::{Connection, SpaceRow};
 
 use crate::live::{live_space_app, LiveSpace};
@@ -28,6 +28,9 @@ pub struct ConnectArgs {
     pub theme: String,
     /// `--demo-recorded`: the recording under the live data (off by default).
     pub data: crate::live::DataMode,
+    /// `--write`: whether the open space may be changed (E11). The grant
+    /// asked for is `settings.scope`.
+    pub access: we_ad4m::Access,
 }
 
 type Pending<T> = Arc<Mutex<Option<Result<T, String>>>>;
@@ -150,7 +153,7 @@ impl ConnectedApp {
         }
         let flow = &self.flow;
         let next = match &mut self.stage {
-            Stage::Connect { input } => connect_screen(ui, flow, input),
+            Stage::Connect { input } => connect_screen(ui, flow, &self.args.settings.scope, input),
             Stage::Pick {
                 spaces,
                 filter,
@@ -261,7 +264,26 @@ fn card(ui: &mut egui::Ui, body: impl FnOnce(&mut egui::Ui)) {
     });
 }
 
-fn connect_screen(ui: &mut egui::Ui, flow: &ConnectFlow, input: &mut String) -> Option<Next> {
+/// What the capability request asks for, as the connect screen says it.
+pub fn grant_sentence(scope: &GrantScope) -> String {
+    match scope {
+        GrantScope::ReadOnly => {
+            "It asks to read your agent and your perspectives, and nothing else (read-only)."
+                .to_string()
+        }
+        GrantScope::Write { space } => format!(
+            "It asks to read your agent and your perspectives, and to change one space \
+             ({space}), and nothing else."
+        ),
+    }
+}
+
+fn connect_screen(
+    ui: &mut egui::Ui,
+    flow: &ConnectFlow,
+    scope: &GrantScope,
+    input: &mut String,
+) -> Option<Next> {
     let phase = flow.phase();
     if let ConnectPhase::Connected { url } = &phase {
         if let Some(conn) = flow.take_connection() {
@@ -293,8 +315,9 @@ fn connect_screen(ui: &mut egui::Ui, flow: &ConnectFlow, input: &mut String) -> 
                     Ask::CapabilityCode { request_id } => (
                         format!(
                             "This app asked for access (request {request_id}).\n\
-                             It asks to read your agent and your perspectives, and nothing else.\n\
-                             Approve it in the AD4M launcher, then type the 6-digit code it shows."
+                             {}\n\
+                             Approve it in the AD4M launcher, then type the 6-digit code it shows.",
+                            grant_sentence(scope)
                         ),
                         true,
                     ),
