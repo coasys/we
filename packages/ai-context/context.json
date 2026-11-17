@@ -9940,14 +9940,6 @@
       "panels": [],
       "launchers": [
         {
-          "key": "live:cursors",
-          "label": "Share your pointer"
-        },
-        {
-          "key": "live:wheel",
-          "label": "Take the wheel"
-        },
-        {
           "key": "live:follow",
           "label": "Follow the driver"
         }
