@@ -101,8 +101,12 @@ const { TopicModel, PositionModel, PostModel, AuthorModel, AgendaModel, MeetingM
     update: async (_p: unknown, id: string, patch: Record<string, unknown>) => {
       const row = table.get(id);
       if (!row) return null;
-      // Ad4mModel's update skips an empty value: it can point a field somewhere, never clear it.
-      for (const [field, value] of Object.entries(patch)) if (value !== '' && value != null) row[field] = value;
+      // WE's contract (`clearOnEmpty` on AD4M, verified live on an installed to-one): '' clears the field;
+      // null and undefined are skipped.
+      for (const [field, value] of Object.entries(patch)) {
+        if (value === '') delete row[field];
+        else if (value != null) row[field] = value;
+      }
       return row;
     },
     addRelation: async (_p: unknown, id: string, relation: string, value: string) => {
@@ -621,21 +625,19 @@ describe('a tree drop on a model relation', () => {
       expect(aboutOf('pos2')).toBe('t1');
     });
 
-    it('says it cannot clear the field rather than pretending it did', async () => {
+    it('clears the field through an update with an empty value on a drop into the unconnected area', async () => {
       world.bare = true;
       const info = vi.spyOn(toastService, 'info');
       const store = mount();
       await store.arrangeOnTree(CANVAS, SPINE, { recordId: 'pos1', recordType: 'Position', into: 'loose' });
+      expect(aboutOf('pos1')).toBeFalsy();
+      expect(info).not.toHaveBeenCalled();
+
+      await store.undoCanvas(CANVAS);
       expect(aboutOf('pos1')).toBe('t2');
-      expect(info).toHaveBeenCalledWith(expect.stringContaining('cannot be cleared'));
     });
 
-    it('says an undo could not take a first attach back when nothing can clear the field', async () => {
-      /*
-        The attach went through the static update; the undo needs the field cleared, which an
-        installed SDNA cannot spell — so it used to do nothing, silently, leaving a move on the
-        board that looks undone. Nothing is still what happens; it is just no longer silent.
-      */
+    it('takes a first attach back on undo, by clearing the field', async () => {
       world.bare = true;
       const info = vi.spyOn(toastService, 'info');
       const store = mount();
@@ -650,8 +652,10 @@ describe('a tree drop on a model relation', () => {
       expect(aboutOf('pos2')).toBe('t1');
 
       await store.undoCanvas(CANVAS);
+      expect(aboutOf('pos2')).toBeFalsy();
+      await store.redoCanvas(CANVAS);
       expect(aboutOf('pos2')).toBe('t1');
-      expect(info).toHaveBeenCalledWith(expect.stringContaining('take that move back'));
+      expect(info).not.toHaveBeenCalled();
     });
 
     it('undoes a reparent along one field by the set alone, and says nothing failed', async () => {

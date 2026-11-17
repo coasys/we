@@ -1885,8 +1885,9 @@ export function RecordStoreProvider(props: ParentProps) {
    * a `setRelation` over a to-one is the guess the record contract says an implementation refuses —
    * and through the static `update` where it has none. That is the common case on AD4M, not an edge
    * one: `fromSHACL` registers an installed SDNA's `max_count: 1` relation as a plain property with no
-   * `set`/`add`/`remove`. A set is its own clear, so a move needs nothing more; a clear alone has no
-   * spelling there (`update` skips an empty value) and is reported rather than pretended.
+   * `set`/`add`/`remove`. A set is its own clear, so a move needs nothing more; a clear alone goes
+   * through `update` with an empty value, which WE's `clearOnEmpty` turns into removing the field's
+   * links (checked live on an installed to-one).
    *
    * A to-many is the parent's list: off the old holder's, onto the new one's, in one write group so
    * no reader sees the card on neither list or on both.
@@ -1918,7 +1919,11 @@ export function RecordStoreProvider(props: ParentProps) {
       else await Model.update(handle, cardId, { [relation.name]: parent });
       return true;
     }
-    if (typeof remove !== 'function' && typeof set !== 'function') return false;
+    if (typeof remove !== 'function' && typeof set !== 'function') {
+      // No accessor to clear with: `''` is WE's spelling of "remove this field's links" (`clearOnEmpty`).
+      await Model.update(handle, cardId, { [relation.name]: '' });
+      return true;
+    }
     for (const id of idsAt(record, relation.name)) if (typeof remove === 'function') await remove.call(record, id);
     if (typeof set === 'function') await set.call(record, []);
     return true;
@@ -1942,11 +1947,8 @@ export function RecordStoreProvider(props: ParentProps) {
     if (!canvas || (from === to && !ranks.length)) return;
     const replay = async (target: string, leaving: string, direction: 'undo' | 'redo') => {
       if (target !== leaving && !(await writeLink(handle, relation, cardId, target || null, leaving))) {
-        /*
-          A first attach on an installed SDNA cannot be taken back: the field can be pointed, never
-          cleared, until AD4M's `update` can clear one. A silent no-op would read as the undo having
-          landed, so it is said.
-        */
+        // The card is gone (or the link cannot be written): a silent no-op would read as the undo having
+        // landed, so it is said.
         toastService.info('Could not take that move back — the record cannot be written from here.');
       }
       // A rank written back, expecting what this entry left there — as `rememberTreeDrop`'s are.
@@ -2043,7 +2045,7 @@ export function RecordStoreProvider(props: ParentProps) {
       // A card dragged around the zone it is already in has nothing to write.
       if (!from) return;
       if (!(await writeLink(handle, relation, cardId, null, from))) {
-        toastService.info('That field cannot be cleared from the tree — edit the record itself.');
+        toastService.info('That card could not be taken out of its tree — edit the record itself.');
         return;
       }
       rememberRelationDrop(canvas, handle, relation, cardId, from, '', []);

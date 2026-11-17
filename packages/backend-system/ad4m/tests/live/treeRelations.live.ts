@@ -9,7 +9,7 @@
  * - the manifest WE reads back from the executor names each relation's target class;
  * - a batched "who points at these" read (`where: { field: [ids] }`) finds the children;
  * - an installed class has no `set`/`add`/`remove` for a `max_count: 1` relation, so a reparent has
- *   to go through the static `update` — and that write lands.
+ *   to go through the static `update` — and that write lands, and so does a clear (`''`).
  */
 import { Ad4mClient } from '@coasys/ad4m';
 import { getEntityForDataset } from '@we/entities';
@@ -278,6 +278,54 @@ describe('a tree over an installed SDNA’s relations, live', () => {
         } as never),
       );
       expect(ids(drilled)).toEqual([t1.id, t2.id, t3.id].sort());
+    } finally {
+      await ports.lifecycle.remove(ref.id);
+    }
+  });
+
+  /*
+    The clear a tree drop into the unconnected area, and the undo of a first attach, both need: an
+    installed class's `max_count: 1` relation is a plain property to the model, and WE's
+    `clearOnEmpty` makes `update(..., { field: '' })` remove that property's links. Checked against
+    what the perspective stores, not what the model reads back. `null` is skipped, as documented.
+  */
+  it('clears an installed to-one with an empty value, and skips null', { timeout: 120_000 }, async () => {
+    const { url, token } = inject('ad4mExecutor');
+    client ??= new Ad4mClient(url, token);
+    const agent = (await client.agent.me()).did;
+    const ports = createAd4mBackendPorts(client, { selfId: () => agent });
+    const ref = await ports.lifecycle.create(`tree-relations-clear-${Date.now()}`);
+    try {
+      await ports.schemas.installSpace(ref.handle, []);
+      const perspective = ref.handle as {
+        addSdna(n: string, c: string, t: 'subject_class', s: string): Promise<boolean>;
+        get(q: { source?: string; predicate?: string }): Promise<{ data: { target: string } }[]>;
+      };
+      await perspective.addSdna('LiveTopic', '', 'subject_class', JSON.stringify(TOPIC));
+      await perspective.addSdna('LivePosition', '', 'subject_class', JSON.stringify(POSITION));
+      await ports.schemas.foreignSchemas(ref.handle);
+      const Topic = getEntityForDataset('LiveTopic', ref.handle) as unknown as Model;
+      const Position = getEntityForDataset('LivePosition', ref.handle) as unknown as Model;
+      const t = await Topic.create(ref.handle, { title: 'Roadmap' });
+      const p = await Position.create(ref.handle, { statement: 'Ship it', about: t.id });
+      const stored = async () =>
+        (await perspective.get({ source: p.id, predicate: 'treelive://about' })).map((l) => l.data.target);
+      expect(await stored()).toEqual([t.id]);
+
+      await Position.update(ref.handle, p.id, { about: null });
+      expect(await stored()).toEqual([t.id]);
+
+      await Position.update(ref.handle, p.id, { about: '' });
+      expect(await stored()).toEqual([]);
+      const read = await eventually(
+        () => Position.findOne(ref.handle, { where: { id: p.id } }),
+        (row) => !row?.about,
+      );
+      expect(read?.about).toBeFalsy();
+
+      // And it can be pointed again — the undo of the clear.
+      await Position.update(ref.handle, p.id, { about: t.id });
+      expect(await stored()).toEqual([t.id]);
     } finally {
       await ports.lifecycle.remove(ref.id);
     }
