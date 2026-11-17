@@ -2447,6 +2447,14 @@ export function SpaceStoreProvider(props: ParentProps) {
   const heldSpace = (ds: AppDataset): Space | undefined => mySpaces().find((s) => isSpaceSelf(s, ds));
 
   /**
+   * The `Space` row to write a default through: the cached one, else the stored one. The two default
+   * setters show their value before they store it, so a space not held yet (its record not read or
+   * not synced) must still be written, or the next member opens it with the old default.
+   */
+  const spaceRow = async (ds: AppDataset): Promise<Space | undefined> =>
+    heldSpace(ds) ?? (await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) }))[0];
+
+  /**
    * Show fields on the cached row and, when the dataset is on screen, on `currentSpace`.
    *
    * Each as a *new* instance: both are plain signals and Solid dedupes on `===`, so handing back the
@@ -5689,7 +5697,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       const template = templateStore.allTemplates().find((t) => t.id === templateId);
       if (template) templateStore.replaceTemplate(template);
     }
-    const space = heldSpace(ds);
+    const space = await spaceRow(ds);
     if (space) await Space.update(ds.handle, space.id, { defaultTemplateId: templateId });
   }
 
@@ -5698,7 +5706,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (!ds) return;
     publishSpaceFields(ds, { defaultThemeId: themeId });
     if (isCurrent(ds)) explainHiddenSpaceTheme();
-    const space = heldSpace(ds);
+    const space = await spaceRow(ds);
     if (space) await Space.update(ds.handle, space.id, { defaultThemeId: themeId });
   }
 

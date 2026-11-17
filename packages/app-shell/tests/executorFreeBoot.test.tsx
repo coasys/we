@@ -756,6 +756,31 @@ describe('dataset lifecycle through the real stores', () => {
     expect(stores.spaces.mySpaces().find((s) => s.uuid === uuid)?.defaultTemplateId).toBe('some-template');
   }, 10000);
 
+  it('stores a space default for a space whose row is not held yet', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    await stores.spaces.createSpace('Unheld Space', '', 'personal', 'hidden');
+    const ref = (await lifecycle.list()).find((d) => d.name === 'Unheld Space')!;
+    await vi.waitFor(() => expect(stores.spaces.mySpaces().some((s) => s.uuid === ref.id)).toBe(true));
+    // The list read misses this space, as it does before its record has synced or been read.
+    const findOne = vi
+      .spyOn(getEntity('Space') as unknown as { findOne: (...a: unknown[]) => Promise<unknown> }, 'findOne')
+      .mockResolvedValue(null);
+    try {
+      await stores.spaces.loadSpaces();
+    } finally {
+      findOne.mockRestore();
+    }
+    expect(stores.spaces.mySpaces().some((s) => s.uuid === ref.id)).toBe(false);
+
+    await stores.spaces.setSpaceDefaultTheme('retro', ref.id);
+    await stores.spaces.setSpaceDefaultTemplate('some-template', ref.id);
+
+    const [stored] = await Space.findAll(ref.handle as never);
+    expect(stored?.defaultThemeId).toBe('retro');
+    expect(stored?.defaultTemplateId).toBe('some-template');
+  }, 10000);
+
   it('stores a space setting, and shows it on the cached space and the space on screen', async () => {
     const stores = mountShell();
     await ready(stores);
