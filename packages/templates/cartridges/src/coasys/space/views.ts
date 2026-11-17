@@ -29,11 +29,13 @@ const channelQueries = {
 };
 
 /**
- * The bottom of a view, kept clear of the call bar.
+ * The bottom of a view, kept clear of whatever chrome covers it.
  *
- * The bar floats along the bottom of the window on every page while a call is up, so whatever a view
- * pins to its foot — the composer, the end of a transcript — rises above it, and settles back as the
- * bar goes. `--we-covered-bottom` is how much the host says is covered there.
+ * `--we-covered-bottom` is how much the host says is covered there — a band some other piece of
+ * chrome may float along the bottom of the window, so whatever a view pins to its foot — the
+ * composer, the end of a transcript — rises above it, and settles back as the chrome goes. Zero in
+ * the ordinary case, which is most of the point: the call's controls ride inside the call's own
+ * stage now rather than over every page.
  */
 const CLEAR_OF_THE_BAR = 'calc(var(--we-space-500) + var(--we-covered-bottom, 0px))';
 const LIFT = 'padding-bottom 300 ease';

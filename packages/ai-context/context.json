@@ -1100,6 +1100,12 @@
           "default": "false"
         },
         {
+          "name": "dismiss",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
+        },
+        {
           "name": "label",
           "type": "unknown",
           "optional": false
@@ -9856,7 +9862,7 @@
       "requires": {
         "kernels": ["presence", "ephemeral", "view"]
       },
-      "capabilities": ["kernel:presence", "kernel:ephemeral", "kernel:view", "slot:call-controls", "slot:call-status"],
+      "capabilities": ["kernel:presence", "kernel:ephemeral", "kernel:view", "slot:call-menu", "slot:call-status"],
       "members": [
         {
           "name": "canDrive",
@@ -9973,14 +9979,6 @@
       ],
       "panels": [],
       "launchers": [
-        {
-          "key": "live:cursors",
-          "label": "Share your pointer"
-        },
-        {
-          "key": "live:wheel",
-          "label": "Take the wheel"
-        },
         {
           "key": "live:follow",
           "label": "Follow the driver"
