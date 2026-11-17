@@ -509,7 +509,9 @@ impl eframe::App for WidgetsApp {
             }
         });
         ui.separator();
-        self.app.frame_body(ui);
+        // The page's viewport is what the toolbar leaves, not the window.
+        let room = ui.available_rect_before_wrap().size();
+        self.app.frame_body_in(ui, room);
     }
 }
 

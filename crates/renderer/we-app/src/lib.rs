@@ -670,7 +670,9 @@ impl Shell {
             .resizable(false)
             .show(ui, |ui| {
                 ui.add_space(4.0);
-                self.panel.frame_body(ui);
+                // The strip's own size is the panel's viewport, not the window's.
+                let room = ui.available_rect_before_wrap().size();
+                self.panel.frame_body_in(ui, room);
             });
         egui::CentralPanel::default().show(ui, |ui| {
             let route = self.panel.session.screen().nav.current_path();

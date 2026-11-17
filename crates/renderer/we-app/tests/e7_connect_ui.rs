@@ -256,3 +256,49 @@ fn a_revoked_grant_returns_to_the_connect_screen() {
         stage(h) == "connect" && h.query_by_label_contains("refused").is_some()
     });
 }
+
+/// B1, through the real window: with the data panel open (F11) the page is
+/// laid out in the room the panel leaves, so its right-hand controls are not
+/// under it. (`panel_layout.rs` covers `frame_body_in` alone; this is the
+/// wiring in `connected.rs`.)
+#[test]
+fn the_page_lays_out_beside_the_data_panel() {
+    let Some(executor) = kit::start_executor() else {
+        return;
+    };
+    let rt = we_ad4m::Runtime::new().unwrap();
+    let writer = kit::connect(&rt, &executor.url);
+    let _uuid = kit::seed_space(&rt, &writer, "b1-ui");
+    let tokens = tempfile::tempdir().unwrap();
+    let mut h = app_for(&executor.url, tokens.path());
+
+    step_until(&mut h, "the picker", Duration::from_secs(60), |h| {
+        h.state().as_ref().is_some_and(|a| a.stage() == "pick")
+            && h.query_by_label("b1-ui   (local)").is_some()
+    });
+    h.get_by_label("b1-ui   (local)").click();
+    step_until(&mut h, "the space", Duration::from_secs(10), |h| {
+        h.state().as_ref().is_some_and(|a| a.stage() == "space")
+    });
+    step_until(&mut h, "the page's header", Duration::from_secs(30), |h| {
+        h.query_by_label("Canvas").is_some()
+    });
+    let before = h.get_by_label("Canvas").rect().right();
+
+    h.key_press(egui::Key::F11);
+    step_until(&mut h, "the data panel", Duration::from_secs(10), |h| {
+        h.query_by_label("Where the data comes from").is_some()
+    });
+    // A few frames for the page to lay out in what is left.
+    for _ in 0..10 {
+        h.step();
+    }
+    let panel = h.get_by_label("Where the data comes from").rect();
+    let canvas = h.get_by_label("Canvas").rect();
+    assert!(
+        canvas.right() <= panel.left(),
+        "the page's right edge {} is under the data panel, which starts at {} (it was {before} without it)",
+        canvas.right(),
+        panel.left()
+    );
+}
