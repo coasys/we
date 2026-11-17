@@ -73,6 +73,7 @@ export type {
   ModuleDefinition,
   ModuleEmbed,
   ModuleEntities,
+  ModuleFirstScreen,
   ModuleFunction,
   ModuleHost,
   ModuleHostProfile,

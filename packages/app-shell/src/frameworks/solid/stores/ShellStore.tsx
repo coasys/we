@@ -2105,6 +2105,28 @@ export function ShellStoreProvider(props: ParentProps) {
     wasOpen = open;
   });
 
+  /*
+    A module-owned panel can re-ask to be seen — "go to the call" pressed while the stage is already
+    open. `revealDock` is what "seen" means here, since open-but-out-of-sight is exactly folded,
+    stowed or tab-behind: the flag already did its work, and the counter is the event.
+  */
+  // As `wasOpen`, the first run records rather than acts: a call joined before the layout mounted
+  // gets its raise from the edge appearing above, not a second one from the counter's first read.
+  const wasAsked = new Map<string, unknown>();
+  createEffect(() => {
+    for (const request of dockRequests()) {
+      const ask = moduleRegistry.panel(request.id)?.revealRequest;
+      if (!ask) continue;
+      const value = ask();
+      const before = wasAsked.has(request.id) ? wasAsked.get(request.id) : value;
+      wasAsked.set(request.id, value);
+      if (value !== before && request.edge) untrack(() => store.revealDock(request.id));
+    }
+    for (const id of [...wasAsked.keys()]) {
+      if (!dockRequests().some((request) => request.id === id)) wasAsked.delete(id);
+    }
+  });
+
   const laneSections = createMemo(() => {
     const byLane: Record<string, LaneSection[]> = {};
     const declared = declarationFor();
