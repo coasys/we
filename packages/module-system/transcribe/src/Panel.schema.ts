@@ -93,6 +93,8 @@ const VIEWING_LIVE = { $: VIEWING_LIVE_EXPR };
  */
 const IN_A_CALL = 'modules.transcribe.inCall';
 const CALL_ON_SCREEN_LIVE = 'modules.transcribe.callOnScreenLive';
+/** The record of every call somebody is in — for a subject the address does not name as `?call=`. */
+const LIVE_CALL_RECORDS = 'modules.transcribe.liveCallRecords';
 
 /** Whether the transcript is anchored to its beginning rather than following the live end. */
 const TRANSCRIPT_FROM_START = 'modules.transcribe.transcriptFromStart';
@@ -3166,9 +3168,17 @@ export const transcriptLines: SchemaNode = {
         commonest thing anybody does to a long transcript, and it was the case paying most. Until
         the subject's kind is known it is not followed, so a past call is never subscribed to on the
         way to finding out it is one.
+
+        "Live" is tested against the subject itself, through the id `subjectKind` read for it, and
+        not only against the call `?call=` names. The call page names its call with `?id=`, so
+        `callOnScreenLive` alone was false there and a call in progress was read once and never
+        followed. The subject has to come through `subjectKind`: substitution is whole-token and
+        cannot reach a subject mentioned inside this expression.
       */
       subscribe: {
-        $: `${CALL_ON_SCREEN_LIVE} || (local.subjectKindLoaded && first(local.subjectKind).kind != 'call')`,
+        $:
+          `${CALL_ON_SCREEN_LIVE} || (local.subjectKindLoaded && ` +
+          `(first(local.subjectKind).kind != 'call' || first(local.subjectKind).id in ${LIVE_CALL_RECORDS}))`,
       },
     },
     /*
