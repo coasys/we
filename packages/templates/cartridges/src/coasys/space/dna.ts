@@ -2,7 +2,7 @@ import type { SchemaNode } from '@we/schema-shared';
 import { SOCIAL_DNA_LABELS } from '@we/template-kit';
 
 import type { Crumb } from './bar.ts';
-import { DNA_FOCUS, showDna } from './paths.ts';
+import { DNA_AT, showDna } from './paths.ts';
 import { VOCABULARY_NAMES, WE_VOCABULARY } from './vocabulary.ts';
 
 /**
@@ -60,8 +60,7 @@ export const CLASS_GROUPS = `[{ key: 'space', label: 'This space', classes: ${SP
 /** How many classes there are. */
 export const CLASS_COUNT = `sum(${CLASS_GROUPS}.map(g, count(g.classes)))`;
 
-/** The focus, as `all` where the address names none — the Social DNA page reached without one. */
-export const DNA_AT = `(${DNA_FOCUS} ? ${DNA_FOCUS} : 'all')`;
+export { DNA_AT };
 /** The kind in focus (`model`, `policy`), what of it (a class's name, a rule's words), and a record of the class. */
 export const DNA_KIND = `split(${DNA_AT}, '|')[0]`;
 export const DNA_ID = `split(${DNA_AT}, '|')[1]`;
@@ -97,16 +96,27 @@ export const CLASS_LABEL = `(${table(WE_VOCABULARY.map((cls) => [cls.name, `'${c
 export const CLASS_ICON = `(${table(WE_VOCABULARY.map((cls) => [cls.name, `'${cls.icon}'`]))}[${DNA_ID}] ?? ${CLASS_DISPLAY}.icon) ?? 'cube'`;
 
 /**
- * The vocabulary map's bucket for what is in focus: the policy's, one of WE's vocabulary classes' own,
- * or — any other class being a model on the map — Models for the space's and WE's, From other apps
- * for the rest.
+ * An expression over the focus's parts — kind, what of it, record — written once over a single reading
+ * of the address, for the expressions that would otherwise repeat the whole of `DNA_AT` in each.
  */
-export const BUCKET = `(${[
-  `${DNA_KIND} == 'policy' ? 'policy'`,
-  `: (${table(WE_VOCABULARY.map((cls) => [cls.name, `'${cls.bucket}'`]))}[${DNA_ID}] ?? (${DNA_ID} in recordStore.creatableEntities.map(k, k.value) ? 'models' : 'other'))`,
-].join(' ')})`;
+export const onFocus = (body: (kind: string, id: string, record: string) => string): string =>
+  `[split(${DNA_AT}, '|')].map(p, ${body('p[0]', 'p[1]', 'p[2]')})[0]`;
+
+/**
+ * The vocabulary map's bucket for the focus `kind`, `id`: the policy's, one of WE's vocabulary classes'
+ * own, or — any other class being a model on the map — Models for the space's and WE's, From other
+ * apps for the rest.
+ */
+export const bucketOf = (kind: string, id: string): string =>
+  `(${kind} == 'policy' ? 'policy' : (${table(WE_VOCABULARY.map((cls) => [cls.name, `'${cls.bucket}'`]))}[${id}] ?? (${id} in recordStore.creatableEntities.map(k, k.value) ? 'models' : 'other')))`;
 /** The focus is a model on the map — a node of its own, opening into its records — rather than a bucket. */
-export const ON_MAP_MODEL = `(${ON_CLASS}) && (${BUCKET}) in ['models', 'other']`;
+export const onMapModel = (kind: string, id: string): string =>
+  `(${kind} == '${MODEL}' && ${id} && ${bucketOf(kind, id)} in ['models', 'other'])`;
+
+/** The bucket of the focus in the address. */
+export const BUCKET = onFocus((kind, id) => bucketOf(kind, id));
+/** The focus in the address is a model on the map. */
+export const ON_MAP_MODEL = onFocus((kind, id) => onMapModel(kind, id));
 
 /**
  * A node of the vocabulary map, as the focus it stands for — so pressing it on the map moves the focus

@@ -18,7 +18,7 @@ import { countPill, liveDot } from './marks.ts';
 import {
   callPath,
   channelPath,
-  DNA_FOCUS,
+  DNA_AT,
   DNA_PARAM,
   DNA_SHOWN,
   GROUP_PAGES,
@@ -262,7 +262,7 @@ const classGroups: SchemaNode = {
       icon: { $: "group.key == 'we' ? 'cube' : group.key == 'space' ? 'users-three' : 'package'" },
       ...revealing(
         "'dnagroup|' + group.key",
-        `startsWith(${DNA_FOCUS}, '${MODEL}|') && group.classes.exists(c, c.id == split(${DNA_FOCUS}, '|')[1])`,
+        `startsWith(${DNA_AT}, '${MODEL}|') && group.classes.exists(c, c.id == split(${DNA_AT}, '|')[1])`,
         "'all'",
       ),
       expandable: { $: 'count(group.classes) > 0' },
@@ -292,7 +292,7 @@ const policyKind: SchemaNode = treeRow({
   value: { $: "'dnakind|policy'" },
   label: POLICY.label,
   icon: POLICY.icon,
-  ...revealing("'dnakind|policy'", `startsWith(${DNA_FOCUS}, 'policy|')`, "'policy'"),
+  ...revealing("'dnakind|policy'", `startsWith(${DNA_AT}, 'policy|')`, "'policy'"),
   expandable: { $: `count(${POLICY_RULES}) > 0` },
   badge: countPill(`count(${POLICY_RULES})`),
   children: [
@@ -309,7 +309,7 @@ const policyKind: SchemaNode = treeRow({
 const socialDna = group('dna', 'Social DNA', 'dna', [classGroups, policyKind], {
   count: CLASS_COUNT,
   // Open while anything in it is in focus; closing it then shows all of it.
-  openness: revealing("'group|dna'", `${DNA_FOCUS} != 'all'`, "'all'"),
+  openness: revealing("'group|dna'", `${DNA_AT} != 'all'`, "'all'"),
 });
 
 /*

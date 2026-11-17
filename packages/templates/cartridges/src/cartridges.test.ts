@@ -33,7 +33,7 @@ import { describe, expect, it } from 'vitest';
 
 import { coasysFirstRun } from './coasys/firstRun.ts';
 import { canvasPane } from './coasys/space/canvas.ts';
-import { CLASS_GROUPS, CLASS_ROWS, OTHER_CLASSES } from './coasys/space/dna.ts';
+import { CLASS_GROUPS, CLASS_ROWS, DNA_AT, OTHER_CLASSES } from './coasys/space/dna.ts';
 import { callPath, groupPath, personPath, SELECTED_EXPR } from './coasys/space/paths.ts';
 import { treeSection } from './coasys/space/tree.ts';
 import { callPage, spaceRoutes } from './coasys/space/views.ts';
@@ -600,6 +600,28 @@ describe('the Coasys cartridge', () => {
       expect(at(['dna'], { dna: 'policy' })({ $: SELECTED_EXPR })).toBe('dnakind|policy');
       // Anywhere else in Page mode, a leftover focus lights nothing.
       expect(at(['people'], { dna: 'model|SignalType' })({ $: SELECTED_EXPR })).toBe('group|people');
+    });
+
+    /*
+      Bookmarks from before a class was a model: `signal`, `signal|like`, `class|Question`. Each lands
+      on the class it meant, a record id kept; a kind nobody knows lands on the whole.
+    */
+    it('lands an old ?dna= value on the class it meant, or on all', () => {
+      const focus = (dna: string) => at(['dna'], { dna })({ $: DNA_AT });
+      expect(focus('signal')).toBe('model|SignalType');
+      expect(focus('signal|like')).toBe('model|SignalType|like');
+      expect(focus('connection')).toBe('model|RelationshipType');
+      expect(focus('relationship')).toBe('model|RelationshipType');
+      expect(focus('taskstate|done')).toBe('model|TaskState|done');
+      expect(focus('involvement')).toBe('model|InvolvementType');
+      expect(focus('topic')).toBe('model|Topic');
+      expect(focus('class|Question')).toBe('model|Question');
+      expect(focus('class|Question|q1')).toBe('model|Question|q1');
+      expect(focus('nonsense|x')).toBe('all');
+      expect(focus('model|SignalType|like')).toBe('model|SignalType|like');
+      expect(focus('policy|Anyone may post')).toBe('policy|Anyone may post');
+      expect(at(['dna'], {})({ $: DNA_AT })).toBe('all');
+      expect(at(['dna'], { dna: 'signal' })({ $: SELECTED_EXPR })).toBe('dna|model|SignalType');
     });
 
     /*

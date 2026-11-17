@@ -32,18 +32,7 @@ import {
 } from '@we/template-kit';
 
 import { type Crumb, viewBar } from './bar.ts';
-import {
-  BUCKET,
-  CLASS_QUERIES,
-  DNA_AT,
-  DNA_ID,
-  DNA_KIND,
-  DNA_RECORD,
-  dnaCrumbs,
-  dnaFocusOf,
-  editDna,
-  ON_MAP_MODEL,
-} from './dna.ts';
+import { BUCKET, bucketOf, CLASS_QUERIES, DNA_AT, dnaCrumbs, dnaFocusOf, editDna, onFocus, onMapModel } from './dna.ts';
 import { DNA_FOCUS, DNA_PARAM, IN_CANVAS, inspect, PAGE_EXPR, withView } from './paths.ts';
 
 /**
@@ -89,7 +78,7 @@ const RECORD_PAGE = "spaceStore.spacePath + '/record/' + event.recordType + '?id
 const ON_DNA = `(${IN_CANVAS}) && ${DNA_FOCUS}`;
 
 /** A bucket's node on the map, by the address the vocabulary seed gives it. */
-const BUCKET_NODE = `'we-graph://cluster/vocabulary/' + ${BUCKET}`;
+const bucketNode = (kind: string, id: string) => `'we-graph://cluster/vocabulary/' + ${bucketOf(kind, id)}`;
 
 /**
  * Social DNA in focus, as two dimmings: everything in the other buckets, and — with one thing in a
@@ -98,25 +87,34 @@ const BUCKET_NODE = `'we-graph://cluster/vocabulary/' + ${BUCKET}`;
  * that is a model on the map by its name, a rule of the policy by its words.
  */
 const OTHER_KINDS = `{ 'data.bucket': { exists: true, not: ${BUCKET} } }`;
-const SIBLING = (key: string, value: string) =>
-  `{ 'data.bucket': ${BUCKET}, type: { not: 'vocabulary' }, '${key}': { not: ${value} } }`;
-const SIBLINGS = `(${DNA_RECORD} ? ${SIBLING('data.recordId', DNA_RECORD)} : ${DNA_KIND} == 'policy' ? ${SIBLING('data.item', DNA_ID)} : ${SIBLING('data.entity', DNA_ID)})`;
+const SIBLING = (bucket: string, key: string, value: string) =>
+  `{ 'data.bucket': ${bucket}, type: { not: 'vocabulary' }, '${key}': { not: ${value} } }`;
+const SIBLINGS = onFocus(
+  (kind, id, record) =>
+    `(${record} ? ${SIBLING(bucketOf(kind, id), 'data.recordId', record)} : ${kind} == 'policy' ? ${SIBLING(bucketOf(kind, id), 'data.item', id)} : ${SIBLING(bucketOf(kind, id), 'data.entity', id)})`,
+);
 /** One thing in a bucket is chosen: a record, a rule, or a model. A class of WE's vocabulary alone is its whole bucket. */
-const ONE_CHOSEN = `${DNA_RECORD} || (${DNA_KIND} == 'policy' && ${DNA_ID}) || (${ON_MAP_MODEL})`;
+const ONE_CHOSEN = onFocus(
+  (kind, id, record) => `${record} || (${kind} == 'policy' && ${id}) || ${onMapModel(kind, id)}`,
+);
 
 /** What is chosen, opened: a record or a model by what the graph's `open` takes; a rule has nothing inside. */
-const OPEN_DEFINITION = `${DNA_RECORD} ? [${DNA_RECORD}] : ${ON_MAP_MODEL} ? [${DNA_ID}] : []`;
+const OPEN_DEFINITION = onFocus(
+  (kind, id, record) => `${record} ? [${record}] : ${onMapModel(kind, id)} ? [${id}] : []`,
+);
 
 /**
  * What the map centres on: a record, a model by its name, a rule of the policy by its key on the map
  * (`policy:<rule>`), or a bucket — the policy's, or a class of WE's vocabulary's. All of it, nothing.
  */
-const FOCUS = [
-  `${DNA_AT} == 'all' ? ''`,
-  `: ${DNA_RECORD} ? ${DNA_RECORD}`,
-  `: ${DNA_KIND} == 'policy' ? (${DNA_ID} ? 'policy:' + ${DNA_ID} : ${BUCKET_NODE})`,
-  `: ${ON_MAP_MODEL} ? ${DNA_ID} : ${BUCKET_NODE}`,
-].join(' ');
+const FOCUS = onFocus((kind, id, record) =>
+  [
+    `${DNA_AT} == 'all' ? ''`,
+    `: ${record} ? ${record}`,
+    `: ${kind} == 'policy' ? (${id} ? 'policy:' + ${id} : ${bucketNode(kind, id)})`,
+    `: ${onMapModel(kind, id)} ? ${id} : ${bucketNode(kind, id)}`,
+  ].join(' '),
+);
 
 /** A node pressed, opened in the inspector — when it stands for a record the inspector reads. */
 const OPEN_IN_INSPECTOR: SchemaProp = {
@@ -133,7 +131,7 @@ const OPEN_IN_INSPECTOR: SchemaProp = {
 const dnaMap: SchemaNode = vocabularyMap({
   // Its kind opened, and the definition chosen opened into what it is.
   open: {
-    $: `distinct(local.vocabOpen, ${DNA_AT} != 'all' ? [${BUCKET_NODE}] : [], ${OPEN_DEFINITION})`,
+    $: `distinct(local.vocabOpen, ${DNA_AT} != 'all' ? [${onFocus((kind, id) => bucketNode(kind, id))}] : [], ${OPEN_DEFINITION})`,
   },
   onNodeOpen: {
     $setLocal: 'vocabOpen',

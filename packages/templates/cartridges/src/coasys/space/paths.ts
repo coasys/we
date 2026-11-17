@@ -32,6 +32,28 @@ export const withView = (pathExpr: string): string =>
 export const DNA_PARAM = 'dna';
 export const DNA_FOCUS = `routeStore.params.${DNA_PARAM}`;
 
+/**
+ * What an address from before a class was a model meant: its kind, as the class it named. A bookmark
+ * keeps working — `signal|like` is `model|SignalType|like` — and `class|X` is `model|X`.
+ */
+const LEGACY_CLASSES: [string, string][] = [
+  ['signal', 'SignalType'],
+  ['connection', 'RelationshipType'],
+  ['relationship', 'RelationshipType'],
+  ['taskstate', 'TaskState'],
+  ['involvement', 'InvolvementType'],
+  ['topic', 'Topic'],
+];
+const LEGACY_AT = `{ ${LEGACY_CLASSES.map(([k, v]) => `${k}: '${v}'`).join(', ')} }`;
+
+/**
+ * The focus as the rest of Social DNA reads it: `all` where the address names none or one nobody knows,
+ * the focus as written where it is `all`, `policy` or `model|…`, and an old kind as the class it was.
+ * Written over one binding of the address's parts, since it stands inside every expression that reads
+ * the focus.
+ */
+export const DNA_AT = `(${DNA_FOCUS} ? [split(${DNA_FOCUS}, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? ${DNA_FOCUS} : [p[0] == 'class' ? p[1] : ${LEGACY_AT}[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all')`;
+
 /** The vocabulary map is being shown, in either mode. */
 export const ON_DNA_PAGE = "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna'";
 export const DNA_SHOWN = `((${IN_CANVAS}) || ${ON_DNA_PAGE}) && ${DNA_FOCUS}`;
@@ -124,7 +146,7 @@ export const groupPath = (page: GroupPage): string => withView(`spaceStore.space
 export const SELECTED_EXPR = [
   // Social DNA in focus, on the canvas or its page.
   // A class lights its row, with one of its records chosen as well.
-  `${DNA_SHOWN} ? (${DNA_FOCUS} == 'all' ? 'group|dna' : startsWith(${DNA_FOCUS}, 'policy|') ? 'dnaprop|' + ${DNA_FOCUS} : startsWith(${DNA_FOCUS}, 'model|') ? 'dna|model|' + split(${DNA_FOCUS}, '|')[1] : 'dnakind|' + ${DNA_FOCUS})`,
+  `${DNA_SHOWN} ? (${DNA_AT} == 'all' ? 'group|dna' : startsWith(${DNA_AT}, 'policy|') ? 'dnaprop|' + ${DNA_AT} : startsWith(${DNA_AT}, 'model|') ? 'dna|model|' + split(${DNA_AT}, '|')[1] : 'dnakind|' + ${DNA_AT})`,
   `:`,
   `routeStore.params.card && ${INSPECTED_DNA} ? 'dna|model|' + routeStore.params.cardType`,
   `: (${PAGE_EXPR}) == 'record' ? 'call|' + routeStore.params.id`,
