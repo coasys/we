@@ -117,10 +117,12 @@ fn expected(truth: &Json, id: &str) -> (Vec<String>, Vec<String>, Vec<String>) {
     let mut anywhere = Vec::new();
     let mut invokes = Vec::new();
     match id {
-        // The landing route is the space's sidebar: its people and workflows.
-        // Calls are no longer listed there (the sidebar has one "Calls" entry
-        // and the `calls` route lists them), so no call title is expected here.
+        // The landing route is the space's tree: its calls, people and workflows.
         "index" => {
+            anywhere.extend(field(
+                rows(route, "calls", "template.meta.panels[tree].node"),
+                "title",
+            ));
             anywhere.extend(field(
                 members["spaceStore"]["members"].as_array().unwrap(),
                 "name",

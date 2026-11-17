@@ -192,9 +192,19 @@ fn space_demo_loads_the_populated_queries() {
     assert!(!text.contains("Minimal"));
 
     let cells = cells(&session);
-    // `anyCall` asks the tree's own question (the 12 newest calls, title and
-    // date), so the two share one cell and the name that stays is `calls`.
-    assert!(!cells.contains_key("anyCall"), "anyCall shares calls' cell");
+    // `anyCall` now asks the tree's own question (the 12 newest calls, title
+    // and date), so the two sites share one cell: it is held twice, and the
+    // rows both read are the two calls.
+    let shared: Vec<_> = session
+        .runtime()
+        .hub()
+        .cells()
+        .into_iter()
+        .filter(|c| c.request.name_hint.as_deref() == Some("calls"))
+        .collect();
+    assert_eq!(shared.len(), 1, "one cell answers calls and anyCall");
+    assert_eq!(shared[0].holders, 2, "calls and anyCall both hold it");
+    assert_eq!(shared[0].view.rows.len(), 2, "anyCall populates");
     assert_eq!(rows(&cells, "calls").len(), 2);
     assert_eq!(rows(&cells, "signalTypes").len(), 2);
     assert_eq!(rows(&cells, "topics").len(), 1);

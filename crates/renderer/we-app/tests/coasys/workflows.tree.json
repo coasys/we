@@ -775,7 +775,7 @@
                               "props": {
                                 "value": "group|calls",
                                 "open": true,
-                                "expandable": false
+                                "expandable": true
                               },
                               "on": [
                                 "onOpenChange"
@@ -816,7 +816,172 @@
                                       "props": {
                                         "gap": "100",
                                         "ay": "center"
-                                      }
+                                      },
+                                      "children": [
+                                        {
+                                          "type": "we-badge",
+                                          "props": {
+                                            "variant": "soft",
+                                            "size": "xs",
+                                            "tone": ""
+                                          },
+                                          "children": [
+                                            {
+                                              "text": "3"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "we-tree-item",
+                                  "props": {
+                                    "value": "call|coasys-call-weekly-sync"
+                                  },
+                                  "children": [
+                                    {
+                                      "type": "Row",
+                                      "props": {
+                                        "gap": "200",
+                                        "ay": "center",
+                                        "minWidth": "0",
+                                        "width": "100%"
+                                      },
+                                      "children": [
+                                        {
+                                          "type": "we-icon",
+                                          "props": {
+                                            "name": "phone",
+                                            "size": "sm",
+                                            "color": "text-faint"
+                                          }
+                                        },
+                                        {
+                                          "type": "we-text",
+                                          "props": {
+                                            "truncate": true,
+                                            "flex": "1",
+                                            "minWidth": "0"
+                                          },
+                                          "children": [
+                                            {
+                                              "text": "Weekly sync"
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "we-timestamp",
+                                          "props": {
+                                            "value": "2025-10-06T15:00:00.000Z",
+                                            "relative": true,
+                                            "relativeStyle": "narrow",
+                                            "color": "text-faint",
+                                            "fontSize": "100"
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "we-tree-item",
+                                  "props": {
+                                    "value": "call|coasys-call-design-review"
+                                  },
+                                  "children": [
+                                    {
+                                      "type": "Row",
+                                      "props": {
+                                        "gap": "200",
+                                        "ay": "center",
+                                        "minWidth": "0",
+                                        "width": "100%"
+                                      },
+                                      "children": [
+                                        {
+                                          "type": "we-icon",
+                                          "props": {
+                                            "name": "phone",
+                                            "size": "sm",
+                                            "color": "text-faint"
+                                          }
+                                        },
+                                        {
+                                          "type": "we-text",
+                                          "props": {
+                                            "truncate": true,
+                                            "flex": "1",
+                                            "minWidth": "0"
+                                          },
+                                          "children": [
+                                            {
+                                              "text": "Design review"
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "we-timestamp",
+                                          "props": {
+                                            "value": "2025-10-02T14:00:00.000Z",
+                                            "relative": true,
+                                            "relativeStyle": "narrow",
+                                            "color": "text-faint",
+                                            "fontSize": "100"
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "we-tree-item",
+                                  "props": {
+                                    "value": "call|coasys-call-pilot-kickoff"
+                                  },
+                                  "children": [
+                                    {
+                                      "type": "Row",
+                                      "props": {
+                                        "gap": "200",
+                                        "ay": "center",
+                                        "minWidth": "0",
+                                        "width": "100%"
+                                      },
+                                      "children": [
+                                        {
+                                          "type": "we-icon",
+                                          "props": {
+                                            "name": "phone",
+                                            "size": "sm",
+                                            "color": "text-faint"
+                                          }
+                                        },
+                                        {
+                                          "type": "we-text",
+                                          "props": {
+                                            "truncate": true,
+                                            "flex": "1",
+                                            "minWidth": "0"
+                                          },
+                                          "children": [
+                                            {
+                                              "text": "Pilot kickoff"
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "we-timestamp",
+                                          "props": {
+                                            "value": "2025-09-29T17:00:00.000Z",
+                                            "relative": true,
+                                            "relativeStyle": "narrow",
+                                            "color": "text-faint",
+                                            "fontSize": "100"
+                                          }
+                                        }
+                                      ]
                                     }
                                   ]
                                 }

@@ -129,26 +129,34 @@ fn tree_panel_labels_order_and_indent() {
         );
         prev = i;
     }
-    // Workflows are open in the snapshot's `openRows`, so their nested rows
-    // paint too — and deeper than their parent. (Calls are one flat entry
-    // in the sidebar now, with no rows under it.) Depth shows as leading
-    // whitespace (byte offsets won't do — the rows hold multi-byte glyphs).
+    // Calls and workflows are open in the snapshot's `openRows`, so their
+    // nested rows paint too — and deeper than their parents. Depth shows
+    // as leading whitespace (byte offsets won't do — the rows hold
+    // multi-byte glyphs).
     let indent = |l: &str| l.chars().take_while(|c| c.is_whitespace()).count();
     let group_line = text
         .lines()
-        .find(|l| l.contains("Workflows"))
-        .unwrap_or_else(|| panic!("Workflows group in frame:\n{text}"));
-    // A nested workflow row carries its own count badge ([3]).
+        .find(|l| l.contains("Calls"))
+        .unwrap_or_else(|| panic!("Calls group in frame:\n{text}"));
+    // The row shows its call's `createdAt` as a day (`YYYY-MM-DD`, the
+    // timestamp's terminal form).
+    let first_call = snap["queries"]["calls"][0]["createdAt"].as_str().unwrap();
+    let day = &first_call[..10];
     let nested_line = text
         .lines()
-        .find(|l| l.contains("[3]"))
-        .unwrap_or_else(|| panic!("nested workflow row in frame:\n{text}"));
+        .find(|l| l.contains(day))
+        .unwrap_or_else(|| panic!("nested call row in frame:\n{text}"));
     assert!(
         indent(nested_line) > indent(group_line),
-        "nested workflow should indent deeper than its group:\n{text}"
+        "nested Call should indent deeper than its group:\n{text}"
     );
-    // Badge counts come from the snapshot's query results: 2 workflows,
-    // 2 members.
+    // Badge counts come from the snapshot's query results: 2 calls, 2
+    // workflows, 2 members.
+    assert_eq!(
+        snap["queries"]["calls"].as_array().unwrap().len(),
+        2,
+        "snapshot has 2 calls — the badge reads it"
+    );
     assert!(text.contains("[2]"), "count badge in frame:\n{text}");
     assert!(text.contains("[12]"), "social-dna badge in frame:\n{text}");
     // The status line carries the route.
