@@ -14,11 +14,11 @@
  * Stub <Route> components are emitted for keepAlive paths so the router matches
  * them without 404, while the real content lives in the persistent div.
  */
-import { componentRegistry as registry } from '@solid/registries/componentRegistry';
+import { componentRegistry } from '@solid/registries/componentRegistry';
 import type { Stores } from '@solid/types';
 import { Navigate, Route } from '@solidjs/router';
 import type { RouteSchema } from '@we/schema-shared';
-import { RenderSchema } from '@we/schema-solid';
+import { type ComponentRegistry, RenderSchema } from '@we/schema-solid';
 import type { JSX, ParentProps } from 'solid-js';
 import { createContext, For, useContext } from 'solid-js';
 
@@ -50,6 +50,12 @@ export function buildRoutes(
   routes: RouteSchema[],
   parentPath = '',
   parentStack: ParentStackItem[] = [],
+  /*
+    Which registry the route's nodes render against — the template's by default, chrome's where the
+    caller mounts host-authored schema (shell views). A template's routes never carry the extra
+    components: which bag and which registry answer the same question.
+  */
+  registry: ComponentRegistry = componentRegistry,
 ): JSX.Element[] {
   return routes.map((route) => {
     // Compute full path for baseDepth and absolute redirect resolution
@@ -131,7 +137,7 @@ export function buildRoutes(
       // Emit stub Routes for keepAlive children so the router matches their paths
       // without 404; the actual content lives in the persistent CSS-toggled divs above.
       const keepAliveStubs = childKeepAliveRoutes.map((r) => <Route path={r.path} component={() => null} />);
-      const childRoutes = buildRoutes(stores, childNormalRoutes, fullPath, []);
+      const childRoutes = buildRoutes(stores, childNormalRoutes, fullPath, [], registry);
       return (
         <Route path={route.path} component={component}>
           {keepAliveStubs}

@@ -60,6 +60,7 @@ export const callControl: SchemaNode = {
             // own. `square` for the same reason: the bar's icon-only buttons are squares, and a
             // label's worth of side padding around a lone glyph is what would give this one away.
             square: true,
+            label: { $: "modules.transcribe.recordingCall.enabled ? 'Stop transcribing' : 'Transcribe this call'" },
             /*
               Three states, not two, and the third is why this is no longer `soft`.
 

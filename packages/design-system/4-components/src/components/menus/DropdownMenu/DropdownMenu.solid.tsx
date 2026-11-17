@@ -453,6 +453,8 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
       tone={props.triggerTone}
       square={iconOnly()}
       aria-label={iconOnly() ? (props.triggerTitle ?? 'Options') : undefined}
+      // `aria-label` on the host does not reach the inner `<button>`; `label` does — see `slotted`.
+      label={iconOnly() ? (props.triggerTitle ?? 'Options') : ''}
     >
       <Show when={props.triggerIcon}>
         <we-icon name={props.triggerIcon} />
@@ -480,7 +482,13 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
           <Show
             when={controlTrigger()}
             fallback={
-              <we-button slot="trigger" variant="bare" size={props.size} aria-label={props.triggerTitle}>
+              <we-button
+                slot="trigger"
+                variant="bare"
+                size={props.size}
+                aria-label={props.triggerTitle}
+                label={props.triggerTitle ?? ''}
+              >
                 {customTrigger()}
               </we-button>
             }

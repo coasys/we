@@ -386,40 +386,21 @@ describe('executor settings', () => {
     expect(registry.executorSettings()).toEqual({ mcpEnabled: false, mcpPort: 3001, logLevels: {} });
   });
 
-  it('survives registry writes made for unrelated reasons', () => {
+  // What an older build kept here seeds each data folder's executor config file once.
+  it('reads what an older build kept, across registry writes made for unrelated reasons', () => {
     seedAd4mData(defaultPath);
-    registry.setExecutorSettings({ mcpEnabled: true, mcpPort: 4321 });
+    registry.list();
+    const file = join(defaultPath, 'we-accounts', 'registry.json');
+    const state = JSON.parse(readFileSync(file, 'utf8'));
+    writeFileSync(
+      file,
+      JSON.stringify({ ...state, executor: { mcpEnabled: true, mcpPort: 4321, logLevels: { holochain: 'warn' } } }),
+    );
 
     registry.select(defaultPath);
     registry.setDisplay(defaultPath, { name: 'Renamed' });
 
-    // Both hosts rewrite this file when an account changes. A rewrite that dropped the executor
-    // block would turn MCP off at the next launch with nothing having asked for that.
-    expect(registry.executorSettings()).toEqual({ mcpEnabled: true, mcpPort: 4321, logLevels: {} });
-  });
-
-  it('applies one field without clearing the other', () => {
-    registry.setExecutorSettings({ mcpEnabled: true });
-    registry.setExecutorSettings({ mcpPort: 5000 });
-    expect(registry.executorSettings()).toEqual({ mcpEnabled: true, mcpPort: 5000, logLevels: {} });
-  });
-
-  it('keeps log levels as overrides, and refuses one the executor would drop', () => {
-    // Overrides only: anything unnamed keeps the executor's own default, so storing the effective
-    // set would freeze today's defaults into every install that opened the screen.
-    registry.setExecutorSettings({ logLevels: { rust_executor: 'debug' } });
-    expect(registry.executorSettings().logLevels).toEqual({ rust_executor: 'debug' });
-
-    // A typo would look accepted here and silently do nothing in the executor's own parser.
-    expect(() => registry.setExecutorSettings({ logLevels: { holochain: 'verbose' } })).toThrow();
-    expect(registry.executorSettings().logLevels).toEqual({ rust_executor: 'debug' });
-  });
-
-  it('refuses a port the executor could not bind', () => {
-    // Refused here rather than at startup: an unusable port written now would fail at the next
-    // launch, a restart away from the field that caused it.
-    expect(() => registry.setExecutorSettings({ mcpPort: 80 })).toThrow();
-    expect(registry.executorSettings().mcpPort).toBe(3001);
+    expect(registry.executorSettings()).toEqual({ mcpEnabled: true, mcpPort: 4321, logLevels: { holochain: 'warn' } });
   });
 });
 

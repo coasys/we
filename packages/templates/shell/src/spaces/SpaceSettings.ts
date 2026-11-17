@@ -1227,6 +1227,7 @@ const extractionTargetsSection: SchemaNode = {
                       type: 'we-switch',
                       props: {
                         size: 'sm',
+                        label: { $: 'candidate' },
                         checked: { $: 'candidate in spaceStore.extractionTargets' },
                         disabled: { $: '!space.canAdminister' },
                         // Bare `event.detail` — an operator around it would resolve at render time,

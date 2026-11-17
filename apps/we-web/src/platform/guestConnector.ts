@@ -69,6 +69,8 @@ export function createGuestConnector(hostUrl: string): BackendConnector {
         guest: true,
         ports: createAd4mBackendPorts(client, ctx, {
           administersNode: false,
+          // A guest logs in to a grant, never the node's operator credential.
+          operator: false,
           capabilities,
           linkServerUrl: (weSeed.ad4m as { linkServerUrl?: string }).linkServerUrl,
           connection: () => (core.baseUrl ? { url: core.baseUrl, token: core.token } : null),

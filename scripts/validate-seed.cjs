@@ -107,16 +107,18 @@ function main() {
   if (seed.desktop !== undefined) {
     const desktop = seed.desktop;
     if (typeof desktop !== 'object' || desktop === null || Array.isArray(desktop)) {
-      error('Invalid field: desktop (must be an object of productName, appId and icon)');
+      error('Invalid field: desktop (must be an object of productName, appId, tauriId and icon)');
     } else {
-      for (const key of ['productName', 'appId', 'icon']) {
+      for (const key of ['productName', 'appId', 'tauriId', 'icon']) {
         if (desktop[key] !== undefined && (typeof desktop[key] !== 'string' || !desktop[key].trim())) {
           error(`desktop.${key} must be a non-empty string`);
         }
       }
       // An identifier is what the OS installs by, so it has to look like one.
-      if (typeof desktop.appId === 'string' && !/^[a-z][a-z0-9-]*(\.[a-z0-9-]+)+$/i.test(desktop.appId)) {
-        error(`desktop.appId must be a reverse-domain identifier such as io.example.app, got: ${desktop.appId}`);
+      for (const key of ['appId', 'tauriId']) {
+        if (typeof desktop[key] === 'string' && !/^[a-z][a-z0-9-]*(\.[a-z0-9-]+)+$/i.test(desktop[key])) {
+          error(`desktop.${key} must be a reverse-domain identifier such as io.example.app, got: ${desktop[key]}`);
+        }
       }
       if (typeof desktop.icon === 'string') {
         const icon = path.resolve(path.join(__dirname, '..'), desktop.icon);

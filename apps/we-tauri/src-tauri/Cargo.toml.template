@@ -14,12 +14,24 @@ edition = "2021"
 name = "app_lib"
 crate-type = ["staticlib", "rlib"]
 
+[features]
+default = []
+# The web inspector in a release build, which `pnpm tauri:dev` turns on (it builds `--release`). A
+# debug build has it without this feature; a packaged build (`pnpm tauri:build`) never has it.
+devtools = ["tauri/devtools"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["devtools"] }
+# `tray-icon`: the icon and menu that keep the app reachable while its window is hidden.
+tauri = { version = "2", features = ["tray-icon"] }
+# Called from Rust only (`src/main_window.rs`), to open an `https` link in the OS browser. Not
+# registered as a plugin, so no page can call it.
 tauri-plugin-opener = "2"
+# One running copy: a second start shows the first copy's window and exits.
+tauri-plugin-single-instance = "2"
+log = "0.4"
 # The file dialog behind export/import. Used from Rust rather than the JS bridge: the path is for
 # the executor, which runs in this process, so nothing about it belongs in the renderer.
 tauri-plugin-dialog = "2"
@@ -51,6 +63,15 @@ dirs = "5"
 # dependency that is not in here does not exist.
 [target.'cfg(target_os = "linux")'.dependencies]
 webkit2gtk = { version = "=2.0.2", features = ["v2_40"] }
+# `src/main_window.rs` loads the appindicator library before it builds the tray icon, because
+# `libappindicator-sys` panics when the library is not there. Already in the tree (wry and others use
+# it), so it adds no crate. The D-Bus check for a tray host uses `webkit2gtk`'s `gio`.
+libloading = "0.8"
+
+# `test`: Tauri's mock runtime, for `startup_order` in src/lib.rs — that a plugin's setup (where the
+# single-instance plugin sends a second start away) runs before the app's own. Adds no crate.
+[dev-dependencies]
+tauri = { version = "2", features = ["tray-icon", "test"] }
 
 # Must mirror ad4m's workspace-root `[patch.crates-io]`, and mirror whatever is there NOW.
 #
