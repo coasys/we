@@ -282,9 +282,22 @@ function sortNeedsLimit(by: string, aggregateAliases: Set<string>): boolean {
  * resolver (`resolveParentPredicate`, broken for synced dynamic models). The predicate is available on
  * every relation (WE + synced) via `EntityManifestProperty.predicate`.
  */
-function resolveScopeToParent(models: EntityManifestEntry[], scope: Scope): Record<string, unknown> {
-  const entry = scope.anchor ? models.find((m) => m.name === scope.anchor) : undefined;
-  const prop = entry?.properties.find((p) => p.name === scope.via);
+function resolveScopeToParent(
+  models: EntityManifestEntry[],
+  scope: Scope,
+  entity?: string | string[],
+): Record<string, unknown> {
+  const relationOn = (name: string | undefined) =>
+    name ? models.find((m) => m.name === name)?.properties.find((p) => p.name === scope.via) : undefined;
+  /*
+    `direction: 'in'` reads `result --via--> anchor`, so the relation is often the *result's* own —
+    "what points at this topic through `about`" names the position's field, not the topic's. The
+    anchor is asked first, which keeps a tree read through one relation (`children` from both ends)
+    exactly as it was; the entity being read answers where the anchor declares no such relation.
+  */
+  const prop =
+    relationOn(scope.anchor) ??
+    (scope.direction === 'in' && typeof entity === 'string' ? relationOn(entity) : undefined);
   if (!prop?.predicate) {
     throw new Error(
       `ad4mQueryAdapter: cannot resolve scope { anchor: "${scope.anchor}", via: "${scope.via}" } — ` +
@@ -292,12 +305,18 @@ function resolveScopeToParent(models: EntityManifestEntry[], scope: Scope): Reco
     );
   }
 
-  // The plain drill-down stays exactly as it was: one anchor, one step outward, and the `{ id,
-  // predicate }` shape every existing query already sends.
+  /*
+    A `reverse` relation (`belongsTo`) reads the links pointing *at* the anchor — the holder is
+    the link's target, so its children arrive over the anchor's incoming links. The plain
+    `{ id, predicate }` form only ever walks the anchor's outgoing ones, which is why a
+    `belongsToMany`'s children answered empty: they have to be asked for on the traverse form,
+    `direction: 'in'`. Asking a reverse relation inward turns it round twice, back to outgoing.
+  */
+  const inbound = (scope.direction === 'in') !== (prop.reverse === true);
   const bounded =
     Array.isArray(scope.anchorId) ||
     scope.transitive ||
-    scope.direction === 'in' ||
+    inbound ||
     scope.limitPerAnchor !== undefined ||
     scope.levels !== undefined;
   // A core entry names containment by its neutral key; a foreign one already holds the AD4M spelling.
@@ -311,7 +330,7 @@ function resolveScopeToParent(models: EntityManifestEntry[], scope: Scope): Reco
     ids: Array.isArray(scope.anchorId) ? scope.anchorId : [scope.anchorId],
     predicate,
     ...(scope.transitive ? { transitive: true } : {}),
-    ...(scope.direction === 'in' ? { direction: 'in' } : {}),
+    ...(inbound ? { direction: 'in' } : {}),
     ...(scope.limitPerAnchor !== undefined ? { limitPerAnchor: scope.limitPerAnchor } : {}),
     ...(scope.levels !== undefined ? { levels: scope.levels } : {}),
   };
@@ -388,7 +407,7 @@ export function createAd4mQueryAdapter(getEntities: () => EntityManifestEntry[])
       const { entity: _entity, ...opts } = irToFlatQuery(rest);
       void _entity;
       if (scope) {
-        (opts as Record<string, unknown>).parent = resolveScopeToParent(getEntities(), scope);
+        (opts as Record<string, unknown>).parent = resolveScopeToParent(getEntities(), scope, ir.entity);
       }
       return selectAsProperties(opts);
     },

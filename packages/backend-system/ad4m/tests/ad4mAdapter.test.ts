@@ -220,6 +220,73 @@ describe('adapter.lower — scope → parent (Tier-2 adapter-rewrite)', () => {
     });
   });
 
+  it('asks incoming links for a reverse relation — a belongsTo’s children point at the anchor', () => {
+    /*
+      `Author.posts` is declared `belongsToMany`: the link lives on the post (`post.author →
+      author`), so the author's posts arrive over the anchor's *incoming* links. The plain
+      `{ id, predicate }` form walks only the outgoing ones and would answer every belongsTo
+      drill with nothing — which is exactly what a relation tree pulling `Author.posts`
+      children saw on AD4M. The traverse form carries `direction: 'in'`.
+    */
+    const withReverse = createAd4mQueryAdapter(() => [
+      {
+        name: 'Author',
+        targetClass: 'flux://author',
+        properties: [
+          {
+            name: 'posts',
+            predicate: 'flux://wrote',
+            type: 'uri',
+            isCollection: true,
+            required: false,
+            writable: true,
+            relatedEntity: 'Post',
+            reverse: true,
+          },
+        ],
+      },
+    ]);
+    const opts = withReverse.lower({
+      irVersion: 1,
+      entity: 'Post',
+      scope: { anchor: 'Author', via: 'posts', anchorId: 'a1' },
+    });
+    expect(opts).toMatchObject({ parent: { ids: ['a1'], predicate: 'flux://wrote', direction: 'in' } });
+  });
+
+  it('reads an inbound scope through the result’s own relation when the anchor does not declare it', () => {
+    /*
+      "What points at this topic through `about`": `about` is the position's field, not the topic's.
+      `direction: 'in'` reads `result --via--> anchor`, so `via` belongs to the entity being read —
+      looked up on the anchor alone, the graph's backward read (`entityExpander`) threw for every
+      relation a class holds toward another.
+    */
+    const inbound = createAd4mQueryAdapter(() => [
+      { name: 'Topic', targetClass: 'x://topic', properties: [] },
+      {
+        name: 'Position',
+        targetClass: 'x://position',
+        properties: [
+          {
+            name: 'about',
+            predicate: 'x://about',
+            type: 'uri',
+            isCollection: false,
+            required: false,
+            writable: true,
+            relatedEntity: 'Topic',
+          },
+        ],
+      },
+    ]);
+    const opts = inbound.lower({
+      irVersion: 1,
+      entity: 'Position',
+      scope: { anchor: 'Topic', via: 'about', anchorId: ['t1', 't2'], direction: 'in' },
+    });
+    expect(opts).toMatchObject({ parent: { ids: ['t1', 't2'], predicate: 'x://about', direction: 'in' } });
+  });
+
   it('throws (surfaced, not silent) when the relation is not in the manifest', () => {
     const ir: QueryIR = {
       irVersion: 1,
