@@ -21,6 +21,7 @@ import {
   devCursorAnchors,
   devCursorMarks,
   devCursorsAvailable,
+  devCursorsVisible,
   readDevCursorCount,
   writeDevCursorCount,
 } from './devCursors';
@@ -555,7 +556,9 @@ export function createLiveStore(deps: ModuleStoreDeps) {
    * the timer below for why they move at all.
    */
   function fakeMarks(): LiveDecoration[] {
-    if (!devCursorsAvailable) return [];
+    // `devCursorsVisible` rather than only `devCursorsAvailable`: the switch muted mid-session
+    // must take the marks with the controls, or they are left on screen with no way to remove them.
+    if (!devCursorsAvailable || !devCursorsVisible()) return [];
     const count = fakeCount();
     if (count <= 0) return [];
     /*
@@ -686,16 +689,22 @@ export function createLiveStore(deps: ModuleStoreDeps) {
     if (next) {
       setActivity({ type: 'live', cursors: true });
     } else {
-      presence?.clearActivity('live');
-      held.clear();
-      stopExpiry();
-      publishedAt = null;
-      bumpCursors();
-      // Say so rather than leaving peers to the TTL: switching off is deliberate, and three seconds
-      // of a cursor that is no longer being updated is three seconds of a lie.
-      publish({ kind: 'cursor', at: null });
+      stopCursors();
     }
   };
+
+  /** The off half of `toggleCursors`, also taken when the call ends. */
+  function stopCursors(): void {
+    setCursorsOn(false);
+    presence?.clearActivity('live');
+    held.clear();
+    stopExpiry();
+    publishedAt = null;
+    bumpCursors();
+    // Say so rather than leaving peers to the TTL: switching off is deliberate, and three seconds
+    // of a cursor that is no longer being updated is three seconds of a lie.
+    publish({ kind: 'cursor', at: null });
+  }
 
   // ── Wiring ─────────────────────────────────────────────────────────────────
 
@@ -844,6 +853,36 @@ export function createLiveStore(deps: ModuleStoreDeps) {
     bumpCursors();
   };
 
+  /*
+    The call ends and the count goes with it — the same reset the call module gives its fake
+    participants at teardown, and for the same reason.
+
+    `fakeMarks` already stops *drawing* them when presence loses this agent's `call` activity, but
+    the count is remembered across sessions, so a number that outlived its call resurrected the same
+    marks the instant the next one started — on screen again with nobody having asked. The `−  N  +`
+    that raises it lives in the call bar, so zeroing it anywhere the call is not running is only
+    early. Reading `inCall()` rather than `modules.call` keeps the seam it was derived through.
+  */
+  effect?.(() => {
+    if (devCursorsAvailable && !inCall() && fakeCount() > 0) setFakes(0);
+  });
+
+  /*
+    The call ends, and sharing the pointer and holding the wheel end with it. Both switches live in the
+    call's More menu, which goes with the call — left on, nothing on screen could turn them off again.
+    Only on the way out of a call: a store that never saw one leaves them as they are. Following is
+    untouched, since the rail still offers it.
+  */
+  let wasInCall = false;
+  effect?.(() => {
+    const inCallNow = inCall();
+    const ended = wasInCall && !inCallNow;
+    wasInCall = inCallNow;
+    if (!ended) return;
+    if (cursorsOn()) stopCursors();
+    if (driving()) releaseWheel();
+  });
+
   onDispose?.(() => {
     if (fakeTimer) clearInterval(fakeTimer);
     stopPointer?.();
@@ -898,7 +937,7 @@ export function createLiveStore(deps: ModuleStoreDeps) {
      * Whether the wheel is this agent's to take — free, or already theirs.
      *
      * Paired with `canFollow` below, and the two are mutually exclusive by construction. That is what
-     * lets the rail offer exactly one button at a time: taking a wheel somebody else is holding is a
+     * lets a surface offer exactly one button at a time: taking a wheel somebody else is holding is a
      * different act from following them, and a single control that silently did one or the other
      * would be a control whose label is wrong half the time.
      */

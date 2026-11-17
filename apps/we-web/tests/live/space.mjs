@@ -13,25 +13,71 @@ import { LinkQuery } from '@coasys/ad4m';
 import { until } from './harness.mjs';
 
 /**
- * The "N in the call" count on the call bar, or null when the page is not in a call. Read from the
- * number element itself: its digits are in its shadow root, which `innerText` does not reach.
+ * How many are in this page's call, or null when the page is not in a call.
+ *
+ * Read where the call says it: the "N participants" line of the call's own settings popover, which
+ * counts the tiles the stage shows. The bar carries no count of its own any more, so the popover is
+ * opened for the read and put back the way it was found — closed, unless it was already open — so a
+ * poll leaves nothing on screen that a test step would then have to work around.
+ *
+ * In a call means a "Leave the call" button on screen: the stage's bar, or the strip that stands in
+ * for it while the stage is put away. The count lives on the stage, so a call with the stage put
+ * away is an error rather than a guess.
  */
-export function inTheCall(page) {
-  return page.evaluate(() => {
-    const find = (root) => {
-      for (const el of root.querySelectorAll('*')) {
-        if (el.tagName === 'WE-NUMBER' && el.closest('we-text')?.textContent?.trim() === 'in the call') {
-          return Number(el.value);
-        }
-        if (el.shadowRoot) {
-          const found = find(el.shadowRoot);
-          if (found !== null) return found;
-        }
-      }
-      return null;
-    };
-    return find(document);
-  });
+export async function inTheCall(page) {
+  const leave = page.getByRole('button', { name: 'Leave the call' });
+  if (!(await anyVisible(leave))) return null;
+  const count = page.getByText(PARTICIPANTS, { exact: true });
+  if (await anyVisible(count)) return participants(count);
+  const toggle = await openCallSettings(page);
+  if (!toggle) {
+    // The call ended between the two looks, or the stage is not on screen to hold the count.
+    if (!(await anyVisible(leave))) return null;
+    throw new Error('in a call, but the stage is not on screen, so nothing says how many are in it');
+  }
+  try {
+    await count.first().waitFor({ state: 'visible', timeout: 5_000 });
+    return await participants(count);
+  } finally {
+    // The same control again: the gear and the menu line both toggle the popover.
+    await toggle().catch(() => {});
+  }
+}
+
+const PARTICIPANTS = /^\d+ participants?$/;
+
+async function participants(locator) {
+  const texts = await locator.allInnerTexts();
+  const shown = texts.map((t) => t.trim()).find((t) => PARTICIPANTS.test(t));
+  return shown === undefined ? null : Number.parseInt(shown, 10);
+}
+
+async function anyVisible(locator) {
+  for (const el of await locator.all()) if (await el.isVisible()) return true;
+  return false;
+}
+
+/**
+ * Opens the call settings popover through the bar, and resolves with what closes it again — or null
+ * when there is no bar to open it from. The gear while the bar has room, the "Call settings…" line
+ * of its More menu when it does not; the gear has no name of its own, only its tooltip's
+ * `aria-description`.
+ */
+async function openCallSettings(page) {
+  const gear = page.locator('[aria-description="Call settings"]');
+  if (await anyVisible(gear)) {
+    const press = () => gear.first().click({ timeout: 5_000 });
+    await press();
+    return press;
+  }
+  const more = page.getByRole('button', { name: 'More controls' });
+  if (!(await anyVisible(more))) return null;
+  const press = async () => {
+    await more.first().click({ timeout: 5_000 });
+    await page.getByRole('menuitem', { name: 'Call settings…' }).first().click({ timeout: 5_000 });
+  };
+  await press();
+  return press;
 }
 
 /** Answers the first-run name prompt, which is per account and covers the page until answered. */

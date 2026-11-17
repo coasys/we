@@ -16,7 +16,7 @@ import {
 } from '@we/entities';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { findEntityRows, subscribeEntityRows } from '../src/shared/recordsRead';
+import { findEntityRows, moduleQueryAsOrm, subscribeEntityRows } from '../src/shared/recordsRead';
 
 /** A uuid no space's sweep will claim, so these registrations cannot leak into a neighbouring test. */
 const UUID = 'recordsRead-test';
@@ -66,6 +66,28 @@ describe('a records read of a class the space defines itself', () => {
     registerDynamicEntities(UUID, { GlobalThing: foreignModel([{ id: 'foreign' }]) });
 
     await expect(findEntityRows('GlobalThing', dataset, {})).resolves.toEqual([{ id: 'native' }]);
+  });
+});
+
+describe('a module query as the ORM reads it', () => {
+  it('names the field list `properties`, so the backend answers only those fields', async () => {
+    const findAll = vi.fn(async () => [{ id: 'call-1', title: 'Standup' }]);
+    const model = class {};
+    Object.assign(model, { findAll, query: () => ({ subscribe: async () => [], dispose: () => {} }) });
+    registerDynamicEntities(UUID, { CallThing: model as unknown as EntityClass });
+
+    await findEntityRows('CallThing', dataset, moduleQueryAsOrm({ where: { kind: 'call' }, select: ['title'] }));
+
+    expect(findAll).toHaveBeenCalledWith(dataset, { where: { kind: 'call' }, properties: ['title'] });
+  });
+
+  it('reads `within` as the container, and leaves a query without either as it was', () => {
+    expect(moduleQueryAsOrm({ within: 'root-1', limit: 1 })).toEqual({
+      limit: 1,
+      parent: { id: 'root-1', relation: 'children', entity: 'CollectionBlock' },
+    });
+    expect(moduleQueryAsOrm({ order: { createdAt: 'desc' } })).toEqual({ order: { createdAt: 'desc' } });
+    expect(moduleQueryAsOrm(undefined)).toEqual({});
   });
 });
 
