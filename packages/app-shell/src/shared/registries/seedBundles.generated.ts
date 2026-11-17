@@ -25,6 +25,26 @@ export const seedBundles: Bundle[] = [
         icon: 'hexagon',
         role: 'app',
         frame: { left: 72 },
+        panels: [
+          {
+            id: 'chat-global',
+            node: { type: 'AgentChat', props: { inputs: { $: 'panel.inputs' } } },
+            title: 'AI chat',
+            snap: 'right',
+            box: { width: 440, height: 540 },
+            min: { width: 320 },
+            open: false,
+          },
+          {
+            id: 'chat-space',
+            node: { type: 'AgentChat', props: { inputs: { $: 'panel.inputs' } } },
+            title: 'AI chat',
+            snap: 'right',
+            box: { width: 440, height: 540 },
+            min: { width: 320, height: 360 },
+            open: false,
+          },
+        ],
         themeId: 'glow',
         themeIds: ['glow', 'theme'],
       },
@@ -66,52 +86,114 @@ export const seedBundles: Bundle[] = [
                       },
                       children: [
                         {
-                          type: 'Row',
-                          props: {
-                            height: '72px',
-                            flex: '0 0 auto',
-                            ay: 'center',
-                            gap: '300',
-                            pl: 'calc((72px - 28px) / 2)',
-                            minWidth: '0',
-                            width: '100%',
-                            cursor: 'pointer',
-                            onClick: { $invoke: 'shellStore.openShellView', args: ['landing-page'] },
-                          },
+                          type: 'Column',
+                          props: { width: '100%' },
                           children: [
                             {
-                              type: 'we-image',
+                              type: 'Row',
                               props: {
-                                src: { $: 'templateStore.brand.mark' },
-                                alt: 'Coasys',
-                                width: '28px',
-                                height: '28px',
-                                flexShrink: 0,
+                                height: '72px',
+                                flex: '0 0 auto',
+                                ay: 'center',
+                                gap: '300',
+                                pl: 'calc((72px - 28px) / 2)',
+                                minWidth: '0',
+                                width: '100%',
+                                cursor: 'pointer',
+                                onClick: { $invoke: 'shellStore.openShellView', args: ['landing-page'] },
                               },
+                              children: [
+                                {
+                                  type: 'we-image',
+                                  props: {
+                                    src: { $: 'templateStore.brand.mark' },
+                                    alt: 'Coasys',
+                                    width: '28px',
+                                    height: '28px',
+                                    flexShrink: 0,
+                                  },
+                                },
+                                {
+                                  type: '$if',
+                                  props: {
+                                    condition: { $: 'local.expanded' },
+                                    enterTransition: [
+                                      { type: 'reveal', axis: 'inline', duration: 250 },
+                                      { type: 'fade', duration: 150 },
+                                    ],
+                                    exitTransition: [
+                                      { type: 'reveal', axis: 'inline', duration: 250 },
+                                      { type: 'fade', duration: 150 },
+                                    ],
+                                    then: {
+                                      type: 'we-text',
+                                      props: {
+                                        variant: 'body',
+                                        fontWeight: 'semibold',
+                                        letterSpacing: 'tight',
+                                        truncate: true,
+                                      },
+                                      children: [{ $: 'templateStore.brand.name' }],
+                                    },
+                                  },
+                                },
+                              ],
                             },
                             {
-                              type: '$if',
+                              type: 'we-button',
                               props: {
-                                condition: { $: 'local.expanded' },
-                                enterTransition: [
-                                  { type: 'reveal', axis: 'inline', duration: 250 },
-                                  { type: 'fade', duration: 150 },
-                                ],
-                                exitTransition: [
-                                  { type: 'reveal', axis: 'inline', duration: 250 },
-                                  { type: 'fade', duration: 150 },
-                                ],
-                                then: {
-                                  type: 'we-text',
-                                  props: {
-                                    variant: 'body',
-                                    fontWeight: 'semibold',
-                                    letterSpacing: 'tight',
-                                    truncate: true,
-                                  },
-                                  children: [{ $: 'templateStore.brand.name' }],
+                                variant: 'ghost',
+                                size: 'lg',
+                                width: '100%',
+                                height: 'auto',
+                                ax: 'start',
+                                ay: 'center',
+                                gap: '200',
+                                py: '300',
+                                px: { $: 'local.railInset' },
+                                label: 'AI chat',
+                                onClick: { $invoke: 'chatStore.openChat' },
+                                bg: { $: "false ? 'accent-soft' : ''" },
+                                color: { $: "false ? 'accent-text' : 'text-muted'" },
+                                hoverProps: {
+                                  $: "false ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-hover', color: 'text' }",
+                                },
+                                activeProps: {
+                                  $: "false ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-active', color: 'text' }",
                                 },
                               },
+                              children: [
+                                {
+                                  type: 'Row',
+                                  props: { width: '2rem', height: '2rem', ax: 'center', ay: 'center', flexShrink: '0' },
+                                  children: [{ type: 'we-icon', props: { name: 'sparkle', size: 'sm' } }],
+                                },
+                                {
+                                  type: '$if',
+                                  props: {
+                                    condition: { $: 'local.expanded' },
+                                    enterTransition: [
+                                      { type: 'reveal', axis: 'inline', duration: 250 },
+                                      { type: 'fade', duration: 150 },
+                                    ],
+                                    exitTransition: [
+                                      { type: 'reveal', axis: 'inline', duration: 250 },
+                                      { type: 'fade', duration: 150 },
+                                    ],
+                                    then: {
+                                      type: 'Row',
+                                      props: { gap: '200', ay: 'center', minWidth: '0' },
+                                      children: [
+                                        {
+                                          type: 'we-text',
+                                          props: { truncate: true, fontSize: '300' },
+                                          children: ['AI chat'],
+                                        },
+                                      ],
+                                    },
+                                  },
+                                },
+                              ],
                             },
                           ],
                         },
@@ -1026,6 +1108,7 @@ export const seedBundles: Bundle[] = [
                     },
                   },
                 },
+                { type: 'AgentChatSheet' },
               ],
             },
           },
@@ -1168,7 +1251,42 @@ export const seedBundles: Bundle[] = [
                   {
                     type: 'Column',
                     props: { px: '300', pb: '500' },
-                    children: [{ type: 'Search', props: { placeholder: 'Find or ask' } }],
+                    $localState: { findQuery: { type: 'string', initial: '' } },
+                    children: [
+                      {
+                        type: 'we-input',
+                        props: {
+                          placeholder: 'Find or ask',
+                          value: { $: 'local.findQuery' },
+                          onInput: { $setLocal: 'findQuery', value: { $: 'event.detail' } },
+                          onKeyDown: {
+                            $if: {
+                              condition: {
+                                $: "event.detail.key == 'Enter' && !event.detail.isComposing && trim(local.findQuery)",
+                              },
+                              then: [
+                                {
+                                  $invoke: 'chatStore.openChat',
+                                  args: [
+                                    {
+                                      $: '{ perspectiveUuid: datasetStore.currentDataset.id, spaceName: spaceStore.currentSpace.name, draft: local.findQuery }',
+                                    },
+                                  ],
+                                },
+                                { $setLocal: 'findQuery', value: '' },
+                              ],
+                            },
+                          },
+                        },
+                        children: [
+                          {
+                            type: 'we-icon',
+                            slot: 'start',
+                            props: { name: 'magnifying-glass', color: 'text-muted', mr: '200' },
+                          },
+                        ],
+                      },
+                    ],
                   },
                   {
                     type: '$if',
@@ -20829,6 +20947,7 @@ export const seedBundles: Bundle[] = [
               title: 'Space settings',
               home: 'inspector',
               snap: 'right',
+              grow: 1,
               order: 0,
               fixed: true,
               open: false,
@@ -21107,8 +21226,17 @@ export const seedBundles: Bundle[] = [
                       newNoteOpen: { type: 'boolean', initial: false },
                       noteOpen: { type: 'boolean', initial: false },
                       vocabOpen: { type: 'array', initial: [] },
+                      treeMode: { type: 'boolean', initial: false, syncParam: { name: 'tree', push: true } },
+                      spine: { type: 'string', initial: '', syncParam: 'spine' },
+                      order: { type: 'string', initial: 'manual', syncParam: 'order' },
+                      signalType: { type: 'string', initial: '', syncParam: 'by' },
+                      cardSize: { type: 'string', initial: 'md' },
+                      voices: { type: 'string', initial: '', syncParam: 'voices' },
+                      voiceSummary: { type: 'object', initial: null },
                     },
                     $queries: {
+                      relationshipKinds: { entity: 'RelationshipType', order: { name: 'asc' }, subscribe: true },
+                      treeSignalTypes: { entity: 'SignalType', order: { name: 'asc' }, subscribe: true },
                       signalTypes: {
                         entity: 'SignalType',
                         order: { name: 'asc' },
@@ -21657,9 +21785,16 @@ export const seedBundles: Bundle[] = [
                                   pending: { $: 'modules.transcribe.unconfirmedIds' },
                                   changed: { $: 'modules.transcribe.changedIds' },
                                   counts: ['signals', 'responses'],
+                                  weigh: {
+                                    $: "(local.treeMode || local.order == 'signal') && (local.signalType ? local.signalType : first(local.treeSignalTypes).id) ? { signalTypeId: (local.signalType ? local.signalType : first(local.treeSignalTypes).id), aggregate: find(local.treeSignalTypes, { id: (local.signalType ? local.signalType : first(local.treeSignalTypes).id) }).aggregate, mode: find(local.treeSignalTypes, { id: (local.signalType ? local.signalType : first(local.treeSignalTypes).id) }).mode, rangeMin: find(local.treeSignalTypes, { id: (local.signalType ? local.signalType : first(local.treeSignalTypes).id) }).rangeMin, rangeMax: find(local.treeSignalTypes, { id: (local.signalType ? local.signalType : first(local.treeSignalTypes).id) }).rangeMax, step: find(local.treeSignalTypes, { id: (local.signalType ? local.signalType : first(local.treeSignalTypes).id) }).step, excludeAuthors: spaceStore.mutedDids, me: me.did } : null",
+                                  },
+                                  weights: { $: 'local.voices' },
                                 },
                               },
-                              layout: { type: 'manual', options: { size: { width: 200, height: 140 } } },
+                              layout: {
+                                $: "local.treeMode ? { type: 'forest', options: { spine: { field: 'data.relationshipTypeId', value: local.spine }, sortBy: (local.order == 'manual' ? 'canvasRank' : ((local.order == 'signal' && (local.signalType ? local.signalType : first(local.treeSignalTypes).id)) ? 'weight' : 'createdAt')), sortDirection: (((local.order == 'signal' && (local.signalType ? local.signalType : first(local.treeSignalTypes).id)) || local.order == 'newest') ? 'desc' : 'asc'), card: (local.cardSize == 'sm' ? { width: 120, height: 90 } : (local.cardSize == 'lg' ? { width: 260, height: 195 } : { width: 180, height: 135 })), unattachedLabel: 'Unconnected' } } : { type: 'manual', options: { size: { width: 200, height: 140 }, kindSizes: { property: { width: 170, height: 44 } }, widthField: 'canvasWidth', heightField: 'canvasHeight' } }",
+                              },
+                              reframeOn: { $: "local.treeMode ? local.cardSize : ''" },
                               backdrop: { pattern: 'dots', gap: 24 },
                               nodeStyle: [
                                 {
@@ -21681,6 +21816,22 @@ export const seedBundles: Bundle[] = [
                                     color: { from: 'data.canvasColor' },
                                     cardShape: { from: 'data.canvasCardShape' },
                                     contentScale: { from: 'data.canvasContentScale' },
+                                  },
+                                },
+                                {
+                                  style: {
+                                    width: {
+                                      $: "local.treeMode ? ((local.cardSize == 'sm' ? { width: 120, height: 90 } : (local.cardSize == 'lg' ? { width: 260, height: 195 } : { width: 180, height: 135 }))).width : { from: 'data.canvasWidth' }",
+                                    },
+                                    height: {
+                                      $: "local.treeMode ? ((local.cardSize == 'sm' ? { width: 120, height: 90 } : (local.cardSize == 'lg' ? { width: 260, height: 195 } : { width: 180, height: 135 }))).height : { from: 'data.canvasHeight' }",
+                                    },
+                                    cardShape: { $: "local.treeMode ? 'note' : { from: 'data.canvasCardShape' }" },
+                                    contentScale: { $: "local.treeMode ? 1 : { from: 'data.canvasContentScale' }" },
+                                    z: { $: "local.treeMode ? 0 : { from: 'data.canvasZ' }" },
+                                    badge: {
+                                      $: "local.treeMode && (local.order == 'signal' && (local.signalType ? local.signalType : first(local.treeSignalTypes).id)) ? 'reaction' : ''",
+                                    },
                                   },
                                 },
                                 {
@@ -21706,16 +21857,15 @@ export const seedBundles: Bundle[] = [
                                   $: "((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open) ? [{ when: { 'data.recordId': { not: (workflowStore.open.records.map(r, r.record)) } }, style: { opacity: 0.1 } }] : []",
                                 },
                               ],
-                              behaviours: [
-                                { type: 'connect-nodes', options: { button: 'secondary' } },
-                                'node-double-click',
-                                'canvas-double-click',
-                                'marquee-select',
-                                'select',
-                                { type: 'drag-node', options: { pin: true } },
-                                'pan-zoom',
+                              edgeStyle: [
+                                {
+                                  $: "local.treeMode ? [{ style: { sourceAnchor: 's', targetAnchor: 'n', ignoreRoute: true } }, { when: { 'data.relationshipTypeId': { not: local.spine } }, style: { opacity: 0.25, dashed: true, arrow: 'none' } }] : []",
+                                },
                               ],
-                              resizable: true,
+                              behaviours: {
+                                $: "local.treeMode ? [{ type: 'connect-nodes', options: { button: 'secondary' } }, 'node-double-click', 'canvas-double-click', 'select', { type: 'arrange-nodes', options: { reorder: local.order == 'manual', keep: ['responsesCount', 'signalsCount'], keepReason: 'People have discussed this connection. Select the line itself to remove it.' } }, 'pan-zoom'] : [{ type: 'connect-nodes', options: { button: 'secondary' } }, 'node-double-click', 'canvas-double-click', 'marquee-select', 'select', { type: 'drag-node', options: { pin: true } }, 'pan-zoom']",
+                              },
+                              resizable: { $: '!local.treeMode' },
                               empty: {
                                 $: "(spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') ? 'Nothing on this canvas yet. Double-click anywhere to add a card, or start a call: what it commits to appears here on its own.' : 'This space has no canvas of its own. Spaces made with a starter kit have one.'",
                               },
@@ -21954,6 +22104,15 @@ export const seedBundles: Bundle[] = [
                                   },
                                 },
                               ],
+                              onNodeArrange: {
+                                $invoke: 'recordStore.arrangeOnTree',
+                                args: [
+                                  { $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                  { $: 'local.spine' },
+                                  { $: 'event' },
+                                ],
+                              },
+                              onSeedSummary: { $setLocal: 'voiceSummary', value: { $: 'event' } },
                               onCanvasDoubleClick: {
                                 $if: {
                                   condition: { $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
@@ -22118,6 +22277,351 @@ export const seedBundles: Bundle[] = [
                                         },
                                       ],
                                       showStatus: true,
+                                    },
+                                  },
+                                ],
+                              },
+                            },
+                          },
+                          {
+                            type: '$if',
+                            props: {
+                              condition: { $: "!((routeStore.params.view == 'canvas') && routeStore.params.dna)" },
+                              then: {
+                                type: 'Row',
+                                props: {
+                                  position: 'absolute',
+                                  top: 'var(--we-space-300)',
+                                  left: '300',
+                                  zIndex: 2,
+                                  p: '200',
+                                  gap: '200',
+                                  ay: 'center',
+                                  wrap: true,
+                                  bg: 'surface-raised',
+                                  r: 'control',
+                                  border: '1px solid border',
+                                  shadow: 'lg',
+                                  maxWidth: 'calc(100% - 2 * var(--we-space-300))',
+                                },
+                                children: [
+                                  {
+                                    type: 'we-tooltip',
+                                    props: {
+                                      placement: 'bottom',
+                                      content: {
+                                        $: "local.treeMode ? 'Back to freeform — place each card yourself' : 'Arrange these cards as a tree'",
+                                      },
+                                    },
+                                    children: [
+                                      {
+                                        type: 'we-button',
+                                        props: {
+                                          variant: { $: "local.treeMode ? 'soft' : 'ghost'" },
+                                          onClick: { $toggleLocal: 'treeMode' },
+                                        },
+                                        children: [
+                                          {
+                                            type: 'we-icon',
+                                            props: { name: { $: "local.treeMode ? 'cards-three' : 'tree-structure'" } },
+                                          },
+                                          {
+                                            type: 'we-text',
+                                            props: { variant: 'label' },
+                                            children: [{ $: "local.treeMode ? 'Freeform' : 'Tree'" }],
+                                          },
+                                        ],
+                                      },
+                                    ],
+                                  },
+                                  {
+                                    type: '$if',
+                                    props: {
+                                      condition: { $: 'local.treeMode' },
+                                      then: {
+                                        type: 'Row',
+                                        props: { gap: '200', ay: 'center', wrap: true },
+                                        children: [
+                                          { type: 'we-divider', props: { orientation: 'vertical', height: '24px' } },
+                                          {
+                                            type: 'we-select',
+                                            props: {
+                                              fit: true,
+                                              placeholder: 'Any connection',
+                                              value: { $: 'local.spine' },
+                                              options: {
+                                                $: 'local.relationshipKinds.map(k, { label: k.name, value: k.id, icon: k.icon })',
+                                              },
+                                              onChange: { $setLocal: 'spine', value: { $: 'event.detail' } },
+                                            },
+                                          },
+                                          {
+                                            type: '$if',
+                                            props: {
+                                              condition: { $: 'local.spine' },
+                                              then: {
+                                                type: 'we-tooltip',
+                                                props: {
+                                                  placement: 'bottom',
+                                                  content: 'Follow every kind of connection',
+                                                },
+                                                children: [
+                                                  {
+                                                    type: 'we-button',
+                                                    props: {
+                                                      variant: 'ghost',
+                                                      square: true,
+                                                      label: 'Follow every kind of connection',
+                                                      onClick: { $setLocal: 'spine', value: '' },
+                                                    },
+                                                    children: [{ type: 'we-icon', props: { name: 'x' } }],
+                                                  },
+                                                ],
+                                              },
+                                            },
+                                          },
+                                          {
+                                            type: 'we-select',
+                                            props: {
+                                              fit: true,
+                                              value: { $: 'local.order' },
+                                              options: [
+                                                { label: 'As arranged', value: 'manual', icon: 'hand-grabbing' },
+                                                {
+                                                  label: 'Oldest first',
+                                                  value: 'date',
+                                                  icon: 'clock-counter-clockwise',
+                                                },
+                                                { label: 'Newest first', value: 'newest', icon: 'clock-clockwise' },
+                                                { label: 'By signal', value: 'signal', icon: 'chart-bar' },
+                                              ],
+                                              onChange: { $setLocal: 'order', value: { $: 'event.detail' } },
+                                            },
+                                          },
+                                          {
+                                            type: '$if',
+                                            props: {
+                                              condition: { $: "local.order == 'signal'" },
+                                              then: {
+                                                type: 'we-select',
+                                                props: {
+                                                  fit: true,
+                                                  value: {
+                                                    $: '(local.signalType ? local.signalType : first(local.treeSignalTypes).id)',
+                                                  },
+                                                  options: {
+                                                    $: 'local.treeSignalTypes.map(t, { label: t.name, value: t.id, icon: t.icon })',
+                                                  },
+                                                  onChange: { $setLocal: 'signalType', value: { $: 'event.detail' } },
+                                                },
+                                              },
+                                            },
+                                          },
+                                          {
+                                            type: '$if',
+                                            props: {
+                                              condition: { $: "local.order == 'signal'" },
+                                              then: {
+                                                type: 'we-popover',
+                                                props: { placement: 'bottom-start' },
+                                                children: [
+                                                  {
+                                                    type: 'we-button',
+                                                    slot: 'trigger',
+                                                    props: { variant: { $: "local.voices ? 'soft' : 'ghost'" } },
+                                                    children: [
+                                                      { type: 'we-icon', props: { name: 'users-three' } },
+                                                      { $: "local.voices ? 'Voices · weighted' : 'Voices'" },
+                                                    ],
+                                                  },
+                                                  {
+                                                    type: 'div',
+                                                    slot: 'content',
+                                                    children: [
+                                                      {
+                                                        type: 'Column',
+                                                        props: {
+                                                          bg: 'surface-raised',
+                                                          r: 'surface',
+                                                          p: '400',
+                                                          gap: '300',
+                                                          width: '340px',
+                                                          shadow: 'lg',
+                                                        },
+                                                        children: [
+                                                          {
+                                                            type: 'Row',
+                                                            props: { ay: 'center', gap: '200', width: '100%' },
+                                                            children: [
+                                                              {
+                                                                type: 'we-text',
+                                                                props: { variant: 'label', flex: '1' },
+                                                                children: ['Whose voice counts'],
+                                                              },
+                                                              {
+                                                                type: 'we-button',
+                                                                props: {
+                                                                  size: 'xs',
+                                                                  variant: 'ghost',
+                                                                  disabled: { $: '!local.voices' },
+                                                                  onClick: { $setLocal: 'voices', value: '' },
+                                                                },
+                                                                children: ['Equal'],
+                                                              },
+                                                            ],
+                                                          },
+                                                          {
+                                                            type: '$if',
+                                                            props: {
+                                                              condition: {
+                                                                $: 'count(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }))',
+                                                              },
+                                                              else: {
+                                                                type: 'we-text',
+                                                                props: { variant: 'footnote', color: 'text-muted' },
+                                                                children: [
+                                                                  'Nobody has answered with this signal on this canvas yet.',
+                                                                ],
+                                                              },
+                                                              then: {
+                                                                type: 'Column',
+                                                                props: {
+                                                                  gap: '300',
+                                                                  width: '100%',
+                                                                  maxHeight: '60vh',
+                                                                  overflowY: 'auto',
+                                                                  pb: '200',
+                                                                },
+                                                                children: [
+                                                                  {
+                                                                    type: '$each',
+                                                                    props: {
+                                                                      items: {
+                                                                        $: 'voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }).map(v, v.did)',
+                                                                      },
+                                                                      as: 'voiceDid',
+                                                                    },
+                                                                    children: [
+                                                                      {
+                                                                        type: 'Column',
+                                                                        props: { gap: '100', width: '100%' },
+                                                                        children: [
+                                                                          {
+                                                                            type: 'Row',
+                                                                            props: {
+                                                                              ay: 'center',
+                                                                              gap: '200',
+                                                                              width: '100%',
+                                                                            },
+                                                                            children: [
+                                                                              {
+                                                                                type: 'we-avatar',
+                                                                                props: {
+                                                                                  size: 'xs',
+                                                                                  image: {
+                                                                                    $: '(find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).avatar',
+                                                                                  },
+                                                                                  hash: { $: 'voiceDid' },
+                                                                                  initials: {
+                                                                                    $: '(find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).name',
+                                                                                  },
+                                                                                  icon: {
+                                                                                    $: "(find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).pretend ? 'robot' : ''",
+                                                                                  },
+                                                                                },
+                                                                              },
+                                                                              {
+                                                                                type: 'Column',
+                                                                                props: { flex: '1', minWidth: '0' },
+                                                                                children: [
+                                                                                  {
+                                                                                    type: 'we-text',
+                                                                                    props: { truncate: true },
+                                                                                    children: [
+                                                                                      {
+                                                                                        $: "(find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).mine ? (find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).name + ' (you)' : (find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).name",
+                                                                                      },
+                                                                                    ],
+                                                                                  },
+                                                                                  {
+                                                                                    type: 'we-text',
+                                                                                    props: {
+                                                                                      variant: 'footnote',
+                                                                                      color: 'text-muted',
+                                                                                    },
+                                                                                    children: [
+                                                                                      {
+                                                                                        $: "(find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).cards + ' ' + plural((find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).cards, 'card', 'cards') + ' · average ' + (find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).mean",
+                                                                                      },
+                                                                                    ],
+                                                                                  },
+                                                                                ],
+                                                                              },
+                                                                              {
+                                                                                type: 'we-text',
+                                                                                props: {
+                                                                                  variant: 'label',
+                                                                                  color: 'text-muted',
+                                                                                },
+                                                                                children: [
+                                                                                  {
+                                                                                    $: "(find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).share + '%'",
+                                                                                  },
+                                                                                ],
+                                                                              },
+                                                                              {
+                                                                                type: 'we-button',
+                                                                                props: {
+                                                                                  size: 'xs',
+                                                                                  variant: 'ghost',
+                                                                                  onClick: {
+                                                                                    $setLocal: 'voices',
+                                                                                    value: {
+                                                                                      $: 'voicesParam({ param: local.voices, only: voiceDid, voices: voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }) })',
+                                                                                    },
+                                                                                  },
+                                                                                },
+                                                                                children: ['Only'],
+                                                                              },
+                                                                            ],
+                                                                          },
+                                                                          {
+                                                                            type: 'we-slider',
+                                                                            props: {
+                                                                              size: 'sm',
+                                                                              width: '100%',
+                                                                              min: 0,
+                                                                              max: 100,
+                                                                              step: 5,
+                                                                              value: {
+                                                                                $: '(find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).weight',
+                                                                              },
+                                                                              onInput: {
+                                                                                $setLocal: 'voices',
+                                                                                value: {
+                                                                                  $: 'voicesParam({ param: local.voices, did: voiceDid, weight: event.detail })',
+                                                                                },
+                                                                              },
+                                                                            },
+                                                                          },
+                                                                        ],
+                                                                      },
+                                                                    ],
+                                                                  },
+                                                                ],
+                                                              },
+                                                            },
+                                                          },
+                                                        ],
+                                                      },
+                                                    ],
+                                                  },
+                                                ],
+                                              },
+                                            },
+                                          },
+                                        ],
+                                      },
                                     },
                                   },
                                 ],

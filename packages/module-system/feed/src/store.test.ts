@@ -41,7 +41,7 @@ function reactive() {
 
 type Created = { entity: string; fields: Record<string, unknown>; options: unknown };
 
-function harness(proposals: { id: string; kind: string }[] = []) {
+function harness(proposals: { id: string; kind: string }[] = [], moduleSettings: Record<string, unknown> = {}) {
   const { signal, effect } = reactive();
   const created: Created[] = [];
   const updated: { entity: string; id: string; fields: Record<string, unknown> }[] = [];
@@ -73,7 +73,7 @@ function harness(proposals: { id: string; kind: string }[] = []) {
     onDispose: () => {},
     dataset: () => 'space-1',
     spaceRoot: () => 'root-1',
-    settings: () => ({}),
+    settings: () => moduleSettings,
     kernels: { records, interpretation },
   } as never) as Record<string, (...args: unknown[]) => unknown>;
   return { store, created, updated, subscriptions, interpretation };
@@ -116,6 +116,14 @@ describe('messages written from the Feed', () => {
       { entity: 'TextBlock', id: 'heard', fields: { text: 'Ana, not Anna', source: 'corrected' } },
       { entity: 'TextBlock', id: 'typed', fields: { text: 'lunch at one' } },
     ]);
+  });
+});
+
+describe('the reader’s choices', () => {
+  it('exposes the per-space transcript choice, off until this space asks for it', () => {
+    expect(harness([], {}).store.showCallTranscripts()).toBe(false);
+    expect(harness([], { showCallTranscripts: false }).store.showCallTranscripts()).toBe(false);
+    expect(harness([], { showCallTranscripts: true }).store.showCallTranscripts()).toBe(true);
   });
 });
 

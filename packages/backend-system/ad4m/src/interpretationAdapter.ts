@@ -934,7 +934,9 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
             agent: event.agentDid,
             items: event.itemIds?.length ?? 0,
             bases: event.bases?.length ?? 0,
-            detail: event.detail,
+            // A failure's reason can quote the model's output, which is conversation text: only
+            // its length goes to the log. The other steps' detail is a DID or a class name.
+            ...(event.step === 'failed' ? { detailChars: event.detail?.length ?? 0 } : { detail: event.detail }),
           });
 
           /*

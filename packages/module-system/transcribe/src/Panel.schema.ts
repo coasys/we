@@ -93,6 +93,8 @@ const VIEWING_LIVE = { $: VIEWING_LIVE_EXPR };
  */
 const IN_A_CALL = 'modules.transcribe.inCall';
 const CALL_ON_SCREEN_LIVE = 'modules.transcribe.callOnScreenLive';
+/** The record of every call somebody is in — for a subject the address does not name as `?call=`. */
+const LIVE_CALL_RECORDS = 'modules.transcribe.liveCallRecords';
 
 /** Whether the transcript is anchored to its beginning rather than following the live end. */
 const TRANSCRIPT_FROM_START = 'modules.transcribe.transcriptFromStart';
@@ -3166,9 +3168,17 @@ export const transcriptLines: SchemaNode = {
         commonest thing anybody does to a long transcript, and it was the case paying most. Until
         the subject's kind is known it is not followed, so a past call is never subscribed to on the
         way to finding out it is one.
+
+        "Live" is tested against the subject itself, through the id `subjectKind` read for it, and
+        not only against the call `?call=` names. The call page names its call with `?id=`, so
+        `callOnScreenLive` alone was false there and a call in progress was read once and never
+        followed. The subject has to come through `subjectKind`: substitution is whole-token and
+        cannot reach a subject mentioned inside this expression.
       */
       subscribe: {
-        $: `${CALL_ON_SCREEN_LIVE} || (local.subjectKindLoaded && first(local.subjectKind).kind != 'call')`,
+        $:
+          `${CALL_ON_SCREEN_LIVE} || (local.subjectKindLoaded && ` +
+          `(first(local.subjectKind).kind != 'call' || first(local.subjectKind).id in ${LIVE_CALL_RECORDS}))`,
       },
     },
     /*
@@ -3428,49 +3438,68 @@ export const captureStatus: SchemaNode = {
                 {
                   type: 'we-text',
                   props: { variant: 'footnote', color: 'text-muted' },
-                  children: ['No transcription model is installed. Once one is, transcription starts on its own.'],
+                  children: ['No transcription model is set up. Once one is, transcription starts on its own.'],
                 },
               ],
             },
             {
               /*
-                One click where this connection may install one — the backend picks the model and
-                the button names its size, since most of a gigabyte is something to say before the
-                press rather than after.
+                One click where a speech server is already running on the node's machine and this
+                connection may connect it — the button names where it is.
 
-                Otherwise settings where there are settings to open, and a sentence where there are
-                not: AI administration is node-scoped, so a guest on somebody else's executor has no
-                AI section, and a button that opens Settings to nothing is worse than no button.
+                Otherwise settings where this connection can change the models, and a sentence where
+                it cannot: AI administration is node-scoped, and a guest granted only AI READ sees a
+                list it can add nothing to — a button that opens Settings to nothing is worse than no
+                button.
               */
               type: '$if',
               props: {
-                condition: { $: 'modules.transcribe.canInstallModel' },
+                condition: { $: 'modules.transcribe.canConnectServer' },
                 then: {
                   type: 'we-button',
                   props: {
                     size: 'sm',
                     variant: 'solid',
-                    loading: { $: 'modules.transcribe.installingModel' },
-                    disabled: { $: 'modules.transcribe.installingModel' },
-                    onClick: { $invoke: 'modules.transcribe.installModel' },
+                    loading: { $: 'modules.transcribe.connectingServer' },
+                    disabled: { $: 'modules.transcribe.connectingServer' },
+                    onClick: { $invoke: 'modules.transcribe.connectServer' },
                   },
                   children: [
-                    { type: 'we-icon', props: { name: 'download-simple' } },
-                    { $: 'modules.transcribe.installModelLabel' },
+                    { type: 'we-icon', props: { name: 'plugs-connected' } },
+                    { $: 'modules.transcribe.connectServerLabel' },
                   ],
                 },
                 else: {
                   type: '$if',
                   props: {
-                    condition: { $: 'runtimeStore.canManageAi' },
+                    condition: { $: 'runtimeStore.canConfigureAi' },
                     then: {
-                      type: 'we-button',
-                      props: {
-                        size: 'sm',
-                        variant: 'soft',
-                        onClick: { $invoke: 'shellStore.openShellView', args: ['settings', '/ai'] },
-                      },
-                      children: ['Open AI settings'],
+                      type: 'Row',
+                      props: { gap: '200', ay: 'center', wrap: true },
+                      children: [
+                        {
+                          type: 'we-button',
+                          props: {
+                            size: 'sm',
+                            variant: 'soft',
+                            onClick: { $invoke: 'shellStore.openShellView', args: ['settings', '/ai'] },
+                          },
+                          children: ['Open AI settings'],
+                        },
+                        // A speech server is what makes transcription work at all; with none running,
+                        // where to get one is the next thing somebody needs.
+                        {
+                          type: '$if',
+                          props: {
+                            condition: { $: 'modules.transcribe.serverInstallUrl' },
+                            then: {
+                              type: 'we-link',
+                              props: { href: { $: 'modules.transcribe.serverInstallUrl' }, target: '_blank' },
+                              children: ['Get a speech server'],
+                            },
+                          },
+                        },
+                      ],
                     },
                     else: {
                       type: 'we-text',
@@ -3488,29 +3517,47 @@ export const captureStatus: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $: 'modules.transcribe.modelDownloading' },
+        condition: { $: 'modules.transcribe.modelUnready' },
         then: {
           type: 'Column',
-          props: { gap: '200' },
+          // Start-aligned, as the no-model note above is, so its button is not stretched across the panel.
+          props: { gap: '200', ax: 'start' },
           children: [
             {
               type: 'Row',
               props: { gap: '200', ay: 'center' },
               children: [
-                // A glyph rather than a spinner: this part keeps a stable height, and the percentage
-                // beside it is what says the download is moving.
-                { type: 'we-icon', props: { name: 'download-simple', color: 'text-faint' } },
+                // A glyph rather than a spinner: this part keeps a stable height, and the line beside
+                // it says what is being waited for.
+                { type: 'we-icon', props: { name: 'hourglass-medium', color: 'text-faint' } },
                 {
                   type: 'we-text',
                   props: { variant: 'footnote', color: 'text-muted' },
-                  children: [{ $: 'modules.transcribe.modelDownloadText' }],
+                  children: [{ $: 'modules.transcribe.modelUnreadyText' }],
                 },
               ],
             },
             {
               type: 'we-text',
               props: { variant: 'footnote', color: 'text-faint' },
-              children: ['Transcription starts on its own once it has arrived.'],
+              children: ['Transcription starts on its own once it can run.'],
+            },
+            // Waiting does not fix every reason: a model the server does not have stays unready, and
+            // replacing it is a settings job, for whoever can do it.
+            {
+              type: '$if',
+              props: {
+                condition: { $: 'runtimeStore.canConfigureAi' },
+                then: {
+                  type: 'we-button',
+                  props: {
+                    size: 'sm',
+                    variant: 'soft',
+                    onClick: { $invoke: 'shellStore.openShellView', args: ['settings', '/ai'] },
+                  },
+                  children: ['Open AI settings'],
+                },
+              },
             },
           ],
         },
@@ -3519,11 +3566,11 @@ export const captureStatus: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $: 'modules.transcribe.installError' },
+        condition: { $: 'modules.transcribe.connectError' },
         then: {
           type: 'we-alert',
           props: { tone: 'warning' },
-          children: [{ $: '`The model could not be installed: ${modules.transcribe.installError}`' }],
+          children: [{ $: '`The speech server could not be connected: ${modules.transcribe.connectError}`' }],
         },
       },
     },

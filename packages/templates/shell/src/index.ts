@@ -25,6 +25,8 @@ export {
   connectedApps,
   mcpServer,
   networkLocalState,
+  executorSettings,
+  executorSettingsLocalState,
   executorSupport,
   peerNetwork,
   runtimeError,

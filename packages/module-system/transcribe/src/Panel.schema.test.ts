@@ -12,7 +12,14 @@
  */
 import { markAction, markState, storeSurface } from '@we/module-shared';
 import { SECTION_LABEL_PROPS } from '@we/schema-kit';
-import { evaluateExpression, markReactive, namespace, parseCached, type SchemaNode } from '@we/schema-shared';
+import {
+  evaluateExpression,
+  getFunction,
+  markReactive,
+  namespace,
+  parseCached,
+  type SchemaNode,
+} from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
 import { extractionActivity } from './ExtractionStatus.schema';
@@ -257,12 +264,69 @@ describe('a transcript with nothing in it', () => {
    */
   it('subscribes to a call only while it is live, and to anything else always', () => {
     expect(linesJson).toContain(
-      `"subscribe":{"$":"modules.transcribe.callOnScreenLive || (local.subjectKindLoaded && first(local.subjectKind).kind != 'call')"}`,
+      `"subscribe":{"$":"modules.transcribe.callOnScreenLive || (local.subjectKindLoaded && (first(local.subjectKind).kind != 'call' || first(local.subjectKind).id in modules.transcribe.liveCallRecords))"}`,
     );
     // The kind is read through the subject token, so a placement's substitution reaches it.
     expect(linesJson).toContain(
       '"subjectKind":{"entity":"CollectionBlock","where":{"id":{"$":"modules.transcribe.collectionId"}}',
     );
+  });
+
+  /**
+   * The subscribe flag, evaluated for the situations a reader is in.
+   *
+   * The call page names its call with `?id=` and places these lines with that as the subject, so
+   * `callOnScreenLive` — which reads `?call=` — is false there. The flag must still follow a call
+   * somebody is in, and must still leave a finished call alone.
+   */
+  describe('whether the transcript is followed', () => {
+    const subscribe = (transcriptLines.$queries as unknown as Record<string, { subscribe: { $: string } }>).utterances
+      .subscribe.$;
+
+    const follows = (over: {
+      subject: { id: string; kind: string } | null;
+      liveRecords?: string[];
+      callOnScreenLive?: boolean;
+    }) => {
+      const roots: Record<string, unknown> = {
+        modules: namespace((id) =>
+          id === 'transcribe'
+            ? namespace((member) =>
+                member === 'callOnScreenLive'
+                  ? markReactive(() => over.callOnScreenLive === true)
+                  : member === 'liveCallRecords'
+                    ? markReactive(() => over.liveRecords ?? [])
+                    : undefined,
+              )
+            : undefined,
+        ),
+        local: {
+          subjectKindLoaded: over.subject !== null,
+          subjectKind: over.subject ? [over.subject] : [],
+        },
+      };
+      return evaluateExpression(parseCached(subscribe), {
+        root: (name) => (name in roots ? { bound: true, value: roots[name] } : { bound: false, value: undefined }),
+        call: (name, args) => getFunction(name)?.impl(args, { context: {}, stores: {} }),
+      });
+    };
+
+    it('follows a call somebody is in, named by `?id=` rather than `?call=`', () => {
+      expect(follows({ subject: { id: 'call-1', kind: 'call' }, liveRecords: ['call-1'] })).toBe(true);
+    });
+
+    it('does not follow a call nobody is in', () => {
+      expect(follows({ subject: { id: 'call-1', kind: 'call' }, liveRecords: ['call-2'] })).toBe(false);
+    });
+
+    it('always follows a subject that is not a call', () => {
+      expect(follows({ subject: { id: 'chan-1', kind: 'channel' } })).toBe(true);
+    });
+
+    it('does not follow before the kind is known, unless the address names a live call', () => {
+      expect(follows({ subject: null, liveRecords: ['call-1'] })).toBe(false);
+      expect(follows({ subject: null, callOnScreenLive: true })).toBe(true);
+    });
   });
 
   /**
@@ -2253,5 +2317,31 @@ describe('records a conversation recognised', () => {
 
   it('names the conversation that made each one, by asking which one extracted it', () => {
     expect(panelJson).toContain('"where":{"extracted":{"some":{"id":{"$":"item.id"}}}}');
+  });
+});
+
+describe('the way to AI settings', () => {
+  const opensAiSettings = '{"$invoke":"shellStore.openShellView","args":["settings","/ai"]}';
+  const statusJson = JSON.stringify(captureStatus);
+
+  it('is offered only to a connection that can change the models', () => {
+    // A guest granted AI READ alone can list models and add none; the button sent them to a page
+    // with nothing on it they could do.
+    const offers = statusJson.split(opensAiSettings).length - 1;
+    expect(offers).toBeGreaterThan(0);
+    expect(statusJson).not.toContain('runtimeStore.canManageAi');
+    expect(statusJson.split('{"$":"runtimeStore.canConfigureAi"}').length - 1).toBe(offers);
+  });
+
+  it('is offered beside a model that cannot run, which waiting may never fix', () => {
+    // A model the server does not have stays unready however long the panel waits.
+    const unready = findNode(
+      captureStatus,
+      (node) =>
+        node.type === '$if' &&
+        JSON.stringify((node.props as { condition?: unknown } | undefined)?.condition) ===
+          '{"$":"modules.transcribe.modelUnready"}',
+    );
+    expect(JSON.stringify(unready)).toContain(opensAiSettings);
   });
 });

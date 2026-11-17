@@ -90,6 +90,19 @@ import {
   suggestionsToggle,
   taskBoard,
   taskBoardLoading,
+  TREE_BEHAVIOURS,
+  TREE_CARD_STYLE,
+  TREE_EDGE_RULES,
+  TREE_LOCALS,
+  TREE_ON,
+  TREE_QUERIES,
+  TREE_REFRAME,
+  TREE_VOICE_SUMMARY,
+  TREE_WEIGH,
+  TREE_WEIGHTS,
+  treeArrange,
+  treeLayout,
+  treeStrip,
   UNCONFIRMED,
   withoutHiddenSuggestions,
   workflowsPage,
@@ -109,23 +122,9 @@ import {
   LINK_FILL,
   NO_LENS,
   PLAIN_FILL,
+  TREE_HEAT_RULES,
   TYPE_STYLES_QUERY,
 } from './WorkshopKey.ts';
-import {
-  TREE_BEHAVIOURS,
-  TREE_CARD_STYLE,
-  TREE_EDGE_RULES,
-  TREE_HEAT_RULES,
-  TREE_LAYOUT,
-  TREE_LOCALS,
-  TREE_ON,
-  TREE_QUERIES,
-  TREE_REFRAME,
-  TREE_VOICE_SUMMARY,
-  TREE_WEIGH,
-  TREE_WEIGHTS,
-  treeStrip,
-} from './WorkshopTree.ts';
 import {
   CANVAS_EXPANSION,
   FIELD_NODE_RULE,
@@ -1700,7 +1699,7 @@ const canvas: SchemaNode = {
         hiddenTypes: { $: HIDDEN_KINDS },
         /*
           What each card weighs, whenever the tree is shown or the order is a reaction — see `TREE_WEIGH`
-          in `WorkshopTree` for why both.
+          in the kit's `canvasTree` for why both.
 
           `null` on the freeform canvas under any other order, which the seed reads as "weigh nothing":
           nothing there is ordered, so it pays one projection less. A change here is read again in the background rather
@@ -1724,7 +1723,7 @@ const canvas: SchemaNode = {
       narrower than a card, which is why new suggestions arrived overlapping — and clear of the cards
       already on the canvas, including one somebody resized.
     */
-    layout: TREE_LAYOUT,
+    layout: treeLayout(),
     // Back into view when the tree's cards change size — see `TREE_REFRAME`.
     reframeOn: TREE_REFRAME,
     nodeStyle: [
@@ -1945,20 +1944,8 @@ const canvas: SchemaNode = {
         },
       ],
     }),
-    /*
-      The same gesture in the tree, where what a drag means is different.
-
-      On the canvas a drag writes a coordinate, because the position IS the data. In the tree the
-      layout derives the position, so a drag writes the structure the layout reads: a card dropped on
-      another becomes its child, dropped beside one it is reordered there, dropped in the unconnected
-      zone it comes out of its tree. The behaviour reports which of the three, and the store decides
-      what each means — including the refusals, since only something that knows which connection is
-      the spine can tell that a drop would put a card inside itself.
-
-      The spine goes with it, and has to: what makes a parent a parent is this community's own
-      vocabulary and this reader's current choice, neither of which a store can know.
-    */
-    onNodeArrange: { $invoke: 'recordStore.arrangeOnTree', args: [SPACE_CANVAS, { $: 'local.spine' }, { $: 'event' }] },
+    // The same gesture in the tree, where what a drag means is different — see `treeArrange` in the kit.
+    onNodeArrange: treeArrange(SPACE_CANVAS),
     // Who answered with the reaction the tree is weighed by, for the strip's list of voices.
     onSeedSummary: TREE_VOICE_SUMMARY,
     // Not in the tree, which gives every card one box: a resize there would change nothing on screen, and
@@ -2093,7 +2080,7 @@ const canvasBody: Omit<RouteSchema, 'path'> = {
     // Making things and opening notes — see `WorkshopCards`.
     ...CARD_LOCALS,
     // How the canvas is being read: freeform or a tree, and what the tree is made of — see
-    // `WorkshopTree`. Declared here rather than on the graph, because the strip that sets them is a
+    // `canvasTree` in the kit. Declared here rather than on the graph, because the strip that sets them is a
     // sibling of it and a local is only readable from below where it is declared.
     ...TREE_LOCALS,
   },
