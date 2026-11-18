@@ -5,13 +5,13 @@
 //! backed by the snapshot's stores. `--bundle` points at another bundle
 //! file; `--route` sets the initial routeStore path.
 //!
-//! `--offline` is the default. `--connect` (E7) talks to a live AD4M
-//! executor instead: it finds the executor (or takes `--executor-url`),
-//! asks for access once (approved in the AD4M launcher), lists the agent's
-//! spaces and renders the chosen one (`--space` skips the list) from live
-//! data, read-only. `--write --space <perspective uuid>` (E11) asks for a
-//! grant that may also change that one space, and the space's edit and
-//! delete controls then write through the validated write RPC.
+//! `--offline` is the default. `--connect` talks to a live AD4M executor
+//! instead: it finds the executor (or takes `--executor-url`), asks for
+//! access once (approved in the AD4M launcher), and opens a space. The
+//! left rail lists the agent's spaces. The window is read-only until the
+//! first edit, which asks for that space's write grant. `--write --space
+//! <perspective uuid>` still asks for the grant up front, and edits then
+//! write through the validated write RPC.
 #![forbid(unsafe_code)]
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -206,11 +206,13 @@ fn parse_args_from(argv: impl IntoIterator<Item = String>) -> Result<Args, Strin
                      --route <href>     initial routeStore path (default /)\n\
                      --offline          run with no executor, from the recording (the default)\n\
                      --connect          read a live AD4M executor: find it, ask for access once\n\
-                                        (approve in the AD4M launcher), pick a space, render it\n\
+                                        (approve in the AD4M launcher), and open a space. The\n\
+                                        left rail lists your spaces. A change asks for a write\n\
+                                        grant the first time\n\
                      --executor-url <u> the executor to use instead of looking (http://127.0.0.1:12000)\n\
-                     --space <id>       open this perspective (uuid or name) without the picker\n\
-                     --write            with --connect --space <uuid>: allow changes in that space\n\
-                                        (asks for a write grant once)\n\
+                     --space <id>       open this perspective (uuid or name) on connect\n\
+                     --write            with --connect --space <uuid>: ask for that space's write\n\
+                                        grant up front, instead of on the first change\n\
                      --email <address>  the account on a multi-user executor\n\
                      --demo-recorded    with --connect: show the recorded Coasys data where the\n\
                                         live space has none (a demo mix; off by default)\n\

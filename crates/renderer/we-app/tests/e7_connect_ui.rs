@@ -1,7 +1,7 @@
 //! The `--connect` window, driven through egui (`EXECUTOR_PATH`; skipped
-//! without it): the connect screen reaches a local executor, the picker
-//! lists the agent's perspectives, a click opens one as the Coasys app, and
-//! a call created elsewhere shows up in it.
+//! without it): the connect screen reaches a local executor, the window
+//! opens the seeded space with no picker, and a call created elsewhere
+//! shows up in it.
 use std::time::{Duration, Instant};
 
 use egui_kittest::kittest::{NodeT, Queryable};
@@ -33,7 +33,7 @@ fn tree_text(h: &mut H) -> String {
 }
 
 #[test]
-fn connect_pick_and_render() {
+fn connect_and_render() {
     let Some(executor) = kit::start_executor() else {
         return;
     };
@@ -48,7 +48,7 @@ fn connect_pick_and_render() {
             port_file: Some(tokens.path().join("no-port-file")),
             ..ConnectSettings::default()
         },
-        space: None,
+        space: Some("e7-ui".into()),
         theme: "dark".into(),
         data: Default::default(),
         access: we_ad4m::Access::ReadOnly,
@@ -68,20 +68,23 @@ fn connect_pick_and_render() {
             None,
         );
 
-    step_until(&mut h, "the picker", Duration::from_secs(60), |h| {
-        h.state().as_ref().is_some_and(|a| a.stage() == "pick")
-            && h.query_by_label("e7-ui   (local)").is_some()
-    });
-    h.get_by_label("e7-ui   (local)").click();
-    step_until(&mut h, "the space", Duration::from_secs(10), |h| {
+    step_until(&mut h, "the space", Duration::from_secs(60), |h| {
+        assert_ne!(
+            h.state().as_ref().map(|a| a.stage()),
+            Some("pick"),
+            "the picker is gone"
+        );
         h.state().as_ref().is_some_and(|a| a.stage() == "space")
+            && h.query_by_label("e7-ui").is_some()
     });
+    assert!(h.query_by_label("Open a space").is_none());
     // The sidebar lists the space's sections; calls are on their own page.
     step_until(&mut h, "the sidebar", Duration::from_secs(30), |h| {
         tree_text(h).contains("Social DNA")
     });
-    // The status bar names the space.
-    assert!(h.query_by_label_contains("e7-ui").is_some());
+    // The status bar names the space. The rail button is exactly "e7-ui",
+    // so a contains-query of the bare name matches both and refuses.
+    assert!(h.query_by_label_contains("  ·  e7-ui").is_some());
 
     let live = h.state_mut().as_mut().unwrap().live_space().unwrap();
     live.app
@@ -124,7 +127,7 @@ fn connect_pick_and_render() {
     );
 }
 
-fn app_for(url: &str, tokens: &std::path::Path) -> H<'static> {
+fn app_for(url: &str, tokens: &std::path::Path, space: Option<&str>) -> H<'static> {
     let args = ConnectArgs {
         settings: ConnectSettings {
             url: Some(url.to_string()),
@@ -132,7 +135,7 @@ fn app_for(url: &str, tokens: &std::path::Path) -> H<'static> {
             port_file: Some(tokens.join("no-port-file")),
             ..ConnectSettings::default()
         },
-        space: None,
+        space: space.map(str::to_string),
         theme: "dark".into(),
         data: Default::default(),
         access: we_ad4m::Access::ReadOnly,
@@ -168,13 +171,9 @@ fn a_dead_executor_is_shown() {
     let writer = kit::connect(&rt, &executor.url);
     kit::seed_space(&rt, &writer, "e7-dies");
     let tokens = tempfile::tempdir().unwrap();
-    let mut h = app_for(&executor.url, tokens.path());
-    step_until(&mut h, "the picker", Duration::from_secs(60), |h| {
-        stage(h) == "pick" && h.query_by_label("e7-dies   (local)").is_some()
-    });
-    h.get_by_label("e7-dies   (local)").click();
-    step_until(&mut h, "the space", Duration::from_secs(10), |h| {
-        stage(h) == "space"
+    let mut h = app_for(&executor.url, tokens.path(), Some("e7-dies"));
+    step_until(&mut h, "the space", Duration::from_secs(60), |h| {
+        stage(h) == "space" && h.query_by_label("e7-dies").is_some()
     });
     assert!(h.query_by_label_contains("Connection lost").is_none());
 
@@ -201,7 +200,7 @@ fn a_revoked_grant_returns_to_the_connect_screen() {
         .unwrap();
     kit::seed_space_as(&rt, &admin, "e7-revoked");
     let tokens = tempfile::tempdir().unwrap();
-    let mut h = app_for(&executor.url, tokens.path());
+    let mut h = app_for(&executor.url, tokens.path(), Some("e7-revoked"));
 
     // The request, as the connect screen shows it.
     let mut request_id = String::new();
@@ -236,12 +235,8 @@ fn a_revoked_grant_returns_to_the_connect_screen() {
         .type_text(&code);
     h.step();
     h.get_by_label("Continue").click();
-    step_until(&mut h, "the picker", Duration::from_secs(60), |h| {
-        stage(h) == "pick" && h.query_by_label("e7-revoked   (local)").is_some()
-    });
-    h.get_by_label("e7-revoked   (local)").click();
-    step_until(&mut h, "the space", Duration::from_secs(10), |h| {
-        stage(h) == "space"
+    step_until(&mut h, "the space", Duration::from_secs(60), |h| {
+        stage(h) == "space" && h.query_by_label("e7-revoked").is_some()
     });
 
     // The launcher removes the app.
@@ -270,15 +265,11 @@ fn the_page_lays_out_beside_the_data_panel() {
     let writer = kit::connect(&rt, &executor.url);
     let _uuid = kit::seed_space(&rt, &writer, "b1-ui");
     let tokens = tempfile::tempdir().unwrap();
-    let mut h = app_for(&executor.url, tokens.path());
+    let mut h = app_for(&executor.url, tokens.path(), Some("b1-ui"));
 
-    step_until(&mut h, "the picker", Duration::from_secs(60), |h| {
-        h.state().as_ref().is_some_and(|a| a.stage() == "pick")
-            && h.query_by_label("b1-ui   (local)").is_some()
-    });
-    h.get_by_label("b1-ui   (local)").click();
-    step_until(&mut h, "the space", Duration::from_secs(10), |h| {
+    step_until(&mut h, "the space", Duration::from_secs(60), |h| {
         h.state().as_ref().is_some_and(|a| a.stage() == "space")
+            && h.query_by_label("b1-ui").is_some()
     });
     step_until(&mut h, "the page's header", Duration::from_secs(30), |h| {
         h.query_by_label("Canvas").is_some()

@@ -1,5 +1,23 @@
-//! The agent's perspectives, for the space picker.
+//! The agent's perspectives, for the left rail.
 use crate::connection::Connection;
+
+/// Perspectives the executor keeps for itself. They are not spaces: the web
+/// sidebar leaves them out (`we-root`, `we-personal`, `we-test`), and so
+/// does the rail. A name that merely starts with `we-` is still a space.
+const SYSTEM_SPACES: &[&str] = &["we-root", "we-personal", "we-test"];
+
+/// Whether `name` is one of [`SYSTEM_SPACES`].
+pub fn is_system_space(name: &str) -> bool {
+    SYSTEM_SPACES.contains(&name)
+}
+
+/// `rows` without the system perspectives, in the same order.
+pub fn agent_spaces(rows: &[SpaceRow]) -> Vec<SpaceRow> {
+    rows.iter()
+        .filter(|r| !is_system_space(&r.name))
+        .cloned()
+        .collect()
+}
 
 /// One perspective the agent holds.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,4 +62,30 @@ pub async fn list_spaces(conn: &Connection) -> anyhow::Result<Vec<SpaceRow>> {
         )
     });
     Ok(rows)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn row(name: &str) -> SpaceRow {
+        SpaceRow {
+            uuid: name.into(),
+            name: name.into(),
+            shared_url: None,
+        }
+    }
+
+    #[test]
+    fn system_perspectives_are_not_agent_spaces() {
+        let rows = vec![
+            row("we-root"),
+            row("Notes"),
+            row("we-personal"),
+            row("we-test"),
+            row("we-custom"),
+        ];
+        let names: Vec<_> = agent_spaces(&rows).into_iter().map(|r| r.name).collect();
+        assert_eq!(names, vec!["Notes".to_string(), "we-custom".to_string()]);
+    }
 }

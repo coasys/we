@@ -77,6 +77,13 @@ impl Access {
     }
 }
 
+/// What a shared space opened for writing is refused with. The connected
+/// window also says this when a first edit lands on a shared space: it
+/// does not ask for a grant there.
+pub const SHARED_WRITE_REFUSED: &str =
+    "Writes to a shared space wait for the space's policy check, \
+     which this app does not run yet. Open it without --write, or pick a personal space.";
+
 /// The notice a window shows when it cannot write in `space` (a uuid).
 pub fn read_only_notice(access: &Access, space: &str) -> String {
     match access.granted() {
@@ -157,6 +164,18 @@ pub struct WriteHost {
     notices: Notices,
     confirm: ConfirmSlot,
     wake: Option<Wake>,
+    /// A rail click (`spaceStore.navigateToSpace`) writes the space id here.
+    /// `None` leaves the invoke on the fallback, which is what a host that
+    /// never called [`WriteHost::watch_navigation`] does.
+    nav: Option<Arc<Mutex<Option<String>>>>,
+    /// Set when the open perspective is shared. A watched window then
+    /// refuses a write with [`SHARED_WRITE_REFUSED`] instead of asking
+    /// for a grant.
+    shared: bool,
+    /// The first edit of a personal space this window may not change
+    /// writes that space's uuid here, once. `None` keeps the old notice
+    /// and asks for nothing — the direct live-space tests.
+    grant_ask: Option<Arc<Mutex<Option<String>>>>,
 }
 
 impl WriteHost {
@@ -178,7 +197,59 @@ impl WriteHost {
             notices: Notices::default(),
             confirm: Arc::new(Mutex::new(None)),
             wake: None,
+            nav: None,
+            shared: false,
+            grant_ask: None,
         }
+    }
+
+    /// Where a rail click reports the space it asked to open. The connected
+    /// window reads the slot and opens that perspective.
+    pub fn watch_navigation(&mut self, slot: Arc<Mutex<Option<String>>>) {
+        self.nav = Some(slot);
+    }
+
+    /// This perspective is shared, so a write is refused rather than asked
+    /// for. Only matters once [`WriteHost::watch_grant`] is set.
+    pub fn set_shared(&mut self, shared: bool) {
+        self.shared = shared;
+    }
+
+    /// Where the first unauthorised edit of a personal space reports the
+    /// uuid a write grant should be asked for. The refused invoke is not
+    /// retried; the next edit writes, once the window holds the grant.
+    pub fn watch_grant(&mut self, slot: Arc<Mutex<Option<String>>>) {
+        self.grant_ask = Some(slot);
+    }
+
+    /// The check a write row runs before it plans. `true` when this window
+    /// may not change the space: a notice is up, and a window that called
+    /// [`WriteHost::watch_grant`] has asked for the grant (once).
+    pub fn gate_write(&mut self) -> bool {
+        if self.access.writes(self.space.as_str()) {
+            return false;
+        }
+        if self.shared && self.grant_ask.is_some() {
+            self.notices.push(SHARED_WRITE_REFUSED.to_string());
+        } else if self.grant_ask.is_some() {
+            let space = self.space.as_str().to_string();
+            if let Some(slot) = &self.grant_ask {
+                if let Ok(mut g) = slot.lock() {
+                    if g.is_none() {
+                        *g = Some(space);
+                    }
+                }
+            }
+            self.notices.push(
+                "This space is read-only until you approve changes to it in the AD4M launcher."
+                    .into(),
+            );
+        } else {
+            self.notices
+                .push(read_only_notice(&self.access, self.space.as_str()));
+        }
+        self.wake();
+        true
     }
 
     /// The write rows this build ships (`data/storemap-writes.json`).
@@ -267,15 +338,30 @@ impl WriteHost {
 impl Host for WriteHost {
     fn act(&mut self, request: ActionRequest, done: Completer) -> Invoked {
         let Action::Invoke { target, args } = &request.action;
+        // The rail's click. Not a write row, and not something to send to
+        // the executor: the window opens that space itself.
+        if target.as_ref() == "spaceStore.navigateToSpace" && self.nav.is_some() {
+            if let Some(id) = args.iter().find_map(value_str) {
+                if let Some(slot) = &self.nav {
+                    if let Ok(mut g) = slot.lock() {
+                        *g = Some(id);
+                    }
+                }
+                self.wake();
+            }
+            return Invoked::Done(Ok(Value::Undefined));
+        }
+        // `row` borrows `self`, and the gate needs `&mut self`, so the
+        // lookup is checked first and repeated after the gate.
+        if self.rows.get(target).is_none() {
+            return self.fallback.act(request, done);
+        }
+        if self.gate_write() {
+            return refuse(done, err_value("read-only", 0, "This window is read-only."));
+        }
         let Some(row) = self.rows.get(target) else {
             return self.fallback.act(request, done);
         };
-        if !self.access.writes(self.space.as_str()) {
-            self.notices
-                .push(read_only_notice(&self.access, self.space.as_str()));
-            self.wake();
-            return refuse(done, err_value("read-only", 0, "This window is read-only."));
-        }
         let displays = self
             .bag
             .root("recordStore")
@@ -340,6 +426,13 @@ fn cancelled() -> Value {
 
 fn lock(slot: &ConfirmSlot) -> std::sync::MutexGuard<'_, Option<PendingConfirm>> {
     slot.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+fn value_str(v: &Value) -> Option<String> {
+    match v {
+        Value::Str(s) => Some(s.to_string()),
+        _ => None,
+    }
 }
 
 /// `{ message, code, kind }` — what a template's `onError` reads as

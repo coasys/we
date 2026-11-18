@@ -465,9 +465,10 @@ fn granted(a: &str) -> Access {
     Access::write(a)
 }
 
-/// A window granted writes in `a` opens `b` (the picker's "Switch
-/// space"): `b` is read-only, says so, and an edit there is refused
-/// locally — nothing reaches the executor. `a` still writes.
+/// A window granted writes in `a` opens `b`: `b` is read-only, says so,
+/// and an edit there is refused locally — nothing reaches the executor.
+/// `a` still writes. This is the `--write --space a` grant, which stays
+/// on `a`; the connected window's rail is a different path.
 fn switching_space_keeps_the_grant(
     bundle: &we_template::Bundle,
     rt: &we_ad4m::Runtime,

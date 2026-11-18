@@ -1,15 +1,20 @@
 //! `we-app --connect`: the window that talks to a live executor (E7).
 //!
-//! Three stages, each a plain egui screen until they become template screens:
+//! Two screens, and a moment between them while the perspective list arrives:
 //!
 //! 1. **Connect** — what [`ConnectFlow`] is doing: searching, waiting for the
 //!    launcher's approval code (or a multi-user email, code or password),
 //!    connected, locked, or failed with the reason and a retry.
-//! 2. **Pick a space** — the agent's perspectives, shared first. `--space`
-//!    skips it.
-//! 3. **The space** — the Coasys app against live data ([`crate::live`]),
-//!    under a status bar; F11 opens the data panel that says which store
-//!    members are live and which still come from the snapshot.
+//! 2. **The space** — the Coasys app against live data ([`crate::live`]).
+//!    The left rail lists every space the agent holds (system perspectives
+//!    aside); clicking one opens it. There is no space picker. F11 opens
+//!    the data panel that says which store members are live and which still
+//!    come from the snapshot.
+//!
+//! The window stays read-only until a write grant is asked for. `--write
+//! --space <uuid>` still asks up front. Otherwise the first edit of a
+//! personal space asks, and the refused edit is not replayed. A shared
+//! space is not asked for.
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
@@ -40,18 +45,28 @@ enum Stage {
     Connect {
         input: String,
     },
-    Pick {
+    /// The perspective list is in flight. Not a picker: nothing here asks
+    /// which space to open.
+    Opening {
         conn: Connection,
         url: String,
         spaces: Pending<Vec<SpaceRow>>,
-        filter: String,
         error: Option<String>,
+    },
+    /// Connected, and there is no space to open.
+    Empty {
+        conn: Connection,
+        url: String,
+        message: String,
     },
     Space {
         conn: Connection,
         url: String,
         live: Box<LiveSpace>,
         panel: bool,
+        /// Every perspective from the connect, system ones included, so a
+        /// click can resolve an id the rail itself does not show.
+        spaces: Vec<SpaceRow>,
     },
 }
 
@@ -66,8 +81,23 @@ pub struct ConnectedApp {
     /// and the window goes back to the connect screen to say so.
     flow: ConnectFlow,
     stage: Stage,
-    /// `--space` is applied once; going back to the picker leaves it alone.
+    /// `--space`, applied once when the list arrives.
     auto_space: Option<String>,
+    /// A rail click writes the space id here. The window opens it.
+    nav: Arc<Mutex<Option<String>>>,
+    /// The first edit of a personal space writes that space's uuid here.
+    grant_slot: Arc<Mutex<Option<String>>>,
+    /// The write-grant connect flow, over the open space. It does not
+    /// replace [`ConnectedApp::flow`] until the grant succeeds: the
+    /// read-only token stays watched in the meantime.
+    grant: Option<GrantAsk>,
+}
+
+/// A write grant in progress for one perspective.
+struct GrantAsk {
+    space: String,
+    flow: ConnectFlow,
+    input: String,
 }
 
 impl ConnectedApp {
@@ -84,6 +114,9 @@ impl ConnectedApp {
             stage: Stage::Connect {
                 input: String::new(),
             },
+            nav: Arc::default(),
+            grant_slot: Arc::default(),
+            grant: None,
         }
     }
 
@@ -104,7 +137,12 @@ impl ConnectedApp {
         pending
     }
 
-    fn open_space(&self, conn: &Connection, space: SpaceRow) -> Result<Box<LiveSpace>, String> {
+    fn open_space(
+        &mut self,
+        conn: &Connection,
+        space: SpaceRow,
+        spaces: &[SpaceRow],
+    ) -> Result<Box<LiveSpace>, String> {
         let (mut live, fell_back) = live_space_app(
             &self.bundle,
             conn,
@@ -119,23 +157,36 @@ impl ConnectedApp {
                 self.args.theme
             );
         }
+        // Before the first paint, so the rail's first frame already lists
+        // every space. A host member survives the live layer rebinding the
+        // store root.
+        live.app.session.runtime().bag().set_host_member(
+            "spaceStore",
+            "orderedSidebarItems",
+            sidebar_items(spaces),
+        );
         let ctx = self.ctx.clone();
         live.app
             .session
             .set_waker(Arc::new(move || ctx.request_repaint()));
-        // A notice or a confirmation appearing wakes the window too.
+        // A notice, a confirmation or a rail click wakes the window too.
         let ctx = self.ctx.clone();
         if let Some(host) = live.app.session.host_mut_as::<WriteHost>() {
+            host.set_shared(live.space.shared_url.is_some());
+            host.watch_navigation(self.nav.clone());
+            host.watch_grant(self.grant_slot.clone());
             host.set_waker(Arc::new(move || ctx.request_repaint()));
         }
         Ok(Box::new(live))
     }
 
-    /// Which screen is up: `connect`, `pick` or `space`.
+    /// Which screen is up: `connect`, `opening`, `empty` or `space`.
+    /// Never `pick` — there is no picker.
     pub fn stage(&self) -> &'static str {
         match self.stage {
             Stage::Connect { .. } => "connect",
-            Stage::Pick { .. } => "pick",
+            Stage::Opening { .. } => "opening",
+            Stage::Empty { .. } => "empty",
             Stage::Space { .. } => "space",
         }
     }
@@ -153,6 +204,7 @@ impl ConnectedApp {
             // The session ended under an open screen — a token refused, a
             // grant removed: back to the connect screen, which says why.
             if let ConnectPhase::Failed { .. } = self.flow.phase() {
+                self.drop_grant();
                 self.stage = Stage::Connect {
                     input: String::new(),
                 };
@@ -163,41 +215,150 @@ impl ConnectedApp {
                     .request_repaint_after(std::time::Duration::from_millis(500));
             }
         }
+        self.settle_opening();
+        self.follow_rail();
+        self.poll_grant();
         let flow = &self.flow;
         let next = match &mut self.stage {
             Stage::Connect { input } => connect_screen(ui, flow, &self.args.settings.scope, input),
-            Stage::Pick {
-                spaces,
-                filter,
-                error,
-                url,
-                conn,
-            } => {
-                let list = spaces.lock().ok().and_then(|s| s.clone());
-                lost_banner(ui, conn).or(pick_screen(
-                    ui,
-                    url,
-                    list,
-                    filter,
-                    error,
-                    &mut self.auto_space,
-                ))
+            Stage::Opening {
+                conn, url, error, ..
+            } => lost_banner(ui, conn).or(opening_screen(ui, url, error)),
+            Stage::Empty { conn, url, message } => {
+                lost_banner(ui, conn).or(empty_screen(ui, url, message))
             }
             Stage::Space {
                 url,
                 live,
                 panel,
                 conn,
+                ..
             } => space_screen(ui, url, conn, live, panel),
         };
         if let Some(next) = next {
             self.go(next);
+        }
+        self.draw_grant(ui);
+    }
+
+    /// The list arrived: open `--space`, or the first real space, or say
+    /// there is nothing to open. An open that already failed stays put.
+    fn settle_opening(&mut self) {
+        let Stage::Opening { spaces, error, .. } = &self.stage else {
+            return;
+        };
+        if error.is_some() {
+            return;
+        }
+        let ready = match spaces.lock() {
+            Ok(guard) => guard.clone(),
+            Err(_) => None,
+        };
+        let Some(ready) = ready else {
+            return;
+        };
+        let Stage::Opening { conn, url, .. } = &self.stage else {
+            return;
+        };
+        let (conn, url) = (conn.clone(), url.clone());
+        match ready {
+            Err(e) => {
+                if let Stage::Opening { error, .. } = &mut self.stage {
+                    *error = Some(e);
+                }
+            }
+            Ok(rows) => {
+                let want = self.auto_space.take();
+                match landing(&rows, want.as_deref()) {
+                    Landing::Open { space, missed } => match self.open_space(&conn, space, &rows) {
+                        Ok(live) => {
+                            if let Some(text) = missed {
+                                live.notice_list().push(text);
+                            }
+                            self.stage = Stage::Space {
+                                conn,
+                                url,
+                                live,
+                                panel: false,
+                                spaces: rows,
+                            };
+                        }
+                        Err(e) => {
+                            self.stage = Stage::Opening {
+                                conn,
+                                url,
+                                spaces: Arc::new(Mutex::new(Some(Ok(rows)))),
+                                error: Some(e),
+                            };
+                        }
+                    },
+                    Landing::None { message } => {
+                        self.stage = Stage::Empty { conn, url, message };
+                    }
+                }
+            }
+        }
+    }
+
+    /// A rail click names a space. Open it, unless it is the one already
+    /// open. The click is not a write and never reaches the executor.
+    fn follow_rail(&mut self) {
+        let id = match self.nav.lock() {
+            Ok(mut slot) => slot.take(),
+            Err(_) => return,
+        };
+        let Some(id) = id else {
+            return;
+        };
+        let (conn, url, spaces, panel, current) = match &self.stage {
+            Stage::Space {
+                conn,
+                url,
+                spaces,
+                panel,
+                live,
+            } => (
+                conn.clone(),
+                url.clone(),
+                spaces.clone(),
+                *panel,
+                live.space.uuid.clone(),
+            ),
+            _ => return,
+        };
+        let Some(space) = resolve_space(&spaces, &id).cloned() else {
+            if let Stage::Space { live, .. } = &mut self.stage {
+                live.notice_list().push(format!("No space {id}."));
+            }
+            return;
+        };
+        if space.uuid == current {
+            return;
+        }
+        // The grant in progress was for the space we are leaving.
+        self.drop_grant();
+        match self.open_space(&conn, space, &spaces) {
+            Ok(live) => {
+                self.stage = Stage::Space {
+                    conn,
+                    url,
+                    live,
+                    panel,
+                    spaces,
+                };
+            }
+            Err(e) => {
+                if let Stage::Space { live, .. } = &mut self.stage {
+                    live.notice_list().push(e);
+                }
+            }
         }
     }
 
     fn go(&mut self, next: Next) {
         match next {
             Next::Retry => {
+                self.drop_grant();
                 self.flow = start_flow(&self.rt, &self.ctx, &self.args.settings);
                 self.stage = Stage::Connect {
                     input: String::new(),
@@ -205,51 +366,148 @@ impl ConnectedApp {
             }
             Next::Connected(conn, url) => {
                 let spaces = self.list_spaces(&conn);
-                self.stage = Stage::Pick {
+                self.stage = Stage::Opening {
                     conn,
                     url,
                     spaces,
-                    filter: String::new(),
                     error: None,
                 };
             }
-            Next::Open(space) => {
-                let Stage::Pick { conn, url, .. } = &self.stage else {
-                    return;
-                };
-                let (conn, url) = (conn.clone(), url.clone());
-                match self.open_space(&conn, space) {
-                    Ok(live) => {
-                        self.stage = Stage::Space {
-                            conn,
-                            url,
-                            live,
-                            panel: false,
-                        }
+        }
+    }
+
+    /// Drop a write-grant ask that no longer applies: the token it was
+    /// for is gone, or the open space changed.
+    fn drop_grant(&mut self) {
+        self.grant = None;
+        if let Ok(mut slot) = self.grant_slot.lock() {
+            *slot = None;
+        }
+    }
+
+    /// The host asked for a write grant. Start a second connect flow for
+    /// that one space. The read-only flow stays until this one connects.
+    fn poll_grant(&mut self) {
+        if self.grant.is_some() || !matches!(self.stage, Stage::Space { .. }) {
+            return;
+        }
+        let uuid = match self.grant_slot.lock() {
+            Ok(mut slot) => slot.take(),
+            Err(_) => return,
+        };
+        let Some(uuid) = uuid else {
+            return;
+        };
+        let mut settings = self.args.settings.clone();
+        settings.scope = GrantScope::Write {
+            space: uuid.clone(),
+        };
+        let flow = start_flow(&self.rt, &self.ctx, &settings);
+        self.grant = Some(GrantAsk {
+            space: uuid,
+            flow,
+            input: String::new(),
+        });
+    }
+
+    /// The write-grant screen, over the space. A success swaps in the
+    /// write token and reopens the space with it. A retry stays on this
+    /// ask. The space underneath is unchanged until then.
+    fn draw_grant(&mut self, ui: &mut egui::Ui) {
+        if self.grant.is_none() {
+            return;
+        }
+        let mut action = None;
+        if let Some(ask) = self.grant.as_mut() {
+            let scope = GrantScope::Write {
+                space: ask.space.clone(),
+            };
+            egui::Modal::new(egui::Id::unique("we-write-grant")).show(ui.ctx(), |ui| {
+                ui.set_max_width(520.0);
+                match connect_screen(ui, &ask.flow, &scope, &mut ask.input) {
+                    Some(Next::Retry) => action = Some(GrantAction::Retry),
+                    Some(Next::Connected(conn, url)) => {
+                        action = Some(GrantAction::Granted(conn, url));
                     }
-                    Err(e) => {
-                        if let Stage::Pick { error, .. } = &mut self.stage {
-                            *error = Some(e);
-                        }
-                    }
+                    None => {}
                 }
-            }
-            Next::Back => {
-                let Stage::Space { conn, url, .. } = &self.stage else {
-                    return;
+            });
+        }
+        match action {
+            Some(GrantAction::Retry) => self.restart_grant(),
+            Some(GrantAction::Granted(conn, url)) => self.apply_grant(conn, url),
+            None => {}
+        }
+    }
+
+    fn restart_grant(&mut self) {
+        let Some(ask) = self.grant.as_mut() else {
+            return;
+        };
+        let mut settings = self.args.settings.clone();
+        settings.scope = GrantScope::Write {
+            space: ask.space.clone(),
+        };
+        ask.flow = start_flow(&self.rt, &self.ctx, &settings);
+        ask.input.clear();
+    }
+
+    /// The launcher approved the write grant. Watch that token from now
+    /// on, and reopen the space with it. The edit that asked is not
+    /// replayed.
+    fn apply_grant(&mut self, conn: Connection, url: String) {
+        let Some(ask) = self.grant.take() else {
+            return;
+        };
+        self.flow = ask.flow;
+        self.args.access = we_ad4m::Access::write(ask.space.as_str());
+        self.args.settings.scope = GrantScope::Write {
+            space: ask.space.clone(),
+        };
+        if let Ok(mut slot) = self.grant_slot.lock() {
+            *slot = None;
+        }
+        let (spaces, panel, current) = match &self.stage {
+            Stage::Space {
+                spaces,
+                panel,
+                live,
+                ..
+            } => (spaces.clone(), *panel, live.space.clone()),
+            _ => return,
+        };
+        let space = spaces
+            .iter()
+            .find(|s| s.uuid == ask.space)
+            .cloned()
+            .unwrap_or(current);
+        match self.open_space(&conn, space, &spaces) {
+            Ok(live) => {
+                self.stage = Stage::Space {
+                    conn,
+                    url,
+                    live,
+                    panel,
+                    spaces,
                 };
-                let (conn, url) = (conn.clone(), url.clone());
-                self.go(Next::Connected(conn, url));
+            }
+            Err(e) => {
+                if let Stage::Space { live, .. } = &mut self.stage {
+                    live.notice_list().push(e);
+                }
             }
         }
     }
 }
 
+enum GrantAction {
+    Retry,
+    Granted(Connection, String),
+}
+
 enum Next {
     Retry,
     Connected(Connection, String),
-    Open(SpaceRow),
-    Back,
 }
 
 fn start_flow(
@@ -323,7 +581,7 @@ fn connect_screen(
                 ui.label(format!("Connected to {url}."));
             }
             ConnectPhase::Asking { ask, note } => {
-                let (prompt, secret) = match ask {
+                let (prompt, secret, field_name) = match ask {
                     Ask::CapabilityCode { request_id } => (
                         format!(
                             "This app asked for access (request {request_id}).\n\
@@ -332,30 +590,46 @@ fn connect_screen(
                             grant_sentence(scope)
                         ),
                         true,
+                        "Approval code",
                     ),
-                    Ask::Email => ("This executor has accounts. Your email:".to_string(), false),
-                    Ask::EmailCode { email } => {
-                        (format!("Type the code emailed to {email}."), true)
-                    }
+                    Ask::Email => (
+                        "This executor has accounts. Your email:".to_string(),
+                        false,
+                        "Email",
+                    ),
+                    Ask::EmailCode { email } => (
+                        format!("Type the code emailed to {email}."),
+                        true,
+                        "Email code",
+                    ),
                     Ask::Password {
                         email,
                         new_account: true,
                     } => (
                         format!("No account for {email} yet — choose a password."),
                         true,
+                        "New password",
                     ),
-                    Ask::Password { email, .. } => (format!("Password for {email}:"), true),
+                    Ask::Password { email, .. } => {
+                        (format!("Password for {email}:"), true, "Password")
+                    }
                 };
                 ui.label(prompt);
                 if let Some(note) = note {
                     ui.colored_label(Color32::from_rgb(230, 160, 60), note);
                 }
                 ui.add_space(8.0);
-                let field = ui.add(
-                    egui::TextEdit::singleline(input)
-                        .password(secret)
-                        .desired_width(f32::INFINITY),
-                );
+                // The prompt sits above the field. Name the field itself: a
+                // password input with no name is unreachable, and tying it
+                // to the whole prompt would make that prompt's words match
+                // twice.
+                let field = ui
+                    .add(
+                        egui::TextEdit::singleline(input)
+                            .password(secret)
+                            .desired_width(f32::INFINITY),
+                    )
+                    .accessible_name(field_name);
                 let enter = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
                 if !field.has_focus() && input.is_empty() {
                     field.request_focus();
@@ -385,82 +659,121 @@ fn connect_screen(
     next
 }
 
-fn pick_screen(
-    ui: &mut egui::Ui,
-    url: &str,
-    list: Option<Result<Vec<SpaceRow>, String>>,
-    filter: &mut String,
-    error: &mut Option<String>,
-    auto: &mut Option<String>,
-) -> Option<Next> {
-    if let (Some(Ok(spaces)), Some(want)) = (&list, auto.as_ref()) {
-        let found = spaces
-            .iter()
-            .find(|s| &s.uuid == want || s.shared_url.as_ref() == Some(want))
-            .or_else(|| spaces.iter().find(|s| &s.name == want));
-        match found {
-            Some(space) => {
-                *auto = None;
-                return Some(Next::Open(space.clone()));
-            }
-            None => {
-                *error = Some(format!("--space {want:?}: no such perspective here"));
-                *auto = None;
-            }
-        }
-    }
+/// While the perspective list is on its way, or when opening the chosen
+/// space failed. Not a list to pick from.
+fn opening_screen(ui: &mut egui::Ui, url: &str, error: &Option<String>) -> Option<Next> {
     let mut next = None;
     card(ui, |ui| {
-        ui.heading("Open a space");
         ui.label(RichText::new(format!("Connected to {url}")).weak());
         ui.add_space(8.0);
-        if let Some(e) = error {
-            ui.colored_label(Color32::from_rgb(230, 90, 90), e.as_str());
-        }
-        match &list {
+        match error {
             None => {
                 ui.horizontal(|ui| {
                     ui.spinner();
-                    ui.label("Reading your perspectives…");
+                    ui.label("Opening your spaces…");
                 });
             }
-            Some(Err(e)) => {
-                ui.colored_label(
-                    Color32::from_rgb(230, 90, 90),
-                    format!("Could not list them: {e}"),
-                );
-            }
-            Some(Ok(spaces)) if spaces.is_empty() => {
-                ui.label("This agent holds no perspectives yet. Make a space in WE first.");
-            }
-            Some(Ok(spaces)) => {
-                ui.add(egui::TextEdit::singleline(filter).hint_text("Filter…"));
-                ui.add_space(6.0);
-                egui::ScrollArea::vertical()
-                    .max_height(420.0)
-                    .show(ui, |ui| {
-                        let f = filter.to_lowercase();
-                        for space in spaces
-                            .iter()
-                            .filter(|s| f.is_empty() || s.name.to_lowercase().contains(&f))
-                        {
-                            let kind = if space.is_shared() { "shared" } else { "local" };
-                            let label = format!("{}   ({kind})", space.name);
-                            let resp = ui
-                                .add_sized([ui.available_width(), 28.0], egui::Button::new(label))
-                                .on_hover_text(&space.uuid);
-                            if resp.clicked() {
-                                next = Some(Next::Open(space.clone()));
-                            }
-                        }
-                    });
+            Some(e) => {
+                ui.colored_label(Color32::from_rgb(230, 90, 90), e);
+                ui.add_space(8.0);
+                if ui.button("Retry").clicked() {
+                    next = Some(Next::Retry);
+                }
             }
         }
     });
     next
 }
 
-/// Above the picker: the socket dropped. `ad4m-client` keeps redialling;
+/// Connected, with nothing to open. Not the picker.
+fn empty_screen(ui: &mut egui::Ui, url: &str, message: &str) -> Option<Next> {
+    card(ui, |ui| {
+        ui.label(RichText::new(format!("Connected to {url}")).weak());
+        ui.add_space(8.0);
+        ui.label(message);
+    });
+    None
+}
+
+/// What to open once the list is in. `--space` wins, matched against every
+/// perspective including the system ones. Without it, the first space that
+/// is not `we-root`, `we-personal` or `we-test`. A `--space` that is not
+/// here opens that first space and says so.
+fn landing(spaces: &[SpaceRow], want: Option<&str>) -> Landing {
+    let mut agents = we_ad4m::agent_spaces(spaces).into_iter();
+    if let Some(want) = want {
+        if let Some(space) = resolve_space(spaces, want).cloned() {
+            return Landing::Open {
+                space,
+                missed: None,
+            };
+        }
+        if let Some(space) = agents.next() {
+            let missed = format!(
+                "--space {want:?}: no such perspective here; opened {}.",
+                space.name
+            );
+            return Landing::Open {
+                space,
+                missed: Some(missed),
+            };
+        }
+        return Landing::None {
+            message: format!("--space {want:?}: no such perspective here"),
+        };
+    }
+    match agents.next() {
+        Some(space) => Landing::Open {
+            space,
+            missed: None,
+        },
+        None => Landing::None {
+            message: "This agent holds no spaces yet. Make a space in WE first.".into(),
+        },
+    }
+}
+
+enum Landing {
+    Open {
+        space: SpaceRow,
+        missed: Option<String>,
+    },
+    None {
+        message: String,
+    },
+}
+
+/// The id a rail click reports: a uuid, a name, a shared URL, or the same
+/// with a `neighbourhood://` prefix.
+fn resolve_space<'a>(spaces: &'a [SpaceRow], id: &str) -> Option<&'a SpaceRow> {
+    let bare = id.strip_prefix("neighbourhood://").unwrap_or(id);
+    spaces.iter().find(|s| {
+        s.uuid == id
+            || s.uuid == bare
+            || s.name == id
+            || s.shared_url.as_deref() == Some(id)
+            || s.shared_url.as_deref() == Some(bare)
+    })
+}
+
+/// The rail's `spaceStore.orderedSidebarItems`: one object per real space.
+/// `spaceId` is the perspective uuid, which is what the route's second
+/// segment is, so the open row highlights.
+fn sidebar_items(spaces: &[SpaceRow]) -> we_expr::Value {
+    let items: Vec<serde_json::Value> = we_ad4m::agent_spaces(spaces)
+        .into_iter()
+        .map(|s| {
+            serde_json::json!({
+                "uuid": s.uuid,
+                "name": s.name,
+                "spaceId": s.uuid,
+            })
+        })
+        .collect();
+    we_expr::Value::from_json(&serde_json::Value::Array(items))
+}
+
+/// Above an open screen: the socket dropped. `ad4m-client` keeps redialling;
 /// Reconnect starts the connect flow over.
 fn lost_banner(ui: &mut egui::Ui, conn: &Connection) -> Option<Next> {
     if conn.is_connected() {
@@ -527,9 +840,6 @@ fn space_screen(
                 .size(11.0),
             );
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("Switch space").clicked() {
-                    next = Some(Next::Back);
-                }
                 if ui.selectable_label(*panel, "Data (F11)").clicked() {
                     *panel = !*panel;
                 }
@@ -684,4 +994,68 @@ fn data_panel(ui: &mut egui::Ui, live: &LiveSpace, report: &we_data::ProvenanceR
             &live.dropped_calls(),
         );
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn row(name: &str) -> SpaceRow {
+        SpaceRow {
+            uuid: format!("id-{name}"),
+            name: name.into(),
+            shared_url: None,
+        }
+    }
+
+    #[test]
+    fn no_request_opens_the_first_agent_space() {
+        let rows = vec![row("we-root"), row("Beta"), row("Alpha")];
+        match landing(&rows, None) {
+            Landing::Open { space, missed } => {
+                assert_eq!(space.name, "Beta");
+                assert!(missed.is_none());
+            }
+            Landing::None { message } => panic!("{message}"),
+        }
+    }
+
+    #[test]
+    fn a_missing_name_opens_the_first_and_says_so() {
+        let rows = vec![row("Beta")];
+        match landing(&rows, Some("Nope")) {
+            Landing::Open { space, missed } => {
+                assert_eq!(space.name, "Beta");
+                let missed = missed.expect("a miss is told");
+                assert!(missed.contains("Nope"), "{missed}");
+                assert!(missed.contains("Beta"), "{missed}");
+            }
+            Landing::None { message } => panic!("{message}"),
+        }
+    }
+
+    #[test]
+    fn an_explicit_system_space_still_opens() {
+        let rows = vec![row("we-root"), row("Beta")];
+        match landing(&rows, Some("we-root")) {
+            Landing::Open { space, missed } => {
+                assert_eq!(space.name, "we-root");
+                assert!(missed.is_none());
+            }
+            Landing::None { message } => panic!("{message}"),
+        }
+    }
+
+    #[test]
+    fn only_system_spaces_leave_the_window_empty() {
+        let rows = vec![row("we-root"), row("we-personal"), row("we-test")];
+        assert!(matches!(landing(&rows, None), Landing::None { .. }));
+    }
+
+    #[test]
+    fn the_sidebar_skips_system_spaces() {
+        let text = format!("{:?}", sidebar_items(&[row("we-root"), row("Beta")]));
+        assert!(text.contains("Beta"), "{text}");
+        assert!(!text.contains("we-root"), "{text}");
+    }
 }

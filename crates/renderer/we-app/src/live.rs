@@ -76,9 +76,7 @@ pub fn connected_facts() -> Vec<String> {
 }
 
 /// What a shared space opened with `--write` is refused with (brief §6 Q3).
-pub const SHARED_WRITE_REFUSED: &str =
-    "Writes to a shared space wait for the space's policy check, \
-     which this app does not run yet. Open it without --write, or pick a personal space.";
+pub use we_ad4m::write_host::SHARED_WRITE_REFUSED;
 
 /// The store document a live space's bag is built from: the allowlisted
 /// bundle members copied out of the recording and the connected facts, no

@@ -10,7 +10,7 @@
 //!   `modelWrite` rows (`data/storemap-writes.json`) become validated
 //!   writes; everything else is dropped and logged, as offline.
 //! - [`connect::ConnectFlow`] runs `ad4m-connect` for the connect screen;
-//!   [`list_spaces`] lists what the picker offers.
+//!   [`list_spaces`] lists the agent's perspectives for the left rail.
 //! - [`live::LiveMembers`] serves the store map's `modelRead` rows (M2)
 //!   from executor reads; members without a row stay on the snapshot.
 //! - [`translate`] lowers a compiled `$query` to `modelQuery`'s options, as
@@ -50,6 +50,6 @@ pub use relations::Relations;
 #[cfg(not(target_arch = "wasm32"))]
 pub use source::{Ad4mQuerySource, SourceStats, SpaceBinding};
 #[cfg(not(target_arch = "wasm32"))]
-pub use spaces::{list_spaces, SpaceRow};
+pub use spaces::{agent_spaces, is_system_space, list_spaces, SpaceRow};
 #[cfg(not(target_arch = "wasm32"))]
 pub use write_host::{read_only_notice, Access, Notice, Notices, PendingConfirm, WriteHost};
