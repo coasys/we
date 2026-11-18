@@ -3798,8 +3798,11 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
 
         Losing it is not a risk worth carrying either way — it has its own try/catch, and a failure
         clears the guard so the next message retries.
+
+        Only for the call this agent is in. The roster says who was present, and a call's page offers
+        a box to message it to anybody, live or ended — writing into a call is not being in it.
       */
-      void recordSelfParticipation(target, dataset);
+      if (myCall() && target === targetCollection()) void recordSelfParticipation(target, dataset);
     }, 'Writes something a person typed into a transcript, as a typed line — with its marks, when the composer gave any.'),
     /**
      * Answer one line — in a transcript or the Feed — with a typed line of its own.
