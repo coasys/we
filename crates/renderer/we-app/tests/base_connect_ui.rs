@@ -73,7 +73,9 @@ fn this_computer_uses_the_same_words() {
     assert_eq!(row.detail.as_ref(), offer.detail);
 }
 
-/// The first screen, with no click, so nothing dials.
+/// Render-and-export smoke test. It checks the accessible names and the
+/// stage, then writes a PNG under the cargo target tmp dir. It does not
+/// compare pixels or a golden image.
 #[test]
 fn the_connect_screen_shows_where_to_keep_your_spaces() {
     let (_tokens, settings) = isolated(None);

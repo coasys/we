@@ -65,7 +65,8 @@ pub struct ConnectedApp {
     base: BaseScreen,
     stage: Stage,
     /// The capability prompt's field. It is not part of the template.
-    prompt: String,
+    /// The text is kept only while the same attempt is asking the same thing.
+    prompt: PromptBuffer,
     /// `--space` is applied once; going back to the picker leaves it alone.
     auto_space: Option<String>,
 }
@@ -79,7 +80,7 @@ impl ConnectedApp {
             args,
             ctx,
             base,
-            prompt: String::new(),
+            prompt: PromptBuffer::new(),
             stage: Stage::Connect,
         }
     }
@@ -147,6 +148,9 @@ impl ConnectedApp {
 
     pub fn ui(&mut self, ui: &mut egui::Ui) {
         self.base.poll();
+        let asking = self.base.ask();
+        self.prompt
+            .sync(self.base.attempt(), asking.as_ref().map(|(ask, _)| ask));
         if matches!(self.stage, Stage::Connect) {
             if let Some((conn, url)) = self.base.take_ready() {
                 self.go(Next::Connected(conn, url));
@@ -165,14 +169,14 @@ impl ConnectedApp {
         let next = match &mut self.stage {
             Stage::Connect => {
                 self.base.frame(ui);
-                if let Some((ask, note)) = self.base.ask() {
+                if let Some((ask, note)) = asking {
                     capability_overlay(
                         ui,
                         &self.base,
                         &self.args.settings.scope,
                         &ask,
                         note.as_deref(),
-                        &mut self.prompt,
+                        &mut self.prompt.text,
                     );
                 }
                 None
@@ -288,6 +292,39 @@ fn card(ui: &mut egui::Ui, body: impl FnOnce(&mut egui::Ui)) {
                 body(ui)
             });
     });
+}
+
+/// The typed code. It is dropped when the attempt or the ask changes,
+/// and when nothing is asking.
+struct PromptBuffer {
+    text: String,
+    attempt: u64,
+    ask: Option<Ask>,
+}
+
+impl PromptBuffer {
+    fn new() -> Self {
+        Self {
+            text: String::new(),
+            attempt: 0,
+            ask: None,
+        }
+    }
+
+    fn sync(&mut self, attempt: u64, ask: Option<&Ask>) {
+        if self.attempt == attempt && self.ask.as_ref() == ask {
+            return;
+        }
+        self.text.clear();
+        self.attempt = attempt;
+        self.ask = ask.cloned();
+    }
+
+    fn clear(&mut self) {
+        self.text.clear();
+        self.attempt = 0;
+        self.ask = None;
+    }
 }
 
 /// The host prompt, over the template, while the flow is asking.
@@ -651,4 +688,40 @@ fn data_panel(ui: &mut egui::Ui, live: &LiveSpace, report: &we_data::ProvenanceR
             &live.dropped_calls(),
         );
     });
+}
+
+#[cfg(test)]
+mod prompt_tests {
+    use super::PromptBuffer;
+    use we_ad4m::connect::Ask;
+
+    fn code(id: &str) -> Ask {
+        Ask::CapabilityCode {
+            request_id: id.to_string(),
+        }
+    }
+
+    #[test]
+    fn the_prompt_clears_when_the_ask_changes() {
+        let mut prompt = PromptBuffer::new();
+        let first = code("one");
+        prompt.sync(7, Some(&first));
+        prompt.text.push_str("123456");
+        prompt.sync(7, Some(&first));
+        assert_eq!(prompt.text, "123456", "the same ask keeps the field");
+
+        let second = code("two");
+        prompt.sync(7, Some(&second));
+        assert_eq!(prompt.text, "", "a new request starts empty");
+
+        prompt.sync(7, Some(&second));
+        prompt.text.push_str("999999");
+        prompt.sync(8, Some(&second));
+        assert_eq!(prompt.text, "", "a new attempt starts empty");
+
+        prompt.sync(8, Some(&second));
+        prompt.text.push_str("111111");
+        prompt.sync(8, None);
+        assert_eq!(prompt.text, "", "no ask leaves the field empty");
+    }
 }

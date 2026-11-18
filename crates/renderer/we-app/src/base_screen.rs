@@ -13,7 +13,7 @@ use we_ad4m::Connection;
 use we_egui::Registry;
 use we_expr::Value;
 use we_screen::{ScreenSchema, ScreenState};
-use we_session::{BaseCommand, BaseController, ConnectionRow, HostJob};
+use we_session::{BaseController, ConnectionRow, HostJob};
 use we_template::{Action, ActionRequest, Completer, Host, Invoked, RootSpec, StoreBag};
 
 use crate::RendererApp;
@@ -77,10 +77,12 @@ impl BaseScreen {
         );
         let host = Box::new(BaseHost {
             controller: controller.clone(),
-            slot: slot.clone(),
-            handle: handle.clone(),
-            settings: settings.clone(),
-            ctx: ctx.clone(),
+            jobs: Jobs::Dial {
+                slot: slot.clone(),
+                handle: handle.clone(),
+                settings: settings.clone(),
+                ctx: ctx.clone(),
+            },
         });
         let mut session = we_session::Session::new(
             spec,
@@ -198,6 +200,15 @@ impl BaseScreen {
         }
     }
 
+    /// The attempt id of the flow on screen, or `0` when none is running.
+    pub fn attempt(&self) -> u64 {
+        lock_slot(&self.slot)
+            .live
+            .as_ref()
+            .map(|live| live.attempt)
+            .unwrap_or(0)
+    }
+
     /// The lost-connection banner. Dial again and show the handing-off stage.
     pub fn start_reconnect(&mut self) {
         let job = self.controller.start_reconnect();
@@ -246,12 +257,50 @@ fn spawn_flow(
     slot.seen = None;
 }
 
+/// Where a permitted connect job goes. The window dials. A test counts.
+enum Jobs {
+    Dial {
+        slot: Arc<Mutex<SlotState>>,
+        handle: tokio::runtime::Handle,
+        settings: ConnectSettings,
+        ctx: egui::Context,
+    },
+    #[cfg(test)]
+    Count(Arc<Mutex<Vec<HostJob>>>),
+}
+
 struct BaseHost {
     controller: Arc<BaseController>,
-    slot: Arc<Mutex<SlotState>>,
-    handle: tokio::runtime::Handle,
-    settings: ConnectSettings,
-    ctx: egui::Context,
+    jobs: Jobs,
+}
+
+impl BaseHost {
+    #[cfg(test)]
+    fn counting(controller: Arc<BaseController>, jobs: Arc<Mutex<Vec<HostJob>>>) -> Self {
+        Self {
+            controller,
+            jobs: Jobs::Count(jobs),
+        }
+    }
+
+    fn start(&self, job: HostJob) {
+        match &self.jobs {
+            Jobs::Dial {
+                slot,
+                handle,
+                settings,
+                ctx,
+            } => {
+                spawn_flow(slot, handle, local_settings(settings), ctx, job.attempt);
+            }
+            #[cfg(test)]
+            Jobs::Count(jobs) => {
+                jobs.lock()
+                    .unwrap_or_else(|poison| poison.into_inner())
+                    .push(job);
+            }
+        }
+    }
 }
 
 impl Host for BaseHost {
@@ -260,48 +309,22 @@ impl Host for BaseHost {
         let Some(permit) = &request.permit else {
             return Invoked::Done(Ok(Value::Undefined));
         };
+        if permit.mount().as_str() != we_template::BASE_MOUNT {
+            return Invoked::Done(Ok(Value::Undefined));
+        }
         if !permit.matches(target, args) {
             return Invoked::Done(Ok(Value::Undefined));
         }
-        let Some(command) = command_for(target, args) else {
+        let Some(command) = we_session::command_for(target, args) else {
             return Invoked::Done(Ok(Value::Undefined));
         };
-        let job = self.controller.apply(command, permit.generation());
-        if let Some(job) = job {
-            spawn_flow(
-                &self.slot,
-                &self.handle,
-                local_settings(&self.settings),
-                &self.ctx,
-                job.attempt,
-            );
+        if let Some(job) = self.controller.apply(command, permit.generation()) {
+            self.start(job);
         }
         Invoked::Done(Ok(Value::Undefined))
     }
 }
 
-fn command_for(target: &str, args: &[Value]) -> Option<BaseCommand> {
-    let method = target.strip_prefix("baseStore.")?;
-    Some(match method {
-        "choose" => {
-            let Value::Str(id) = args.first()? else {
-                return None;
-            };
-            BaseCommand::Choose(id.to_string())
-        }
-        "retry" => BaseCommand::Retry,
-        "showConnections" => BaseCommand::ShowConnections,
-        "openPage" => {
-            let Value::Str(page) = args.first()? else {
-                return None;
-            };
-            BaseCommand::OpenPage(page.to_string())
-        }
-        "closePage" => BaseCommand::ClosePage,
-        "clearPasswordWrong" => BaseCommand::ClearPasswordWrong,
-        "submitPassword" | "makeIdentity" | "linkIdentity" | "useWords" | "startNow" => {
-            BaseCommand::Nop
-        }
-        _ => return None,
-    })
-}
+#[cfg(test)]
+#[path = "base_host_tests.rs"]
+mod tests;

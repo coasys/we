@@ -1,0 +1,496 @@
+//! The production [`BaseHost`](super::BaseHost), with a counted job sink.
+//! A trusted choose on the base screen starts one job. Every other path
+//! starts none.
+
+use std::sync::{Arc, Mutex};
+
+use we_expr::{BundleSlot, Provenance, Tier, Value};
+use we_screen::{ScreenSchema, ScreenState};
+use we_session::{BaseController, HostJob, Session, BUILTIN_BUNDLE};
+use we_template::{
+    Action, ActionRequest, AppSpec, BundleTemplate, Completer, Declared, Host, Invoked, LocalState,
+    NodeId, PartDef, PartSource, ResolvedChild, ResolvedNode, RootSpec, Runtime, SchemaNode,
+    StoreBag,
+};
+
+struct Open {
+    session: Session,
+    controller: Arc<BaseController>,
+    jobs: Arc<Mutex<Vec<HostJob>>>,
+}
+
+fn screen_at(href: &str) -> ScreenState {
+    ScreenState::desktop(ScreenSchema::default(), href)
+}
+
+fn node(value: serde_json::Value) -> SchemaNode {
+    serde_json::from_value(value).unwrap()
+}
+
+fn choose_of(id: &str) -> serde_json::Value {
+    serde_json::json!({ "$invoke": "baseStore.choose", "args": [id] })
+}
+
+fn button(label: &str, invoke: serde_json::Value) -> SchemaNode {
+    node(serde_json::json!({
+        "type": "we-button",
+        "children": [label],
+        "props": { "onClick": invoke }
+    }))
+}
+
+fn base_button(label: &str) -> RootSpec {
+    RootSpec::base(button(label, choose_of("this-device")), BUILTIN_BUNDLE)
+}
+
+fn open_with(spec: RootSpec, href: &str) -> Open {
+    let controller = BaseController::with_this_computer();
+    let jobs = Arc::new(Mutex::new(Vec::new()));
+    let host = super::BaseHost::counting(controller.clone(), jobs.clone());
+    let mut session = Session::new(
+        spec,
+        Arc::new(StoreBag::new()),
+        screen_at(href),
+        Box::new(host),
+    );
+    session.set_bindings(controller.bindings());
+    session.set_base_facts(Some(controller.facts()));
+    Open {
+        session,
+        controller,
+        jobs,
+    }
+}
+
+fn open(spec: RootSpec) -> Open {
+    open_with(spec, "/")
+}
+
+fn job_count(jobs: &Mutex<Vec<HostJob>>) -> usize {
+    jobs.lock()
+        .unwrap_or_else(|poison| poison.into_inner())
+        .len()
+}
+
+fn text_of(node: &ResolvedNode) -> String {
+    fn walk(node: &ResolvedNode, out: &mut String) {
+        for child in &node.children {
+            match child {
+                ResolvedChild::Text(text) => out.push_str(text),
+                ResolvedChild::Node(next) => walk(next, out),
+            }
+        }
+    }
+    let mut out = String::new();
+    walk(node, &mut out);
+    out
+}
+
+fn find_button(node: &ResolvedNode, needle: &str) -> NodeId {
+    fn walk(node: &ResolvedNode, needle: &str) -> Option<NodeId> {
+        if node.ty.as_ref() == "we-button" && text_of(node).contains(needle) {
+            return Some(node.id.clone());
+        }
+        for child in &node.children {
+            if let ResolvedChild::Node(next) = child {
+                if let Some(id) = walk(next, needle) {
+                    return Some(id);
+                }
+            }
+        }
+        None
+    }
+    walk(node, needle).unwrap_or_else(|| panic!("no button whose text contains {needle}"))
+}
+
+fn find_handler(node: &ResolvedNode, name: &str) -> NodeId {
+    fn walk(node: &ResolvedNode, name: &str) -> Option<NodeId> {
+        if node.handlers.contains_key(name) {
+            return Some(node.id.clone());
+        }
+        for child in &node.children {
+            if let ResolvedChild::Node(next) = child {
+                if let Some(id) = walk(next, name) {
+                    return Some(id);
+                }
+            }
+        }
+        None
+    }
+    walk(node, name).unwrap_or_else(|| panic!("no node with handler {name}"))
+}
+
+fn click(open: &mut Open, label: &str) {
+    let root = open.session.resolve();
+    let id = find_button(&root, label);
+    open.session.dispatch(&id, "onClick", Value::Undefined);
+}
+
+fn assert_idle(open: &Open) {
+    assert_eq!(job_count(&open.jobs), 0);
+    assert_eq!(open.controller.public_json()["stage"], "connect");
+    assert_eq!(open.controller.public_json()["busy"], false);
+}
+
+#[test]
+fn a_trusted_choose_starts_one_job() {
+    let mut open = open(base_button("This computer"));
+    click(&mut open, "This computer");
+    let jobs = open
+        .jobs
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
+    assert_eq!(jobs.len(), 1);
+    assert!(jobs[0].chosen);
+    assert_eq!(open.controller.public_json()["stage"], "handing-off");
+}
+
+#[test]
+fn a_space_mount_choose_starts_nothing() {
+    let mut open = open(RootSpec::single(
+        button("This computer", choose_of("this-device")),
+        "space",
+    ));
+    click(&mut open, "This computer");
+    assert_idle(&open);
+    assert!(open.session.runtime().gate().denial_count() >= 1);
+}
+
+#[test]
+fn an_app_slot_choose_starts_nothing() {
+    let app: BundleTemplate = serde_json::from_value(serde_json::json!({
+        "id": "shell",
+        "meta": { "role": "app" },
+        "type": "we-button",
+        "children": ["This computer"],
+        "props": { "onClick": { "$invoke": "baseStore.choose", "args": ["this-device"] } }
+    }))
+    .unwrap();
+    let spec = RootSpec::App(Box::new(AppSpec {
+        bundle: BUILTIN_BUNDLE.into(),
+        app: Some(app),
+        template: None,
+        pages: Vec::new(),
+        boot: None,
+    }));
+    let mut open = open(spec);
+    click(&mut open, "This computer");
+    assert_idle(&open);
+    assert!(open.session.runtime().gate().denial_count() >= 1);
+}
+
+#[test]
+fn a_different_bundle_choose_starts_nothing() {
+    let mut open = open(RootSpec::base(
+        button("This computer", choose_of("this-device")),
+        "other-bundle",
+    ));
+    click(&mut open, "This computer");
+    assert_idle(&open);
+    assert!(open.session.runtime().gate().denial_count() >= 1);
+}
+
+#[test]
+fn a_refused_call_starts_nothing() {
+    let cases = [
+        serde_json::json!({ "$invoke": "baseStore.notAMethod" }),
+        serde_json::json!({ "$invoke": "baseStore.choose", "args": ["nope"] }),
+        serde_json::json!({ "$invoke": "baseStore.choose", "args": ["this-device", "extra"] }),
+        serde_json::json!({ "$invoke": "baseStore.submitPassword", "args": ["secret"] }),
+    ];
+    for invoke in cases {
+        let mut open = open(RootSpec::base(button("Go", invoke), BUILTIN_BUNDLE));
+        click(&mut open, "Go");
+        assert_idle(&open);
+        assert!(open.session.runtime().gate().denial_count() >= 1);
+    }
+}
+
+#[test]
+fn an_identity_call_starts_nothing() {
+    let invoke = serde_json::json!({ "$invoke": "baseStore.startNow" });
+    let mut open = open(RootSpec::base(button("Go", invoke), BUILTIN_BUNDLE));
+    click(&mut open, "Go");
+    assert_idle(&open);
+    assert_eq!(open.session.runtime().gate().denial_count(), 0);
+}
+
+#[test]
+fn a_busy_choose_starts_nothing() {
+    let mut open = open(base_button("This computer"));
+    let mut facts = open.controller.facts();
+    facts.busy = true;
+    open.session.set_base_facts(Some(facts));
+    click(&mut open, "This computer");
+    assert_idle(&open);
+    assert!(open.session.runtime().gate().denial_count() >= 1);
+}
+
+#[test]
+fn two_chooses_start_one_job() {
+    let spec = RootSpec::base(
+        node(serde_json::json!({
+            "type": "we-button",
+            "children": ["This computer"],
+            "props": {
+                "onClick": [
+                    { "$invoke": "baseStore.choose", "args": ["this-device"] },
+                    { "$invoke": "baseStore.choose", "args": ["this-device"] }
+                ]
+            }
+        })),
+        BUILTIN_BUNDLE,
+    );
+    let mut open = open(spec);
+    click(&mut open, "This computer");
+    assert_eq!(job_count(&open.jobs), 1);
+    assert_eq!(open.controller.generation(), 2);
+}
+
+#[test]
+fn a_part_choose_starts_nothing() {
+    struct Parts;
+    impl PartSource for Parts {
+        fn part(&self, id: &str) -> Option<PartDef> {
+            (id == "chooser").then(|| PartDef {
+                schema: Arc::new(button("Part choose", choose_of("this-device"))),
+                tier: Tier::App,
+                module: "mod".into(),
+                needs: Arc::from([]),
+            })
+        }
+    }
+    let root = node(serde_json::json!({
+        "type": "Column",
+        "children": [{ "type": "$part", "props": { "id": "chooser" } }]
+    }));
+    let mut open = open_parts(root, Arc::new(Parts));
+    click(&mut open, "Part choose");
+    assert_idle(&open);
+    assert!(open.session.runtime().gate().denial_count() >= 1);
+}
+
+#[test]
+fn a_panel_choose_starts_nothing() {
+    let template: BundleTemplate = serde_json::from_value(serde_json::json!({
+        "id": "space",
+        "meta": {
+            "panels": [{
+                "id": "side",
+                "home": "side",
+                "node": {
+                    "type": "we-button",
+                    "children": ["Panel choose"],
+                    "props": { "onClick": { "$invoke": "baseStore.choose", "args": ["this-device"] } }
+                }
+            }]
+        },
+        "type": "Column",
+        "children": [{ "type": "$panels", "props": { "lane": "side" } }]
+    }))
+    .unwrap();
+    let spec = RootSpec::App(Box::new(AppSpec {
+        bundle: "space-app".into(),
+        app: None,
+        template: Some(template),
+        pages: Vec::new(),
+        boot: None,
+    }));
+    let mut open = open_with(spec, "/space/demo");
+    click(&mut open, "Panel choose");
+    assert_idle(&open);
+    assert!(open.session.runtime().gate().denial_count() >= 1);
+}
+
+/// The gate issued this permit. The mount it names is not the base screen.
+#[test]
+fn a_permit_for_another_mount_starts_nothing() {
+    let spec = RootSpec::Single {
+        node: Box::new(button("This computer", choose_of("this-device"))),
+        cx: we_template::MountCx {
+            mount: "not-the-live-mount".into(),
+            tier: Tier::App,
+            space: None,
+            provenance: Provenance::Bundle {
+                bundle: BUILTIN_BUNDLE.into(),
+                slot: BundleSlot::Base,
+            },
+        },
+        declared: Declared::default(),
+    };
+    let mut open = open(spec);
+    click(&mut open, "This computer");
+    assert_eq!(
+        job_count(&open.jobs),
+        0,
+        "a permit for another mount started a job"
+    );
+    assert_eq!(open.controller.public_json()["stage"], "connect");
+}
+
+struct Hold {
+    inner: super::BaseHost,
+    pending: Option<Completer>,
+}
+
+impl Host for Hold {
+    fn act(&mut self, request: ActionRequest, done: Completer) -> Invoked {
+        let Action::Invoke { target, .. } = &request.action;
+        if target.as_ref() == "probe.wait" {
+            self.pending = Some(done);
+            return Invoked::Pending;
+        }
+        self.inner.act(request, done)
+    }
+}
+
+fn open_hold(spec: RootSpec) -> Open {
+    let controller = BaseController::with_this_computer();
+    let jobs = Arc::new(Mutex::new(Vec::new()));
+    let host = Hold {
+        inner: super::BaseHost::counting(controller.clone(), jobs.clone()),
+        pending: None,
+    };
+    let mut session = Session::new(
+        spec,
+        Arc::new(StoreBag::new()),
+        screen_at("/"),
+        Box::new(host),
+    );
+    session.set_bindings(controller.bindings());
+    session.set_base_facts(Some(controller.facts()));
+    Open {
+        session,
+        controller,
+        jobs,
+    }
+}
+
+fn open_parts(root: SchemaNode, parts: Arc<dyn PartSource>) -> Open {
+    let controller = BaseController::with_this_computer();
+    let jobs = Arc::new(Mutex::new(Vec::new()));
+    let host = super::BaseHost::counting(controller.clone(), jobs.clone());
+    let runtime = Runtime::from_spec(
+        RootSpec::base(root, BUILTIN_BUNDLE),
+        Arc::new(StoreBag::new()),
+        LocalState::new(),
+    )
+    .with_sources(None, parts);
+    let mut session = Session::from_parts(runtime, Box::new(host), screen_at("/"));
+    session.set_bindings(controller.bindings());
+    session.set_base_facts(Some(controller.facts()));
+    Open {
+        session,
+        controller,
+        jobs,
+    }
+}
+
+fn open_hold_parts(root: SchemaNode, parts: Arc<dyn PartSource>) -> Open {
+    let controller = BaseController::with_this_computer();
+    let jobs = Arc::new(Mutex::new(Vec::new()));
+    let host = Hold {
+        inner: super::BaseHost::counting(controller.clone(), jobs.clone()),
+        pending: None,
+    };
+    let runtime = Runtime::from_spec(
+        RootSpec::base(root, BUILTIN_BUNDLE),
+        Arc::new(StoreBag::new()),
+        LocalState::new(),
+    )
+    .with_sources(None, parts);
+    let mut session = Session::from_parts(runtime, Box::new(host), screen_at("/"));
+    session.set_bindings(controller.bindings());
+    session.set_base_facts(Some(controller.facts()));
+    Open {
+        session,
+        controller,
+        jobs,
+    }
+}
+
+fn finish_pending(open: &mut Open) {
+    let pending = open
+        .session
+        .host_mut_as::<Hold>()
+        .expect("the hold host")
+        .pending
+        .take()
+        .expect("a call is waiting");
+    pending.complete(Ok(Value::Undefined));
+    open.session.poll();
+}
+
+#[test]
+fn a_callback_from_a_part_starts_nothing() {
+    struct Parts;
+    impl PartSource for Parts {
+        fn part(&self, id: &str) -> Option<PartDef> {
+            (id == "chooser").then(|| PartDef {
+                schema: Arc::new(node(serde_json::json!({
+                    "type": "we-button",
+                    "children": ["Wait"],
+                    "props": {
+                        "onClick": {
+                            "$invoke": "probe.wait",
+                            "args": [],
+                            "onSuccess": [{ "$invoke": "baseStore.choose", "args": ["this-device"] }]
+                        }
+                    }
+                }))),
+                tier: Tier::App,
+                module: "mod".into(),
+                needs: Arc::from([]),
+            })
+        }
+    }
+    let root = node(serde_json::json!({
+        "type": "Column",
+        "children": [{ "type": "$part", "props": { "id": "chooser" } }]
+    }));
+    let mut open = open_hold_parts(root, Arc::new(Parts));
+    click(&mut open, "Wait");
+    finish_pending(&mut open);
+    assert_idle(&open);
+}
+
+#[test]
+fn an_unmounted_callback_starts_nothing() {
+    let spec = RootSpec::base(
+        node(serde_json::json!({
+            "type": "Column",
+            "$localState": { "show": { "type": "boolean", "initial": true } },
+            "props": { "onHide": { "$setLocal": "show", "value": false } },
+            "children": [{
+                "type": "$if",
+                "props": {
+                    "condition": { "$": "local.show" },
+                    "then": {
+                        "type": "we-button",
+                        "children": ["Wait"],
+                        "props": {
+                            "onClick": {
+                                "$invoke": "probe.wait",
+                                "args": [],
+                                "onSuccess": [{ "$invoke": "baseStore.choose", "args": ["this-device"] }]
+                            }
+                        }
+                    }
+                }
+            }]
+        })),
+        BUILTIN_BUNDLE,
+    );
+    let mut open = open_hold(spec);
+    click(&mut open, "Wait");
+    let root = open.session.resolve();
+    let hide = find_handler(&root, "onHide");
+    open.session.dispatch(&hide, "onHide", Value::Undefined);
+    let root = open.session.resolve();
+    assert!(
+        !text_of(&root).contains("Wait"),
+        "the button is still mounted"
+    );
+    finish_pending(&mut open);
+    assert_idle(&open);
+}
