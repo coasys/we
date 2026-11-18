@@ -145,6 +145,32 @@ async function filedUnder(handle: unknown, conversation: string): Promise<Parent
 */
 const watchIdFor = (collectionId: string) => `we-call-${collectionId.replace(/[^a-zA-Z0-9]+/g, '-')}`;
 
+/*
+  One op at a time per (dataset, watch id).
+
+  A stop can land while its start is still resolving — leaving a call off screen does not wait on
+  the reads a registration makes first — and a stop that ran past a start in flight left a
+  processor registered with nothing ever coming back for it. Serialised, the start registers and
+  the stop then removes it, so what a stop names is always what it ends. Each op chains off the
+  last whether or not it succeeded, and the entry is dropped once the queue drains.
+*/
+const watchOps = new Map<DatasetHandle, Map<string, Promise<unknown>>>();
+
+function sequenced(handle: DatasetHandle, watchId: string, op: () => Promise<void>): Promise<void> {
+  let ops = watchOps.get(handle);
+  if (!ops) watchOps.set(handle, (ops = new Map<string, Promise<unknown>>()));
+  const run = (ops.get(watchId) ?? Promise.resolve()).then(op, op);
+  ops.set(watchId, run);
+  void run.then(
+    () => {
+      if (ops.get(watchId) === run) ops.delete(watchId);
+      if (!ops.size) watchOps.delete(handle);
+    },
+    () => {},
+  );
+  return run;
+}
+
 export interface ExtractionRuntimeDeps {
   /**
    * The backend's interpretation port, read on every call: the backend connects after the stores
@@ -160,8 +186,6 @@ export interface ExtractionRuntimeDeps {
   /** What one collection extracts: its own list, else the space's default. */
   targetsFor: (collectionId: string) => string[];
   setTargetFor: (collectionId: string, entity: string, on: boolean) => Promise<void>;
-  /** Whether this collection is extracted as it grows — its own answer. */
-  autoFor: (collectionId: string) => boolean;
   setAutoFor: (collectionId: string, on: boolean) => Promise<void>;
   /**
    * One collection's gate and class list, read for the dataset named rather than the space on
@@ -208,41 +232,37 @@ export function createExtractionRuntime(deps: ExtractionRuntimeDeps): Extraction
   async function watchConversation(collectionId: string, target?: DatasetHandle): Promise<void> {
     const port = deps.port();
     if (!port?.watch) throw new Error('interpretation: this backend cannot run a standing watch');
+    const watch = port.watch.bind(port);
     /*
       The caller's dataset, not the one on screen: a call outlives the space on screen, and a watch
       registered wherever the reader had wandered to interprets the call into a perspective that
       does not hold it — and is then removed from the wrong one too, so it never stops.
     */
-    const onScreen = deps.dataset();
-    const handle = target ?? onScreen;
+    const handle = target ?? deps.dataset();
     if (!handle) throw new Error('interpretation: no dataset to interpret into');
-    /*
-      Asked about *this collection*, not about the space.
+    return sequenced(handle, watchIdFor(collectionId), async () => {
+      /*
+        Asked about *this collection*, not about the space — through its own dataset either way.
 
-      A collection holds its own answer, and one that has been turned off has to stay off — a check
-      that could only see the space would re-register the watch on the next tick. False until the
-      collection's settings have been read, which is the right way round for something that spends
-      somebody's LLM budget.
+        A collection holds its own answer, and one that has been turned off has to stay off — a
+        check that could only see the space would re-register the watch on the next tick. The live
+        reads answer about the space on screen and stand in for a stored row they have not caught
+        up with yet; `collectionAnswers` reads the row itself through the handle, which is the same
+        record for the space on screen and the only answer for a call in another.
+      */
+      const { auto, classes } = await deps.collectionAnswers(handle, collectionId);
+      if (!auto) throw new Error('interpretation: automatic extraction is off for this collection');
+      // Refused rather than registered empty: the executor rejects a processor with no classes, and
+      // "this space has marked nothing for extraction" is a sentence worth saying in its own words.
+      if (!classes.length) throw new Error('interpretation: nothing in this space is marked for AI extraction');
 
-      The live reads answer about the space on screen, so for the dataset handed in they are read
-      through it instead: another space's gate and class list registered on this call's watch is
-      the same mistake as another space's dataset.
-    */
-    const { auto, classes } =
-      handle === onScreen
-        ? { auto: deps.autoFor(collectionId), classes: targetsForCollection(collectionId) }
-        : await deps.collectionAnswers(handle, collectionId);
-    if (!auto) throw new Error('interpretation: automatic extraction is off for this collection');
-    // Refused rather than registered empty: the executor rejects a processor with no classes, and
-    // "this space has marked nothing for extraction" is a sentence worth saying in its own words.
-    if (!classes.length) throw new Error('interpretation: nothing in this space is marked for AI extraction');
-
-    await port.watch(handle, {
-      watchId: watchIdFor(collectionId),
-      classes,
-      parent: await filedUnder(handle, collectionId),
-      provenance: extractedFrom(collectionId),
-      recognised: recognisedBy(collectionId),
+      await watch(handle, {
+        watchId: watchIdFor(collectionId),
+        classes,
+        parent: await filedUnder(handle, collectionId),
+        provenance: extractedFrom(collectionId),
+        recognised: recognisedBy(collectionId),
+      });
     });
   }
 
@@ -253,7 +273,8 @@ export function createExtractionRuntime(deps: ExtractionRuntimeDeps): Extraction
     // Silent rather than thrown: this runs while tearing a call down, and a host that never
     // registered anything is not a failure worth interrupting that with.
     if (!port?.unwatch || !handle) return;
-    await port.unwatch(handle, watchIdFor(collectionId));
+    const unwatch = port.unwatch.bind(port);
+    await sequenced(handle, watchIdFor(collectionId), () => unwatch(handle, watchIdFor(collectionId)));
   }
 
   const services: ModuleHostServices = {
@@ -299,10 +320,12 @@ export function createExtractionRuntime(deps: ExtractionRuntimeDeps): Extraction
         space's default, this call's own — are all host state. A module names a collection and
         nothing else, exactly as it does for the watch id and where a pass is filed.
 
-        Resolved with the handle, before the gather: read live afterwards it would answer for
-        whichever space is on screen by then, pairing one space's classes with another's transcript.
+        Read off the call's own row, before the gather: the live list stands in for a collection
+        whose settings have not loaded yet — answering with the space's default, not the call's —
+        and read live afterwards it would answer for whichever space is on screen by then, pairing
+        one space's classes with another's transcript.
       */
-      const classes = targetsForCollection(collectionId);
+      const { classes } = await deps.collectionAnswers(handle, collectionId);
 
       const modelFor = (entity: string) => getEntityForDataset(entity, handle);
       const turns = await gatherTranscriptTurns(

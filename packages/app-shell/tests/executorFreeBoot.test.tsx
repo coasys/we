@@ -147,25 +147,71 @@ const app = vi.hoisted(() => ({
     list: [] as { id: string; _fromSpace?: boolean }[],
     put: (_t: unknown) => {},
     shown: (): Record<string, unknown> => ({}),
+    /** Every id painted, in order — whether a repaint happened is as testable as what it painted. */
+    repaints: [] as string[],
   },
 }));
 
 vi.mock('../src/frameworks/solid/stores/TemplateStore', async () => {
-  const { createSignal } = await import('solid-js');
+  const { createSignal, createEffect } = await import('solid-js');
+  const { useDatasetStore } = await import('../src/frameworks/solid/stores/DatasetStore');
+  const { SpacePreference, AGENT_DEFAULT, FOLLOW_SPACE } = await import('@we/entities');
   const [inUse, setInUse] = createSignal<AppInUse>({ id: 'we-app' });
   app.use = setInUse;
   return {
     useTemplateStore: () => {
       /*
-        A signal behind the property, so a template put up and one rolled back both read — the
+        A signal behind the property, so a template put up and one repainted both read — the
         real store is a Solid store for the same reason.
       */
-      const [current, setCurrent] = createSignal<Record<string, unknown>>({});
+      const [current, setCurrentRaw] = createSignal<Record<string, unknown>>({});
+      const setCurrent = (t: never) => {
+        app.templates.repaints.push((t as { id?: string }).id ?? '');
+        setCurrentRaw(t);
+      };
       app.templates.put = (t) => setCurrent(t as never);
       app.templates.shown = current;
+      const datasets = useDatasetStore();
+
+      /*
+        The real store's space-template follow, modelled rather than stubbed: when the record the
+        space lookup serves names a different `defaultTemplateId` for the dataset on screen, its
+        template is chosen again — through this agent's `SpacePreference` where one is written,
+        because a named choice or `AGENT_DEFAULT` outranks the record. `setSpaceDefaultTemplate`
+        paints only through this path now, so a double that could not follow would hide the
+        publish-to-repaint contract from every test below.
+      */
+      let spaceLookup: () => { uuid?: string; url?: string; defaultTemplateId?: string }[] = () => [];
+      let followed: { id: string; named: string | undefined } | null = null;
+      createEffect(() => {
+        const ds = datasets.currentDataset() as { id: string; sharedId?: string | null } | undefined;
+        const named = ds
+          ? spaceLookup().find((s) => (ds.sharedId ? s.url === ds.sharedId : s.uuid === ds.id))?.defaultTemplateId
+          : undefined;
+        const previous = followed;
+        followed = ds ? { id: ds.id, named } : null;
+        if (!ds || previous?.id !== ds.id || previous.named === named) return;
+        void (async () => {
+          const root = datasets.rootDataset()?.handle;
+          const [preference] = (
+            root ? await SpacePreference.findAll(root, { where: { spaceUuid: ds.id } }).catch(() => []) : []
+          ) as { templateId?: string }[];
+          const override = preference?.templateId;
+          // `AGENT_DEFAULT` leaves the agent's own choice on screen, as the real choose does; a
+          // named override paints it, and with no override the space's default does.
+          const wants =
+            override === AGENT_DEFAULT ? undefined : override && override !== FOLLOW_SPACE ? override : named;
+          const template = wants ? app.templates.list.find((t) => t.id === wants) : undefined;
+          // Still the space on screen — the real store guards the same way before replacing.
+          if (template && datasets.currentDataset()?.id === ds.id) setCurrent(template as never);
+        })();
+      });
+
       return {
         appTemplate: inUse,
-        provideSpaceLookup: () => {},
+        provideSpaceLookup: (lookup: never) => {
+          spaceLookup = lookup;
+        },
         preloadSpaceTemplates: async () => {},
         allTemplates: () => app.templates.list,
         get currentTemplate() {
@@ -294,6 +340,7 @@ beforeEach(() => {
   gate.reset();
   navigate.mockClear();
   app.templates.list = [];
+  app.templates.repaints = [];
   route.go('/');
 });
 
@@ -1486,12 +1533,13 @@ describe('dataset lifecycle through the real stores', () => {
   }, 10000);
 
   /*
-    The template on screen belongs to the record on screen: a default-template save for the space
-    being switched to snapshots and restores only while its own record is shown. Taken while the
-    other space's record is still up, the snapshot is of a template that was never this space's —
-    and a rollback that replays it paints the old space's template in where the new one's should
-    be. The pre-load reads the fresh id off the cache, so a template can land before the record
-    does: the record read stays held below, which is exactly the window.
+    The template on screen belongs to the record on screen, so a default-template save touches no
+    template itself: it publishes the id, and the space-template follow repaints from the record.
+    A rollback is the same shape — the record's last confirmed id is published back — which is the
+    safety: a template the record itself brought in mid-save is never rolled back over, where a
+    snapshot taken while the other space's record was still up would have replayed *that* into the
+    new space. The pre-load reads the fresh id off the cache, so a template can land before the
+    record does: the record read stays held below, which is exactly the window.
   */
   it('does not roll the space still on screen’s template into the space switched to', async () => {
     const stores = mountShell();
@@ -1551,6 +1599,8 @@ describe('dataset lifecycle through the real stores', () => {
       await vi.waitFor(() =>
         expect(stores.spaces.mySpaces().find((s) => s.uuid === to)?.defaultTemplateId).toBe('to-new'),
       );
+      // The publish alone put the named template up — the save paints nothing directly.
+      await vi.waitFor(() => expect(app.templates.shown().id).toBe('to-new'));
       // To's own template lands in the window — the record read is still held, and the pre-load
       // had the fresh id off the cache. Then the save fails.
       app.templates.put({ id: 'to-default' });
@@ -1648,6 +1698,54 @@ describe('dataset lifecycle through the real stores', () => {
     expect(stores.spaces.mySpaces().find((s) => s.uuid === uuid)?.defaultThemeId).toBe('retro');
     const [stored] = await Space.findAll(ref.handle as never);
     expect(stored?.defaultThemeId).toBe('retro');
+    expect(stored?.defaultTemplateId).toBe('first');
+  }, 10000);
+
+  /*
+    A personal template choice is not a default save's to take back. Chosen while the save is
+    still out, it is written as this agent's `SpacePreference` — and when the save fails and
+    publishes the record's confirmed default back, the follow chooses through that preference:
+    the override stays up, where a rollback that restored what the save had painted would put
+    the record's template back over a choice that was never the save's.
+  */
+  it('keeps a personal template override chosen while its space default’s save fails', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    await stores.spaces.createSpace('Defaults', '', 'personal', 'hidden');
+    const ref = (await lifecycle.list()).find((d) => d.name === 'Defaults')!;
+    const uuid = ref.id;
+    await stores.datasets.switchDataset(uuid);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(uuid));
+    app.templates.list = [{ id: 'first' }, { id: 'second' }, { id: 'mine' }];
+    await stores.spaces.setSpaceDefaultTemplate('first', uuid);
+    await vi.waitFor(() => expect(app.templates.shown().id).toBe('first'));
+
+    // The second save is held at the store write, so the choice below lands while it is out.
+    let fail!: () => void;
+    const held = new Promise<void>((_resolve, reject) => (fail = () => reject(new Error('disk full'))));
+    const update = vi
+      .spyOn(getEntity('Space') as unknown as { update: (...a: unknown[]) => Promise<unknown> }, 'update')
+      .mockImplementationOnce(() => held);
+    try {
+      const saving = stores.spaces.setSpaceDefaultTemplate('second', uuid);
+      await vi.waitFor(() => expect(app.templates.shown().id).toBe('second'));
+
+      await stores.spaces.setSpaceTemplateOverride('mine', uuid);
+      expect(app.templates.shown().id).toBe('mine');
+      const repaints = app.templates.repaints.length;
+
+      fail();
+      await expect(saving).rejects.toThrow('disk full');
+      // The republish re-chooses through the preference — 'mine' again — rather than the record's
+      // 'first' or the save's 'second'.
+      await vi.waitFor(() => expect(app.templates.repaints.length).toBeGreaterThan(repaints));
+      expect(app.templates.repaints.at(-1)).toBe('mine');
+      expect(app.templates.shown().id).toBe('mine');
+    } finally {
+      update.mockRestore();
+    }
+
+    const [stored] = await Space.findAll(ref.handle as never);
     expect(stored?.defaultTemplateId).toBe('first');
   }, 10000);
 
@@ -3737,6 +3835,159 @@ describe('what a collection extracts', () => {
     expect(port.registrations.some((r) => r.watchId === watchId(call.id))).toBe(false);
   }, 15000);
 
+  /*
+    Leaving a call does not wait on the reads a start makes first, so a stop can land while its
+    start is still resolving. Serialised per (dataset, watch id), the stop runs *after* the start
+    it supersedes: the start registers and the stop removes it, where a stop that raced past left
+    a processor registered with nothing ever coming back for it.
+  */
+  it('leaves nothing registered when a call’s watch is stopped while its start is still resolving', async () => {
+    const events: string[] = [];
+    onPorts = (ports) => {
+      (ports as unknown as { interpretation: unknown }).interpretation = {
+        watch: async (_dataset: unknown, args: { watchId: string }) => {
+          events.push(`watch:${args.watchId}`);
+        },
+        unwatch: async (_dataset: unknown, id: string) => {
+          events.push(`unwatch:${id}`);
+        },
+      };
+    };
+    const stores = mountShell();
+    await ready(stores);
+    const handleA = await enterSpace(stores, 'Here');
+    const a = stores.datasets.currentDataset()!.id;
+    const call = await CollectionBlock.create(handleA, {
+      kind: 'call',
+      mode: 'feed',
+      autoExtract: true,
+      extractionTargets: '["TaskBlock"]',
+    } as never);
+    const other = await CollectionBlock.create(handleA, {
+      kind: 'call',
+      mode: 'feed',
+      autoExtract: true,
+      extractionTargets: '["TaskBlock"]',
+    } as never);
+
+    await enterSpace(stores, 'Elsewhere');
+    provideModuleHostServices({
+      datasetByUri: (uri) => stores.datasets.datasets().find((d) => d.id === uri || d.sharedUri === uri)?.handle,
+    });
+
+    // Hold the read a start makes of the call's own settings — the await a stop lands inside.
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let holding = false;
+    let answersHeld = false;
+    const Collection = getEntity('CollectionBlock') as unknown as {
+      findAll: (
+        handle: unknown,
+        q?: { where?: { id?: string[] }; properties?: readonly string[] },
+      ) => Promise<unknown[]>;
+    };
+    const findAll = Collection.findAll.bind(Collection);
+    const spy = vi.spyOn(Collection, 'findAll').mockImplementation(async (handle, q) => {
+      if (holding && handle === handleA && q?.properties && q.where?.id?.includes(call.id)) {
+        answersHeld = true;
+        await held;
+      }
+      return findAll(handle, q as never);
+    });
+    const interpretation = kernel();
+    try {
+      holding = true;
+      const starting = interpretation.watchCollection(call.id, { dataset: a });
+      await vi.waitFor(() => expect(answersHeld).toBe(true));
+      // Another collection's start is a different key: it registers without waiting on this one's.
+      await interpretation.watchCollection(other.id, { dataset: a });
+
+      // The stop, issued while the start is still resolving — what leaving the call does.
+      const stopping = interpretation.unwatchCollection(call.id, { dataset: a });
+      release();
+      await starting;
+      await stopping;
+    } finally {
+      spy.mockRestore();
+    }
+
+    // Started, then removed — in that order, which is the whole point: the reverse is the leak.
+    // Each entered space's own loose-message watch registers on the same port, so only the events
+    // naming one of these two calls are the trace.
+    const these = events.filter((e) => e.endsWith(watchId(call.id)) || e.endsWith(watchId(other.id)));
+    expect(these).toEqual([`watch:${watchId(other.id)}`, `watch:${watchId(call.id)}`, `unwatch:${watchId(call.id)}`]);
+  }, 15000);
+
+  /*
+    The sidebar cache follows the space on screen: for a dataset nobody is looking at it says what
+    the record said when this client last visited. A peer switching automatic extraction off after
+    that leaves the cache saying on while the stored record says off — and a watch decided by the
+    cache registers on a community that already turned it off. The space's answer is read off its
+    own record through the call's dataset, not the cache.
+  */
+  it('does not register an off-screen call when the stored record says extraction is off but the cache says on', async () => {
+    const port = watchPort();
+    const stores = mountShell();
+    await ready(stores);
+    const handleA = await enterSpace(stores, 'Here');
+    const a = stores.datasets.currentDataset()!.id;
+    // No switch of its own — made before the convention of copying the space's answers in, so the
+    // call defers to the space's record.
+    const call = await CollectionBlock.create(handleA, {
+      kind: 'call',
+      mode: 'feed',
+      extractionTargets: '["TaskBlock"]',
+    } as never);
+
+    await enterSpace(stores, 'Elsewhere');
+    // A peer's write lands on the stored record while nobody here is looking: the cache keeps
+    // what it said when this client left.
+    const [record] = await Space.findAll(handleA, { where: { uuid: a } });
+    await Space.update(handleA, record.id, { autoInterpret: false });
+    // The stored record says off; the sidebar cache still says what it said when this client left.
+    expect(stores.spaces.mySpaces().find((s) => s.uuid === a)?.autoInterpret).toBe(true);
+    provideModuleHostServices({
+      datasetByUri: (uri) => stores.datasets.datasets().find((d) => d.id === uri || d.sharedUri === uri)?.handle,
+    });
+
+    await expect(kernel().watchCollection(call.id, { dataset: a })).rejects.toThrow('automatic extraction is off');
+    expect(port.registrations.some((r) => r.watchId === watchId(call.id))).toBe(false);
+  }, 15000);
+
+  /*
+    The live list stands in for a collection whose settings have not been read yet — answering
+    with the space's default, not the call's own — so a pass that asked it would extract the wrong
+    classes into a call whose own list was already stored. `interpretCollection` reads the classes
+    off the call's own row, before the gather.
+  */
+  it('runs a pass on the call’s own stored classes while its settings are not yet loaded live', async () => {
+    const requests: { classes: string[] }[] = [];
+    onPorts = (ports) => {
+      (ports as unknown as { interpretation: unknown }).interpretation = {
+        interpret: async (_dataset: unknown, _turns: unknown, request: { classes: string[] }) => {
+          requests.push({ classes: [...request.classes] });
+          return { turns: 0, ids: [], proposed: [] };
+        },
+      };
+    };
+    const stores = mountShell();
+    await ready(stores);
+    const handleA = await enterSpace(stores, 'Here');
+    // Events only, where the space's default is the wider list — and nobody has asked about this
+    // call live, so the live list would answer with the space's.
+    const call = await CollectionBlock.create(handleA, {
+      kind: 'call',
+      mode: 'feed',
+      autoExtract: true,
+      extractionTargets: '["EventBlock"]',
+    } as never);
+
+    await kernel().runOnCollection(call.id);
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0].classes).toEqual(['EventBlock']);
+  }, 15000);
+
   it('asks for the call’s own classes when the space moves on mid-gather', async () => {
     const requests: { dataset: unknown; classes: string[] }[] = [];
     onPorts = (ports) => {
@@ -3821,42 +4072,42 @@ describe('what a collection extracts', () => {
       saved.push({ name, text: new TextDecoder().decode(bytes) });
       return true;
     });
-    const stores = mountShell();
-    await ready(stores);
-    const handleA = await enterSpace(stores, 'Made in');
-    const a = stores.datasets.currentDataset()!.id;
-    const call = await CollectionBlock.create(handleA, {
-      kind: 'call',
-      mode: 'feed',
-      title: 'the call',
-      autoExtract: true,
-      extractionTargets: '["TaskBlock"]',
-    } as never);
-    // A pass, or the log is empty and nothing is written.
-    await ModelRun.create(
-      handleA,
-      {
-        kind: 'extraction',
-        outcome: 'done',
-        recordCount: 0,
-        detail: '{"targets":["TaskBlock"]}',
-        error: '',
-        trigger: 'auto',
-        prompt: 'p',
-        output: 'o',
-      } as never,
-      { parent: { id: call.id, relation: 'runs', entity: 'CollectionBlock' } } as never,
-    );
-
-    // Elsewhere answers every one of the exported fields differently.
-    await enterSpace(stores, 'Moved to');
-    await stores.spaces.setAutoInterpret(false);
-    await stores.spaces.setExtractionTarget('TaskBlock', false);
-    const b = stores.datasets.currentDataset()!.id;
-    await stores.spaces.navigateToSpace(a);
-    await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(a));
-
     try {
+      const stores = mountShell();
+      await ready(stores);
+      const handleA = await enterSpace(stores, 'Made in');
+      const a = stores.datasets.currentDataset()!.id;
+      const call = await CollectionBlock.create(handleA, {
+        kind: 'call',
+        mode: 'feed',
+        title: 'the call',
+        autoExtract: true,
+        extractionTargets: '["TaskBlock"]',
+      } as never);
+      // A pass, or the log is empty and nothing is written.
+      await ModelRun.create(
+        handleA,
+        {
+          kind: 'extraction',
+          outcome: 'done',
+          recordCount: 0,
+          detail: '{"targets":["TaskBlock"]}',
+          error: '',
+          trigger: 'auto',
+          prompt: 'p',
+          output: 'o',
+        } as never,
+        { parent: { id: call.id, relation: 'runs', entity: 'CollectionBlock' } } as never,
+      );
+
+      // Elsewhere answers every one of the exported fields differently.
+      await enterSpace(stores, 'Moved to');
+      await stores.spaces.setAutoInterpret(false);
+      await stores.spaces.setExtractionTarget('TaskBlock', false);
+      const b = stores.datasets.currentDataset()!.id;
+      await stores.spaces.navigateToSpace(a);
+      await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(a));
+
       // Started in Here; held in the gather while the screen moves to Elsewhere.
       const exporting = stores.spaces.exportExtractionLog(call.id);
       await vi.waitFor(() => expect(proposalsAsked).toBe(true));
@@ -3875,6 +4126,107 @@ describe('what a collection extracts', () => {
     // Candidate order, the way the picker's list reads — the export resolves by the same rule.
     expect(log).toContain('- Space default: EventBlock, TaskBlock');
     expect(log).toContain('- Extracts automatically as the call happens: yes');
+  }, 15000);
+
+  /*
+    A browser opens the save dialog only while it is still handling the click that asked for it, so
+    the picker cannot wait on the export's settings read — only on the title that names the file.
+    The settings are read inside the content callback instead, still through the call's own
+    dataset: the picker is already open, the space can change underneath, and the log is still
+    labelled by the space it was started in.
+  */
+  it('opens the save picker before the export’s settings resolve, still naming the space it started in', async () => {
+    // Held at the collection-settings read the export's settings start with — opened below, moved,
+    // released. The collection's own row is the one read it always makes: the space record and the
+    // candidates come from the live signals while its space is on screen.
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let holding = false;
+    let metaRead = false;
+    let heldHandle: unknown;
+    let heldCall = '';
+    let settingsReads: ReturnType<typeof vi.spyOn> | undefined;
+    const pickerCalls: string[] = [];
+    let written = '';
+    (globalThis as { showSaveFilePicker?: unknown }).showSaveFilePicker = async (options: {
+      suggestedName?: string;
+    }) => {
+      pickerCalls.push(options.suggestedName ?? '');
+      return {
+        createWritable: async () => ({
+          write: async (data: Blob) => {
+            written = await data.text();
+          },
+          close: async () => {},
+        }),
+      };
+    };
+    try {
+      const stores = mountShell();
+      await ready(stores);
+      const handleA = await enterSpace(stores, 'Made in');
+      heldHandle = handleA;
+      const a = stores.datasets.currentDataset()!.id;
+      const call = await CollectionBlock.create(handleA, {
+        kind: 'call',
+        mode: 'feed',
+        title: 'the call',
+        autoExtract: true,
+        extractionTargets: '["TaskBlock"]',
+      } as never);
+      heldCall = call.id;
+      const Entity = getEntity('CollectionBlock') as unknown as {
+        findAll: (
+          handle: unknown,
+          q?: { where?: { id?: string[] }; properties?: readonly string[] },
+        ) => Promise<unknown[]>;
+      };
+      const findAll = Entity.findAll.bind(Entity);
+      settingsReads = vi.spyOn(Entity, 'findAll').mockImplementation(async (handle, q) => {
+        if (holding && handle === heldHandle && q?.properties && q.where?.id?.includes(heldCall)) {
+          metaRead = true;
+          await held;
+        }
+        return findAll(handle, q as never);
+      });
+      await ModelRun.create(
+        handleA,
+        {
+          kind: 'extraction',
+          outcome: 'done',
+          recordCount: 0,
+          detail: '{"targets":["TaskBlock"]}',
+          error: '',
+          trigger: 'auto',
+          prompt: 'p',
+          output: 'o',
+        } as never,
+        { parent: { id: call.id, relation: 'runs', entity: 'CollectionBlock' } } as never,
+      );
+
+      await enterSpace(stores, 'Moved to');
+      const b = stores.datasets.currentDataset()!.id;
+      await stores.spaces.navigateToSpace(a);
+      await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(a));
+
+      holding = true;
+      const exporting = stores.spaces.exportExtractionLog(call.id);
+      // The settings read is still out — and the picker is already open, inside the click's window.
+      await vi.waitFor(() => expect(metaRead).toBe(true));
+      expect(pickerCalls).toHaveLength(1);
+      expect(pickerCalls[0]).toContain('the-call');
+
+      await stores.spaces.navigateToSpace(b);
+      await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(b));
+      release();
+      await exporting;
+    } finally {
+      holding = false;
+      settingsReads?.mockRestore();
+      delete (globalThis as { showSaveFilePicker?: unknown }).showSaveFilePicker;
+    }
+
+    expect(written).toContain('- Space: Made in');
   }, 15000);
 
   /*

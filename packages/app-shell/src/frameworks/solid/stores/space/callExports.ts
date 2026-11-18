@@ -125,31 +125,34 @@ export function createCallExports(deps: CallExportDeps) {
     try {
       const exportedAt = new Date();
       /*
-        The space's answers are read for the call's own dataset, alongside the title read — the
-        content below is gathered after the save dialog, and by then the space on screen may be
-        another's, whose name and settings would sit beside this call's transcript and records.
+        Only the title is read before `saveFile`: a browser opens the save dialog only while the
+        click that asked for it is still being handled, and the settings read can outlive that —
+        the dialog would refuse and the file would land as a plain download. The space's answers
+        are gathered inside the content callback instead, still for the call's own dataset through
+        the captured handle, so by the time they resolve the space on screen may be another's and
+        none of that reaches the file.
       */
-      const [titled, meta] = await Promise.all([
-        CollectionBlock.findOne(p, { where: { id: callId } }),
-        deps.exportMeta(p, callId),
-      ]);
+      const titled = await CollectionBlock.findOne(p, { where: { id: callId } });
       const outcome = await saveFile({
         name: exportFileName(titled?.title, 'call', 'md', exportedAt).replace(/\.md$/, '-extraction-log.md'),
         type: 'text/markdown;charset=utf-8',
         content: async () => {
-          const call = await CollectionBlock.findOne(p, {
-            where: { id: callId },
-            /*
-              `polymorphic` said here rather than trusted to the declaration. `extracted` names no
-              target class — a pass writes whatever models the call looks for — and the class this
-              store reads through does not carry the flag, so the executor would refuse to hydrate it.
-            */
-            include: {
-              runs: { where: { kind: 'extraction' } },
-              extracted: { polymorphic: true },
-              amendments: true,
-            },
-          } as never);
+          const [call, meta] = await Promise.all([
+            CollectionBlock.findOne(p, {
+              where: { id: callId },
+              /*
+                `polymorphic` said here rather than trusted to the declaration. `extracted` names no
+                target class — a pass writes whatever models the call looks for — and the class this
+                store reads through does not carry the flag, so the executor would refuse to hydrate it.
+              */
+              include: {
+                runs: { where: { kind: 'extraction' } },
+                extracted: { polymorphic: true },
+                amendments: true,
+              },
+            } as never),
+            deps.exportMeta(p, callId),
+          ]);
           const row = call as unknown as {
             title?: string;
             runs?: unknown;

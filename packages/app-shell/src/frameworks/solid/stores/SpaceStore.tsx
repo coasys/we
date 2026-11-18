@@ -107,7 +107,7 @@ import {
   type ThemeResolutionInput,
 } from '@shared/themeResolution';
 import { uploadOf } from '@shared/uploadOf';
-import { copyText, deepClone, deriveSlug } from '@shared/utils';
+import { copyText, deriveSlug } from '@shared/utils';
 import type { ViewSetting } from '@shared/viewResolution';
 import {
   activeSections,
@@ -4608,21 +4608,43 @@ export function SpaceStoreProvider(props: ParentProps) {
       properties: [...COLLECTION_SETTINGS_FIELDS],
     } as never);
     const ds = datasetStore.datasets().find((d) => d.handle === handle);
-    const space = ds ? await spaceRow(ds) : undefined;
+    const onScreen = ds !== undefined && datasetStore.currentDataset()?.id === ds.id;
+    /*
+      Where the freshest answer lives, per dataset.
+
+      For the space on screen the live reads are the freshest — they hold a setting that has been
+      published but whose write has not landed yet — and they follow the stored record the moment
+      it changes, so preferring them loses nothing. For a dataset nobody is looking at the live
+      reads answer for a different space and the sidebar cache says what the record said when this
+      client last visited — a peer switching automatic extraction off after that would register a
+      watch the community already turned off — so the space's own record is read where it lives,
+      through the handle.
+    */
+    const shown = currentSpace();
+    const space =
+      (onScreen && shown && ds && isSpaceSelf(shown, ds) ? shown : undefined) ??
+      (ds ? (await Space.findAll(handle, { where: spaceSelfWhere(ds) }))[0] : undefined);
+    const own = (onScreen && loadedCollections().has(collectionId)
+      ? collectionSettings()[collectionId]
+      : undefined) ?? { autoExtract: row?.autoExtract, extractionTargets: row?.extractionTargets };
     /*
       Narrowed by candidacy — the same rule the live list intersects, read for this dataset —
       not by resolvability: an adopted model whose manifest is not extractable resolves in the
       registry all the same, and a check that only asks "does the name resolve" kept it. The
       resolvable check stays: a candidate whose class is not installed in this dataset yet has no
       shape there and would take the whole pass down.
+
+      The candidates split the same way the records do: the live list for the dataset on screen —
+      re-reading what the switch already read would only wait on it again — and the asking
+      dataset's own read for one nobody is looking at.
     */
-    const candidates = await shapeStore.extractionCandidatesFor(handle);
+    const candidates = onScreen ? shapeStore.extractionCandidates() : await shapeStore.extractionCandidatesFor(handle);
     const resolvable = (entity: string) => getEntityForDataset(entity, handle) !== undefined;
     return {
       spaceName: space?.name,
       spaceTargets: resolveSpaceExtractionTargets(candidates, space?.extractionTargets).filter(resolvable),
-      auto: resolveCollectionAutoExtract(space?.autoInterpret === true, row?.autoExtract),
-      classes: resolveCollectionExtractionTargets(candidates, space?.extractionTargets, row?.extractionTargets).filter(
+      auto: resolveCollectionAutoExtract(space?.autoInterpret === true, own.autoExtract),
+      classes: resolveCollectionExtractionTargets(candidates, space?.extractionTargets, own.extractionTargets).filter(
         resolvable,
       ),
     };
@@ -4650,7 +4672,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     candidatesLoaded: () => shapeStore.extractionCandidatesLoaded(),
     targetsFor: extractionTargetsFor,
     setTargetFor: setExtractionTargetFor,
-    autoFor: autoExtractFor,
     setAutoFor: setAutoExtractFor,
     collectionAnswers: collectionExtractionFor,
   });
@@ -5857,38 +5878,22 @@ export function SpaceStoreProvider(props: ParentProps) {
     const save = defaultSaveFor(ds, 'defaultTemplateId');
     const isNewest = save.ops.begin();
     save.pending += 1;
-    const ownShown = () => {
-      const space = currentSpace();
-      return space && isSpaceSelf(space, ds) ? space : undefined;
-    };
-    /*
-      Snapshot — and swap — only while the record on screen is this space's own: a switch moves the
-      dataset ahead of the record, so `isCurrent` alone would capture the space being left's
-      template as this one's "previous", and a rollback would paint it into the space being
-      entered. Cloned because what is on screen is a store, and `replaceTemplate` reconciles it in
-      place.
-    */
-    const previousTemplate =
-      ownShown() && templateStore.currentTemplate ? deepClone(templateStore.currentTemplate) : undefined;
-    /*
-      Kept by reference: a rollback puts the snapshot back only while the template this save put up
-      is still the one on screen — a template this space's own record loaded since is left alone.
-    */
-    const installed = ownShown() ? templateStore.allTemplates().find((t) => t.id === templateId) : undefined;
     try {
-      // Published before it is stored, so template pre-loading reads the fresh id from the cache.
+      /*
+        Published before it is stored — and the publish is the whole of the paint. The template
+        store follows the record's `defaultTemplateId` for the space on screen, so a save touches
+        no template directly: the follow resolves what to show, through this agent's own override
+        for the space where one is set. The republish below is the whole rollback for the same
+        reason — the follow paints what the record last took, not what a snapshot happened to
+        capture, so a template the record itself brought in mid-save is never rolled back over.
+      */
       publishSpaceFields(ds, { defaultTemplateId: templateId });
-      if (installed) templateStore.replaceTemplate(installed);
       const space = await spaceRowForSave(ds);
       await writeSpaceFields(ds, space, { defaultTemplateId: templateId });
       save.confirmed = templateId;
     } catch (error) {
       // Only the newest save takes the paint back — an earlier one failing leaves the later one's.
-      if (isNewest()) {
-        publishSpaceFields(ds, { defaultTemplateId: save.confirmed });
-        if (previousTemplate && installed && ownShown() && templateStore.currentTemplate === installed)
-          templateStore.replaceTemplate(previousTemplate);
-      }
+      if (isNewest()) publishSpaceFields(ds, { defaultTemplateId: save.confirmed });
       throw error;
     } finally {
       save.pending -= 1;
