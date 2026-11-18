@@ -16,8 +16,13 @@
 //! No egui, no I/O, no tokio: this crate builds for `wasm32-unknown-unknown`.
 //! `StoreMap::load` is the only filesystem helper and it is compiled out on
 //! wasm — file reads live in tests and examples.
+//!
+//! E18's agent chat is a second port, [`chat`], over the executor's AI
+//! sessions. Those rows are not perspective records, so [`Executor`] does
+//! not grow an AI-session method.
 #![forbid(unsafe_code)]
 
+pub mod chat;
 mod executor;
 mod fake;
 mod natives;
