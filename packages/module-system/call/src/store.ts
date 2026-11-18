@@ -267,14 +267,14 @@ const GONE = new Set<string>(['disconnected', 'failed', 'closed']);
 /**
  * Whether this stream has a video track that is actually delivering frames.
  *
- * `readyState` alone was the bug behind every frozen tile. It answers "has this track been stopped",
+ * `readyState` alone is not enough. It answers "has this track been stopped",
  * which for a **remote** track is almost never: it stays `live` for as long as the connection object
  * exists, whatever the far end is doing. What says "nothing is arriving" is `muted`, which the
  * browser sets when RTP stops — a peer leaving, crashing, or losing their network — and clears again
  * if it comes back.
  *
- * So a departed peer read as having a picture, the `<video>` kept its `srcObject`, and the browser
- * went on painting the last frame it had decoded. Both halves are needed: `muted` alone would miss a
+ * With `readyState` alone a departed peer reads as having a picture, and the browser goes on
+ * painting the last frame it decoded. Both halves are needed: `muted` alone would miss a
  * track that was genuinely stopped, and `readyState` alone misses every way a call actually ends.
  *
  * The mesh re-emits its streams on `mute` and `unmute` so this is re-asked when the answer changes —
@@ -544,9 +544,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
    *
    * ## Published through the `media` kernel, not by a string key
    *
-   * The definition used to say `audioSource: 'localAudio'` and the host read the member off this
-   * store and lent it to every other module. That is `media.publish` now: this module says what it
-   * is capturing, a module that wants to hear it reads `media.input()`, and neither names the other.
+   * Through `media.publish`: this module says what it is capturing, a module that wants to hear it reads `media.input()`, and neither names the other.
    * The publish happens in the setter so the two cannot disagree — every write to the signal is a
    * publish, and the dedupe above is what keeps a mute from re-announcing the same stream.
    */
@@ -934,14 +932,10 @@ export function createCallStore(deps: ModuleStoreDeps) {
           Expected and not yet arrived. Keyed on the track rather than on `peerStates`, which holds
           nothing until the first negotiation — exactly the window that showed nothing at all.
 
-          Not once a connection has been made and lost, which is a different sentence. It used to
-          exclude `failed` only, and that was enough while a picture that stopped arriving went on
-          being counted as a picture: a departed peer sat there frozen rather than claiming to be
-          on its way. Now that a muted track reads as no picture — see `hasLiveVideo` — the same
-          expression would put "Connecting…" under somebody who has just left the call, which is a
-          worse answer than the frozen frame was.
-
-          `disconnected` and `closed` join it for that reason. What a genuine blip shows instead is
+          Not once a connection has been made and lost, which is a different sentence. A muted track
+          reads as no picture — see `hasLiveVideo` — so without `GONE` this would put "Connecting…"
+          under somebody who has just left the call; `failed`, `disconnected` and `closed` are all
+          excluded. What a genuine blip shows instead is
           `retrying`, which the mesh sets when it actually starts repairing the pair, and which says
           "Reconnecting…" — true of a connection coming back, and not claimed of one that never
           connected.
@@ -957,8 +951,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
       });
     };
 
-    // Through the shared helper, which is what this loop used to duplicate without its liveness
-    // test — so a peer who had stopped heartbeating kept a tile even once the mesh had let them go.
+    // Through the shared helper, so a peer who has stopped heartbeating does not keep a tile.
     for (const { peer, activity } of liveCallActivities()) {
       if (activity.id !== id || peer.agentId === me) continue;
       const sessions = sessionsOf.get(peer.agentId);
@@ -1067,10 +1060,8 @@ export function createCallStore(deps: ModuleStoreDeps) {
   /**
    * What this call is *about*, held rather than passed around.
    *
-   * It used to be a `join` parameter that every `publishActivity` call had to remember to forward,
-   * which was survivable while the anchor was fixed at join time. It no longer is — `attachAnchor`
-   * can set one mid-call — and a later republish carrying the stale parameter would silently drop it
-   * again on the next mute toggle. One place to read it from, so nothing can disagree.
+   * `attachAnchor` can set one mid-call, so a parameter forwarded by every `publishActivity` call
+   * could carry a stale value. One place to read it from, so nothing can disagree.
    */
   let anchor: Focus | undefined;
 
@@ -1335,10 +1326,8 @@ export function createCallStore(deps: ModuleStoreDeps) {
    *
    * ## When the new session cannot be had
    *
-   * It goes back to the topology it was on, and says so. It used to stop at the message: the old
-   * session was gone and no new one existed, so the person sat in a call with no media and no way
-   * out of it short of leaving — `switchTopology` refused without a session, and refused the way
-   * back because `topology` still named it. The call's published topology is left as the switch
+   * It goes back to the topology it was on, and says so. Stopping at the message would leave the
+   * person in a call with no media and no way out short of leaving. The call's published topology is left as the switch
    * made it, since that is what everyone else is on; asking again is how this agent joins them.
    */
   async function reconnectSession(mode: CallTopology) {
@@ -1395,12 +1384,9 @@ export function createCallStore(deps: ModuleStoreDeps) {
     Follow a switch somebody else made in this call: adopt it, republish it, reconnect.
 
     Every read comes before any return. An effect is subscribed to what it read on its last run, so
-    a read an early return skipped is a change it never hears about — and this one used to return on
-    `!backend`, a plain variable, before it had read presence. It ran first as the call began, when
-    the session was still being built, and was subscribed to `callId` alone from then on: a switch
-    somebody published afterwards never reached it. Whoever pressed "Switch to mesh" reconnected
-    alone, and switching back worked because nobody else had left. It now waits on `backendJoined`,
-    a signal, so a switch published while this agent's session is being built or joined is followed
+    a read an early return skipped is a change it never hears about. So it does not return on
+    `!backend`, a plain variable, before it has read presence; it waits on `backendJoined`, a
+    signal, so a switch published while this agent's session is being built or joined is followed
     the moment it has joined.
 
     `mine` blocks only a switch it has already seen. A topology nobody switched to — the one the
@@ -1476,12 +1462,9 @@ export function createCallStore(deps: ModuleStoreDeps) {
    *
    * ## Why the record comes first, and is never cleaned up
    *
-   * The record used to be made by whichever agent's transcriber flushed an utterance first, which
-   * meant a call had no identity of its own until somebody spoke. Everything a live call needs to
-   * hold — which entities to extract, what it is called, who is in it — had nowhere to live in the
-   * meantime, and two agents speaking at once (the ordinary way a meeting begins) raced to create
-   * two records for one call. That race was fought with a distributed election, which is now
-   * deleted along with the reason for it.
+   * Everything a live call needs to hold — which entities to extract, what it is called, who is in it
+   * — needs somewhere to live before anybody speaks, and a record made by the first speaker would let
+   * two agents speaking at once race to create two records for one call.
    *
    * Nothing deletes an empty one. A call that produced no transcript still happened, and the only
    * agent who could decide it was worth discarding is one who can see the whole call — which in a
@@ -1537,9 +1520,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
     const plan = planEphemeral({ consumer: 'call', unicast: 'emulated' }, scope.capabilities);
     if (plan.runnable) return { scope };
 
-    // Released, not abandoned. This used to be assigned to `scopeHandle` the moment it was opened
-    // and every refusal below returned without disposing, so a join against a transport that cannot
-    // carry a call leaked one reference on the backend's scope, once per attempt.
+    // Released, not abandoned: a refused join must not leak a reference on the backend's scope.
     scope.dispose();
     return { reason: plan.gaps.map((gap) => gap.note).join(' ') };
   }
@@ -1561,11 +1542,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
     /*
       Everything `join` would refuse for, asked *before* anything is written.
 
-      The record used to be created first and `join` called afterwards, so every failed start left a
-      `CollectionBlock` in the space for a call that never happened — one per press, all of them
-      `kind: 'call'`, all of them showing up wherever calls are listed, with no participants and no
-      transcript and no way to tell them from a real call nobody spoke in. On a personal space,
-      where a call can never work, pressing the button was purely a way to litter.
+      A failed start must not leave a `CollectionBlock` in the space for a call that never happened.
 
       Duplicated rather than shared with `join` because `join` is also reached from the roster — a
       peer's call already exists, so its refusals have nothing to undo and it stays the one place
@@ -1610,11 +1587,8 @@ export function createCallStore(deps: ModuleStoreDeps) {
    * Start a call **on a record that already exists** — picking a past conversation back up.
    *
    * `startCall` writes a record and joins the call that record names. Continuing one is the same act
-   * with the first half already done, and doing it through `startCall` was the bug: pressing
-   * "continue this call" wrote a *second* `CollectionBlock` and joined that, so the space gained an
-   * empty call, every surface reading `callRecordId` pointed at it, and the transcript went to the
-   * record you had actually chosen. Two calls where you asked for one, disagreeing about which
-   * meeting you were in.
+   * with the first half already done, so it does not go through `startCall`, which would write a
+   * *second* `CollectionBlock`.
    *
    * A call *is* its record — `recordCallId` derives the id from it — so continuing needs no new
    * identity and no write. Anyone else who picks the same record up lands in the same call, which is
@@ -1667,9 +1641,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
     /*
       A call always says which space it is in, even when it is not *about* anything in particular.
 
-      An unanchored activity used to be enough, because a call could only be published into the space
-      you were standing in. Now that a call outlives navigating away from it, the space is no longer
-      derivable from where you happen to be — the host routes the activity to the call's own presence
+      A call outlives navigating away from it, so the space is not derivable from where you happen to be — the host routes the activity to the call's own presence
       source, and this is what tells it which that is.
 
       A space-wide call carries `datasetUri` and no `nodeId`, which is exactly what consumers already
@@ -1727,9 +1699,8 @@ export function createCallStore(deps: ModuleStoreDeps) {
     /*
       And the address names it — coasys/we#304.
 
-      Only picking a call from a list used to put it in the address. A call started from a button,
-      the rail or the bar was followed through `callRecordId` alone, so a link copied from the screen
-      named no call, and the page let go of the call the moment it ended. Asked here, where every
+      Every way into a call puts it in the address, so a link copied from the screen names the call.
+      Asked here, where every
       way into a call arrives, rather than at each of them. The host owns the address and decides
       whether to write; this only says which record, and which space it is in.
     */
@@ -1957,10 +1928,8 @@ export function createCallStore(deps: ModuleStoreDeps) {
     Reconcile the call against the roster. This is the whole membership mechanism — see mesh.ts.
 
     A Session backend manages its own connections, so only this module's mesh is told who to
-    connect to. The tiles follow the roster either way. They used to be rebuilt only on the
-    session's own events, and on AD4M every call is a session, so a peer who pressed leave stayed on
-    "Connecting…" until the session noticed by itself, about 30 s later, though presence had said
-    they were gone within a second.
+    connect to. The tiles follow the roster either way, not only the session's own events,
+    because presence says a peer has gone much sooner than a session notices.
   */
   effect?.(() => {
     const peers = roster();
@@ -1970,15 +1939,11 @@ export function createCallStore(deps: ModuleStoreDeps) {
   });
 
   /*
-    Leaving the space no longer leaves the call.
+    Leaving the space does not leave the call.
 
-    It used to, on the grounds that staying connected to a call in a space you have navigated out of
-    is a surprise — and, decisively, that "the transport scope is torn down under us anyway". The
-    second half was the real reason, and it is no longer true: this store holds its own refcounted
-    handle on the call's scope for as long as the call lasts, and the host now keeps a presence
-    source open for any space holding a live activity, so the roster survives too.
-
-    That leaves only the first half, and it is the wrong way round. Being dropped out of a call
+    This store holds its own refcounted handle on the call's scope for as long as the call lasts,
+    and the host keeps a presence source open for any space holding a live activity, so the roster
+    survives too. Being dropped out of a call
     because you went to look something up is the surprise; a call you have to stay still for is not
     one you can use. So the call ends when somebody ends it, and nothing else — hanging up, joining
     another (see `join`), or losing the module.
@@ -2073,14 +2038,8 @@ export function createCallStore(deps: ModuleStoreDeps) {
   /**
    * How the tiles are arranged, as reported by the stage.
    *
-   * This module no longer decides it. It used to, from the participant count alone — two columns up
-   * to four people, three beyond — and the panel's *shape* was not an input at all, so a call
-   * dragged tall and thin got two columns of postage stamps and one dragged wide got two rows with
-   * bands of empty panel above and below. The comment here claimed a tall dock wanted one or two
-   * columns; the code had no width to make that true with, and had not since a panel stopped being
-   * defined by which edge it was on.
-   *
-   * `Grid`'s `childAspect` solves it properly — largest 16:9 tiles for the box, both axes — and
+   * This module does not decide it: the panel's *shape* is an input, and only the stage can measure
+   * it. `Grid`'s `childAspect` solves it — largest 16:9 tiles for the box, both axes — and
    * reports what it settled on. Read here for two things only the module can answer: what shape the
    * panel wants at fit-to-content, and where a spotlight should put everyone else.
    */
@@ -2350,9 +2309,8 @@ export function createCallStore(deps: ModuleStoreDeps) {
      * a static bid on the declaration: the shape the panel wants at "fit to content" depends on how
      * many people are in the call and who has the spotlight.
      *
-     * This used to be four keys — `dockEdge`, `dockSize`, `dockFloat`, `dockAspect` — with the edge
-     * doubling as "is it placed" by going null. Openness is the panel's own `open` key now
-     * (`stageOpen`), so the bid can say what it wants and nothing else.
+     * Openness is the panel's own `open` key (`stageOpen`), so the bid says what it wants and
+     * nothing else.
      */
     stageBid: (): PanelBid => ({ edge: 'bottom', size: 'sm', float: true, aspect: stageAspect() }),
 
@@ -2442,10 +2400,8 @@ export function createCallStore(deps: ModuleStoreDeps) {
      * over `childAspect`, so writing tracks here turns the equal-tile solve off and leaving it
      * absent turns it back on. Two modes, one prop, and no mode flag to keep in step with anything.
      *
-     * Spotlight is not a span in the equal grid, which is what it used to be and why it barely
-     * looked focused: the tracks were solved for N tiles of one size, so the spotlight could only
-     * ever be two of them — two thirds of the stage at three people, one third at six. The tracks
-     * are the spotlight's own now.
+     * Spotlight is not a span in the equal grid: tracks solved for N tiles of one size would make
+     * the spotlight only ever two of them. The tracks are the spotlight's own.
      */
     stageTemplate: (): string | undefined => {
       if (focusedId() === null) return undefined;
@@ -2498,8 +2454,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
 
         It takes the whole of the axis the strip does not run along — the full height beside a strip
         down the side, the full width above one underneath — and the others auto-place into what is
-        left, one per track, in the order they are in. Explicit placement rather than `order`, which
-        is what it used to need when the spotlight was a span in a grid solved for equal tiles.
+        left, one per track, in the order they are in. Explicit placement rather than `order`.
       */
       /*
         The spotlight's cell fills with its box rather than centring it.
@@ -2519,14 +2474,12 @@ export function createCallStore(deps: ModuleStoreDeps) {
        *
        * A cell is whatever the panel's proportions make it — and a picture cannot be fitted into an
        * arbitrary box by CSS alone unless something can be measured. `container-type: size` makes the
-       * cell measurable, so the tile can ask for "as wide as 16:9 allows at this height" and stop
-       * being a full-height box with a band of video in the middle. That band was where the name and
-       * the mute badge ended up: anchored to the bottom of the cell, floating in empty space well
-       * below the picture they belonged to.
+       * cell measurable, so the tile can ask for "as wide as 16:9 allows at this height" rather than
+       * being a full-height box with a band of video in the middle, with the name and the mute badge
+       * floating well below the picture they belong to.
        *
-       * Unconditional now. It used to be skipped on a side dock, whose rows were sized from the
-       * column width and would have collapsed to nothing under size containment — a shape a panel
-       * can no longer be in, since every stage divides a box the user dragged.
+       * Unconditional: every stage divides a box the user dragged, so no row collapses under size
+       * containment.
        */
       /*
         The cell no longer measures itself: the box inside it does — see `tilePins`. A pinned
@@ -2662,14 +2615,13 @@ export function createCallStore(deps: ModuleStoreDeps) {
     /**
      * The rail's call button, in every state it can be pressed in. One promise: *go to the call.*
      *
-     * The launcher used to be a bare join outright, which made it three different things
-     * depending on what you were already doing, two of them wrong:
+     * A bare join would mean three different things depending on what you were already doing:
      *
-     * - In this space's call, `join` returns early on the matching id — so the button was silently
-     *   dead. Nothing in permanent chrome should absorb a click and do nothing.
-     * - In an anchored call, or a call in another space, the ids differ — so it **tore that call
-     *   down** and started a new one, with no confirmation. A rail button is pressed by accident;
-     *   ending a live conversation is not something it should be able to do.
+     * - In this space's call, `join` returns early on the matching id — a silently dead button.
+     *   Nothing in permanent chrome should absorb a click and do nothing.
+     * - In an anchored call, or a call in another space, the ids differ — so it would **tear that
+     *   call down** with no confirmation. A rail button is pressed by accident; ending a live
+     *   conversation is not something it should be able to do.
      *
      * So this never calls `join` while a call is running. What is left is the reading that holds in
      * all three states — bring me to the call — and it costs nothing when there is no call, because
@@ -2787,10 +2739,9 @@ export function createCallStore(deps: ModuleStoreDeps) {
     /**
      * "Call on this post" — join the call already happening about that node, or start one.
      *
-     * A node can now host several calls over its life, and more than one at a time, because the id
-     * is the call's own record rather than the node's. What it must not do is start a *second* call
-     * on a post while one is running, which is what pressing the same button twice used to be safe
-     * from only because the derived id made it the same call.
+     * A node can host several calls over its life, and more than one at a time, because the id is
+     * the call's own record rather than the node's. What it must not do is start a *second* call on
+     * a post while one is running.
      */
     joinAnchoredCall: action((nodeId: string) => {
       if (!nodeId) {
@@ -2908,10 +2859,10 @@ export function createCallStore(deps: ModuleStoreDeps) {
       if ((await controller?.startScreenShare()) === 'failed') setProblem(SCREEN_UNAVAILABLE);
     }, 'Start or stop sharing this agent’s screen; sharing replaces the camera until it stops.'),
     /**
-     * Show the pictures, or put them away. The other half of what one button used to do alone.
+     * Show the pictures, or put them away.
      *
-     * It used to toggle the stage itself — which worked, and also put mute and Leave out of reach
-     * while the call ran on without its controls. The pictures are the only thing that answer:
+     * Not the stage itself, which would put mute and Leave out of reach while the call ran on. The
+     * pictures are the only thing that answer:
      * `tilesHidden` gates the grid and nothing else, so the panel the menu lives in stays up.
      *
      * Unmarked, with `closeStage` and `openStage`: the panel declaration names two of them and the
