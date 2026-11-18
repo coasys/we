@@ -331,7 +331,13 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
     const lifecycle = deps.lifecycle();
     if (!port || !lifecycle) return null;
     for (const ref of await lifecycle.list()) {
-      const mounted = await port.mounts(ref.id).catch(() => [] as string[]);
+      /*
+        A mounts read that cannot answer is not "not mounted": swallowed, it
+        would resume nothing and let the retry mint a second dataset over the
+        mount already there. Discovery failure fails the lookup — the caller
+        retries when the executor answers again.
+      */
+      const mounted = await port.mounts(ref.id);
       if (mounted.includes(lang)) return ref;
     }
     return null;

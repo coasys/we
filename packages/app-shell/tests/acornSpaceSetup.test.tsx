@@ -414,3 +414,38 @@ describe('acorn open — owed remote setup survives denied storage (F4)', () => 
     expect(acorn.calls.filter((c) => c.includes('AcornProjectMeta'))).toHaveLength(1);
   });
 });
+
+describe('acorn open — the retried mount lookup (F5)', () => {
+  /*
+    A retried join finds the dataset its earlier attempt made by asking every
+    dataset what it mounts. A mounts read that cannot answer is not "not
+    mounted" — treating the error as absence resumes nothing and lets the retry
+    mint a second dataset over the mount already there. The lookup has to fail
+    so the caller comes back when the executor can answer again.
+  */
+  it('fails the join on an unreadable mount list instead of minting a second dataset', async () => {
+    const acorn = fakeAcorn();
+    acornPort = acorn.port;
+    const stores = mountShell();
+    await ready(stores);
+
+    // A create that committed its mount and dataset before the meta write was
+    // refused — the half-finished state a retried join must find, not redo.
+    acorn.interactFails.add('create');
+    await expect(stores.spaces.createAcornProject('Joined later', 'pass-phrase')).rejects.toThrow(
+      'interact create refused',
+    );
+    const dsId = acorn.mountsOf.keys().next().value!;
+    const datasetCount = stores.datasets.datasets().length;
+
+    // Mount discovery cannot answer: the join must fail, not assume absence.
+    acorn.mountsFailing.add(dsId);
+    await expect(stores.spaces.joinAcornProject(LANG, 'pass-phrase')).rejects.toThrow('mounts unavailable');
+    expect(stores.datasets.datasets()).toHaveLength(datasetCount);
+
+    // Healed, the same join resumes the dataset the create made — still no second.
+    acorn.mountsFailing.delete(dsId);
+    await expect(stores.spaces.joinAcornProject(LANG, 'pass-phrase')).resolves.toBe(dsId);
+    expect(stores.datasets.datasets()).toHaveLength(datasetCount);
+  });
+});
