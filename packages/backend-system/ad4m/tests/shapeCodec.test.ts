@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
 
 import { WeNode } from '../src/entities';
 import { compileManifest, manifestToEntries } from '../src/manifestCompiler';
-import { annotationLinks, isAnnotation, type LinkLike, readShape, sameShape } from '../src/shapeCodec';
+import { ANNOTATION, annotationLinks, isAnnotation, type LinkLike, readShape, sameShape } from '../src/shapeCodec';
 
 type Shaped = { generateSHACL: () => { shape: { toLinks(): LinkLike[] } } };
 
@@ -165,12 +165,13 @@ describe('a space model kept as SHACL', () => {
   });
 });
 
-describe('whether a stored model can be saved from WE without loss', () => {
-  const rebuilt = (links: LinkLike[], resolve?: (name: string) => unknown) => {
-    const read = readShape(links)!;
-    return stored(input(read.manifest, read), resolve);
-  };
+/** Read the links back and compile that manifest again — what a save from WE would write. */
+function rebuilt(links: LinkLike[], resolve?: (name: string) => unknown): LinkLike[] {
+  const read = readShape(links)!;
+  return stored(input(read.manifest, read), resolve);
+}
 
+describe('whether a stored model can be saved from WE without loss', () => {
   it('is, whatever order the shape is listed in', () => {
     // An executor answers in its own order; the same shape listed backwards is the same shape.
     const links = stored(input(SIGHTING));
@@ -219,6 +220,253 @@ describe('whether a stored model can be saved from WE without loss', () => {
       },
     } as EntityManifest;
     expect(sameShape(links, stored(input(manifest)))).toBe(false);
+  });
+
+  const CERTAINTY = 'we://module/shape/x/certainty';
+
+  /** The property shape that constrains `path`, so a test can replace that one `sh://in`. */
+  function propertyNode(links: readonly LinkLike[], path: string): string {
+    const node = links.find((l) => l.predicate === 'sh://path' && l.target === path)?.source;
+    if (!node) throw new Error(`no property for ${path}`);
+    return node;
+  }
+
+  function replaceIn(links: readonly LinkLike[], path: string, values: unknown): LinkLike[] {
+    const field = propertyNode(links, path);
+    const rest = links.filter((l) => !(l.source === field && l.predicate === 'sh://in'));
+    if (values === 'absent') return rest;
+    const target = values === 'malformed' ? 'literal:string:not-json' : `literal:string:${JSON.stringify(values)}`;
+    return [...rest, { source: field, predicate: 'sh://in', target }];
+  }
+
+  function without(links: readonly LinkLike[], predicate: string, source?: string): LinkLike[] {
+    return links.filter((l) => l.predicate !== predicate || (source !== undefined && l.source !== source));
+  }
+
+  it('is not, when storage narrowed an enum the annotation still lists in full', () => {
+    // The annotation still says sure/probably/not sure. Storage kept only sure. A save compiles the
+    // annotation and writes the wide set back, so the narrowing would not survive.
+    const links = stored(input(SIGHTING));
+    const narrowed = replaceIn(links, CERTAINTY, [{ value: 'sure' }]);
+    expect(sameShape(narrowed, rebuilt(narrowed))).toBe(false);
+  });
+
+  it('is, when the allowed values are the same set in another order', () => {
+    const links = stored(input(SIGHTING));
+    const reordered = replaceIn(links, CERTAINTY, [{ value: 'not sure' }, { value: 'sure' }, { value: 'probably' }]);
+    expect(sameShape(reordered, rebuilt(reordered))).toBe(true);
+  });
+
+  it('is not, when storage denies every value and the annotation still allows some', () => {
+    // `in: []` is a constraint that accepts nothing. An empty list is not an absent one, and a
+    // save that writes the annotation's values would open the field.
+    const links = stored(input(SIGHTING));
+    const denied = replaceIn(links, CERTAINTY, []);
+    expect(sameShape(denied, rebuilt(denied))).toBe(false);
+  });
+
+  it('is not, when a deny-all constraint has no options annotation to explain it', () => {
+    const links = stored(input(SIGHTING));
+    const field = propertyNode(links, CERTAINTY);
+    const denied = without(replaceIn(links, CERTAINTY, []), ANNOTATION.options, field);
+    expect(sameShape(denied, rebuilt(denied))).toBe(false);
+  });
+
+  it('is not, when sh:in is malformed or duplicated on one property', () => {
+    const links = stored(input(SIGHTING));
+    const field = propertyNode(links, CERTAINTY);
+    const malformed = replaceIn(links, CERTAINTY, 'malformed');
+    expect(sameShape(malformed, rebuilt(malformed))).toBe(false);
+    const full = links.find((l) => l.source === field && l.predicate === 'sh://in')!;
+    const duplicated = [...links, { ...full, target: `literal:string:${JSON.stringify([{ value: 'sure' }])}` }];
+    expect(sameShape(duplicated, rebuilt(duplicated))).toBe(false);
+  });
+
+  it('is not, when accepted values carry labels a manifest cannot write back', () => {
+    const links = stored(input(SIGHTING));
+    const labelled = replaceIn(links, CERTAINTY, [
+      { value: 'sure', label: 'Sure' },
+      { value: 'probably', label: 'Maybe' },
+      { value: 'not sure', label: 'No' },
+    ]);
+    expect(sameShape(labelled, rebuilt(labelled))).toBe(false);
+  });
+
+  it('is not, when a stored auto_accept link is one this SDK does not write', () => {
+    // Pinned @coasys/ad4m has no auto_accept field. The link must stay put: a save that drops it
+    // would erase a declaration the manifest cannot say.
+    const links = stored(input(SIGHTING));
+    const shapeUri = links.find((l) => l.predicate === 'rdf://type' && l.target === 'sh://NodeShape')!.source;
+    const extra = [
+      ...links,
+      { source: shapeUri, predicate: 'ad4m://auto_accept', target: 'literal:string:when_placed' },
+    ];
+    expect(sameShape(extra, rebuilt(extra))).toBe(false);
+  });
+
+  it('is not, when the abstract annotation has no matching ad4m://abstract link', () => {
+    // Adding the native flag is not the legacy allowance. That allowance is only a missing
+    // sh://in or sh://node beside an annotation that already says the same thing.
+    const manifest: EntityManifest = {
+      version: '1',
+      entities: {
+        BirdBase: { abstract: true, properties: { wingspan: { type: 'number' } }, relations: {} },
+      },
+    };
+    const links = stored(input(manifest));
+    expect(links.some((l) => l.predicate === 'ad4m://abstract')).toBe(true);
+    const stripped = links.filter((l) => l.predicate !== 'ad4m://abstract');
+    expect(sameShape(stripped, rebuilt(stripped))).toBe(false);
+  });
+});
+
+describe('reading options, abstract and extends from the shape itself', () => {
+  const CERTAINTY = 'we://module/shape/x/certainty';
+  const resolveWeNode = (name: string) => (name === 'WeNode' ? WeNode : undefined);
+
+  function propertyNode(links: readonly LinkLike[], path: string): string {
+    const node = links.find((l) => l.predicate === 'sh://path' && l.target === path)?.source;
+    if (!node) throw new Error(`no property for ${path}`);
+    return node;
+  }
+
+  function replaceIn(links: readonly LinkLike[], path: string, values: unknown): LinkLike[] {
+    const field = propertyNode(links, path);
+    const rest = links.filter((l) => !(l.source === field && l.predicate === 'sh://in'));
+    if (values === 'absent') return rest;
+    return [...rest, { source: field, predicate: 'sh://in', target: `literal:string:${JSON.stringify(values)}` }];
+  }
+
+  it('recovers string options from sh:in when the annotation is absent', () => {
+    const links = stored(input(SIGHTING));
+    const field = propertyNode(links, CERTAINTY);
+    const native = links.filter((l) => !(l.source === field && l.predicate === ANNOTATION.options));
+    expect(readShape(native)?.manifest.entities.Sighting.properties.certainty.options).toEqual([
+      'sure',
+      'probably',
+      'not sure',
+    ]);
+    expect(sameShape(native, rebuilt(native))).toBe(true);
+  });
+
+  it('recovers an exact numeric option as a number, and leaves an inexact one as text', () => {
+    const manifest: EntityManifest = {
+      version: '1',
+      entities: {
+        Note: {
+          properties: { rating: { type: 'number', predicate: 'we://module/shape/x/rating', options: [1, 2, 3] } },
+          relations: {},
+        },
+      },
+    };
+    const links = stored(input(manifest));
+    const field = propertyNode(links, 'we://module/shape/x/rating');
+    const native = links.filter((l) => !(l.source === field && l.predicate === ANNOTATION.options));
+    expect(readShape(native)?.manifest.entities.Note.properties.rating.options).toEqual([1, 2, 3]);
+    const mixed = replaceIn(native, 'we://module/shape/x/rating', [{ value: '2' }, { value: '2.0' }]);
+    expect(readShape(mixed)?.manifest.entities.Note.properties.rating.options).toEqual([2, '2.0']);
+  });
+
+  it('reads option values from a labelled sh:in and refuses to drop the labels', () => {
+    const links = stored(input(SIGHTING));
+    const field = propertyNode(links, CERTAINTY);
+    const labelled = replaceIn(
+      links.filter((l) => !(l.source === field && l.predicate === ANNOTATION.options)),
+      CERTAINTY,
+      [
+        { value: 'sure', label: 'Sure' },
+        { value: 'probably', label: 'Maybe' },
+        { value: 'not sure', label: 'No' },
+      ],
+    );
+    expect(readShape(labelled)?.manifest.entities.Sighting.properties.certainty.options).toEqual([
+      'sure',
+      'probably',
+      'not sure',
+    ]);
+    expect(sameShape(labelled, rebuilt(labelled))).toBe(false);
+  });
+
+  it('keeps the annotation when it disagrees with sh:in, and then the shape is not editable', () => {
+    const links = stored(input(SIGHTING));
+    const narrowed = replaceIn(links, CERTAINTY, [{ value: 'sure' }]);
+    expect(readShape(narrowed)?.manifest.entities.Sighting.properties.certainty.options).toEqual([
+      'sure',
+      'probably',
+      'not sure',
+    ]);
+    expect(sameShape(narrowed, rebuilt(narrowed))).toBe(false);
+  });
+
+  it('reads abstract from ad4m://abstract when the annotation is absent', () => {
+    const manifest: EntityManifest = {
+      version: '1',
+      entities: {
+        BirdBase: { abstract: true, properties: { wingspan: { type: 'number' } }, relations: {} },
+      },
+    };
+    const links = stored(input(manifest)).filter((l) => l.predicate !== ANNOTATION.abstract);
+    expect(readShape(links)?.manifest.entities.BirdBase.abstract).toBe(true);
+    expect(sameShape(links, rebuilt(links))).toBe(true);
+  });
+
+  it('resolves one native parent link to the known class, and does not guess a name from the URI', () => {
+    const links = stored(input(SIGHTING), resolveWeNode).filter((l) => l.predicate !== ANNOTATION.extends);
+    expect(links.filter((l) => l.predicate === 'sh://node')).toHaveLength(1);
+    expect(readShape(links)?.manifest.entities.Sighting.extends).toBe('WeNode');
+    expect(sameShape(links, rebuilt(links, resolveWeNode))).toBe(true);
+  });
+
+  it('does not turn two parent links, or an unknown one, into a single extends', () => {
+    const links = stored(input(SIGHTING), resolveWeNode).filter((l) => l.predicate !== ANNOTATION.extends);
+    const shapeUri = links.find((l) => l.predicate === 'rdf://type' && l.target === 'sh://NodeShape')!.source;
+    const many = [...links, { source: shapeUri, predicate: 'sh://node', target: 'we://OtherShape' }];
+    expect(readShape(many)?.manifest.entities.Sighting.extends).toBeUndefined();
+    expect(sameShape(many, rebuilt(many, resolveWeNode))).toBe(false);
+    const unknown = links.map((l) => (l.predicate === 'sh://node' ? { ...l, target: 'we://NotAClassShape' } : l));
+    expect(readShape(unknown)?.manifest.entities.Sighting.extends).toBeUndefined();
+    expect(sameShape(unknown, rebuilt(unknown, resolveWeNode))).toBe(false);
+  });
+
+  it('keeps a declared override of an inherited field', () => {
+    // WeNode already has `signals`. A child that says the same name with its own predicate must
+    // come back with that predicate: sharing the name is not sharing the field.
+    const manifest: EntityManifest = {
+      version: '1',
+      entities: {
+        Sighting: {
+          extends: 'WeNode',
+          properties: { species: { type: 'string', predicate: 'we://module/shape/x/species' } },
+          relations: { signals: { target: '', cardinality: 'many', predicate: 'we://module/shape/x/signals' } },
+        },
+      },
+    };
+    const read = readShape(stored(input(manifest), resolveWeNode));
+    expect(read?.manifest.entities.Sighting.relations.signals).toMatchObject({
+      predicate: 'we://module/shape/x/signals',
+      cardinality: 'many',
+    });
+  });
+
+  it('keeps a vocabulary property with no sh:in editable', () => {
+    const manifest: EntityManifest = {
+      version: '1',
+      entities: {
+        Note: {
+          properties: {
+            state: { type: 'string', predicate: 'we://status', options: ['a', 'b'], vocabulary: 'communityStates' },
+          },
+          relations: {},
+        },
+      },
+    };
+    const links = stored(input(manifest));
+    expect(links.filter((l) => l.predicate === 'sh://in')).toEqual([]);
+    expect(readShape(links)?.manifest.entities.Note.properties.state).toMatchObject({
+      options: ['a', 'b'],
+      vocabulary: 'communityStates',
+    });
+    expect(sameShape(links, rebuilt(links))).toBe(true);
   });
 });
 
