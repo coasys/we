@@ -254,6 +254,25 @@ describe('openAcornProject', () => {
   });
 
   /*
+    The Acorn section list is the space's own setting once it has one — `Space.enabledViews`
+    is community data, and an open is not a setup. A reopen that rewrote it would reset
+    whatever sections the members chose every time somebody re-entered the project
+    (Lal's P2-4). The display writes — the space's default template and this agent's
+    personal override — still land, because "open" means render this as an Acorn project.
+  */
+  it('reopens without rewriting the space’s sections — those are the members’ after setup', async () => {
+    const record: string[] = [];
+    const d = deps(record, { hasSpaceRecord: vi.fn(async () => true) });
+    const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
+    port.mountsOf['dataset-1'] = [LANG];
+    const acorn = createAcornLifecycle(d);
+    await acorn.openAcornProject('dataset-1');
+    expect(record).toContain(`template:${ACORN_TEMPLATE_ID}:dataset-1`);
+    expect(record).toContain(`override:${ACORN_TEMPLATE_ID}:dataset-1`);
+    expect(record.find((c) => c.startsWith('views:'))).toBeUndefined();
+  });
+
+  /*
     `await switchDataset` returning is not the switch having won: a second open, or the
     user clicking a space, can land on top of it while it was in flight — and every write
     after it (`initializeAsWeSpace` and the template writes) names no dataset, landing on

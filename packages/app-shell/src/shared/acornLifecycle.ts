@@ -255,11 +255,14 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       next open resumes from it.
     */
     if (deps.currentDatasetId() !== targetId) return null;
-    if (!(await deps.hasSpaceRecord(ref.handle).catch(() => false))) {
+    const hadSpace = await deps.hasSpaceRecord(ref.handle).catch(() => false);
+    if (!hadSpace) {
       await deps.initializeAsWeSpace(opts.name, '');
+      // The section recipe is a setup write: `Space.enabledViews` is the members' own
+      // list once the space has one, and an open is not entitled to reset it.
+      await deps.setSpaceViews(ACORN_SECTION_IDS, ref.id);
     }
     await deps.setSpaceDefaultTemplate(ACORN_TEMPLATE_ID, ref.id);
-    await deps.setSpaceViews(ACORN_SECTION_IDS, ref.id);
     await deps.setSpaceTemplateOverride(ACORN_TEMPLATE_ID, ref.id);
 
     if (opts.writeMeta) {
