@@ -70,15 +70,7 @@ import type {
   WorkflowState,
   WorkflowSummary,
 } from '@we/backend-shared';
-import {
-  approvalsFor,
-  evidenceFor,
-  trace,
-  tracing,
-  type TtlCache,
-  ttlCache,
-  validateWorkflowDefinition,
-} from '@we/backend-shared';
+import { approvalsFor, evidenceFor, trace, tracing, validateWorkflowDefinition } from '@we/backend-shared';
 
 import { type EngineProposal, ENTRY_STATE, itemOf, openMoves, type Run, runFor, stateOf, stepsOf } from './flowRuns';
 import { recordMissingMethod } from './missingMethods';
@@ -540,23 +532,30 @@ export function createAd4mWorkflowPort(selfId: () => string | undefined = () => 
   /** One set of subscriptions per perspective, shared by every watcher of it. */
   const watches = new Map<PerspectiveProxy, Watch>();
   /** Definitions read back, per perspective and name, until they are written or grow old. */
-  const definitions = new WeakMap<PerspectiveProxy, TtlCache<string, SHACLFlow | null>>();
+  const definitions = new WeakMap<PerspectiveProxy, Map<string, { at: number; flow: Promise<SHACLFlow | null> }>>();
 
   /** Tell every watcher of a perspective to re-read — after a write of our own, which a cache may lag. */
   const poke = (perspective: PerspectiveProxy) => {
     for (const listener of [...(watches.get(perspective)?.listeners ?? [])]) listener();
   };
 
-  const forget = (perspective: PerspectiveProxy, name: string) => definitions.get(perspective)?.drop(name);
+  const forget = (perspective: PerspectiveProxy, name: string) => definitions.get(perspective)?.delete(name);
 
   /** A flow as the dataset holds it, read at most once every {@link DEFINITION_TTL_MS}. */
   function stored(perspective: PerspectiveProxy, name: string): Promise<SHACLFlow | null> {
     let byName = definitions.get(perspective);
     if (!byName) {
-      byName = ttlCache(DEFINITION_TTL_MS);
+      byName = new Map();
       definitions.set(perspective, byName);
     }
-    return byName.get(name, () => perspective.getFlow(name));
+    const cached = byName.get(name);
+    if (cached && Date.now() - cached.at < DEFINITION_TTL_MS) return cached.flow;
+    const flow = perspective.getFlow(name).catch((error: unknown) => {
+      byName.delete(name);
+      throw error;
+    });
+    byName.set(name, { at: Date.now(), flow });
+    return flow;
   }
 
   async function installed(perspective: PerspectiveProxy, name: string): Promise<SHACLFlow> {

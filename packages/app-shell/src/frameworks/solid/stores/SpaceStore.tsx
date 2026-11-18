@@ -119,7 +119,7 @@ import {
 } from '@shared/viewResolution';
 import { evidenceLabel, refusalWords } from '@shared/workflowViews';
 import type { AgentProfileSummary, DatasetRef, EntityStatic, RecordInstance, WorkflowView } from '@we/backend-shared';
-import { isPolicyRefusal, parseServerUrl, SELF_PERSONS, trace, ttlCache, validatePolicy } from '@we/backend-shared';
+import { isPolicyRefusal, parseServerUrl, SELF_PERSONS, trace, validatePolicy } from '@we/backend-shared';
 import type { ContentInput } from '@we/block-shared';
 import {
   contentHash,
@@ -4100,9 +4100,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     enough that a write of several records reads them once, short enough that a change to another
     space's rules is not held over.
   */
-  // Nothing is remembered about a dataset that is not a space yet: the first record a new space is
-  // given is its own `Space`, and every write after it is the space's.
-  const governedElsewhere = ttlCache<string, GovernedSpace | null>(5_000, { keep: (found) => found !== null });
+  const governedElsewhere = new Map<string, { at: number; space: Promise<GovernedSpace | null> }>();
+  const GOVERNED_TTL_MS = 5_000;
 
   async function readGovernedSpace(ds: { id: string; sharedId?: string; handle: DatasetProxy }) {
     const [self] = (await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) }).catch(() => [])) as Space[];
@@ -4134,7 +4133,16 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (ds.id === datasetStore.currentDataset()?.id && policyLoaded() && rolesLoaded() && currentSpace()) {
       return { ...currentStanding(), policy: currentPolicy() };
     }
-    return governedElsewhere.get(ds.id, () => readGovernedSpace(ds));
+    const cached = governedElsewhere.get(ds.id);
+    if (cached && Date.now() - cached.at < GOVERNED_TTL_MS) return cached.space;
+    const space = readGovernedSpace(ds);
+    // Nothing is remembered about a dataset that is not a space yet: the first record a new space
+    // is given is its own `Space`, and every write after it is the space's.
+    governedElsewhere.set(ds.id, { at: Date.now(), space });
+    void space.then((found) => {
+      if (!found) governedElsewhere.delete(ds.id);
+    });
+    return space;
   }
 
   const policyCheck = createPolicyCheck({

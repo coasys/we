@@ -1,5 +1,4 @@
 import { Ad4mModel, type LinkExpression, LinkQuery, Literal, PerspectiveProxy } from '@coasys/ad4m';
-import { ttlCache } from '@we/backend-shared';
 import { type EntityClass, getEntityPredicates, getEntityTargetClass } from '@we/entities';
 
 import {
@@ -110,7 +109,7 @@ export async function bulkHasSubjectClassLink(
  * Every class this perspective marks as a SubjectClass, read once and shared for a moment.
  *
  * A space switch asks three times in a row — \`hasCoreSchema\`, then \`installModules\`, then
- * \`refreshSpace\`. The answer is one
+ * \`refreshSpace\` — and each used to be its own round trip on the load path. The answer is one
  * query whichever classes are asked about, so it is read once and shared: concurrent callers share
  * the read in flight, and later ones reuse it for a few seconds. Dropped with the stored shapes
  * whenever this package writes a registration, and never kept after a failure.
@@ -118,14 +117,22 @@ export async function bulkHasSubjectClassLink(
  * Short on purpose. A class another peer registers inside the window reads as absent, and a
  * registration written on that answer is a duplicate — the thing \`cleanupSpaceSdna\` exists for.
  */
-const subjectClassesCache = ttlCache<string, Set<string>>(3_000);
+const subjectClassesCache = new Map<string, { classes: Promise<Set<string>>; at: number }>();
+const SUBJECT_CLASSES_CACHE_TTL = 3_000;
 
 function cachedSubjectClasses(p: PerspectiveProxy): Promise<Set<string>> {
-  return subjectClassesCache.get(p.uuid, () =>
-    p
-      .get(new LinkQuery({ predicate: 'rdf://type', target: 'ad4m://SubjectClass' }))
-      .then((links) => new Set(links.map((l) => l.data.source))),
-  );
+  const now = Date.now();
+  const cached = subjectClassesCache.get(p.uuid);
+  if (cached && now - cached.at < SUBJECT_CLASSES_CACHE_TTL) return cached.classes;
+  const classes = p
+    .get(new LinkQuery({ predicate: 'rdf://type', target: 'ad4m://SubjectClass' }))
+    .then((links) => new Set(links.map((l) => l.data.source)));
+  const entry = { classes, at: now };
+  subjectClassesCache.set(p.uuid, entry);
+  classes.catch(() => {
+    if (subjectClassesCache.get(p.uuid) === entry) subjectClassesCache.delete(p.uuid);
+  });
+  return classes;
 }
 
 /**
@@ -260,12 +267,27 @@ async function storedShapes(p: PerspectiveProxy): Promise<Map<string, StoredShap
  *
  * A failed read is never cached: the callers fall back to an empty map for that call only.
  */
-// Pruned past 20 entries so it cannot grow without bound across many perspectives.
-const storedShapesCache = ttlCache<string, Map<string, StoredShape>>(10_000, { maxEntries: 20 });
+const storedShapesCache = new Map<string, { shapes: Promise<Map<string, StoredShape>>; at: number }>();
+const STORED_SHAPES_CACHE_TTL = 10_000;
 
 /** Held as the read in flight, so callers that arrive together — a switch's two steps — share it. */
 function cachedStoredShapes(p: PerspectiveProxy): Promise<Map<string, StoredShape>> {
-  return storedShapesCache.get(p.uuid, () => storedShapes(p));
+  const now = Date.now();
+  const cached = storedShapesCache.get(p.uuid);
+  if (cached && now - cached.at < STORED_SHAPES_CACHE_TTL) return cached.shapes;
+  const shapes = storedShapes(p);
+  const entry = { shapes, at: now };
+  storedShapesCache.set(p.uuid, entry);
+  shapes.catch(() => {
+    if (storedShapesCache.get(p.uuid) === entry) storedShapesCache.delete(p.uuid);
+  });
+  // Prevent the map from growing without bound across many perspectives.
+  if (storedShapesCache.size > 20) {
+    for (const [key, entry] of storedShapesCache) {
+      if (now - entry.at >= STORED_SHAPES_CACHE_TTL) storedShapesCache.delete(key);
+    }
+  }
+  return shapes;
 }
 
 /**
@@ -273,8 +295,8 @@ function cachedStoredShapes(p: PerspectiveProxy): Promise<Map<string, StoredShap
  * from — a SubjectClass registration, an interpretation hint, the customized marker.
  */
 export function forgetStoredShapes(p: Pick<PerspectiveProxy, 'uuid'>): void {
-  storedShapesCache.drop(p.uuid);
-  subjectClassesCache.drop(p.uuid);
+  storedShapesCache.delete(p.uuid);
+  subjectClassesCache.delete(p.uuid);
 }
 
 /**
