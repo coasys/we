@@ -438,6 +438,8 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
       // Remembered, so every later acquisition asks for the same thing — see `asked`.
       asked = constraints;
       const isMine = acquisitions.begin();
+      // A `setAudioEnabled` after this owns the microphone state: a refusal here must not mute over it.
+      const audioAsk = audioRequests;
       /** Close a stream that arrived after this attempt was cancelled, rather than storing it. */
       const claim = (acquired: MediaStream): boolean => {
         if (isMine()) return true;
@@ -499,12 +501,12 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
               what republishes presence and rebuilds the tiles.
             */
             state.videoEnabled = false;
-            state.audioEnabled = false;
+            if (audioAsk === audioRequests) state.audioEnabled = false;
             emitState();
             return;
           }
           // Whichever is missing is off, for the same reason: never "on" with nothing behind it.
-          if (!mic) state.audioEnabled = false;
+          if (!mic && audioAsk === audioRequests) state.audioEnabled = false;
           if (!camera) state.videoEnabled = false;
           acquired = new MediaStream([mic, camera].filter((track): track is MediaStreamTrack => !!track));
         }
