@@ -346,3 +346,71 @@ describe('acorn open — the section recipe (F3)', () => {
     expect(parseIdList(space!.enabledViews)).toEqual(['about']);
   });
 });
+
+describe('acorn open — owed remote setup survives denied storage (F4)', () => {
+  /*
+    localStorage is the intent's durability, not its existence: an embed that
+    refuses every access still owes the meta write for the session. The create
+    below fails after its intent is recorded, and the open that follows must
+    still find the debt — in the session map the denied set fell back to.
+  */
+  it('keeps the owed meta write for the session when localStorage refuses every access', async () => {
+    const acorn = fakeAcorn();
+    acornPort = acorn.port;
+    const stores = mountShell();
+    await ready(stores);
+
+    const denied = () => {
+      throw new DOMException('denied', 'SecurityError');
+    };
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(denied);
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(denied);
+    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(denied);
+
+    // The create's own meta write is refused — the open fails with the debt unpaid.
+    acorn.interactFails.add('create');
+    await expect(stores.spaces.createAcornProject('Stored project', 'pass-phrase')).rejects.toThrow(
+      'interact create refused',
+    );
+    const dsId = acorn.mountsOf.keys().next().value!;
+
+    // Storage stayed denied, yet the next open pays the debt the session held.
+    await expect(stores.spaces.openAcornProject(dsId)).resolves.toBe(dsId);
+    expect(acorn.calls.filter((c) => c.includes('AcornProjectMeta'))).toHaveLength(2);
+  });
+
+  /*
+    The intent is re-read when the queued work runs, not captured when it was
+    queued: the second open below waits behind the first's meta write, and the
+    clear that write performs must be what the second sees — a capture from
+    before its wait would replay a debt already paid.
+  */
+  it('a queued open sees the debt the open ahead of it paid', async () => {
+    seededDatasets = [{ id: 'ds-acorn', name: 'Acorn project' }];
+    const acorn = fakeAcorn();
+    acorn.mountsOf.set('ds-acorn', [LANG]);
+    acornPort = acorn.port;
+    // What an interrupted create left behind — the meta write is owed.
+    localStorage.setItem(
+      'we-acorn-setup:ds-acorn',
+      JSON.stringify({ name: 'Acorn project', writeMeta: true, announce: false }),
+    );
+    const stores = mountShell();
+    await ready(stores);
+
+    // Hold the first open at the meta write, then queue the second behind it.
+    let release!: () => void;
+    acorn.interactGates.set('create', new Promise<void>((resolve) => (release = resolve)));
+    const first = stores.spaces.openAcornProject('ds-acorn');
+    await vi.waitFor(() => expect(acorn.calls.some((c) => c.includes('AcornProjectMeta'))).toBe(true));
+    const second = stores.spaces.openAcornProject('ds-acorn');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    release();
+
+    // The first open was superseded — its work keeps, but the newer open lands.
+    await expect(first).resolves.toBeNull();
+    await expect(second).resolves.toBe('ds-acorn');
+    // One meta write total: the second open's read at run time saw the paid debt.
+    expect(acorn.calls.filter((c) => c.includes('AcornProjectMeta'))).toHaveLength(1);
+  });
+});

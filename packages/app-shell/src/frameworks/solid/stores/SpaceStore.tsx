@@ -2813,11 +2813,19 @@ export function SpaceStoreProvider(props: ParentProps) {
     the record an interrupted create or join leaves behind. localStorage is the
     durable store the shell already owns — a crashed run's open finds the debt
     across a restart, not just across calls.
+
+    `missedIntents` holds only what storage refused to record: an embed that
+    denies every access still owes the work for the session, and a clear that
+    could not reach storage keeps a null shadow so the stale entry it left
+    behind is not read back as debt.
   */
+  const missedIntents = new Map<string, AcornSetupIntent | null>();
+  const intentKey = (id: string) => `we-acorn-setup:${id}`;
   const acornSetupIntents = {
     get: (id: string): AcornSetupIntent | null => {
+      if (missedIntents.has(id)) return missedIntents.get(id) ?? null;
       try {
-        const raw = localStorage.getItem(`we-acorn-setup:${id}`);
+        const raw = localStorage.getItem(intentKey(id));
         return raw ? (JSON.parse(raw) as AcornSetupIntent) : null;
       } catch {
         return null;
@@ -2825,16 +2833,20 @@ export function SpaceStoreProvider(props: ParentProps) {
     },
     set: (id: string, intent: AcornSetupIntent): void => {
       try {
-        localStorage.setItem(`we-acorn-setup:${id}`, JSON.stringify(intent));
+        localStorage.setItem(intentKey(id), JSON.stringify(intent));
+        missedIntents.delete(id);
       } catch {
-        /* a store that cannot keep the intent degrades to same-session resume */
+        // A store that cannot keep the intent keeps it for the session instead.
+        missedIntents.set(id, intent);
       }
     },
     clear: (id: string): void => {
       try {
-        localStorage.removeItem(`we-acorn-setup:${id}`);
+        localStorage.removeItem(intentKey(id));
+        missedIntents.delete(id);
       } catch {
-        /* same */
+        // Storage may still hold the debt — remember this run paid it.
+        missedIntents.set(id, null);
       }
     },
   };

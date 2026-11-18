@@ -359,8 +359,14 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       belong to `ref`, and every writer is handed it rather than asking what is
       current when it runs.
     */
-    const intent = deps.setupIntent?.get(ref.id) ?? null;
     await serializeSetup(ref.id, async () => {
+      /*
+        The owed remote work is read inside the queue, not before it: an open
+        serialized ahead of this one may already have landed the writes and
+        cleared the debt, and a capture taken while this run was still waiting
+        would replay what is already done.
+      */
+      const owed = deps.setupIntent?.get(ref.id) ?? null;
       /*
         Reopen is repair: each invariant is read on its own and only the missing
         pieces are finished. A Space record existing never meant the setup
@@ -371,7 +377,7 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       */
       let setup = await deps.spaceSetup(ref).catch(() => null);
       if (!setup || !setup.spaceRecord || !setup.root) {
-        await deps.ensureSpaceStructure(intent?.name ?? opts.name, '', ref);
+        await deps.ensureSpaceStructure(owed?.name ?? opts.name, '', ref);
         setup = await deps.spaceSetup(ref).catch(() => setup);
       }
       if (setup && !setup.enabledViews) {
@@ -391,13 +397,10 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       if (setup && !setup.setupDone) await deps.markSpaceSetupDone(ref.id);
 
       /*
-        The owed remote work, re-read inside the queue: a create's meta and a
-        join's announce are writes the mount cannot answer "done?" for, so the
-        retained intent is the record. It is re-read here rather than captured
-        earlier because an open serialized ahead of this one may already have
-        landed and cleared them.
+        A create's meta and a join's announce are writes the mount cannot answer
+        "done?" for, so the retained intent is the record — cleared piece by
+        piece as the writes land.
       */
-      const owed = deps.setupIntent?.get(ref.id) ?? intent;
       const markDone = (bit: 'writeMeta' | 'announce') => {
         const current = deps.setupIntent?.get(ref.id);
         if (!current) return;
@@ -413,7 +416,7 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
         // is exactly the owed state, so the refusal reads as done.
         try {
           await interact(`${lang}://class/AcornProjectMeta`, 'create', {
-            name: intent?.name ?? opts.name,
+            name: owed?.name ?? opts.name,
             layeringAlgorithm: 'LongestPath',
             topPriorityOutcomes: [],
           });
