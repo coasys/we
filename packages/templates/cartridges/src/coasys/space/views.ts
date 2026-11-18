@@ -314,7 +314,7 @@ const MINE = `modules.call.callRecordId == ${CALL_ID}`;
 
 /**
  * The conversation the interpretation panel shows — its own subject, written out as the panel writes
- * it (`EXTRACTION_SUBJECT_EXPR` in `@we/module-transcribe`), so the count on the button is what
+ * it (`INTERPRETATION_SUBJECT_EXPR` in `@we/module-transcribe`), so the count on the button is what
  * opening the panel will list. Copied rather than imported, because a cartridge is data and depends
  * on no module package — so a change to the panel's subject has to be made here as well.
  */
@@ -364,8 +364,8 @@ export const callBarAside = (callId: string): SchemaNode[] => [
           label: {
             $: `${WAITING} ? \`Interpretation, \${${WAITING}} \${plural(${WAITING}, 'suggestion', 'suggestions')} to review\` : 'Interpretation'`,
           },
-          expanded: { $: 'modules.transcribe.extractionOpen' },
-          onClick: { $invoke: 'spaceStore.launchModule', args: ['transcribe:extraction'] },
+          expanded: { $: 'modules.transcribe.interpretationOpen' },
+          onClick: { $invoke: 'spaceStore.launchModule', args: ['transcribe:interpretation'] },
         },
         children: [
           {

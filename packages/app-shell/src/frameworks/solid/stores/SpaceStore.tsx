@@ -132,12 +132,12 @@ import {
 } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
 import {
-  collectionExtractionDefaults,
-  LEGACY_EXTRACTION_TARGETS,
+  collectionInterpretationDefaults,
+  LEGACY_INTERPRETATION_TARGETS,
   parseEntityList,
-  resolveCollectionAutoExtract,
-  resolveCollectionExtractionTargets,
-  resolveSpaceExtractionTargets,
+  resolveCollectionAutoInterpret,
+  resolveCollectionInterpretationTargets,
+  resolveSpaceInterpretationTargets,
 } from '@we/entities';
 import { completeResponse } from '@we/entities';
 import {
@@ -205,7 +205,7 @@ import { useShapeStore } from './ShapeStore';
 import { useShellStore } from './ShellStore';
 import { createCallExports } from './space/callExports';
 import { moduleSettingsFrom, registeredModules, resolveEnabledModules } from './space/enabledModules';
-import { createExtractionRuntime } from './space/extractionRuntime';
+import { createInterpretationRuntime } from './space/interpretationRuntime';
 import {
   datasetAnswersTo,
   JOIN_RECOVERY_FIRST_POLL_MS,
@@ -241,8 +241,8 @@ export type {
 } from './space/types';
 
 /*
-  The extraction-settings resolution — `LEGACY_EXTRACTION_TARGETS`, `parseEntityList` and the
-  per-collection resolvers below — lives in `collectionExtraction` in `@we/entities` so it can be tested
+  The extraction-settings resolution — `LEGACY_INTERPRETATION_TARGETS`, `parseEntityList` and the
+  per-collection resolvers below — lives in `collectionInterpretation` in `@we/entities` so it can be tested
   without mounting this provider. See that module for why a collection holds a copy.
 */
 
@@ -616,7 +616,7 @@ export interface SpaceStore {
   setAgentModuleSetting: (group: string, key: string, value?: SettingValue) => Promise<void>;
   /**
    * Whether a new collection here — a call, a channel — starts out extracted as it grows. A
-   * community default, copied onto each collection when it is made; see `autoExtractFor` for the
+   * community default, copied onto each collection when it is made; see `autoInterpretFor` for the
    * answer that counts.
    */
   autoInterpret: Accessor<boolean>;
@@ -654,29 +654,29 @@ export interface SpaceStore {
    * Whether one collection — a call, a channel, the space's own — is extracted as it grows: its own
    * answer, copied from the space's default when it was made. False until it has been read.
    */
-  autoExtractFor: (collectionId: string) => boolean;
+  autoInterpretFor: (collectionId: string) => boolean;
   /**
    * Turn it on or off for one collection, for everyone in it. A call's participants decide for their
    * call; the space collection is the community's, so only somebody who administers the space can.
    */
-  setAutoExtractFor: (collectionId: string, on: boolean) => Promise<void>;
-  /** Whether this agent may change what one collection extracts — see `setAutoExtractFor`. */
-  canSetExtractionFor: (collectionId: string) => boolean;
+  setAutoInterpretFor: (collectionId: string, on: boolean) => Promise<void>;
+  /** Whether this agent may change what one collection extracts — see `setAutoInterpretFor`. */
+  canSetInterpretationFor: (collectionId: string) => boolean;
   setAutoInterpret: (enabled: boolean, spaceUuid?: string) => Promise<void>;
   setThreadMode: (mode: string, spaceUuid?: string) => Promise<void>;
   /**
    * Which models a new collection here starts out extracting.
    *
    * The middle of three layers: the codebase says what is a *candidate*
-   * (`shapeStore.extractionCandidates`), this says which of them a new conversation begins with, and
+   * (`shapeStore.interpretationCandidates`), this says which of them a new conversation begins with, and
    * each collection then holds its own list, which its participants change. Always intersected with
    * the candidates, so a model since deleted cannot reach a pass and fail it.
    *
    * A community decision, readable by every member; writing it is space-settings. Unset falls back
    * to the two classes that were hardcoded before the setting existed, so nothing regresses.
    */
-  extractionTargets: Accessor<string[]>;
-  setExtractionTarget: (entity: string, on: boolean, spaceUuid?: string) => Promise<void>;
+  interpretationTargets: Accessor<string[]>;
+  setInterpretationTarget: (entity: string, on: boolean, spaceUuid?: string) => Promise<void>;
   /** Turn a module on or off for this agent everywhere. */
   setModuleInstalled: (moduleId: string, installed: boolean) => Promise<void>;
   /** Show or hide a module for this agent in one space. Private to this agent. */
@@ -846,7 +846,7 @@ export interface SpaceStore {
    * the records it wrote as they are stored now, and the suggestions still waiting on a decision.
    * Made to be handed to a person or a model investigating why a call extracted what it did.
    */
-  exportExtractionLog: (callId: string) => Promise<void>;
+  exportInterpretationLog: (callId: string) => Promise<void>;
   removeSpaceFromGlobal: (spaceUuid: string) => Promise<void>;
   updateSpaceInCache: (dataset: AppDataset, updates: Partial<Space>) => void;
 
@@ -887,7 +887,7 @@ const SPACE_AVATAR_PX = 512;
  */
 const TASK_STATE_SEMANTICS: TaskStateView['semantic'][] = ['open', 'active', 'blocked', 'done', 'cancelled'];
 
-/** What a collection's extraction settings are read from — see `autoExtractFor`. */
+/** What a collection's extraction settings are read from — see `autoInterpretFor`. */
 const COLLECTION_SETTINGS_FIELDS = ['autoExtract', 'extractionTargets'] as const;
 
 export function SpaceStoreProvider(props: ParentProps) {
@@ -1645,10 +1645,10 @@ export function SpaceStoreProvider(props: ParentProps) {
    */
   async function writeSpaceStructure(dataset: DatasetProxy, space: Space, starter?: SpaceStarter): Promise<void> {
     /*
-      Made with the space's extraction defaults like any new collection, unless the starter says
+      Made with the space's interpretation defaults like any new collection, unless the starter says
       otherwise about the messages typed outside calls (`input`).
     */
-    const defaults = collectionExtractionDefaults(space);
+    const defaults = collectionInterpretationDefaults(space);
     const root = await CollectionBlock.create(dataset, {
       kind: SPACE_COLLECTION_KIND,
       // A feed: every member adds to it, so no one member's editor may ever reconcile it, and a
@@ -2855,9 +2855,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     interpretation: () => session.backendPorts()?.interpretation,
     profileStore,
     spaceName: () => currentSpace()?.name,
-    targetsFor: (callId) => extractionTargetsFor(callId),
-    spaceTargets: () => extractionTargets(),
-    autoFor: (callId) => autoExtractFor(callId),
+    targetsFor: (callId) => interpretationTargetsFor(callId),
+    spaceTargets: () => interpretationTargets(),
+    autoFor: (callId) => autoInterpretFor(callId),
   });
 
   const [currentSpace, setCurrentSpace] = createSignal<Space | null>(null);
@@ -4400,7 +4400,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     space reads false: a decision nobody has made is not a decision to spend somebody's LLM budget.
 
     A default and nothing more. Each collection holds its own answer, copied from this when it was
-    made (`CollectionBlock.autoExtract`); see `collectionExtraction` in `@we/entities` for why a copy.
+    made (`CollectionBlock.autoExtract`); see `collectionInterpretation` in `@we/entities` for why a copy.
   */
   const autoInterpret = createMemo<boolean>(() => currentSpace()?.autoInterpret === true);
 
@@ -4415,8 +4415,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     Order follows the candidates, so a settings list reads the same way every time rather than in
     whatever order somebody happened to tick things.
   */
-  const extractionTargets = createMemo<string[]>(() =>
-    resolveSpaceExtractionTargets(shapeStore.extractionCandidates(), currentSpace()?.extractionTargets),
+  const interpretationTargets = createMemo<string[]>(() =>
+    resolveSpaceInterpretationTargets(shapeStore.interpretationCandidates(), currentSpace()?.extractionTargets),
   );
 
   /**
@@ -4514,18 +4514,18 @@ export function SpaceStoreProvider(props: ParentProps) {
    * Whether one collection is extracted as it grows: its own answer, or — for a collection made
    * without one — the space's default. False until its settings have been read.
    */
-  const autoExtractFor = (collectionId: string): boolean => {
+  const autoInterpretFor = (collectionId: string): boolean => {
     if (!collectionId) return false;
     askCollection(collectionId);
     if (!loadedCollections().has(collectionId)) return false;
-    return resolveCollectionAutoExtract(autoInterpret(), collectionSettings()[collectionId]?.autoExtract);
+    return resolveCollectionAutoInterpret(autoInterpret(), collectionSettings()[collectionId]?.autoExtract);
   };
 
   /** The models one collection extracts: its own list, else the space's default, narrowed to the candidates. */
-  const extractionTargetsFor = (collectionId: string): string[] => {
+  const interpretationTargetsFor = (collectionId: string): string[] => {
     askCollection(collectionId);
-    return resolveCollectionExtractionTargets(
-      shapeStore.extractionCandidates(),
+    return resolveCollectionInterpretationTargets(
+      shapeStore.interpretationCandidates(),
       currentSpace()?.extractionTargets,
       collectionSettings()[collectionId]?.extractionTargets,
     );
@@ -4538,7 +4538,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    * collection is the community's — the messages typed outside any call — so it is whoever
    * administers the space, exactly as its defaults are.
    */
-  const canSetExtractionFor = (collectionId: string): boolean =>
+  const canSetInterpretationFor = (collectionId: string): boolean =>
     Boolean(collectionId) && (collectionId !== spaceRoot() || canAdministerCurrentSpace());
 
   async function writeCollectionSettings(
@@ -4548,7 +4548,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   ): Promise<void> {
     const dataset = datasetStore.currentDataset();
     if (!dataset || !collectionId) return;
-    if (!canSetExtractionFor(collectionId)) {
+    if (!canSetInterpretationFor(collectionId)) {
       toastService.error(`Only someone who administers this space can change ${what} outside calls.`);
       return;
     }
@@ -4571,8 +4571,8 @@ export function SpaceStoreProvider(props: ParentProps) {
    * default alone — that is where the *next* conversation starts, and this is about this one.
    * Does not stop a pass already running: those tokens are spent.
    */
-  const setAutoExtractFor = (collectionId: string, on: boolean): Promise<void> =>
-    writeCollectionSettings(collectionId, { autoExtract: on }, 'whether this is extracted as it happens');
+  const setAutoInterpretFor = (collectionId: string, on: boolean): Promise<void> =>
+    writeCollectionSettings(collectionId, { autoExtract: on }, 'whether this is interpreted as it happens');
 
   /**
    * Add or remove one model from what a collection extracts, for everyone in it.
@@ -4580,11 +4580,15 @@ export function SpaceStoreProvider(props: ParentProps) {
    * Writes the resolved list rather than a diff, so a collection made without a copy pins whatever
    * the space's default was at that moment — the same rule `setModuleEnabled` follows.
    */
-  async function setExtractionTargetFor(collectionId: string, entity: string, on: boolean): Promise<void> {
-    const next = new Set(extractionTargetsFor(collectionId));
+  async function setInterpretationTargetFor(collectionId: string, entity: string, on: boolean): Promise<void> {
+    const next = new Set(interpretationTargetsFor(collectionId));
     if (on) next.add(entity);
     else next.delete(entity);
-    await writeCollectionSettings(collectionId, { extractionTargets: JSON.stringify([...next]) }, 'what this extracts');
+    await writeCollectionSettings(
+      collectionId,
+      { extractionTargets: JSON.stringify([...next]) },
+      'what this interprets',
+    );
   }
 
   /*
@@ -4602,26 +4606,26 @@ export function SpaceStoreProvider(props: ParentProps) {
     told apart from items from a call. Its passes batch, by the engine's defaults: a few messages, or
     a quiet spell, or two minutes at the most.
   */
-  const extraction = createExtractionRuntime({
+  const interpretation = createInterpretationRuntime({
     port: () => session.backendPorts()?.interpretation,
     dataset: () => datasetStore.currentDataset()?.handle ?? null,
-    candidates: () => shapeStore.extractionCandidates(),
-    candidatesLoaded: () => shapeStore.extractionCandidatesLoaded(),
-    targetsFor: extractionTargetsFor,
-    setTargetFor: setExtractionTargetFor,
-    autoFor: autoExtractFor,
-    setAutoFor: setAutoExtractFor,
+    candidates: () => shapeStore.interpretationCandidates(),
+    candidatesLoaded: () => shapeStore.interpretationCandidatesLoaded(),
+    targetsFor: interpretationTargetsFor,
+    setTargetFor: setInterpretationTargetFor,
+    autoFor: autoInterpretFor,
+    setAutoFor: setAutoInterpretFor,
   });
-  onCleanup(provideModuleHostServices(extraction.services));
+  onCleanup(provideModuleHostServices(interpretation.services));
 
   let looseWatchOn: { root: string; handle: unknown } | null = null;
   createEffect(() => {
     const root = spaceRoot();
     const handle = datasetStore.currentDataset()?.handle;
-    const wanted = Boolean(root && handle && autoExtractFor(root));
+    const wanted = Boolean(root && handle && autoInterpretFor(root));
     // Read so a change to what it extracts re-registers: the watch's class list is fixed at
     // registration, and the port replaces it when the list differs.
-    if (root) void extractionTargetsFor(root);
+    if (root) void interpretationTargetsFor(root);
     if (wanted) {
       /*
         Not before the list is whole. Core vocabulary is known at once and the space's own models and
@@ -4634,8 +4638,8 @@ export function SpaceStoreProvider(props: ParentProps) {
         may be there from an earlier visit, so switching off during the wait must still remove it.
       */
       looseWatchOn = { root, handle };
-      if (!shapeStore.extractionCandidatesLoaded()) return;
-      void extraction.watchConversation(root, handle).catch((error: unknown) => {
+      if (!shapeStore.interpretationCandidatesLoaded()) return;
+      void interpretation.watchConversation(root, handle).catch((error: unknown) => {
         console.info('SpaceStore: the space’s loose messages cannot be watched here', error);
       });
       return;
@@ -4645,16 +4649,16 @@ export function SpaceStoreProvider(props: ParentProps) {
     // Only on the way from on to off, and only for the space it was on in: leaving a space is not
     // switching its watch off.
     if (was && was.root === root && was.handle === handle) {
-      void extraction.unwatchConversation(was.root, was.handle).catch(() => {});
+      void interpretation.unwatchConversation(was.root, was.handle).catch(() => {});
     }
   });
 
   /*
     Ticking "let AI create these" in the model wizard is this space saying yes — see
-    `ShapeStore.provideExtractionEnroller`. Handed upward because ShapeStore mounts above this one
+    `ShapeStore.provideInterpretationEnroller`. Handed upward because ShapeStore mounts above this one
     and cannot reach a `Space`.
   */
-  onCleanup(shapeStore.provideExtractionEnroller((entity) => setExtractionTarget(entity, true)));
+  onCleanup(shapeStore.provideInterpretationEnroller((entity) => setInterpretationTarget(entity, true)));
 
   /**
    * What actually renders here, for this agent: the three layers intersected, minus personal mutes.
@@ -5521,11 +5525,11 @@ export function SpaceStoreProvider(props: ParentProps) {
    * a model that becomes a candidate in a later release does not silently join a space that has
    * already decided.
    */
-  async function setExtractionTarget(entity: string, on: boolean, spaceUuid?: string) {
+  async function setInterpretationTarget(entity: string, on: boolean, spaceUuid?: string) {
     const ds = targetDataset(spaceUuid);
     const space = ds ? heldSpace(ds) : undefined;
     if (!ds || !space) return;
-    const current = parseEntityList(space.extractionTargets) ?? LEGACY_EXTRACTION_TARGETS;
+    const current = parseEntityList(space.extractionTargets) ?? LEGACY_INTERPRETATION_TARGETS;
     const next = new Set(current);
     if (on) next.add(entity);
     else next.delete(entity);
@@ -6051,9 +6055,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     rootLoaded,
     firstScreenOpen: () => firstScreen.open(),
     starterChoices,
-    autoExtractFor,
-    setAutoExtractFor,
-    canSetExtractionFor,
+    autoInterpretFor,
+    setAutoInterpretFor,
+    canSetInterpretationFor,
     spaceModuleSettings,
     myModuleSettings,
     agentModuleSettings,
@@ -6062,8 +6066,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     setAgentModuleSetting,
     setAutoInterpret,
     setThreadMode,
-    extractionTargets,
-    setExtractionTarget,
+    interpretationTargets,
+    setInterpretationTarget,
     setModuleInstalled,
     setModuleVisible,
     setViewEnabled,
@@ -6114,7 +6118,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     copyShareLink,
     copyGuestLink,
     exportCallTranscript: callExports.exportCallTranscript,
-    exportExtractionLog: callExports.exportExtractionLog,
+    exportInterpretationLog: callExports.exportInterpretationLog,
     removeSpaceFromGlobal,
     updateSpaceInCache,
 

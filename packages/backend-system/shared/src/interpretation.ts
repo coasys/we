@@ -254,7 +254,7 @@ export interface InterpretationPort {
    * whose methods exist whether or not the node it dials implements them, so a synchronous probe
    * can only ever report "my own code has this function" — which is true on every node, including
    * one that will refuse the call. That is not a hypothetical: it shipped, and a WE deployment
-   * offered Extract against a node whose executor predated the feature, failing with a raw RPC
+   * offered Interpret against a node whose executor predated the feature, failing with a raw RPC
    * error where the whole point of `available()` was to prevent exactly that.
    *
    * Asynchronous because the only honest answer involves a round trip. Implementations should make

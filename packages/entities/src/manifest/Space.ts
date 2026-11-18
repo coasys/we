@@ -48,7 +48,7 @@ export const Space: CoreEntityDef = {
       enabledViews: { type: 'string', predicate: 'we://enabled_views', default: '' },
       /**
        * Whether calls in this space are interpreted as they happen, rather than only when somebody
-       * presses Extract.
+       * presses Interpret.
        *
        * A property of the *space* rather than of the agent, because the consequences are the
        * community's: a standing watch spends an LLM call on whichever member's node wins the election,

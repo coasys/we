@@ -5,7 +5,7 @@
 import {
   type AmendmentEntry,
   exportFileName,
-  formatExtractionLog,
+  formatInterpretationLog,
   type PassEntry,
   transcriptLine,
 } from '@shared/interpretation/callExport';
@@ -108,13 +108,13 @@ export function createCallExports(deps: CallExportDeps) {
   }
 
   /**
-   * Everything extraction did with one call, as one Markdown file — see `formatExtractionLog`.
+   * Everything extraction did with one call, as one Markdown file — see `formatInterpretationLog`.
    *
    * Every member's passes, not only this agent's: the prompts and responses are stored on the shared
    * record, so this exports what the panel already shows. Read in full rather than through the
    * panel's query, which is capped for drawing and an hour of automatic extraction outruns.
    */
-  async function exportExtractionLog(callId: string): Promise<void> {
+  async function exportInterpretationLog(callId: string): Promise<void> {
     const dataset = deps.dataset();
     if (!dataset || !callId) return;
     const p = dataset.handle;
@@ -122,7 +122,7 @@ export function createCallExports(deps: CallExportDeps) {
       const exportedAt = new Date();
       const titled = await CollectionBlock.findOne(p, { where: { id: callId } });
       const outcome = await saveFile({
-        name: exportFileName(titled?.title, 'call', 'md', exportedAt).replace(/\.md$/, '-extraction-log.md'),
+        name: exportFileName(titled?.title, 'call', 'md', exportedAt).replace(/\.md$/, '-interpretation-log.md'),
         type: 'text/markdown;charset=utf-8',
         content: async () => {
           const call = await CollectionBlock.findOne(p, {
@@ -167,7 +167,7 @@ export function createCallExports(deps: CallExportDeps) {
             ].filter((did): did is string => typeof did === 'string' && did !== ''),
           );
 
-          return formatExtractionLog({
+          return formatInterpretationLog({
             callId,
             callTitle: row?.title,
             spaceName: deps.spaceName(),
@@ -184,12 +184,12 @@ export function createCallExports(deps: CallExportDeps) {
           });
         },
       });
-      reportSave(outcome, 'Extraction log exported.', 'No extraction has run on this call yet.');
+      reportSave(outcome, 'Interpretation log exported.', 'No interpretation has run on this call yet.');
     } catch (error) {
-      console.error('SpaceStore: exportExtractionLog failed', error);
-      toastService.error('Could not export the extraction log.');
+      console.error('SpaceStore: exportInterpretationLog failed', error);
+      toastService.error('Could not export the interpretation log.');
     }
   }
 
-  return { exportCallTranscript, exportExtractionLog };
+  return { exportCallTranscript, exportInterpretationLog };
 }

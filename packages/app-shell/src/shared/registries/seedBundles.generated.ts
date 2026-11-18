@@ -3301,7 +3301,7 @@ export const seedBundles: Bundle[] = [
                                           {
                                             type: 'we-text',
                                             props: { fontSize: '200', color: 'text-muted', flex: '1', minWidth: '0' },
-                                            children: ['Extraction proposed this — pending acceptance.'],
+                                            children: ['Interpretation proposed this — pending acceptance.'],
                                           },
                                           {
                                             type: 'we-tooltip',
@@ -4130,7 +4130,7 @@ export const seedBundles: Bundle[] = [
                                                             },
                                                             children: [
                                                               {
-                                                                $: "row.extractedFrom || row.id in first(local.inspectedCall).extracted ? `Extracted from the conversation · run by ${author.name} · ` : generatedRun({ record: row }) ? `Written by AI · run by ${author.name} · ` : `Added by ${author.did == me.did ? 'you' : author.name} · `",
+                                                                $: "row.extractedFrom || row.id in first(local.inspectedCall).extracted ? `Interpreted from the conversation · run by ${author.name} · ` : generatedRun({ record: row }) ? `Written by AI · run by ${author.name} · ` : `Added by ${author.did == me.did ? 'you' : author.name} · `",
                                                               },
                                                               {
                                                                 type: 'we-timestamp',
@@ -21102,8 +21102,8 @@ export const seedBundles: Bundle[] = [
                             label: {
                               $: "count(modules.transcribe.proposalsFor[routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : spaceStore.root)]) ? `Interpretation, ${count(modules.transcribe.proposalsFor[routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : spaceStore.root)])} ${plural(count(modules.transcribe.proposalsFor[routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : spaceStore.root)]), 'suggestion', 'suggestions')} to review` : 'Interpretation'",
                             },
-                            expanded: { $: 'modules.transcribe.extractionOpen' },
-                            onClick: { $invoke: 'spaceStore.launchModule', args: ['transcribe:extraction'] },
+                            expanded: { $: 'modules.transcribe.interpretationOpen' },
+                            onClick: { $invoke: 'spaceStore.launchModule', args: ['transcribe:interpretation'] },
                           },
                           children: [
                             {
@@ -21829,7 +21829,7 @@ export const seedBundles: Bundle[] = [
                                 options: {
                                   canvas: { $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
                                   members: { id: { $: 'spaceStore.root' }, via: 'children' },
-                                  contains: { $: 'shapeStore.extractionCandidates' },
+                                  contains: { $: 'shapeStore.interpretationCandidates' },
                                   origin: 'extractedFrom',
                                   madeBy: 'generatedBy',
                                   connections: 'Relationship',

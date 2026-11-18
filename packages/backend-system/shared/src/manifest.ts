@@ -544,7 +544,7 @@ export function validateManifest(
     if (entity.extractable && entity.abstract) {
       errors.push({
         path: `entities.${entityName}.extractable`,
-        message: 'an abstract entity cannot be an extraction target — nothing is ever an instance of it',
+        message: 'an abstract entity cannot be an interpretation target — nothing is ever an instance of it',
       });
     }
     // A block is edited collaboratively inside a document, so resolving two concurrent edits needs
@@ -642,7 +642,7 @@ export function getRelation(manifest: EntityManifest, entity: string, relation: 
  * own shapes are both manifests, so "what may be extracted here" is this run twice and concatenated
  * — which is exactly what keeps a shape defined this morning on equal footing with `TaskBlock`.
  */
-export function extractableEntities(manifest: EntityManifest): string[] {
+export function interpretableEntities(manifest: EntityManifest): string[] {
   return Object.entries(manifest.entities)
     .filter(([, entity]) => entity.extractable && !entity.abstract)
     .map(([name]) => name)
@@ -653,7 +653,7 @@ export function extractableEntities(manifest: EntityManifest): string[] {
  * Names of the entities whose records can be authored inline in a document — see
  * {@link EntitySchema.blockable}.
  *
- * Sorted for the same reason {@link extractableEntities} is: the answer is compared between peers
+ * Sorted for the same reason {@link interpretableEntities} is: the answer is compared between peers
  * and between runs, and two orderings of one set read as a change.
  */
 export function blockableEntities(manifest: EntityManifest): string[] {

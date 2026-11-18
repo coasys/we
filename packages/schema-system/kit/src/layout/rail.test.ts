@@ -26,7 +26,7 @@ describe('a rail button', () => {
     // A rail button is a square with one glyph in it. A second object beside the icon makes the
     // column's width a lie, exactly as a label would.
     const busy = { $: 'mod.busy' };
-    const button = railButton({ icon: 'sparkle', tooltip: 'Extraction', busy }) as Node;
+    const button = railButton({ icon: 'sparkle', tooltip: 'Interpretation', busy }) as Node;
     const swap = glyph(button);
 
     expect(swap.type).toBe('$if');

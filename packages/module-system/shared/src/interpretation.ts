@@ -159,7 +159,7 @@ export interface InterpretationActivitySummary {
   mine: boolean;
   /** True while the pass is in flight. */
   running: boolean;
-  /** A whole clause: "Anna is waiting on the model", "Extracted 3 records". */
+  /** A whole clause: "Anna is waiting on the model", "Found 3 records". */
   label: string;
   /** `m:ss` since the pass started, empty once it has settled. */
   elapsed: string;

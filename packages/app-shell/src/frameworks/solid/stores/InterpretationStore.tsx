@@ -19,7 +19,7 @@
  * ## Presentation lives here
  *
  * `label` and `elapsed` are strings, computed in the store. A schema has no arithmetic and no date
- * formatting, so "0:42" and "Extracted 3 tasks" are unreachable from a template — the same reason
+ * formatting, so "0:42" and "Found 3 tasks" are unreachable from a template — the same reason
  * `runtimeStore.aiModels` carries `statusText` and `themeStore` builds its own view models.
  */
 import { watchPassRecord } from '@shared/interpretation/activityView';
@@ -63,7 +63,7 @@ export interface InterpretationActivityView {
   phase: InterpretationPhase;
   /** True while the pass is still in flight. What a spinner and the "N running" count read. */
   running: boolean;
-  /** A whole clause: "Anna is extracting", "Waiting on the model", "Extracted 3 records". */
+  /** A whole clause: "Anna is interpreting", "Waiting on the model", "Found 3 records". */
   label: string;
   /** `m:ss` since the pass was first seen. Empty once it has settled — a finished pass reports
    *  what it did, and how long it took stops being the question. */
@@ -174,7 +174,7 @@ function labelFor(phase: InterpretationPhase, name: string, mine: boolean, count
   const who = mine ? 'You are' : `${name} is`;
   switch (phase) {
     case 'queued':
-      return `${who} about to extract`;
+      return `${who} about to interpret`;
     case 'gathering':
       return `${who} reading the conversation`;
     // Named as the wait it is, rather than as a step. This is nearly the whole duration, and
@@ -188,11 +188,11 @@ function labelFor(phase: InterpretationPhase, name: string, mine: boolean, count
     case 'done':
       // "Nothing to add" rather than "0 records": a pass over a conversation with no commitments in
       // it succeeded, and a zero reads as a failure.
-      return count ? `Extracted ${count} ${count === 1 ? 'record' : 'records'}` : 'Nothing to add';
+      return count ? `Found ${count} ${count === 1 ? 'record' : 'records'}` : 'Nothing to add';
     case 'skipped':
-      return 'Nothing to extract';
+      return 'Nothing to interpret';
     case 'failed':
-      return 'Extraction failed';
+      return 'Interpretation failed';
   }
 }
 
@@ -496,7 +496,7 @@ export function InterpretationStoreProvider(props: ParentProps) {
         space's default, which is what a surface asking "does this space do this at all" wants.
       */
       autoInterpretEnabled: (collectionId?: string) =>
-        collectionId ? spaceStore.autoExtractFor(collectionId) : spaceStore.autoInterpret(),
+        collectionId ? spaceStore.autoInterpretFor(collectionId) : spaceStore.autoInterpret(),
     }),
   );
 

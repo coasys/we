@@ -145,7 +145,7 @@ async function filedUnder(handle: unknown, conversation: string): Promise<Parent
 */
 const watchIdFor = (collectionId: string) => `we-call-${collectionId.replace(/[^a-zA-Z0-9]+/g, '-')}`;
 
-export interface ExtractionRuntimeDeps {
+export interface InterpretationRuntimeDeps {
   /**
    * The backend's interpretation port, read on every call: the backend connects after the stores
    * are built, and a backend that cannot interpret never sets it.
@@ -165,7 +165,7 @@ export interface ExtractionRuntimeDeps {
   setAutoFor: (collectionId: string, on: boolean) => Promise<void>;
 }
 
-export interface ExtractionRuntime {
+export interface InterpretationRuntime {
   /**
    * Keep a standing extraction watch on one conversation, filing what it finds into the space
    * collection. What a module's `watchCollection` reaches; also the space's own, for its loose
@@ -178,7 +178,7 @@ export interface ExtractionRuntime {
   services: ModuleHostServices;
 }
 
-export function createExtractionRuntime(deps: ExtractionRuntimeDeps): ExtractionRuntime {
+export function createInterpretationRuntime(deps: InterpretationRuntimeDeps): InterpretationRuntime {
   /**
    * The class list one pass over this collection should ask for.
    *
@@ -209,7 +209,8 @@ export function createExtractionRuntime(deps: ExtractionRuntimeDeps): Extraction
       collection's settings have been read, which is the right way round for something that spends
       somebody's LLM budget.
     */
-    if (!deps.autoFor(collectionId)) throw new Error('interpretation: automatic extraction is off for this collection');
+    if (!deps.autoFor(collectionId))
+      throw new Error('interpretation: automatic interpretation is off for this collection');
     /*
       The caller's dataset, not the one on screen: a call outlives the space on screen, and a watch
       registered wherever the reader had wandered to interprets the call into a perspective that
@@ -220,8 +221,8 @@ export function createExtractionRuntime(deps: ExtractionRuntimeDeps): Extraction
 
     const classes = targetsForCollection(collectionId);
     // Refused rather than registered empty: the executor rejects a processor with no classes, and
-    // "this space has marked nothing for extraction" is a sentence worth saying in its own words.
-    if (!classes.length) throw new Error('interpretation: nothing in this space is marked for AI extraction');
+    // "this space has marked nothing for interpretation" is a sentence worth saying in its own words.
+    if (!classes.length) throw new Error('interpretation: nothing in this space is marked for AI interpretation');
 
     await port.watch(handle, {
       watchId: watchIdFor(collectionId),
@@ -251,7 +252,7 @@ export function createExtractionRuntime(deps: ExtractionRuntimeDeps): Extraction
       never sees the resolution: candidacy, the space's default and the collection's own list are
       questions it has no business knowing about, and it is handed the answer.
     */
-    extractionTargets: (collectionId: string) => {
+    interpretationTargets: (collectionId: string) => {
       const active = targetsForCollection(collectionId);
       return deps.candidates().map((entity) => ({
         entity,
@@ -264,9 +265,9 @@ export function createExtractionRuntime(deps: ExtractionRuntimeDeps): Extraction
       part that had arrived would be removed and registered again when the rest did. The list above
       does not wait for this; what registers from it does.
     */
-    extractionTargetsLoaded: () => deps.candidatesLoaded(),
+    interpretationTargetsLoaded: () => deps.candidatesLoaded(),
     setAutoInterpret: (collectionId: string, on: boolean) => deps.setAutoFor(collectionId, on),
-    setExtractionTarget: (collectionId: string, entity: string, on: boolean) =>
+    setInterpretationTarget: (collectionId: string, entity: string, on: boolean) =>
       deps.setTargetFor(collectionId, entity, on),
 
     // Gathering the turns is the host's half of the job: the port takes turns, and a module has no

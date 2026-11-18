@@ -187,7 +187,7 @@ const SPACE_CANVAS = { $: SPACE_CANVAS_EXPR };
  * must not take what that call already found off them, and neither should a kind only one call
  * ever looked for.
  */
-const EXTRACTABLE = { $: 'shapeStore.extractionCandidates' };
+const INTERPRETABLE = { $: 'shapeStore.interpretationCandidates' };
 
 /**
  * The scope lens: the space's views picking out what one conversation produced.
@@ -291,7 +291,7 @@ const openLiveCall: SchemaProp = pageWithCall("''");
  *
  * They were `canvas`, `tasks` and `events` — one named for its form and two for a content type,
  * which reads as three different subjects when it is three readings of one. What a call produces is
- * not a fixed pair either: `EXTRACTABLE` asks the space what it could extract, so a community that
+ * not a fixed pair either: `INTERPRETABLE` asks the space what it could extract, so a community that
  * defines a `Sighting` gets Sightings on the canvas, and two tabs named after two members of an open
  * set stop describing it the moment somebody adds a third. A form-name stays true — a calendar is
  * still a calendar, and a record with no date is self-evidently not on it.
@@ -2865,7 +2865,7 @@ const eventList: SchemaNode = {
                                     condition: { $: UNCONFIRMED_EVENT('event') },
                                     then: {
                                       type: 'we-tooltip',
-                                      props: { content: 'Extraction proposed this — pending acceptance' },
+                                      props: { content: 'Interpretation proposed this — pending acceptance' },
                                       children: [
                                         {
                                           type: 'we-badge',
@@ -3504,7 +3504,7 @@ export const workshopTemplate: TemplateSchema = {
 
         `dock` still names which of the module's two panels this is. It is no longer load-bearing —
         without a `node` there is nothing to supply — but it is what says the entry means the
-        transcript rather than the extraction readout, and the entry below is its pair.
+        transcript rather than the interpretation readout, and the entry below is its pair.
       */
       {
         id: 'transcript',
@@ -3514,7 +3514,7 @@ export const workshopTemplate: TemplateSchema = {
         /*
           One sidebar cut in two, rather than two cards over the canvas.
 
-          `displace` with a shared `band`: the transcript and the extraction readout are one lane
+          `displace` with a shared `band`: the transcript and the interpretation readout are one lane
           down the left, meeting flush and costing the canvas their width once, with the boundary
           between them draggable. Floating, they covered the canvas's own edge and each kept its own
           width; the arrangement wanted here is a sidebar, and this is how a template says so.
@@ -3531,7 +3531,7 @@ export const workshopTemplate: TemplateSchema = {
           a lane divides base-plus-slack, so equal bases with equal shares come out equal.
 
           It was two shares against one, for a transcript that took about two thirds. That starved
-          the readout, which is where a pass's findings, its failures and the Extract button all
+          the readout, which is where a pass's findings, its failures and the Interpret button all
           live — the half of the column somebody acts on, where the transcript is the half they
           glance at.
 
@@ -3543,9 +3543,9 @@ export const workshopTemplate: TemplateSchema = {
         grow: 1,
       },
       {
-        id: 'extraction',
+        id: 'interpretation',
         /*
-          The module's extraction panel, placed — the twin of `transcript` above, and gone the same
+          The module's interpretation panel, placed — the twin of `transcript` above, and gone the same
           way for the same reasons.
 
           There was a body here too, and its own list of what a pass had found was the half of it
@@ -3554,14 +3554,14 @@ export const workshopTemplate: TemplateSchema = {
           lines or the watch's failure — so a failed pass was silent here and a settled one showed a
           green tick whether it had succeeded, found nothing or failed.
 
-          It was also wrong in a way nothing surfaced: the chips and the Extract button asked about
+          It was also wrong in a way nothing surfaced: the chips and the Interpret button asked about
           the *live* call while the results below them were the addressed one's, so a past call's
           list sat under another call's targets and the button that would have worked on it was
           hidden by a guard about the wrong record. The store answers per call now — see
-          `extractionFor` — which is what let the panel move.
+          `interpretationFor` — which is what let the panel move.
         */
         module: 'transcribe',
-        dock: 'extraction',
+        dock: 'interpretation',
         snap: 'left',
         // The same lane as the transcript — see there.
         displace: true,
@@ -3651,7 +3651,7 @@ export const workshopTemplate: TemplateSchema = {
           call: SPACE_CANVAS,
           callExpr: SPACE_CANVAS_EXPR,
           members: { $: 'spaceStore.root' },
-          extracted: EXTRACTABLE.$,
+          interpretable: INTERPRETABLE.$,
         }),
         title: 'Key',
         snap: 'top-right',

@@ -1119,7 +1119,7 @@ const originLine: SchemaNode = {
                   children: [
                     {
                       $:
-                        `row.extractedFrom || row.id in first(local.inspectedCall).extracted ? \`Extracted from the conversation · run by \${author.name} · \` : ` +
+                        `row.extractedFrom || row.id in first(local.inspectedCall).extracted ? \`Interpreted from the conversation · run by \${author.name} · \` : ` +
                         `generatedRun({ record: row }) ? \`Written by AI · run by \${author.name} · \` : ` +
                         "`Added by ${author.did == me.did ? 'you' : author.name} · `",
                     },
@@ -1733,7 +1733,7 @@ export function inspectorPanel(opts: InspectorPanelOptions = {}): SchemaNode {
                               {
                                 type: 'we-text',
                                 props: { fontSize: '200', color: 'text-muted', flex: '1', minWidth: '0' },
-                                children: ['Extraction proposed this — pending acceptance.'],
+                                children: ['Interpretation proposed this — pending acceptance.'],
                               },
                               answerButton({
                                 tone: 'success',
