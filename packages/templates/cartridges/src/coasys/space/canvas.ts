@@ -22,6 +22,7 @@ import {
   TREE_ON,
   TREE_QUERIES,
   TREE_REFRAME,
+  TREE_RELATIONS,
   TREE_VOICE_SUMMARY,
   TREE_WEIGH,
   TREE_WEIGHTS,
@@ -246,6 +247,11 @@ export const canvasPane: SchemaNode = {
                 weigh: TREE_WEIGH,
                 // How much each person's voice counts in that weight — re-applied without a read.
                 weights: TREE_WEIGHTS,
+                /*
+                  The models' own declared relations, followed as tree edges in tree mode — what the
+                  spine picker's model relations draw. See `TREE_RELATIONS`.
+                */
+                relations: TREE_RELATIONS,
               },
             },
             /*
