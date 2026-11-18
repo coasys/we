@@ -98,6 +98,10 @@ export const storeEntries: StoreEntry[] = [
       mcpEnabled: { type: 'boolean' },
       mcpPort: { type: 'number' },
       executorRestartPending: { type: 'boolean' },
+      executorConfigFile: { type: 'string' },
+      executorConfigRows: { type: 'array', properties: ['id', 'key', 'value', 'kind', 'choice', 'editable', 'note'] },
+      executorLogTail: { type: 'string' },
+      canRestartExecutor: { type: 'boolean' },
       canBackUp: { type: 'boolean' },
       logLevels: { type: 'array', properties: ['crate', 'level'] },
       backupStatus: { type: 'string' },
@@ -224,6 +228,8 @@ export const storeEntries: StoreEntry[] = [
       'exportDatabase',
       'importDatabase',
       'restartExecutor',
+      'setExecutorConfigValue',
+      'loadExecutorLogTail',
       'loadAiModels',
       'loadAiTasks',
       'newAiModel',
@@ -283,6 +289,7 @@ export const storeEntries: StoreEntry[] = [
       currentDataset: { type: 'object', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
       currentDatasetCid: { type: 'string' },
       currentDatasetEntities: { type: 'array' },
+      currentDatasetEntitiesLoaded: { type: 'boolean' },
       isWeSpace: { type: 'boolean' },
       joinedSpaceCids: { type: 'array' },
       datasetsLoaded: { type: 'boolean' },
@@ -426,6 +433,7 @@ export const storeEntries: StoreEntry[] = [
           'avatar',
           'kind',
           'isWeSpace',
+          'loading',
           'canAdminister',
           'modules',
           'shareLink',
@@ -483,6 +491,8 @@ export const storeEntries: StoreEntry[] = [
       },
       taskStatesLoaded: { type: 'boolean' },
       root: { type: 'string' },
+      rootLoaded: { type: 'boolean' },
+      firstScreenOpen: { type: 'boolean' },
       landmarks: { type: 'object' },
       landmarksLoaded: { type: 'boolean' },
       starterChoices: { type: 'array' },
@@ -599,6 +609,7 @@ export const storeEntries: StoreEntry[] = [
       generating: { type: 'boolean' },
       hintEntities: { type: 'array', properties: ['entity', 'source'] },
       extractionCandidates: { type: 'array' },
+      extractionCandidatesLoaded: { type: 'boolean' },
       extractionNeedsIdentity: { type: 'boolean' },
       relationshipTargets: { type: 'array', properties: ['label', 'value'] },
       identityOptions: { type: 'array', properties: ['label', 'value'] },
@@ -958,6 +969,13 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       mcpEnabled: 'boolean — whether the backend serves MCP on its next start',
       mcpPort: 'number — the port MCP is served on',
       executorRestartPending: 'boolean — settings were changed that the running backend has not picked up',
+      executorConfigFile:
+        'string — the path of the config file the backend started with, where this app may write it (the desktop app’s own executor); empty otherwise. Gate the config rows on it',
+      executorConfigRows:
+        '{ id, key, value, kind, choice, editable, note }[] — every key of that file: value ready to show (empty when the file leaves the key to its default, "Default" for a fixed one), kind the control it takes, from the key’s type rather than its value (boolean | number | text, or fixed for one only shown), choice for a boolean key’s three-way select (default | on | off, default while the file leaves it to the backend), editable, and note saying why one is not (a flag of this start sets it) or that it is changed only from this computer',
+      executorLogTail:
+        'string — the newest lines of this run’s backend log, oldest first. Empty until loadExecutorLogTail runs',
+      canRestartExecutor: 'boolean — the host starts the backend, so a restart can be offered',
       canBackUp:
         'boolean — a database export/import can be offered: the backend writes the file and the host can name one. False on web',
       logLevels:
@@ -1040,7 +1058,11 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       removeLogLevel: '(crate: string): drops an override, returning that crate to the backend default',
       exportDatabase: '(): asks for a file, then has the backend write everything to it',
       importDatabase: '(): asks for a file, then has the backend read it back in',
-      restartExecutor: '(): starts the backend over so written settings take effect. Does not return',
+      restartExecutor:
+        '(): starts the backend over so written settings take effect — where it keeps a config file, by asking it to restart, and the app starts it again with the same arguments and reloads. Does not return',
+      setExecutorConfigValue:
+        '(key: string, value): writes one key of the config file — a row’s key and the control’s value (event.detail); an empty value returns it to its default. Takes effect at the next start. A refused key lands in error with the backend’s reason',
+      loadExecutorLogTail: '(): reads the newest lines of the backend’s log into executorLogTail',
       loadAiModels: '(): fetches the models and the servers they run on',
       loadAiTasks: '(): fetches the prompts apps registered against a model',
       newAiModel: '(): opens the model form empty, on the first server that can serve a language model',
@@ -1112,6 +1134,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       currentDatasetCid: 'string | undefined — the neighbourhood CID of the current dataset (prefix stripped)',
       currentDatasetEntities:
         'EntityManifestEntry[] (non-WE SHACL models from the current dataset; injected as externalEntities into AI messages)',
+      currentDatasetEntitiesLoaded:
+        'boolean — currentDatasetEntities has been read for the dataset on screen. They arrive a few round trips after the switch, so until this is true an empty list means "not read yet" rather than "none"',
       isWeSpace:
         "boolean — true once the current dataset is confirmed to have WE's Space SDNA installed (false for a joined-but-foreign dataset, e.g. one synced in from Flux)",
       joinedSpaceCids: 'string[] — CIDs of every joined shared dataset',
@@ -1396,6 +1420,10 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       myMentions:
         '{ id, author, createdAt }[] — messages in this space that mention this agent — posts and transcript or Feed lines alike — newest first, the fifty most recent. createdAt is the backend’s comparable timestamp. Asked from the agent’s end through the backend’s references, one lookup per space',
       root: "string — the id of this space's collection: the one CollectionBlock (kind 'space') everything top-level hangs off — calls, loose messages, posts, channels, extracted items, the canvas. Scope a top-level read through it: { anchor: 'CollectionBlock', via: 'children', anchorId: spaceStore.root }. Empty outside a space, and in a space made before spaces had one",
+      rootLoaded:
+        "boolean — root has answered for the space on screen. Until then an empty root is not yet an answer, so gate anything that compares an address with root on it — { $: 'spaceStore.rootLoaded' } around an $if on `channel == spaceStore.root` — or the wrong branch mounts, reads, and is torn down when root arrives",
+      firstScreenOpen:
+        "boolean — the first screen after boot is up: the Feed's first page drawn, or the screen drawn with no Feed on it. True from then on. Put it as the `when` of a $queries read the opening screen does not draw (a sidebar's list) so the read starts after that screen rather than beside it — { when: { $: 'spaceStore.firstScreenOpen' } }",
       landmarks:
         "Record<name, id> — the records this space names as its landmarks, e.g. spaceStore.landmarks.canvas is the space's canvas. Written by the space's starter at creation. A landmark can be absent — a space can switch template and a template must never assume what another set up — so guard every read",
       landmarksLoaded:
@@ -1419,7 +1447,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       routeSpaceUnjoined:
         'boolean — the current route points at a space this agent has not joined, as a settled fact. What a join gate should read: `currentDataset` being null is also true for the first frames of a refresh, so gating on that flashes a join prompt at someone already inside. False while the answer is still unknown',
       spaceList:
-        "{ uuid, name, description, avatar, kind: 'shared' | 'personal' | 'foreign', isWeSpace, canAdminister }[] — one row per joined dataset the agent can act on, ordered like the sidebar and excluding the system datasets. Includes datasets that are not WE spaces (kind 'foreign', isWeSpace false), which are waiting to be initialized. `uuid` is the dataset id, so it keys navigation and settings whether or not a Space record exists. `sharing` is 'sharing' while a new shared space is still being shared (it is usable meanwhile), 'failed' when that did not work — `shareError` says why, and shareSpace tries again — and '' otherwise; a shared space has a `shareLink`",
+        "{ uuid, name, description, avatar, kind: 'shared' | 'personal' | 'foreign', isWeSpace, loading, canAdminister }[] — one row per joined dataset the agent can act on, ordered like the sidebar and excluding the system datasets. Includes datasets that are not WE spaces (kind 'foreign', isWeSpace false), which are waiting to be initialized. `loading` is true for the first seconds of a boot while a row's Space record has not been read yet — then `isWeSpace` is false without meaning the dataset is from another app, so show a placeholder rather than the initialize state. `uuid` is the dataset id, so it keys navigation and settings whether or not a Space record exists. `sharing` is 'sharing' while a new shared space is still being shared (it is usable meanwhile), 'failed' when that did not work — `shareError` says why, and shareSpace tries again — and '' otherwise; a shared space has a `shareLink`",
       creatingSpace: 'boolean (true while a new space is being created)',
       joiningSpace:
         "string — the shared id of the space a join is running for, '' when none is. The id rather than a flag so a list can spin only the row being joined; a gate compares it against its own route segment. Stays set for the whole join, which outlives the network call that starts it",
@@ -1771,6 +1799,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       generating: 'boolean — an AI generation is in flight',
       extractionCandidates:
         "string[] — entity names an extraction pass COULD write here: core vocabulary that declares itself extractable, plus every adopted shape that does. Candidacy, not a decision — which of these a collection actually looks for is two layers down (spaceStore.extractionTargets, the default a new collection copies, then the collection's own list). Read it to offer a choice, and to display findings: a card should show a record somebody extracted an hour ago even if the target has since been switched off",
+      extractionCandidatesLoaded:
+        "boolean — extractionCandidates is the whole list: the space's models and the classes it already had have both been read. Until then the list is missing members that are coming; wait for this before treating the list as decided",
       extractionNeedsIdentity:
         'boolean — the open draft would be extracted into and has no field to recognise what it already wrote, so every pass duplicates everything. A warning to put beside the switch, not a refusal: the wizard saves either way',
       hintEditorDirty:
@@ -2151,7 +2181,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       keyId: 'string — this device’s id in the key log (`d1`), or empty',
       thisDeviceRevoked: 'boolean — the key log revoked this device’s key: it no longer speaks for the person',
       keyLog:
-        '{ seq, op, keys, position, icon, title, detail, hash, hashShort, thisComputer }[] — the key log, newest first, with what each row says made from `op` and `keys` (reword from those where a template wants other words), already worded: `title` "Created your identity", "Added d2", "Revoked d2"; `detail` the keys it names with this computer’s marked "This computer"; `hashShort` the event’s hash for a monospace column',
+        '{ seq, op, keys, position, icon, title, detail, hash, hashShort, thisComputer }[] — the key log, newest first, with what each row says made from `op` and `keys` (reword from those where a template wants other words), already worded: `title` "Created identity", "Added d2", "Revoked d2"; `detail` the keys it names with this computer’s marked "This computer"; `hashShort` the event’s hash for a monospace column',
       keyLogLoaded: 'boolean — the log has been read once',
       forked: 'boolean — the backend found two different logs for this identity',
       fork: '{ seq, ours, theirs } | null — where they part',
@@ -2175,10 +2205,10 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
   deviceStore: {
     state: {
       devices:
-        "{ keyId, addedSeq, revokedSeq, label, subtitle, icon, thisDevice, revoked, status, canRevoke }[] — the device keys of the person's key log, valid first and this computer on top. `label` is 'This computer' or 'Device d2' (devices have no names yet); `status` 'Valid' or 'Revoked at #2'; `canRevoke` is a valid key that is not this computer's",
+        "{ keyId, addedSeq, revokedSeq, label, subtitle, icon, thisDevice, revoked, status, canRevoke }[] — the device keys of the person's key log, valid first and this computer on top. `label` is 'This computer' or 'Device d2' (devices have no names yet); `status` 'Active' or 'Removed at #2'; `canRevoke` is a valid key that is not this computer's",
       devicesLoaded: 'boolean — the list has been read once',
       validCount: 'number — how many keys are valid',
-      canManage: 'boolean — Add a device and Revoke can be offered: this computer keeps the master key of the identity',
+      canManage: 'boolean — Link a device or Remove can be offered: this computer keeps the master key of the identity',
       error: 'string — why the last read failed, or empty',
     },
     actions: {

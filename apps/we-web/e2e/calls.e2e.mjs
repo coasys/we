@@ -28,7 +28,8 @@ import { createSpace, dismissNamePrompt, inTheCall, openSpace } from './steps/sp
 const DIST = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist');
 
 const REPLACED = 'You joined this call from another tab, so it ended here.';
-const JOIN_BUTTON = /^(Open|Join)$/;
+// The sidebar's running call is one button, named by everything on it: "Call running · 1 in it Join".
+const JOIN_BUTTON = /^Call running\b.*\b(Open|Join)$/;
 
 /** What the page says, shadow roots included. */
 const text = (page) => page.locator('body').innerText();

@@ -357,6 +357,10 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     mcpEnabled: state('runtime-admin'),
     mcpPort: state('runtime-admin'),
     executorRestartPending: state('runtime-admin'),
+    executorConfigFile: state('runtime-admin'),
+    executorConfigRows: state('runtime-admin'),
+    executorLogTail: state('runtime-admin'),
+    canRestartExecutor: state('runtime-admin'),
     pendingConsent: state('runtime-admin'),
     consentSecret: state('runtime-admin'),
     loadAiModels: ambient('runtime-admin'),
@@ -411,6 +415,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     importDatabase: destructive('runtime-admin'),
     setMcpPort: action('runtime-admin'),
     restartExecutor: destructive('runtime-admin'),
+    setExecutorConfigValue: action('runtime-admin'),
+    loadExecutorLogTail: ambient('runtime-admin'),
     approveConsent: destructive('runtime-admin'),
     denyConsent: action('runtime-admin'),
     dismissConsentSecret: ambient('runtime-admin'),
@@ -423,6 +429,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     currentDatasetUri: state('content'),
     currentDatasetCid: state('content'),
     currentDatasetEntities: state('content'),
+    currentDatasetEntitiesLoaded: state('content'),
     isWeSpace: state('navigation'),
     joinedSpaceCids: state('navigation'),
     datasetsLoaded: state('navigation'),
@@ -465,6 +472,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       panels, which render at the chrome tier, have it.
     */
     personalDataset: state('agent'),
+    // The personal space's schema install, for the agent-data kernel to wait on. Not for templates.
+    whenPersonalDataset: WIRING,
     testDataset: WIRING,
     /*
       The global discovery space and the marketplace — shared neighbourhoods holding nothing of this
@@ -544,6 +553,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // Where a space's things are and which record plays which part — read by any template that
     // shows the space at all, so `content` for the reason the space's vocabulary is.
     root: state('content'),
+    rootLoaded: state('content'),
+    firstScreenOpen: state('content'),
     landmarks: state('content'),
     landmarksLoaded: state('content'),
     taskWorkflowEnabled: state('content'),
@@ -819,6 +830,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       wizard would make an ordinary card list ask for the capability that edits a space's vocabulary.
     */
     extractionCandidates: state('content'),
+    extractionCandidatesLoaded: state('content'),
     provideExtractionEnroller: WIRING,
     extractionNeedsIdentity: state('space-settings'),
     relationshipTargets: state('space-settings'),

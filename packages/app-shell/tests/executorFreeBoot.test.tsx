@@ -10,14 +10,16 @@
  * suite can read data back the way the app does — and a store that writes the wrong field, or
  * writes nothing at all, fails here rather than in a browser.
  */
-import { render } from '@solidjs/testing-library';
+import { cleanup, render } from '@solidjs/testing-library';
 import { createInMemoryBackendPorts, type InMemoryAgentOptions, type InMemoryLifecycle } from '@we/backend-inmemory';
 import { createBlocks, registerCoreBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
 import { AgentSettings, CollectionBlock, getEntity, Policy, Space, SpaceLandmark } from '@we/entities';
 import { type FeedFind, readFeedWindow } from '@we/module-feed';
+import { notesModule } from '@we/module-notes';
+import { pocketModule } from '@we/module-pocket';
 import { createEffect, createRoot, createSignal } from 'solid-js';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
 // The platform provider supplies the in-memory backend; the template/theme/route stores (not
@@ -40,13 +42,63 @@ let executorHost:
   | { getSettings: () => Promise<unknown>; setSettings: () => Promise<unknown>; restart: () => Promise<void> }
   | undefined;
 
+/**
+ * Set by a test that boots twice against one backend: a reload, with what the first boot wrote still
+ * there. Absent, every boot gets a backend of its own.
+ */
+let keepBackend = false;
+let keptPorts: ReturnType<typeof createInMemoryBackendPorts> | undefined;
+
+/**
+ * The first-screen gate, made new for each test rather than once for the file.
+ *
+ * The real one is a module singleton that holds once per app, so in this file the first test to boot
+ * held it and every test after ran beneath a gate nothing opened but the eight-second ceiling — the
+ * harness mounts no Feed and no layout to say the screen is up. Here it holds only when a test sets
+ * `gate.holds` before mounting, and that test opens it with `gate.current.answered()`, as the Feed's
+ * first page does. Every other test boots with it open.
+ */
+const gate = vi.hoisted(() => ({
+  holds: false,
+  current: undefined as unknown as import('../src/shared/firstScreen').FirstScreen,
+  reset: () => {},
+}));
+vi.mock('../src/frameworks/solid/firstScreen', async () => {
+  const { createFirstScreen } = await import('../src/shared/firstScreen');
+  const { createSignal } = await import('solid-js');
+  gate.reset = () => {
+    gate.current = createFirstScreen({
+      signal: <T,>(initial: T): [() => T, (next: T) => void] => {
+        const [read, write] = createSignal(initial);
+        return [read, (next: T) => void write(() => next)];
+      },
+    });
+  };
+  gate.reset();
+  return {
+    firstScreen: {
+      open: () => gate.current.open(),
+      whenOpen: () => gate.current.whenOpen(),
+      hold: () => {
+        if (gate.holds) gate.current.hold();
+      },
+      waiting: () => gate.current.waiting(),
+      answered: () => gate.current.answered(),
+      drawn: () => gate.current.drawn(),
+    },
+  };
+});
+
 vi.mock('../src/frameworks/solid/providers/PlatformProvider', () => ({
   usePlatform: () => ({ isDesktop: false, isDevelopment: true, executor: executorHost }),
   useBackend: () => ({
     // The real in-memory bundle — the same thing a backend-less host would supply.
     initialize: async (ctx: { selfId(): string | undefined }) => {
       if (connectFailure) throw new Error(connectFailure);
-      const ports = createInMemoryBackendPorts(ctx, { agent: agentOptions, datasets: seededDatasets });
+      const ports =
+        (keepBackend && keptPorts) ||
+        createInMemoryBackendPorts(ctx, { agent: agentOptions, datasets: seededDatasets });
+      keptPorts = ports;
       onPorts?.(ports);
       lifecycle = ports.lifecycle;
       return { client: {}, ports, ...(disconnect ? { disconnect } : {}) };
@@ -130,9 +182,10 @@ import { type SessionStore, SessionStoreProvider, useSessionStore } from '../src
 import { type ShapeStore, ShapeStoreProvider, useShapeStore } from '../src/frameworks/solid/stores/ShapeStore';
 import { ShellStoreProvider } from '../src/frameworks/solid/stores/ShellStore';
 import { type SpaceStore, SpaceStoreProvider, useSpaceStore } from '../src/frameworks/solid/stores/SpaceStore';
+import { agentDataKernel } from '../src/shared/agentData';
 import { NO_STARTER } from '../src/shared/bundles/bundleStarter';
-import { createModuleStoreDeps } from '../src/shared/registries/moduleHostServices';
-import { moduleRegistry } from '../src/shared/registries/moduleRegistry';
+import { createModuleStoreDeps, provideModuleHostServices } from '../src/shared/registries/moduleHostServices';
+import { moduleRegistry, moduleStores } from '../src/shared/registries/moduleRegistry';
 import { provideSeed } from '../src/shared/seedRegistry';
 import { writeSpaceLandmark } from '../src/shared/spaceLandmarks';
 import { COMMUNITY_POLICY } from '../src/shared/spacePolicy';
@@ -210,9 +263,59 @@ beforeEach(() => {
   seededDatasets = [];
   connectFailure = null;
   disconnect = undefined;
+  keepBackend = false;
+  keptPorts = undefined;
+  gate.holds = false;
+  gate.reset();
   navigate.mockClear();
   route.go('/');
 });
+
+/**
+ * An agent who already has these spaces: boot, make them, and take the shell down, leaving the
+ * backend as a reload finds it. Answers each space's dataset id by its name.
+ */
+async function agentWithSpaces(names: string[]): Promise<Record<string, string>> {
+  keepBackend = true;
+  const stores = mountShell();
+  await ready(stores);
+  for (const name of names) await stores.spaces.createSpace(name, 'x', 'personal', 'hidden');
+  const made = (await lifecycle.list()).filter((d) => names.includes(d.name));
+  cleanup();
+  navigate.mockClear();
+  return Object.fromEntries(made.map((d) => [d.name, d.id]));
+}
+
+type SpaceFindOne = (handle: unknown, options?: { where?: { uuid?: string; url?: string } }) => Promise<unknown>;
+
+/**
+ * Hand every read of a space record whose dataset is in `others` to `answer` instead; the rest read
+ * as they do. Spied when boot lists the datasets — see the root's settings test for why then.
+ */
+function divertSpaceReads(
+  others: () => string[],
+  answer: (read: () => Promise<unknown>) => Promise<unknown>,
+): { spy?: ReturnType<typeof vi.spyOn>; asked: string[] } {
+  const out: { spy?: ReturnType<typeof vi.spyOn>; asked: string[] } = { asked: [] };
+  onPorts = (ports) => {
+    const list = ports.lifecycle.list.bind(ports.lifecycle);
+    ports.lifecycle.list = async (options) => {
+      if (!out.spy) {
+        const Entity = getEntity('Space') as unknown as { findOne: SpaceFindOne };
+        const findOne = Entity.findOne.bind(Entity);
+        out.spy = vi.spyOn(Entity, 'findOne').mockImplementation((handle, options) => {
+          const which = options?.where?.uuid ?? options?.where?.url;
+          if (which) out.asked.push(which);
+          return which && others().includes(which)
+            ? (answer(() => findOne(handle, options)) as never)
+            : (findOne(handle, options) as never);
+        });
+      }
+      return list(options);
+    };
+  };
+  return out;
+}
 
 // ── The suite ─────────────────────────────────────────────────────────────────
 
@@ -255,30 +358,167 @@ describe('boot', () => {
   });
 
   /*
-    The root and the personal space share nothing but the list, and each is several round trips to
-    a remote backend. One after the other they were most of the wait before a space could open.
+    The personal space's schema is several round trips to a remote backend, and the space on screen
+    reads nothing from it. It used to be on the way to ready; now the app is ready without it, and
+    the personal space comes up after — made on a first run before ready, so it is in the list.
   */
-  it('brings the root and the personal space up side by side', async () => {
-    let releaseRoot!: () => void;
-    const rootHeld = new Promise<void>((resolve) => (releaseRoot = resolve));
-    const started: string[] = [];
+  it('is ready before the personal space’s schema is up, and brings it up after', async () => {
+    let releasePersonal!: () => void;
+    const personalHeld = new Promise<void>((resolve) => (releasePersonal = resolve));
     onPorts = (ports) => {
-      const { installRoot, installSpace } = ports.schemas;
-      ports.schemas.installRoot = async (dataset) => {
-        started.push('root');
-        await rootHeld;
-        return installRoot(dataset);
-      };
+      const { installSpace } = ports.schemas;
       ports.schemas.installSpace = async (dataset, modules) => {
-        started.push('personal');
+        if ((dataset as { name?: string }).name === 'we-personal') await personalHeld;
         return installSpace(dataset, modules);
       };
     };
     const stores = mountShell();
-
-    await vi.waitFor(() => expect(started).toEqual(expect.arrayContaining(['root', 'personal'])));
-    releaseRoot();
     await ready(stores);
+
+    expect(stores.datasets.personalDataset()).toBeNull();
+    expect(stores.datasets.datasets().map((d) => d.name)).toContain('we-personal');
+
+    releasePersonal();
+    await vi.waitFor(() => expect(stores.datasets.personalDataset()?.name).toBe('we-personal'));
+  });
+
+  it('is ready, and logs, when the personal space’s schema fails', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    onPorts = (ports) => {
+      const { installSpace } = ports.schemas;
+      ports.schemas.installSpace = async (dataset, modules) => {
+        if ((dataset as { name?: string }).name === 'we-personal') throw new Error('schema refused');
+        return installSpace(dataset, modules);
+      };
+    };
+    try {
+      const stores = mountShell();
+      await ready(stores);
+
+      await vi.waitFor(() =>
+        expect(error).toHaveBeenCalledWith('DatasetStore: personal dataset error', expect.any(Error)),
+      );
+      expect(stores.datasets.personalDataset()).toBeNull();
+      expect(stores.datasets.rootDataset()?.name).toBe('we-root');
+    } finally {
+      error.mockRestore();
+    }
+  });
+
+  /*
+    The app is ready before the personal space's schema is in, so a gather or a note can be asked for
+    in between. The kernel said it was not ready and every write returned nothing: a drag into the
+    Pocket in the first seconds did nothing, with no error. A write in that window waits for the
+    schema and lands; if the schema fails, the write says so.
+  */
+  describe('a write to the personal space before its schema is up', () => {
+    const host = { backend: 'inmemory', framework: 'solid' };
+    type Model = {
+      create(d: unknown, f: Record<string, unknown>, o?: Record<string, unknown>): Promise<{ id?: string }>;
+      findAll(d: unknown, q?: unknown): Promise<Record<string, unknown>[]>;
+      update(d: unknown, id: string, f: Record<string, unknown>): Promise<unknown>;
+      delete(d: unknown, id: string): Promise<void>;
+    };
+    const model = (entity: string) => getEntity(entity) as unknown as Model;
+    let unbind: (() => void) | undefined;
+
+    /** The personal space's schema install, held until `release`, and refused with `fail`. */
+    function holdPersonalSchema(options: { fail?: boolean } = {}): () => void {
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => (release = resolve));
+      onPorts = (ports) => {
+        const { installSpace } = ports.schemas;
+        ports.schemas.installSpace = async (dataset, modules) => {
+          if ((dataset as { name?: string }).name === 'we-personal') {
+            await held;
+            if (options.fail) throw new Error('schema refused');
+          }
+          return installSpace(dataset, modules);
+        };
+      };
+      return release;
+    }
+
+    /** The module stores, over the agent-data kernel the host builds from the dataset store. */
+    function modulesOver(stores: Stores) {
+      unbind = provideModuleHostServices({
+        agentData: agentDataKernel(stores.datasets, {
+          create: (handle, entity, fields, options) =>
+            model(entity).create(handle, fields, Object.keys(options).length ? options : undefined),
+          find: (handle, entity, query) => model(entity).findAll(handle, query),
+          update: (handle, entity, id, fields) => model(entity).update(handle, id, fields),
+          remove: (handle, entity, id) => model(entity).delete(handle, id),
+        }),
+      });
+      return {
+        pocket: moduleStores.pocket as unknown as {
+          gather: (input: { entity: string; id: string; ref: string; label: string }) => Promise<void>;
+          lastError: () => string;
+        },
+        notes: moduleStores.notes as unknown as {
+          create: (document: unknown) => Promise<string>;
+          lastError: () => string;
+        },
+      };
+    }
+
+    const gathered = { entity: 'Post', id: 'p1', ref: 'we:n:somewhere/Post/p1', label: 'A post' };
+
+    beforeEach(() => {
+      const deps = createModuleStoreDeps({ signal: createSignal, effect: createEffect });
+      moduleRegistry.register(pocketModule, host, deps);
+      moduleRegistry.register(notesModule, host, deps);
+      registerCoreBlocks();
+    });
+
+    afterEach(() => {
+      unbind?.();
+      unbind = undefined;
+      moduleRegistry.unregister('pocket');
+      moduleRegistry.unregister('notes');
+    });
+
+    it('holds a gather and a note until the schema is in, then writes both', async () => {
+      const release = holdPersonalSchema();
+      const stores = mountShell();
+      await ready(stores);
+      const { pocket, notes } = modulesOver(stores);
+      expect(stores.datasets.personalDataset()).toBeNull();
+
+      const gathering = pocket.gather(gathered);
+      const noting = notes.create({ _type: 'document', blocks: [{ _type: 'block', text: 'kept early' }] });
+      release();
+      await gathering;
+      const noteId = await noting;
+
+      await vi.waitFor(() => expect(stores.datasets.personalDataset()?.name).toBe('we-personal'));
+      const personal = stores.datasets.personalDataset()!;
+      const items = await model('PocketItem').findAll(personal.handle);
+      expect(items.map((item) => item.ref)).toEqual([gathered.ref]);
+      expect(noteId).not.toBe('');
+      const kept = await CollectionBlock.findAll(personal.handle as never, { where: { kind: 'post' } });
+      expect(kept.map((note) => note.id)).toEqual([noteId]);
+      expect(pocket.lastError()).toBe('');
+      expect(notes.lastError()).toBe('');
+    }, 15000);
+
+    it('reports a gather, rather than dropping it, when the schema fails', async () => {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        const release = holdPersonalSchema({ fail: true });
+        const stores = mountShell();
+        await ready(stores);
+        const { pocket } = modulesOver(stores);
+
+        const gathering = pocket.gather(gathered);
+        release();
+        await gathering;
+
+        expect(pocket.lastError()).toMatch(/personal space/i);
+      } finally {
+        error.mockRestore();
+      }
+    }, 15000);
   });
 
   /*
@@ -314,38 +554,329 @@ describe('boot', () => {
 
   /*
     A reload on a space's address waited for the whole boot before that space began to load, then
-    read its templates, then its schema, one after another. Its templates and schema reads now start
-    as soon as the list names it, and the agent's spaces are read beside the system datasets.
+    read its templates, then its schema, one after another. Its templates, schema reads and its own
+    record now start as soon as the list names it, beside the root.
   */
-  it('starts the addressed space, and reads spaces, while the system datasets come up', async () => {
-    seededDatasets = [{ id: 'garden-1', name: 'Garden' }];
-    window.history.replaceState({}, '', '/space/garden-1/canvas');
+  it('starts the addressed space, and reads its record, while the system datasets come up', async () => {
+    const ids = await agentWithSpaces(['Garden']);
+    window.history.replaceState({}, '', `/space/${ids.Garden}/canvas`);
     let releaseRoot!: () => void;
     const rootHeld = new Promise<void>((resolve) => (releaseRoot = resolve));
     const prepared: unknown[] = [];
+    const reads = divertSpaceReads(
+      () => [],
+      (read) => read(),
+    );
+    const wrap = onPorts!;
     onPorts = (ports) => {
+      wrap(ports);
       const { installRoot } = ports.schemas;
       ports.schemas.installRoot = async (dataset) => {
         await rootHeld;
         return installRoot(dataset);
       };
-      ports.schemas.prepare = (dataset) => prepared.push(dataset);
+      const prepare = ports.schemas.prepare?.bind(ports.schemas);
+      ports.schemas.prepare = (dataset) => {
+        prepared.push(dataset);
+        return prepare?.(dataset);
+      };
     };
     try {
       const stores = mountShell();
-      const loadSpaces = vi.spyOn(stores.spaces, 'loadSpaces');
 
       await vi.waitFor(() => expect(prepared).toHaveLength(1));
-      await vi.waitFor(() =>
-        expect(loadSpaces).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ id: 'garden-1' })])),
-      );
+      await vi.waitFor(() => expect(reads.asked).toContain(ids.Garden));
       expect(stores.session.bootState()).not.toBe('ready');
 
       releaseRoot();
       await ready(stores);
+      expect(stores.spaces.mySpaces().map((s) => s.name)).toContain('Garden');
     } finally {
+      reads.spy?.mockRestore();
       window.history.replaceState({}, '', '/');
     }
+  });
+
+  /*
+    The longest step of a reload was the agent's other spaces: one record read per space, each going
+    to the same backend as the Feed's first page, all of them before the app was ready. The space on
+    screen needs none of them. It is ready, and its collection known, with those reads still out; the
+    rows they are for show the dataset's name and say they are loading until they land.
+  */
+  describe('the space on screen, before the agent’s other spaces', () => {
+    it('is ready, with its own record and collection, while the other spaces are still being read', async () => {
+      const ids = await agentWithSpaces(['Garden', 'Kitchen', 'Library']);
+      const others = [ids.Kitchen, ids.Library];
+      window.history.replaceState({}, '', `/space/${ids.Garden}`);
+      route.go(`/space/${ids.Garden}`);
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => (release = resolve));
+      const reads = divertSpaceReads(
+        () => others,
+        async (read) => {
+          await held;
+          return read();
+        },
+      );
+      try {
+        const stores = mountShell();
+        await ready(stores);
+
+        expect(stores.spaces.mySpaces().map((s) => s.name)).toEqual(['Garden']);
+        // What the Feed reads first: the space's collection.
+        await vi.waitFor(() => expect(stores.spaces.root()).not.toBe(''));
+        await vi.waitFor(() => expect(reads.asked).toEqual(expect.arrayContaining(others)));
+        const row = (name: string) => stores.spaces.spaceList().find((r) => r.name === name);
+        expect(row('Kitchen')).toMatchObject({ loading: true });
+        expect(row('Garden')).toMatchObject({ loading: false, isWeSpace: true });
+
+        release();
+        await vi.waitFor(() =>
+          expect(
+            stores.spaces
+              .mySpaces()
+              .map((s) => s.name)
+              .sort(),
+          ).toEqual(['Garden', 'Kitchen', 'Library']),
+        );
+        expect(row('Kitchen')).toMatchObject({ loading: false, isWeSpace: true });
+        // The open space is not read a second time.
+        expect(reads.asked.filter((id) => id === ids.Garden)).toHaveLength(1);
+      } finally {
+        reads.spy?.mockRestore();
+        window.history.replaceState({}, '', '/');
+      }
+    }, 15000);
+
+    it('reads the other spaces, and the personal space’s schema, only once the first screen is up', async () => {
+      const ids = await agentWithSpaces(['Garden', 'Kitchen']);
+      window.history.replaceState({}, '', `/space/${ids.Garden}`);
+      route.go(`/space/${ids.Garden}`);
+      gate.holds = true;
+      gate.reset();
+      const reads = divertSpaceReads(
+        () => [ids.Kitchen],
+        (read) => read(),
+      );
+      try {
+        const stores = mountShell();
+        await ready(stores);
+        await vi.waitFor(() => expect(stores.spaces.root()).not.toBe(''));
+
+        expect(reads.asked).not.toContain(ids.Kitchen);
+        expect(stores.datasets.personalDataset()).toBeNull();
+        expect(stores.spaces.mySpaces().map((s) => s.name)).toEqual(['Garden']);
+
+        // The Feed's first page has landed.
+        gate.current.answered();
+        await vi.waitFor(() =>
+          expect(
+            stores.spaces
+              .mySpaces()
+              .map((s) => s.name)
+              .sort(),
+          ).toEqual(['Garden', 'Kitchen']),
+        );
+        await vi.waitFor(() => expect(stores.datasets.personalDataset()?.name).toBe('we-personal'));
+      } finally {
+        reads.spy?.mockRestore();
+        window.history.replaceState({}, '', '/');
+      }
+    }, 15000);
+
+    it('is ready, and stays up, when the other spaces cannot be read', async () => {
+      const ids = await agentWithSpaces(['Garden', 'Kitchen']);
+      window.history.replaceState({}, '', `/space/${ids.Garden}`);
+      route.go(`/space/${ids.Garden}`);
+      const reads = divertSpaceReads(
+        () => [ids.Kitchen],
+        () => Promise.reject(new Error('backend gone')),
+      );
+      try {
+        const stores = mountShell();
+        await ready(stores);
+        await vi.waitFor(() => expect(reads.asked).toContain(ids.Kitchen));
+
+        const row = (name: string) => stores.spaces.spaceList().find((r) => r.name === name);
+        // Not loading for ever: the read is over, and the row says what it knows.
+        await vi.waitFor(() => expect(row('Kitchen')).toMatchObject({ loading: false }));
+        expect(stores.spaces.mySpaces().map((s) => s.name)).toEqual(['Garden']);
+        expect(stores.session.bootState()).toBe('ready');
+      } finally {
+        reads.spy?.mockRestore();
+        window.history.replaceState({}, '', '/');
+      }
+    }, 15000);
+
+    it('opens home without reading any space before ready, then lists them all', async () => {
+      const ids = await agentWithSpaces(['Garden', 'Kitchen']);
+      const reads = divertSpaceReads(
+        () => [],
+        (read) => read(),
+      );
+      let readyAfter = -1;
+      try {
+        const stores = mountShell();
+        createRoot(() =>
+          createEffect(() => {
+            if (stores.session.bootState() === 'ready' && readyAfter < 0) readyAfter = reads.asked.length;
+          }),
+        );
+        await ready(stores);
+
+        expect(readyAfter).toBe(0);
+        expect(navigate).toHaveBeenCalledWith('/');
+        await vi.waitFor(() =>
+          expect(
+            stores.spaces
+              .mySpaces()
+              .map((s) => s.name)
+              .sort(),
+          ).toEqual(['Garden', 'Kitchen']),
+        );
+        expect(reads.asked.sort()).toEqual([ids.Garden, ids.Kitchen].sort());
+      } finally {
+        reads.spy?.mockRestore();
+      }
+    }, 15000);
+
+    /*
+      The other spaces are read once the first screen is up, which can be seconds after the list was
+      read. A space that arrived in between is in the list then, and is read with the rest.
+    */
+    it('reads a space that arrived before the first screen was up', async () => {
+      const ids = await agentWithSpaces(['Garden']);
+      gate.holds = true;
+      gate.reset();
+      const reads = divertSpaceReads(
+        () => [],
+        (read) => read(),
+      );
+      try {
+        const stores = mountShell();
+        await ready(stores);
+
+        const orchard = await lifecycle.create('Orchard');
+        await Space.create(orchard.handle as never, { name: 'Orchard', uuid: orchard.id } as never);
+        await vi.waitFor(() => expect(stores.datasets.datasets().map((d) => d.name)).toContain('Orchard'));
+
+        gate.current.answered();
+        await vi.waitFor(() =>
+          expect(
+            stores.spaces
+              .mySpaces()
+              .map((s) => s.name)
+              .sort(),
+          ).toEqual(['Garden', 'Orchard']),
+        );
+        expect(reads.asked.filter((id) => id === ids.Garden)).toHaveLength(1);
+      } finally {
+        reads.spy?.mockRestore();
+      }
+    }, 15000);
+
+    /*
+      A read that throws before it answers is not caught per space, so the whole list read fails.
+      The rows must still stop saying they are loading.
+    */
+    it('stops loading the rows when the list read throws', async () => {
+      const ids = await agentWithSpaces(['Garden', 'Kitchen']);
+      window.history.replaceState({}, '', `/space/${ids.Garden}`);
+      route.go(`/space/${ids.Garden}`);
+      const reads = divertSpaceReads(
+        () => [ids.Kitchen],
+        () => {
+          throw new Error('backend gone');
+        },
+      );
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        const stores = mountShell();
+        await ready(stores);
+        await vi.waitFor(() => expect(reads.asked).toContain(ids.Kitchen));
+
+        const row = (name: string) => stores.spaces.spaceList().find((r) => r.name === name);
+        await vi.waitFor(() => expect(row('Kitchen')).toMatchObject({ loading: false }));
+        expect(error).toHaveBeenCalledWith('SpaceStore: loadSpaces error', expect.any(Error));
+      } finally {
+        error.mockRestore();
+        reads.spy?.mockRestore();
+        window.history.replaceState({}, '', '/');
+      }
+    }, 15000);
+
+    /*
+      The share picker's options are one backend call, and nothing about them depends on the spaces.
+      They are asked for beside the space reads, not after the slowest one.
+    */
+    it('reads the sharing options while the other spaces are still being read', async () => {
+      const ids = await agentWithSpaces(['Garden', 'Kitchen']);
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => (release = resolve));
+      const reads = divertSpaceReads(
+        () => [ids.Kitchen],
+        async (read) => {
+          await held;
+          return read();
+        },
+      );
+      const divert = onPorts!;
+      onPorts = (ports) => {
+        divert(ports);
+        ports.lifecycle.sharingOptions = async () => [{ id: 'p2p', name: 'p2p', kind: 'peer-to-peer' }];
+      };
+      try {
+        const stores = mountShell();
+        await ready(stores);
+        await vi.waitFor(() => expect(reads.asked).toContain(ids.Kitchen));
+
+        await vi.waitFor(() => expect(stores.spaces.sharingOptions().map((o) => o.value)).toEqual(['p2p']));
+        expect(stores.spaces.mySpaces().map((s) => s.name)).not.toContain('Kitchen');
+        release();
+      } finally {
+        release();
+        reads.spy?.mockRestore();
+      }
+    }, 15000);
+
+    /*
+      A guest's invite names a space the agent has not joined, so there is no record to read first.
+      The join happens after ready, and the other spaces' read — landing after it — must not take the
+      joined space away again.
+    */
+    it('joins a guest’s space after ready, and keeps it when the other spaces land', async () => {
+      const ids = await agentWithSpaces(['Garden']);
+      const { writeGuestBootTarget } = await import('../src/shared/guestLink');
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => (release = resolve));
+      const reads = divertSpaceReads(
+        () => [ids.Garden],
+        async (read) => {
+          await held;
+          return read();
+        },
+      );
+      const divert = onPorts!;
+      onPorts = (ports) => {
+        divert(ports);
+        ports.lifecycle.seedShared({ id: 'peer-ds', name: 'Peer Space', sharedUri: 'inmemory://peer-ds' });
+      };
+      writeGuestBootTarget({ spaceId: 'inmemory://peer-ds', autoJoin: true });
+      try {
+        const stores = mountShell();
+        await ready(stores);
+
+        await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith('/space/inmemory://peer-ds', { replace: true }));
+        expect((await lifecycle.list()).some((d) => d.id === 'peer-ds')).toBe(true);
+        await vi.waitFor(() => expect(stores.datasets.currentDataset()?.name).toBe('Peer Space'));
+
+        release();
+        await vi.waitFor(() => expect(stores.spaces.mySpaces().map((s) => s.name)).toContain('Garden'));
+        expect(stores.datasets.datasets().some((d) => d.id === 'peer-ds')).toBe(true);
+      } finally {
+        reads.spy?.mockRestore();
+      }
+    }, 15000);
   });
 
   it('walks the lock → login flow, including a failed password', async () => {
@@ -361,6 +892,93 @@ describe('boot', () => {
 
     await stores.session.login('secret');
     await ready(stores);
+  });
+
+  /*
+    The other spaces and the personal space's schema are read after the app appears, so either can
+    still be out when the agent locks and signs in again. What a read started by the session before
+    finds must not land in the session after.
+  */
+  describe('a read still out when the agent locks and signs in again', () => {
+    async function signedIn(): Promise<Stores> {
+      agentOptions = { unlocked: false, password: 'secret' };
+      const stores = mountShell();
+      await vi.waitFor(() => expect(stores.session.bootState()).toBe('login'));
+      await stores.session.login('secret');
+      await ready(stores);
+      return stores;
+    }
+
+    async function signInAgain(stores: Stores): Promise<void> {
+      await stores.session.logout();
+      expect(stores.session.bootState()).toBe('login');
+      await stores.session.login('secret');
+      await ready(stores);
+    }
+
+    it('drops the spaces the last session read', async () => {
+      let kitchen = '';
+      let answered = 0;
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => (release = resolve));
+      const reads = divertSpaceReads(
+        () => [kitchen],
+        async (read) => {
+          // The first session's read waits; the next session's fails, so only the first can find it.
+          if (answered++ === 0) {
+            await held;
+            return read();
+          }
+          throw new Error('backend gone');
+        },
+      );
+      try {
+        const stores = await signedIn();
+        await stores.spaces.createSpace('Kitchen', 'x', 'personal', 'hidden');
+        kitchen = stores.datasets.datasets().find((d) => d.name === 'Kitchen')!.id;
+
+        await signInAgain(stores);
+        await vi.waitFor(() => expect(answered).toBe(1));
+        await signInAgain(stores);
+        await vi.waitFor(() => expect(answered).toBe(2));
+        const row = () => stores.spaces.spaceList().find((r) => r.name === 'Kitchen');
+        await vi.waitFor(() => expect(row()).toMatchObject({ loading: false, isWeSpace: false }));
+
+        release();
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        expect(stores.spaces.mySpaces().map((s) => s.name)).not.toContain('Kitchen');
+      } finally {
+        release();
+        reads.spy?.mockRestore();
+      }
+    }, 15000);
+
+    it('drops the personal space the last session brought up', async () => {
+      let installs = 0;
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => (release = resolve));
+      const stores = await signedIn();
+      // Its schema is in from the first sign-in, so each later one brings its modules up to date.
+      const { installModules } = keptPorts!.schemas;
+      keptPorts!.schemas.installModules = async (dataset, modules) => {
+        // The first session's install lands after the next session's.
+        if ((dataset as { name?: string }).name === 'we-personal' && installs++ === 0) await held;
+        return installModules(dataset, modules);
+      };
+
+      await signInAgain(stores);
+      await vi.waitFor(() => expect(installs).toBe(1));
+      await signInAgain(stores);
+      await vi.waitFor(() => expect(installs).toBe(2));
+      await vi.waitFor(() => expect(stores.datasets.personalDataset()?.name).toBe('we-personal'));
+      const current = stores.datasets.datasets().find((d) => d.name === 'we-personal');
+      expect(stores.datasets.personalDataset()).toBe(current);
+
+      release();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(stores.datasets.personalDataset()).toBe(current);
+      expect(await stores.datasets.whenPersonalDataset()).toBe(current);
+    }, 15000);
   });
 
   it('does not blame the password for a failure that happened after it was accepted', async () => {
@@ -1571,6 +2189,34 @@ describe('following a space from the rows its live queries push', () => {
     reads.mockRestore();
   }, 10000);
 
+  it('takes the task-state order from the space record it follows, reading the space no more for it', async () => {
+    /*
+      A recorded cold open read the open space's record a fourth time, `include: { taskStates }`, for
+      the order of its states — a record the live query had just delivered. The live query carries
+      the order now, so neither opening the space nor a reorder reads the record for it.
+    */
+    let spaceReads: ReturnType<typeof vi.spyOn> | undefined;
+    const { stores, handle } = await openSpace('Pushed Order', () => {
+      spaceReads = vi.spyOn(getEntity('Space') as unknown as { findOne: (...a: unknown[]) => unknown }, 'findOne');
+    });
+    for (const slug of ['todo', 'doing', 'done'])
+      await getEntity('TaskState').create(handle, { name: slug, slug, semantic: slug } as never);
+    await vi.waitFor(() => expect(stores.spaces.taskStates().length).toBeGreaterThanOrEqual(3));
+    const orderReads = () =>
+      spaceReads!.mock.calls.filter((call: unknown[]) =>
+        Boolean((call[1] as { include?: { taskStates?: unknown } } | undefined)?.include?.taskStates),
+      );
+    const slugs = stores.spaces.taskStates().map((s) => s.slug);
+    expect(slugs.length).toBeGreaterThan(1);
+    expect(orderReads()).toEqual([]);
+
+    const reversed = [...slugs].reverse();
+    await stores.spaces.reorderTaskStates(reversed);
+    await vi.waitFor(() => expect(stores.spaces.taskStates().map((s) => s.slug)).toEqual(reversed));
+    expect(orderReads()).toEqual([]);
+    spaceReads!.mockRestore();
+  }, 10000);
+
   it('hears a new role and a new grant without reading either again', async () => {
     const { stores, handle } = await openSpace('Pushed Roles');
     await vi.waitFor(() => expect(stores.spaces.roles().length).toBeGreaterThan(0));
@@ -1719,6 +2365,26 @@ describe('entering a space: its collection and its landmarks', () => {
     await vi.waitFor(() => expect(stores.spaces.landmarksLoaded()).toBe(true));
     expect(stores.spaces.landmarks().board).toBe(board.id);
     landmarks.spy.mockRestore();
+  }, 10000);
+
+  it('says the collection is not known yet until it has answered, so a template does not guess', async () => {
+    // A template compares the address with `root`; an empty `root` it cannot tell from "not read yet".
+    const { stores, ref } = await listedSpace('Root Gate');
+    const spaceRow = stores.spaces.mySpaces().find((s) => s.name === 'Root Gate') as unknown as { root?: unknown };
+    const carried = spaceRow.root;
+    spaceRow.root = undefined;
+    const spaceReads = hold('Space', 'findOne');
+
+    await stores.datasets.switchDataset(ref.id);
+    await vi.waitFor(() => expect(spaceReads.spy.mock.calls.some(isRootRead)).toBe(true));
+    expect(stores.spaces.root()).toBe('');
+    expect(stores.spaces.rootLoaded()).toBe(false);
+
+    spaceReads.release();
+    await vi.waitFor(() => expect(stores.spaces.rootLoaded()).toBe(true));
+    expect(stores.spaces.root()).not.toBe('');
+    spaceRow.root = carried;
+    spaceReads.spy.mockRestore();
   }, 10000);
 
   it('asks for the collection and the landmarks at once when it has to read the collection', async () => {
@@ -2165,6 +2831,247 @@ describe('what a collection extracts', () => {
     port.watched.length = 0;
     await stores.spaces.setAutoExtractFor(root, true);
     await vi.waitFor(() => expect(port.watched).toContain(watchId(root)));
+  }, 15000);
+
+  it('registers the space collection’s watch once, with the whole list, when the space’s classes arrive late', async () => {
+    // The trace this pins: the watch registered from the list as it stood a moment after the switch —
+    // without the classes the space already had — and then again when they arrived. Each time the
+    // stored registration differed from a partial list, so the host removed it and added it back.
+    const registrations: { watchId: string; classes: string[] }[] = [];
+    const removed: string[] = [];
+    let release: (() => void) | undefined;
+    let hold = false;
+    onPorts = (ports) => {
+      const read = ports.schemas.foreignSchemas.bind(ports.schemas);
+      ports.schemas.foreignSchemas = async (dataset) => {
+        if (!hold) return read(dataset);
+        await new Promise<void>((resolve) => (release = resolve));
+        return [
+          {
+            name: 'Sighting',
+            targetClass: 'test://Sighting',
+            properties: [],
+            interpretationHint: 'something somebody saw',
+          },
+        ];
+      };
+      (ports as unknown as { interpretation: unknown }).interpretation = {
+        watch: async (_dataset: unknown, args: { watchId: string; classes: string[] }) => {
+          registrations.push({ watchId: args.watchId, classes: [...args.classes] });
+        },
+        unwatch: async (_dataset: unknown, id: string) => {
+          removed.push(id);
+        },
+      };
+    };
+    const stores = mountShell();
+    await ready(stores);
+    hold = true;
+    await enterSpace(stores, 'Late');
+    const root = stores.spaces.root();
+    const mine = () => registrations.filter((r) => r.watchId === watchId(root));
+
+    // Wanted, and not registered: what the space can extract is still being read.
+    await vi.waitFor(() => expect(release).toBeDefined());
+    expect(stores.spaces.autoExtractFor(root)).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(mine()).toEqual([]);
+    expect(stores.shapes.extractionCandidatesLoaded()).toBe(false);
+
+    release!();
+    await vi.waitFor(() => expect(mine()).toHaveLength(1));
+    // The list as decided once everything was read — the space's class is now a candidate, and this
+    // collection's own list (copied from the defaults when it was made) chooses from that.
+    expect(stores.shapes.extractionCandidates()).toContain('Sighting');
+    const decided = kernel()
+      .targets(root)
+      .filter((t) => t.selected)
+      .map((t) => t.entity);
+    expect([...mine()[0].classes].sort()).toEqual([...decided].sort());
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(mine()).toHaveLength(1);
+    expect(removed).not.toContain(watchId(root));
+
+    // Off still stops it.
+    await stores.spaces.setAutoExtractFor(root, false);
+    await vi.waitFor(() => expect(removed).toContain(watchId(root)));
+  }, 15000);
+
+  it('shows a call’s picker the core classes while the space’s own are read, and says the list is not whole yet', async () => {
+    // The reader side of the wait above. Only the registrars wait for the whole list: the picker,
+    // its chips and the Extract button read the list as it arrives, so the panel never says there is
+    // nothing to extract for the few round trips before the space's own classes come.
+    let release: (() => void) | undefined;
+    let hold = false;
+    onPorts = (ports) => {
+      const read = ports.schemas.foreignSchemas.bind(ports.schemas);
+      ports.schemas.foreignSchemas = async (dataset) => {
+        if (!hold) return read(dataset);
+        await new Promise<void>((resolve) => (release = resolve));
+        return [
+          { name: 'Sighting', targetClass: 'test://Sighting', properties: [], interpretationHint: 'something seen' },
+        ];
+      };
+    };
+    const stores = mountShell();
+    await ready(stores);
+    hold = true;
+    await enterSpace(stores, 'Partial');
+    const root = stores.spaces.root();
+    const interpretation = kernel();
+    await vi.waitFor(() => expect(release).toBeDefined());
+
+    // Still loading: the core classes, already, and not yet whole.
+    const partial = interpretation.targets(root).map((t) => t.entity);
+    expect(partial.length).toBeGreaterThan(0);
+    expect(partial).not.toContain('Sighting');
+    expect(interpretation.targetsLoaded?.()).toBe(false);
+
+    release!();
+    await vi.waitFor(() => expect(interpretation.targetsLoaded?.()).toBe(true));
+    const whole = interpretation.targets(root).map((t) => t.entity);
+    expect(whole).toContain('Sighting');
+    for (const entity of partial) expect(whole).toContain(entity);
+  }, 15000);
+
+  it('removes the space collection’s watch when extraction is switched off before this visit registers it', async () => {
+    // The watch is one row in the shared graph, so it can be there from an earlier visit while this
+    // visit waits for the class list. Switched off in that wait, it must still be removed.
+    const registered: string[] = [];
+    const removed: string[] = [];
+    let release: (() => void) | undefined;
+    let hold = false;
+    onPorts = (ports) => {
+      const read = ports.schemas.foreignSchemas.bind(ports.schemas);
+      ports.schemas.foreignSchemas = async (dataset) => {
+        if (hold) await new Promise<void>((resolve) => (release = resolve));
+        return read(dataset);
+      };
+      (ports as unknown as { interpretation: unknown }).interpretation = {
+        watch: async (_dataset: unknown, args: { watchId: string }) => {
+          registered.push(args.watchId);
+        },
+        unwatch: async (_dataset: unknown, id: string) => {
+          removed.push(id);
+        },
+      };
+    };
+    const stores = mountShell();
+    await ready(stores);
+    hold = true;
+    await enterSpace(stores, 'Earlier');
+    const root = stores.spaces.root();
+    await vi.waitFor(() => expect(release).toBeDefined());
+    expect(stores.spaces.autoExtractFor(root)).toBe(true);
+    expect(stores.shapes.extractionCandidatesLoaded()).toBe(false);
+
+    await stores.spaces.setAutoExtractFor(root, false);
+    await vi.waitFor(() => expect(removed).toContain(watchId(root)));
+
+    // And the list arriving afterwards registers nothing: it is off.
+    release!();
+    await vi.waitFor(() => expect(stores.shapes.extractionCandidatesLoaded()).toBe(true));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(registered).not.toContain(watchId(root));
+  }, 15000);
+
+  /** Two spaces, and the foreign-schema reads of every later switch held until a test lets them go. */
+  async function twoSpacesWithHeldReads() {
+    const pending: (() => void)[] = [];
+    let hold = false;
+    onPorts = (ports) => {
+      const read = ports.schemas.foreignSchemas.bind(ports.schemas);
+      ports.schemas.foreignSchemas = async (dataset) => {
+        if (hold) await new Promise<void>((resolve) => pending.push(resolve));
+        return read(dataset);
+      };
+    };
+    const stores = mountShell();
+    await ready(stores);
+    await stores.spaces.createSpace('Space A', 'x', 'personal', 'hidden');
+    await stores.spaces.createSpace('Space B', 'x', 'personal', 'hidden');
+    const refs = await lifecycle.list();
+    const a = refs.find((d) => d.name === 'Space A')!.id;
+    const b = refs.find((d) => d.name === 'Space B')!.id;
+    const open = async (id: string) => {
+      await stores.spaces.navigateToSpace(id);
+      await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(id));
+    };
+    await open(b);
+    await vi.waitFor(() => expect(stores.datasets.currentDatasetEntitiesLoaded()).toBe(true));
+    hold = true;
+    return { stores, a, b, open, pending };
+  }
+
+  it('says a space’s classes are not read when it is opened again before the read for it ends', async () => {
+    const { stores, a, b, open, pending } = await twoSpacesWithHeldReads();
+    await open(a);
+    await vi.waitFor(() => expect(pending).toHaveLength(1));
+    pending[0](); // A, read whole.
+    await vi.waitFor(() => expect(stores.datasets.currentDatasetEntitiesLoaded()).toBe(true));
+
+    await open(b);
+    await vi.waitFor(() => expect(pending).toHaveLength(2));
+    await open(a);
+    await vi.waitFor(() => expect(pending).toHaveLength(3));
+    // A's earlier read finished, but this visit's has not.
+    expect(stores.datasets.currentDatasetEntitiesLoaded()).toBe(false);
+
+    pending[2]();
+    await vi.waitFor(() => expect(stores.datasets.currentDatasetEntitiesLoaded()).toBe(true));
+    pending[1]();
+  }, 15000);
+
+  it('does not let an older read of the same space finish the newer one', async () => {
+    const { stores, a, b, open, pending } = await twoSpacesWithHeldReads();
+    await open(a); // read 0 — A
+    await vi.waitFor(() => expect(pending).toHaveLength(1));
+    await open(b); // read 1 — B
+    await vi.waitFor(() => expect(pending).toHaveLength(2));
+    await open(a); // read 2 — A again
+    await vi.waitFor(() => expect(pending).toHaveLength(3));
+
+    pending[0]();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(stores.datasets.currentDatasetEntitiesLoaded()).toBe(false);
+
+    pending[2]();
+    await vi.waitFor(() => expect(stores.datasets.currentDatasetEntitiesLoaded()).toBe(true));
+    pending[1]();
+  }, 15000);
+
+  it('is not ready while a newer read of the space’s models is still out', async () => {
+    // Saving a model reloads the list while an earlier load can still be adopting; the earlier one
+    // finishing must not say the list is whole while the newer one is out.
+    const pending: (() => void)[] = [];
+    let hold = false;
+    onPorts = (ports) => {
+      const shapes = ports.schemas.shapes!;
+      const list = shapes.list.bind(shapes);
+      shapes.list = async (dataset) => {
+        if (hold) await new Promise<void>((resolve) => pending.push(resolve));
+        return list(dataset);
+      };
+    };
+    const stores = mountShell();
+    await ready(stores);
+    await enterSpace(stores, 'Reloading');
+    await vi.waitFor(() => expect(stores.shapes.shapesLoaded()).toBe(true));
+
+    hold = true;
+    const first = stores.shapes.addRecordTypes('nothing', []);
+    const second = stores.shapes.addRecordTypes('nothing', []);
+    await vi.waitFor(() => expect(pending).toHaveLength(2));
+    expect(stores.shapes.shapesLoaded()).toBe(false);
+
+    pending[0]();
+    await first;
+    expect(stores.shapes.shapesLoaded()).toBe(false);
+    expect(stores.shapes.extractionCandidatesLoaded()).toBe(false);
+
+    pending[1]();
+    await second;
+    expect(stores.shapes.shapesLoaded()).toBe(true);
   }, 15000);
 
   it('refuses the space collection to a member who does not administer the space, but not a call', async () => {

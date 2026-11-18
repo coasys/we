@@ -38,6 +38,7 @@ import {
   Accessor,
   batch,
   createContext,
+  createEffect,
   createMemo,
   createSignal,
   onCleanup,
@@ -46,6 +47,7 @@ import {
   useContext,
 } from 'solid-js';
 
+import { firstScreen } from '../firstScreen';
 import { useSessionStore } from './SessionStore';
 
 /*
@@ -113,6 +115,11 @@ export interface DatasetStore {
   currentDatasetUri: Accessor<string | undefined>;
   currentDatasetCid: Accessor<string | undefined>;
   currentDatasetEntities: Accessor<EntityManifestEntry[]>;
+  /**
+   * The current dataset's foreign models have been read. They are read after the switch is shown,
+   * so until then an empty list — or the previous space's — says nothing about this one.
+   */
+  currentDatasetEntitiesLoaded: Accessor<boolean>;
   /** True once the current dataset is confirmed to have WE's `Space` schema installed. */
   isWeSpace: Accessor<boolean>;
   joinedSpaceCids: Accessor<string[]>;
@@ -135,6 +142,13 @@ export interface DatasetStore {
    * their per-machine settings. `null` until its schema is installed. See `systemDatasets.ts`.
    */
   personalDataset: Accessor<AppDataset | null>;
+  /**
+   * The personal space's schema install, from the moment the boot has found the dataset: resolves
+   * with it once `personalDataset` is set, or with `null` if the install failed. `null` before the
+   * boot has found it. A write to the personal space awaits this, so a write made after the app
+   * appears and before the install is held rather than dropped.
+   */
+  whenPersonalDataset: Accessor<Promise<AppDataset | null> | null>;
   testDataset: Accessor<AppDataset | null>;
   globalDataset: Accessor<AppDataset | null>;
   marketplaceDataset: Accessor<AppDataset | null>;
@@ -193,7 +207,9 @@ export interface DatasetStore {
   readDatasets: () => Promise<AppDataset[] | null>;
   /**
    * Bring up the system datasets. Given the list `readDatasets` just read, works from that rather
-   * than reading it again. Resolves with every dataset it saw or made, for `loadDatasets`.
+   * than reading it again. Resolves with every dataset it saw or made, for `loadDatasets`, once the
+   * root is up; the personal space's schema is brought up after the first screen, and
+   * `personalDataset` is set when it is.
    */
   initSystemDatasets: (known?: AppDataset[] | null) => Promise<AppDataset[] | null>;
   /**
@@ -220,9 +236,11 @@ export interface DatasetStore {
   unwatchConversation: (collectionId: string, dataset?: DatasetHandle) => Promise<void>;
   /**
    * ShapeStore supplies "which entities *could* be extracted here" — core vocabulary that declares
-   * itself extractable, plus this space's adopted shapes. Unset reads as none.
+   * itself extractable, plus this space's adopted shapes — and whether that list is whole yet. The
+   * list is lent as it arrives, so a picker shows the core classes at once; only what writes from it
+   * waits for `loaded`. Unset reads as none, and as not loaded.
    */
-  provideExtractionCandidates: (candidates: () => string[]) => () => void;
+  provideExtractionCandidates: (candidates: () => string[], loaded: () => boolean) => () => void;
   /**
    * SpaceStore supplies what one collection extracts, and how to change it.
    *
@@ -269,9 +287,30 @@ export function DatasetStoreProvider(props: ParentProps) {
    */
   const [currentDataset, setCurrentDataset] = createSignal<AppDataset | null>(null, { equals: sameDataset });
   const [currentDatasetEntities, setCurrentDatasetEntities] = createSignal<EntityManifestEntry[]>([]);
+  /** The dataset `currentDatasetEntities` was last read for — see `currentDatasetEntitiesLoaded`. */
+  const [entitiesReadFor, setEntitiesReadFor] = createSignal<string | null>(null);
+  /**
+   * Which publish the read in flight belongs to. Opening a space again starts a new read, and an
+   * older read of the same space finishing must not say the newer one is done.
+   */
+  let entitiesRead = 0;
+  const currentDatasetEntitiesLoaded = (): boolean => {
+    const id = currentDataset()?.id;
+    return Boolean(id) && entitiesReadFor() === id;
+  };
   const [isWeSpace, setIsWeSpace] = createSignal<boolean>(false);
   const [rootDataset, setRootDataset] = createSignal<AppDataset | null>(null);
   const [personalDataset, setPersonalDataset] = createSignal<AppDataset | null>(null);
+  const [whenPersonalDataset, setWhenPersonalDataset] = createSignal<Promise<AppDataset | null> | null>(null);
+  /*
+    Counted up each time the agent locks. The personal space's install runs after the app appears,
+    so it can still be out when somebody locks and signs in again; what it finds belongs to the
+    session that started it, and the count is how it knows that session has ended.
+  */
+  let sessionsEnded = 0;
+  createEffect(() => {
+    if (session.bootState() === 'login') sessionsEnded++;
+  });
   const [testDataset, setTestDataset] = createSignal<AppDataset | null>(null);
   const [agentSettings, setAgentSettings] = createSignal<AgentSettings | null>(null, { equals: false });
 
@@ -304,6 +343,24 @@ export function DatasetStoreProvider(props: ParentProps) {
     community had turned everything off.
   */
   const extractionCandidatesGate = hostSlot<() => string[]>();
+
+  /*
+    Whether that list is whole yet, lent beside it. Readers do not wait for it — a picker showing the
+    core classes while the space's own are read is true as far as it goes. A watch registered from
+    the part that had arrived was removed and written again when the rest came, so registrars wait.
+    Unset reads as *not* loaded: with nothing lent the list is empty, and an empty list read as
+    whole would register a watch for nothing.
+  */
+  const extractionCandidatesLoadedGate = hostSlot<() => boolean>();
+
+  const provideExtractionCandidates = (candidates: () => string[], loaded: () => boolean): (() => void) => {
+    const releaseCandidates = extractionCandidatesGate.provide(candidates);
+    const releaseLoaded = extractionCandidatesLoadedGate.provide(loaded);
+    return () => {
+      releaseCandidates();
+      releaseLoaded();
+    };
+  };
 
   /*
     What one collection extracts, and how to change it — the layer below candidacy.
@@ -489,6 +546,13 @@ export function DatasetStoreProvider(props: ParentProps) {
           selected: active.includes(entity),
         }));
       },
+      /*
+        Whether that list is the whole of it yet. A space's own models and the classes it already had
+        are read a few round trips after its core vocabulary is known, and a watch registered from the
+        part that had arrived was removed and registered again when the rest did. The list above does
+        not wait for this; what registers from it does.
+      */
+      extractionTargetsLoaded: () => extractionCandidatesLoadedGate.get()?.() ?? false,
       setAutoInterpret: async (collectionId: string, on: boolean) => {
         const extraction = collectionExtraction.get();
         if (!extraction) throw new Error('interpretation: this host cannot record a collection’s extraction settings');
@@ -917,11 +981,22 @@ export function DatasetStoreProvider(props: ParentProps) {
     if (!refs) return null;
 
     // Side by side: the three share nothing but the list, and each is several round trips to the
-    // backend — one after another they were most of the wait before a space could open.
+    // backend — one after another they were most of the wait before a space could open. Only what
+    // the app needs to appear is waited for: the root, which holds the agent's settings, templates
+    // and per-space choices, and the datasets a first run has to make, so the list published holds them.
     const made: AppDataset[] = [];
+    const started = sessionsEnded;
     await Promise.all([
       initRootDataset(refs, made).catch((error) => console.error('DatasetStore: root dataset error', error)),
-      initPersonalDataset(refs, made).catch((error) => console.error('DatasetStore: personal dataset error', error)),
+      findPersonalDataset(refs, made).then(
+        (personal) => {
+          if (started !== sessionsEnded) return;
+          // Held, not awaited: the boot does not wait for it. `initPersonalDataset` catches its own errors.
+          const install = initPersonalDataset(personal, made.includes(personal));
+          void setWhenPersonalDataset(() => install);
+        },
+        (error) => console.error('DatasetStore: personal dataset error', error),
+      ),
       (async () => {
         const existingTest = refs.find((d) => d.name === SYSTEM_DATASET_NAMES.test);
         const test = existingTest ?? toApp(await lifecycle.create(SYSTEM_DATASET_NAMES.test));
@@ -989,33 +1064,54 @@ export function DatasetStoreProvider(props: ParentProps) {
    * models. Every module's entities install here too, the space-scoped ones included: a note can
    * hold any block a post can, and a block a module contributes is one of those.
    *
-   * Published only once its schema is in, since the first thing a reader does is query it — the
-   * Pocket's effect fires the moment `personalDataset` is set, and a query ahead of the install
-   * fails with "No SHACL shape" rather than returning nothing.
+   * Published only once its schema is in, since the first thing a reader does is query it — a
+   * template's `$query` on `personalDataset` runs the moment it is set, and a query ahead of the
+   * install fails with "No SHACL shape" rather than returning nothing.
+   *
+   * After the first screen (`shared/firstScreen.ts`), and not waited for by the boot: the space on
+   * screen reads nothing here, and these schema reads go to the same backend as its Feed's first
+   * page. What writes to it — the Pocket, notes, agent-scoped modules — awaits what this resolves
+   * with (`whenPersonalDataset`). A failure is logged, leaves `personalDataset` unset, as it always
+   * did, and resolves `null`. So does a session that ended while the install was out: what it set
+   * would be the last session's dataset in the next.
    *
    * No `Space` record. Nothing yet navigates into this dataset, and a record would put it in every
    * list that reads `Space` — which is exactly the listing a system dataset stays out of.
    */
-  async function initPersonalDataset(refs: AppDataset[], made: AppDataset[]): Promise<void> {
-    const lifecycle = session.lifecycle()!;
-    const schemas = session.backendPorts()!.schemas;
-    const existing = refs.find((d) => d.name === SYSTEM_DATASET_NAMES.personal);
-    const personal = existing ?? toApp(await lifecycle.create(SYSTEM_DATASET_NAMES.personal));
-    if (!existing) made.push(personal);
-    const moduleSchemas = [...moduleRegistry.moduleSchemas(schemas), ...moduleRegistry.agentSchemas(schemas)];
+  async function initPersonalDataset(personal: AppDataset, created: boolean): Promise<AppDataset | null> {
+    const started = sessionsEnded;
+    try {
+      await firstScreen.whenOpen();
+      const schemas = session.backendPorts()!.schemas;
+      const moduleSchemas = [...moduleRegistry.moduleSchemas(schemas), ...moduleRegistry.agentSchemas(schemas)];
 
-    if (!existing || !(await schemas.hasCoreSchema(personal.handle))) {
-      await schemas.installSpace(personal.handle, moduleSchemas);
-    } else {
-      // The same two catches a space gets on every switch, run together — see `switchDataset`.
-      await Promise.all([
-        schemas.installModules(personal.handle, moduleSchemas),
-        schemas.refreshSpace(personal.handle).catch((err) => {
-          console.error('DatasetStore: personal space schema refresh failed', err);
-        }),
-      ]);
+      if (created || !(await schemas.hasCoreSchema(personal.handle))) {
+        await schemas.installSpace(personal.handle, moduleSchemas);
+      } else {
+        // The same two catches a space gets on every switch, run together — see `switchDataset`.
+        await Promise.all([
+          schemas.installModules(personal.handle, moduleSchemas),
+          schemas.refreshSpace(personal.handle).catch((err) => {
+            console.error('DatasetStore: personal space schema refresh failed', err);
+          }),
+        ]);
+      }
+      if (started !== sessionsEnded) return null;
+      setPersonalDataset(personal);
+      return personal;
+    } catch (error) {
+      console.error('DatasetStore: personal dataset error', error);
+      return null;
     }
-    setPersonalDataset(personal);
+  }
+
+  /** The personal space, made if this agent has none yet — a first run — and then listed in `made`. */
+  async function findPersonalDataset(refs: AppDataset[], made: AppDataset[]): Promise<AppDataset> {
+    const existing = refs.find((d) => d.name === SYSTEM_DATASET_NAMES.personal);
+    if (existing) return existing;
+    const personal = toApp(await session.lifecycle()!.create(SYSTEM_DATASET_NAMES.personal));
+    made.push(personal);
+    return personal;
   }
 
   /**
@@ -1234,9 +1330,12 @@ export function DatasetStoreProvider(props: ParentProps) {
       // SDNA is installed — switch immediately so WE templates render. WE model classes
       // are pre-registered at module load; foreign (non-WE) model resolution isn't needed
       // for the visible switch at all — it's only consumed below, in the background.
+      // A new read starts below, so whatever was read before — even for this same space — is not it.
+      const read = ++entitiesRead;
       batch(() => {
         setIsWeSpace(weSpace);
         setCurrentDataset(app);
+        setEntitiesReadFor(null);
       });
       trace('dataset', 'switch:published', {
         dataset: uuid,
@@ -1251,10 +1350,19 @@ export function DatasetStoreProvider(props: ParentProps) {
       void (async () => {
         try {
           const manifest = await schemas.foreignSchemas(handle);
-          if (currentDataset()?.id === uuid) setCurrentDatasetEntities(manifest);
+          if (read === entitiesRead && currentDataset()?.id === uuid)
+            batch(() => {
+              setCurrentDatasetEntities(manifest);
+              setEntitiesReadFor(uuid);
+            });
         } catch (err) {
           console.warn('DatasetStore: foreignSchemas failed', err);
-          if (currentDataset()?.id === uuid) setCurrentDatasetEntities([]);
+          // Read, and answered with nothing: a failed read must not hold back everything that waits on it.
+          if (read === entitiesRead && currentDataset()?.id === uuid)
+            batch(() => {
+              setCurrentDatasetEntities([]);
+              setEntitiesReadFor(uuid);
+            });
         }
       })();
     } catch (error) {
@@ -1301,12 +1409,14 @@ export function DatasetStoreProvider(props: ParentProps) {
     currentDatasetUri,
     currentDatasetCid,
     currentDatasetEntities,
+    currentDatasetEntitiesLoaded,
     isWeSpace,
     joinedSpaceCids,
     datasetsLoaded,
     systemDatasetUuids,
     rootDataset,
     personalDataset,
+    whenPersonalDataset,
     testDataset,
     globalDataset,
     marketplaceDataset,
@@ -1342,7 +1452,7 @@ export function DatasetStoreProvider(props: ParentProps) {
     provideAutoInterpretGate: autoInterpretGate.provide,
     watchConversation,
     unwatchConversation,
-    provideExtractionCandidates: extractionCandidatesGate.provide,
+    provideExtractionCandidates,
     provideCollectionExtraction: collectionExtraction.provide,
   };
 
