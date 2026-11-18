@@ -12,12 +12,18 @@
  * mounting before the language exists, or initializing before the mount's foreign
  * SDNA landed, are the ways this silently produces a space without a project.
  */
+import type { AcornSetupIntent, AcornSpaceSetup } from '@shared/acornLifecycle';
 import { ACORN_TEMPLATE_ID, type AcornLifecycleDeps, acornSeed, createAcornLifecycle } from '@shared/acornLifecycle';
 import type { AcornLifecyclePort, DatasetLifecyclePort, DatasetRef, SchemaPort } from '@we/backend-shared';
 import { describe, expect, it, vi } from 'vitest';
 
 const LANG = 'QmzAcornLanguageUnderTest';
 const BASE = 'QmzAcornBaseBundleUnderTest';
+
+/** The setup-invariant read: nothing of the space's structure exists yet. */
+const EMPTY_SETUP: AcornSpaceSetup = { spaceRecord: false, root: false, enabledViews: false, defaultTemplate: false };
+/** Every invariant holds — the answer a finished project gives on reopen. */
+const FULL_SETUP: AcornSpaceSetup = { spaceRecord: true, root: true, enabledViews: true, defaultTemplate: true };
 
 const ref = (id: string, name = id): DatasetRef => ({ id, name, handle: { id } });
 
@@ -72,6 +78,7 @@ function deps(
     hasCoreSchema: vi.fn(async () => false),
   };
   let currentDatasetId: string | undefined;
+  const intents = new Map<string, AcornSetupIntent>();
   return {
     // Not part of the deps contract — the pre-fix sequence switched the ambient
     // dataset before checking; the fixed one never calls it, and the record proves it.
@@ -82,16 +89,20 @@ function deps(
     port: () => port,
     lifecycle: () => lifecycle as unknown as DatasetLifecyclePort,
     schemas: () => schemas as unknown as SchemaPort,
-    hasSpaceRecord: vi.fn(async () => false),
+    spaceSetup: vi.fn(async () => ({ ...EMPTY_SETUP }) as AcornSpaceSetup),
     currentDatasetId: () => currentDatasetId,
     navigateToSpace: vi.fn(async (id: string) => {
       record.push(`navigate:${id}`);
       currentDatasetId = id;
     }),
-    initializeAsWeSpace: vi.fn(async (name: string, _description: string, target?: DatasetRef) => {
-      record.push(`initialize:${name}:${target?.id}`);
-      return {};
+    ensureSpaceStructure: vi.fn(async (name: string, _description: string, target?: DatasetRef) => {
+      record.push(`ensure:${name}:${target?.id}`);
     }),
+    setupIntent: {
+      get: (id: string) => intents.get(id) ?? null,
+      set: (id: string, intent: AcornSetupIntent) => void intents.set(id, intent),
+      clear: (id: string) => void intents.delete(id),
+    },
     setSpaceDefaultTemplate: vi.fn(async (id: string, uuid?: string) => {
       record.push(`template:${id}:${uuid}`);
     }),
@@ -121,7 +132,7 @@ describe('acorn lifecycle on a backend without the port', () => {
     await expect(acorn.openAcornProject('dataset-1')).resolves.toBeNull();
 
     expect(d.lifecycle()!.create).not.toHaveBeenCalled();
-    expect(d.initializeAsWeSpace).not.toHaveBeenCalled();
+    expect(d.ensureSpaceStructure).not.toHaveBeenCalled();
   });
 });
 
@@ -172,7 +183,7 @@ describe('createAcornProject', () => {
       'applyTemplateLocal',
       'create:',
       'mount:',
-      'initialize:',
+      'ensure:',
       `template:${ACORN_TEMPLATE_ID}`,
       'interact:whoami',
       'navigate:',
@@ -186,7 +197,7 @@ describe('createAcornProject', () => {
     // The exact calls: the seed from the passphrase, the mount on the new dataset, the acorn template.
     expect(record).toContain(`applyTemplateLocal:${BASE}`);
     expect(record).toContain(`mount:dataset-1:${LANG}`);
-    expect(record).toContain('initialize:Rig Project:dataset-1');
+    expect(record).toContain('ensure:Rig Project:dataset-1');
     expect(record).toContain(`template:${ACORN_TEMPLATE_ID}:dataset-1`);
     // The space's section list lands beside the template — the acorn nav, outcomes first.
     expect(record).toContain('views:acorn-outcomes,acorn-table,acorn-priority,acorn-map,acorn-settings:dataset-1');
@@ -235,46 +246,185 @@ describe('joinAcornProject', () => {
 });
 
 describe('openAcornProject', () => {
-  it('re-runs init on a mounted dataset whose schema landed without a Space record', async () => {
+  /*
+    Reopen is repair, not a skip-list: each setup invariant is read on its own and
+    only the missing pieces are finished. "A Space record exists" was never the
+    whole state — a run that died between the record and its root, its section
+    recipe, or its template left a project the old all-or-nothing check called done.
+  */
+  it('writes nothing on a project whose setup already holds — a plain reopen', async () => {
+    const record: string[] = [];
+    const d = deps(record, { spaceSetup: vi.fn(async () => ({ ...FULL_SETUP }) as AcornSpaceSetup) });
+    const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
+    port.mountsOf['dataset-1'] = [LANG];
+    const acorn = createAcornLifecycle(d);
+    await acorn.openAcornProject('dataset-1');
+
+    expect(d.ensureSpaceStructure).not.toHaveBeenCalled();
+    expect(record.find((c) => c.startsWith('views:'))).toBeUndefined();
+    expect(record.find((c) => c.startsWith('template:'))).toBeUndefined();
+    // The agent's own template preference still lands, and the open still lands.
+    expect(record).toContain(`override:${ACORN_TEMPLATE_ID}:dataset-1`);
+    expect(record).toContain('navigate:dataset-1');
+  });
+
+  it('repairs a setup that died before the Space record — structure, sections, template', async () => {
     const record: string[] = [];
     const d = deps(record);
     const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
     port.mountsOf['dataset-1'] = [LANG];
-    // The half-open state the rig left behind: classes registered, the record never
-    // written — `hasSpaceRecord` is what tells it apart from a space that is one.
     const acorn = createAcornLifecycle(d);
     await acorn.openAcornProject('dataset-1');
-    expect(d.initializeAsWeSpace).toHaveBeenCalled();
+
+    expect(d.ensureSpaceStructure).toHaveBeenCalled();
+    expect(record).toContain('views:acorn-outcomes,acorn-table,acorn-priority,acorn-map,acorn-settings:dataset-1');
+    expect(record).toContain(`template:${ACORN_TEMPLATE_ID}:dataset-1`);
   });
 
-  it('skips init on a dataset that already holds its Space record', async () => {
+  it('repairs a Space committed before its root — without writing the record again', async () => {
     const record: string[] = [];
-    const d = deps(record, { hasSpaceRecord: vi.fn(async () => true) });
+    const d = deps(record, {
+      spaceSetup: vi.fn(
+        async () => ({ spaceRecord: true, root: false, enabledViews: true, defaultTemplate: true }) as AcornSpaceSetup,
+      ),
+    });
     const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
     port.mountsOf['dataset-1'] = [LANG];
     const acorn = createAcornLifecycle(d);
     await acorn.openAcornProject('dataset-1');
-    expect(d.initializeAsWeSpace).not.toHaveBeenCalled();
+
+    // Structural repair runs — inside the dep the root is written, not a second
+    // record; and nothing downstream of the gap is touched, it already held.
+    expect(d.ensureSpaceStructure).toHaveBeenCalledTimes(1);
+    expect(record.find((c) => c.startsWith('views:'))).toBeUndefined();
+    expect(record.find((c) => c.startsWith('template:'))).toBeUndefined();
+  });
+
+  it('writes the Acorn section recipe on a space that never got it — and not the rest', async () => {
+    const record: string[] = [];
+    const d = deps(record, {
+      spaceSetup: vi.fn(
+        async () => ({ spaceRecord: true, root: true, enabledViews: false, defaultTemplate: true }) as AcornSpaceSetup,
+      ),
+    });
+    const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
+    port.mountsOf['dataset-1'] = [LANG];
+    const acorn = createAcornLifecycle(d);
+    await acorn.openAcornProject('dataset-1');
+
+    expect(d.ensureSpaceStructure).not.toHaveBeenCalled();
+    expect(record).toContain('views:acorn-outcomes,acorn-table,acorn-priority,acorn-map,acorn-settings:dataset-1');
+    expect(record.find((c) => c.startsWith('template:'))).toBeUndefined();
+  });
+
+  /*
+    A member's own section list is not a missing piece: the recipe flag answers
+    whether the Acorn sections were ever written, and a list holding any of them
+    was written — what a member removed after is theirs to keep.
+  */
+  it('does not reset a customized section list — recipe present means written', async () => {
+    const record: string[] = [];
+    const d = deps(record, {
+      spaceSetup: vi.fn(
+        async () => ({ spaceRecord: true, root: true, enabledViews: true, defaultTemplate: false }) as AcornSpaceSetup,
+      ),
+    });
+    const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
+    port.mountsOf['dataset-1'] = [LANG];
+    const acorn = createAcornLifecycle(d);
+    await acorn.openAcornProject('dataset-1');
+
+    expect(record.find((c) => c.startsWith('views:'))).toBeUndefined();
+    // Only the missing piece — the shared default template — is finished.
     expect(record).toContain(`template:${ACORN_TEMPLATE_ID}:dataset-1`);
   });
 
   /*
-    The Acorn section list is the space's own setting once it has one — `Space.enabledViews`
-    is community data, and an open is not a setup. A reopen that rewrote it would reset
-    whatever sections the members chose every time somebody re-entered the project
-    (Lal's P2-4). The display writes — the space's default template and this agent's
-    personal override — still land, because "open" means render this as an Acorn project.
+    The remote owed-work — the create's project meta, the join's announce — is
+    nothing a read can answer "done?" for: the mount's interact surface has no
+    instance read. The intent retained at mount time is the record, cleared piece
+    by piece as the writes land, so an Open after a failed create or join resumes
+    what it owes instead of skipping it (Lal's R2).
   */
-  it('reopens without rewriting the space’s sections — those are the members’ after setup', async () => {
+  it('resumes the project meta a failed create still owes through Open', async () => {
     const record: string[] = [];
-    const d = deps(record, { hasSpaceRecord: vi.fn(async () => true) });
+    const d = deps(record, { spaceSetup: vi.fn(async () => ({ ...FULL_SETUP }) as AcornSpaceSetup) });
+    const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
+    port.mountsOf['dataset-1'] = [LANG];
+    d.setupIntent!.set('dataset-1', { name: 'Rig Project', writeMeta: true, announce: false });
+    const acorn = createAcornLifecycle(d);
+
+    await acorn.openAcornProject('dataset-1');
+    expect(record).toContain(`interact:create:${LANG}://class/AcornProjectMeta`);
+    // Owed work cleared as it landed — the next open owes nothing.
+    expect(d.setupIntent!.get('dataset-1')).toBeNull();
+  });
+
+  it('resumes the announce a failed join still owes through Open', async () => {
+    const record: string[] = [];
+    const d = deps(record, { spaceSetup: vi.fn(async () => ({ ...FULL_SETUP }) as AcornSpaceSetup) });
+    const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
+    port.mountsOf['dataset-1'] = [LANG];
+    d.setupIntent!.set('dataset-1', { name: 'Rig Project', writeMeta: false, announce: true });
+    const acorn = createAcornLifecycle(d);
+
+    await acorn.openAcornProject('dataset-1');
+    expect(record).toContain(`interact:announceJoin:${LANG}://project`);
+    expect(d.setupIntent!.get('dataset-1')).toBeNull();
+  });
+
+  it('owes nothing on Open without intent or a create/join in flight — no meta write', async () => {
+    const record: string[] = [];
+    const d = deps(record, { spaceSetup: vi.fn(async () => ({ ...FULL_SETUP }) as AcornSpaceSetup) });
     const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
     port.mountsOf['dataset-1'] = [LANG];
     const acorn = createAcornLifecycle(d);
+
     await acorn.openAcornProject('dataset-1');
-    expect(record).toContain(`template:${ACORN_TEMPLATE_ID}:dataset-1`);
-    expect(record).toContain(`override:${ACORN_TEMPLATE_ID}:dataset-1`);
-    expect(record.find((c) => c.startsWith('views:'))).toBeUndefined();
+    expect(record.find((c) => c.includes('class/AcornProjectMeta'))).toBeUndefined();
+    expect(record.find((c) => c.startsWith('interact:announceJoin'))).toBeUndefined();
+  });
+
+  it('counts the single-meta refusal as the write having landed — intent clears', async () => {
+    const record: string[] = [];
+    const d = deps(record, { spaceSetup: vi.fn(async () => ({ ...FULL_SETUP }) as AcornSpaceSetup) });
+    const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
+    port.mountsOf['dataset-1'] = [LANG];
+    (d.port()!.interact as ReturnType<typeof vi.fn>).mockImplementation(async (url: string, call: { name: string }) => {
+      record.push(`interact:${call.name}:${url}`);
+      if (call.name === 'info') return { dnaHash: 'QmdnaUnderTest' };
+      if (call.name === 'whoami') return { address: 'profile/abc' };
+      if (call.name === 'create' && url.includes('AcornProjectMeta')) {
+        throw new Error('OnlyOneOfEntryType: AcornProjectMeta already exists');
+      }
+      return null;
+    });
+    d.setupIntent!.set('dataset-1', { name: 'Rig Project', writeMeta: true, announce: false });
+    const acorn = createAcornLifecycle(d);
+
+    // A meta the first create already committed — the second write's refusal is
+    // the idempotence the zome guarantees, not a failure the open should report.
+    await expect(acorn.openAcornProject('dataset-1')).resolves.toBe('dataset-1');
+    expect(d.setupIntent!.get('dataset-1')).toBeNull();
+  });
+
+  it('keeps owed intent when the write fails — the next open tries again', async () => {
+    const record: string[] = [];
+    const d = deps(record, { spaceSetup: vi.fn(async () => ({ ...FULL_SETUP }) as AcornSpaceSetup) });
+    const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
+    port.mountsOf['dataset-1'] = [LANG];
+    (d.port()!.interact as ReturnType<typeof vi.fn>).mockImplementation(async (url: string, call: { name: string }) => {
+      record.push(`interact:${call.name}:${url}`);
+      if (call.name === 'info') return { dnaHash: 'QmdnaUnderTest' };
+      if (call.name === 'whoami') return { address: 'profile/abc' };
+      if (call.name === 'create' && url.includes('AcornProjectMeta')) throw new Error('zome unreachable');
+      return null;
+    });
+    d.setupIntent!.set('dataset-1', { name: 'Rig Project', writeMeta: true, announce: false });
+    const acorn = createAcornLifecycle(d);
+
+    await expect(acorn.openAcornProject('dataset-1')).rejects.toThrow('zome unreachable');
+    expect(d.setupIntent!.get('dataset-1')).toEqual({ name: 'Rig Project', writeMeta: true, announce: false });
   });
 
   /*
@@ -288,9 +438,12 @@ describe('openAcornProject', () => {
   it('finishes setup on the target dataset when navigation lands elsewhere mid-open', async () => {
     const record: string[] = [];
     let current: string | undefined = 'dataset-before';
-    let releaseCheck!: (has: boolean) => void;
+    let releaseCheck!: (setup: AcornSpaceSetup) => void;
     const d = deps(record, {
-      hasSpaceRecord: vi.fn(() => new Promise<boolean>((resolve) => (releaseCheck = resolve))),
+      spaceSetup: vi
+        .fn()
+        .mockImplementationOnce(() => new Promise<AcornSpaceSetup>((resolve) => (releaseCheck = resolve)))
+        .mockImplementation(async () => ({ ...EMPTY_SETUP }) as AcornSpaceSetup),
       switchDataset: vi.fn(async (id: string) => {
         record.push(`switch:${id}`);
         current = id;
@@ -302,14 +455,14 @@ describe('openAcornProject', () => {
     const acorn = createAcornLifecycle(d);
 
     const open = acorn.openAcornProject('dataset-1');
-    await vi.waitFor(() => expect(d.hasSpaceRecord).toHaveBeenCalled());
+    await vi.waitFor(() => expect(d.spaceSetup).toHaveBeenCalled());
     current = 'dataset-other'; // the person navigated while the check was in flight
-    releaseCheck(false);
+    releaseCheck({ ...EMPTY_SETUP });
 
     await expect(open).resolves.toBeNull();
 
     // Setup landed — on the dataset that was opened, by explicit target.
-    expect(record).toContain('initialize:dataset-1:dataset-1');
+    expect(record).toContain('ensure:dataset-1:dataset-1');
     expect(record).toContain(`template:${ACORN_TEMPLATE_ID}:dataset-1`);
     expect(record).toContain(`override:${ACORN_TEMPLATE_ID}:dataset-1`);
     // Nothing at all was written against the dataset the person moved to.
@@ -323,9 +476,13 @@ describe('openAcornProject', () => {
   it('lets only the newest open navigate — a superseded open finishes setup and stands down', async () => {
     const record: string[] = [];
     let current: string | undefined;
-    const checks: ((has: boolean) => void)[] = [];
+    const checks: ((setup: AcornSpaceSetup) => void)[] = [];
     const d = deps(record, {
-      hasSpaceRecord: vi.fn(() => new Promise<boolean>((resolve) => checks.push(resolve))),
+      spaceSetup: vi
+        .fn()
+        .mockImplementationOnce(() => new Promise<AcornSpaceSetup>((resolve) => checks.push(resolve)))
+        .mockImplementationOnce(() => new Promise<AcornSpaceSetup>((resolve) => checks.push(resolve)))
+        .mockImplementation(async () => ({ ...EMPTY_SETUP }) as AcornSpaceSetup),
       switchDataset: vi.fn(async (id: string) => {
         record.push(`switch:${id}`);
         current = id;
@@ -346,15 +503,15 @@ describe('openAcornProject', () => {
     const openB = acorn.openAcornProject('dataset-b');
     await vi.waitFor(() => expect(checks).toHaveLength(2));
 
-    checks[1](false); // B's check answers first — B is the newer open
+    checks[1]({ ...EMPTY_SETUP }); // B's check answers first — B is the newer open
     await expect(openB).resolves.toBe('dataset-b');
-    checks[0](false); // A's check answers after
+    checks[0]({ ...EMPTY_SETUP }); // A's check answers after
     await expect(openA).resolves.toBeNull();
 
     // Both setups completed on their own targets — the writes are real — but only
     // the newest open navigated. A stale open finishing must not steal the landing.
-    expect(record).toContain('initialize:dataset-a:dataset-a');
-    expect(record).toContain('initialize:dataset-b:dataset-b');
+    expect(record).toContain('ensure:dataset-a:dataset-a');
+    expect(record).toContain('ensure:dataset-b:dataset-b');
     expect(record.filter((c) => c.startsWith('navigate:'))).toEqual(['navigate:dataset-b']);
     expect(current).toBe('dataset-b');
   });
@@ -368,17 +525,32 @@ describe('openAcornProject', () => {
   it('serializes setup for one target — a second open does not write the Space again', async () => {
     const record: string[] = [];
     let current: string | undefined;
-    let spaceWritten = false;
-    const releaseChecks: (() => void)[] = [];
+    // The flags the dep's read reports — the writes below turn them true, so the
+    // second open's check sees the first's finished setup rather than the same gap.
+    const flags = { ...EMPTY_SETUP };
+    let firstCheck = true;
+    let releaseFirst!: () => void;
     const d = deps(record, {
-      hasSpaceRecord: vi.fn(async () => {
+      spaceSetup: vi.fn(async () => {
         record.push('check');
-        await new Promise<void>((resolve) => releaseChecks.push(resolve));
-        return spaceWritten;
+        if (firstCheck) {
+          firstCheck = false;
+          await new Promise<void>((resolve) => (releaseFirst = resolve));
+        }
+        return { ...flags };
       }),
-      initializeAsWeSpace: vi.fn(async (name: string, _desc: string, target?: DatasetRef) => {
-        record.push(`initialize:${name}:${target?.id}`);
-        spaceWritten = true;
+      ensureSpaceStructure: vi.fn(async (name: string, _desc: string, target?: DatasetRef) => {
+        record.push(`ensure:${name}:${target?.id}`);
+        flags.spaceRecord = true;
+        flags.root = true;
+      }),
+      setSpaceViews: vi.fn(async (ids: string[], uuid?: string) => {
+        record.push(`views:${ids.join(',')}:${uuid}`);
+        flags.enabledViews = true;
+      }),
+      setSpaceDefaultTemplate: vi.fn(async (id: string, uuid?: string) => {
+        record.push(`template:${id}:${uuid}`);
+        flags.defaultTemplate = true;
       }),
       switchDataset: vi.fn(async (id: string) => {
         record.push(`switch:${id}`);
@@ -395,24 +567,58 @@ describe('openAcornProject', () => {
     const acorn = createAcornLifecycle(d);
 
     const first = acorn.openAcornProject('dataset-1');
-    await vi.waitFor(() => expect(d.hasSpaceRecord).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(d.spaceSetup).toHaveBeenCalledTimes(1));
     const second = acorn.openAcornProject('dataset-1');
     // The second open is queued behind the first's setup: it cannot have asked yet.
     await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(d.hasSpaceRecord).toHaveBeenCalledTimes(1);
+    expect(d.spaceSetup).toHaveBeenCalledTimes(1);
 
-    releaseChecks[0]();
-    await vi.waitFor(() => expect(d.hasSpaceRecord).toHaveBeenCalledTimes(2));
-    releaseChecks[1]();
+    releaseFirst();
     await expect(first).resolves.toBeNull(); // superseded by the newer open
     await expect(second).resolves.toBe('dataset-1');
 
-    // The second open's check ran only after the first setup settled — and saw the
-    // Space the first wrote, so there is exactly one init and one landing.
-    expect(record.filter((c) => c === 'check')).toHaveLength(2);
-    expect(record.filter((c) => c.startsWith('initialize:'))).toEqual(['initialize:dataset-1:dataset-1']);
+    // Three reads total: the first open checks once and once more after its own
+    // repair; the second open's single check ran only after that setup settled —
+    // and saw the state the first wrote, so there is one structure write and one landing.
+    expect(record.filter((c) => c === 'check')).toHaveLength(3);
+    expect(record.filter((c) => c.startsWith('ensure:'))).toEqual(['ensure:dataset-1:dataset-1']);
     expect(record.filter((c) => c.startsWith('navigate:'))).toEqual(['navigate:dataset-1']);
     expect(current).toBe('dataset-1');
+  });
+
+  /*
+    A retried create or join must not make a second perspective for the project it
+    already made one for: the same seed templates to the same language address, so
+    the dataset already carrying that mount is the project — the open tail resumes
+    it rather than `lifecycle.create` starting over.
+  */
+  it('a retried create reuses the perspective the first attempt made', async () => {
+    const record: string[] = [];
+    const d = deps(record);
+    const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
+    (d.lifecycle()!.list as ReturnType<typeof vi.fn>).mockResolvedValue([ref('dataset-1', 'Rig Project')]);
+    port.mountsOf['dataset-1'] = [LANG];
+    const acorn = createAcornLifecycle(d);
+
+    const id = await acorn.createAcornProject('Rig Project', 'alpha beta gamma', BASE);
+    expect(id).toBe('dataset-1');
+    expect(d.lifecycle()!.create).not.toHaveBeenCalled();
+    expect(record).toContain('ensure:Rig Project:dataset-1');
+    expect(record).toContain(`interact:create:${LANG}://class/AcornProjectMeta`);
+  });
+
+  it('a retried join reuses the perspective the first attempt made', async () => {
+    const record: string[] = [];
+    const d = deps(record);
+    const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
+    (d.lifecycle()!.list as ReturnType<typeof vi.fn>).mockResolvedValue([ref('dataset-1', 'Acorn project')]);
+    port.mountsOf['dataset-1'] = [LANG];
+    const acorn = createAcornLifecycle(d);
+
+    const id = await acorn.joinAcornProject(undefined, 'alpha beta gamma', BASE);
+    expect(id).toBe('dataset-1');
+    expect(d.lifecycle()!.create).not.toHaveBeenCalled();
+    expect(record).toContain(`interact:announceJoin:${LANG}://project`);
   });
 });
 
@@ -479,7 +685,7 @@ describe('listAcornProjects', () => {
     const acorn = createAcornLifecycle(d);
 
     await expect(acorn.openAcornProject('dataset-1')).resolves.toBeNull();
-    expect(d.initializeAsWeSpace).not.toHaveBeenCalled();
+    expect(d.ensureSpaceStructure).not.toHaveBeenCalled();
     expect(record.find((c) => c.startsWith('navigate:'))).toBeUndefined();
     // No member interaction touched the foreign language.
     expect(record.filter((c) => c.startsWith('interact:') && !c.includes('info'))).toEqual([]);

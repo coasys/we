@@ -1,4 +1,10 @@
-import { ACORN_TEMPLATE_ID, type AcornProjectRef, createAcornLifecycle } from '@shared/acornLifecycle';
+import {
+  ACORN_SECTION_IDS,
+  ACORN_TEMPLATE_ID,
+  type AcornProjectRef,
+  type AcornSetupIntent,
+  createAcornLifecycle,
+} from '@shared/acornLifecycle';
 import { boardOptimism } from '@shared/boardOptimism';
 import { createBoardActions, type CreateBoardOptions } from '@shared/boards';
 import { spaceStarterChoices, type StarterChoice } from '@shared/bundles/bundleStarter';
@@ -27,6 +33,7 @@ import {
   INVOLVEMENT_SEMANTICS,
   type InvolvementTypeView,
   parseAppliesTo,
+  relationId,
   resolveInvolvementTypes,
 } from '@shared/involvements';
 import {
@@ -2256,32 +2263,12 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (space && !space.url) await share(space, shares()[uuid]?.task ?? {});
   }
 
-  /**
-   * Turns the currently-viewed dataset — which already has some other app's
-   * SDNA installed (e.g. a Flux Community) but not WE's — into a WE space in place.
-   * Unlike createSpace, this never creates a new dataset or publishes a new
-   * neighbourhood: the dataset is already a joined, published neighbourhood
-   * (that's the only way it could be showing in the sidebar), so access is always
-   * 'shared' here, not a real user choice.
+  /*
+   * The schema half of making a dataset a WE space — additive/idempotent (it does not
+   * remove the dataset's existing foreign SDNA), then the wait for the shape index to
+   * see what the install wrote.
    */
-  async function initializeAsWeSpace(
-    name: string,
-    description: string,
-    avatarValue?: File | string | null,
-    target?: DatasetRef,
-  ): Promise<Space> {
-    /*
-      `target` binds the setup to the dataset it was asked for — the Acorn open
-      sequence hands it over because "the current dataset" can change while any
-      of the awaits below is in flight, and these writes belong to the project
-      that was opened, not to wherever the person has since navigated.
-    */
-    const ds: AppDataset | null = target
-      ? { ...target, handle: target.handle as DatasetProxy }
-      : datasetStore.currentDataset();
-    if (!ds) throw new Error('SpaceStore: initializeAsWeSpace called with no active dataset');
-
-    // Additive/idempotent — does not remove or touch the dataset's existing foreign SDNA.
+  async function installSpaceSchemas(ds: AppDataset): Promise<void> {
     const initSchemas = session.backendPorts()!.schemas;
     await initSchemas.installSpace(ds.handle, moduleRegistry.moduleSchemas(initSchemas));
 
@@ -2292,26 +2279,32 @@ export function SpaceStoreProvider(props: ParentProps) {
       Poll the query path the creates below are about to take until it answers for both
       classes they write, then let create speak for itself whether the wait made it or not.
     */
-    {
-      const deadline = Date.now() + 60_000;
-      const queryable = (findAll: (d: DatasetProxy) => Promise<unknown>) =>
-        findAll(ds.handle).then(
-          () => true,
-          (error) =>
-            String(error).includes('No SHACL shape stored')
-              ? false
-              : Promise.reject(error instanceof Error ? error : new Error(String(error))),
-        );
-      for (;;) {
-        const [spaceReady, collectionReady] = await Promise.all([
-          queryable((d) => Space.findAll(d)),
-          queryable((d) => CollectionBlock.findAll(d)),
-        ]);
-        if ((spaceReady && collectionReady) || Date.now() >= deadline) break;
-        await new Promise((resolve) => setTimeout(resolve, 1_000));
-      }
+    const deadline = Date.now() + 60_000;
+    const queryable = (findAll: (d: DatasetProxy) => Promise<unknown>) =>
+      findAll(ds.handle).then(
+        () => true,
+        (error) =>
+          String(error).includes('No SHACL shape stored')
+            ? false
+            : Promise.reject(error instanceof Error ? error : new Error(String(error))),
+      );
+    for (;;) {
+      const [spaceReady, collectionReady] = await Promise.all([
+        queryable((d) => Space.findAll(d)),
+        queryable((d) => CollectionBlock.findAll(d)),
+      ]);
+      if ((spaceReady && collectionReady) || Date.now() >= deadline) break;
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
     }
+  }
 
+  /** The record half — the Space row, its root structure, and the spaces cache. */
+  async function writeSpaceRecord(
+    ds: AppDataset,
+    name: string,
+    description: string,
+    avatarValue?: File | string | null,
+  ): Promise<Space> {
     let avatarData: FileData | undefined;
     if (avatarValue instanceof File) {
       avatarData = await compressImageToFileData(avatarValue, 'space-avatar', SPACE_AVATAR_PX);
@@ -2340,19 +2333,68 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (!mySpaces().some((s) => s.uuid === spaceRecord.uuid)) {
       setMySpaces((prev) => [...prev, spaceRecord]);
     }
-
-    /*
-      Re-run switchDataset on the same uuid rather than hand-duplicating its
-      classes/registerDynamicEntities/manifest refresh: this atomically flips isWeSpace,
-      refreshes the dynamic model registry, and hands this store a new dataset handle
-      so its currentSpace effect re-fires now that a Space instance exists. Only while
-      the target is still the dataset on screen, though — a setup for a dataset nobody
-      is looking at does not get to move the selection; the open sequence's own
-      navigation does that, guarded, and a superseded open must not reclaim it here.
-    */
-    if (datasetStore.currentDataset()?.id === ds.id) await datasetStore.switchDataset(ds.id);
-
     return spaceRecord;
+  }
+
+  /*
+   * Re-run switchDataset on the same uuid rather than hand-duplicating its
+   * classes/registerDynamicEntities/manifest refresh: it atomically flips isWeSpace,
+   * refreshes the dynamic model registry, and hands this store a new dataset handle
+   * so its currentSpace effect re-fires now that a Space instance exists. Only while
+   * the target is still the dataset on screen, though — a setup for a dataset nobody
+   * is looking at does not get to move the selection; the open sequence's own
+   * navigation does that, guarded, and a superseded open must not reclaim it here.
+   */
+  const reswitchIfShowing = async (ds: AppDataset) => {
+    if (datasetStore.currentDataset()?.id === ds.id) await datasetStore.switchDataset(ds.id);
+  };
+
+  /**
+   * Turns a dataset — which already has some other app's SDNA installed (e.g. a
+   * Flux Community) but not WE's — into a WE space in place. The current dataset
+   * by default; `target` names another explicitly. Unlike createSpace, this never
+   * creates a new dataset or publishes a new neighbourhood: the dataset is already
+   * a joined, published neighbourhood, so access is always 'shared' here, not a
+   * real user choice.
+   */
+  async function initializeAsWeSpace(
+    name: string,
+    description: string,
+    avatarValue?: File | string | null,
+    target?: DatasetRef,
+  ): Promise<Space> {
+    /*
+      `target` binds the setup to the dataset it was asked for — the Acorn open
+      sequence hands it over because "the current dataset" can change while any
+      of the awaits below is in flight, and these writes belong to the project
+      that was opened, not to wherever the person has since navigated.
+    */
+    const ds: AppDataset | null = target ? { ...target } : datasetStore.currentDataset();
+    if (!ds) throw new Error('SpaceStore: initializeAsWeSpace called with no active dataset');
+
+    await installSpaceSchemas(ds);
+    const spaceRecord = await writeSpaceRecord(ds, name, description, avatarValue);
+    await reswitchIfShowing(ds);
+    return spaceRecord;
+  }
+
+  /**
+   * The conditional form of `initializeAsWeSpace` for the Acorn open sequence:
+   * the schemas always (the install is additive), the Space record only when
+   * missing, the root structure only when the record's `root` never landed. A
+   * reopen that finds the structure whole writes nothing, and a partial one gets
+   * the piece it lacks rather than a second copy of the pieces it has.
+   */
+  async function ensureSpaceStructure(name: string, description: string, target: DatasetRef): Promise<void> {
+    const ds: AppDataset = { ...target };
+    await installSpaceSchemas(ds);
+    const [space] = await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) });
+    if (!space) {
+      await writeSpaceRecord(ds, name, description);
+      await reswitchIfShowing(ds);
+      return;
+    }
+    if (!relationId(space.root)) await writeSpaceStructure(ds.handle, space, chosenStarter(undefined));
   }
 
   /**
@@ -2743,14 +2785,60 @@ export function SpaceStoreProvider(props: ParentProps) {
     the members no-op where it is absent; `acornAvailable` is what the chrome
     gates itself on.
   */
+  /*
+    Owed remote setup, persisted: the mounted language cannot answer "is the meta
+    written / was the join announced" later, so the intent set at mount time is
+    the record an interrupted create or join leaves behind. localStorage is the
+    durable store the shell already owns — a crashed run's open finds the debt
+    across a restart, not just across calls.
+  */
+  const acornSetupIntents = {
+    get: (id: string): AcornSetupIntent | null => {
+      try {
+        const raw = localStorage.getItem(`we-acorn-setup:${id}`);
+        return raw ? (JSON.parse(raw) as AcornSetupIntent) : null;
+      } catch {
+        return null;
+      }
+    },
+    set: (id: string, intent: AcornSetupIntent): void => {
+      try {
+        localStorage.setItem(`we-acorn-setup:${id}`, JSON.stringify(intent));
+      } catch {
+        /* a store that cannot keep the intent degrades to same-session resume */
+      }
+    },
+    clear: (id: string): void => {
+      try {
+        localStorage.removeItem(`we-acorn-setup:${id}`);
+      } catch {
+        /* same */
+      }
+    },
+  };
   const acorn = createAcornLifecycle({
     port: () => session.backendPorts()?.acornLifecycle,
     lifecycle: () => session.lifecycle(),
     schemas: () => session.backendPorts()?.schemas ?? null,
-    hasSpaceRecord: (handle) => Space.findAll(handle).then((rows) => rows.length > 0),
+    spaceSetup: async (target) => {
+      // The dataset's own Space row — `spaceSelfWhere`, not "any Space": a
+      // discovery copy counts for nothing here. `root` reads off the row like
+      // `readSpaceRoot` does, and the recipe flag is "any Acorn section present"
+      // so a member's edited list is never mistaken for an unwritten one.
+      const ds: AppDataset = { ...target };
+      const [space] = await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) });
+      const views = space ? parseIdList(space.enabledViews) : [];
+      return {
+        spaceRecord: Boolean(space),
+        root: Boolean(space && relationId(space.root)),
+        enabledViews: views.some((id) => ACORN_SECTION_IDS.includes(id)),
+        defaultTemplate: space?.defaultTemplateId === ACORN_TEMPLATE_ID,
+      };
+    },
     currentDatasetId: () => datasetStore.currentDataset()?.id,
     navigateToSpace: (id) => navigateToSpace(id),
-    initializeAsWeSpace: (name, description, target) => initializeAsWeSpace(name, description, undefined, target),
+    ensureSpaceStructure: (name, description, target) => ensureSpaceStructure(name, description, target),
+    setupIntent: acornSetupIntents,
     setSpaceDefaultTemplate: (templateId, spaceUuid) => setSpaceDefaultTemplate(templateId, spaceUuid),
     setSpaceViews: (viewIds, spaceUuid) => setSpaceViews(viewIds, spaceUuid),
     setSpaceTemplateOverride: (templateId, spaceUuid) => setSpaceTemplateOverride(templateId, spaceUuid),

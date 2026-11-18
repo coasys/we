@@ -16,13 +16,7 @@
  * reached one of these through a schema must no-op rather than throw — the same
  * rule every optional {@link AcornLifecyclePort} call site keeps.
  */
-import type {
-  AcornLifecyclePort,
-  DatasetHandle,
-  DatasetLifecyclePort,
-  DatasetRef,
-  SchemaPort,
-} from '@we/backend-shared';
+import type { AcornLifecyclePort, DatasetLifecyclePort, DatasetRef, SchemaPort } from '@we/backend-shared';
 import { ACORN_VIEWS } from '@we/template-acorn';
 
 /**
@@ -58,6 +52,39 @@ export interface AcornProjectRef {
   languageAddress: string;
 }
 
+/**
+ * Which of a target's space-setup invariants already hold — read, never assumed.
+ * Each flag answers its own question because any one write can have failed before
+ * the next: a Space record exists means neither that its root relation landed nor
+ * that the section recipe and template writes after it did.
+ */
+export interface AcornSpaceSetup {
+  /** A `Space` record for this dataset exists. */
+  spaceRecord: boolean;
+  /** The record's `root` relation — the space collection — exists. */
+  root: boolean;
+  /** `Space.enabledViews` holds the Acorn section recipe (any of it — a member's own edits are kept). */
+  enabledViews: boolean;
+  /** `Space.defaultTemplateId` names the Acorn template. */
+  defaultTemplate: boolean;
+}
+
+/**
+ * Remote work this agent still owes a project — the writes the mounted language
+ * cannot answer "done?" for, so the ask itself is the record. Retained across
+ * calls (and restarts, where the host persists it): a create that died before its
+ * meta write, or a join before its announce, is resumed by the next open rather
+ * than skipped or duplicated.
+ */
+export interface AcornSetupIntent {
+  /** The project's name — the meta write needs it when it was never made. */
+  name: string;
+  /** The `AcornProjectMeta` create has not landed. */
+  writeMeta: boolean;
+  /** The join's `announceJoin` has not landed. */
+  announce: boolean;
+}
+
 /** What the lifecycle needs from the app around it — the same shape `BoardDeps` takes. */
 export interface AcornLifecycleDeps {
   /**
@@ -72,13 +99,13 @@ export interface AcornLifecycleDeps {
   /** The mount's shapes arriving is the "dataset appears" of §L.4 — read through the schema port. */
   schemas: () => SchemaPort | null;
   /**
-   * Whether the dataset already holds a WE Space *record* — the "is this dataset
-   * initialized" check. `hasCoreSchema` cannot answer it: the schema installs in the
-   * same `initializeAsWeSpace` that writes the record, so a run that died between the
-   * two leaves the class registered with the space never made — and being able to see
-   * the class then skips the very init that would fix it.
+   * Which of the target's space-setup invariants already hold — {@link AcornSpaceSetup}.
+   * Reopen is repair, not a skip-list: "a Space record exists" never meant "the setup
+   * finished", and checking each piece on its own is what lets an open finish the one
+   * write that failed without re-writing the ones that did not. Throws when the read
+   * cannot be made — the sequence treats that as "unknown" and repairs structurally.
    */
-  hasSpaceRecord: (handle: DatasetHandle) => Promise<boolean>;
+  spaceSetup: (target: DatasetRef) => Promise<AcornSpaceSetup>;
   /**
    * The current dataset's id *now* — read when an open starts and once more before
    * it lands: if the answer moved, somebody navigated while the open ran, and the
@@ -93,12 +120,26 @@ export interface AcornLifecycleDeps {
    */
   navigateToSpace: (id: string) => Promise<void>;
   /**
-   * Install WE's space schemas on `target` and write its Space record — on the
-   * dataset named, never on whatever is current: the open that asked may be
-   * superseded while any of it is in flight, and setup's writes belong to the
-   * project that was opened.
+   * Finish the structural setup on `target` — WE's space schemas, the Space record,
+   * its root collection and starter structure — writing only what is absent: a
+   * target whose record exists keeps it (no second Space), one whose root never
+   * landed gets the structure, one with neither gets both. On the dataset named,
+   * never on whatever is current: the open that asked may be superseded while any
+   * of it is in flight, and setup's writes belong to the project that was opened.
    */
-  initializeAsWeSpace: (name: string, description: string, target: DatasetRef) => Promise<unknown>;
+  ensureSpaceStructure: (name: string, description: string, target: DatasetRef) => Promise<void>;
+  /**
+   * The remote setup work this agent still owes `id`, or null when nothing is owed —
+   * the durable form of "this create's meta" / "this join's announce" for opens that
+   * run after the ask that produced them. Set at mount time, cleared as the owed
+   * writes land. Optional: without it, owed remote work is still done in the run
+   * that asked for it, but cannot be resumed by a later open.
+   */
+  setupIntent?: {
+    get: (id: string) => AcornSetupIntent | null;
+    set: (id: string, intent: AcornSetupIntent) => void;
+    clear: (id: string) => void;
+  };
   /** The space's default template — written after init, per Q7. */
   setSpaceDefaultTemplate: (templateId: string, spaceUuid?: string) => Promise<void>;
   /**
@@ -258,6 +299,23 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
   };
 
   /**
+   * The dataset that already carries `lang` mounted, or null — how a retried create
+   * or join finds the perspective its first attempt made instead of minting another.
+   * The language address is the project's identity: the same seed templates to the
+   * same address, so the dataset mounting it *is* the project being asked for.
+   */
+  const datasetMounting = async (lang: string): Promise<DatasetRef | null> => {
+    const port = deps.port();
+    const lifecycle = deps.lifecycle();
+    if (!port || !lifecycle) return null;
+    for (const ref of await lifecycle.list()) {
+      const mounted = await port.mounts(ref.id).catch(() => [] as string[]);
+      if (mounted.includes(lang)) return ref;
+    }
+    return null;
+  };
+
+  /**
    * The shared tail of create/join/open once a mount exists — §L.4 steps 3–6:
    * the mount's SDNA visible → a WE space on the target → the acorn template →
    * the member interactions → the landing, if this open still owns it.
@@ -270,40 +328,77 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
   ): Promise<string | null> => {
     // "Dataset appears" — the mount installed Acorn's shapes. Bounded, then on
     // anyway: a still-shapeless dataset gets WE's schemas installed next, which
-    // is what `initializeAsWeSpace` is about to do itself — the order that matters
+    // is what `ensureSpaceStructure` is about to do itself — the order that matters
     // (mount before init) is already kept.
     await waitFor(() => deps.schemas()?.hasAnySchema(ref.handle) ?? Promise.resolve(true), timeoutMs, pollMs);
     /*
       Setup names its target everywhere — nothing below reads the current dataset.
       A navigation during any of these awaits no longer retargets the writes: they
-      belong to `ref`, and `initializeAsWeSpace` is handed it rather than asking
-      what is current when it runs.
+      belong to `ref`, and every writer is handed it rather than asking what is
+      current when it runs.
     */
+    const intent = deps.setupIntent?.get(ref.id) ?? null;
     await serializeSetup(ref.id, async () => {
-      const hadSpace = await deps.hasSpaceRecord(ref.handle).catch(() => false);
-      if (!hadSpace) {
-        await deps.initializeAsWeSpace(opts.name, '', ref);
+      /*
+        Reopen is repair: each invariant is read on its own and only the missing
+        pieces are finished. A Space record existing never meant the setup
+        finished — the run that died between the record and its root, or before
+        the section recipe, left a project the old all-or-nothing check called
+        done. And the repair must not write the pieces that held: a second Space
+        record over the first would split the space's identity.
+      */
+      let setup = await deps.spaceSetup(ref).catch(() => null);
+      if (!setup || !setup.spaceRecord || !setup.root) {
+        await deps.ensureSpaceStructure(intent?.name ?? opts.name, '', ref);
+        setup = await deps.spaceSetup(ref).catch(() => setup);
+      }
+      if (setup && !setup.enabledViews) {
         // The section recipe is a setup write: `Space.enabledViews` is the
-        // members' own list once the space has one, and an open is not
-        // entitled to reset it.
+        // members' own list once the space has one, and an open is not entitled
+        // to reset it — the flag says only whether the recipe was ever written.
         await deps.setSpaceViews(ACORN_SECTION_IDS, ref.id);
       }
-    });
-    await deps.setSpaceDefaultTemplate(ACORN_TEMPLATE_ID, ref.id);
-    await deps.setSpaceTemplateOverride(ACORN_TEMPLATE_ID, ref.id);
+      if (setup && !setup.defaultTemplate) await deps.setSpaceDefaultTemplate(ACORN_TEMPLATE_ID, ref.id);
 
-    if (opts.writeMeta) {
-      // The project's meta — name + layering + priority list. The passphrase is
-      // not a parameter: the language derives it from the seed (mapping.ts), which
-      // is why the joiner's passphrase convention holds at all.
-      await interact(`${lang}://class/AcornProjectMeta`, 'create', {
-        name: opts.name,
-        layeringAlgorithm: 'LongestPath',
-        topPriorityOutcomes: [],
-      });
-    }
-    await ensureProfile(lang);
-    if (opts.announce) await interact(`${lang}://project`, 'announceJoin');
+      /*
+        The owed remote work, re-read inside the queue: a create's meta and a
+        join's announce are writes the mount cannot answer "done?" for, so the
+        retained intent is the record. It is re-read here rather than captured
+        earlier because an open serialized ahead of this one may already have
+        landed and cleared them.
+      */
+      const owed = deps.setupIntent?.get(ref.id) ?? intent;
+      const markDone = (bit: 'writeMeta' | 'announce') => {
+        const current = deps.setupIntent?.get(ref.id);
+        if (!current) return;
+        const next = { ...current, [bit]: false };
+        if (!next.writeMeta && !next.announce) deps.setupIntent!.clear(ref.id);
+        else deps.setupIntent!.set(ref.id, next);
+      };
+      if (Boolean(owed?.writeMeta) || opts.writeMeta) {
+        // The project's meta — name + layering + priority list. The passphrase is
+        // not a parameter: the language derives it from the seed (mapping.ts), which
+        // is why the joiner's passphrase convention holds at all. A meta that
+        // already exists is refused by the zome — the write having already landed
+        // is exactly the owed state, so the refusal reads as done.
+        try {
+          await interact(`${lang}://class/AcornProjectMeta`, 'create', {
+            name: intent?.name ?? opts.name,
+            layeringAlgorithm: 'LongestPath',
+            topPriorityOutcomes: [],
+          });
+        } catch (error) {
+          if (!String(error).includes('OnlyOneOfEntryType')) throw error;
+        }
+        markDone('writeMeta');
+      }
+      await ensureProfile(lang);
+      if (Boolean(owed?.announce) || opts.announce) {
+        await interact(`${lang}://project`, 'announceJoin');
+        markDone('announce');
+      }
+    });
+    await deps.setSpaceTemplateOverride(ACORN_TEMPLATE_ID, ref.id);
     /*
       Land only once the space is whole — and only while this open is still the
       newest ask and the selection has not moved since it started. The generation
@@ -356,8 +451,18 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       const nav = { generation: ++openGeneration, selection: deps.currentDatasetId() };
       const seed = acornSeed(passphrase);
       const { address: lang } = await port.applyTemplateLocal(sourceLanguageHash, { seed });
-      const ref = await lifecycle.create(name);
-      await port.mount(ref.id, lang);
+      /*
+        A retried create lands here too — the same seed templates to the same
+        address, so the dataset already mounting this language *is* the project.
+        Resume it rather than minting a second perspective over one mount.
+      */
+      const existing = await datasetMounting(lang);
+      const ref = existing ?? (await lifecycle.create(name));
+      if (!existing) await port.mount(ref.id, lang);
+      // The meta write this run owes, remembered before it is attempted: the
+      // language cannot answer "done?" later, so the intent is the record an
+      // interrupted create leaves the next open.
+      deps.setupIntent?.set(ref.id, { name, writeMeta: true, announce: false });
       return openMounted(ref, lang, { name, writeMeta: true, announce: false }, nav);
     },
 
@@ -385,8 +490,11 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
         it is Acorn by construction.
       */
       if (languageAddress && !(await answering(() => acornInfo(lang), timeoutMs, pollMs))) return null;
-      const ref = await lifecycle.create('Acorn project');
-      await port.mount(ref.id, lang);
+      // Same reuse as create: a retried join resumes the dataset it already made.
+      const existing = await datasetMounting(lang);
+      const ref = existing ?? (await lifecycle.create('Acorn project'));
+      if (!existing) await port.mount(ref.id, lang);
+      deps.setupIntent?.set(ref.id, { name: ref.name, writeMeta: false, announce: true });
       return openMounted(ref, lang, { name: ref.name, writeMeta: false, announce: true }, nav);
     },
 
