@@ -65,3 +65,4 @@ Commands ran from `crates/renderer` unless a command names another directory. `C
 - Login from a web app through Coasys Connect is out of scope.
 - The space list after login is the existing picker. This slice does not change that screen.
 - A remembered connection choice is later work.
+- Follow-up for the action-permit slice (Lal, non-blocking P2 on b902d08c2): `BaseHost` compares `permit.mount` with the constant name `base`, not with an incarnation of the live mount. A permit issued before a remount can still pass. Bind the permit to a per-mount incarnation id.
