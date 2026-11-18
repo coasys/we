@@ -77,7 +77,11 @@ interface PendingAcornOp {
   lang: string;
   /** The name the meta write or space setup uses — the newest ask's, on resubmit. */
   name: string;
-  /** The owed work this ask adds; the intent's debt merges over it at retain time. */
+  /**
+   * The owed work this ask adds — banked into the target's ledger the first time
+   * the run retains it, then cleared on the op: the ledger, not the ask, is the
+   * record a resume or a queued setup consults.
+   */
   writeMeta: boolean;
   announce: boolean;
   /** The target once allocated or retained — the thing a failed mount cannot lose. */
@@ -86,10 +90,10 @@ interface PendingAcornOp {
   state?: AcornOperationState;
 }
 
-/** What `prepareAndMount` hands `openMounted`: the mounted target plus the owed work the record says it owes. */
+/** What `prepareAndMount` hands `openMounted`: the mounted target plus the name the newest ask gave it. */
 interface PreparedMount {
   ref: DatasetRef;
-  owed: { name: string; writeMeta: boolean; announce: boolean };
+  name: string;
 }
 
 /** One mounted Acorn project, as `listAcornProjects` reports it. */
@@ -476,6 +480,40 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
   */
   const pendingOps = new Map<string, PendingAcornOp>();
 
+  /*
+    The owed-work ledger, keyed by target — the authoritative "still owed"
+    record the resume path and a queued setup both consult. `setupIntent` is
+    its durable shadow (and the only place the mount-phase target survives a
+    restart); this is the live half: a write clears its bit the moment it
+    lands, so a Retry — or a setup queued behind one that already paid — reads
+    the debt as it stands, never as its ask was filed. With no `setupIntent`
+    dep it is the only record.
+  */
+  const owedLedger = new Map<string, { name: string; writeMeta: boolean; announce: boolean }>();
+
+  /** The debt a target still owes — the live ledger's answer, the durable intent's when the session has none. */
+  const owedFor = (refId: string): { name: string; writeMeta: boolean; announce: boolean } | null => {
+    const live = owedLedger.get(refId);
+    if (live) return live;
+    const intent = deps.setupIntent?.get(refId);
+    if (!intent || (!intent.writeMeta && !intent.announce)) return null;
+    return { name: intent.name, writeMeta: intent.writeMeta, announce: intent.announce };
+  };
+
+  /** One bit of debt paid — cleared from the live ledger and its durable shadow alike. */
+  const markPaid = (refId: string, bit: 'writeMeta' | 'announce'): void => {
+    const live = owedLedger.get(refId);
+    if (live) {
+      if (live[bit]) live[bit] = false;
+      if (!live.writeMeta && !live.announce) owedLedger.delete(refId);
+    }
+    const current = deps.setupIntent?.get(refId);
+    if (!current) return;
+    const next = { ...current, [bit]: false };
+    if (!next.writeMeta && !next.announce) deps.setupIntent!.clear(refId);
+    else deps.setupIntent!.set(refId, next);
+  };
+
   /**
    * What one mount call's rejection means for the budget that called it:
    *
@@ -537,8 +575,14 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
     /*
       A mounted target with nothing owed has no record to keep — the mount link
       itself says where the language lives, and an intent carrying no debt would
-      only read as a pending mount it is not.
+      only read as a pending mount it is not. The live ledger and the durable
+      intent move together: whatever one records, the other records.
     */
+    if (owed.writeMeta || owed.announce) {
+      owedLedger.set(refId, { name: owed.name, writeMeta: owed.writeMeta, announce: owed.announce });
+    } else {
+      owedLedger.delete(refId);
+    }
     if (phase === 'open' && !owed.writeMeta && !owed.announce) {
       deps.setupIntent?.clear(refId);
       return;
@@ -659,23 +703,27 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       attempted — a failed mount is exactly when the record matters, since it
       is the only place the target survives.
     */
-    const current = deps.setupIntent?.get(ref.id);
+    const current = owedFor(ref.id);
     /*
       The name is this ask's — a resubmit's newer name wins, and an op rebuilt
       from the intent already carries the intent's. The debt merges the other
-      way: what an interrupted run still owes is owed whoever asks next.
+      way: what an interrupted run still owes is owed whoever asks next. This
+      ask's own flags are banked here — the ledger owns them from now on, so a
+      write that lands cannot come back as this ask's debt on a later retry.
     */
     const owed = {
       name: op.name,
       writeMeta: Boolean(current?.writeMeta) || op.writeMeta,
       announce: Boolean(current?.announce) || op.announce,
     };
+    op.writeMeta = false;
+    op.announce = false;
     retain(ref.id, op.lang, owed, 'mount');
     const mounted = found ? found.mounted || (await mountsInclude(ref.id, op.lang)) : false;
     if (!mounted && !(await mountSameTarget(ref, op.lang, { owns, report }))) return null;
     if (!owns()) return null;
     retain(ref.id, op.lang, owed, 'open');
-    return { ref, owed };
+    return { ref, name: owed.name };
   };
 
   /**
@@ -726,11 +774,11 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       }
       report({
         phase: 'setting-up',
-        name: prepared.owed.name,
+        name: prepared.name,
         datasetId: prepared.ref.id,
         languageAddress: op.lang,
       });
-      const id = await openMounted(prepared.ref, op.lang, prepared.owed, nav);
+      const id = await openMounted(prepared.ref, op.lang, { name: prepared.name }, nav);
       /*
         Delete only on this run's own success: a superseded run that stood down
         inside `openMounted` must not remove the op its successor is still
@@ -770,7 +818,7 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
   const openMounted = async (
     ref: DatasetRef,
     lang: string,
-    opts: { name: string; writeMeta: boolean; announce: boolean },
+    opts: { name: string },
     nav: { generation: number; selection: string | undefined },
   ): Promise<string | null> => {
     // "Dataset appears" — the mount installed Acorn's shapes. Bounded, then on
@@ -791,7 +839,7 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
         cleared the debt, and a capture taken while this run was still waiting
         would replay what is already done.
       */
-      const owed = deps.setupIntent?.get(ref.id) ?? null;
+      const owed = owedFor(ref.id);
       /*
         Reopen is repair: each invariant is read on its own and only the missing
         pieces are finished. A Space record existing never meant the setup
@@ -823,17 +871,11 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
 
       /*
         A create's meta and a join's announce are writes the mount cannot answer
-        "done?" for, so the retained intent is the record — cleared piece by
-        piece as the writes land.
+        "done?" for, so the ledger is the record — read when this queued run
+        starts, not when its ask was filed, and cleared piece by piece as the
+        writes land.
       */
-      const markDone = (bit: 'writeMeta' | 'announce') => {
-        const current = deps.setupIntent?.get(ref.id);
-        if (!current) return;
-        const next = { ...current, [bit]: false };
-        if (!next.writeMeta && !next.announce) deps.setupIntent!.clear(ref.id);
-        else deps.setupIntent!.set(ref.id, next);
-      };
-      if (Boolean(owed?.writeMeta) || opts.writeMeta) {
+      if (owed?.writeMeta) {
         // The project's meta — name + layering + priority list. The passphrase is
         // not a parameter: the language derives it from the seed (mapping.ts), which
         // is why the joiner's passphrase convention holds at all. A meta that
@@ -841,7 +883,7 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
         // is exactly the owed state, so the refusal reads as done.
         try {
           await interact(`${lang}://class/AcornProjectMeta`, 'create', {
-            name: owed?.name ?? opts.name,
+            name: owed.name,
             layeringAlgorithm: 'LongestPath',
             topPriorityOutcomes: [],
           });
@@ -851,12 +893,12 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
           // the a9 conductor forwards inside its CellError dump.
           if (!/OnlyOneOfEntryType|Only one of this entry type/.test(String(error))) throw error;
         }
-        markDone('writeMeta');
+        markPaid(ref.id, 'writeMeta');
       }
       await ensureProfile(lang);
-      if (Boolean(owed?.announce) || opts.announce) {
+      if (owed?.announce) {
         await interact(`${lang}://project`, 'announceJoin');
-        markDone('announce');
+        markPaid(ref.id, 'announce');
       }
     });
     await deps.setSpaceTemplateOverride(ACORN_TEMPLATE_ID, ref.id);
@@ -987,7 +1029,7 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
         return null;
       }
       if (owns()) deps.progress?.({ phase: 'setting-up', name: ref.name, datasetId, languageAddress: lang });
-      const id = await openMounted(ref, lang, { name: ref.name, writeMeta: false, announce: false }, nav);
+      const id = await openMounted(ref, lang, { name: ref.name }, nav);
       if (owns()) deps.progress?.(null);
       return id;
     },

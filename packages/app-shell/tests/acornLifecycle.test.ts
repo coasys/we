@@ -989,6 +989,122 @@ describe('mount retry — the fresh-cell stall', () => {
     expect(record.filter((c) => c.startsWith('interact:announceJoin'))).toHaveLength(1);
   });
 
+  /*
+    Paid debt stays paid: a write that landed is marked done in the ledger, so a
+    Retry parked by a *later* step does not get the ask's original flags OR'd
+    back over the record. The review's trace was join → announce done → override
+    rejects → Retry → a second announce; meta is the same shape.
+  */
+  it('does not re-announce on Retry — the paid join debt stays paid', async () => {
+    const record: string[] = [];
+    let failedOnce = false;
+    const d = deps(record, {
+      setSpaceTemplateOverride: vi.fn(async (id: string, uuid?: string) => {
+        record.push(`override:${id}:${uuid}`);
+        if (!failedOnce) {
+          failedOnce = true;
+          throw new Error('zome unreachable');
+        }
+      }),
+    });
+    const acorn = createAcornLifecycle(d);
+
+    // announce lands; the step after it is what fails.
+    await expect(acorn.joinAcornProject(undefined, 'a b c', BASE)).rejects.toThrow('zome unreachable');
+    expect(record.filter((c) => c.startsWith('interact:announceJoin'))).toHaveLength(1);
+
+    await expect(acorn.resumeAcornOperation()).resolves.toBe('dataset-1');
+    expect(record.filter((c) => c.startsWith('interact:announceJoin'))).toHaveLength(1);
+    expect(d.setupIntent!.get('dataset-1')).toBeNull();
+  });
+
+  it('does not re-write meta on Retry — the paid create debt stays paid', async () => {
+    const record: string[] = [];
+    let failedOnce = false;
+    const d = deps(record, {
+      setSpaceTemplateOverride: vi.fn(async (id: string, uuid?: string) => {
+        record.push(`override:${id}:${uuid}`);
+        if (!failedOnce) {
+          failedOnce = true;
+          throw new Error('zome unreachable');
+        }
+      }),
+    });
+    const acorn = createAcornLifecycle(d);
+
+    await expect(acorn.createAcornProject('P', 'a b c', BASE)).rejects.toThrow('zome unreachable');
+    expect(record.filter((c) => c.includes('class/AcornProjectMeta'))).toHaveLength(1);
+
+    await expect(acorn.resumeAcornOperation()).resolves.toBe('dataset-1');
+    expect(record.filter((c) => c.includes('class/AcornProjectMeta'))).toHaveLength(1);
+  });
+
+  /*
+    The same ledger without the persistence dep: with no `setupIntent` the live
+    record is the only one there is, and it still must not resurrect paid debt.
+  */
+  it('keeps paid debt paid without a persistence dep — the ledger alone is the record', async () => {
+    const record: string[] = [];
+    let failedOnce = false;
+    const d = deps(record, {
+      setupIntent: undefined,
+      setSpaceTemplateOverride: vi.fn(async (id: string, uuid?: string) => {
+        record.push(`override:${id}:${uuid}`);
+        if (!failedOnce) {
+          failedOnce = true;
+          throw new Error('zome unreachable');
+        }
+      }),
+    });
+    const acorn = createAcornLifecycle(d);
+
+    await expect(acorn.joinAcornProject(undefined, 'a b c', BASE)).rejects.toThrow('zome unreachable');
+    expect(record.filter((c) => c.startsWith('interact:announceJoin'))).toHaveLength(1);
+
+    await expect(acorn.resumeAcornOperation()).resolves.toBe('dataset-1');
+    expect(record.filter((c) => c.startsWith('interact:announceJoin'))).toHaveLength(1);
+  });
+
+  /*
+    A setup queued behind one that already paid must read the debt as it stands
+    when it runs, not as its own ask was filed: two creates landing on one
+    target both see the intent's announce owed, the first pays it, and the
+    second's queued setup skips it rather than replaying a stale snapshot.
+  */
+  it('reads the debt as it stands inside the setup queue — a paid debt is not replayed', async () => {
+    const record: string[] = [];
+    const d = deps(record);
+    const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
+    const LANG_B = 'QmzAcornLanguageB';
+    (port.applyTemplateLocal as ReturnType<typeof vi.fn>).mockImplementation(
+      async (hash: string, data: Record<string, unknown>) => {
+        record.push(`applyTemplateLocal:${hash}`);
+        return { address: data.seed === 'uid-b-b-b' ? LANG_B : LANG };
+      },
+    );
+    // The join's announce is owed on the target before either run starts.
+    d.setupIntent!.set('dataset-1', { name: 'P', writeMeta: false, announce: true });
+    let releaseSetup!: (setup: AcornSpaceSetup) => void;
+    (d.spaceSetup as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      () => new Promise<AcornSpaceSetup>((resolve) => (releaseSetup = resolve)),
+    );
+    const acorn = createAcornLifecycle(d);
+
+    const runA = acorn.createAcornProject('A', 'a a a', BASE);
+    await vi.waitFor(() => expect(d.spaceSetup).toHaveBeenCalledTimes(1)); // A sits inside setup
+    const runB = acorn.createAcornProject('B', 'b b b', BASE); // second target-read still sees the debt
+    await vi.waitFor(() => expect(record).toContain(`mount:dataset-1:${LANG_B}`));
+
+    releaseSetup({ ...EMPTY_SETUP });
+    // B's later ask owns the landing — A stands down. The debt is the assertion:
+    await expect(runA).resolves.toBeNull();
+    await expect(runB).resolves.toBe('dataset-1');
+
+    // One meta, one announce — paid once whichever setup paid it, never replayed by the other.
+    expect(record.filter((c) => c.includes('class/AcornProjectMeta'))).toHaveLength(1);
+    expect(record.filter((c) => c.startsWith('interact:announceJoin'))).toHaveLength(1);
+  });
+
   it('a changed second ask supersedes the parked one — same language, the newer name wins', async () => {
     vi.useFakeTimers();
     const record: string[] = [];
