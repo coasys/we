@@ -89,14 +89,21 @@ describe('toNeutralManifest', () => {
     expect(validateQueryAgainstManifest(feed, manifest).valid).toBe(true);
   });
 
-  it('drops a relation whose target is not among the entities, and reports it', () => {
+  it('keeps a relation whose target is not among the entities, as a plain field — and reports it', () => {
+    /*
+      The target being outside the vocabulary says nothing about whether the record carries the
+      field — it does, a URI like any untyped edge. Dropped, it was gone from every consumer of
+      the manifest; kept as a scalar it is still read, still warned about, and still not a
+      relation anything can scope or include through.
+    */
     const dangling: EntityManifestEntry[] = [
       { name: 'Post', targetClass: 'we://Post', properties: [prop('ghost', 'uri', { relatedEntity: 'Nope' })] },
     ];
     const { manifest, warnings } = toNeutralManifest(dangling);
-    expect(manifest.entities.Post.relations).toEqual({}); // dropped
+    expect(manifest.entities.Post.relations).toEqual({}); // still no relation — the target is unknown
+    expect(manifest.entities.Post.properties.ghost).toEqual({ type: 'string' });
     expect(warnings).toContainEqual(expect.stringContaining('unknown entity "Nope"'));
-    expect(validateManifest(manifest).valid).toBe(true); // still valid, because the danger was dropped
+    expect(validateManifest(manifest).valid).toBe(true);
   });
 
   it('warns on a duplicate entity name (namespace-blind SHACL) rather than silently colliding', () => {
