@@ -30,8 +30,8 @@ export function messageLine(opts: {
   as: string;
   /** The store the line's actions are called on — `modules.transcribe`, `modules.feed`. */
   actions: string;
-  /** Where a reply started on this line is answered from. */
-  surface: 'transcript' | 'feed';
+  /** Where a reply started on this line is answered from — the space's Feed and a call's are two. */
+  surface: 'transcript' | 'feed' | 'callFeed';
   /** Whether the time reads relative to now. */
   relative: SchemaProp;
   /** Shown after the time. */

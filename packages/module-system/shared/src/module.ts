@@ -293,6 +293,11 @@ export interface ModulePart {
    * its subscriptions already live and die with it. This is for a part fed by its module's store —
    * the Feed's window, read whole and refreshed — which otherwise could not tell a page showing it
    * from nobody looking. Called once per drawing, so a part shown twice is shown until both are gone.
+   *
+   * A part with a `subject` is told which: both are called with the value its subject has where it is
+   * placed — the call a call's page is about, not only the one the module would pick — and when that
+   * value changes under a drawing, `hide` is called with the old one and `show` with the new. A part
+   * with no subject gets no argument.
    */
   whileShown?: { show: string; hide: string };
 }
@@ -655,6 +660,13 @@ export interface ModuleFirstScreen {
   waiting: () => void;
   /** That first read has landed, or failed. */
   answered: () => void;
+  /**
+   * Whether the first screen is still being waited for — false once it is up, and on a host that
+   * holds nothing. For a part that is on the first screen only sometimes (a call's Feed, which a cold
+   * boot can open straight onto): it says {@link waiting} only while this is true, so a part placed
+   * later never holds anything. Absent on an older host: treat as false.
+   */
+  held?: () => boolean;
 }
 
 /**

@@ -10,7 +10,15 @@ import { lineContent, threadLines } from '@we/messages';
 import type { RecordQuery } from '@we/module-shared';
 import { describe, expect, it, vi } from 'vitest';
 
-import { type FeedActivity, FeedReadStopped, groupActivity, markPending, nounFor, readFeedWindow } from './feed';
+import {
+  FEED_FIRST_PAGE,
+  type FeedActivity,
+  FeedReadStopped,
+  groupActivity,
+  markPending,
+  nounFor,
+  readFeedWindow,
+} from './feed';
 
 const ROOT = 'root';
 const t = (minute: number) => new Date(Date.UTC(2026, 9, 8, 10, minute)).toISOString();
@@ -28,6 +36,10 @@ function store(rows: StoredRow[]) {
     asked.push({ entity, query });
     let out = rows.filter((r) => r.entity === entity && (!query.within || r.in === query.within));
     if (query.where?.kind) out = out.filter((r) => r.kind === query.where?.kind);
+    if (query.where?.id !== undefined) {
+      const ids: unknown[] = [query.where.id].flat();
+      out = out.filter((r) => ids.includes(r.id));
+    }
     const dir = query.order?.createdAt === 'asc' ? 1 : -1;
     out = [...out].sort((a, b) => dir * (Date.parse(String(a.createdAt)) - Date.parse(String(b.createdAt))));
     const withThread = (r: StoredRow) =>
@@ -312,6 +324,139 @@ describe('the feed window', () => {
         activityTypes: ['TaskBlock'],
       }),
     ).rejects.toThrow('executor unreachable');
+  });
+});
+
+describe('the feed of one call', () => {
+  /*
+    The same read with a call as its root: a call holds every line said and typed in it, and no calls
+    of its own. What extraction found is kept in the space, so it is read there and kept by origin.
+  */
+  const callRows: StoredRow[] = [
+    // What its passes wrote, linked from the call — `extractedFrom` on each record read backwards.
+    {
+      entity: 'CollectionBlock',
+      id: 'standup',
+      in: ROOT,
+      kind: 'call',
+      title: 'Standup',
+      createdAt: t(0),
+      extracted: ['k1'],
+    },
+    {
+      entity: 'TextBlock',
+      id: 's1',
+      in: 'standup',
+      text: 'said',
+      source: 'spoken',
+      author: 'did:ann',
+      createdAt: t(1),
+    },
+    {
+      entity: 'TextBlock',
+      id: 'm1',
+      in: 'standup',
+      text: 'typed',
+      source: 'typed',
+      author: 'did:ben',
+      createdAt: t(2),
+    },
+    { entity: 'TextBlock', id: 'b1', in: 'standup', text: 'a bot', author: 'did:bot', createdAt: t(3) },
+    // Typed into the space, outside the call: not this call's.
+    { entity: 'TextBlock', id: 'loose', in: ROOT, text: 'elsewhere', source: 'typed', createdAt: t(4) },
+    { entity: 'TaskBlock', id: 'k1', in: ROOT, title: 'Ship', createdAt: t(5), extractedFrom: 'standup' },
+    { entity: 'TaskBlock', id: 'k2', in: ROOT, title: 'Other', createdAt: t(5), extractedFrom: 'monday' },
+  ];
+
+  it('draws every line said and typed in the call, and nothing typed outside it', async () => {
+    const { find } = store(callRows);
+    const { rows: drawn } = await readFeedWindow(find, {
+      root: 'standup',
+      activityRoot: ROOT,
+      rootTitle: 'this call',
+      shown: 10,
+      fromStart: true,
+      activityTypes: [],
+    });
+    expect(drawn.map((r) => r.id)).toEqual(['s1', 'm1', 'b1']);
+    expect(drawn.every((r) => r.kind === 'line' && r.call === '')).toBe(true);
+  });
+
+  it('draws what was found in this call, read in the space, and not what another call found', async () => {
+    const { find, asked } = store(callRows);
+    const { rows: drawn } = await readFeedWindow(find, {
+      root: 'standup',
+      activityRoot: ROOT,
+      rootTitle: 'this call',
+      shown: 10,
+      fromStart: true,
+      activityTypes: ['TaskBlock'],
+    });
+    const activity = drawn.filter((r): r is FeedActivity => r.kind === 'activity');
+    expect(activity).toHaveLength(1);
+    expect(activity[0]).toMatchObject({ origin: 'standup', originTitle: 'this call', summary: '1 task' });
+    expect(asked.find((a) => a.entity === 'TaskBlock')?.query.within).toBe(ROOT);
+  });
+
+  it('draws what an older call found when later calls have found a page of things since', async () => {
+    /*
+      Read as the space's newest page and kept by origin, this call's record was behind sixty newer
+      ones from a later call: the window read the space's newest fifty, kept none, and last week's
+      standup drew its lines with no row for what was found in it.
+    */
+    const later = Array.from({ length: 60 }, (_, i) => ({
+      entity: 'TaskBlock',
+      id: `later-${i}`,
+      in: ROOT,
+      title: `Later ${i}`,
+      createdAt: t(30 + (i % 20)),
+      extractedFrom: 'friday',
+    }));
+    const { find } = store([...callRows, ...later]);
+    const { rows: drawn } = await readFeedWindow(find, {
+      root: 'standup',
+      activityRoot: ROOT,
+      rootTitle: 'this call',
+      shown: FEED_FIRST_PAGE,
+      fromStart: false,
+      activityTypes: ['TaskBlock'],
+    });
+    const activity = drawn.filter((r): r is FeedActivity => r.kind === 'activity');
+    expect(activity.map((a) => a.items.map((i) => i.id))).toEqual([['k1']]);
+  });
+
+  it('says there is more while a kind of record filled its page, though it drew as one row', async () => {
+    /*
+      Six tasks found in one pass are one row, so a window of four reads four of them, draws three
+      lines and one row — and, counting rows, said it held everything. The other two were never read.
+    */
+    const found = ['k1', 'k3', 'k4', 'k5', 'k6', 'k7'];
+    const rows = callRows.map((row) => (row.id === 'standup' ? { ...row, extracted: found } : row));
+    const tasks = found.slice(1).map((id) => ({
+      entity: 'TaskBlock',
+      id,
+      in: ROOT,
+      title: id,
+      createdAt: t(5),
+      extractedFrom: 'standup',
+    }));
+    const { find } = store([...rows, ...tasks]);
+    const read = (shown: number) =>
+      readFeedWindow(find, {
+        root: 'standup',
+        activityRoot: ROOT,
+        rootTitle: 'this call',
+        shown,
+        fromStart: false,
+        activityTypes: ['TaskBlock'],
+      });
+    const first = await read(4);
+    expect(first.rows.map((r) => r.kind)).toEqual(['activity', 'line', 'line', 'line']);
+    expect(first.hasMore).toBe(true);
+    // A page more reads them all, and then there is nothing beyond.
+    const all = await read(10);
+    expect((all.rows[0] as FeedActivity).items).toHaveLength(6);
+    expect(all.hasMore).toBe(false);
   });
 });
 

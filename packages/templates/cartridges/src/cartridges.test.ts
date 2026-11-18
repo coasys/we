@@ -202,6 +202,45 @@ describe('the Coasys cartridge', () => {
     });
   });
 
+  /*
+    A call's page is where somebody outside the call, or reading it after it ended, finds it. Its body
+    is the call's Feed — the space's Feed scoped to this call: everything said, typed and answered in
+    it, with the box to write into it — for everyone, and not behind the gate that offers a way in.
+  */
+  it('draws the call’s Feed as its body, pointed at the call the address names, to everyone', () => {
+    const parts = findAll(callPage, (n) => n.type === '$part').map(
+      (n) => (n.props as { id?: unknown } | undefined)?.id,
+    );
+    expect(parts).toContain('feed.callFeed');
+    // One stream, not a transcript beside a second list.
+    expect(parts).not.toContain('transcribe.transcriptFeed');
+    expect(parts).not.toContain('transcribe.callMessages');
+
+    const placement = findNode(
+      callPage,
+      (n) => n.type === '$part' && (n.props as { id?: unknown } | undefined)?.id === 'feed.callFeed',
+    );
+    expect((placement!.props as { subject?: unknown }).subject).toEqual({ $: 'routeStore.params.id' });
+
+    // Not inside any `$if`: nothing about the reader or the call's state hides it.
+    const gated = findNode(callPage, (n) => n.type === '$if' && JSON.stringify(n).includes('"feed.callFeed"'));
+    expect(gated).toBeUndefined();
+  });
+
+  it('keeps the call page’s bar, its way in, and no fixed-width column that a phone cannot hold', () => {
+    const json = JSON.stringify(callPage);
+    expect(json).toContain('"call.renameCallButton"');
+    expect(json).toContain('modules.call.continueCall');
+    expect(json).not.toContain('"22rem"');
+  });
+
+  it('puts the way in under its sentence on a phone, rather than squeezing the sentence to a word a line', () => {
+    const row = findNode(callPage, (n) => n.type === 'Row' && JSON.stringify(n).includes('modules.call.continueCall'));
+    expect((row!.props as { wrap?: unknown }).wrap).toBe(true);
+    const sentence = findNode(row!, (n) => n.type === 'we-text');
+    expect((sentence!.props as { minWidth?: unknown }).minWidth).toBe('240px');
+  });
+
   it('brings its own name, mark, sign-in screen and theme', () => {
     const bundle = cartridgeBundles().find((b) => b.id === 'coasys')!;
     expect(bundle.brand?.name).toBe('Coasys');

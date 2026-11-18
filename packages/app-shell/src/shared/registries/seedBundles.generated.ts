@@ -21153,14 +21153,14 @@ export const seedBundles: Bundle[] = [
                     condition: { $: '!(modules.call.callRecordId == routeStore.params.id)' },
                     then: {
                       type: 'Row',
-                      props: { gap: '300', p: '500', ay: 'center' },
+                      props: { gap: '300', p: '500', ay: 'center', wrap: true },
                       children: [
                         {
                           type: 'we-text',
-                          props: { color: 'text-muted', flex: '1' },
+                          props: { color: 'text-muted', flex: '1', minWidth: '240px' },
                           children: [
                             {
-                              $: "find(modules.call.liveCalls, { recordId: routeStore.params.id }) ? 'This call is happening now.' : 'This call has ended. Its transcript is below.'",
+                              $: "find(modules.call.liveCalls, { recordId: routeStore.params.id }) ? 'This call is happening now.' : 'This call has ended. Everything said and written in it is below.'",
                             },
                           ],
                         },
@@ -21186,16 +21186,12 @@ export const seedBundles: Bundle[] = [
                   props: {
                     flex: '1',
                     minHeight: '0',
+                    minWidth: '0',
                     px: '500',
                     pb: 'calc(var(--we-space-500) + var(--we-covered-bottom, 0px))',
                     transition: 'padding-bottom 300 ease',
                   },
-                  children: [
-                    {
-                      type: '$part',
-                      props: { id: 'transcribe.transcriptFeed', subject: { $: 'routeStore.params.id' } },
-                    },
-                  ],
+                  children: [{ type: '$part', props: { id: 'feed.callFeed', subject: { $: 'routeStore.params.id' } } }],
                 },
               ],
             },
