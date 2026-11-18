@@ -32,8 +32,8 @@ use we_template::{
 
 mod base;
 pub use base::{
-    base_template_for, coasys_base_template, BaseCommand, BaseController, ConnectionRow, HostJob,
-    BUILTIN_BUNDLE, UNREACHABLE,
+    base_template_for, coasys_base_template, command_for, BaseCommand, BaseController,
+    ConnectionRow, HostJob, BUILTIN_BUNDLE, UNREACHABLE,
 };
 
 /// What [`Session::poll`] answered — whether a `resolve` now would

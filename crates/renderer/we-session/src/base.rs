@@ -43,20 +43,17 @@ impl ConnectionRow {
     }
 }
 
-/// The pinned base template. A bundle whose id is [`BUILTIN_BUNDLE`] and
-/// which carries `base` wins; every other bundle uses this artifact.
+/// The pinned base template. The connect screen always mounts this artifact.
 pub fn coasys_base_template() -> SchemaNode {
     serde_json::from_str(include_str!("../data/coasys-base.json"))
         .expect("pinned coasys base template parses")
 }
 
 /// The node the connect screen mounts.
+///
+/// `bundle` selects the ordinary application. It does not select this screen.
 pub fn base_template_for(bundle: &we_template::Bundle) -> SchemaNode {
-    if bundle.id == BUILTIN_BUNDLE {
-        if let Some(base) = &bundle.base {
-            return base.clone();
-        }
-    }
+    let _ = bundle;
     coasys_base_template()
 }
 
@@ -86,7 +83,6 @@ enum Stage {
     HandingOff,
     Offline,
     Session,
-    Page,
 }
 
 impl Stage {
@@ -96,7 +92,6 @@ impl Stage {
             Stage::HandingOff => "handing-off",
             Stage::Offline => "offline",
             Stage::Session => "session",
-            Stage::Page => "page",
         }
     }
 }
@@ -109,8 +104,9 @@ struct Inner {
     page: String,
     error: String,
     offline_reason: String,
-    /// The last connect job was a choose (`true`) or a retry (`false`).
-    chosen: bool,
+    /// The id chosen this boot. Empty until a choose names one.
+    /// A retry keeps it. This is the public `chosen` string, not [`HostJob::chosen`].
+    chosen_id: String,
     rows: Vec<ConnectionRow>,
 }
 
@@ -137,6 +133,34 @@ pub enum BaseCommand {
     Nop,
 }
 
+/// The base-store call `target` names, when the argument list is one this
+/// host accepts. The gate has already checked the same list.
+pub fn command_for(target: &str, args: &[Value]) -> Option<BaseCommand> {
+    let method = target.strip_prefix("baseStore.")?;
+    Some(match method {
+        "choose" => {
+            let Value::Str(id) = args.first()? else {
+                return None;
+            };
+            BaseCommand::Choose(id.to_string())
+        }
+        "retry" => BaseCommand::Retry,
+        "showConnections" => BaseCommand::ShowConnections,
+        "openPage" => {
+            let Value::Str(page) = args.first()? else {
+                return None;
+            };
+            BaseCommand::OpenPage(page.to_string())
+        }
+        "closePage" => BaseCommand::ClosePage,
+        "clearPasswordWrong" => BaseCommand::ClearPasswordWrong,
+        "submitPassword" | "makeIdentity" | "linkIdentity" | "useWords" | "startNow" => {
+            BaseCommand::Nop
+        }
+        _ => return None,
+    })
+}
+
 /// The stage machine. Pure: no runtime, no socket.
 pub struct BaseController {
     inner: Mutex<Inner>,
@@ -156,7 +180,7 @@ impl BaseController {
                 page: String::new(),
                 error: String::new(),
                 offline_reason: String::new(),
-                chosen: false,
+                chosen_id: String::new(),
                 rows,
             }),
             model: Arc::new(BaseModel::new()),
@@ -222,6 +246,7 @@ impl BaseController {
                 if !inner.rows.iter().any(|row| row.id.as_ref() == id) {
                     return None;
                 }
+                inner.chosen_id.clone_from(&id);
                 begin_attempt(&mut inner, true)
             }
             BaseCommand::Retry => begin_attempt(&mut inner, false),
@@ -235,12 +260,10 @@ impl BaseController {
             }
             BaseCommand::OpenPage(page) => {
                 inner.page = page;
-                inner.stage = Stage::Page;
                 None
             }
             BaseCommand::ClosePage => {
                 inner.page.clear();
-                inner.stage = Stage::Connect;
                 None
             }
             BaseCommand::ClearPasswordWrong | BaseCommand::Nop => None,
@@ -328,7 +351,6 @@ fn begin_attempt(inner: &mut Inner, chosen: bool) -> Option<HostJob> {
     inner.error.clear();
     inner.offline_reason.clear();
     inner.page.clear();
-    inner.chosen = chosen;
     Some(HostJob {
         attempt: next,
         chosen,
@@ -346,7 +368,7 @@ fn snap_json(inner: &Inner, mark: &str) -> serde_json::Value {
                 "icon": row.icon.as_ref(),
                 "label": row.label.as_ref(),
                 "detail": row.detail.as_ref(),
-                "chosen": false,
+                "chosen": row.id.as_ref() == inner.chosen_id,
             })
         })
         .collect();
@@ -354,7 +376,7 @@ fn snap_json(inner: &Inner, mark: &str) -> serde_json::Value {
     serde_json::json!({
         "stage": inner.stage.as_str(),
         "page": inner.page,
-        "hostKind": "desktop",
+        "hostKind": "computer",
         "deviceNoun": "computer",
         "brand": { "mark": mark, "name": "Coasys" },
         "identityKnown": false,
@@ -371,7 +393,7 @@ fn snap_json(inner: &Inner, mark: &str) -> serde_json::Value {
         "executorReason": "",
         "executorStopped": false,
         "connections": connections,
-        "chosen": inner.chosen,
+        "chosen": inner.chosen_id,
         "busy": inner.busy,
         "lastOutcome": "",
         "error": inner.error,

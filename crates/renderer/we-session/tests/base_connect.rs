@@ -9,9 +9,10 @@ use serde_json::json;
 use we_expr::Value;
 use we_screen::{ScreenSchema, ScreenState};
 use we_session::{
-    coasys_base_template, BaseCommand, BaseController, HostJob, Session, BUILTIN_BUNDLE,
-    UNREACHABLE,
+    base_template_for, coasys_base_template, BaseCommand, BaseController, HostJob, Session,
+    BUILTIN_BUNDLE, UNREACHABLE,
 };
+use we_template::Bundle;
 use we_template::{
     Action, ActionRequest, Completer, Host, Invoked, NodeId, ResolvedChild, ResolvedNode, RootSpec,
     SchemaNode, StoreBag,
@@ -30,7 +31,7 @@ impl Host for ApplyHost {
         if let Some(permit) = &request.permit {
             if permit.matches(target, args) {
                 *self.permits.borrow_mut() += 1;
-                if let Some(command) = command_for(target, args) {
+                if let Some(command) = we_session::command_for(target, args) {
                     // The permit's generation, not the controller's current one.
                     if let Some(job) = self.controller.apply(command, permit.generation()) {
                         self.jobs.borrow_mut().push(job);
@@ -40,32 +41,6 @@ impl Host for ApplyHost {
         }
         Invoked::Done(Ok(Value::Undefined))
     }
-}
-
-fn command_for(target: &str, args: &[Value]) -> Option<BaseCommand> {
-    let method = target.strip_prefix("baseStore.")?;
-    Some(match method {
-        "choose" => {
-            let Value::Str(id) = args.first()? else {
-                return None;
-            };
-            BaseCommand::Choose(id.to_string())
-        }
-        "retry" => BaseCommand::Retry,
-        "showConnections" => BaseCommand::ShowConnections,
-        "openPage" => {
-            let Value::Str(page) = args.first()? else {
-                return None;
-            };
-            BaseCommand::OpenPage(page.to_string())
-        }
-        "closePage" => BaseCommand::ClosePage,
-        "clearPasswordWrong" => BaseCommand::ClearPasswordWrong,
-        "submitPassword" | "makeIdentity" | "linkIdentity" | "useWords" | "startNow" => {
-            BaseCommand::Nop
-        }
-        _ => return None,
-    })
 }
 
 fn screen() -> ScreenState {
@@ -315,7 +290,7 @@ fn the_public_snapshot_has_no_secret_values() {
     let snap = controller.public_json();
     assert_eq!(snap["stage"], "connect");
     assert_eq!(snap["page"], "");
-    assert_eq!(snap["hostKind"], "desktop");
+    assert_eq!(snap["hostKind"], "computer");
     assert_eq!(snap["deviceNoun"], "computer");
     assert_eq!(snap["brand"]["name"], "Coasys");
     assert!(snap["brand"]["mark"]
@@ -327,7 +302,7 @@ fn the_public_snapshot_has_no_secret_values() {
     assert_eq!(snap["connections"][0]["id"], "this-device");
     assert_eq!(snap["connections"][0]["label"], "This computer");
     assert_eq!(snap["connections"][0]["chosen"], false);
-    assert_eq!(snap["chosen"], false);
+    assert_eq!(snap["chosen"], "");
     assert_eq!(snap["busy"], false);
     assert_eq!(snap["error"], "");
     assert_eq!(snap["offlineReason"], "");
@@ -373,4 +348,94 @@ fn two_chooses_in_one_click_start_one_job() {
         "the second permit is stale and starts nothing"
     );
     assert!(jobs[0].chosen);
+}
+
+#[test]
+fn a_supplied_bundle_does_not_replace_the_pinned_base() {
+    let supplied = Bundle::parse(
+        r#"{
+            "format": "we-bundle",
+            "formatVersion": 1,
+            "id": "coasys",
+            "version": "0",
+            "name": "Supplied",
+            "base": {
+                "id": "supplied-base",
+                "type": "we-text",
+                "children": ["supplied-base-marker"]
+            }
+        }"#,
+    )
+    .unwrap();
+    let mounted = base_template_for(&supplied);
+    assert_eq!(mounted.id.as_deref(), Some("coasys-base"));
+    let mut open = open_with(mounted);
+    let text = tree_text(&open.session.resolve());
+    assert!(
+        text.contains("Where to keep your spaces"),
+        "the pinned screen is missing:\n{text}"
+    );
+    assert!(
+        !text.contains("supplied-base-marker"),
+        "the supplied node is on screen:\n{text}"
+    );
+    assert!(open.jobs.borrow().is_empty());
+}
+
+#[test]
+fn the_public_chosen_is_the_connection_id() {
+    let controller = BaseController::with_this_computer();
+    assert_eq!(controller.public_json()["chosen"], "");
+    assert_eq!(controller.public_json()["connections"][0]["chosen"], false);
+    let job = controller
+        .apply(
+            BaseCommand::Choose("this-device".into()),
+            controller.generation(),
+        )
+        .expect("the row starts");
+    assert!(job.chosen);
+    assert_eq!(controller.public_json()["chosen"], "this-device");
+    assert_eq!(controller.public_json()["connections"][0]["chosen"], true);
+    controller.note_unreachable(job.attempt);
+    let retry = controller
+        .apply(BaseCommand::Retry, controller.generation())
+        .expect("retry starts");
+    assert!(!retry.chosen);
+    assert_eq!(
+        controller.public_json()["chosen"],
+        "this-device",
+        "retry keeps the chosen id"
+    );
+}
+
+#[test]
+fn a_page_does_not_replace_the_stage() {
+    let controller = BaseController::with_this_computer();
+    let _ = controller.apply(
+        BaseCommand::OpenPage("devices".into()),
+        controller.generation(),
+    );
+    assert_eq!(controller.public_json()["page"], "devices");
+    assert_eq!(controller.public_json()["stage"], "connect");
+    let _ = controller.apply(BaseCommand::ClosePage, controller.generation());
+    assert_eq!(controller.public_json()["page"], "");
+    assert_eq!(controller.public_json()["stage"], "connect");
+
+    let job = controller
+        .apply(
+            BaseCommand::Choose("this-device".into()),
+            controller.generation(),
+        )
+        .expect("the row starts");
+    controller.note_unreachable(job.attempt);
+    assert_eq!(controller.public_json()["stage"], "offline");
+    let _ = controller.apply(
+        BaseCommand::OpenPage("security".into()),
+        controller.generation(),
+    );
+    assert_eq!(controller.public_json()["page"], "security");
+    assert_eq!(controller.public_json()["stage"], "offline");
+    let _ = controller.apply(BaseCommand::ClosePage, controller.generation());
+    assert_eq!(controller.public_json()["page"], "");
+    assert_eq!(controller.public_json()["stage"], "offline");
 }
