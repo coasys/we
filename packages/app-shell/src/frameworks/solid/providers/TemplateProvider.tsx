@@ -41,8 +41,15 @@ interface RecordModel {
   findAll(dataset: unknown, query?: unknown): Promise<RecordInstance[]>;
 }
 
-/** An entity's registered class by name; the registry answers untyped, but every class implements these. */
-const recordModel = (entity: string) => getEntity(entity) as unknown as RecordModel;
+/**
+ * An entity's registered class by name — the registry answers untyped, but every class implements
+ * these. `getEntityForDataset` first, so a model the dataset itself declared (a mounted
+ * language's vocabulary, a community shape) writes like a native one; `getEntity` is the fallback
+ * — and the throw — when no registry knows the name. `entityClass` in RecordStore reads the same
+ * two in the same order.
+ */
+const recordModel = (entity: string, dataset?: unknown) =>
+  (getEntityForDataset(entity, dataset) ?? getEntity(entity)) as unknown as RecordModel;
 
 import { chromeComponentRegistry, componentRegistry as registry } from '@solid/registries/componentRegistry';
 import {
@@ -75,7 +82,7 @@ import { manifestEntries, type RecordInstance } from '@we/backend-shared';
 import { BlockDisplayOverrides, BlockHostProvider, colorFor } from '@we/block-solid';
 import { toastService } from '@we/components/solid';
 import type { DatasetProxy } from '@we/entities';
-import { getEntity, Space } from '@we/entities';
+import { getEntity, getEntityForDataset, Space } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import { holdTopLayer, installTopLayerGuard } from '@we/primitives/top-layer';
 import type { TemplateSchema } from '@we/schema-shared';
@@ -263,14 +270,18 @@ export default function TemplateProvider() {
     rest: Record<string, unknown>,
   ) {
     const stamped = await withCollectionDefaults(entity, fields, perspective);
-    const created = await recordModel(entity).create(perspective, stamped, Object.keys(rest).length ? rest : undefined);
+    const created = await recordModel(entity, perspective).create(
+      perspective,
+      stamped,
+      Object.keys(rest).length ? rest : undefined,
+    );
     threadResponse(perspective, created, rest);
     return created;
   }
 
   /** The same, for `record.update` — `recordActions` resolves a store *path*, and a module has a handle. */
   function updateInDataset(entity: string, id: string, fields: Record<string, unknown>, perspective: DatasetProxy) {
-    return recordModel(entity).update(perspective, id, fields);
+    return recordModel(entity, perspective).update(perspective, id, fields);
   }
 
   // The same capability schemas get as `record.create`, lent to module stores that must write
@@ -304,7 +315,7 @@ export default function TemplateProvider() {
         // A line written with marks mentions whoever they name — see `lineMentions`.
         if (created?.id) {
           await linkNewMentions(
-            getEntity(entity) as unknown as MentionWriter,
+            recordModel(entity, perspective) as unknown as MentionWriter,
             perspective,
             entity,
             created.id,
@@ -328,9 +339,9 @@ export default function TemplateProvider() {
         create: (handle, entity, fields, options) =>
           createInDataset(entity, fields, handle, options) as Promise<{ id?: string } | undefined>,
         find: async (handle, entity, query) =>
-          (await recordModel(entity).findAll(handle, query)) as unknown as Record<string, unknown>[],
+          (await recordModel(entity, handle).findAll(handle, query)) as unknown as Record<string, unknown>[],
         update: (handle, entity, id, fields) => updateInDataset(entity, id, fields, handle),
-        remove: (handle, entity, id) => recordModel(entity).delete(handle, id),
+        remove: (handle, entity, id) => recordModel(entity, handle).delete(handle, id),
       }),
 
       // Add-one on a to-many relation. An instance bound to an existing base expression is enough —
@@ -339,7 +350,7 @@ export default function TemplateProvider() {
       linkEntity: async (entity, id, relation, value, options) => {
         const p = moduleTarget(options?.dataset);
         if (!p) return;
-        const Model = getEntity(entity);
+        const Model = recordModel(entity, p);
         const instance = new (Model as unknown as new (perspective: unknown, base: string) => Record<string, unknown>)(
           p,
           id,
@@ -355,7 +366,7 @@ export default function TemplateProvider() {
       unlinkEntity: async (entity, id, relation, value, options) => {
         const p = moduleTarget(options?.dataset);
         if (!p) return;
-        const Model = getEntity(entity) as unknown as {
+        const Model = recordModel(entity, p) as unknown as {
           removeRelation: (dataset: unknown, id: string, relation: string, targetId: string) => Promise<void>;
         };
         await Model.removeRelation(p, id, relation, value);
@@ -370,7 +381,7 @@ export default function TemplateProvider() {
         if (!p) return;
         // A line's words changing carries its marks over and moves its mentions — see `lineMentions`.
         const mentions = await prepareMentionUpdate(
-          getEntity(entity) as unknown as MentionWriter,
+          recordModel(entity, p) as unknown as MentionWriter,
           p,
           entity,
           id,
@@ -385,7 +396,7 @@ export default function TemplateProvider() {
       removeEntity: async (entity, id, options) => {
         const p = moduleTarget(options?.dataset);
         if (!p) return;
-        await recordModel(entity).delete(p, id);
+        await recordModel(entity, p).delete(p, id);
       },
 
       /*
@@ -789,7 +800,8 @@ export default function TemplateProvider() {
   // Mutations need the raw model class (create/update/delete), not the renderer's read-only
   // handle — resolved through the model layer's own registry.
   function resolve(entityName: string, opts?: { dataset?: string }) {
-    return [recordModel(entityName), resolveDataset(opts?.dataset) ?? datasetStore.currentDataset()!.handle] as const;
+    const handle = resolveDataset(opts?.dataset) ?? datasetStore.currentDataset()!.handle;
+    return [recordModel(entityName, handle), handle] as const;
   }
 
   /*

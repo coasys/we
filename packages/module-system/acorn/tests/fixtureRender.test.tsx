@@ -12,12 +12,13 @@ import { ACORN_MANIFEST, acornDatasetId, acornFixture, applyAcornFixture } from 
 import { createInMemoryBackendPorts } from '@we/backend-inmemory';
 import { manifestEntries } from '@we/backend-shared';
 import { getEntity } from '@we/entities';
+import type { SchemaNode } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import { ACORN_VIEWS, acornOutcomesView } from '@we/template-acorn';
 import type { JSX } from 'solid-js';
 import { describe, expect, it } from 'vitest';
 
-import { acornModule } from '../src/index.ts';
+import { ACORN_PARTS, acornModule } from '../src/index.ts';
 
 const SELF = 'did:test:acorn-self';
 
@@ -68,6 +69,27 @@ async function fixtureHost() {
 const Passthrough = (props: { children?: JSX.Element }) => props.children;
 const registry = { Column: Passthrough, Row: Passthrough };
 
+/**
+ * What the host's `resolveParts` does for the one module these tests place: a `$part`
+ * node's id names a part in `acornModule`'s `contributes.parts`, and the part's `node`
+ * stands in for it — recursively, since a part may place a part.
+ */
+function expandParts(node: unknown): unknown {
+  if (!node || typeof node !== 'object') return node;
+  const record = node as SchemaNode;
+  if (record.type === '$part') {
+    const id = (record.props as { id?: unknown } | undefined)?.id;
+    const part = typeof id === 'string' ? ACORN_PARTS[id.split('.')[1]] : undefined;
+    if (!part) throw new Error(`$part "${String(id)}" names no acorn part`);
+    return expandParts(part.node);
+  }
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(record)) {
+    out[key] = key === 'children' && Array.isArray(value) ? value.map(expandParts) : value;
+  }
+  return out;
+}
+
 describe('the acorn fixture, rendered', () => {
   it('writes the dataset the space declares — acorn template, acorn module, its five sections', async () => {
     const { dataset } = await fixtureHost();
@@ -87,7 +109,12 @@ describe('the acorn fixture, rendered', () => {
   it('renders the outcomes view: all three fixture outcome contents appear', async () => {
     const { stores, errors } = await fixtureHost();
     const { container, unmount } = render(() => (
-      <RenderSchema node={acornOutcomesView} stores={stores as never} registry={registry} context={{}} />
+      <RenderSchema
+        node={expandParts(acornOutcomesView) as SchemaNode}
+        stores={stores as never}
+        registry={registry}
+        context={{}}
+      />
     ));
     try {
       for (const content of FIXTURE_OUTCOMES) {

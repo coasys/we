@@ -270,6 +270,177 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
       },
     },
   },
+  outcomeList: {
+    label: 'Outcome list',
+    description:
+      'Every outcome in the mounted project — each editable in place, with its status line, tag picker and delete',
+    node: {
+      type: 'Column',
+      props: { gap: '300', width: '100%' },
+      $localState: { newOutcome: { type: 'string', initial: '' } },
+      children: [
+        /*
+          The create row: `record.create` is the generic write the host gives every space
+          surface, so the same action runs against the in-memory backend in tests and the
+          mounted dataset live — where it lands through the mount's `create` call action,
+          not a link write (design §W.2). The draft clears on the click regardless; the row
+          appears when the query re-runs.
+        */
+        {
+          type: 'Row',
+          props: { gap: '200', width: '100%' },
+          children: [
+            {
+              type: 'we-input',
+              props: {
+                flex: '1',
+                value: { $: 'local.newOutcome' },
+                placeholder: 'New outcome…',
+                onInput: { $setLocal: 'newOutcome', value: { $: 'event.detail' } },
+              },
+            },
+            {
+              type: 'we-button',
+              props: {
+                variant: 'solid',
+                disabled: { $: '!local.newOutcome' },
+                onClick: {
+                  $invoke: 'record.create',
+                  args: ['AcornOutcome', { content: { $: 'local.newOutcome' } }],
+                  onFinally: [{ $setLocal: 'newOutcome', value: '' }],
+                },
+              },
+              children: ['Add outcome'],
+            },
+          ],
+        },
+        /*
+          One row per outcome, oldest first — the mount's `update`/`delete` call actions are
+          what the generic record paths reach on a mounted class, so every control here is a
+          plain `record.*`/`recordStore.*` invoke: no Acorn-specific write path exists or
+          needs one.
+        */
+        {
+          type: '$each',
+          props: {
+            items: { $query: { entity: 'AcornOutcome', order: { timestampCreated: 'asc' } } },
+            as: 'outcome',
+          },
+          children: [
+            {
+              type: 'Row',
+              props: { gap: '300', ay: 'center', p: '300', bg: 'surface', r: 'surface', width: '100%' },
+              children: [
+                {
+                  type: 'Column',
+                  props: { gap: '100', flex: '1 1 auto', minWidth: '0' },
+                  children: [
+                    /*
+                      Content and description commit on change — the same
+                      `recordStore.updateRecordField` a UI edit goes through everywhere
+                      (`RecordStore.tsx`), so the model layer owns what reaching the mount
+                      means. The placeholders carry the outcome's content so a page reader
+                      can tell the fields of one row from the next's.
+                    */
+                    {
+                      type: 'we-input',
+                      props: {
+                        width: '100%',
+                        value: { $: 'outcome.content' },
+                        placeholder: { $: 'outcome.content' },
+                        onChange: {
+                          $invoke: 'recordStore.updateRecordField',
+                          args: ['AcornOutcome', { $: 'outcome.id' }, 'content', { $: 'event.detail' }],
+                        },
+                      },
+                    },
+                    {
+                      type: 'Row',
+                      props: { gap: '200', ay: 'center', width: '100%' },
+                      children: [
+                        {
+                          type: 'we-input',
+                          props: {
+                            flex: '1',
+                            value: { $: 'outcome.description' },
+                            placeholder: { $: '`Notes: ${outcome.content}`' },
+                            onChange: {
+                              $invoke: 'recordStore.updateRecordField',
+                              args: ['AcornOutcome', { $: 'outcome.id' }, 'description', { $: 'event.detail' }],
+                            },
+                          },
+                        },
+                        {
+                          type: 'we-text',
+                          props: { fontSize: 'sm', tone: 'secondary', whiteSpace: 'nowrap' },
+                          children: [{ $: 'acornOutcomeSummary({ outcome: outcome })' }],
+                        },
+                      ],
+                    },
+                  ],
+                },
+                {
+                  type: 'Row',
+                  props: { gap: '200', ay: 'center', flex: '0 0 auto' },
+                  children: [
+                    /*
+                      The collection's setter-replace surface: each existing tag assigns itself
+                      (`tags: [this tag]`), and the plain button empties the list — both through
+                      `record.update`, which the model layer turns into the mount's `update`
+                      call (design §W.3). A richer picker belongs to a later step; what S2-3
+                      needs is one way to write a whole new member list.
+                    */
+                    {
+                      type: '$each',
+                      props: { items: { $query: { entity: 'AcornTag', order: { text: 'asc' } } }, as: 'tag' },
+                      children: [
+                        {
+                          type: 'we-button',
+                          props: {
+                            variant: 'soft',
+                            size: 'sm',
+                            onClick: {
+                              $invoke: 'record.update',
+                              args: ['AcornOutcome', { $: 'outcome.id' }, { tags: [{ $: 'tag.id' }] }],
+                            },
+                          },
+                          children: [{ $: '`Tag ${tag.text} → ${outcome.content}`' }],
+                        },
+                      ],
+                    },
+                    {
+                      type: 'we-button',
+                      props: {
+                        variant: 'ghost',
+                        size: 'sm',
+                        onClick: {
+                          $invoke: 'record.update',
+                          args: ['AcornOutcome', { $: 'outcome.id' }, { tags: [] }],
+                        },
+                      },
+                      children: [{ $: '`Untag ${outcome.content}`' }],
+                    },
+                    {
+                      type: 'we-button',
+                      props: {
+                        variant: 'ghost',
+                        size: 'sm',
+                        onClick: {
+                          $invoke: 'record.delete',
+                          args: ['AcornOutcome', { $: 'outcome.id' }],
+                        },
+                      },
+                      children: [{ $: '`Delete ${outcome.content}`' }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  },
   outcomeCard: {
     label: 'Outcome card',
     description: 'One outcome — its content, and status/progress/scope as a line under it',
