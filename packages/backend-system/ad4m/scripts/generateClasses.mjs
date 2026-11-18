@@ -21,7 +21,7 @@
  * compilation in exhaustive agreement — a codegen bug fails there rather than drifting.
  */
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -44,7 +44,11 @@ const MANIFEST_DIR = resolve(here, '../../../entities/src/manifest');
 // ── Comments, lifted from the manifest module the definition was authored in ──────────────────
 
 function extractDocs(name) {
-  const src = readFileSync(resolve(MANIFEST_DIR, `${name}.ts`), 'utf8');
+  const file = resolve(MANIFEST_DIR, `${name}.ts`);
+  // A fixture renders a declaration that has no manifest module. The real generator only calls
+  // this for names that do.
+  if (!existsSync(file)) return { classDoc: undefined, memberDocs: {} };
+  const src = readFileSync(file, 'utf8');
   const comment = /\/\*\*(?:[^*]|\*(?!\/))*\*\//y;
   const classDoc = src.match(new RegExp(String.raw`(\/\*\*(?:[^*]|\*(?!\/))*\*\/)\s*\nexport const ${name}`));
   const memberDocs = {};
@@ -120,9 +124,17 @@ function fieldLine(name, spec, def) {
 
 const pascal = (s) => s[0].toUpperCase() + s.slice(1);
 
-function emitEntity(name, def) {
+/**
+ * The class source for one definition.
+ *
+ * `entity.extends` is the parent the manifest named. `def.base` is only the fallback for a
+ * definition that names none, which is every core entity today. `abstract: true` is emitted only
+ * when the manifest says so — a base class is not abstract by being a base.
+ */
+export function renderEntity(name, def) {
   const { classDoc, memberDocs } = extractDocs(name);
   const e = def.entity;
+  const parent = e.extends ?? (def.base === 'WeNode' ? 'WeNode' : undefined);
 
   const ad4mImports = new Set(['Model']);
   const relativeImports = new Map(); // path → names
@@ -131,7 +143,8 @@ function emitEntity(name, def) {
     relativeImports.get(path).add(what);
   };
 
-  if (def.base === 'WeNode') addRelative('./WeNode', 'WeNode');
+  if (parent === 'WeNode') addRelative('./WeNode', 'WeNode');
+  else if (parent && parent !== name) addRelative(`./${parent}`, parent);
   else ad4mImports.add('Ad4mModel');
   if (e.flag) ad4mImports.add('Flag');
   if (Object.keys(e.properties).length) ad4mImports.add('Property');
@@ -184,9 +197,10 @@ function emitEntity(name, def) {
 
   if (classDoc) L.push(classDoc);
   const modelOpts = [`name: ${q(name)}`];
+  if (e.abstract === true) modelOpts.push('abstract: true');
   if (e.interpretationHint !== undefined) modelOpts.push(`interpretationHint: ${q(e.interpretationHint)}`);
   L.push(`@Model({ ${modelOpts.join(', ')} })`);
-  L.push(`export class ${name} extends ${def.base === 'WeNode' ? 'WeNode' : 'Ad4mModel'} {`);
+  L.push(`export class ${name} extends ${parent ?? 'Ad4mModel'} {`);
 
   if (e.flag) {
     L.push(`  @Flag({ through: ${q(e.flag.predicate)}, value: ${q(e.flag.value)} })`);
@@ -275,8 +289,11 @@ function emitEntity(name, def) {
   }
 
   L.push('');
+  return `${L.join('\n')}\n`;
+}
 
-  writeFileSync(resolve(ENTITY_DIR, `${name}.ts`), L.join('\n'));
+function emitEntity(name, def) {
+  writeFileSync(resolve(ENTITY_DIR, `${name}.ts`), renderEntity(name, def));
   return `entities/${name}.ts`;
 }
 
@@ -354,17 +371,21 @@ function emitIndex(defs) {
   writeFileSync(resolve(ENTITY_DIR, 'index.ts'), L.join('\n'));
 }
 
-const written = Object.entries(CORE_DEFS).map(([name, def]) => emitEntity(name, def));
-emitConformance(CORE_DEFS);
-emitIndex(CORE_DEFS);
-written.push('entities/conformance.ts');
-written.push('entities/index.ts');
-console.log(`generated ${written.length - 3} classes + the neutral type surface`);
-try {
-  execFileSync('pnpm', ['exec', 'prettier', '--write', ...written.map((f) => resolve(here, '../src', f))], {
-    cwd: resolve(here, '..'),
-    stdio: 'inherit',
-  });
-} catch {
-  console.warn('prettier not available — emitted unformatted');
+const invokedDirectly = process.argv[1] !== undefined && fileURLToPath(import.meta.url) === resolve(process.argv[1]);
+
+if (invokedDirectly) {
+  const written = Object.entries(CORE_DEFS).map(([name, def]) => emitEntity(name, def));
+  emitConformance(CORE_DEFS);
+  emitIndex(CORE_DEFS);
+  written.push('entities/conformance.ts');
+  written.push('entities/index.ts');
+  console.log(`generated ${written.length - 3} classes + the neutral type surface`);
+  try {
+    execFileSync('pnpm', ['exec', 'prettier', '--write', ...written.map((f) => resolve(here, '../src', f))], {
+      cwd: resolve(here, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    console.warn('prettier not available — emitted unformatted');
+  }
 }
