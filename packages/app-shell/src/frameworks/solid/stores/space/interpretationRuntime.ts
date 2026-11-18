@@ -209,7 +209,8 @@ export function createInterpretationRuntime(deps: InterpretationRuntimeDeps): In
       collection's settings have been read, which is the right way round for something that spends
       somebody's LLM budget.
     */
-    if (!deps.autoFor(collectionId)) throw new Error('interpretation: automatic interpretation is off for this collection');
+    if (!deps.autoFor(collectionId))
+      throw new Error('interpretation: automatic interpretation is off for this collection');
     /*
       The caller's dataset, not the one on screen: a call outlives the space on screen, and a watch
       registered wherever the reader had wandered to interprets the call into a perspective that

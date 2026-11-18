@@ -23,7 +23,6 @@ import {
 import { describe, expect, it } from 'vitest';
 
 import { CALL_CONTROLS_ANCHOR, callControl } from './CallControl.schema';
-import { interpretationActivity } from './InterpretationStatus.schema';
 import { transcribeModule } from './index';
 import { interpretationActivity } from './InterpretationStatus.schema';
 import {

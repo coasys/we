@@ -519,7 +519,9 @@ export function ShapeStoreProvider(props: ParentProps) {
     again when the rest arrives — writes to the shared graph from every member, ending where they
     started.
   */
-  const interpretationCandidatesLoaded = createMemo(() => shapesLoaded() && datasetStore.currentDatasetEntitiesLoaded());
+  const interpretationCandidatesLoaded = createMemo(
+    () => shapesLoaded() && datasetStore.currentDatasetEntitiesLoaded(),
+  );
 
   /**
    * What a relationship may point at here, grouped by where it comes from and labelled for the
