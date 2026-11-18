@@ -312,6 +312,95 @@ describe('acorn open — the root relation (F2)', () => {
     const space = await spaceRecordOf(ds.handle, ds);
     expect(relationId(space?.root)).toBe(orphans[0]);
   });
+
+  /*
+    "No parent and no space claiming it" also describes a channel that was never
+    this writer's: an import, a channel whose parent was removed, another app's
+    seeding. Adopting one of those relinks existing content into the space's
+    root and sends the starter's writes down with it. The reuse has to match
+    exactly what the create writes — an untitled feed holding nothing yet —
+    anything else fails closed.
+  */
+  it('does not adopt an unrelated unparented channel as the space root', async () => {
+    seededDatasets = [{ id: 'ds-acorn', name: 'Acorn project' }];
+    const acorn = fakeAcorn();
+    acorn.mountsOf.set('ds-acorn', [LANG]);
+    acornPort = acorn.port;
+    /*
+      A starter with one record makes "where the starter writes land" visible —
+      they belong under the root this space gets, never inside the unrelated
+      channel. Seeded before the shell mounts: the starter list memo reads the
+      seed once, when the provider comes up.
+    */
+    provideSeed({
+      name: 'test',
+      modules: [],
+      spaceStarters: [{ id: 'kit', records: [{ entity: 'CollectionBlock', fields: { kind: 'canvas' }, in: '$root' }] }],
+    } as never);
+    const stores = mountShell();
+    await ready(stores);
+    const ds = stores.datasets.datasets().find((d) => d.id === 'ds-acorn')!;
+
+    /*
+      The half-state the repair path answers: the Space row exists without a
+      root, and beside it an unrelated channel somebody left unparented, holding
+      its own content.
+    */
+    try {
+      await Space.create(ds.handle, { uuid: 'ds-acorn', name: 'Acorn project', description: '' });
+      const planning = await CollectionBlock.create(ds.handle, {
+        kind: SPACE_COLLECTION_KIND,
+        mode: 'feed',
+        title: 'Planning',
+      });
+      const card = await CollectionBlock.create(
+        ds.handle,
+        { kind: 'post', title: 'Roadmap' },
+        { parent: { id: planning.id, relation: 'children' } },
+      );
+
+      await expect(stores.spaces.openAcornProject('ds-acorn')).resolves.toBe('ds-acorn');
+
+      const space = await spaceRecordOf(ds.handle, ds);
+      const rootId = relationId(space?.root);
+      expect(rootId).not.toBe(planning.id);
+      // Planning is neither adopted nor modified — its own child is all it holds.
+      const [planningAfter] = await CollectionBlock.findAll(ds.handle, { where: { id: planning.id } });
+      expect(planningAfter?.children).toEqual([card.id]);
+      // The space's own root was minted and the starter's record went under it.
+      const underRoot = await CollectionBlock.findAll(ds.handle, { parent: { id: rootId, relation: 'children' } });
+      expect(underRoot.map((c) => c.kind)).toEqual(['canvas']);
+    } finally {
+      provideSeed({ name: 'test', modules: [] } as never);
+    }
+  });
+
+  /*
+    Two channels can both carry the orphan's shape — a second failed attempt,
+    or a leftover nothing wrote on purpose — and only one of them can be the
+    root, with nothing to say which. The reuse cannot choose: an ambiguous set
+    reads the same as none, and a new root is written.
+  */
+  it('mints a new root rather than adopting one of two matching candidates', async () => {
+    seededDatasets = [{ id: 'ds-acorn', name: 'Acorn project' }];
+    const acorn = fakeAcorn();
+    acorn.mountsOf.set('ds-acorn', [LANG]);
+    acornPort = acorn.port;
+    const stores = mountShell();
+    await ready(stores);
+    const ds = stores.datasets.datasets().find((d) => d.id === 'ds-acorn')!;
+
+    await Space.create(ds.handle, { uuid: 'ds-acorn', name: 'Acorn project', description: '' });
+    const first = await CollectionBlock.create(ds.handle, { kind: SPACE_COLLECTION_KIND, mode: 'feed', title: '' });
+    const second = await CollectionBlock.create(ds.handle, { kind: SPACE_COLLECTION_KIND, mode: 'feed', title: '' });
+
+    await expect(stores.spaces.openAcornProject('ds-acorn')).resolves.toBe('ds-acorn');
+
+    const space = await spaceRecordOf(ds.handle, ds);
+    expect([first.id, second.id]).not.toContain(relationId(space?.root));
+    const channels = await CollectionBlock.findAll(ds.handle, { where: { kind: SPACE_COLLECTION_KIND } });
+    expect(channels).toHaveLength(3);
+  });
 });
 
 describe('acorn open — the section recipe (F3)', () => {

@@ -2047,19 +2047,23 @@ export function SpaceStoreProvider(props: ParentProps) {
     */
     const defaults = collectionExtractionDefaults(space);
     /*
-      But find one first. A run that committed this create and then failed before `setRoot`
-      left exactly one shape behind: a channel-kind collection with no parent (`partOf` is
-      `children` read backwards — the root is a child of nothing) and no space claiming it.
-      A retry that cannot see it mints another, and every retry after leaks one more root
-      the space never reads. A named channel is a child of the root it belongs to, so the
-      unparented-and-unclaimed pair is only ever what this write itself produced.
+      But find one first — and only the one this write could have left. A run that committed
+      this create and then failed before `setRoot` left exactly one shape behind: a channel-kind
+      collection with no parent (`partOf` is `children` read backwards — the root is a child of
+      nothing), no space claiming it, and the body it is made with — an untitled feed holding
+      nothing yet. Anything else unparented is somebody else's record: an import, a channel
+      whose parent was removed, another app's seeding — and adopting it would relink existing
+      content into the space's root and send the starter's writes down with it. And only one
+      candidate can be the orphan: two cannot both be the root a failed run left, so an
+      ambiguous set fails closed the same way none does.
     */
     const claimed = new Set(
       (await Space.findAll(dataset)).map((s) => relationId(s.root)).filter((id) => id.length > 0),
     );
-    const existing = (await CollectionBlock.findAll(dataset, { where: { kind: SPACE_COLLECTION_KIND } })).find(
-      (c) => !relationId(c.partOf) && !claimed.has(c.id),
+    const candidates = (await CollectionBlock.findAll(dataset, { where: { kind: SPACE_COLLECTION_KIND } })).filter(
+      (c) => !relationId(c.partOf) && !claimed.has(c.id) && !c.title && c.mode === 'feed' && !c.children?.length,
     );
+    const existing = candidates.length === 1 ? candidates[0] : undefined;
     const root =
       existing ??
       (await CollectionBlock.create(dataset, {
