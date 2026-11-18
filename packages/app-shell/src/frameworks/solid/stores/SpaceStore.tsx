@@ -2269,6 +2269,30 @@ export function SpaceStoreProvider(props: ParentProps) {
     const initSchemas = session.backendPorts()!.schemas;
     await initSchemas.installSpace(ds.handle, moduleRegistry.moduleSchemas(initSchemas));
 
+    /*
+      The shape index lags the links installSpace just wrote — on a mounted dataset the
+      executor rebuilds it through the mount projection and the gap outlasts the settle
+      the port already waits, so a `.create` can still hear "No SHACL shape stored".
+      Poll the query path the creates below are about to take until it answers for both
+      classes they write, then let create speak for itself whether the wait made it or not.
+    */
+    {
+      const deadline = Date.now() + 60_000;
+      const queryable = (findAll: (d: DatasetProxy) => Promise<unknown>) =>
+        findAll(ds.handle).then(
+          () => true,
+          (error) => (String(error).includes('No SHACL shape stored') ? false : Promise.reject(error)),
+        );
+      for (;;) {
+        const [spaceReady, collectionReady] = await Promise.all([
+          queryable((d) => Space.findAll(d)),
+          queryable((d) => CollectionBlock.findAll(d)),
+        ]);
+        if ((spaceReady && collectionReady) || Date.now() >= deadline) break;
+        await new Promise((resolve) => setTimeout(resolve, 1_000));
+      }
+    }
+
     let avatarData: FileData | undefined;
     if (avatarValue instanceof File) {
       avatarData = await compressImageToFileData(avatarValue, 'space-avatar', SPACE_AVATAR_PX);
@@ -2699,6 +2723,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     port: () => session.backendPorts()?.acornLifecycle,
     lifecycle: () => session.lifecycle(),
     schemas: () => session.backendPorts()?.schemas ?? null,
+    hasSpaceRecord: (handle) => Space.findAll(handle).then((rows) => rows.length > 0),
     switchDataset: (id) => datasetStore.switchDataset(id),
     navigateToSpace: (id) => navigateToSpace(id),
     initializeAsWeSpace: (name, description) => initializeAsWeSpace(name, description),

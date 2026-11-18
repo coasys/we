@@ -16,7 +16,13 @@
  * reached one of these through a schema must no-op rather than throw — the same
  * rule every optional {@link AcornLifecyclePort} call site keeps.
  */
-import type { AcornLifecyclePort, DatasetLifecyclePort, DatasetRef, SchemaPort } from '@we/backend-shared';
+import type {
+  AcornLifecyclePort,
+  DatasetHandle,
+  DatasetLifecyclePort,
+  DatasetRef,
+  SchemaPort,
+} from '@we/backend-shared';
 
 /**
  * The Acorn base language bundle's address — its content hash, as the executor's
@@ -56,6 +62,14 @@ export interface AcornLifecycleDeps {
   lifecycle: () => DatasetLifecyclePort | null;
   /** The mount's shapes arriving is the "dataset appears" of §L.4 — read through the schema port. */
   schemas: () => SchemaPort | null;
+  /**
+   * Whether the dataset already holds a WE Space *record* — the "is this dataset
+   * initialized" check. `hasCoreSchema` cannot answer it: the schema installs in the
+   * same `initializeAsWeSpace` that writes the record, so a run that died between the
+   * two leaves the class registered with the space never made — and being able to see
+   * the class then skips the very init that would fix it.
+   */
+  hasSpaceRecord: (handle: DatasetHandle) => Promise<boolean>;
   /** Make a dataset the current one — `initializeAsWeSpace` reads the current dataset. */
   switchDataset: (id: string) => Promise<void>;
   /**
@@ -160,7 +174,7 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
     // (mount before init) is already kept.
     await waitFor(() => deps.schemas()?.hasAnySchema(ref.handle) ?? Promise.resolve(true), timeoutMs, pollMs);
     await deps.switchDataset(ref.id);
-    if (!(await deps.schemas()?.hasCoreSchema(ref.handle))) {
+    if (!(await deps.hasSpaceRecord(ref.handle).catch(() => false))) {
       await deps.initializeAsWeSpace(opts.name, '');
     }
     await deps.setSpaceDefaultTemplate(ACORN_TEMPLATE_ID, ref.id);

@@ -71,6 +71,7 @@ function deps(record: string[], overrides: Partial<AcornLifecycleDeps> = {}): Ac
     port: () => port,
     lifecycle: () => lifecycle as unknown as DatasetLifecyclePort,
     schemas: () => schemas as unknown as SchemaPort,
+    hasSpaceRecord: vi.fn(async () => false),
     switchDataset: vi.fn(async (id: string) => {
       record.push(`switch:${id}`);
     }),
@@ -177,6 +178,31 @@ describe('joinAcornProject', () => {
     expect(record.find((c) => c.startsWith('interact:announceJoin'))).toBe(`interact:announceJoin:${LANG}://project`);
     // The project already has its meta: the joiner must not write a second one.
     expect(record.find((c) => c.includes('class/AcornProjectMeta'))).toBeUndefined();
+  });
+});
+
+describe('openAcornProject', () => {
+  it('re-runs init on a mounted dataset whose schema landed without a Space record', async () => {
+    const record: string[] = [];
+    const d = deps(record);
+    const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
+    port.mountsOf['dataset-1'] = [LANG];
+    // The half-open state the rig left behind: classes registered, the record never
+    // written — `hasSpaceRecord` is what tells it apart from a space that is one.
+    const acorn = createAcornLifecycle(d);
+    await acorn.openAcornProject('dataset-1');
+    expect(d.initializeAsWeSpace).toHaveBeenCalled();
+  });
+
+  it('skips init on a dataset that already holds its Space record', async () => {
+    const record: string[] = [];
+    const d = deps(record, { hasSpaceRecord: vi.fn(async () => true) });
+    const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
+    port.mountsOf['dataset-1'] = [LANG];
+    const acorn = createAcornLifecycle(d);
+    await acorn.openAcornProject('dataset-1');
+    expect(d.initializeAsWeSpace).not.toHaveBeenCalled();
+    expect(record).toContain(`template:${ACORN_TEMPLATE_ID}:dataset-1`);
   });
 });
 
