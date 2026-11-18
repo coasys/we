@@ -175,6 +175,40 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
   const interact = (url: string, name: string, parameters?: object) => deps.port()!.interact(url, { name, parameters });
 
   /**
+   * What a mount's `info` call answers — the same interaction `whoami` and the class
+   * writes already lean on. An Acorn project cell answers with `dnaHash`; a language
+   * that answers anything else, or throws, is not one of ours. `null` is a definitive
+   * answer; the throw is left for the caller to catch or retry through.
+   */
+  const acornInfo = async (lang: string): Promise<Record<string, unknown> | null> => {
+    const raw = await interact(`${lang}://project`, 'info');
+    const info = typeof raw === 'string' ? (JSON.parse(raw) as Record<string, unknown>) : raw;
+    return info && typeof info === 'object' && (info as Record<string, unknown>).dnaHash
+      ? (info as Record<string, unknown>)
+      : null;
+  };
+
+  /**
+   * Whether a mounted language is an Acorn project — asked, never assumed. A mount is
+   * just a language address on a dataset, and before this check every mounted language
+   * listed as a project and "open" would have written a project meta into somebody
+   * else's language. A mount that cannot answer is not ours; the single shot is honest
+   * for a list row, and `answering` wraps it where a cold cell needs the beat.
+   */
+  const isAcornLanguage = (lang: string): Promise<boolean> =>
+    acornInfo(lang)
+      .then(Boolean)
+      .catch(() => false);
+
+  /** The first mount that answers as an Acorn project, or null when none does. */
+  const firstAcornMount = async (mounted: string[]): Promise<string | null> => {
+    for (const lang of mounted) {
+      if (await isAcornLanguage(lang)) return lang;
+    }
+    return null;
+  };
+
+  /**
    * Identify this agent to the project: `whoami` first (the mount answers null
    * until the member profile exists), the profile `create` when it does not.
    * The AcornProfile fields are the zome's `create_whoami` shape — the agent's
@@ -248,10 +282,10 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
 
   return {
     /**
-     * The agent's mounted Acorn projects: every dataset the executor reports a
-     * mount on. `lifecycle.list` already excludes backend bookkeeping
-     * perspectives; a mount the executor knows is the Acorn truth — no second
-     * registry of projects is kept anywhere.
+     * The agent's mounted Acorn projects: every dataset carrying a mount whose language
+     * answers as one. `lifecycle.list` already excludes backend bookkeeping
+     * perspectives; a mount the executor knows is where to look, and the language's own
+     * `info` is what says it is Acorn — no second registry of projects is kept anywhere.
      */
     async listAcornProjects(): Promise<AcornProjectRef[]> {
       const port = deps.port();
@@ -261,7 +295,7 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       const entries = await Promise.all(
         datasets.map(async (ref) => {
           const mounted = await port.mounts(ref.id).catch(() => [] as string[]);
-          const languageAddress = mounted[0];
+          const languageAddress = await firstAcornMount(mounted);
           return languageAddress ? { datasetId: ref.id, name: ref.name, languageAddress } : null;
         }),
       );
@@ -304,6 +338,14 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       if (!port || !lifecycle || !deps.hasAcornTemplate()) return null;
       const lang =
         languageAddress || (await port.applyTemplateLocal(sourceLanguageHash, { seed: acornSeed(passphrase) })).address;
+      /*
+        A supplied address is verified before a dataset is made for it — joining an
+        address that is not an Acorn cell would otherwise create the dataset, mount
+        the language and announce into whatever it actually is. `answering` gives a
+        cold cell the same grace `whoami` gets; a templated language needs no check —
+        it is Acorn by construction.
+      */
+      if (languageAddress && !(await answering(() => acornInfo(lang), timeoutMs, pollMs))) return null;
       const ref = await lifecycle.create('Acorn project');
       await port.mount(ref.id, lang);
       return openMounted(ref, lang, { name: ref.name, writeMeta: false, announce: true });
@@ -320,7 +362,7 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       if (!port || !lifecycle || !deps.hasAcornTemplate()) return null;
       const ref = await lifecycle.get(datasetId);
       if (!ref) return null;
-      const [lang] = await port.mounts(ref.id);
+      const lang = await firstAcornMount(await port.mounts(ref.id));
       if (!lang) return null;
       return openMounted(ref, lang, { name: ref.name, writeMeta: false, announce: false });
     },

@@ -46,6 +46,7 @@ function recordedPort(record: string[]): AcornLifecyclePort & { mountsOf: Record
     }),
     interact: vi.fn(async (url: string, call: { name: string; parameters?: object }) => {
       record.push(`interact:${call.name}:${url}`);
+      if (call.name === 'info') return url === `${LANG}://project` ? { dnaHash: 'QmdnaUnderTest' } : null;
       return call.name === 'whoami' ? { address: 'profile/abc', data: {} } : null;
     }),
   };
@@ -277,7 +278,7 @@ describe('openAcornProject', () => {
 
     // The switch was asked for; nothing after it ran — no init, no template write, no
     // member interaction, no navigation. The mount stays for the next open to resume.
-    expect(record).toEqual(['mounts:dataset-1', 'switch:dataset-1']);
+    expect(record).toEqual(['mounts:dataset-1', `interact:info:${LANG}://project`, 'switch:dataset-1']);
     expect(d.initializeAsWeSpace).not.toHaveBeenCalled();
   });
 });
@@ -295,6 +296,60 @@ describe('listAcornProjects', () => {
 
     const projects = await acornProjects(d);
     expect(projects).toEqual([{ datasetId: 'acorn-1', name: 'Project one', languageAddress: LANG }]);
+  });
+
+  /*
+    A mount is not an Acorn project — it is a language address on a dataset, and any
+    language can be mounted. Before this check every mounted dataset listed as a project
+    and "open" would have written a project meta into somebody else's language. `info`
+    is the call the lifecycle already leans on; only a mount that answers it as a cell
+    (`dnaHash`) is ours.
+  */
+  it('skips mounts whose language does not answer info as an Acorn cell', async () => {
+    const record: string[] = [];
+    const d = deps(record);
+    (d.lifecycle()!.list as ReturnType<typeof vi.fn>).mockResolvedValue([
+      ref('acorn-1', 'Project one'),
+      ref('chat-space', 'A chat space'),
+      ref('quiet-mount', 'A mount that cannot answer'),
+    ]);
+    const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
+    port.mountsOf['acorn-1'] = [LANG];
+    port.mountsOf['chat-space'] = ['QmzSomeOtherLanguage'];
+    port.mountsOf['quiet-mount'] = ['QmzLanguageThatThrows'];
+
+    const projects = await acornProjects(d);
+    expect(projects).toEqual([{ datasetId: 'acorn-1', name: 'Project one', languageAddress: LANG }]);
+    // The foreign mounts were asked, not trusted — and none of their calls was a write.
+    expect(record).toContain('interact:info:QmzSomeOtherLanguage://project');
+  });
+
+  it('picks the Acorn mount when a dataset carries several languages', async () => {
+    const record: string[] = [];
+    const d = deps(record);
+    const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
+    port.mountsOf['dataset-1'] = ['QmzSomeOtherLanguage', LANG];
+    const acorn = createAcornLifecycle(d);
+
+    await expect(acorn.openAcornProject('dataset-1')).resolves.toBe('dataset-1');
+    // The member interactions went to the language that answered as a project, not
+    // to whichever mount happened to be listed first.
+    expect(record).toContain(`interact:whoami:${LANG}://project`);
+    expect(record.find((c) => c === 'interact:whoami:QmzSomeOtherLanguage://project')).toBeUndefined();
+  });
+
+  it('refuses to open a dataset whose mounts are none of them Acorn', async () => {
+    const record: string[] = [];
+    const d = deps(record);
+    const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
+    port.mountsOf['dataset-1'] = ['QmzSomeOtherLanguage'];
+    const acorn = createAcornLifecycle(d);
+
+    await expect(acorn.openAcornProject('dataset-1')).resolves.toBeNull();
+    expect(d.switchDataset).not.toHaveBeenCalled();
+    expect(d.initializeAsWeSpace).not.toHaveBeenCalled();
+    // No member interaction touched the foreign language.
+    expect(record.filter((c) => c.startsWith('interact:') && !c.includes('info'))).toEqual([]);
   });
 });
 
