@@ -370,6 +370,100 @@ describe('extends — the parent as a shape the child names', () => {
     expect(names).toContain('sightings');
   });
 
+  it('names an abstract parent by sh://node, and a second generateSHACL writes that link once', () => {
+    // `implements` still checks the child's names. It writes no link, so the parent's shape URI
+    // is added on the compiled shape itself. Sighting is declared before BirdBase; the link does
+    // not depend on that order. Calling generateSHACL again must not add a second link.
+    const classes = compileManifest(manifest, { moduleId: 'birds' });
+    const child = shapeOf(classes.Sighting);
+    const parent = shapeOf(classes.BirdBase);
+    expect(child.parentShapes).toContain(parent.nodeShapeUri);
+    const targets = () =>
+      shapeOf(classes.Sighting)
+        .toLinks()
+        .filter((l) => l.predicate === 'sh://node')
+        .map((l) => l.target);
+    expect(targets()).toContain(parent.nodeShapeUri);
+    expect(targets().filter((target) => target === parent.nodeShapeUri)).toHaveLength(1);
+  });
+
+  /** Parent `sh:class` and target class name for one relation, and the child's parent link, twice. */
+  function keepsTypedParentRelation(
+    classes: Record<string, unknown>,
+    parentName: string,
+    relationName: string,
+    targetName: string,
+    childName: string,
+  ) {
+    const read = () => {
+      const parent = shapeOf(classes[parentName]);
+      const target = shapeOf(classes[targetName]);
+      const child = shapeOf(classes[childName]);
+      const relation = parent.properties.find((property) => property.name === relationName);
+      return { parent, target, child, relation };
+    };
+    const first = read();
+    expect(first.relation?.class).toBe(first.target.nodeShapeUri);
+    expect(first.relation?.targetClassName).toBe(targetName);
+    expect(first.child.parentShapes).toContain(first.parent.nodeShapeUri);
+    const second = read();
+    expect(second.relation?.class).toBe(second.target.nodeShapeUri);
+    expect(second.relation?.targetClassName).toBe(targetName);
+    expect(second.child.parentShapes.filter((uri) => uri === second.parent.nodeShapeUri)).toHaveLength(1);
+  }
+
+  it('keeps a typed relation from an abstract parent to the child that extends it', () => {
+    // Sighting is not in the class map while it is being built. Generating BirdBase then, to learn
+    // its URI, resolves `sightings` to nothing, and the SDK keeps that shape.
+    const classes = compileManifest(
+      {
+        version: '1',
+        entities: {
+          Sighting: {
+            extends: 'BirdBase',
+            properties: { species: { type: 'string' } },
+            relations: {},
+          },
+          BirdBase: {
+            abstract: true,
+            properties: { wingspan: { type: 'number' } },
+            relations: { sightings: { target: 'Sighting', cardinality: 'many' } },
+          },
+        },
+      },
+      { moduleId: 'birds' },
+    );
+    keepsTypedParentRelation(classes, 'BirdBase', 'sightings', 'Sighting', 'Sighting');
+  });
+
+  it('keeps a typed relation from an abstract parent to a class compiled later', () => {
+    // Build order is BirdBase, then Sighting, then FieldNote. Generating BirdBase while Sighting
+    // is still being built asks for FieldNote before that class exists.
+    const classes = compileManifest(
+      {
+        version: '1',
+        entities: {
+          Sighting: {
+            extends: 'BirdBase',
+            properties: { species: { type: 'string' } },
+            relations: {},
+          },
+          BirdBase: {
+            abstract: true,
+            properties: { wingspan: { type: 'number' } },
+            relations: { notes: { target: 'FieldNote', cardinality: 'many' } },
+          },
+          FieldNote: {
+            properties: { text: { type: 'string' } },
+            relations: {},
+          },
+        },
+      },
+      { moduleId: 'birds' },
+    );
+    keepsTypedParentRelation(classes, 'BirdBase', 'notes', 'FieldNote', 'Sighting');
+  });
+
   it('extends a concrete parent in the TypeScript sense, so the shape names it by sh://node', () => {
     const classes = compileManifest(
       {

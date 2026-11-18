@@ -11,9 +11,10 @@
  * Dublin Core), `we://` only for what has none. The executor ignores them; they are ordinary links, so
  * they sync and are governed like the rest of the shape.
  *
- * Reading is the reverse: structure from the SHACL, everything else from the annotations, into the
- * manifest that was saved. Every function here is pure over links, so the round trip is tested
- * without an executor (`tests/shapeCodec.test.ts`).
+ * Reading is the reverse. Structure comes from the SHACL. A closed value set, an abstract flag and a
+ * single known parent are read from that structure when the shape carries no annotation for them.
+ * Everything else comes from the annotations. Every function here is pure over links, so the round
+ * trip is tested without an executor (`tests/shapeCodec.test.ts`).
  *
  * ## What reading cannot get back, and how it says so
  *
@@ -24,9 +25,9 @@
  */
 import { Literal, SHACLShape } from '@coasys/ad4m';
 import { CONTAINMENT_PREDICATE, type EntityManifest, type EntitySchema, type ShapeInput } from '@we/backend-shared';
-import { CORE_MANIFEST } from '@we/entities/manifest';
 
 import { toAd4mPredicate } from './containment';
+import * as KnownEntities from './entities';
 
 /** A link as the codec reads and writes one: what the SDK's `toLinks()` and a perspective both give. */
 export interface LinkLike {
@@ -244,16 +245,43 @@ function inferredType(datatype: string | undefined): 'string' | 'number' | 'bool
   return 'string';
 }
 
-/** Every field `parent` declares, its own parents' included — what an entity extending it inherits. */
-function inheritedFields(parent: string | undefined): Set<string> {
-  const names = new Set<string>();
-  for (let name = parent; name;) {
-    const schema = CORE_MANIFEST.entities[name];
-    if (!schema) break;
-    for (const field of [...Object.keys(schema.properties), ...Object.keys(schema.relations)]) names.add(field);
-    name = schema.extends;
+type ShapedClass = {
+  generateSHACL?: () => { shape?: { nodeShapeUri?: string; toJSON: () => { properties?: RawProperty[] } } };
+};
+
+/** Property JSON of a known generated class, keyed by field name. A missing class is not a parent we can prove. */
+const parentProperties = new Map<string, Map<string, RawProperty> | null>();
+
+function propertiesOf(parent: string): Map<string, RawProperty> | null {
+  const cached = parentProperties.get(parent);
+  if (cached !== undefined) return cached;
+  const cls = (KnownEntities as Record<string, ShapedClass>)[parent];
+  const list = cls?.generateSHACL?.().shape?.toJSON().properties;
+  const props = list ? new Map(list.flatMap((prop) => (prop.name ? [[prop.name, prop] as const] : []))) : null;
+  parentProperties.set(parent, props);
+  return props;
+}
+
+/**
+ * Class name for one shape URI, from the classes this package generates.
+ *
+ * The match is the URI the class actually emits. A suffix such as `Shape` is not a name, and two
+ * classes that emit one URI resolve to neither — guessing would put the wrong parent on a save.
+ */
+let shapeOwners: Map<string, string | null> | undefined;
+
+function entityForShapeUri(uri: string): string | undefined {
+  if (!shapeOwners) {
+    shapeOwners = new Map();
+    for (const [name, value] of Object.entries(KnownEntities)) {
+      if (typeof value !== 'function') continue;
+      const owned = (value as ShapedClass).generateSHACL?.().shape?.nodeShapeUri;
+      if (!owned) continue;
+      shapeOwners.set(owned, shapeOwners.has(owned) ? null : name);
+    }
   }
-  return names;
+  const name = shapeOwners.get(uri);
+  return name ? name : undefined;
 }
 
 /** Fields the SDK adds to every shape of its own accord: the type flag, and an ordered collection's index. */
@@ -275,6 +303,7 @@ interface RawProperty {
   interpretation_hint?: string;
   identity?: boolean;
   target_class_name?: string;
+  in?: unknown;
 }
 
 /** What a stored shape reads back as, before `editable` is judged. */
@@ -306,14 +335,24 @@ export function readShape(links: readonly LinkLike[]): ReadShape | null {
   const shapeId = value(shapeUri, ANNOTATION.shapeId);
   if (typeof shapeId !== 'string' || !shapeId) return null;
 
-  const json = SHACLShape.fromLinks(links as never, shapeUri).toJSON() as {
+  const shape = SHACLShape.fromLinks(links as never, shapeUri);
+  const json = shape.toJSON() as {
     target_class?: string;
     interpretation_hint?: string;
     properties: RawProperty[];
   };
   const name = (json.target_class ?? '').replace(/^we:\/\//, '');
-  const parent = value(shapeUri, ANNOTATION.extends) as string | undefined;
-  const inherited = inheritedFields(parent);
+  // The annotation wins when it is present, including when it disagrees with the native link.
+  // A native parent is one URI that names a class this package generates — not a name cut out of the URI.
+  const annotatedParent = value(shapeUri, ANNOTATION.extends);
+  const parent =
+    annotatedParent !== undefined
+      ? typeof annotatedParent === 'string' && annotatedParent
+        ? annotatedParent
+        : undefined
+      : shape.parentShapes.length === 1
+        ? entityForShapeUri(shape.parentShapes[0])
+        : undefined;
 
   const entity: EntitySchema = { properties: {}, relations: {} };
   if (parent) entity.extends = parent;
@@ -325,7 +364,9 @@ export function readShape(links: readonly LinkLike[]): ReadShape | null {
     if (v !== undefined) entity[key] = v as EntitySchema[K];
   };
   set('description', ANNOTATION.description);
-  set('abstract', ANNOTATION.abstract);
+  const annotatedAbstract = value(shapeUri, ANNOTATION.abstract);
+  if (annotatedAbstract !== undefined) entity.abstract = annotatedAbstract as EntitySchema['abstract'];
+  else if (shape.isAbstract === true) entity.abstract = true;
   set('extractable', ANNOTATION.extractable);
   set('blockable', ANNOTATION.blockable);
   set('composed', ANNOTATION.composed);
@@ -345,10 +386,17 @@ export function readShape(links: readonly LinkLike[]): ReadShape | null {
     .map((raw, i) => ({ raw, i }))
     .sort((a, b) => position(a.raw) - position(b.raw) || a.i - b.i);
 
+  const parentProps = parent ? propertiesOf(parent) : null;
   for (const { raw } of declared) {
     const field = raw.name ?? '';
-    if (!field || SDK_FIELDS.has(field) || inherited.has(field)) continue;
     const node = fields.get(field);
+    // A field this shape declares carries `sh:order`. An inherited field does not, and it is left
+    // out only when its structure is the parent's — a same-named override (its own predicate, its
+    // own value set) stays, because the name alone does not make it the parent's field.
+    const declaredHere = value(node, ANNOTATION.order) !== undefined;
+    const parentProp = parentProps?.get(field);
+    const inheritedIdentical = !declaredHere && parentProp !== undefined && sameDeclaration(raw, parentProp);
+    if (!field || SDK_FIELDS.has(field) || inheritedIdentical) continue;
     const role = at(node, ANNOTATION.role);
     if (role === ROLES.title) display.title = field;
     else if (role === ROLES.summary) display.summary = field;
@@ -389,6 +437,10 @@ export function readShape(links: readonly LinkLike[]): ReadShape | null {
     const editor = at(node, ANNOTATION.editor);
     const control = editor ? CONTROL_OF_EDITOR[editor] : (value(node, ANNOTATION.control) as string | undefined);
     const defaultLink = at(node, ANNOTATION.default);
+    // The annotation keeps the author's exact values, including a number beside a numeric string.
+    // With no annotation, only a native `sh:in` this manifest can write back becomes `options`.
+    const annotatedOptions = value(node, ANNOTATION.options);
+    const options = annotatedOptions !== undefined ? annotatedOptions : recoverOptions(raw.in, type);
     entity.properties[field] = {
       type,
       predicate: raw.path,
@@ -398,9 +450,7 @@ export function readShape(links: readonly LinkLike[]): ReadShape | null {
       ...(defaultLink !== undefined ? { default: decode(defaultLink) as string | number | boolean | null } : {}),
       ...(raw.interpretation_hint !== undefined ? { interpretationHint: raw.interpretation_hint } : {}),
       ...(raw.identity ? { identity: true } : {}),
-      ...(value(node, ANNOTATION.options) !== undefined
-        ? { options: value(node, ANNOTATION.options) as (string | number)[] }
-        : {}),
+      ...(options !== undefined ? { options: options as (string | number)[] } : {}),
       ...(value(node, ANNOTATION.vocabulary) !== undefined
         ? { vocabulary: value(node, ANNOTATION.vocabulary) as string }
         : {}),
@@ -448,56 +498,298 @@ export function linkKey(link: LinkLike): string {
 }
 
 /**
- * Whether a stored shape says nothing a save from WE would lose: rebuilt from the manifest read
- * — compiled, and annotated again — it says at least what is stored.
+ * Whether a stored shape says nothing a save from WE would lose.
  *
- * Compared as the SDK reads a shape (`fromLinks`) rather than link for link, because the executor
- * writes a shape's links itself from its JSON, and how it spells them is its own business; plus the
- * annotations, link for link, since those are this file's. Both halves are a subset, not an
- * equality: a rebuild writes what the compilers now say — `sh:node` for `extends`, `sh:in` for
- * `options` — that a shape stored before they did was never given, and adding it loses nothing.
- * Anything stored the rebuild does not say — a field, a constraint or an annotation nothing here
- * writes — is what a save would lose, and that is what makes a shape not editable.
+ * The SDK's JSON is the structure (`fromLinks` then `toJSON`). A native `sh:in` or `sh:node` that
+ * the parser drops — empty, malformed, duplicated — is still a constraint, so those links are
+ * checked on the raw graph as well. A later caller that holds `{ shape, links }` can pass the
+ * shape's JSON in place of the parse; the presence check stays on the links.
+ *
+ * Equality, not a subset. A stored value set that is only part of the rebuilt one is a narrowing a
+ * save would widen, and `in: []` accepts nothing — it is not an absent constraint. The one
+ * allowance is a WE shape whose options or parent annotation is already there and whose native
+ * `sh://in` or `sh://node` was never written. Adding that link loses nothing. A missing
+ * `ad4m://abstract`, an `auto_accept` link, or any other predicate the rebuild does not write is
+ * not that allowance.
  */
 export function sameShape(stored: readonly LinkLike[], rebuilt: readonly LinkLike[]): boolean {
-  const asRead = (links: readonly LinkLike[]) => {
-    const { shapeUri } = nodesOf(links);
-    return SHACLShape.fromLinks(links as never, shapeUri).toJSON();
+  if (stored.some((link) => !writtenPredicate(rebuilt, link))) return false;
+  const storedNotes = new Set(stored.filter(isAnnotation).map(linkKey));
+  const rebuiltNotes = new Set(rebuilt.filter(isAnnotation).map(linkKey));
+  if (![...storedNotes].every((key) => rebuiltNotes.has(key))) return false;
+  return structuresMatch(stored, rebuilt);
+}
+
+function writtenPredicate(links: readonly LinkLike[], link: LinkLike): boolean {
+  const key = `${link.source}\u0000${link.predicate ?? ''}`;
+  return links.some((other) => `${other.source}\u0000${other.predicate ?? ''}` === key);
+}
+
+interface ShapeJson {
+  parent_shapes?: string[];
+  abstract?: boolean;
+  properties?: RawProperty[];
+  [key: string]: unknown;
+}
+
+function asShape(links: readonly LinkLike[]): ShapeJson {
+  const { shapeUri } = nodesOf(links);
+  return SHACLShape.fromLinks(links as never, shapeUri).toJSON() as ShapeJson;
+}
+
+function structuresMatch(storedLinks: readonly LinkLike[], rebuiltLinks: readonly LinkLike[]): boolean {
+  const stored = asShape(storedLinks);
+  const rebuilt = asShape(rebuiltLinks);
+  if ((stored.abstract === true) !== (rebuilt.abstract === true)) return false;
+  if (!parentsMatch(storedLinks, rebuiltLinks, stored.parent_shapes, rebuilt.parent_shapes)) return false;
+  if (!propertiesMatch(storedLinks, rebuiltLinks, stored.properties ?? [], rebuilt.properties ?? [])) return false;
+  const { properties: _sp, parent_shapes: _spa, abstract: _sa, ...storedRest } = stored;
+  const { properties: _rp, parent_shapes: _rpa, abstract: _ra, ...rebuiltRest } = rebuilt;
+  return deepEqual(storedRest, rebuiltRest);
+}
+
+/** Set equality of parent URIs. A missing `sh://node` is the legacy allowance, and only beside the same parent annotation. */
+function parentsMatch(
+  storedLinks: readonly LinkLike[],
+  rebuiltLinks: readonly LinkLike[],
+  storedParents: string[] | undefined,
+  rebuiltParents: string[] | undefined,
+): boolean {
+  const storedSet = [...new Set(storedParents ?? [])].sort();
+  const rebuiltSet = [...new Set(rebuiltParents ?? [])].sort();
+  if (storedSet.length === rebuiltSet.length && storedSet.every((uri, i) => uri === rebuiltSet[i])) return true;
+  const { shapeUri } = nodesOf(storedLinks);
+  const raw = storedLinks.filter((link) => link.source === shapeUri && link.predicate === 'sh://node');
+  if (raw.length !== 0 || storedSet.length !== 0 || rebuiltSet.length === 0) return false;
+  return samePresentAnnotation(storedLinks, rebuiltLinks, ANNOTATION.extends, shapeUri);
+}
+
+function propertiesMatch(
+  storedLinks: readonly LinkLike[],
+  rebuiltLinks: readonly LinkLike[],
+  storedProps: RawProperty[],
+  rebuiltProps: RawProperty[],
+): boolean {
+  const index = (props: RawProperty[]) => {
+    const map = new Map<string, RawProperty>();
+    for (const prop of props) {
+      if (!prop.name || !prop.path) return undefined;
+      const key = `${prop.name}\u0000${prop.path}`;
+      if (map.has(key)) return undefined;
+      map.set(key, prop);
+    }
+    return map;
   };
-  const annotations = (links: readonly LinkLike[]) => new Set(links.filter(isAnnotation).map(linkKey));
-  const a = annotations(stored);
-  const b = annotations(rebuilt);
-  // A predicate the SDK does not read is invisible to the comparison above, so a constraint it has
-  // no field for would pass it. Any node and predicate a rebuild does not write is one saving drops.
-  const written = new Set(rebuilt.map((l) => `${l.source}\u0000${l.predicate ?? ''}`));
-  const unknown = stored.some((l) => !written.has(`${l.source}\u0000${l.predicate ?? ''}`));
-  return !unknown && isSubset(asRead(stored), asRead(rebuilt)) && [...a].every((key) => b.has(key));
+  const stored = index(storedProps);
+  const rebuilt = index(rebuiltProps);
+  if (!stored || !rebuilt || stored.size !== rebuilt.size) return false;
+  const nodes = nodesOf(storedLinks).fields;
+  for (const [key, storedProp] of stored) {
+    const rebuiltProp = rebuilt.get(key);
+    if (!rebuiltProp) return false;
+    if (!inMatch(storedLinks, rebuiltLinks, nodes.get(storedProp.name ?? ''), storedProp.in, rebuiltProp.in))
+      return false;
+    const { in: _si, ...storedRest } = storedProp;
+    const { in: _ri, ...rebuiltRest } = rebuiltProp;
+    if (!deepEqual(storedRest, rebuiltRest)) return false;
+  }
+  return true;
 }
 
 /**
- * Whether `rebuilt` says everything `stored` does: scalars equal, and every key and every element
- * of `stored` is matched in `rebuilt` — elements wherever they sit, since an executor lists a
- * shape's properties in its own order (order is what `sh:order` says, and that is an annotation).
- * A key `stored` leaves `undefined` asks nothing — `toJSON` spells an absent field that way — so
- * what a rebuild newly writes cannot make an older stored shape differ; what `stored` holds and
- * `rebuilt` lacks can.
+ * The allowed values are the same set. Order does not matter, and two copies of one unlabelled
+ * value accept the same writes as one. A label, or any other field on the entry, is compared on
+ * its own: equal values do not allow a save to drop it.
+ * One malformed or repeated `sh://in` link is not "no constraint". A missing one is the legacy
+ * allowance only when both sides already carry the same `we://options` annotation.
  */
-function isSubset(stored: unknown, rebuilt: unknown): boolean {
-  if (Array.isArray(stored)) {
-    if (!Array.isArray(rebuilt)) return false;
-    const pool = [...(rebuilt as unknown[])];
-    return stored.every((element) => {
-      const index = pool.findIndex((candidate) => isSubset(element, candidate));
-      if (index === -1) return false;
-      pool.splice(index, 1);
-      return true;
-    });
+function inMatch(
+  storedLinks: readonly LinkLike[],
+  rebuiltLinks: readonly LinkLike[],
+  node: string | undefined,
+  storedIn: unknown,
+  rebuiltIn: unknown,
+): boolean {
+  const raw = node ? storedLinks.filter((link) => link.source === node && link.predicate === 'sh://in') : [];
+  if (raw.length > 1) return false;
+  if (raw.length === 1 && !arrayTarget(raw[0].target)) return false;
+  const storedSet = normalizeEnum(storedIn);
+  const rebuiltSet = normalizeEnum(rebuiltIn);
+  if (storedSet === 'bad' || rebuiltSet === 'bad') return false;
+  if (storedSet === undefined && rebuiltSet === undefined) return true;
+  if (storedSet === undefined && rebuiltSet !== undefined) {
+    if (!node || raw.length !== 0 || rebuiltSet.values.length === 0) return false;
+    return samePresentAnnotation(storedLinks, rebuiltLinks, ANNOTATION.options, node);
   }
-  if (stored !== null && typeof stored === 'object') {
-    if (rebuilt === null || typeof rebuilt !== 'object' || Array.isArray(rebuilt)) return false;
-    return Object.entries(stored).every(
-      ([key, value]) => value === undefined || isSubset(value, (rebuilt as Record<string, unknown>)[key]),
-    );
+  if (storedSet === undefined || rebuiltSet === undefined) return false;
+  return storedSet.values === rebuiltSet.values && storedSet.fields === rebuiltSet.fields;
+}
+
+function arrayTarget(target: string): boolean {
+  if (!target.startsWith('literal:string:')) return false;
+  try {
+    return Array.isArray(JSON.parse(target.slice('literal:string:'.length)));
+  } catch {
+    return false;
   }
-  return stored === rebuilt;
+}
+
+/**
+ * Both sides carry this annotation on `source`, and carry the same one.
+ * Another node's copy of the predicate does not count. Both absent does not count.
+ */
+function samePresentAnnotation(
+  stored: readonly LinkLike[],
+  rebuilt: readonly LinkLike[],
+  predicate: string,
+  source: string,
+): boolean {
+  const keys = (links: readonly LinkLike[]) =>
+    links
+      .filter((link) => link.predicate === predicate && link.source === source)
+      .map(linkKey)
+      .sort();
+  const a = keys(stored);
+  const b = keys(rebuilt);
+  return a.length > 0 && a.length === b.length && a.every((key, i) => key === b[i]);
+}
+
+/**
+ * A supported `sh:in` entry as the scalar text AD4M compares, plus any field that is not that value.
+ * Bare strings and finite numbers count. So does `{ value }` of either. Anything else is not a value
+ * this manifest can store.
+ */
+function scalarText(entry: unknown): { text: string; fields: string } | undefined {
+  if (typeof entry === 'string') return { text: entry, fields: '' };
+  if (typeof entry === 'number' && Number.isFinite(entry)) return { text: String(entry), fields: '' };
+  if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) return undefined;
+  const record = entry as Record<string, unknown>;
+  if (!('value' in record)) return undefined;
+  const { value, ...rest } = record;
+  let text: string | undefined;
+  if (typeof value === 'string') text = value;
+  else if (typeof value === 'number' && Number.isFinite(value)) text = String(value);
+  if (text === undefined) return undefined;
+  const fields = Object.keys(rest).filter((key) => rest[key] !== undefined);
+  if (fields.length === 0) return { text, fields: '' };
+  return { text, fields: stable(Object.fromEntries(fields.map((key) => [key, rest[key]]))) };
+}
+
+/**
+ * The value set, and the non-value fields hanging off each value.
+ * `undefined` means no constraint. `'bad'` means an entry that is not a supported value.
+ * Repeated unlabelled entries collapse. A label or an unknown field does not: it stays on that value.
+ */
+function normalizeEnum(value: unknown): { values: string; fields: string } | undefined | 'bad' {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) return 'bad';
+  const fieldsByValue = new Map<string, Set<string>>();
+  for (const entry of value) {
+    const scalar = scalarText(entry);
+    if (!scalar) return 'bad';
+    const held = fieldsByValue.get(scalar.text) ?? new Set<string>();
+    held.add(scalar.fields);
+    fieldsByValue.set(scalar.text, held);
+  }
+  const values = [...fieldsByValue.keys()].sort();
+  return {
+    values: values.join('\n'),
+    fields: values
+      .map((text) => `${JSON.stringify(text)}:${[...(fieldsByValue.get(text) ?? [])].sort().join('\u0000')}`)
+      .join('\n'),
+  };
+}
+
+function stable(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map((item) => stable(item)).join(',')}]`;
+  if (value !== null && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stable(record[key])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'undefined';
+}
+
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+    return a.every((item, index) => deepEqual(item, b[index]));
+  }
+  if (a !== null && typeof a === 'object' && b !== null && typeof b === 'object') {
+    const left = a as Record<string, unknown>;
+    const right = b as Record<string, unknown>;
+    const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
+    for (const key of keys) {
+      const av = left[key];
+      const bv = right[key];
+      if (av === undefined && bv === undefined) continue;
+      if (av === undefined || bv === undefined || !deepEqual(av, bv)) return false;
+    }
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Structure worth comparing before an inherited field can be left out of the manifest.
+ * A target class is not in this list: a child compiled without that class resolved omits it, and
+ * a declared override is kept by its `sh:order` annotation rather than by this comparison.
+ */
+const STRUCTURE_KEYS = [
+  'path',
+  'datatype',
+  'min_count',
+  'max_count',
+  'node_kind',
+  'relation_kind',
+  'collection',
+  'ordering',
+  'has_value',
+  'identity',
+  'resolve_language',
+] as const;
+
+function sameDeclaration(child: RawProperty, parent: RawProperty): boolean {
+  for (const key of STRUCTURE_KEYS) {
+    if ((child[key] ?? null) !== (parent[key] ?? null)) return false;
+  }
+  const childSet = normalizeEnum(child.in);
+  const parentSet = normalizeEnum(parent.in);
+  if (childSet === 'bad' || parentSet === 'bad') return false;
+  if (childSet === undefined || parentSet === undefined) return childSet === parentSet;
+  return childSet.values === parentSet.values && childSet.fields === parentSet.fields;
+}
+
+/**
+ * Options a manifest can store for a native `sh:in`.
+ * A bare string, a bare finite number, and `{ value }` of either all count. The same routine feeds the
+ * comparison, so a value recovered here is a value the equality check accepts.
+ * An exact numeric text on a number property comes back as a number (`"2"` → `2`). `"2.0"` stays
+ * text, because turning it into `2` would make the next write emit a different value. Labels are
+ * not part of the manifest value; the lossless check keeps the shape read-only while they are there.
+ */
+function recoverOptions(inn: unknown, type: string): (string | number)[] | undefined {
+  if (!Array.isArray(inn) || inn.length === 0) return undefined;
+  const options: (string | number)[] = [];
+  const seen = new Set<string>();
+  for (const entry of inn) {
+    const scalar = scalarText(entry);
+    if (!scalar) return undefined;
+    if (seen.has(scalar.text)) continue;
+    seen.add(scalar.text);
+    if (type === 'number') {
+      const numeric = Number(scalar.text);
+      options.push(
+        scalar.text.trim() === scalar.text && Number.isFinite(numeric) && String(numeric) === scalar.text
+          ? numeric
+          : scalar.text,
+      );
+    } else {
+      options.push(scalar.text);
+    }
+  }
+  return options;
 }

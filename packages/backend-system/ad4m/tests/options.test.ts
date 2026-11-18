@@ -91,6 +91,26 @@ describe('the runtime compiler does the same for a module manifest', () => {
     expect(String(Literal.fromUrl('literal:number:2').get())).toBe('2');
   });
 
+  it('writes a URI-like option as its own text, and writes nothing for an empty or absent list', () => {
+    const listed: EntityManifest = {
+      version: '1',
+      entities: {
+        Note: {
+          properties: {
+            state: { type: 'string', options: ['task://todo', 'task://doing'] },
+            empty: { type: 'string', options: [] },
+            open: { type: 'string' },
+          },
+          relations: {},
+        },
+      },
+    };
+    const classes = compileManifest(listed, { moduleId: 'notes' });
+    expect(inOf(classes.Note, 'state')).toEqual([{ value: 'task://todo' }, { value: 'task://doing' }]);
+    expect(inOf(classes.Note, 'empty')).toBeUndefined();
+    expect(inOf(classes.Note, 'open')).toBeUndefined();
+  });
+
   it('reports the same answer on the entries the port hands callers', () => {
     expect(note.properties.find((p) => p.name === 'mood')?.options).toEqual([{ value: 'up' }, { value: 'down' }]);
     expect(note.properties.find((p) => p.name === 'state')?.options).toBeUndefined();
