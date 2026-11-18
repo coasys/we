@@ -13,6 +13,8 @@
 #![forbid(unsafe_code)]
 
 #[cfg(not(target_arch = "wasm32"))]
+mod base_screen;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod connected;
 pub mod gallery;
 pub mod gallery_widgets;
@@ -236,6 +238,29 @@ impl RendererApp {
         };
         let session =
             Session::offline(spec, bag, screen).with_dollar_types(move |ty| types.contains(ty));
+        Self {
+            session,
+            registry,
+            theme: we_style::Theme::empty("dark", we_style::Polarity::Dark),
+            dropped_calls: static_dropped,
+            edit: EditState::default(),
+            layout: None,
+            layout_key: None,
+            transitions: we_egui::Transitions::default(),
+            drawn: None,
+            animated_at: None,
+            drawn_frames: 0,
+            surface_sent: std::collections::HashMap::new(),
+            debug: false,
+            stages: Stages::default(),
+            frame_log: false,
+            first_screen: None,
+        }
+    }
+
+    /// A session the caller already built — the base connect screen uses
+    /// this so the first frame is that session, not a dummy tree.
+    pub fn from_session(session: Session, registry: Registry) -> Self {
         Self {
             session,
             registry,

@@ -1,10 +1,10 @@
 //! `we-app --connect`: the window that talks to a live executor (E7).
 //!
-//! Three stages, each a plain egui screen until they become template screens:
+//! Three stages:
 //!
-//! 1. **Connect** — what [`ConnectFlow`] is doing: searching, waiting for the
-//!    launcher's approval code (or a multi-user email, code or password),
-//!    connected, locked, or failed with the reason and a retry.
+//! 1. **Connect** — the Coasys base template. A click on This computer
+//!    starts [`ConnectFlow`]. While the flow asks for a code, the host
+//!    draws that prompt over the template.
 //! 2. **Pick a space** — the agent's perspectives, shared first. `--space`
 //!    skips it.
 //! 3. **The space** — the Coasys app against live data ([`crate::live`]),
@@ -14,9 +14,11 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
 use egui::{Color32, RichText};
-use we_ad4m::connect::{Ask, ConnectFlow, ConnectPhase, ConnectSettings, GrantScope};
+use we_ad4m::connect::{Ask, ConnectSettings, GrantScope};
 use we_ad4m::{Connection, Notices, SpaceRow, WriteHost};
 use we_data::writes::Confirm;
+
+use crate::base_screen::BaseScreen;
 
 use crate::live::{live_space_app, LiveSpace};
 
@@ -37,9 +39,7 @@ pub struct ConnectArgs {
 type Pending<T> = Arc<Mutex<Option<Result<T, String>>>>;
 
 enum Stage {
-    Connect {
-        input: String,
-    },
+    Connect,
     Pick {
         conn: Connection,
         url: String,
@@ -56,34 +56,31 @@ enum Stage {
 }
 
 pub struct ConnectedApp {
-    rt: we_ad4m::Runtime,
     bundle: we_template::Bundle,
     args: ConnectArgs,
     ctx: egui::Context,
-    /// The connect session, for as long as the window is connected — not
-    /// just while the connect screen is up (Lal F5). It owns the token's
-    /// refusal watch: a grant removed in the launcher flips it to Failed,
-    /// and the window goes back to the connect screen to say so.
-    flow: ConnectFlow,
+    /// The base template and the connect flow. The flow stays after the
+    /// window adopts the connection, so a grant removed in the launcher
+    /// still flips it to Failed (Lal F5).
+    base: BaseScreen,
     stage: Stage,
+    /// The capability prompt's field. It is not part of the template.
+    prompt: String,
     /// `--space` is applied once; going back to the picker leaves it alone.
     auto_space: Option<String>,
 }
 
 impl ConnectedApp {
     pub fn new(ctx: egui::Context, bundle: we_template::Bundle, args: ConnectArgs) -> Self {
-        let rt = we_ad4m::Runtime::new().expect("the adapter runtime starts");
-        let flow = start_flow(&rt, &ctx, &args.settings);
+        let base = BaseScreen::open(ctx.clone(), &bundle, args.settings.clone());
         Self {
-            rt,
             bundle,
             auto_space: args.space.clone(),
             args,
             ctx,
-            flow,
-            stage: Stage::Connect {
-                input: String::new(),
-            },
+            base,
+            prompt: String::new(),
+            stage: Stage::Connect,
         }
     }
 
@@ -134,7 +131,7 @@ impl ConnectedApp {
     /// Which screen is up: `connect`, `pick` or `space`.
     pub fn stage(&self) -> &'static str {
         match self.stage {
-            Stage::Connect { .. } => "connect",
+            Stage::Connect => "connect",
             Stage::Pick { .. } => "pick",
             Stage::Space { .. } => "space",
         }
@@ -149,23 +146,37 @@ impl ConnectedApp {
     }
 
     pub fn ui(&mut self, ui: &mut egui::Ui) {
-        if !matches!(self.stage, Stage::Connect { .. }) {
+        self.base.poll();
+        if matches!(self.stage, Stage::Connect) {
+            if let Some((conn, url)) = self.base.take_ready() {
+                self.go(Next::Connected(conn, url));
+            }
+        } else if self.base.is_failed() {
             // The session ended under an open screen — a token refused, a
             // grant removed: back to the connect screen, which says why.
-            if let ConnectPhase::Failed { .. } = self.flow.phase() {
-                self.stage = Stage::Connect {
-                    input: String::new(),
-                };
-            } else {
-                // The socket has no "dropped" callback to wake on; look again
-                // twice a second so a lost connection shows.
-                ui.ctx()
-                    .request_repaint_after(std::time::Duration::from_millis(500));
-            }
+            self.stage = Stage::Connect;
+            self.prompt.clear();
+        } else {
+            // The socket has no "dropped" callback to wake on; look again
+            // twice a second so a lost connection shows.
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(500));
         }
-        let flow = &self.flow;
         let next = match &mut self.stage {
-            Stage::Connect { input } => connect_screen(ui, flow, &self.args.settings.scope, input),
+            Stage::Connect => {
+                self.base.frame(ui);
+                if let Some((ask, note)) = self.base.ask() {
+                    capability_overlay(
+                        ui,
+                        &self.base,
+                        &self.args.settings.scope,
+                        &ask,
+                        note.as_deref(),
+                        &mut self.prompt,
+                    );
+                }
+                None
+            }
             Stage::Pick {
                 spaces,
                 filter,
@@ -198,10 +209,9 @@ impl ConnectedApp {
     fn go(&mut self, next: Next) {
         match next {
             Next::Retry => {
-                self.flow = start_flow(&self.rt, &self.ctx, &self.args.settings);
-                self.stage = Stage::Connect {
-                    input: String::new(),
-                };
+                self.prompt.clear();
+                self.base.start_reconnect();
+                self.stage = Stage::Connect;
             }
             Next::Connected(conn, url) => {
                 let spaces = self.list_spaces(&conn);
@@ -252,30 +262,6 @@ enum Next {
     Back,
 }
 
-fn start_flow(
-    rt: &we_ad4m::Runtime,
-    ctx: &egui::Context,
-    settings: &ConnectSettings,
-) -> ConnectFlow {
-    let ctx = ctx.clone();
-    ConnectFlow::start(&rt.handle(), settings.clone(), move || {
-        ctx.request_repaint()
-    })
-}
-
-fn card(ui: &mut egui::Ui, body: impl FnOnce(&mut egui::Ui)) {
-    ui.vertical_centered(|ui| {
-        ui.add_space(ui.available_height() * 0.15);
-        ui.set_max_width(520.0);
-        egui::Frame::group(ui.style())
-            .inner_margin(24.0)
-            .show(ui, |ui| {
-                ui.set_width(460.0);
-                body(ui)
-            });
-    });
-}
-
 /// What the capability request asks for, as the connect screen says it.
 pub fn grant_sentence(scope: &GrantScope) -> String {
     match scope {
@@ -290,99 +276,80 @@ pub fn grant_sentence(scope: &GrantScope) -> String {
     }
 }
 
-fn connect_screen(
-    ui: &mut egui::Ui,
-    flow: &ConnectFlow,
-    scope: &GrantScope,
-    input: &mut String,
-) -> Option<Next> {
-    let phase = flow.phase();
-    if let ConnectPhase::Connected { url } = &phase {
-        if let Some(conn) = flow.take_connection() {
-            return Some(Next::Connected(conn, url.clone()));
-        }
-    }
-    let mut next = None;
-    card(ui, |ui| {
-        ui.heading("Connect to AD4M");
-        ui.add_space(12.0);
-        match &phase {
-            ConnectPhase::Searching => {
-                ui.horizontal(|ui| {
-                    ui.spinner();
-                    ui.label("Looking for your AD4M executor…");
-                });
-            }
-            ConnectPhase::Checking => {
-                ui.horizontal(|ui| {
-                    ui.spinner();
-                    ui.label("Checking with the executor…");
-                });
-            }
-            ConnectPhase::Connected { url } => {
-                ui.label(format!("Connected to {url}."));
-            }
-            ConnectPhase::Asking { ask, note } => {
-                let (prompt, secret) = match ask {
-                    Ask::CapabilityCode { request_id } => (
-                        format!(
-                            "This app asked for access (request {request_id}).\n\
-                             {}\n\
-                             Approve it in the AD4M launcher, then type the 6-digit code it shows.",
-                            grant_sentence(scope)
-                        ),
-                        true,
-                    ),
-                    Ask::Email => ("This executor has accounts. Your email:".to_string(), false),
-                    Ask::EmailCode { email } => {
-                        (format!("Type the code emailed to {email}."), true)
-                    }
-                    Ask::Password {
-                        email,
-                        new_account: true,
-                    } => (
-                        format!("No account for {email} yet — choose a password."),
-                        true,
-                    ),
-                    Ask::Password { email, .. } => (format!("Password for {email}:"), true),
-                };
-                ui.label(prompt);
-                if let Some(note) = note {
-                    ui.colored_label(Color32::from_rgb(230, 160, 60), note);
-                }
-                ui.add_space(8.0);
-                let field = ui.add(
-                    egui::TextEdit::singleline(input)
-                        .password(secret)
-                        .desired_width(f32::INFINITY),
-                );
-                let enter = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-                if !field.has_focus() && input.is_empty() {
-                    field.request_focus();
-                }
-                if (ui.button("Continue").clicked() || enter) && !input.trim().is_empty() {
-                    flow.answer(std::mem::take(input));
-                }
-            }
-            ConnectPhase::Locked { url } => {
-                ui.label(format!(
-                    "The executor at {url} is locked. Unlock it in the AD4M launcher, then retry."
-                ));
-                if ui.button("Retry").clicked() {
-                    next = Some(Next::Retry);
-                }
-            }
-            ConnectPhase::Failed { reason } => {
-                ui.colored_label(Color32::from_rgb(230, 90, 90), "Could not connect.");
-                ui.label(reason);
-                ui.add_space(8.0);
-                if ui.button("Retry").clicked() {
-                    next = Some(Next::Retry);
-                }
-            }
-        }
+/// The centered card the space picker uses.
+fn card(ui: &mut egui::Ui, body: impl FnOnce(&mut egui::Ui)) {
+    ui.vertical_centered(|ui| {
+        ui.add_space(ui.available_height() * 0.15);
+        ui.set_max_width(520.0);
+        egui::Frame::group(ui.style())
+            .inner_margin(24.0)
+            .show(ui, |ui| {
+                ui.set_width(460.0);
+                body(ui)
+            });
     });
-    next
+}
+
+/// The host prompt, over the template, while the flow is asking.
+/// The words match the previous connect screen, including `(request {id})`.
+fn capability_overlay(
+    ui: &mut egui::Ui,
+    base: &BaseScreen,
+    scope: &GrantScope,
+    ask: &Ask,
+    note: Option<&str>,
+    input: &mut String,
+) {
+    let (prompt, secret) = match ask {
+        Ask::CapabilityCode { request_id } => (
+            format!(
+                "This app asked for access (request {request_id}).\n\
+                 {}\n\
+                 Approve it in the AD4M launcher, then type the 6-digit code it shows.",
+                grant_sentence(scope)
+            ),
+            true,
+        ),
+        Ask::Email => ("This executor has accounts. Your email:".to_string(), false),
+        Ask::EmailCode { email } => (format!("Type the code emailed to {email}."), true),
+        Ask::Password {
+            email,
+            new_account: true,
+        } => (
+            format!("No account for {email} yet — choose a password."),
+            true,
+        ),
+        Ask::Password { email, .. } => (format!("Password for {email}:"), true),
+    };
+    // `Id::unique` hashes this salt. The value is the same every frame, so the
+    // password field keeps focus. It is not a fresh id per frame.
+    egui::Area::new(egui::Id::unique("base-capability"))
+        .order(egui::Order::Foreground)
+        .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+        .show(ui.ctx(), |ui| {
+            egui::Frame::group(ui.style())
+                .inner_margin(24.0)
+                .show(ui, |ui| {
+                    ui.set_width(460.0);
+                    ui.label(prompt);
+                    if let Some(note) = note {
+                        ui.colored_label(Color32::from_rgb(230, 160, 60), note);
+                    }
+                    ui.add_space(8.0);
+                    let field = ui.add(
+                        egui::TextEdit::singleline(input)
+                            .password(secret)
+                            .desired_width(f32::INFINITY),
+                    );
+                    let enter = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                    if !field.has_focus() && input.is_empty() {
+                        field.request_focus();
+                    }
+                    if (ui.button("Continue").clicked() || enter) && !input.trim().is_empty() {
+                        base.answer(std::mem::take(input));
+                    }
+                });
+        });
 }
 
 fn pick_screen(

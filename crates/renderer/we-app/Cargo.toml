@@ -24,6 +24,9 @@ we-screen.workspace = true
 # build is the offline app until E10.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 we-ad4m.workspace = true
+# The connect screen stores the adapter runtime's handle. Native only, same
+# as we-ad4m: the wasm build must not pull tokio.
+tokio = { version = "1", features = ["rt"] }
 # The logger (`logging.rs`): `log` is already in the tree, no logger crate is.
 log.workspace = true
 

@@ -56,6 +56,7 @@ fn connect_pick_and_render() {
     let bundle = we_template::Bundle::parse(BUNDLE).unwrap();
     let mut h = egui_kittest::Harness::builder()
         .with_size(egui::vec2(1280.0, 800.0))
+        .with_accessibility_check(false)
         .build_ui_state(
             move |ui, app: &mut Option<ConnectedApp>| {
                 app.get_or_insert_with(|| {
@@ -68,6 +69,7 @@ fn connect_pick_and_render() {
             None,
         );
 
+    choose_this_computer(&mut h);
     step_until(&mut h, "the picker", Duration::from_secs(60), |h| {
         h.state().as_ref().is_some_and(|a| a.stage() == "pick")
             && h.query_by_label("e7-ui   (local)").is_some()
@@ -140,6 +142,7 @@ fn app_for(url: &str, tokens: &std::path::Path) -> H<'static> {
     let bundle = we_template::Bundle::parse(BUNDLE).unwrap();
     egui_kittest::Harness::builder()
         .with_size(egui::vec2(1280.0, 800.0))
+        .with_accessibility_check(false)
         .build_ui_state(
             move |ui, app: &mut Option<ConnectedApp>| {
                 app.get_or_insert_with(|| {
@@ -156,6 +159,16 @@ fn stage(h: &H) -> &'static str {
     h.state().as_ref().map_or("none", |a| a.stage())
 }
 
+/// The base template's This computer row. The flow starts on that click.
+fn choose_this_computer(h: &mut H) {
+    step_until(h, "the connect screen", Duration::from_secs(15), |h| {
+        h.query_by_label_contains("Where to keep your spaces")
+            .is_some()
+            && h.query_by_label_contains("This computer").is_some()
+    });
+    h.get_by_label_contains("This computer").click();
+}
+
 /// The executor goes away under an open space (Lal F5): the window says
 /// the connection is lost and offers to reconnect, instead of a green dot
 /// over rows that no longer update.
@@ -169,6 +182,7 @@ fn a_dead_executor_is_shown() {
     kit::seed_space(&rt, &writer, "e7-dies");
     let tokens = tempfile::tempdir().unwrap();
     let mut h = app_for(&executor.url, tokens.path());
+    choose_this_computer(&mut h);
     step_until(&mut h, "the picker", Duration::from_secs(60), |h| {
         stage(h) == "pick" && h.query_by_label("e7-dies   (local)").is_some()
     });
@@ -188,38 +202,20 @@ fn a_dead_executor_is_shown() {
     assert!(h.query_by_label("Reconnect").is_some());
 }
 
-/// The grant is removed in the launcher while a space is open (Lal F5):
-/// the window goes back to the connect screen and says why.
-#[test]
-fn a_revoked_grant_returns_to_the_connect_screen() {
-    let Some(executor) = kit::start_executor_with_admin("e7-admin") else {
-        return;
-    };
-    let rt = we_ad4m::Runtime::new().unwrap();
-    let admin = kit::connect_as(&rt, &executor.url, "e7-admin");
-    rt.block_on(admin.client().agent.generate("passphrase".into()))
-        .unwrap();
-    kit::seed_space_as(&rt, &admin, "e7-revoked");
-    let tokens = tempfile::tempdir().unwrap();
-    let mut h = app_for(&executor.url, tokens.path());
-
-    // The request, as the connect screen shows it.
+/// Approve the capability the overlay is showing and submit its code.
+/// Returns the request id the launcher named.
+fn approve_capability(h: &mut H, rt: &we_ad4m::Runtime, admin: &we_ad4m::Connection) -> String {
     let mut request_id = String::new();
-    step_until(
-        &mut h,
-        "the capability request",
-        Duration::from_secs(60),
-        |h| {
-            let Some(node) = h.query_by_label_contains("(request ") else {
-                return false;
-            };
-            // A label widget carries its text as the node's value.
-            let label = node.accesskit_node().value().unwrap_or_default();
-            let start = label.find("(request ").unwrap() + "(request ".len();
-            request_id = label[start..].split(')').next().unwrap().to_string();
-            true
-        },
-    );
+    step_until(h, "the capability request", Duration::from_secs(60), |h| {
+        let Some(node) = h.query_by_label_contains("(request ") else {
+            return false;
+        };
+        // A label widget carries its text as the node's value.
+        let label = node.accesskit_node().value().unwrap_or_default();
+        let start = label.find("(request ").unwrap() + "(request ".len();
+        request_id = label[start..].split(')').next().unwrap().to_string();
+        true
+    });
     let app = we_ad4m::connect::app_info(&we_ad4m::connect::GrantScope::ReadOnly);
     let auth = serde_json::json!({
         "requestId": request_id,
@@ -236,6 +232,60 @@ fn a_revoked_grant_returns_to_the_connect_screen() {
         .type_text(&code);
     h.step();
     h.get_by_label("Continue").click();
+    request_id
+}
+
+/// A second window with the same token directory reaches the picker
+/// without another capability code.
+#[test]
+fn a_restart_reuses_the_token() {
+    let Some(executor) = kit::start_executor_with_admin("e7-admin") else {
+        return;
+    };
+    let rt = we_ad4m::Runtime::new().unwrap();
+    let admin = kit::connect_as(&rt, &executor.url, "e7-admin");
+    rt.block_on(admin.client().agent.generate("passphrase".into()))
+        .unwrap();
+    kit::seed_space_as(&rt, &admin, "e7-again");
+    let tokens = tempfile::tempdir().unwrap();
+    {
+        let mut h = app_for(&executor.url, tokens.path());
+        choose_this_computer(&mut h);
+        approve_capability(&mut h, &rt, &admin);
+        step_until(&mut h, "the picker", Duration::from_secs(60), |h| {
+            stage(h) == "pick" && h.query_by_label("e7-again   (local)").is_some()
+        });
+    }
+    let mut h = app_for(&executor.url, tokens.path());
+    choose_this_computer(&mut h);
+    step_until(
+        &mut h,
+        "the picker without a new code",
+        Duration::from_secs(60),
+        |h| stage(h) == "pick" && h.query_by_label("e7-again   (local)").is_some(),
+    );
+    assert!(
+        h.query_by_label_contains("(request ").is_none(),
+        "a restart asked for a code again"
+    );
+}
+
+/// The grant is removed in the launcher while a space is open (Lal F5):
+/// the window goes back to the connect screen and says why.
+#[test]
+fn a_revoked_grant_returns_to_the_connect_screen() {
+    let Some(executor) = kit::start_executor_with_admin("e7-admin") else {
+        return;
+    };
+    let rt = we_ad4m::Runtime::new().unwrap();
+    let admin = kit::connect_as(&rt, &executor.url, "e7-admin");
+    rt.block_on(admin.client().agent.generate("passphrase".into()))
+        .unwrap();
+    kit::seed_space_as(&rt, &admin, "e7-revoked");
+    let tokens = tempfile::tempdir().unwrap();
+    let mut h = app_for(&executor.url, tokens.path());
+    choose_this_computer(&mut h);
+    let request_id = approve_capability(&mut h, &rt, &admin);
     step_until(&mut h, "the picker", Duration::from_secs(60), |h| {
         stage(h) == "pick" && h.query_by_label("e7-revoked   (local)").is_some()
     });
@@ -271,6 +321,7 @@ fn the_page_lays_out_beside_the_data_panel() {
     let _uuid = kit::seed_space(&rt, &writer, "b1-ui");
     let tokens = tempfile::tempdir().unwrap();
     let mut h = app_for(&executor.url, tokens.path());
+    choose_this_computer(&mut h);
 
     step_until(&mut h, "the picker", Duration::from_secs(60), |h| {
         h.state().as_ref().is_some_and(|a| a.stage() == "pick")
