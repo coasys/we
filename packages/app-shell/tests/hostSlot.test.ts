@@ -1,8 +1,8 @@
 /**
- * The lending mechanism the ten back-channels now use.
+ * The lending mechanism the back-channels use.
  *
- * Four audits running have named these: a lower store hands a closure upward, the upper store keeps
- * it in a `let`, and nothing ever takes it back — so a provider that unmounts leaves the upper store
+ * A lower store hands a closure upward; kept in a bare `let`, nothing ever takes it back — so a
+ * provider that unmounts leaves the upper store
  * reading signals from a disposed scope, answering with whatever was true when the provider died.
  *
  * `hostSlot` and `hostListeners` are three lines each, and the only part with any subtlety is the
@@ -18,9 +18,7 @@ import { hostListeners, hostSlot } from '../src/shared/hostSlot';
 
 describe('hostSlot', () => {
   it('is empty until something is lent', () => {
-    // Absent, not a default: what "nothing lent" means is the caller's decision, and the callers
-    // disagree — `autoInterpretGate` reads off, `interpretationCandidatesGate` reads none, and
-    // `collectionInterpretation` falls back to the candidates.
+    // Absent, not a default: what "nothing lent" means is the caller's decision.
     expect(hostSlot<string>().get()).toBeNull();
   });
 

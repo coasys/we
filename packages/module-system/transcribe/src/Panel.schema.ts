@@ -62,13 +62,8 @@ const SUBJECT = { $: SUBJECT_EXPR };
  *
  * ## Naming a call is not the same as reading one back
  *
- * This used to be "the address names a call", and the two coincided for as long as the only way to
- * pick a call up was a button that cleared the parameter as it went. The module rail can now
- * continue the call on screen, which leaves the address naming it — so the panel called a meeting
- * in progress a past one, and hid the level meter, the coverage readout, the unsaved line and the
- * REC badge for the rest of it.
- *
- * The honest question is whether the call named is the one being recorded, and this module can
+ * The address can name the call being recorded (the module rail continues the call on screen), so
+ * "the address names a call" does not mean the call is past. The question is whether the call named is the one being recorded, and this module can
  * answer it without naming another: `callId` is what it is about, falling back to the live call's
  * own record, so it is set from the moment a call is joined rather than from the first thing said.
  *
@@ -82,10 +77,9 @@ const VIEWING_LIVE = { $: VIEWING_LIVE_EXPR };
  * The words for an empty transcript, and why they read this module's own store.
  *
  * Three sentences for three situations: already in a call (nothing to offer), somebody is in the
- * call on screen (join them), nobody is (continue it). Both facts used to be read off the call
- * module — `modules.call.active`, `modules.call.liveCalls` — which was the one place this module
- * named that one, against the rule that capabilities meet in a medium and never in each other. They
- * are read off presence now, through this module's own `inCall` and `callOnScreenLive`.
+ * call on screen (join them), nobody is (continue it). Both facts are read off
+ * presence, through this module's own `inCall` and `callOnScreenLive`, and not off the call module:
+ * capabilities meet in a medium and never in each other.
  *
  * `modules.call` as a bare condition is the one permitted reference: it asks whether the module is
  * installed at all, which is the documented way to depend on an optional module, and without it the
@@ -185,11 +179,8 @@ const INTERPRETATION_SUBJECT = { $: INTERPRETATION_SUBJECT_EXPR };
 /**
  * What is staged on the call this panel is showing, waiting on somebody.
  *
- * Keyed on the subject rather than read as "the live call's", which is what it used to be. Two
- * things were wrong with that and only one was visible: a panel opened on a *past* call listed
- * whatever the live one had staged, and — the reported symptom — reopening any call after a restart
- * listed nothing at all, because the flat list was only ever filled by a pass settling or by the
- * transcriber adopting a record, and neither happens on a fresh boot. Reading a key fetches it.
+ * Keyed on the subject rather than read as "the live call's", so a panel on a past call lists that
+ * call's proposals, and a call reopened after a restart lists them too. Reading a key fetches it.
  */
 const PROPOSALS = `modules.transcribe.proposalsFor[${INTERPRETATION_SUBJECT_EXPR}]`;
 
@@ -239,9 +230,8 @@ const EXTRACTED_COUNT = `count(${EXTRACTED_ROWS})`;
  * What this conversation found that was already in the space — another call's, the space's own, or
  * somebody's typed by hand. See `CollectionBlock.recognised`.
  *
- * Its own list rather than more of {@link EXTRACTED_ROWS}, which it used to be: a pass that matched
- * last week's task linked it as made here, and it sat under "Accepted" as though somebody had just
- * kept it. No filter for suggestions, since a pass recognising something stages nothing new.
+ * Its own list rather than more of {@link EXTRACTED_ROWS}: a pass that matches last week's task did
+ * not make it here, and it must not sit under "Accepted" as though somebody had just kept it. No filter for suggestions, since a pass recognising something stages nothing new.
  */
 const RECOGNISED_ROWS = 'first(local.extractedFrom).recognised';
 const RECOGNISED_COUNT = `count(${RECOGNISED_ROWS})`;
@@ -310,10 +300,8 @@ function note(status: string, icon: string, text: string, action?: SchemaNode): 
  * utterance takes seconds to buffer, transcribe and write, so a panel showing only saved lines is
  * indistinguishable from a broken microphone for the whole of that delay.
  *
- * The workshop template used to be that consumer, and its copy of the panel never placed this — so
- * the interface built around recording a meeting said *less* about a failing microphone than the
- * default one did. It places the whole panel now, which is the better answer to a shared piece; the
- * part stays for the interface that genuinely wants a different arrangement.
+ * The part is for the interface that genuinely wants a different arrangement; a template that only
+ * wants the panel places the whole panel.
  *
  * No `subject`. Unlike the feed, this is about the microphone *this agent* is running right now,
  * which is a property of the session and not of any call record — pointing it at another call
@@ -455,9 +443,7 @@ export const captureMeter: SchemaNode = {
                 height: '100%',
                 r: 'pill',
                 // The `success` FILL, not `success-500`: a scale position is one theme's idea of a
-                // green and cannot follow a theme that pins the role. It also hid from `role-audit`,
-                // which until now only read colours written as plain strings and not ones inside an
-                // expression.
+                // green and cannot follow a theme that pins the role.
                 bg: { $: "modules.transcribe.speaking ? 'success' : 'surface-active'" },
                 // `styles` rather than `width`, because the value is computed per frame and a DS prop
                 // takes a token. This is the escape hatch working as intended.
@@ -504,7 +490,7 @@ export const captureMeter: SchemaNode = {
 /**
  * How much of this call is actually being written down.
  *
- * The one number a transcript most needs to admit, and until now it was computed and shown nowhere.
+ * The one number a transcript most needs to admit.
  * Transcription is per microphone: every agent records their own and appends to one shared record,
  * so a call where two of five people are transcribing produces a transcript **of two people** that
  * reads exactly like a transcript of the call. Nothing downstream can tell the difference — the
@@ -553,15 +539,9 @@ export const coverage: SchemaNode = {
 
       ## The count, and nothing under it
 
-      There was a second line while the count was short: "Only what those microphones hear reaches
-      this record." It was wrong as well as wordy. This panel has a composer, and a typed line is in
-      the record without any microphone hearing it — so the sentence overstated the gap it was
-      warning about, in a panel that offers the very thing it forgot.
-
-      The count already carries the warning. It turns from `success-text` to `warning-text` when
+      The count carries the warning. It turns from `success-text` to `warning-text` when
       somebody is not being transcribed, which is the whole signal; a sentence appearing underneath
-      to explain a number is the kind of chrome people stop reading before the day it matters. That
-      argument was already in the note it replaced, one level up.
+      to explain a number is the kind of chrome people stop reading before the day it matters.
     */
     condition: { $: 'count(modules.transcribe.callAgents) && modules.transcribe.available' },
     // Holds its height in both directions — see `MIC_FADE`. Its own `available` empties before the
@@ -1002,33 +982,27 @@ const proposalEditor: SchemaNode = {
  *
  * ## Why it scrolls, and why that is not a `maxHeight`
  *
- * It used to be a plain column beside the panel's one scroll area, and a long call filled the panel
- * with it: a `Column` cannot shrink below its content unless it is told it may, so flexbox took the
- * whole deficit out of the results list underneath — which collapsed to nothing while the review
- * list ran off the bottom. `minHeight: '0'` is what makes this section shrinkable at all; the scroll
+ * A `Column` cannot shrink below its content unless it is told it may, so flexbox would take the
+ * whole deficit out of the results list underneath. `minHeight: '0'` is what makes this section shrinkable at all; the scroll
  * area inside it is then what the shrinking does. A pixel cap would have been a guess about a panel
  * whose height is the reader's to choose.
  *
  * ## A grid, because a card is not a paragraph
  *
- * `minChildWidth` rather than a column: widening the panel used to stretch each card to the full
- * width, which for four fields of a task is a strip of text with a button at the end of it. The
+ * `minChildWidth` rather than a column: a card stretched to the full width of a wide panel is, for
+ * four fields of a task, a strip of text with a button at the end of it. The
  * cards reflow into two and three abreast as the lane grows, and back to one in a narrow dock, with
  * no breakpoint to get wrong.
  *
  * ## Still `we-alert`
  *
- * The look is unchanged and deliberately so — `variant: 'edge'` is a plain surface with a thick
- * status edge, which is what stops a run of these reading as a stack of brown rectangles in a dark
- * theme. It also keeps the warning glyph, which is what makes the state readable to somebody who
- * cannot tell the colours apart. What changed is only what is *inside* it.
+ * `variant: 'edge'` is a plain surface with a thick status edge, which is what stops a run of these
+ * reading as a stack of brown rectangles in a dark theme. It also keeps the warning glyph, which is
+ * what makes the state readable to somebody who cannot tell the colours apart.
  *
- * ## Editing, which this used to refuse
+ * ## Editing
  *
- * The old note here said editing a suggestion is authoring and belongs to whatever normally edits
- * that record. That was true when the only thing staged was a single field of a record somebody
- * already owned. It stopped being true when a pass began proposing whole records: the reviewer is
- * then looking at the only surface that will ever show it *as a suggestion*, and sending them
+ * A pass can propose whole records, so the reviewer is looking at the only surface that will ever show it *as a suggestion*, and sending them
  * somewhere else to fix a wrong title means keeping something known to be wrong, or discarding a
  * record that was mostly right.
  */
@@ -1177,9 +1151,8 @@ const suggestedChangesGroup: SchemaNode = {
                                 gives, and this is the half that does not.
 
                                 The card above does exactly this around the same pair, in a `Row`
-                                with the same `flexShrink`. That it was done there and not here is
-                                the whole bug: one answer surface held its shape and the other did
-                                not, for no reason anybody chose.
+                                with the same `flexShrink`, so both answer surfaces hold their
+                                shape.
                               */
                                   type: 'Row',
                                   props: { gap: '100', ay: 'center', flexShrink: '0' },
@@ -1278,8 +1251,7 @@ const proposals: SchemaNode = {
                 condition: { $: `count(${NEW_PROPOSALS})` },
                 then: {
                   type: 'Column',
-                  // Its natural height. It used to fight the results list for the panel's fixed height, each
-                  // with its own scroller; the panel scrolls as one thing now, so a section is as tall as
+                  // Its natural height. The panel scrolls as one thing, so a section is as tall as
                   // what it holds and folds away when that is too much.
                   props: { gap: '200', width: '100%' },
                   children: [
@@ -1361,9 +1333,8 @@ const proposals: SchemaNode = {
                                           /*
                                     What kind of thing this is, and the way into changing it.
 
-                                    Edit used to be a third button in the row of answers at the
-                                    bottom, which made a binary question look like a three-way
-                                    choice however neutrally it was painted. It is not an answer —
+                                    Edit is not in the row of answers, where it would make a binary
+                                    question look like a three-way choice. It is not an answer —
                                     it is what you do *before* answering — so it sits apart from the
                                     pair, in the corner, as a mark rather than a word.
 
@@ -1469,10 +1440,9 @@ const proposals: SchemaNode = {
                                           /*
                                     The card's last line: what it says about itself, and the answer.
 
-                                    The detail rows used to sit above a full-width row of buttons, so
-                                    every card spent a line on controls that fit beside what was
-                                    already there — in a docked panel showing several at once, that
-                                    is the difference between reading three and reading five.
+                                    The answer sits beside the details rather than on a line of its
+                                    own — in a docked panel showing several at once, that is the
+                                    difference between reading three and reading five.
 
                                     `ay: 'end'` rather than centre: the details wrap to as many lines
                                     as they need, and the answer belongs at the foot of the card
@@ -1957,8 +1927,8 @@ const historyRow: SchemaNode = {
  * What a stored pass shows when opened — the same two panes the live bar shows.
  *
  * Deliberately the same component and the same defaults: prompt closed, response open. A pass read
- * while it ran and the same pass read a week later are the same thing, and the reason this exists
- * at all is that they used to be told apart by which surface happened to be on screen.
+ * while it ran and the same pass read a week later are the same thing, and must not be told apart by
+ * which surface happens to be on screen.
  *
  * `$if` rather than `$animate`, for the live bar's reason — each pane is a CodeMirror instance, and
  * keeping fifty alive for a log nobody has opened costs far more than a scroll position is worth.
@@ -2067,12 +2037,8 @@ const interpretationHistory: SchemaNode = {
           Inside the gate above rather than over it, so a call nobody has read shows no heading
           rather than a heading with nothing under it.
 
-          The fold used to be one level lower, on a row reading "4 readings of this call" that sat
-          under this heading and carried its own caret. Two rows of chrome over one list, and the
-          count said twice what the badge now says once — while this section was the only one of the
-          three whose heading did nothing, so the panel had two ways of folding a list depending on
-          which list it was. The row is gone with the caret it existed for: what it said that the
-          heading does not is "of this call", which is true of every word in this panel.
+          The fold is on the heading, as in the other two sections, so the panel has one way of
+          folding a list. The count is the badge.
         */
         foldingSectionLabel({
           label: 'Logs',
@@ -2163,9 +2129,8 @@ const interpretationHistory: SchemaNode = {
                 /*
                   What is being read right now, over what has been read already.
 
-                  It used to sit outside this section, between the chips and this heading, where it
-                  read as part of "Things to interpret" — a live status under the controls that
-                  configure it, rather than under the log it is the newest entry of. The two lists
+                  It sits in this section, under the log it is the newest entry of, and not under
+                  the controls that configure it. The two lists
                   are the same log split by durability: this one is a pass while it runs, that one is
                   the record written when it ends, and a row crosses from the first to the second a
                   second after it finishes.
@@ -2689,26 +2654,19 @@ const interpretNowControl: SchemaNode = {
  *
  * One press, one pass, and a count afterwards. An LLM call takes seconds, and the gap between press
  * and result is exactly where a feature stops looking like it is working — so `running` says so, and
- * `done` keeps its number until the next press rather than reverting to a blank button. The count
- * used to end with "Open the graph to see them", which was an errand rather than an answer; the
- * records are listed under this now.
+ * `done` keeps its number until the next press rather than reverting to a blank button. The records
+ * are listed under this.
  *
- * Carries no `interpretable` gate of its own. It had one — a fact about the *node*, not about any
- * call — and the panel above now branches on the same value, so the inner copy only ever asked the
- * question twice. That nesting is also what used to hide a running pass and a decision waiting on
- * somebody from a node that could not start one, which is precisely the node whose passes came from
- * a peer.
+ * Carries no `interpretable` gate of its own: that is a fact about the *node*, not about any call,
+ * and the panel above branches on it. A gate here would also hide a running pass and a decision
+ * waiting on somebody from a node that cannot start one — precisely the node whose passes come
+ * from a peer.
  *
  * ## The chips, and what the last press did
  *
- * The box opened with "Extract" in bold, in a panel titled "Extraction"; a lead-in above the chips;
- * a footnote under the button about what a mid-call change does and does not cover; and the button
- * itself, at the end of the chip row, where an outlined button beside outlined chips read as one
- * more chip. The prose went two places — the panel's help glyph, read on demand, and the button's
- * own tooltip — and the button went beside the switch that decides the automatic pass, so the two
- * ways of starting one sit together.
- *
- * What is left is three bands in the order somebody uses them: the controls, then what the last
+ * The prose is in the panel's help glyph, read on demand, and the button's own tooltip; the button
+ * sits beside the switch that decides the automatic pass, so the two ways of starting one sit
+ * together. There are three bands in the order somebody uses them: the controls, then what the last
  * press did, then what a press looks for — three words and a row of chips on a ground of their own.
  */
 /**
@@ -2751,9 +2709,8 @@ const interpretNow: SchemaNode = {
     /*
       What the last press did, then what a pass looks for, then whether passes happen on their own.
 
-      The status lines come first because they report the press, and the press is now made in the
-      header — so they sit directly under the button that caused them rather than under a copy of it
-      that used to be here. A spinner while it runs, the reason a standing pass is not running, and
+      The status lines come first because they report the press, and the press is made in the
+      header — so they sit directly under the button that caused them. A spinner while it runs, the reason a standing pass is not running, and
       the alert when one failed.
     */
     {
@@ -2844,18 +2801,11 @@ const interpretNow: SchemaNode = {
         /*
           Naming the row under it, in the treatment this panel gives every region.
 
-          A lead-in lived here once and was removed: a whole sentence with two forms, one for a call
-          and one for the space's default, reading as prose in a box whose job is two controls. What
-          was wrong with it was the length and the branching, not the idea — with the controls moved
-          out, the chips are a row of unexplained words under a heading that only says "Interpretation".
+          Without a name the chips are a row of unexplained words. What `sectionLabel` marks is a
+          *region with a name*, and two labelled regions in one panel must wear one treatment. No
+          colon — the caps and the tracking already say this is a name rather than a lead-in.
 
-          It came back as a sentence-case footnote first, on the reasoning that a control row is not
-          a section the way a scroll area of proposals is. That drew the line in the wrong place:
-          what `sectionLabel` marks is a *region with a name*, and having two labelled regions in one
-          panel wearing two treatments is exactly the drift the fragment exists to stop. No colon —
-          the caps and the tracking already say this is a name rather than a lead-in.
-
-          It folds now, like the four sections under it, and for the same reason one step along:
+          It folds like the four sections under it, and for the same reason one step along:
           this is the panel's settings rather than its findings, and a reader watching a call come
           in wants it out of the way more often than not.
         */
@@ -2957,15 +2907,8 @@ const interpretNow: SchemaNode = {
 /**
  * The transcript itself — the utterances, read from the record rather than from this session.
  *
- * It used to render a session-local buffer of the last twenty blocks *this* agent wrote, on the
- * reasoning that a panel for watching a transcript being made is a different thing from one for
- * reading it. People who used it disagreed on every count: they wanted everyone's utterances, and
- * they wanted them still there after the call restarted.
- *
- * All three complaints were one cause. The shared record already holds every agent's lines, each
- * carrying its author and the moment it was said, and it already outlives the session —
- * `spaceStore.exportCallTranscript` has been reading exactly this to write a text file with real
- * names in it. The panel was the only thing not looking at it.
+ * The shared record holds every agent's lines, each carrying its author and the moment it was said,
+ * and it outlives the session — `spaceStore.exportCallTranscript` reads exactly this too.
  *
  * Drilled down from the collection rather than hydrated with `include`, because
  * `CollectionBlock.children` is an untyped to-many: the ids arrive but cannot render themselves.
@@ -3127,8 +3070,7 @@ export const transcriptLines: SchemaNode = {
     `when` is not optional here, and its absence is the hazard rather than an omission: an operand
     that has not resolved is *pruned* rather than sent, and pruning **widens**. Without it, a subject
     that has not arrived would drop the scope and ask for every TextBlock in the space — a
-    transcript of the whole community, shown with confidence, for a frame or forever. The `$if` on
-    the same expression used to stand in for this by never rendering the query at all.
+    transcript of the whole community, shown with confidence, for a frame or forever.
   */
   $queries: {
     utterances: {
@@ -3150,10 +3092,9 @@ export const transcriptLines: SchemaNode = {
       /*
         The bound, and the point of all of this.
 
-        There was none. Every utterance re-ran this query over the *whole* transcript, hydrated every
-        row into a model instance and stringified the lot to fingerprint it — three passes over
-        everything already said, for each new thing said. In a long call with several people talking
-        that is most of what the tab was doing.
+        Without one, every utterance re-runs this query over the *whole* transcript, hydrates every
+        row and fingerprints the lot — three passes over everything already said, for each new thing
+        said.
       */
       limit: { $: 'modules.transcribe.transcriptShown' },
       // Each line's whole thread, so its replies are drawn inline — see `threadLines`.
@@ -3209,9 +3150,8 @@ export const transcriptLines: SchemaNode = {
       is the edge of a list, not an action beside it. There is nothing to press — reaching the edge
       IS the request.
 
-      What used to be here in the from-start case was a header naming the end you were at, with a
-      "Latest" button beside it. Both went: the jump controls in the scroller's corner say which end
-      you are at by which of them is offered, and the down one IS "latest" now.
+      No header names the end you are at: the jump controls in the scroller's corner say which end
+      you are at by which of them is offered, and the down one IS "latest".
     */
     {
       type: '$if',
@@ -3645,13 +3585,9 @@ export const pendingUtterance: SchemaNode = {
     /*
       Only once there are words. Speech still with the model shows nothing.
 
-      This used to be `heard`, which includes the gap between somebody stopping and their text coming
-      back, and it filled that gap with an empty box saying "Transcribing…". The intent was to say
-      the panel had not missed anything — but it is a box that appears, holds a word, and is replaced
-      a moment later by the words it was standing in for, on every utterance, for the length of a
-      call. It got in the way of the thing it was introducing.
-
-      The preview arriving a beat late is the better rendering. It says the same thing by existing,
+      Not `heard`, which includes the gap between somebody stopping and their text coming back: a
+      placeholder for that gap appears, holds a word, and is replaced a moment later on every
+      utterance. The preview arriving a beat late is the better rendering. It says the same thing by existing,
       and says it with content.
     */
     condition: { $: `modules.transcribe.pending && (${VIEWING_LIVE_EXPR})` },
@@ -3728,10 +3664,8 @@ export const pendingUtterance: SchemaNode = {
  *
  * ## Why it is the panel's chrome and not part of the feed
  *
- * It used to sit *inside* the scroll region, after the unsaved line, so that it appeared where the
- * next thing to arrive would and moved down with it. That reads well on a full transcript and badly
- * on every other one: with two lines said, the box sits under the second of them halfway up an
- * otherwise empty panel, and it moves every time anybody speaks. A place to write is a fixture of
+ * Inside the scroll region, after the last line, the box would sit halfway up a near-empty panel
+ * and move every time anybody speaks. A place to write is a fixture of
  * the surface rather than the last row of the document — so it is pinned below the feed, always at
  * the foot of the panel, and the words scroll behind it.
  *
@@ -3743,8 +3677,7 @@ export const pendingUtterance: SchemaNode = {
  *
  * Shared by the button and by Enter rather than written out at each, so the two cannot drift: they
  * are the same act, and the guard against sending twice only works if both paths raise the same
- * flag. They used to hold a copy each of a shorter version of this, which is how the flag would
- * have ended up on one of them.
+ * flag.
  *
  * `sending` goes up before the action and comes down in `onFinally`, so it is cleared on a failed
  * write as well as a successful one — a box that could never be sent again because one write failed
@@ -3871,10 +3804,9 @@ export const transcriptComposer: SchemaNode = {
  *
  * ## Why the unsaved line is *inside* the scroll area
  *
- * It used to sit outside it, above the feed in this panel and below it in the workshop's, and both
- * were wrong in the same way. The scroll region takes the panel's spare height, so on a transcript
- * with two lines in it the saved words are at one end of a mostly-empty box and the unsaved line is
- * pinned at the other — and the first sentence to be written appears to leap the gap. Put in the
+ * The scroll region takes the panel's spare height, so outside it, on a transcript with two lines,
+ * the saved words would be at one end of a mostly-empty box and the unsaved line pinned at the
+ * other — and the first sentence to be written would appear to leap the gap. Put in the
  * flow with the rows, it sits immediately after the last one whether there are two of them or two
  * hundred, and `pin: 'end'` follows it down. The words never move.
  *
@@ -3954,12 +3886,9 @@ const placed = (name: string): SchemaNode => ({ type: '$part', props: { id: `tra
 /**
  * Interpretation, as a surface of its own.
  *
- * It used to be the lower half of the transcript panel, and the two were one panel because they are
- * one module. They are not one *thing*: a transcript follows this agent's microphone and is read
+ * Not the lower half of the transcript panel: the two are one module but not one *thing*: a transcript follows this agent's microphone and is read
  * while somebody talks, and extraction follows a pass that may be a peer's, takes minutes, spends
- * tokens and is read afterwards. Bundled, the column was a transcript, a meter, a coverage line,
- * four status notes, an extract control, a chip row and a proposal list — two surfaces wearing one
- * coat, and the reason nobody could find the half they wanted.
+ * tokens and is read afterwards.
  *
  * It opens only by hand — from the rail, or the button an interface without one puts in its call
  * bar — and when somebody switches automatic extraction on, since that is asking to see what it
@@ -4015,12 +3944,9 @@ export const interpretationPanel: SchemaNode = {
         type: '$if',
         /*
         Can this node interpret at all — which is a different question from whether there is anything
-        to interpret, and the copy here used to answer the wrong one.
-
-        It said "Nothing to read yet. What a call produces appears here as it is found.", which
-        describes an absent conversation. `interpretable` is `interpretation.available()`: it says
-        nothing about whether a call exists, only whether this node has a model. A person reading the
-        old sentence waited for a conversation that was never going to help.
+        to interpret. `interpretable` is `interpretation.available()`: it says nothing about whether a
+        call exists, only whether this node has a model, so the copy must not describe an absent
+        conversation.
 
         Nothing below it is offered, because nothing below it can be fixed from here.
       */
@@ -4097,7 +4023,7 @@ export const interpretationPanel: SchemaNode = {
               the query runs whenever the panel is open and the section is a plain `$if` over the
               result, which renders no node at all when there is nothing to show.
 
-              `when` is what the section's own `$if` used to provide: an unresolved anchor is pruned
+              `when` is needed: an unresolved anchor is pruned
               rather than sent, and pruning widens, so without it a call-less panel would ask for
               every extraction run in the space.
             */
@@ -4174,11 +4100,8 @@ export const interpretationPanel: SchemaNode = {
                   /*
               What the passes actually wrote, for the call on screen.
 
-              The panel used to end at "N records written. Open the graph to see them." — a count
-              and an errand. The records are one query per target away and this is the surface somebody
-              is already looking at while they arrive, so it shows them. The workshop template built
-              this for itself, which is how it came to have the better half of an interpretation panel
-              and the worse half of everything else.
+              The records are one query per target away and this is the surface somebody is already
+              looking at while they arrive, so it shows them rather than a count and an errand.
 
               Its own scroll region, and the only one: the header, the chips and the activity above
               stay put while this grows, which is what makes a long history readable inside a docked
@@ -4418,12 +4341,8 @@ export const interpretationPanel: SchemaNode = {
 /*
   Fills the box the host gave it, and names itself the way every panel does.
 
-  It used to position itself — `fixed`, `right: 48px`, a hardcoded copy of the module rail's width —
-  which meant it overlaid the space rather than making room in it, sat on top of the editor's
-  controls, and stayed put when a docked call panel took the edge out from under it. All three are
-  the host's job; see `panels` in `index.ts`. The box is `panelShell`'s now, as is the header: this
-  drew a `heading-sm` where the panels beside it drew a quiet capitalised label, which is the kind
-  of difference nobody chooses and everybody notices.
+  It does not position itself: placement is the host's job; see `panels` in `index.ts`. The box
+  and the header are `panelShell`'s, the same as the panels beside it.
 
   No `$if` of its own around it. The interpretation panel shed the same wrapper first, and the reason
   carries: the host renders a panel only while its `open` key says so and gates the module's chrome
@@ -4455,19 +4374,10 @@ export const panel: SchemaNode = panelShell({
   /*
         One control, not a control and a badge saying the same thing.
 
-        There was a solid red REC chip beside the button here, and between them they made one point
-        twice: the chip appeared while capturing, and the button's icon turned red at the same
-        moment. That split happened because this button only ever had two variants, so it had no way
-        to look different while actually capturing and the chip was added to cover the third state.
-
-        The call bar's copy of this button already carries all three — off, armed, capturing — in the
-        button itself, and its note says why: a state that arrives on its own has to be legible
+        The button carries all three states itself — off, armed, capturing — as the call bar's
+        copy does, and its note says why: a state that arrives on its own has to be legible
         without being looked for, and the loudest thing in the row should be the way out of the thing
-        nobody switched on. Taking that rule here is what makes the chip redundant rather than
-        merely duplicated.
-
-        Nothing loses a signal. The chip showed only while capturing, and capturing means armed, so
-        the button is on screen wherever the chip was.
+        nobody switched on.
       */
   aside: {
     type: 'Row',
@@ -4644,15 +4554,8 @@ export const panel: SchemaNode = panelShell({
             },
           },
           /*
-                No `else`, and the way back into a past call is why there used to be one.
-
-                A Continue button lived here — went once because the rail does the same thing, came
-                back because the rail is the least discoverable control in the app — and it was in
-                the wrong panel the whole time. Two panels sit side by side about one call and only
-                this one offered the way into it; a panel's header control is for the thing that
-                panel *is*, and picking a call back up is about the call.
-
-                It is `call.continueCallButton` now, published by the module whose action it is and
+                No `else`. A panel's header control is for the thing that panel *is*, and picking a
+                call back up is about the call: that is `call.continueCallButton`, published by the module whose action it is and
                 placed against the call's own name, where it is on screen whether or not either
                 panel is. What is left here is Transcribe, which is what this panel does.
               */

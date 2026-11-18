@@ -54,6 +54,14 @@ export interface InterpretationKernel {
    */
   targets: (collectionId: string) => { entity: string; selected: boolean }[];
   /**
+   * Whether {@link targets} is the whole answer yet. The host reads what a space can extract in
+   * parts — its own vocabulary at once, the space's models and the classes it already had a few
+   * round trips later — so until this is true the list may be missing members that are coming.
+   * Wait for it before acting on the list rather than on the first part of it. Reactive. Absent
+   * reads as true, so a host that predates it behaves as it did.
+   */
+  targetsLoaded?: () => boolean;
+  /**
    * Add or remove one model from what this call extracts — a group decision, taking effect from here
    * on. Rejects on a host that cannot record it.
    */

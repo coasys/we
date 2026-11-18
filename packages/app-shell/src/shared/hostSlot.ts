@@ -1,28 +1,18 @@
 /**
  * A place one store lends a value to another, with a way back out.
  *
- * ## What this replaces
+ * ## Why
  *
- * WE's stores form a provider tree, and the dependencies point one way: `DatasetStore` mounts above
- * `ShapeStore`, which mounts above `SpaceStore`. But some answers only exist further down — whether
- * this space auto-interprets its calls lives on a `Space`, which only `SpaceStore` can read — so
- * the lower store hands a closure upward and the upper one keeps it in a `let`:
+ * WE's stores form a provider tree, and the dependencies point one way: `ShapeStore` mounts above
+ * `SpaceStore`. But some answers only exist further down — what a space enrols for extraction lives
+ * on a `Space`, which only `SpaceStore` can read — so the lower store hands a closure upward.
  *
- * ```ts
- * let autoInterpretGate: (() => boolean) | null = null;
- * const provideAutoInterpretGate = (gate) => { autoInterpretGate = gate; };
- * ```
- *
- * Ten of these had accumulated, and four audits in a row have named them, because the shape has two
- * failures that are invisible until they bite:
+ * Kept in a bare `let`, that closure has two failures that are invisible until they bite:
  *
  * - **No way out.** Nothing ever clears the slot, so when the provider unmounts the upper store
- *   still holds its closure — reading signals from a scope that has been disposed. It answers with
- *   whatever was true when the provider died, forever, and nothing anywhere reports it.
+ *   still holds its closure — reading signals from a scope that has been disposed.
  * - **Silent last-write-wins.** Two providers filling the same slot is not an error, it is a
- *   coin toss decided by mount order. `provideInterpretationCandidates` was called from two stores with
- *   the same accessor, which was harmless *and unnoticeable*; the day the two differ, the one that
- *   loses is simply gone.
+ *   coin toss decided by mount order.
  *
  * ## The shape
  *

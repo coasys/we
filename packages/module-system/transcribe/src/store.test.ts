@@ -12,7 +12,7 @@
  */
 import type { Activity, Peer } from '@we/backend-shared';
 import { markAction, markState, type ModuleStoreDeps } from '@we/module-shared';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 
 import { createTranscribeStore, TRANSCRIBE_ACTIVITY } from './store';
 
@@ -977,9 +977,22 @@ describe('interpretation', () => {
     const candidates = new Set(initialTargets);
     const defaults = [...initialTargets];
     const forCall = (collection: string) => targets.get(collection) ?? defaults.filter((e) => candidates.has(e));
+    /**
+     * Whether the host has finished reading what this space could extract. True unless a test holds
+     * it back: the class catalogue arrives in pieces — core vocabulary at once, a space's own and
+     * foreign classes a few round trips later.
+     */
+    let loaded = true;
+    /** The class list each registration was made with, in the same order as the registrations. */
+    const registered: string[][] = [];
     return {
       calls,
       watches,
+      registered,
+      /** Stand in for the catalogue still loading (`false`) and arriving (`true`). */
+      setLoaded: (next: boolean) => {
+        loaded = next;
+      },
       targetsSeen,
       reconciled,
       /** What the watch would currently be registered for — the module hands the host a collection. */
@@ -993,6 +1006,7 @@ describe('interpretation', () => {
       },
       port: {
         available: () => available,
+        targetsLoaded: () => loaded,
         targets: (collection: string) => {
           const active = forCall(collection);
           return [...candidates].map((entity) => ({ entity, selected: active.includes(entity) }));
@@ -1011,6 +1025,7 @@ describe('interpretation', () => {
         watchCollection: async (collectionId: string, target?: { dataset?: string }) => {
           watches.push(collectionId);
           targetsSeen.push(target?.dataset ?? '');
+          registered.push(forCall(collectionId));
         },
         unwatchCollection: async (collectionId: string, target?: { dataset?: string }) => {
           watches.push(`-${collectionId}`);
@@ -1367,6 +1382,93 @@ describe('interpretation', () => {
       // Removed first, then registered again — a plain re-register would union the old list back in.
       expect(i.watches).toEqual([collection, `-${collection}`, collection]);
       expect(i.watchTargetsOf(collection)).toEqual(['TaskBlock']);
+    });
+
+    /*
+      The list is not an answer until the host has read all of it.
+
+      Core vocabulary is known at once; a space's own models and the classes it already had arrive a
+      few round trips later. A watch keyed on the list as it stood then registered the part that had
+      arrived, then removed it and registered the whole once the rest did — four writes to the shared
+      graph from every member who opened the call, ending where they started, and a second in between
+      in which the watch did not look for what had not arrived.
+    */
+    it('registers once, with the whole list, when what the space can extract arrives late', async () => {
+      const i = interpreter(undefined, true, ['EventBlock', 'TaskBlock']);
+      i.setLoaded(false);
+      const h = harness(inCall, { interpretation: i.port });
+      await h.say('we should ship the docs on friday');
+
+      expect(i.watches).toEqual([]);
+      // Nothing selected is not what an unread list means, so nobody is told so.
+      expect(h.notified).toEqual([]);
+
+      i.setCandidates(['EventBlock', 'Sighting', 'TaskBlock']);
+      i.setLoaded(true);
+      await h.settle();
+
+      expect(i.watches).toEqual([RECORD]);
+      expect(i.registered).toEqual([['EventBlock', 'Sighting', 'TaskBlock']]);
+    });
+
+    it('registers once the list is read even when reading it changed nothing', async () => {
+      // The list the call opened with was already the whole of it — only the flag moves.
+      const i = interpreter(undefined, true, ['EventBlock', 'TaskBlock']);
+      i.setLoaded(false);
+      const h = harness(inCall, { interpretation: i.port });
+      await h.say('we should ship the docs on friday');
+
+      i.setLoaded(true);
+      await h.settle();
+
+      expect(i.watches).toEqual([RECORD]);
+    });
+
+    it('still stops the watch when automatic extraction is switched off while the list is reloading', async () => {
+      // Off needs no list: waiting for one would leave the watch spending a pass per batch meanwhile.
+      const i = interpreter(undefined, true, ['EventBlock', 'TaskBlock']);
+      let auto = true;
+      const h = harness(inCall, { interpretation: { ...i.port, autoEnabled: () => auto } });
+      await h.say('we should ship the docs on friday');
+
+      i.setLoaded(false);
+      auto = false;
+      await h.settle();
+
+      expect(i.watches).toEqual([RECORD, `-${RECORD}`]);
+    });
+
+    it('stops a watch the call already had when extraction is switched off before the list is read', async () => {
+      // The call's watch is one row in the shared graph, so it can be there from an earlier visit or
+      // another member while this agent waits for the list. Off must still remove it.
+      const i = interpreter(undefined, true, ['EventBlock', 'TaskBlock']);
+      i.setLoaded(false);
+      let auto = true;
+      const h = harness(inCall, { interpretation: { ...i.port, autoEnabled: () => auto } });
+      await h.say('we should ship the docs on friday');
+      expect(i.watches).toEqual([]);
+
+      auto = false;
+      await h.settle();
+      expect(i.watches).toEqual([`-${RECORD}`]);
+
+      // Once only, and the same call target a registration names.
+      await h.settle();
+      auto = true;
+      i.setLoaded(true);
+      await h.settle();
+      expect(i.watches).toEqual([`-${RECORD}`, RECORD]);
+      expect(i.targetsSeen[0]).toBe(i.targetsSeen[1]);
+    });
+
+    it('removes nothing for a call that was off before this agent waited on it', async () => {
+      const i = interpreter(undefined, true, ['EventBlock', 'TaskBlock']);
+      i.setLoaded(false);
+      const h = harness(inCall, { interpretation: { ...i.port, autoEnabled: () => false } });
+      await h.say('we should ship the docs on friday');
+      await h.settle();
+
+      expect(i.watches).toEqual([]);
     });
 
     it('does not re-register when the list has not actually changed', async () => {
@@ -2741,6 +2843,50 @@ describe('typing into a transcript', () => {
     expect(block?.options?.parent).toEqual({ id: 'past-call', relation: 'children', entity: 'CollectionBlock' });
     // And in the space on screen, not in whichever space a live call happens to be running in.
     expect(block?.options?.dataset).toBeUndefined();
+  });
+
+  it('does not put somebody who messages a call they are not in on its roster', async () => {
+    /*
+      The roster says who was present. A call's page offers its composer to anybody, live or ended,
+      so writing into a call is not being in it: the line is written and nothing else.
+    */
+    const h = harness(inCall);
+
+    await h.store.addMessage('past-call', 'watched this back');
+    await Promise.resolve();
+
+    expect(h.created.find((c) => c.entity === 'TextBlock')?.options?.parent).toMatchObject({ id: 'past-call' });
+    // The store can link — it put this agent on the roster of the call it is in — and did not for this one.
+    expect(h.linked).toEqual([{ entity: 'CollectionBlock', id: RECORD, relation: 'participants', value: ME }]);
+  });
+
+  it('does put somebody who messages the call they are in on its roster', async () => {
+    /*
+      The standing roster effect links this agent as soon as the store starts, so a link seen after
+      the message proves nothing about the message. Here that first link fails — which clears the
+      guard, as a lost write does — and the message is what has to put the agent on the roster.
+    */
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+    onTestFinished(() => quiet.mockRestore());
+    const linked: Linked[] = [];
+    let attempts = 0;
+    const h = harness(inCall, {
+      records: {
+        link: async (entity: string, id: string, relation: string, value: string) => {
+          attempts += 1;
+          if (attempts === 1) throw new Error('the executor dropped it');
+          linked.push({ entity, id, relation, value });
+        },
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(attempts).toBe(1);
+    expect(linked).toEqual([]);
+
+    await h.store.addMessage(RECORD, 'Sam is joining late');
+    await Promise.resolve();
+
+    expect(linked).toEqual([{ entity: 'CollectionBlock', id: RECORD, relation: 'participants', value: ME }]);
   });
 });
 

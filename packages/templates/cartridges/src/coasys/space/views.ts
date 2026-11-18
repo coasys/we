@@ -4,9 +4,10 @@ import { FLOWS_LOCALS, lineComposer, workflowsPage } from '@we/template-kit';
 import { viewBar } from './bar.ts';
 import { groupRoutes } from './groups.ts';
 import { exportTranscriptButton, liveDot } from './marks.ts';
-import { CHANNEL, groupPath, IN_ROOT_EXPR } from './paths.ts';
+import { CHANNEL, groupPath, IN_ROOT_EXPR, ROOT_KNOWN_EXPR } from './paths.ts';
 import { personRoute } from './person.ts';
 import { dnaRoute } from './socialDna.ts';
+import { LATEST_CALLS } from './tree.ts';
 
 /**
  * The pages beside the tree: the Feed, the space's workflows, and — as its own page — a call. Each is
@@ -24,16 +25,19 @@ const channelQueries = {
     entity: 'CollectionBlock',
     where: { id: CHANNEL },
     limit: 1,
-    when: { $: `!(${IN_ROOT_EXPR})` },
+    // Only a channel that is not the root — which cannot be told until the root is known.
+    when: { $: `${ROOT_KNOWN_EXPR} && !(${IN_ROOT_EXPR})` },
   },
 };
 
 /**
- * The bottom of a view, kept clear of the call bar.
+ * The bottom of a view, kept clear of whatever chrome covers it.
  *
- * The bar floats along the bottom of the window on every page while a call is up, so whatever a view
- * pins to its foot — the composer, the end of a transcript — rises above it, and settles back as the
- * bar goes. `--we-covered-bottom` is how much the host says is covered there.
+ * `--we-covered-bottom` is how much the host says is covered there — a band some other piece of
+ * chrome may float along the bottom of the window, so whatever a view pins to its foot — the
+ * composer, the end of a transcript — rises above it, and settles back as the chrome goes. Zero in
+ * the ordinary case, which is most of the point: the call's controls ride inside the call's own
+ * stage now rather than over every page.
  */
 const CLEAR_OF_THE_BAR = 'calc(var(--we-space-500) + var(--we-covered-bottom, 0px))';
 const LIFT = 'padding-bottom 300 ease';
@@ -225,7 +229,8 @@ const chatRoute: RouteSchema = {
   props: { width: '100%', height: '100%' },
   $queries: {
     ...channelQueries,
-    anyCall: { entity: 'CollectionBlock', where: { kind: 'call' }, limit: 1 },
+    // Whether the space has a call yet: the sidebar's question, so one subscription answers both.
+    anyCall: LATEST_CALLS,
   },
   $localState: {
     sending: { type: 'boolean', initial: false },
@@ -234,18 +239,32 @@ const chatRoute: RouteSchema = {
   children: [
     viewBar(
       [
-        // The Feed is the space's own; a channel under it is one of the Channels.
-        { label: 'Channels', onClick: navigateTo(groupPath('channels')), when: `!(${IN_ROOT_EXPR})` },
+        // The Feed is the space's own; a channel under it is one of the Channels. Like the view below,
+        // neither the crumb nor the glyph is chosen before the root is known (`ROOT_KNOWN_EXPR`): until
+        // then General's own address reads as a sub-channel's, and the bar drew one, then swapped it.
+        {
+          label: 'Channels',
+          onClick: navigateTo(groupPath('channels')),
+          when: `(${ROOT_KNOWN_EXPR}) && !(${IN_ROOT_EXPR})`,
+        },
         { label: { $: CHANNEL_TITLE } },
       ],
-      { $: `(${IN_ROOT_EXPR}) ? 'chats-circle' : 'hash'` },
+      { $: `!(${ROOT_KNOWN_EXPR}) ? '' : (${IN_ROOT_EXPR}) ? 'chats-circle' : 'hash'` },
     ),
     {
+      // One mount: which of the two this channel is, is decided once the root is known — see
+      // `ROOT_KNOWN_EXPR`.
       type: '$if',
       props: {
-        condition: { $: IN_ROOT_EXPR },
-        then: rootFeed,
-        else: subChannelChat,
+        condition: { $: ROOT_KNOWN_EXPR },
+        then: {
+          type: '$if',
+          props: {
+            condition: { $: IN_ROOT_EXPR },
+            then: rootFeed,
+            else: subChannelChat,
+          },
+        },
       },
     },
   ],
@@ -376,11 +395,12 @@ export const callBarAside = (callId: string): SchemaNode[] => [
 ];
 
 /**
- * A call, as its own page: what is being said in it.
+ * A call, as its own page: what is being said and written in it.
  *
  * The space template's page for a call's record (`meta.recordViews`), so wherever a call is linked —
- * the tree, a message, a search — it opens here rather than as a generic record. The transcript is
- * the transcribe module's, pointed at this call. Neither the controls nor the
+ * the tree, a message, a search — it opens here rather than as a generic record. Its body is the
+ * Feed, pointed at this call: every line said, typed and answered in it, with the space Feed's own
+ * Everything / Messages / Bots and its box, which writes into the call. Neither the controls nor the
  * people in the call are here: the call module's bar holds the controls on every page and its panel
  * draws everyone in the call, connecting and all, so a second set of either would be the same thing
  * twice. What the page adds, for somebody not in the call, is the way into it.
@@ -411,14 +431,15 @@ export const callPage: SchemaNode = {
         condition: { $: `!(${MINE})` },
         then: {
           type: 'Row',
-          props: { gap: '300', p: '500', ay: 'center' },
+          // Wraps, so a phone puts the button under the sentence rather than squeezing the sentence.
+          props: { gap: '300', p: '500', ay: 'center', wrap: true },
           children: [
             {
               type: 'we-text',
-              props: { color: 'text-muted', flex: '1' },
+              props: { color: 'text-muted', flex: '1', minWidth: '240px' },
               children: [
                 {
-                  $: `find(modules.call.liveCalls, { recordId: ${CALL_ID} }) ? 'This call is happening now.' : 'This call has ended. Its transcript is below.'`,
+                  $: `find(modules.call.liveCalls, { recordId: ${CALL_ID} }) ? 'This call is happening now.' : 'This call has ended. Everything said and written in it is below.'`,
                 },
               ],
             },
@@ -434,10 +455,15 @@ export const callPage: SchemaNode = {
         },
       },
     },
+    /*
+      The call's Feed, pointed at the call the address names — the same for somebody in the call,
+      somebody outside it and somebody reading it after it ended: anybody here can write into it.
+      One column, so a phone holds it as a desk does.
+    */
     {
       type: 'Column',
-      props: { flex: '1', minHeight: '0', px: '500', pb: CLEAR_OF_THE_BAR, transition: LIFT },
-      children: [{ type: '$part', props: { id: 'transcribe.transcriptFeed', subject: { $: CALL_ID } } }],
+      props: { flex: '1', minHeight: '0', minWidth: '0', px: '500', pb: CLEAR_OF_THE_BAR, transition: LIFT },
+      children: [{ type: '$part', props: { id: 'feed.callFeed', subject: { $: CALL_ID } } }],
     },
   ],
 };

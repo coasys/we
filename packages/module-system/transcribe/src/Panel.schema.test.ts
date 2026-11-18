@@ -22,6 +22,8 @@ import {
 } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
+import { CALL_CONTROLS_ANCHOR, callControl } from './CallControl.schema';
+import { interpretationActivity } from './InterpretationStatus.schema';
 import { transcribeModule } from './index';
 import { interpretationActivity } from './InterpretationStatus.schema';
 import {
@@ -106,6 +108,21 @@ describe('the module declaration', () => {
     expect(surface[panels[1].busyWhen ?? '']?.kind).toBe('state');
     // And no launchers of its own: a panel's rail button is derived from the panel.
     expect(transcribeModule.contributes?.launchers).toBeUndefined();
+  });
+
+  it('puts one control in the call bar, the record button, and no second way into the call’s messages', () => {
+    /*
+      A call's messages are the Feed's, scoped to the call — read and written on the call's page and
+      in the Feed itself. A button of its own in the call bar would be a second, different surface
+      for the same lines.
+    */
+    const inBar = (transcribeModule.contributes?.slots ?? []).filter((s) => s.anchor === CALL_CONTROLS_ANCHOR);
+    expect(inBar.map((s) => s.node)).toEqual([callControl]);
+    expect(Object.keys(transcribeModule.contributes?.parts ?? {})).not.toContain('callMessages');
+    const surface = storeSurface(bareStore());
+    for (const gone of ['messagesOpen', 'openMessages', 'closeMessages', 'toggleMessages', 'unreadMessages']) {
+      expect(surface[gone], gone).toBeUndefined();
+    }
   });
 
   it('marks every member its own fragments name, so a placed part can still read it', () => {
