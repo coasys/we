@@ -1,0 +1,13 @@
+[package]
+name = "we-graph"
+version = "0.1.0"
+edition = "2021"
+description = "Read-only graph of a space: the same seeds, expanders and addresses as the TypeScript graph engine"
+publish = false
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

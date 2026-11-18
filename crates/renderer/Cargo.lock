@@ -6455,6 +6455,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "we-graph"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "we-layout"
 version = "0.1.0"
 dependencies = [

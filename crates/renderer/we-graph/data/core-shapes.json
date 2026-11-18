@@ -1,0 +1,3195 @@
+[
+  {
+    "name": "AgentSettings",
+    "properties": [
+      {
+        "name": "currentTemplateId",
+        "type": "string"
+      },
+      {
+        "name": "defaultTemplateId",
+        "type": "string"
+      },
+      {
+        "name": "appTemplateId",
+        "type": "string"
+      },
+      {
+        "name": "installedBundles",
+        "type": "string"
+      },
+      {
+        "name": "currentThemeId",
+        "type": "string"
+      },
+      {
+        "name": "defaultThemeId",
+        "type": "string"
+      },
+      {
+        "name": "systemLightThemeId",
+        "type": "string"
+      },
+      {
+        "name": "systemDarkThemeId",
+        "type": "string"
+      },
+      {
+        "name": "displayPreferences",
+        "type": "string"
+      },
+      {
+        "name": "datasetOrder",
+        "type": "string"
+      },
+      {
+        "name": "globalSpaceJoined",
+        "type": "boolean"
+      },
+      {
+        "name": "globalSpaceUrl",
+        "type": "string"
+      },
+      {
+        "name": "useSpaceTemplate",
+        "type": "boolean"
+      },
+      {
+        "name": "useTemplateTheme",
+        "type": "boolean"
+      },
+      {
+        "name": "followTemplateUpdates",
+        "type": "boolean"
+      },
+      {
+        "name": "themeScope",
+        "type": "string"
+      },
+      {
+        "name": "installedModules",
+        "type": "string"
+      },
+      {
+        "name": "moduleSettings",
+        "type": "string"
+      }
+    ],
+    "relations": [
+      {
+        "name": "hiddenTemplates",
+        "target": "Template",
+        "cardinality": "many"
+      },
+      {
+        "name": "installedThemes",
+        "target": "Theme",
+        "cardinality": "many"
+      },
+      {
+        "name": "spaceTemplatePreferences",
+        "target": "SpaceTemplatePreference",
+        "cardinality": "many"
+      }
+    ],
+    "nameProperty": "currentTemplateId"
+  },
+  {
+    "name": "AudioBlock",
+    "properties": [
+      {
+        "name": "title",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "artist",
+        "type": "string"
+      },
+      {
+        "name": "audioUrl",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "duration",
+        "type": "number"
+      },
+      {
+        "name": "albumArt",
+        "type": "string"
+      },
+      {
+        "name": "version",
+        "type": "number"
+      }
+    ],
+    "relations": [
+      {
+        "name": "responses",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "respondsTo",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "thread",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "inThread",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "partOf",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "extractedFrom",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "runs",
+        "target": "ModelRun",
+        "cardinality": "many"
+      },
+      {
+        "name": "generatedBy",
+        "target": "ModelRun",
+        "cardinality": "one"
+      },
+      {
+        "name": "signals",
+        "target": "Signal",
+        "cardinality": "many"
+      },
+      {
+        "name": "participants",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "mentions",
+        "target": "",
+        "cardinality": "many"
+      }
+    ],
+    "nameProperty": "title"
+  },
+  {
+    "name": "CalloutBlock",
+    "properties": [
+      {
+        "name": "text",
+        "type": "string"
+      },
+      {
+        "name": "variant",
+        "type": "string"
+      },
+      {
+        "name": "icon",
+        "type": "string"
+      },
+      {
+        "name": "version",
+        "type": "number"
+      }
+    ],
+    "relations": [
+      {
+        "name": "responses",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "respondsTo",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "thread",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "inThread",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "partOf",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "extractedFrom",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "runs",
+        "target": "ModelRun",
+        "cardinality": "many"
+      },
+      {
+        "name": "generatedBy",
+        "target": "ModelRun",
+        "cardinality": "one"
+      },
+      {
+        "name": "signals",
+        "target": "Signal",
+        "cardinality": "many"
+      },
+      {
+        "name": "participants",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "mentions",
+        "target": "",
+        "cardinality": "many"
+      }
+    ],
+    "nameProperty": "text"
+  },
+  {
+    "name": "CodeBlock",
+    "properties": [
+      {
+        "name": "code",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "language",
+        "type": "string"
+      },
+      {
+        "name": "title",
+        "type": "string"
+      },
+      {
+        "name": "version",
+        "type": "number"
+      }
+    ],
+    "relations": [
+      {
+        "name": "responses",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "respondsTo",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "thread",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "inThread",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "partOf",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "extractedFrom",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "runs",
+        "target": "ModelRun",
+        "cardinality": "many"
+      },
+      {
+        "name": "generatedBy",
+        "target": "ModelRun",
+        "cardinality": "one"
+      },
+      {
+        "name": "signals",
+        "target": "Signal",
+        "cardinality": "many"
+      },
+      {
+        "name": "participants",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "mentions",
+        "target": "",
+        "cardinality": "many"
+      }
+    ],
+    "nameProperty": "title"
+  },
+  {
+    "name": "CollectionBlock",
+    "properties": [
+      {
+        "name": "kind",
+        "type": "string"
+      },
+      {
+        "name": "mode",
+        "type": "string"
+      },
+      {
+        "name": "title",
+        "type": "string"
+      },
+      {
+        "name": "description",
+        "type": "string"
+      },
+      {
+        "name": "slug",
+        "type": "string"
+      },
+      {
+        "name": "editorState",
+        "type": "string"
+      },
+      {
+        "name": "textContent",
+        "type": "string"
+      },
+      {
+        "name": "version",
+        "type": "number"
+      },
+      {
+        "name": "sourceRef",
+        "type": "string"
+      },
+      {
+        "name": "sourceName",
+        "type": "string"
+      },
+      {
+        "name": "autoExtract",
+        "type": "boolean"
+      },
+      {
+        "name": "extractionTargets",
+        "type": "string"
+      }
+    ],
+    "relations": [
+      {
+        "name": "children",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "arranges",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "gathers",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "board",
+        "target": "CollectionBlock",
+        "cardinality": "one"
+      },
+      {
+        "name": "extracted",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "recognised",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "amendments",
+        "target": "Amendment",
+        "cardinality": "many"
+      },
+      {
+        "name": "responses",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "respondsTo",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "thread",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "inThread",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "partOf",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "extractedFrom",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "runs",
+        "target": "ModelRun",
+        "cardinality": "many"
+      },
+      {
+        "name": "generatedBy",
+        "target": "ModelRun",
+        "cardinality": "one"
+      },
+      {
+        "name": "signals",
+        "target": "Signal",
+        "cardinality": "many"
+      },
+      {
+        "name": "participants",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "mentions",
+        "target": "",
+        "cardinality": "many"
+      }
+    ],
+    "nameProperty": "title"
+  },
+  {
+    "name": "DividerBlock",
+    "properties": [
+      {
+        "name": "style",
+        "type": "string"
+      },
+      {
+        "name": "version",
+        "type": "number"
+      }
+    ],
+    "relations": [
+      {
+        "name": "responses",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "respondsTo",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "thread",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "inThread",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "partOf",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "extractedFrom",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "runs",
+        "target": "ModelRun",
+        "cardinality": "many"
+      },
+      {
+        "name": "generatedBy",
+        "target": "ModelRun",
+        "cardinality": "one"
+      },
+      {
+        "name": "signals",
+        "target": "Signal",
+        "cardinality": "many"
+      },
+      {
+        "name": "participants",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "mentions",
+        "target": "",
+        "cardinality": "many"
+      }
+    ],
+    "nameProperty": "style"
+  },
+  {
+    "name": "EdgeRoute",
+    "properties": [
+      {
+        "name": "sourceAnchor",
+        "type": "string"
+      },
+      {
+        "name": "targetAnchor",
+        "type": "string"
+      },
+      {
+        "name": "points",
+        "type": "string"
+      }
+    ],
+    "relations": [
+      {
+        "name": "connection",
+        "target": "",
+        "cardinality": "one"
+      }
+    ],
+    "nameProperty": "sourceAnchor"
+  },
+  {
+    "name": "EmbedBlock",
+    "properties": [
+      {
+        "name": "url",
+        "type": "string"
+      },
+      {
+        "name": "target",
+        "type": "string"
+      },
+      {
+        "name": "targetType",
+        "type": "string"
+      },
+      {
+        "name": "label",
+        "type": "string"
+      },
+      {
+        "name": "thumbnail",
+        "type": "string"
+      },
+      {
+        "name": "sourceAuthor",
+        "type": "string"
+      },
+      {
+        "name": "sourceName",
+        "type": "string"
+      },
+      {
+        "name": "displayMode",
+        "type": "string"
+      },
+      {
+        "name": "version",
+        "type": "number"
+      }
+    ],
+    "relations": [
+      {
+        "name": "responses",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "respondsTo",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "thread",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "inThread",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "partOf",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "extractedFrom",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "runs",
+        "target": "ModelRun",
+        "cardinality": "many"
+      },
+      {
+        "name": "generatedBy",
+        "target": "ModelRun",
+        "cardinality": "one"
+      },
+      {
+        "name": "signals",
+        "target": "Signal",
+        "cardinality": "many"
+      },
+      {
+        "name": "participants",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "mentions",
+        "target": "",
+        "cardinality": "many"
+      }
+    ],
+    "nameProperty": "label"
+  },
+  {
+    "name": "EventBlock",
+    "properties": [
+      {
+        "name": "occurrence",
+        "type": "string"
+      },
+      {
+        "name": "title",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "description",
+        "type": "string"
+      },
+      {
+        "name": "startDate",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "endDate",
+        "type": "string"
+      },
+      {
+        "name": "allDay",
+        "type": "boolean"
+      },
+      {
+        "name": "version",
+        "type": "number"
+      }
+    ],
+    "relations": [
+      {
+        "name": "location",
+        "target": "LocationBlock",
+        "cardinality": "one"
+      },
+      {
+        "name": "responses",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "respondsTo",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "thread",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "inThread",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "partOf",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "extractedFrom",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "runs",
+        "target": "ModelRun",
+        "cardinality": "many"
+      },
+      {
+        "name": "generatedBy",
+        "target": "ModelRun",
+        "cardinality": "one"
+      },
+      {
+        "name": "signals",
+        "target": "Signal",
+        "cardinality": "many"
+      },
+      {
+        "name": "participants",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "mentions",
+        "target": "",
+        "cardinality": "many"
+      }
+    ],
+    "nameProperty": "title"
+  },
+  {
+    "name": "FileBlock",
+    "properties": [
+      {
+        "name": "title",
+        "type": "string"
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "url",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "mimeType",
+        "type": "string"
+      },
+      {
+        "name": "size",
+        "type": "number"
+      },
+      {
+        "name": "version",
+        "type": "number"
+      }
+    ],
+    "relations": [
+      {
+        "name": "responses",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "respondsTo",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "thread",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "inThread",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "partOf",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "extractedFrom",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "runs",
+        "target": "ModelRun",
+        "cardinality": "many"
+      },
+      {
+        "name": "generatedBy",
+        "target": "ModelRun",
+        "cardinality": "one"
+      },
+      {
+        "name": "signals",
+        "target": "Signal",
+        "cardinality": "many"
+      },
+      {
+        "name": "participants",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "mentions",
+        "target": "",
+        "cardinality": "many"
+      }
+    ],
+    "nameProperty": "name"
+  },
+  {
+    "name": "ImageBlock",
+    "properties": [
+      {
+        "name": "src",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "altText",
+        "type": "string"
+      },
+      {
+        "name": "width",
+        "type": "number"
+      },
+      {
+        "name": "height",
+        "type": "number"
+      },
+      {
+        "name": "version",
+        "type": "number"
+      }
+    ],
+    "relations": [
+      {
+        "name": "responses",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "respondsTo",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "thread",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "inThread",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "partOf",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "extractedFrom",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "runs",
+        "target": "ModelRun",
+        "cardinality": "many"
+      },
+      {
+        "name": "generatedBy",
+        "target": "ModelRun",
+        "cardinality": "one"
+      },
+      {
+        "name": "signals",
+        "target": "Signal",
+        "cardinality": "many"
+      },
+      {
+        "name": "participants",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "mentions",
+        "target": "",
+        "cardinality": "many"
+      }
+    ],
+    "nameProperty": "altText"
+  },
+  {
+    "name": "Involvement",
+    "properties": [
+      {
+        "name": "agent",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "kind",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "note",
+        "type": "string"
+      }
+    ],
+    "relations": [
+      {
+        "name": "node",
+        "target": "",
+        "cardinality": "one"
+      }
+    ],
+    "nameProperty": "agent"
+  },
+  {
+    "name": "InvolvementType",
+    "properties": [
+      {
+        "name": "name",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "slug",
+        "type": "string"
+      },
+      {
+        "name": "description",
+        "type": "string"
+      },
+      {
+        "name": "icon",
+        "type": "string"
+      },
+      {
+        "name": "color",
+        "type": "string"
+      },
+      {
+        "name": "semantic",
+        "type": "string"
+      },
+      {
+        "name": "reflexive",
+        "type": "boolean"
+      },
+      {
+        "name": "appliesTo",
+        "type": "string"
+      },
+      {
+        "name": "retired",
+        "type": "boolean"
+      },
+      {
+        "name": "schemaVersion",
+        "type": "number"
+      }
+    ],
+    "relations": [
+      {
+        "name": "responses",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "respondsTo",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "thread",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "inThread",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "partOf",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "extractedFrom",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "runs",
+        "target": "ModelRun",
+        "cardinality": "many"
+      },
+      {
+        "name": "generatedBy",
+        "target": "ModelRun",
+        "cardinality": "one"
+      },
+      {
+        "name": "signals",
+        "target": "Signal",
+        "cardinality": "many"
+      },
+      {
+        "name": "participants",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "mentions",
+        "target": "",
+        "cardinality": "many"
+      }
+    ],
+    "nameProperty": "name"
+  },
+  {
+    "name": "LinkBlock",
+    "properties": [
+      {
+        "name": "url",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "title",
+        "type": "string"
+      },
+      {
+        "name": "description",
+        "type": "string"
+      },
+      {
+        "name": "thumbnail",
+        "type": "string"
+      },
+      {
+        "name": "version",
+        "type": "number"
+      }
+    ],
+    "relations": [
+      {
+        "name": "responses",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "respondsTo",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "thread",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "inThread",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "partOf",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "extractedFrom",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "runs",
+        "target": "ModelRun",
+        "cardinality": "many"
+      },
+      {
+        "name": "generatedBy",
+        "target": "ModelRun",
+        "cardinality": "one"
+      },
+      {
+        "name": "signals",
+        "target": "Signal",
+        "cardinality": "many"
+      },
+      {
+        "name": "participants",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "mentions",
+        "target": "",
+        "cardinality": "many"
+      }
+    ],
+    "nameProperty": "title"
+  },
+  {
+    "name": "LocationBlock",
+    "properties": [
+      {
+        "name": "name",
+        "type": "string"
+      },
+      {
+        "name": "latitude",
+        "type": "number"
+      },
+      {
+        "name": "longitude",
+        "type": "number"
+      },
+      {
+        "name": "address",
+        "type": "string"
+      },
+      {
+        "name": "city",
+        "type": "string"
+      },
+      {
+        "name": "countryCode",
+        "type": "string"
+      },
+      {
+        "name": "country",
+        "type": "string"
+      },
+      {
+        "name": "version",
+        "type": "number"
+      }
+    ],
+    "relations": [
+      {
+        "name": "responses",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "respondsTo",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "thread",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "inThread",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "partOf",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "extractedFrom",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "runs",
+        "target": "ModelRun",
+        "cardinality": "many"
+      },
+      {
+        "name": "generatedBy",
+        "target": "ModelRun",
+        "cardinality": "one"
+      },
+      {
+        "name": "signals",
+        "target": "Signal",
+        "cardinality": "many"
+      },
+      {
+        "name": "participants",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "mentions",
+        "target": "",
+        "cardinality": "many"
+      }
+    ],
+    "nameProperty": "name"
+  },
+  {
+    "name": "MutedAgent",
+    "properties": [
+      {
+        "name": "did",
+        "type": "string"
+      },
+      {
+        "name": "description",
+        "type": "string"
+      }
+    ],
+    "relations": [
+      {
+        "name": "responses",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "respondsTo",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "thread",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "inThread",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "partOf",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "extractedFrom",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "runs",
+        "target": "ModelRun",
+        "cardinality": "many"
+      },
+      {
+        "name": "generatedBy",
+        "target": "ModelRun",
+        "cardinality": "one"
+      },
+      {
+        "name": "signals",
+        "target": "Signal",
+        "cardinality": "many"
+      },
+      {
+        "name": "participants",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "mentions",
+        "target": "",
+        "cardinality": "many"
+      }
+    ],
+    "nameProperty": "did"
+  },
+  {
+    "name": "Placement",
+    "properties": [
+      {
+        "name": "nodeType",
+        "type": "string"
+      },
+      {
+        "name": "x",
+        "type": "number"
+      },
+      {
+        "name": "y",
+        "type": "number"
+      },
+      {
+        "name": "width",
+        "type": "number"
+      },
+      {
+        "name": "height",
+        "type": "number"
+      },
+      {
+        "name": "contentScale",
+        "type": "number"
+      },
+      {
+        "name": "rotation",
+        "type": "number"
+      },
+      {
+        "name": "z",
+        "type": "number"
+      },
+      {
+        "name": "color",
+        "type": "string"
+      },
+      {
+        "name": "cardShape",
+        "type": "string"
+      },
+      {
+        "name": "rank",
+        "type": "number"
+      }
+    ],
+    "relations": [
+      {
+        "name": "node",
+        "target": "",
+        "cardinality": "one"
+      }
+    ],
+    "nameProperty": "nodeType"
+  },
+  {
+    "name": "ReadMarker",
+    "properties": [
+      {
+        "name": "nodeId",
+        "type": "string"
+      },
+      {
+        "name": "spaceUuid",
+        "type": "string"
+      },
+      {
+        "name": "lastReadAt",
+        "type": "string"
+      }
+    ],
+    "relations": [
+      {
+        "name": "responses",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "respondsTo",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "thread",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "inThread",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "partOf",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "extractedFrom",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "runs",
+        "target": "ModelRun",
+        "cardinality": "many"
+      },
+      {
+        "name": "generatedBy",
+        "target": "ModelRun",
+        "cardinality": "one"
+      },
+      {
+        "name": "signals",
+        "target": "Signal",
+        "cardinality": "many"
+      },
+      {
+        "name": "participants",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "mentions",
+        "target": "",
+        "cardinality": "many"
+      }
+    ],
+    "nameProperty": "nodeId"
+  },
+  {
+    "name": "Relationship",
+    "properties": [
+      {
+        "name": "connection",
+        "type": "string"
+      },
+      {
+        "name": "relationshipTypeId",
+        "type": "string"
+      },
+      {
+        "name": "label",
+        "type": "string"
+      },
+      {
+        "name": "description",
+        "type": "string"
+      },
+      {
+        "name": "sourceType",
+        "type": "string"
+      },
+      {
+        "name": "targetType",
+        "type": "string"
+      }
+    ],
+    "relations": [
+      {
+        "name": "source",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "target",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "responses",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "respondsTo",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "thread",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "inThread",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "partOf",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "extractedFrom",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "runs",
+        "target": "ModelRun",
+        "cardinality": "many"
+      },
+      {
+        "name": "generatedBy",
+        "target": "ModelRun",
+        "cardinality": "one"
+      },
+      {
+        "name": "signals",
+        "target": "Signal",
+        "cardinality": "many"
+      },
+      {
+        "name": "participants",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "mentions",
+        "target": "",
+        "cardinality": "many"
+      }
+    ],
+    "nameProperty": "label"
+  },
+  {
+    "name": "RelationshipType",
+    "properties": [
+      {
+        "name": "name",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "slug",
+        "type": "string"
+      },
+      {
+        "name": "description",
+        "type": "string"
+      },
+      {
+        "name": "icon",
+        "type": "string"
+      },
+      {
+        "name": "color",
+        "type": "string"
+      },
+      {
+        "name": "inverseName",
+        "type": "string"
+      },
+      {
+        "name": "directed",
+        "type": "boolean"
+      },
+      {
+        "name": "schemaVersion",
+        "type": "number"
+      }
+    ],
+    "relations": [
+      {
+        "name": "responses",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "respondsTo",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "thread",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "inThread",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "partOf",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "extractedFrom",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "runs",
+        "target": "ModelRun",
+        "cardinality": "many"
+      },
+      {
+        "name": "generatedBy",
+        "target": "ModelRun",
+        "cardinality": "one"
+      },
+      {
+        "name": "signals",
+        "target": "Signal",
+        "cardinality": "many"
+      },
+      {
+        "name": "participants",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "mentions",
+        "target": "",
+        "cardinality": "many"
+      }
+    ],
+    "nameProperty": "name"
+  },
+  {
+    "name": "Role",
+    "properties": [
+      {
+        "name": "slug",
+        "type": "string"
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "description",
+        "type": "string"
+      }
+    ],
+    "relations": [],
+    "nameProperty": "name"
+  },
+  {
+    "name": "RoleGrant",
+    "properties": [
+      {
+        "name": "role",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "agent",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "revokedAt",
+        "type": "string"
+      }
+    ],
+    "relations": [],
+    "nameProperty": "role"
+  },
+  {
+    "name": "Policy",
+    "properties": [
+      {
+        "name": "document",
+        "type": "string",
+        "required": true
+      }
+    ],
+    "relations": [],
+    "nameProperty": "document"
+  },
+  {
+    "name": "Shape",
+    "properties": [
+      {
+        "name": "name",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "description",
+        "type": "string"
+      },
+      {
+        "name": "icon",
+        "type": "string"
+      },
+      {
+        "name": "shapeId",
+        "type": "string"
+      },
+      {
+        "name": "version",
+        "type": "number"
+      },
+      {
+        "name": "forkedFrom",
+        "type": "string"
+      },
+      {
+        "name": "definition",
+        "type": "string"
+      }
+    ],
+    "relations": [
+      {
+        "name": "responses",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "respondsTo",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "thread",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "inThread",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "partOf",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "extractedFrom",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "runs",
+        "target": "ModelRun",
+        "cardinality": "many"
+      },
+      {
+        "name": "generatedBy",
+        "target": "ModelRun",
+        "cardinality": "one"
+      },
+      {
+        "name": "signals",
+        "target": "Signal",
+        "cardinality": "many"
+      },
+      {
+        "name": "participants",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "mentions",
+        "target": "",
+        "cardinality": "many"
+      }
+    ],
+    "nameProperty": "name"
+  },
+  {
+    "name": "Signal",
+    "properties": [
+      {
+        "name": "signalTypeId",
+        "type": "string"
+      },
+      {
+        "name": "value",
+        "type": "number"
+      }
+    ],
+    "relations": [],
+    "nameProperty": "signalTypeId"
+  },
+  {
+    "name": "SignalType",
+    "properties": [
+      {
+        "name": "name",
+        "type": "string"
+      },
+      {
+        "name": "slug",
+        "type": "string"
+      },
+      {
+        "name": "description",
+        "type": "string"
+      },
+      {
+        "name": "icon",
+        "type": "string"
+      },
+      {
+        "name": "iconSecondary",
+        "type": "string"
+      },
+      {
+        "name": "step",
+        "type": "number"
+      },
+      {
+        "name": "rangeMin",
+        "type": "number"
+      },
+      {
+        "name": "rangeMax",
+        "type": "number"
+      },
+      {
+        "name": "mode",
+        "type": "string"
+      },
+      {
+        "name": "aggregate",
+        "type": "string"
+      },
+      {
+        "name": "semantic",
+        "type": "string"
+      },
+      {
+        "name": "allowChange",
+        "type": "boolean"
+      },
+      {
+        "name": "retired",
+        "type": "boolean"
+      },
+      {
+        "name": "valueType",
+        "type": "string"
+      },
+      {
+        "name": "schemaVersion",
+        "type": "number"
+      }
+    ],
+    "relations": [
+      {
+        "name": "responses",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "respondsTo",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "thread",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "inThread",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "partOf",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "extractedFrom",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "runs",
+        "target": "ModelRun",
+        "cardinality": "many"
+      },
+      {
+        "name": "generatedBy",
+        "target": "ModelRun",
+        "cardinality": "one"
+      },
+      {
+        "name": "signals",
+        "target": "Signal",
+        "cardinality": "many"
+      },
+      {
+        "name": "participants",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "mentions",
+        "target": "",
+        "cardinality": "many"
+      }
+    ],
+    "nameProperty": "name"
+  },
+  {
+    "name": "Space",
+    "properties": [
+      {
+        "name": "uuid",
+        "type": "string"
+      },
+      {
+        "name": "url",
+        "type": "string"
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "description",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "discovery",
+        "type": "string"
+      },
+      {
+        "name": "avatar",
+        "type": "string"
+      },
+      {
+        "name": "coverImage",
+        "type": "string"
+      },
+      {
+        "name": "defaultTemplateId",
+        "type": "string"
+      },
+      {
+        "name": "defaultThemeId",
+        "type": "string"
+      },
+      {
+        "name": "enabledModules",
+        "type": "string"
+      },
+      {
+        "name": "enabledViews",
+        "type": "string"
+      },
+      {
+        "name": "extractionTargets",
+        "type": "string"
+      },
+      {
+        "name": "autoInterpret",
+        "type": "boolean"
+      },
+      {
+        "name": "threadMode",
+        "type": "string"
+      },
+      {
+        "name": "moduleSettings",
+        "type": "string"
+      },
+      {
+        "name": "archivedWorkflows",
+        "type": "string"
+      },
+      {
+        "name": "taskWorkflowRule",
+        "type": "string"
+      }
+    ],
+    "relations": [
+      {
+        "name": "location",
+        "target": "LocationBlock",
+        "cardinality": "one"
+      },
+      {
+        "name": "taskStates",
+        "target": "TaskState",
+        "cardinality": "many"
+      },
+      {
+        "name": "typeStyles",
+        "target": "TypeStyle",
+        "cardinality": "many"
+      },
+      {
+        "name": "root",
+        "target": "CollectionBlock",
+        "cardinality": "one"
+      },
+      {
+        "name": "landmarks",
+        "target": "SpaceLandmark",
+        "cardinality": "many"
+      },
+      {
+        "name": "responses",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "respondsTo",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "thread",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "inThread",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "partOf",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "extractedFrom",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "runs",
+        "target": "ModelRun",
+        "cardinality": "many"
+      },
+      {
+        "name": "generatedBy",
+        "target": "ModelRun",
+        "cardinality": "one"
+      },
+      {
+        "name": "signals",
+        "target": "Signal",
+        "cardinality": "many"
+      },
+      {
+        "name": "participants",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "mentions",
+        "target": "",
+        "cardinality": "many"
+      }
+    ],
+    "nameProperty": "name"
+  },
+  {
+    "name": "SpacePreference",
+    "properties": [
+      {
+        "name": "spaceUuid",
+        "type": "string"
+      },
+      {
+        "name": "mutedModules",
+        "type": "string"
+      },
+      {
+        "name": "moduleSettings",
+        "type": "string"
+      },
+      {
+        "name": "hiddenViews",
+        "type": "string"
+      },
+      {
+        "name": "templateId",
+        "type": "string"
+      },
+      {
+        "name": "themeId",
+        "type": "string"
+      }
+    ],
+    "relations": [
+      {
+        "name": "responses",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "respondsTo",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "thread",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "inThread",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "partOf",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "extractedFrom",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "runs",
+        "target": "ModelRun",
+        "cardinality": "many"
+      },
+      {
+        "name": "generatedBy",
+        "target": "ModelRun",
+        "cardinality": "one"
+      },
+      {
+        "name": "signals",
+        "target": "Signal",
+        "cardinality": "many"
+      },
+      {
+        "name": "participants",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "mentions",
+        "target": "",
+        "cardinality": "many"
+      }
+    ],
+    "nameProperty": "spaceUuid"
+  },
+  {
+    "name": "SpaceLandmark",
+    "properties": [
+      {
+        "name": "name",
+        "type": "string"
+      }
+    ],
+    "relations": [
+      {
+        "name": "node",
+        "target": "",
+        "cardinality": "one"
+      }
+    ],
+    "nameProperty": "name"
+  },
+  {
+    "name": "SpaceTemplatePreference",
+    "properties": [
+      {
+        "name": "spaceUrl",
+        "type": "string"
+      },
+      {
+        "name": "preference",
+        "type": "string"
+      }
+    ],
+    "relations": [
+      {
+        "name": "responses",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "respondsTo",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "thread",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "inThread",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "partOf",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "extractedFrom",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "runs",
+        "target": "ModelRun",
+        "cardinality": "many"
+      },
+      {
+        "name": "generatedBy",
+        "target": "ModelRun",
+        "cardinality": "one"
+      },
+      {
+        "name": "signals",
+        "target": "Signal",
+        "cardinality": "many"
+      },
+      {
+        "name": "participants",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "mentions",
+        "target": "",
+        "cardinality": "many"
+      }
+    ],
+    "nameProperty": "spaceUrl"
+  },
+  {
+    "name": "TagBlock",
+    "properties": [
+      {
+        "name": "name",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "color",
+        "type": "string"
+      },
+      {
+        "name": "version",
+        "type": "number"
+      }
+    ],
+    "relations": [
+      {
+        "name": "responses",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "respondsTo",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "thread",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "inThread",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "partOf",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "extractedFrom",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "runs",
+        "target": "ModelRun",
+        "cardinality": "many"
+      },
+      {
+        "name": "generatedBy",
+        "target": "ModelRun",
+        "cardinality": "one"
+      },
+      {
+        "name": "signals",
+        "target": "Signal",
+        "cardinality": "many"
+      },
+      {
+        "name": "participants",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "mentions",
+        "target": "",
+        "cardinality": "many"
+      }
+    ],
+    "nameProperty": "name"
+  },
+  {
+    "name": "TaskBlock",
+    "properties": [
+      {
+        "name": "title",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "description",
+        "type": "string"
+      },
+      {
+        "name": "status",
+        "type": "string"
+      },
+      {
+        "name": "priority",
+        "type": "string"
+      },
+      {
+        "name": "dueDate",
+        "type": "string"
+      },
+      {
+        "name": "assignee",
+        "type": "string"
+      },
+      {
+        "name": "version",
+        "type": "number"
+      }
+    ],
+    "relations": [
+      {
+        "name": "responses",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "respondsTo",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "thread",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "inThread",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "partOf",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "extractedFrom",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "runs",
+        "target": "ModelRun",
+        "cardinality": "many"
+      },
+      {
+        "name": "generatedBy",
+        "target": "ModelRun",
+        "cardinality": "one"
+      },
+      {
+        "name": "signals",
+        "target": "Signal",
+        "cardinality": "many"
+      },
+      {
+        "name": "participants",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "mentions",
+        "target": "",
+        "cardinality": "many"
+      }
+    ],
+    "nameProperty": "title"
+  },
+  {
+    "name": "TaskState",
+    "properties": [
+      {
+        "name": "name",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "slug",
+        "type": "string"
+      },
+      {
+        "name": "description",
+        "type": "string"
+      },
+      {
+        "name": "icon",
+        "type": "string"
+      },
+      {
+        "name": "color",
+        "type": "string"
+      },
+      {
+        "name": "semantic",
+        "type": "string"
+      },
+      {
+        "name": "retired",
+        "type": "boolean"
+      },
+      {
+        "name": "approvals",
+        "type": "number"
+      },
+      {
+        "name": "approverKind",
+        "type": "string"
+      },
+      {
+        "name": "evidence",
+        "type": "string"
+      },
+      {
+        "name": "schemaVersion",
+        "type": "number"
+      }
+    ],
+    "relations": [
+      {
+        "name": "responses",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "respondsTo",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "thread",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "inThread",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "partOf",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "extractedFrom",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "runs",
+        "target": "ModelRun",
+        "cardinality": "many"
+      },
+      {
+        "name": "generatedBy",
+        "target": "ModelRun",
+        "cardinality": "one"
+      },
+      {
+        "name": "signals",
+        "target": "Signal",
+        "cardinality": "many"
+      },
+      {
+        "name": "participants",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "mentions",
+        "target": "",
+        "cardinality": "many"
+      }
+    ],
+    "nameProperty": "name"
+  },
+  {
+    "name": "Template",
+    "properties": [
+      {
+        "name": "name",
+        "type": "string"
+      },
+      {
+        "name": "description",
+        "type": "string"
+      },
+      {
+        "name": "icon",
+        "type": "string"
+      },
+      {
+        "name": "origin",
+        "type": "string"
+      },
+      {
+        "name": "version",
+        "type": "number"
+      },
+      {
+        "name": "slug",
+        "type": "string"
+      },
+      {
+        "name": "schema",
+        "type": "string"
+      },
+      {
+        "name": "themeId",
+        "type": "string"
+      },
+      {
+        "name": "role",
+        "type": "string"
+      }
+    ],
+    "relations": [
+      {
+        "name": "screenshots",
+        "target": "ImageBlock",
+        "cardinality": "many"
+      },
+      {
+        "name": "responses",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "respondsTo",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "thread",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "inThread",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "partOf",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "extractedFrom",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "runs",
+        "target": "ModelRun",
+        "cardinality": "many"
+      },
+      {
+        "name": "generatedBy",
+        "target": "ModelRun",
+        "cardinality": "one"
+      },
+      {
+        "name": "signals",
+        "target": "Signal",
+        "cardinality": "many"
+      },
+      {
+        "name": "participants",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "mentions",
+        "target": "",
+        "cardinality": "many"
+      }
+    ],
+    "nameProperty": "name"
+  },
+  {
+    "name": "TextBlock",
+    "properties": [
+      {
+        "name": "style",
+        "type": "string"
+      },
+      {
+        "name": "listItem",
+        "type": "string"
+      },
+      {
+        "name": "level",
+        "type": "number"
+      },
+      {
+        "name": "checked",
+        "type": "boolean"
+      },
+      {
+        "name": "align",
+        "type": "string"
+      },
+      {
+        "name": "direction",
+        "type": "string"
+      },
+      {
+        "name": "text",
+        "type": "string"
+      },
+      {
+        "name": "marks",
+        "type": "string"
+      },
+      {
+        "name": "source",
+        "type": "string"
+      },
+      {
+        "name": "version",
+        "type": "number"
+      }
+    ],
+    "relations": [
+      {
+        "name": "responses",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "respondsTo",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "thread",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "inThread",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "partOf",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "extractedFrom",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "runs",
+        "target": "ModelRun",
+        "cardinality": "many"
+      },
+      {
+        "name": "generatedBy",
+        "target": "ModelRun",
+        "cardinality": "one"
+      },
+      {
+        "name": "signals",
+        "target": "Signal",
+        "cardinality": "many"
+      },
+      {
+        "name": "participants",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "mentions",
+        "target": "",
+        "cardinality": "many"
+      }
+    ],
+    "nameProperty": "text"
+  },
+  {
+    "name": "Topic",
+    "properties": [
+      {
+        "name": "name",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "description",
+        "type": "string"
+      },
+      {
+        "name": "icon",
+        "type": "string"
+      },
+      {
+        "name": "color",
+        "type": "string"
+      }
+    ],
+    "relations": [
+      {
+        "name": "responses",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "respondsTo",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "thread",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "inThread",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "partOf",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "extractedFrom",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "runs",
+        "target": "ModelRun",
+        "cardinality": "many"
+      },
+      {
+        "name": "generatedBy",
+        "target": "ModelRun",
+        "cardinality": "one"
+      },
+      {
+        "name": "signals",
+        "target": "Signal",
+        "cardinality": "many"
+      },
+      {
+        "name": "participants",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "mentions",
+        "target": "",
+        "cardinality": "many"
+      }
+    ],
+    "nameProperty": "name"
+  },
+  {
+    "name": "Theme",
+    "properties": [
+      {
+        "name": "name",
+        "type": "string"
+      },
+      {
+        "name": "description",
+        "type": "string"
+      },
+      {
+        "name": "icon",
+        "type": "string"
+      },
+      {
+        "name": "origin",
+        "type": "string"
+      },
+      {
+        "name": "slug",
+        "type": "string"
+      },
+      {
+        "name": "version",
+        "type": "number"
+      },
+      {
+        "name": "css",
+        "type": "string"
+      },
+      {
+        "name": "overrides",
+        "type": "string"
+      }
+    ],
+    "relations": [
+      {
+        "name": "screenshots",
+        "target": "ImageBlock",
+        "cardinality": "many"
+      },
+      {
+        "name": "responses",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "respondsTo",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "thread",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "inThread",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "partOf",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "extractedFrom",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "runs",
+        "target": "ModelRun",
+        "cardinality": "many"
+      },
+      {
+        "name": "generatedBy",
+        "target": "ModelRun",
+        "cardinality": "one"
+      },
+      {
+        "name": "signals",
+        "target": "Signal",
+        "cardinality": "many"
+      },
+      {
+        "name": "participants",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "mentions",
+        "target": "",
+        "cardinality": "many"
+      }
+    ],
+    "nameProperty": "name"
+  },
+  {
+    "name": "Amendment",
+    "properties": [
+      {
+        "name": "property",
+        "type": "string"
+      },
+      {
+        "name": "previousValue",
+        "type": "string"
+      },
+      {
+        "name": "newValue",
+        "type": "string"
+      },
+      {
+        "name": "nodeType",
+        "type": "string"
+      }
+    ],
+    "relations": [
+      {
+        "name": "node",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "run",
+        "target": "ModelRun",
+        "cardinality": "one"
+      }
+    ],
+    "nameProperty": "property"
+  },
+  {
+    "name": "ModelRun",
+    "properties": [
+      {
+        "name": "kind",
+        "type": "string"
+      },
+      {
+        "name": "model",
+        "type": "string"
+      },
+      {
+        "name": "trigger",
+        "type": "string"
+      },
+      {
+        "name": "outcome",
+        "type": "string"
+      },
+      {
+        "name": "error",
+        "type": "string"
+      },
+      {
+        "name": "recordCount",
+        "type": "number"
+      },
+      {
+        "name": "detail",
+        "type": "string"
+      },
+      {
+        "name": "prompt",
+        "type": "string"
+      },
+      {
+        "name": "output",
+        "type": "string"
+      }
+    ],
+    "relations": [],
+    "nameProperty": "kind"
+  },
+  {
+    "name": "TypeStyle",
+    "properties": [
+      {
+        "name": "nodeType",
+        "type": "string"
+      },
+      {
+        "name": "color",
+        "type": "string"
+      },
+      {
+        "name": "display",
+        "type": "string"
+      },
+      {
+        "name": "controls",
+        "type": "string"
+      },
+      {
+        "name": "authoring",
+        "type": "string"
+      }
+    ],
+    "relations": [],
+    "nameProperty": "nodeType"
+  },
+  {
+    "name": "VideoBlock",
+    "properties": [
+      {
+        "name": "title",
+        "type": "string"
+      },
+      {
+        "name": "url",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "duration",
+        "type": "number"
+      },
+      {
+        "name": "thumbnail",
+        "type": "string"
+      },
+      {
+        "name": "provider",
+        "type": "string"
+      },
+      {
+        "name": "version",
+        "type": "number"
+      }
+    ],
+    "relations": [
+      {
+        "name": "responses",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "respondsTo",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "thread",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "inThread",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "partOf",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "extractedFrom",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "runs",
+        "target": "ModelRun",
+        "cardinality": "many"
+      },
+      {
+        "name": "generatedBy",
+        "target": "ModelRun",
+        "cardinality": "one"
+      },
+      {
+        "name": "signals",
+        "target": "Signal",
+        "cardinality": "many"
+      },
+      {
+        "name": "participants",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "mentions",
+        "target": "",
+        "cardinality": "many"
+      }
+    ],
+    "nameProperty": "title"
+  },
+  {
+    "name": "WeNode",
+    "properties": [],
+    "relations": [
+      {
+        "name": "responses",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "respondsTo",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "thread",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "inThread",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "partOf",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "extractedFrom",
+        "target": "",
+        "cardinality": "one"
+      },
+      {
+        "name": "runs",
+        "target": "ModelRun",
+        "cardinality": "many"
+      },
+      {
+        "name": "generatedBy",
+        "target": "ModelRun",
+        "cardinality": "one"
+      },
+      {
+        "name": "signals",
+        "target": "Signal",
+        "cardinality": "many"
+      },
+      {
+        "name": "participants",
+        "target": "",
+        "cardinality": "many"
+      },
+      {
+        "name": "mentions",
+        "target": "",
+        "cardinality": "many"
+      }
+    ]
+  }
+]

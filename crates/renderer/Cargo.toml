@@ -4,14 +4,16 @@
 #
 # Dependency direction, never the other way:
 #   we-expr <- we-screen <- we-template <- we-data <- we-layout <- we-egui <- we-app
+#   we-graph is a leaf the graph view reads (no egui, no tokio).
 #   we-metrics is a leaf below we-style, we-template and we-layout; we-style
 #   otherwise depends on we-expr only; we-ad4m depends on we-data.
-# we-expr, we-screen, we-template, we-data, we-style, we-layout and we-metrics
-# must build for wasm32-unknown-unknown and must not depend on tokio.
+# we-expr, we-screen, we-template, we-data, we-style, we-layout, we-metrics
+# and we-graph must build for wasm32-unknown-unknown and must not depend on tokio.
 [workspace]
 resolver = "2"
 members = [
     "we-metrics",
+    "we-graph",
     "we-expr",
     "we-screen",
     "we-template",
@@ -51,6 +53,7 @@ unicode-width = "0.2"
 smallvec = "1"
 
 we-metrics = { path = "we-metrics" }
+we-graph = { path = "we-graph" }
 we-expr = { path = "we-expr" }
 we-screen = { path = "we-screen" }
 we-template = { path = "we-template" }
