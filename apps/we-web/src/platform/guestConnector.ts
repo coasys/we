@@ -63,20 +63,26 @@ export function createGuestConnector(hostUrl: string): BackendConnector {
       const client = await core.connectAsGuest(hostUrl);
       const capabilities = capabilitiesFromToken(core.token);
 
+      const ports = createAd4mBackendPorts(client, ctx, {
+        administersNode: false,
+        // A guest logs in to a grant, never the node's operator credential.
+        operator: false,
+        capabilities,
+        linkServerUrl: (weSeed.ad4m as { linkServerUrl?: string }).linkServerUrl,
+        connection: () => (core.baseUrl ? { url: core.baseUrl, token: core.token } : null),
+      });
+
       return {
         client,
         // This identity was created by the link, not chosen. See `BackendInitResult.guest`.
         guest: true,
-        ports: createAd4mBackendPorts(client, ctx, {
-          administersNode: false,
-          // A guest logs in to a grant, never the node's operator credential.
-          operator: false,
-          capabilities,
-          linkServerUrl: (weSeed.ad4m as { linkServerUrl?: string }).linkServerUrl,
-          connection: () => (core.baseUrl ? { url: core.baseUrl, token: core.token } : null),
-        }),
-        // Ending the session forgets the token and the host choice.
-        disconnect: () => core.disconnect(),
+        ports,
+        // Ending the session forgets the token and the host choice — and closes the lifecycle
+        // socket the session opened for mounts and templates.
+        disconnect: async () => {
+          ports.acornLifecycle?.dispose?.();
+          await core.disconnect();
+        },
         ...(core.token ? { connection: { port: core.port, token: core.token, url: core.baseUrl } } : {}),
       };
     },

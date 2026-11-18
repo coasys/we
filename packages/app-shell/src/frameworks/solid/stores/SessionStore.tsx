@@ -574,6 +574,10 @@ export function SessionStoreProvider(props: ParentProps) {
     }
 
     try {
+      // Whichever route ends the session — the port's signOut, a disconnect, an executor
+      // restart — the acorn socket the session opened ends first, while its pending calls
+      // can still hear the answer rather than outliving the credentials they rode.
+      backendPorts()?.acornLifecycle?.dispose?.();
       if (await session.signOut()) {
         // Ended by the port.
       } else if (disconnectBackend) {

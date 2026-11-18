@@ -64,24 +64,26 @@ export const ad4mConnector: BackendConnector = {
     const guestHost = storedGuestHost();
     const isGuest = !!guestHost && (!core.baseUrl || core.baseUrl === guestHost);
 
+    const ports = createAd4mBackendPorts(client, ctx, {
+      administersNode: administersNode && !isGuest,
+      // Whether the token is the executor's operator credential or a grant. The app token this
+      // connector asks for is a grant, so it is not the operator however much it holds — and the
+      // executor keeps some calls (installing local AI, for one) to the operator alone.
+      operator: holdsOperatorCredential(core.token),
+      capabilities,
+      // ad4m-connect reaches 'authenticated' only after `agent.status` answered initialised and
+      // unlocked, and hands the client over only then — so the session's first status is known.
+      unlockedAtConnect: core.authState === 'authenticated',
+      linkServerUrl: (weSeed.ad4m as { linkServerUrl?: string }).linkServerUrl,
+      // Read on each use: ad4m-connect replaces the token when a session is re-authorised.
+      connection: () => (core.baseUrl ? { url: core.baseUrl, token: core.token } : null),
+    });
+
     return {
       client,
       // A guest never operates the node, whatever the executor says about itself. This is the app
       // declining to offer node-wide controls, which is a decision it can make locally and should.
-      ports: createAd4mBackendPorts(client, ctx, {
-        administersNode: administersNode && !isGuest,
-        // Whether the token is the executor's operator credential or a grant. The app token this
-        // connector asks for is a grant, so it is not the operator however much it holds — and the
-        // executor keeps some calls (installing local AI, for one) to the operator alone.
-        operator: holdsOperatorCredential(core.token),
-        capabilities,
-        // ad4m-connect reaches 'authenticated' only after `agent.status` answered initialised and
-        // unlocked, and hands the client over only then — so the session's first status is known.
-        unlockedAtConnect: core.authState === 'authenticated',
-        linkServerUrl: (weSeed.ad4m as { linkServerUrl?: string }).linkServerUrl,
-        // Read on each use: ad4m-connect replaces the token when a session is re-authorised.
-        connection: () => (core.baseUrl ? { url: core.baseUrl, token: core.token } : null),
-      }),
+      ports,
       ...(isGuest ? { guest: true as const } : {}),
       // Only for a host chosen from the directory. A local executor is not somewhere the user needs
       // telling about, and pointing at "your own machine" would be noise in the settings page.
@@ -114,7 +116,11 @@ export const ad4mConnector: BackendConnector = {
       // unlocked with a password it holds, so there is no lock to close — ending the session means
       // forgetting the token and the chosen host, which is what `core.disconnect` does. The shell
       // reloads afterwards, which brings the connect UI back.
-      disconnect: () => core.disconnect(),
+      disconnect: async () => {
+        // The lifecycle socket is the session's own: it ends here, not when the page happens to.
+        ports.acornLifecycle?.dispose?.();
+        await core.disconnect();
+      },
       // Use baseUrl (not url) so wss:// remote-host URLs are normalized to https:// before
       // being forwarded in AD4M_CONFIG — the embedded app's startsWith('http') guard would
       // otherwise reject raw wss:// URLs and fall back to localhost.

@@ -42,4 +42,10 @@ export interface AcornLifecyclePort {
    * caller sees the interaction's value rather than its encoding.
    */
   interact(url: string, call: { name: string; parameters?: object }): Promise<unknown>;
+  /**
+   * End whatever the port opened — sockets, timers — when the session it rides
+   * on ends. Optional because a port backed by short-lived calls has nothing to
+   * release; callers invoke it through the optional chain (`port.dispose?.()`).
+   */
+  dispose?: () => void;
 }
