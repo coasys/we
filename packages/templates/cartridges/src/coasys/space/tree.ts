@@ -250,7 +250,29 @@ const namespace: SchemaNode = {
   },
 };
 
-/** A group of classes, open while a class in it is in focus, a row a class. */
+/** A class: a leaf, opening its page. */
+const classRows = (items: string): SchemaNode => ({
+  type: '$each',
+  props: { items: { $: items }, as: 'cls' },
+  children: [
+    treeRow({
+      nested: true,
+      value: { $: `'dna|${MODEL}|' + cls.id` },
+      label: { $: 'cls.label' },
+      icon: { $: 'cls.icon' },
+      badge: namespace,
+    }),
+  ],
+});
+
+/** Some class in `classes` is in focus — what keeps a row around it open. */
+const holdsFocus = (classes: string) =>
+  `startsWith(${DNA_AT}, '${MODEL}|') && ${classes}.exists(c, c.id == split(${DNA_AT}, '|')[1])`;
+
+/**
+ * A group of classes, open while a class in it is in focus: its own classes a row each, then its
+ * nested groups (the built-in group's Blocks), each a row holding its classes.
+ */
 const classGroups: SchemaNode = {
   type: '$each',
   props: { items: { $: CLASS_GROUPS }, as: 'group' },
@@ -260,24 +282,24 @@ const classGroups: SchemaNode = {
       value: { $: "'dnagroup|' + group.key" },
       label: { $: 'group.label' },
       icon: { $: "group.key == 'we' ? 'cube' : group.key == 'space' ? 'users-three' : 'package'" },
-      ...revealing(
-        "'dnagroup|' + group.key",
-        `startsWith(${DNA_AT}, '${MODEL}|') && group.classes.exists(c, c.id == split(${DNA_AT}, '|')[1])`,
-        "'all'",
-      ),
+      ...revealing("'dnagroup|' + group.key", holdsFocus('group.classes'), "'all'"),
       expandable: { $: 'count(group.classes) > 0' },
       badge: countPill('count(group.classes)'),
       children: [
+        classRows('group.rows'),
         {
           type: '$each',
-          props: { items: { $: 'group.classes' }, as: 'cls' },
+          props: { items: { $: 'group.sub' }, as: 'sub' },
           children: [
             treeRow({
               nested: true,
-              value: { $: `'dna|${MODEL}|' + cls.id` },
-              label: { $: 'cls.label' },
-              icon: { $: 'cls.icon' },
-              badge: namespace,
+              value: { $: "'dnagroup|' + group.key + '.' + sub.key" },
+              label: { $: 'sub.label' },
+              icon: 'squares-four',
+              ...revealing("'dnagroup|' + group.key + '.' + sub.key", holdsFocus('sub.classes'), "'all'"),
+              expandable: { $: 'count(sub.classes) > 0' },
+              badge: countPill('count(sub.classes)'),
+              children: [classRows('sub.classes')],
             }),
           ],
         },

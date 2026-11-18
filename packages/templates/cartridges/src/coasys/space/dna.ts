@@ -36,10 +36,19 @@ const asClass = 'k, { id: k.value, label: k.label, icon: k.icon }';
 /** The space's own models, as the record lists know them. */
 export const SPACE_CLASSES = `recordStore.creatableEntities.filter(k, k.group == 'This space').map(${asClass})`;
 
-/** WE's: its vocabulary, then its built-in blocks. */
-export const WE_CLASSES = `distinct([${WE_VOCABULARY.map(
+/** WE's vocabulary classes, in the settings' order and words. */
+const VOCABULARY_CLASSES = `[${WE_VOCABULARY.map(
   (cls) => `{ id: '${cls.name}', label: '${cls.label}', icon: '${cls.icon}' }`,
-).join(', ')}], recordStore.creatableEntities.filter(k, k.group != 'This space').map(${asClass}))`;
+).join(', ')}]`;
+
+/**
+ * WE's built-in blocks. Every built-in class `creatableEntities` lists is a block, since only a block
+ * has a way to be made (`creationPath`), so no list of block names is kept here.
+ */
+const BLOCK_CLASSES = `recordStore.creatableEntities.filter(k, k.group != 'This space').map(${asClass})`;
+
+/** WE's: its vocabulary, then its built-in blocks. */
+export const WE_CLASSES = `distinct(${VOCABULARY_CLASSES}, ${BLOCK_CLASSES})`;
 
 /**
  * Another app's classes, flat and by name, as the store publishes them: every class the space carries
@@ -55,8 +64,23 @@ export const OTHER_CLASSES = [
   `.map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(${OTHER_ENTITIES}, { name: n }).targetClass, n)) ?? '' })`,
 ].join('');
 
-/** The groups the classes are listed in — the space's own, other apps', WE's — those with any. */
-export const CLASS_GROUPS = `[{ key: 'space', label: 'This space', classes: ${SPACE_CLASSES} }, { key: 'other', label: 'Other apps', classes: ${OTHER_CLASSES} }, { key: 'we', label: 'WE', classes: ${WE_CLASSES} }].filter(g, count(g.classes) > 0)`;
+/**
+ * The groups the classes are listed in — the space's own, other apps', the built-in ones — those with
+ * any. Each group is `{ key, label, classes, rows, sub }`:
+ *
+ * - `classes` is every class in the group, nested ones included: what a count, a "this class is in
+ *   here" test and the page's sections read.
+ * - `rows` is the classes listed directly in the group, and `sub` its nested groups, each
+ *   `{ key, label, classes }`, listed after the rows.
+ *
+ * Only the built-in group nests: its vocabulary classes are its rows, and the blocks sit together
+ * in one "Blocks" group at the end. They are different kinds of thing, a community's own definitions
+ * and the kinds of content, and every block listed among the vocabulary classes buried them.
+ */
+const flat = (key: string, label: string, classes: string) =>
+  `{ key: '${key}', label: '${label}', classes: ${classes}, rows: ${classes}, sub: [] }`;
+const BUILT_IN = `{ key: 'we', label: 'Built in', classes: ${WE_CLASSES}, rows: ${VOCABULARY_CLASSES}, sub: [{ key: 'blocks', label: 'Blocks', classes: ${BLOCK_CLASSES} }].filter(s, count(s.classes) > 0) }`;
+export const CLASS_GROUPS = `[${flat('space', 'This space', SPACE_CLASSES)}, ${flat('other', 'Other apps', OTHER_CLASSES)}, ${BUILT_IN}].filter(g, count(g.classes) > 0)`;
 /** How many classes there are. */
 export const CLASS_COUNT = `sum(${CLASS_GROUPS}.map(g, count(g.classes)))`;
 

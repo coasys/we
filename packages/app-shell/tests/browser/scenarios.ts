@@ -2430,7 +2430,7 @@ const coasysTreeDna = (): Scenario => {
         ],
       },
       recordStore: {
-        // The space's own model and one of WE's blocks: the This space and WE groups, beside WE's vocabulary.
+        // The space's own model and one of WE's blocks: the This space group, and the built-in group's vocabulary and Blocks.
         creatableEntities: [
           {
             value: 'Hive',

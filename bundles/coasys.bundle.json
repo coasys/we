@@ -1944,7 +1944,7 @@
                               }
                             },
                             "expandable": {
-                              "$": "sum([{ key: 'space', label: 'This space', classes: recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }) }, { key: 'other', label: 'Other apps', classes: distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' }) }, { key: 'we', label: 'WE', classes: distinct([{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], recordStore.creatableEntities.filter(k, k.group != 'This space').map(k, { id: k.value, label: k.label, icon: k.icon })) }].filter(g, count(g.classes) > 0).map(g, count(g.classes))) > 0"
+                              "$": "sum([{ key: 'space', label: 'This space', classes: recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), rows: recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), sub: [] }, { key: 'other', label: 'Other apps', classes: distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' }), rows: distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' }), sub: [] }, { key: 'we', label: 'Built in', classes: distinct([{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], recordStore.creatableEntities.filter(k, k.group != 'This space').map(k, { id: k.value, label: k.label, icon: k.icon })), rows: [{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], sub: [{ key: 'blocks', label: 'Blocks', classes: recordStore.creatableEntities.filter(k, k.group != 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }) }].filter(s, count(s.classes) > 0) }].filter(g, count(g.classes) > 0).map(g, count(g.classes))) > 0"
                             }
                           },
                           "children": [
@@ -1966,14 +1966,14 @@
                                       "type": "$if",
                                       "props": {
                                         "condition": {
-                                          "$": "sum([{ key: 'space', label: 'This space', classes: recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }) }, { key: 'other', label: 'Other apps', classes: distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' }) }, { key: 'we', label: 'WE', classes: distinct([{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], recordStore.creatableEntities.filter(k, k.group != 'This space').map(k, { id: k.value, label: k.label, icon: k.icon })) }].filter(g, count(g.classes) > 0).map(g, count(g.classes)))"
+                                          "$": "sum([{ key: 'space', label: 'This space', classes: recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), rows: recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), sub: [] }, { key: 'other', label: 'Other apps', classes: distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' }), rows: distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' }), sub: [] }, { key: 'we', label: 'Built in', classes: distinct([{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], recordStore.creatableEntities.filter(k, k.group != 'This space').map(k, { id: k.value, label: k.label, icon: k.icon })), rows: [{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], sub: [{ key: 'blocks', label: 'Blocks', classes: recordStore.creatableEntities.filter(k, k.group != 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }) }].filter(s, count(s.classes) > 0) }].filter(g, count(g.classes) > 0).map(g, count(g.classes)))"
                                         },
                                         "then": {
                                           "type": "we-badge",
                                           "props": { "variant": "soft", "size": "xs" },
                                           "children": [
                                             {
-                                              "$": "sum([{ key: 'space', label: 'This space', classes: recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }) }, { key: 'other', label: 'Other apps', classes: distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' }) }, { key: 'we', label: 'WE', classes: distinct([{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], recordStore.creatableEntities.filter(k, k.group != 'This space').map(k, { id: k.value, label: k.label, icon: k.icon })) }].filter(g, count(g.classes) > 0).map(g, count(g.classes)))"
+                                              "$": "sum([{ key: 'space', label: 'This space', classes: recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), rows: recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), sub: [] }, { key: 'other', label: 'Other apps', classes: distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' }), rows: distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' }), sub: [] }, { key: 'we', label: 'Built in', classes: distinct([{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], recordStore.creatableEntities.filter(k, k.group != 'This space').map(k, { id: k.value, label: k.label, icon: k.icon })), rows: [{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], sub: [{ key: 'blocks', label: 'Blocks', classes: recordStore.creatableEntities.filter(k, k.group != 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }) }].filter(s, count(s.classes) > 0) }].filter(g, count(g.classes) > 0).map(g, count(g.classes)))"
                                             }
                                           ]
                                         }
@@ -1987,7 +1987,7 @@
                               "type": "$each",
                               "props": {
                                 "items": {
-                                  "$": "[{ key: 'space', label: 'This space', classes: recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }) }, { key: 'other', label: 'Other apps', classes: distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' }) }, { key: 'we', label: 'WE', classes: distinct([{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], recordStore.creatableEntities.filter(k, k.group != 'This space').map(k, { id: k.value, label: k.label, icon: k.icon })) }].filter(g, count(g.classes) > 0)"
+                                  "$": "[{ key: 'space', label: 'This space', classes: recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), rows: recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), sub: [] }, { key: 'other', label: 'Other apps', classes: distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' }), rows: distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' }), sub: [] }, { key: 'we', label: 'Built in', classes: distinct([{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], recordStore.creatableEntities.filter(k, k.group != 'This space').map(k, { id: k.value, label: k.label, icon: k.icon })), rows: [{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], sub: [{ key: 'blocks', label: 'Blocks', classes: recordStore.creatableEntities.filter(k, k.group != 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }) }].filter(s, count(s.classes) > 0) }].filter(g, count(g.classes) > 0)"
                                 },
                                 "as": "group"
                               },
@@ -2060,7 +2060,7 @@
                                     },
                                     {
                                       "type": "$each",
-                                      "props": { "items": { "$": "group.classes" }, "as": "cls" },
+                                      "props": { "items": { "$": "group.rows" }, "as": "cls" },
                                       "children": [
                                         {
                                           "type": "we-tree-item",
@@ -2104,6 +2104,141 @@
                                                       "children": [{ "$": "cls.namespace" }]
                                                     }
                                                   }
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "$each",
+                                      "props": { "items": { "$": "group.sub" }, "as": "sub" },
+                                      "children": [
+                                        {
+                                          "type": "we-tree-item",
+                                          "slot": "children",
+                                          "props": {
+                                            "value": { "$": "'dnagroup|' + group.key + '.' + sub.key" },
+                                            "open": {
+                                              "$": "(('dnagroup|' + group.key + '.' + sub.key) in local.openRows) || ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), 'model|') && sub.classes.exists(c, c.id == split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1])))"
+                                            },
+                                            "onOpenChange": {
+                                              "$if": {
+                                                "condition": {
+                                                  "$": "!event.detail.open && ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), 'model|') && sub.classes.exists(c, c.id == split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1])))"
+                                                },
+                                                "then": [
+                                                  {
+                                                    "$invoke": "routeStore.setParam",
+                                                    "args": ["dna", { "$": "'all'" }]
+                                                  },
+                                                  {
+                                                    "$if": {
+                                                      "condition": {
+                                                        "$": "('dnagroup|' + group.key + '.' + sub.key) in local.openRows"
+                                                      },
+                                                      "then": {
+                                                        "$toggleLocalIn": "openRows",
+                                                        "value": { "$": "'dnagroup|' + group.key + '.' + sub.key" }
+                                                      }
+                                                    }
+                                                  }
+                                                ],
+                                                "else": {
+                                                  "$toggleLocalIn": "openRows",
+                                                  "value": { "$": "'dnagroup|' + group.key + '.' + sub.key" }
+                                                }
+                                              }
+                                            },
+                                            "expandable": { "$": "count(sub.classes) > 0" }
+                                          },
+                                          "children": [
+                                            {
+                                              "type": "Row",
+                                              "props": {
+                                                "gap": "200",
+                                                "ay": "center",
+                                                "minWidth": "0",
+                                                "width": "100%"
+                                              },
+                                              "children": [
+                                                {
+                                                  "type": "we-icon",
+                                                  "props": {
+                                                    "name": "squares-four",
+                                                    "size": "sm",
+                                                    "color": "text-faint"
+                                                  }
+                                                },
+                                                {
+                                                  "type": "we-text",
+                                                  "props": { "truncate": true, "flex": "1", "minWidth": "0" },
+                                                  "children": [{ "$": "sub.label" }]
+                                                },
+                                                {
+                                                  "type": "$if",
+                                                  "props": {
+                                                    "condition": { "$": "count(sub.classes)" },
+                                                    "then": {
+                                                      "type": "we-badge",
+                                                      "props": { "variant": "soft", "size": "xs" },
+                                                      "children": [{ "$": "count(sub.classes)" }]
+                                                    }
+                                                  }
+                                                }
+                                              ]
+                                            },
+                                            {
+                                              "type": "$each",
+                                              "props": { "items": { "$": "sub.classes" }, "as": "cls" },
+                                              "children": [
+                                                {
+                                                  "type": "we-tree-item",
+                                                  "slot": "children",
+                                                  "props": { "value": { "$": "'dna|model|' + cls.id" } },
+                                                  "children": [
+                                                    {
+                                                      "type": "Row",
+                                                      "props": {
+                                                        "gap": "200",
+                                                        "ay": "center",
+                                                        "minWidth": "0",
+                                                        "width": "100%"
+                                                      },
+                                                      "children": [
+                                                        {
+                                                          "type": "we-icon",
+                                                          "props": {
+                                                            "name": { "$": "cls.icon" },
+                                                            "size": "sm",
+                                                            "color": "text-faint"
+                                                          }
+                                                        },
+                                                        {
+                                                          "type": "we-text",
+                                                          "props": { "truncate": true, "flex": "1", "minWidth": "0" },
+                                                          "children": [{ "$": "cls.label" }]
+                                                        },
+                                                        {
+                                                          "type": "$if",
+                                                          "props": {
+                                                            "condition": { "$": "cls.namespace" },
+                                                            "then": {
+                                                              "type": "we-text",
+                                                              "props": {
+                                                                "variant": "footnote",
+                                                                "color": "text-faint",
+                                                                "truncate": true,
+                                                                "maxWidth": "96px"
+                                                              },
+                                                              "children": [{ "$": "cls.namespace" }]
+                                                            }
+                                                          }
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
                                                 }
                                               ]
                                             }
@@ -26585,7 +26720,7 @@
                   "type": "$if",
                   "props": {
                     "condition": {
-                      "$": "(routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') == 'all' && sum([{ key: 'space', label: 'This space', classes: recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }) }, { key: 'other', label: 'Other apps', classes: distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' }) }, { key: 'we', label: 'WE', classes: distinct([{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], recordStore.creatableEntities.filter(k, k.group != 'This space').map(k, { id: k.value, label: k.label, icon: k.icon })) }].filter(g, count(g.classes) > 0).map(g, count(g.classes))) == 0 && count(spaceStore.policy.sentences) == 0"
+                      "$": "(routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') == 'all' && sum([{ key: 'space', label: 'This space', classes: recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), rows: recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), sub: [] }, { key: 'other', label: 'Other apps', classes: distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' }), rows: distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' }), sub: [] }, { key: 'we', label: 'Built in', classes: distinct([{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], recordStore.creatableEntities.filter(k, k.group != 'This space').map(k, { id: k.value, label: k.label, icon: k.icon })), rows: [{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], sub: [{ key: 'blocks', label: 'Blocks', classes: recordStore.creatableEntities.filter(k, k.group != 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }) }].filter(s, count(s.classes) > 0) }].filter(g, count(g.classes) > 0).map(g, count(g.classes))) == 0 && count(spaceStore.policy.sentences) == 0"
                     },
                     "then": {
                       "type": "we-text",
@@ -26610,92 +26745,211 @@
                           "type": "$each",
                           "props": {
                             "items": {
-                              "$": "[{ key: 'space', label: 'This space', classes: recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }) }, { key: 'other', label: 'Other apps', classes: distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' }) }, { key: 'we', label: 'WE', classes: distinct([{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], recordStore.creatableEntities.filter(k, k.group != 'This space').map(k, { id: k.value, label: k.label, icon: k.icon })) }].filter(g, count(g.classes) > 0)"
+                              "$": "[{ key: 'space', label: 'This space', classes: recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), rows: recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), sub: [] }, { key: 'other', label: 'Other apps', classes: distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' }), rows: distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' }), sub: [] }, { key: 'we', label: 'Built in', classes: distinct([{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], recordStore.creatableEntities.filter(k, k.group != 'This space').map(k, { id: k.value, label: k.label, icon: k.icon })), rows: [{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], sub: [{ key: 'blocks', label: 'Blocks', classes: recordStore.creatableEntities.filter(k, k.group != 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }) }].filter(s, count(s.classes) > 0) }].filter(g, count(g.classes) > 0)"
                             },
                             "as": "group"
                           },
                           "children": [
                             {
                               "type": "Column",
-                              "props": { "gap": "300" },
+                              "props": { "gap": "600" },
                               "children": [
                                 {
-                                  "type": "Row",
-                                  "props": { "gap": "200", "ay": "center" },
+                                  "type": "Column",
+                                  "props": { "gap": "300" },
                                   "children": [
-                                    { "type": "we-icon", "props": { "name": "shapes", "color": "text-muted" } },
                                     {
-                                      "type": "we-text",
-                                      "props": { "variant": "subheading", "fontWeight": "semibold" },
-                                      "children": [{ "$": "group.label" }]
+                                      "type": "Row",
+                                      "props": { "gap": "200", "ay": "center" },
+                                      "children": [
+                                        { "type": "we-icon", "props": { "name": "shapes", "color": "text-muted" } },
+                                        {
+                                          "type": "we-text",
+                                          "props": { "variant": "subheading", "fontWeight": "semibold" },
+                                          "children": [{ "$": "group.label" }]
+                                        },
+                                        {
+                                          "type": "we-text",
+                                          "props": { "color": "text-muted" },
+                                          "children": [{ "$": "count(group.rows)" }]
+                                        }
+                                      ]
                                     },
                                     {
-                                      "type": "we-text",
-                                      "props": { "color": "text-muted" },
-                                      "children": [{ "$": "count(group.classes)" }]
+                                      "type": "Grid",
+                                      "props": { "minChildWidth": "240px", "gap": "300" },
+                                      "children": [
+                                        {
+                                          "type": "$each",
+                                          "props": { "items": { "$": "group.rows" }, "as": "cls" },
+                                          "children": [
+                                            {
+                                              "type": "we-button",
+                                              "props": {
+                                                "variant": "bare",
+                                                "width": "100%",
+                                                "onClick": {
+                                                  "$invoke": "routeStore.navigate",
+                                                  "args": [
+                                                    { "$": "spaceStore.spacePath + '/dna'" },
+                                                    { "$": "{ query: { dna: 'model|' + cls.id } }" }
+                                                  ]
+                                                }
+                                              },
+                                              "children": [
+                                                {
+                                                  "type": "Card",
+                                                  "props": {
+                                                    "bg": "surface",
+                                                    "gap": "300",
+                                                    "width": "100%",
+                                                    "height": "100%",
+                                                    "direction": "row",
+                                                    "ay": "center",
+                                                    "border": "1px solid transparent",
+                                                    "hoverProps": {
+                                                      "border": "1px solid accent-border",
+                                                      "shadow": "glow"
+                                                    }
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "type": "we-icon",
+                                                      "props": {
+                                                        "name": { "$": "cls.icon" },
+                                                        "color": "accent-text",
+                                                        "size": "md"
+                                                      }
+                                                    },
+                                                    {
+                                                      "type": "Column",
+                                                      "props": { "flex": "1", "minWidth": "0", "gap": "100" },
+                                                      "children": [
+                                                        {
+                                                          "type": "we-text",
+                                                          "props": { "fontWeight": "semibold", "truncate": true },
+                                                          "children": [{ "$": "cls.label" }]
+                                                        },
+                                                        {
+                                                          "type": "we-text",
+                                                          "props": {
+                                                            "variant": "footnote",
+                                                            "color": "text-muted",
+                                                            "truncate": true
+                                                          },
+                                                          "children": [
+                                                            { "$": "cls.namespace ? cls.namespace : cls.id" }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ]
                                     }
                                   ]
                                 },
                                 {
-                                  "type": "Grid",
-                                  "props": { "minChildWidth": "240px", "gap": "300" },
+                                  "type": "$each",
+                                  "props": { "items": { "$": "group.sub" }, "as": "sub" },
                                   "children": [
                                     {
-                                      "type": "$each",
-                                      "props": { "items": { "$": "group.classes" }, "as": "cls" },
+                                      "type": "Column",
+                                      "props": { "gap": "300" },
                                       "children": [
                                         {
-                                          "type": "we-button",
-                                          "props": {
-                                            "variant": "bare",
-                                            "width": "100%",
-                                            "onClick": {
-                                              "$invoke": "routeStore.navigate",
-                                              "args": [
-                                                { "$": "spaceStore.spacePath + '/dna'" },
-                                                { "$": "{ query: { dna: 'model|' + cls.id } }" }
-                                              ]
-                                            }
-                                          },
+                                          "type": "Row",
+                                          "props": { "gap": "200", "ay": "center" },
                                           "children": [
                                             {
-                                              "type": "Card",
-                                              "props": {
-                                                "bg": "surface",
-                                                "gap": "300",
-                                                "width": "100%",
-                                                "height": "100%",
-                                                "direction": "row",
-                                                "ay": "center",
-                                                "border": "1px solid transparent",
-                                                "hoverProps": { "border": "1px solid accent-border", "shadow": "glow" }
-                                              },
+                                              "type": "we-icon",
+                                              "props": { "name": "squares-four", "color": "text-muted" }
+                                            },
+                                            {
+                                              "type": "we-text",
+                                              "props": { "variant": "subheading", "fontWeight": "semibold" },
+                                              "children": [{ "$": "sub.label" }]
+                                            },
+                                            {
+                                              "type": "we-text",
+                                              "props": { "color": "text-muted" },
+                                              "children": [{ "$": "count(sub.classes)" }]
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "Grid",
+                                          "props": { "minChildWidth": "240px", "gap": "300" },
+                                          "children": [
+                                            {
+                                              "type": "$each",
+                                              "props": { "items": { "$": "sub.classes" }, "as": "cls" },
                                               "children": [
                                                 {
-                                                  "type": "we-icon",
+                                                  "type": "we-button",
                                                   "props": {
-                                                    "name": { "$": "cls.icon" },
-                                                    "color": "accent-text",
-                                                    "size": "md"
-                                                  }
-                                                },
-                                                {
-                                                  "type": "Column",
-                                                  "props": { "flex": "1", "minWidth": "0", "gap": "100" },
+                                                    "variant": "bare",
+                                                    "width": "100%",
+                                                    "onClick": {
+                                                      "$invoke": "routeStore.navigate",
+                                                      "args": [
+                                                        { "$": "spaceStore.spacePath + '/dna'" },
+                                                        { "$": "{ query: { dna: 'model|' + cls.id } }" }
+                                                      ]
+                                                    }
+                                                  },
                                                   "children": [
                                                     {
-                                                      "type": "we-text",
-                                                      "props": { "fontWeight": "semibold", "truncate": true },
-                                                      "children": [{ "$": "cls.label" }]
-                                                    },
-                                                    {
-                                                      "type": "we-text",
+                                                      "type": "Card",
                                                       "props": {
-                                                        "variant": "footnote",
-                                                        "color": "text-muted",
-                                                        "truncate": true
+                                                        "bg": "surface",
+                                                        "gap": "300",
+                                                        "width": "100%",
+                                                        "height": "100%",
+                                                        "direction": "row",
+                                                        "ay": "center",
+                                                        "border": "1px solid transparent",
+                                                        "hoverProps": {
+                                                          "border": "1px solid accent-border",
+                                                          "shadow": "glow"
+                                                        }
                                                       },
-                                                      "children": [{ "$": "cls.namespace ? cls.namespace : cls.id" }]
+                                                      "children": [
+                                                        {
+                                                          "type": "we-icon",
+                                                          "props": {
+                                                            "name": { "$": "cls.icon" },
+                                                            "color": "accent-text",
+                                                            "size": "md"
+                                                          }
+                                                        },
+                                                        {
+                                                          "type": "Column",
+                                                          "props": { "flex": "1", "minWidth": "0", "gap": "100" },
+                                                          "children": [
+                                                            {
+                                                              "type": "we-text",
+                                                              "props": { "fontWeight": "semibold", "truncate": true },
+                                                              "children": [{ "$": "cls.label" }]
+                                                            },
+                                                            {
+                                                              "type": "we-text",
+                                                              "props": {
+                                                                "variant": "footnote",
+                                                                "color": "text-muted",
+                                                                "truncate": true
+                                                              },
+                                                              "children": [
+                                                                { "$": "cls.namespace ? cls.namespace : cls.id" }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
                                                     }
                                                   ]
                                                 }

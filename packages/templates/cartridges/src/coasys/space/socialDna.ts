@@ -58,7 +58,27 @@ const heading = (
     : row;
 };
 
-/** The classes, a section a group, on the whole page. */
+/** A grid of class tiles, each opening the class's page. */
+const classTiles = (items: string): SchemaNode =>
+  grid([
+    {
+      type: '$each',
+      props: { items: { $: items }, as: 'cls' },
+      children: [
+        tile({
+          lead: glyph({ $: 'cls.icon' }),
+          title: { $: 'cls.label' },
+          detail: detail({ $: 'cls.namespace ? cls.namespace : cls.id' }),
+          onClick: dnaPage(`'${MODEL}|' + cls.id`),
+        }),
+      ],
+    },
+  ]);
+
+/**
+ * The classes, a section a group, on the whole page: the group's own classes, then each nested
+ * group (the built-in group's Blocks) as a section of its own, as the tree lists them.
+ */
 const classGroups: SchemaNode = {
   type: '$if',
   props: {
@@ -73,23 +93,27 @@ const classGroups: SchemaNode = {
           children: [
             {
               type: 'Column',
-              props: { gap: '300' },
+              props: { gap: '600' },
               children: [
-                heading([{ $: 'group.label' }], 'shapes', 'count(group.classes)'),
-                grid([
-                  {
-                    type: '$each',
-                    props: { items: { $: 'group.classes' }, as: 'cls' },
-                    children: [
-                      tile({
-                        lead: glyph({ $: 'cls.icon' }),
-                        title: { $: 'cls.label' },
-                        detail: detail({ $: 'cls.namespace ? cls.namespace : cls.id' }),
-                        onClick: dnaPage(`'${MODEL}|' + cls.id`),
-                      }),
-                    ],
-                  },
-                ]),
+                {
+                  type: 'Column',
+                  props: { gap: '300' },
+                  children: [heading([{ $: 'group.label' }], 'shapes', 'count(group.rows)'), classTiles('group.rows')],
+                },
+                {
+                  type: '$each',
+                  props: { items: { $: 'group.sub' }, as: 'sub' },
+                  children: [
+                    {
+                      type: 'Column',
+                      props: { gap: '300' },
+                      children: [
+                        heading([{ $: 'sub.label' }], 'squares-four', 'count(sub.classes)'),
+                        classTiles('sub.classes'),
+                      ],
+                    },
+                  ],
+                },
               ],
             },
           ],

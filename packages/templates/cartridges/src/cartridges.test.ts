@@ -608,12 +608,15 @@ describe('the Coasys cartridge', () => {
           datasetStore: { currentDatasetEntities: [{ name: 'Question', targetClass: 'conv://Question' }] },
         },
       );
+      type Cls = { id: string; label: string };
       const groups = evaluate({ $: CLASS_GROUPS }) as {
         key: string;
         label: string;
-        classes: { id: string; label: string }[];
+        classes: Cls[];
+        rows: Cls[];
+        sub: { key: string; label: string; classes: Cls[] }[];
       }[];
-      expect(groups.map((g) => g.label)).toEqual(['This space', 'Other apps', 'WE']);
+      expect(groups.map((g) => g.label)).toEqual(['This space', 'Other apps', 'Built in']);
       expect(groups[2].classes.map((c) => [c.id, c.label])).toEqual([
         ['SignalType', 'Signal types'],
         ['RelationshipType', 'Connection types'],
@@ -622,10 +625,62 @@ describe('the Coasys cartridge', () => {
         ['Topic', 'Topics'],
         ['TaskBlock', 'Task'],
       ]);
+      // The vocabulary is listed in the group itself; the blocks sit together in one nested group.
+      expect(groups[2].rows.map((c) => c.id)).toEqual([
+        'SignalType',
+        'RelationshipType',
+        'TaskState',
+        'InvolvementType',
+        'Topic',
+      ]);
+      expect(groups[2].sub.map((s) => [s.key, s.label, s.classes.map((c) => c.id)])).toEqual([
+        ['blocks', 'Blocks', ['TaskBlock']],
+      ]);
+      // The other groups list their classes directly and nest nothing.
+      expect(groups[0].rows.map((c) => c.id)).toEqual(['Sighting']);
+      expect(groups[0].sub).toEqual([]);
+      expect(groups[1].sub).toEqual([]);
       const tree = JSON.stringify(treeSection);
       expect(tree).not.toContain('dnaLens');
       expect(tree).not.toContain('dnakind|signal');
       expect(tree).toContain("'dna|model|' + cls.id");
+      expect(tree).toContain('group.sub');
+    });
+
+    it('nests no Blocks group in the built-in group when the space offers no blocks', () => {
+      const evaluate = at(
+        [],
+        {},
+        {
+          recordStore: { creatableEntities: [], plumbingClasses: [], displays: {} },
+          datasetStore: { currentDatasetEntities: [] },
+        },
+      );
+      const groups = evaluate({ $: CLASS_GROUPS }) as { label: string; sub: unknown[] }[];
+      expect(groups.map((g) => g.label)).toEqual(['Built in']);
+      expect(groups[0].sub).toEqual([]);
+    });
+
+    it('keeps the Blocks row open while a block is in focus, and not for a vocabulary class', () => {
+      const row = (value: string) =>
+        findNode(treeSection, (n) =>
+          String(JSON.stringify((n.props as { open?: unknown } | undefined)?.open)).includes(
+            `((${value}) in local.openRows)`,
+          ),
+        )!;
+      const blocks = "'dnagroup|' + group.key + '.' + sub.key";
+      const open = (dna: string) =>
+        at(
+          [],
+          { view: 'canvas', dna },
+          {
+            local: { openRows: [] },
+            group: { key: 'we' },
+            sub: { key: 'blocks', classes: [{ id: 'TaskBlock' }] },
+          },
+        )((row(blocks).props as { open: unknown }).open);
+      expect(open('model|TaskBlock')).toBe(true);
+      expect(open('model|SignalType')).toBe(false);
     });
 
     /*
