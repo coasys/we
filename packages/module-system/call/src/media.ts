@@ -29,6 +29,7 @@
  * carries the muted state as `MediaSettings`, so peers render a muted badge from the roster rather
  * than trying to infer it from the media.
  */
+import { latest } from '@we/module-shared';
 
 /** The browser APIs this controller needs, injected so tests need no browser. */
 export interface MediaDeviceAccess {
@@ -110,18 +111,14 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
   let videoBeforeShare = false;
 
   /**
-   * Which acquisition attempt is current. Bumped by `stop()`, checked by `start()` after every await.
+   * Which acquisition attempt is current. Cancelled by `stop()`, checked by `start()` after every await.
    *
    * `getUserMedia` sits behind a permission prompt, so it can be outstanding for as long as the user
    * takes to answer. Leave the call — or join a different one — while that prompt is open and
    * `stop()` ran against a null stream and found nothing to close; the promise then resolved into a
-   * live camera and microphone that nothing held a reference to. **They stayed on for the life of
-   * the document.**
-   *
-   * The transcribe store already solved exactly this with a generation counter; this is the same
-   * idiom, which is worth saying because the next port needing it should reach for the same one.
+   * live camera and microphone that nothing held a reference to.
    */
-  let generation = 0;
+  const acquisitions = latest();
 
   const state: MediaState = { audioEnabled: true, videoEnabled: true, screenShareEnabled: false };
 
@@ -136,24 +133,14 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
     options.onTrackChanged?.('video', state.screenShareEnabled ? screenTrack() : cameraTrack());
 
   /**
-   * The counterpart nobody needed until a microphone could change.
-   *
-   * The audio track used to be published exactly once, at `start`, and never again — which was
-   * correct while the only thing that could happen to it was being muted, since muting keeps the
-   * sender and flips `enabled`. A device switch replaces the track, so there has to be a way to say
-   * so, and it has to exist beside `publishVideo` rather than as a line inside the switch: the two
-   * kinds are otherwise asymmetric for no reason a reader could work out.
+   * The audio counterpart of `publishVideo`. Muting keeps the sender and flips `enabled`; a device
+   * switch replaces the track, so it has to be published again.
    */
   const publishAudio = () => options.onTrackChanged?.('audio', micTrack());
 
   /**
-   * What was asked for last, so a later acquisition asks for the same thing.
-   *
-   * The camera re-acquire in `setVideoEnabled` used to rebuild its constraints from
-   * `DEFAULT_CONSTRAINTS`, discarding whatever `start` had been given. Harmless while nothing ever
-   * passed anything — and silently wrong the moment a chosen camera exists, because toggling video
-   * off and on would quietly revert to the system default and the picker would go on claiming the
-   * choice it no longer had.
+   * What was asked for last, so a later acquisition asks for the same thing — a camera re-acquired
+   * after toggling video must be the chosen one, not the system default.
    */
   let asked: MediaStreamConstraints = DEFAULT_CONSTRAINTS;
   /** The device each kind has been pinned to, or empty for whatever the system offers. */
@@ -253,10 +240,10 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
       if (stream) return;
       // Remembered, so every later acquisition asks for the same thing — see `asked`.
       asked = constraints;
-      const mine = ++generation;
+      const isMine = acquisitions.begin();
       /** Close a stream that arrived after this attempt was cancelled, rather than storing it. */
       const claim = (acquired: MediaStream): boolean => {
-        if (mine === generation) return true;
+        if (isMine()) return true;
         for (const track of acquired.getTracks()) track.stop();
         return false;
       };
@@ -271,7 +258,7 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
         // A refused or missing camera must not stop the call — audio-only is a valid way to be in
         // one. Retry audio alone before giving up entirely.
         options.onError?.('acquiring camera and microphone', error);
-        if (mine !== generation) return;
+        if (!isMine()) return;
         try {
           acquired = await devices.getUserMedia({ audio: constraintsFor('audio') });
           if (!claim(acquired)) return;
@@ -281,17 +268,14 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
             Nothing was acquired — and saying so is the whole of this branch.
 
             Denying the prompt denies the *request*, so the audio-only retry is refused too without
-            prompting again. This used to return here, leaving `state` claiming `videoEnabled: true`
-            and never calling `emitState()`. Both consequences were visible and neither was
-            recoverable: the self tile had already been built with "wants a picture, has none" and so
-            sat on **Connecting…** for the rest of the call, and `publishActivity` had already told
-            every peer `videoEnabled: true`, so their tile for this agent sat on it too.
+            prompting again. Returning without a word would leave every tile for this agent claiming
+            a picture that is not coming.
 
             The state is corrected to what is true — nothing is being sent — and emitted, which is
             what republishes presence and rebuilds the tiles.
           */
           options.onError?.('acquiring microphone', audioError);
-          if (mine !== generation) return;
+          if (!isMine()) return;
           state.videoEnabled = false;
           state.audioEnabled = false;
           emitState();
@@ -347,7 +331,7 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
       // ordinary path when somebody picks a device before joining.
       if (!stream) return true;
 
-      const mine = generation;
+      const isMine = acquisitions.current();
       let acquired: MediaStream;
       try {
         acquired = await devices.getUserMedia(
@@ -360,8 +344,8 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
 
       const next = (kind === 'audio' ? acquired.getAudioTracks() : acquired.getVideoTracks())[0] ?? null;
       // Cancelled while the prompt was open, or a device that opened with nothing in it. Either way
-      // what was acquired belongs to nobody — the generation check is `start`'s, for its reason.
-      if (mine !== generation || !next) {
+      // what was acquired belongs to nobody — the check is `start`'s, for its reason.
+      if (!isMine() || !next) {
         for (const orphan of acquired.getTracks()) orphan.stop();
         return false;
       }
@@ -392,40 +376,35 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
       videoBeforeShare = enabled;
 
       /*
-        Turning the camera on when there is no camera means *getting* one.
-
-        This used to set the flag and stop there. With no camera track to enable — the ordinary
-        state after joining with video blocked — the flag was the only thing that changed: the self
-        tile went to "wants a picture, has none" and stayed on **Connecting…**, and presence told
-        every peer `videoEnabled: true`, so their tile for this agent stayed there too. Nothing could
-        ever resolve it, because nothing was ever going to ask for a camera again.
+        Turning the camera on when there is no camera means *getting* one. Setting the flag alone,
+        with no track behind it, leaves every tile for this agent on **Connecting…** with nothing
+        that would ever resolve it.
 
         Asking again is also the right behaviour on its own terms. "We failed once" is not an answer
         to someone pressing the camera button: the usual reason they are pressing it is that they
         have just changed the permission.
       */
       if (enabled && !state.screenShareEnabled && !cameraTrack()) {
-        const mine = generation;
+        const isMine = acquisitions.current();
         let acquired: MediaStream;
         try {
           // What was asked for at `start`, with whatever camera has been chosen since — not
-          // `DEFAULT_CONSTRAINTS`, which is what this used to rebuild from and is how a chosen
-          // camera quietly reverted to the system default on the first toggle off and on.
+          // `DEFAULT_CONSTRAINTS`, which would revert a chosen camera to the system default.
           acquired = await devices.getUserMedia({ video: constraintsFor('video') });
         } catch (error) {
           // Still refused. The flag goes back off rather than staying true with nothing behind it,
           // which is the state that could not be recovered from.
           options.onError?.('turning the camera on', error);
-          if (mine !== generation) return;
+          if (!isMine()) return;
           state.videoEnabled = false;
           emitState();
           return;
         }
 
         const track = acquired.getVideoTracks()[0] ?? null;
-        if (mine !== generation || !track) {
+        if (!isMine() || !track) {
           for (const orphan of acquired.getTracks()) orphan.stop();
-          if (mine === generation) {
+          if (isMine()) {
             state.videoEnabled = false;
             emitState();
           }
@@ -493,7 +472,7 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
     stop() {
       // Before closing anything: an acquisition still waiting on the permission prompt has to learn
       // it has been cancelled, or it resolves into a device this call no longer owns.
-      generation += 1;
+      acquisitions.cancel();
       for (const track of stream?.getTracks() ?? []) track.stop();
       for (const track of screenStream?.getTracks() ?? []) track.stop();
       stream = null;
