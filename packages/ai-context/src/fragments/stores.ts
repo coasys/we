@@ -515,6 +515,8 @@ export const storeEntries: StoreEntry[] = [
       policy: { type: 'object', properties: ['loaded', 'preset', 'permissions', 'frozen', 'me', 'roles', 'sentences'] },
       unreadNodeIds: { type: 'array' },
       myMentions: { type: 'array', properties: ['id', 'author', 'createdAt'] },
+      acornAvailable: { type: 'boolean' },
+      acornProjects: { type: 'array', properties: ['datasetId', 'name', 'languageAddress'] },
     },
     actions: [
       'createSpace',
@@ -522,6 +524,10 @@ export const storeEntries: StoreEntry[] = [
       'uploadFile',
       'joinSpace',
       'initializeAsWeSpace',
+      'listAcornProjects',
+      'createAcornProject',
+      'joinAcornProject',
+      'openAcornProject',
       'removeSpace',
       'createPost',
       'updatePost',
@@ -701,6 +707,7 @@ export const storeEntries: StoreEntry[] = [
       activeShellView: { type: 'string' },
       createSpaceOpen: { type: 'boolean' },
       joinSpaceOpen: { type: 'boolean' },
+      acornProjectsOpen: { type: 'boolean' },
       pendingScreenSources: { type: 'array' },
       collapsedLanes: { type: 'array' },
       customisingLayout: { type: 'boolean' },
@@ -710,6 +717,7 @@ export const storeEntries: StoreEntry[] = [
       'closeShellView',
       'setCreateSpaceOpen',
       'setJoinSpaceOpen',
+      'setAcornProjectsOpen',
       'chooseScreenSource',
       'scrollToId',
       'toggleLane',
@@ -1419,6 +1427,10 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         "string[] — ids of the containers in this space holding something newer than this agent's marker for them, or never read. What an unread dot reads: { $: 'channel.id in spaceStore.unreadNodeIds' }. Ids rather than counts, since a count needs every child's timestamp",
       myMentions:
         '{ id, author, createdAt }[] — messages in this space that mention this agent — posts and transcript or Feed lines alike — newest first, the fifty most recent. createdAt is the backend’s comparable timestamp. Asked from the agent’s end through the backend’s references, one lookup per space',
+      acornAvailable:
+        'boolean — this session can offer Acorn project chrome at all: the backend carries a mount-capable acornLifecycle port AND the acorn module is registered. Gate an "Acorn projects" entry on it — on any other backend it is false and the surface stays hidden rather than empty',
+      acornProjects:
+        '{ datasetId, name, languageAddress }[] — the datasets the executor reports an Acorn language mounted on, as listAcornProjects last answered. The mount is the truth — no separate registry is kept. Fetched only while the projects dialog is open and emptied when it closes, so a list drawn from it is the modal’s own; `languageAddress` is the mounted Acorn language its class/* interactions live under',
       root: "string — the id of this space's collection: the one CollectionBlock (kind 'space') everything top-level hangs off — calls, loose messages, posts, channels, extracted items, the canvas. Scope a top-level read through it: { anchor: 'CollectionBlock', via: 'children', anchorId: spaceStore.root }. Empty outside a space, and in a space made before spaces had one",
       rootLoaded:
         "boolean — root has answered for the space on screen. Until then an empty root is not yet an answer, so gate anything that compares an address with root on it — { $: 'spaceStore.rootLoaded' } around an $if on `channel == spaceStore.root` — or the wrong branch mounts, reads, and is torn down when root arrives",
@@ -1565,6 +1577,14 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '(id: string, focus = true): joins a shared space by share link, neighbourhood URL or CID, or focuses it if already joined. Pass focus: false to join without navigating there — for a caller that needs the dataset present rather than open, which is how the marketplace reads its own dataset without moving you out of the space you are in. Rejects when the join could not be completed, so onSuccess means what it says; watch joiningSpace/joinSlow/joinError for what to show while it runs. A join whose network call times out keeps going: the backend usually finishes anyway, and this waits for that before believing the failure',
       initializeAsWeSpace:
         "(name: string, description: string, avatarValue?: File | string | null): installs WE's Space SDNA into the current, already-joined, foreign-native dataset (e.g. one synced in from Flux) and creates a Space entity in place — access is always 'shared' since the dataset is already a published neighbourhood",
+      listAcornProjects:
+        '(): the agent\u2019s mounted Acorn projects ({ datasetId, name, languageAddress }[]) — every dataset the executor reports a mount on, walked fresh each call. Empty, not a rejection, on a backend without the acornLifecycle port. acornProjects already holds the same answer while the dialog is open',
+      createAcornProject:
+        '(name: string, passphrase: string, sourceLanguageHash?: string): starts a new Acorn project — templates the passphrase into the project language\u2019s seed, creates the dataset, mounts the language, initializes it as a WE space on the acorn template, writes the project meta, and lands on it. Resolves the dataset id, or null where the backend cannot mount. The passphrase IS the join secret: anybody holding it joins the same project — say so beside the field that takes it',
+      joinAcornProject:
+        '(languageAddress: string | null, passphrase: string, sourceLanguageHash?: string): joins an Acorn project somebody else started. Pass null for the address in the ordinary case — the same passphrase templates to the same language as the creator\u2019s — and the address only for a project whose language came from a different base. Mounts, initializes, creates the member profile and announces the join, then lands. Resolves the dataset id, or null where the backend cannot mount',
+      openAcornProject:
+        '(datasetId: string): opens a project the executor already has mounted — what a row of acornProjects calls. Runs the same tail create and join end in: a mounted dataset never initialized becomes a WE space here; one that was just gets switched to and its template confirmed. Resolves the dataset id, or null where the mount is gone',
       removeSpace:
         '(uuid: string): removes a space — clears its global-discovery listing (when authored by this agent) and removes the backing dataset',
       createPost: '(editorState: unknown): creates a new post',
@@ -1980,6 +2000,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         'boolean — the create-space modal is open. Shell state because more than one place opens it; bind the modal’s open prop to this and close it with setCreateSpaceOpen',
       joinSpaceOpen:
         'boolean — the join-a-space dialog is open, where somebody pastes an address they were sent. Shell state for createSpaceOpen’s reason, opened from the same two places. It exists because a share link only opens itself on the web: a desktop build has no address bar and registers no protocol handler, so an address arriving by any other route needs somewhere to go',
+      acornProjectsOpen:
+        'boolean — the Acorn projects dialog is open. The third member of the spaces group’s menu family (create/join/projects), opened from the same place and for the same reason — the module owns the dialog’s contents while the shell owns whether it is up. The menu entry itself hides unless spaceStore.acornAvailable',
       pendingScreenSources:
         'ScreenSource[] \u2014 the screens and windows the host is waiting for somebody to choose between ({ id, name, thumbnail }), or empty. Non-empty only on a desktop host whose OS draws no picker of its own, and only while a share is being asked for: on the web, on macOS 15+ and under a Wayland portal the OS or the browser asks instead',
       dockGeometry:
@@ -2089,6 +2111,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '(open: boolean): opens or closes the create-space modal. Shell state rather than a page\u2019s $localState because more than one place opens it — the settings page and the sidebar\u2019s spaces group — and a page-scoped flag could only be set from inside that page',
       setJoinSpaceOpen:
         '(open: boolean): opens or closes the join-a-space dialog, where somebody pastes an address they were sent. Asking for the dialog is not joining anything — spaceStore.joinSpace is where that decision is taken and keeps its own grant. Shell state for setCreateSpaceOpen’s reason, and offered beside it: the sidebar’s spaces group offers the pair behind one +',
+      setAcornProjectsOpen:
+        '(open: boolean): opens or closes the Acorn projects dialog — listing, creating and joining are spaceStore’s *AcornProject actions; this flag only says whether the module’s dialog is up. Shell state like its two siblings, since the sidebar menu and any other launcher reach it the same way',
       chooseScreenSource:
         '(sourceId: string): answers the host\u2019s "which screen do you want to share" with one of pendingScreenSources, or an empty id to cancel \u2014 which the page receives as the same refusal a browser\u2019s own picker gives when dismissed. Host chrome only: a `getDisplayMedia` is outstanding the whole time the prompt is up',
       closeShellView: '(): closes the currently open shell overlay',

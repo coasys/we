@@ -1,3 +1,4 @@
+import { type AcornProjectRef, createAcornLifecycle } from '@shared/acornLifecycle';
 import { boardOptimism } from '@shared/boardOptimism';
 import { createBoardActions, type CreateBoardOptions } from '@shared/boards';
 import { spaceStarterChoices, type StarterChoice } from '@shared/bundles/bundleStarter';
@@ -935,6 +936,30 @@ export interface SpaceStore {
   updateSpaceMeta: (updates: SpaceMetaUpdate, spaceUuid?: string) => Promise<void>;
   setSpaceDefaultTemplate: (templateId: string, spaceUuid?: string) => Promise<void>;
   setSpaceDefaultTheme: (themeId: string, spaceUuid?: string) => Promise<void>;
+  /**
+   * Whether this session's backend can mount Acorn languages — the gate the
+   * Acorn projects chrome reads. False on the in-memory host, where the four
+   * members below still exist but no-op.
+   */
+  acornAvailable: Accessor<boolean>;
+  /** The mounted Acorn projects, fetched while the projects chrome is open — empty otherwise. */
+  acornProjects: Accessor<AcornProjectRef[]>;
+  /** The agent's mounted Acorn projects — every dataset the executor reports a mount on. */
+  listAcornProjects: () => Promise<AcornProjectRef[]>;
+  /**
+   * A new Acorn project: template the seed into its language, mount it on a fresh
+   * dataset, and open the result as a WE space. The dataset's id, or null where
+   * the backend cannot mount.
+   */
+  createAcornProject: (name: string, passphrase: string, sourceLanguageHash?: string) => Promise<string | null>;
+  /** An existing project by language address or by passphrase alone — same mount → open sequence. */
+  joinAcornProject: (
+    languageAddress: string | undefined,
+    passphrase: string,
+    sourceLanguageHash?: string,
+  ) => Promise<string | null>;
+  /** A project the executor already has mounted — initialize it if needed and land on it. */
+  openAcornProject: (datasetId: string) => Promise<string | null>;
   setModuleEnabled: (moduleId: string, enabled: boolean, spaceUuid?: string) => Promise<void>;
   /**
    * What each capability that declares settings is currently set to **for this community**, as rows
@@ -2652,6 +2677,62 @@ export function SpaceStoreProvider(props: ParentProps) {
         console.warn('SpaceStore: could not settle a staged suggestion before a move', error);
       }
     },
+  });
+
+  /*
+    The Acorn project lifecycle, from `@shared/acornLifecycle`.
+
+    Same arrangement as the boards above: the sequence — template the seed into a
+    language, mount it on a fresh dataset, initialise it as a WE space, set the
+    acorn template, then the member interactions — lives in the shared module, and
+    the store stays its **surface**: a schema names `spaceStore.createAcornProject`
+    and where the implementation sits is not the schema's business. What reaches
+    in is the session's ports (an accessor each, since they appear on connect,
+    after this store is built) and the store's own space functions, so the open
+    sequence ends in the same `initializeAsWeSpace` a normal space lands on.
+
+    Everything degrades on a backend that cannot mount — the port is optional and
+    the members no-op where it is absent; `acornAvailable` is what the chrome
+    gates itself on.
+  */
+  const acorn = createAcornLifecycle({
+    port: () => session.backendPorts()?.acornLifecycle,
+    lifecycle: () => session.lifecycle(),
+    schemas: () => session.backendPorts()?.schemas ?? null,
+    switchDataset: (id) => datasetStore.switchDataset(id),
+    navigateToSpace: (id) => navigateToSpace(id),
+    initializeAsWeSpace: (name, description) => initializeAsWeSpace(name, description),
+    setSpaceDefaultTemplate: (templateId, spaceUuid) => setSpaceDefaultTemplate(templateId, spaceUuid),
+    agentName: () => {
+      const did = session.me()?.did?.replace('did://', '');
+      const profile = did ? profileStore.profiles().find((entry) => entry.did === did) : undefined;
+      return profile ? displayName(profile) : undefined;
+    },
+  });
+
+  /*
+    Whether this session can offer the Acorn projects chrome at all — the mount-capable
+    backend AND the module that draws it. The first alone would leave a sidebar entry that
+    opens a `$part` nobody publishes on a deployment that did not seed the module.
+  */
+  const acornAvailable = createMemo(
+    () => Boolean(session.backendPorts()?.acornLifecycle) && 'acorn.projectsModal' in moduleRegistry.parts(),
+  );
+
+  /*
+    The rows the projects modal draws, fetched while it is open and empty the rest of the
+    time — a mounts walk per dataset is not something to hold open while nobody can see it.
+  */
+  const [acornProjects, setAcornProjects] = createSignal<AcornProjectRef[]>([]);
+  createEffect(() => {
+    if (!shellStore.acornProjectsOpen()) {
+      setAcornProjects([]);
+      return;
+    }
+    void acorn
+      .listAcornProjects()
+      .then(setAcornProjects)
+      .catch(() => setAcornProjects([]));
   });
 
   /**
@@ -6668,6 +6749,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     updatePost,
     moveChild,
     ...boards,
+    acornAvailable,
+    acornProjects,
+    ...acorn,
     setAttending,
     mutedDids,
     mutedAgents,

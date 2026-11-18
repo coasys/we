@@ -87,6 +87,10 @@ const accountMenu: SchemaNode = {
   click to choose between options there is room to show. Joining is the one that most needs showing —
   a desktop build has no address bar, so an address somebody was sent needs a visible place to go.
   WE's sidebar keeps its menu, for the reason its narrow heading gives.
+
+  Acorn projects join them as a third row rather than inside either's dialog: the dialog itself is
+  the acorn module's chrome part, opened through the same shell-flag pattern, and the row exists
+  only where the session can mount a language at all.
 */
 const addSpace: SchemaNode[] = [
   railItem({
@@ -99,6 +103,17 @@ const addSpace: SchemaNode[] = [
     label: 'Join a space',
     onClick: { $invoke: 'shellStore.setJoinSpaceOpen', args: [true] },
   }),
+  {
+    type: '$if',
+    props: {
+      condition: { $: 'spaceStore.acornAvailable' },
+      then: railItem({
+        icon: 'squirrel',
+        label: 'Acorn projects',
+        onClick: { $invoke: 'shellStore.setAcornProjectsOpen', args: [true] },
+      }),
+    },
+  },
 ];
 
 const rail: SchemaNode = railShell({

@@ -384,6 +384,19 @@ export function registerCoreSlots(): void {
   // `shellStore.joinSpaceOpen`. The two are mutually exclusive in practice (one menu, two items),
   // so the order between them decides nothing; it sits next to the one it belongs with.
   slotRegistry.register({ id: 'core:joinSpace', anchor: 'overlay', node: joinSpaceModalMount, order: 5 });
+  /*
+    The Acorn projects dialog, its node living in the acorn module: the host mounts the
+    placement so the chrome exists once, beside its two siblings, and the module keeps the
+    schema. `$part` expands at draw time, so a deployment that did not seed acorn draws
+    nothing — `spaceStore.acornAvailable` keeps its one opener hidden there. See
+    `shellStore.acornProjectsOpen`.
+  */
+  slotRegistry.register({
+    id: 'core:acornProjects',
+    anchor: 'overlay',
+    node: { type: '$part', props: { id: 'acorn.projectsModal' } },
+    order: 5,
+  });
   // Naming a fork or a new template. Opened from the template picker, which is in the app's rail, and
   // from the inspector while the app itself is edited — so it is drawn here, outside the app, where
   // editing the app cannot make it inert and an app without the rail cannot leave it out.

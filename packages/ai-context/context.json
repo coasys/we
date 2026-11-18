@@ -7578,6 +7578,9 @@
         "joinSpaceOpen": {
           "type": "boolean"
         },
+        "acornProjectsOpen": {
+          "type": "boolean"
+        },
         "pendingScreenSources": {
           "type": "array"
         },
@@ -7668,6 +7671,7 @@
         "closeShellView",
         "setCreateSpaceOpen",
         "setJoinSpaceOpen",
+        "setAcornProjectsOpen",
         "chooseScreenSource",
         "confirmDestructive",
         "cancelDestructive",
@@ -7721,6 +7725,7 @@
         "closeShellView",
         "setCreateSpaceOpen",
         "setJoinSpaceOpen",
+        "setAcornProjectsOpen",
         "toggleSpaceSettings",
         "openSpaceSettings",
         "closeSpaceSettings",
@@ -7750,6 +7755,7 @@
         "openShellView",
         "setCreateSpaceOpen",
         "setJoinSpaceOpen",
+        "setAcornProjectsOpen",
         "chooseScreenSource",
         "scrollToId",
         "beginDockResize",
@@ -7979,6 +7985,13 @@
           "type": "array",
           "properties": ["id", "author", "createdAt"]
         },
+        "acornAvailable": {
+          "type": "boolean"
+        },
+        "acornProjects": {
+          "type": "array",
+          "properties": ["datasetId", "name", "languageAddress"]
+        },
         "spaceModuleSettings": {
           "type": "array"
         },
@@ -8053,6 +8066,10 @@
         "updateSpaceMeta",
         "setSpaceDefaultTemplate",
         "setSpaceDefaultTheme",
+        "listAcornProjects",
+        "createAcornProject",
+        "joinAcornProject",
+        "openAcornProject",
         "setModuleEnabled",
         "setSpaceModuleSetting",
         "setMyModuleSetting",
@@ -8135,6 +8152,9 @@
         "updateSpaceMeta",
         "setSpaceDefaultTemplate",
         "setSpaceDefaultTheme",
+        "createAcornProject",
+        "joinAcornProject",
+        "openAcornProject",
         "setModuleEnabled",
         "setSpaceModuleSetting",
         "setMyModuleSetting",
@@ -10423,6 +10443,99 @@
       "activities": {},
       "components": [],
       "functions": [],
+      "views": [],
+      "blocks": [],
+      "entities": []
+    },
+    {
+      "id": "acorn",
+      "name": "Acorn",
+      "description": "Project management over a mounted Acorn project — outcomes, the tree, priorities, members",
+      "icon": "squirrel",
+      "scope": "space",
+      "requires": {},
+      "capabilities": [],
+      "members": [],
+      "parts": [
+        {
+          "name": "projectsModal"
+        },
+        {
+          "name": "outcomeCard",
+          "subject": "outcome",
+          "inputs": [
+            {
+              "name": "outcome",
+              "description": "the AcornOutcome record this card draws"
+            }
+          ]
+        },
+        {
+          "name": "expandedOutcome",
+          "subject": "outcome",
+          "inputs": [
+            {
+              "name": "outcome",
+              "description": "the AcornOutcome record shown expanded"
+            }
+          ]
+        },
+        {
+          "name": "outcomeTable"
+        },
+        {
+          "name": "priorityList"
+        },
+        {
+          "name": "projectDashboard"
+        },
+        {
+          "name": "mapView"
+        }
+      ],
+      "panels": [],
+      "launchers": [],
+      "settings": [],
+      "activities": {},
+      "components": [],
+      "functions": [
+        {
+          "name": "acornTasks",
+          "params": ["taskList"],
+          "doc": "An outcome's task list, parsed from its JSON field into `{ task, complete }` rows.",
+          "example": "acornTasks({ taskList: outcome.taskList })"
+        },
+        {
+          "name": "acornTaskProgress",
+          "params": ["taskList"],
+          "doc": "How far an outcome's task list is — '2/3', or '' when it has none.",
+          "example": "acornTaskProgress({ taskList: outcome.taskList })"
+        },
+        {
+          "name": "acornStatusLabel",
+          "params": ["status"],
+          "doc": "An outcome's achievement status as a person reads it — 'Achieved', 'Not achieved'.",
+          "example": "acornStatusLabel({ status: outcome.achievementStatus })"
+        },
+        {
+          "name": "acornScopeLabel",
+          "params": ["scope"],
+          "doc": "An outcome's scope — 'Big', 'Small', 'Uncertain' — as a label.",
+          "example": "acornScopeLabel({ scope: outcome.scopeType })"
+        },
+        {
+          "name": "acornTimeFrameLabel",
+          "params": ["timeFrame"],
+          "doc": "An outcome's time frame as a date range, or '' when unset.",
+          "example": "acornTimeFrameLabel({ timeFrame: outcome.timeFrame })"
+        },
+        {
+          "name": "acornOutcomeSummary",
+          "params": ["outcome"],
+          "doc": "One line on an outcome — status, task progress and scope, joined where present.",
+          "example": "acornOutcomeSummary({ outcome: outcome })"
+        }
+      ],
       "views": [],
       "blocks": [],
       "entities": []

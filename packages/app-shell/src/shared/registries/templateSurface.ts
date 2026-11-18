@@ -787,6 +787,26 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     reorderViews: hereOnly('space-settings', 1),
     removeSpaceFromGlobal: destructive('space-admin'),
 
+    /*
+      The Acorn project lifecycle — listing, creating, joining and opening a mounted
+      project, which lands as an ordinary space underneath.
+
+      The reads and the two "get me there" actions are `navigation`, matching what they
+      parallel: `acornAvailable`/`acornProjects` answer what `spaceList` answers (my own
+      data, drawn by chrome); `openAcornProject` and `joinAcornProject` are the same act
+      as `joinSpace` — take me to a project, or into one I was given the passphrase for.
+      `createAcornProject` is `space-admin` on `createSpace`'s argument: making a project
+      makes a space, and that act keeps its own grant rather than being reachable from
+      anywhere that can navigate. `listAcornProjects` is an invoke only because the answer
+      crosses an rpc — it asks and reveals nothing `acornProjects` does not.
+    */
+    acornAvailable: state('navigation'),
+    acornProjects: state('navigation'),
+    listAcornProjects: action('navigation'),
+    openAcornProject: action('navigation'),
+    joinAcornProject: action('navigation'),
+    createAcornProject: action('space-admin'),
+
     // ── agent: this agent's own preferences, private to them ──
     installedModules: state('agent'),
     setModuleInstalled: action('agent'),
@@ -1210,6 +1230,13 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       them to a stranger's neighbourhood without a word.
     */
     setJoinSpaceOpen: ambient('navigation'),
+    acornProjectsOpen: state('space-admin'),
+    /*
+      And the Acorn projects dialog, by the same argument twice over: asking for chrome's
+      own dialog is neither joining nor creating — the acts themselves are the spaceStore
+      members above, and keep their own grants.
+    */
+    setAcornProjectsOpen: ambient('navigation'),
     /*
       `host-layout`, like the destructive prompt beside it and for the same reason: the *chrome*
       draws this, and chrome renders at a tier that sees everything, so the classification is about
