@@ -1494,7 +1494,7 @@ Not a standalone selector — wrap in we-popover for dropdown behavior.
   Props: collapsible: boolean = false, open: boolean = false, heading: string = ''
 - we-menu-item (DesignSystemElement) — Single actionable item inside a we-menu.
 Supports selected and active states; `tone: 'danger'` marks a destructive item.
-  Props: selected: boolean = false, active: boolean = false, disabled: boolean = false, label: unknown, value: unknown
+  Props: selected: boolean = false, active: boolean = false, disabled: boolean = false, dismiss: boolean = false, label: unknown, value: unknown
 - we-modal (OverlayElement)
   Props: size: 'sm' | 'md' | 'lg' | 'fullscreen' = 'md', hideclosebutton: boolean = false, close: () => void
 - we-move-handle (LayoutElement)
@@ -3087,6 +3087,7 @@ DatasetStore:
   - currentDatasetUri: string | undefined — the shared URL of the current dataset with its scheme (neighbourhood://…), or undefined for a personal one. Prefer currentDatasetCid for comparisons; this is the form a share link carries
   - currentDatasetCid: string | undefined — the neighbourhood CID of the current dataset (prefix stripped)
   - currentDatasetEntities: EntityManifestEntry[] (non-WE SHACL models from the current dataset; injected as externalEntities into AI messages)
+  - currentDatasetEntitiesLoaded: boolean — currentDatasetEntities has been read for the dataset on screen. They arrive a few round trips after the switch, so until this is true an empty list means "not read yet" rather than "none"
   - isWeSpace: boolean — true once the current dataset is confirmed to have WE's Space SDNA installed (false for a joined-but-foreign dataset, e.g. one synced in from Flux)
   - joinedSpaceCids: string[] — CIDs of every joined shared dataset
   - datasetsLoaded: boolean — the backend has answered with the dataset list. An empty list is otherwise indistinguishable from "not fetched yet", so anything asking "have I joined this?" reads the boot frame as "no". The same reason accountStore.accountsLoaded exists
@@ -3108,10 +3109,10 @@ DatasetStore:
 
 DeviceStore:
 - State:
-  - devices: { keyId, addedSeq, revokedSeq, label, subtitle, icon, thisDevice, revoked, status, canRevoke }[] — the device keys of the person's key log, valid first and this computer on top. `label` is 'This computer' or 'Device d2' (devices have no names yet); `status` 'Valid' or 'Revoked at #2'; `canRevoke` is a valid key that is not this computer's
+  - devices: { keyId, addedSeq, revokedSeq, label, subtitle, icon, thisDevice, revoked, status, canRevoke }[] — the device keys of the person's key log, valid first and this computer on top. `label` is 'This computer' or 'Device d2' (devices have no names yet); `status` 'Active' or 'Removed at #2'; `canRevoke` is a valid key that is not this computer's
   - devicesLoaded: boolean — the list has been read once
   - validCount: number — how many keys are valid
-  - canManage: boolean — Add a device and Revoke can be offered: this computer keeps the master key of the identity
+  - canManage: boolean — Link a device or Remove can be offered: this computer keeps the master key of the identity
   - error: string — why the last read failed, or empty
 - Actions:
   - refresh(): reads the device list again
@@ -3195,7 +3196,7 @@ IdentityStore:
   - did: string — the person’s identifier, or empty while this device speaks for nobody
   - keyId: string — this device’s id in the key log (`d1`), or empty
   - thisDeviceRevoked: boolean — the key log revoked this device’s key: it no longer speaks for the person
-  - keyLog: { seq, op, keys, position, icon, title, detail, hash, hashShort, thisComputer }[] — the key log, newest first, with what each row says made from `op` and `keys` (reword from those where a template wants other words), already worded: `title` "Created your identity", "Added d2", "Revoked d2"; `detail` the keys it names with this computer’s marked "This computer"; `hashShort` the event’s hash for a monospace column
+  - keyLog: { seq, op, keys, position, icon, title, detail, hash, hashShort, thisComputer }[] — the key log, newest first, with what each row says made from `op` and `keys` (reword from those where a template wants other words), already worded: `title` "Created identity", "Added d2", "Revoked d2"; `detail` the keys it names with this computer’s marked "This computer"; `hashShort` the event’s hash for a monospace column
   - keyLogLoaded: boolean — the log has been read once
   - forked: boolean — the backend found two different logs for this identity
   - fork: { seq, ours, theirs } | null — where they part
@@ -3377,6 +3378,10 @@ RuntimeStore:
   - mcpEnabled: boolean — whether the backend serves MCP on its next start
   - mcpPort: number — the port MCP is served on
   - executorRestartPending: boolean — settings were changed that the running backend has not picked up
+  - executorConfigFile: string — the path of the config file the backend started with, where this app may write it (the desktop app’s own executor); empty otherwise. Gate the config rows on it
+  - executorConfigRows: { id, key, value, kind, choice, editable, note }[] — every key of that file: value ready to show (empty when the file leaves the key to its default, "Default" for a fixed one), kind the control it takes, from the key’s type rather than its value (boolean | number | text, or fixed for one only shown), choice for a boolean key’s three-way select (default | on | off, default while the file leaves it to the backend), editable, and note saying why one is not (a flag of this start sets it) or that it is changed only from this computer
+  - executorLogTail: string — the newest lines of this run’s backend log, oldest first. Empty until loadExecutorLogTail runs
+  - canRestartExecutor: boolean — the host starts the backend, so a restart can be offered
   - pendingConsent: ConsentRequest | null — a request awaiting the user's decision (kind: 'capability' | 'trust', title, message, app, peerId)
   - consentSecret: string — a code an approval returned, to be relayed to the asking app
 - Actions:
@@ -3429,7 +3434,9 @@ RuntimeStore:
   - exportDatabase(): asks for a file, then has the backend write everything to it
   - importDatabase(): asks for a file, then has the backend read it back in
   - setMcpPort(port: number): sets the MCP port. The host refuses one outside 1024-65535
-  - restartExecutor(): starts the backend over so written settings take effect. Does not return
+  - restartExecutor(): starts the backend over so written settings take effect — where it keeps a config file, by asking it to restart, and the app starts it again with the same arguments and reloads. Does not return
+  - setExecutorConfigValue(key: string, value): writes one key of the config file — a row’s key and the control’s value (event.detail); an empty value returns it to its default. Takes effect at the next start. A refused key lands in error with the backend’s reason
+  - loadExecutorLogTail(): reads the newest lines of the backend’s log into executorLogTail
   - approveConsent(): grants the pending request
   - denyConsent(): declines the pending request
   - dismissConsentSecret(): clears the confirmation code display
@@ -3475,6 +3482,7 @@ ShapeStore:
   - generating: boolean — an AI generation is in flight
   - hintEntities: { entity, source: 'core' | 'shape' }[] — entities offering AI-hint tuning in this space: core interpretable vocabulary (TaskBlock, EventBlock, Relationship) plus the space's own shapes
   - extractionCandidates: string[] — entity names an extraction pass COULD write here: core vocabulary that declares itself extractable, plus every adopted shape that does. Candidacy, not a decision — which of these a collection actually looks for is two layers down (spaceStore.extractionTargets, the default a new collection copies, then the collection's own list). Read it to offer a choice, and to display findings: a card should show a record somebody extracted an hour ago even if the target has since been switched off
+  - extractionCandidatesLoaded: boolean — extractionCandidates is the whole list: the space's models and the classes it already had have both been read. Until then the list is missing members that are coming; wait for this before treating the list as decided
   - relationshipTargets: { label, value }[] — what a relationship may point at here, ready for a we-select: this space's own models, then block types, then other apps' models. Core infrastructure entities are deliberately absent
   - identityOptions: { label, value }[] — "None" plus every named property of the open draft, for the identity picker. Built in the store because a schema can map options but cannot prepend one
   - nameOptions: { label, value }[] — "Work it out" (naming the field it worked out, "Work it out (title)") plus every named property of the open draft, for the naming-field picker. A different first entry from identityOptions on purpose: no identity means no dedup key, where no naming field means the name is DERIVED (a property called name or title, else whichever string is required or first) — there is no such thing as a record with no name
@@ -3613,7 +3621,7 @@ SpaceStore:
   - mySpaces: array of Space objects — every space the agent holds, across all joined datasets
   - personalSpaces: array of Space objects (local/personal spaces; all Space fields)
   - sharedSpaces: array of Space objects (shared/neighbourhood spaces; all Space fields)
-  - spaceList: { uuid, name, description, avatar, kind: 'shared' | 'personal' | 'foreign', isWeSpace, canAdminister }[] — one row per joined dataset the agent can act on, ordered like the sidebar and excluding the system datasets. Includes datasets that are not WE spaces (kind 'foreign', isWeSpace false), which are waiting to be initialized. `uuid` is the dataset id, so it keys navigation and settings whether or not a Space record exists. `sharing` is 'sharing' while a new shared space is still being shared (it is usable meanwhile), 'failed' when that did not work — `shareError` says why, and shareSpace tries again — and '' otherwise; a shared space has a `shareLink`
+  - spaceList: { uuid, name, description, avatar, kind: 'shared' | 'personal' | 'foreign', isWeSpace, loading, canAdminister }[] — one row per joined dataset the agent can act on, ordered like the sidebar and excluding the system datasets. Includes datasets that are not WE spaces (kind 'foreign', isWeSpace false), which are waiting to be initialized. `loading` is true for the first seconds of a boot while a row's Space record has not been read yet — then `isWeSpace` is false without meaning the dataset is from another app, so show a placeholder rather than the initialize state. `uuid` is the dataset id, so it keys navigation and settings whether or not a Space record exists. `sharing` is 'sharing' while a new shared space is still being shared (it is usable meanwhile), 'failed' when that did not work — `shareError` says why, and shareSpace tries again — and '' otherwise; a shared space has a `shareLink`
   - routeSpaceUnjoined: boolean — the current route points at a space this agent has not joined, as a settled fact. What a join gate should read: `currentDataset` being null is also true for the first frames of a refresh, so gating on that flashes a join prompt at someone already inside. False while the answer is still unknown
   - spacePath: string — the path a space's own pages hang off (`/space/<segment>`), empty outside a space. For a link that has to reach the space's own pages from any surface, the shell overlay included, whose '~/' is the overlay's own root: recordLink builds on it. Within a template, write '~/' instead. The segment is the neighbourhood CID for a shared space and the dataset id for a personal one — only the URL says which
   - creatingSpace: boolean (true while a new space is being created)
@@ -3662,6 +3670,8 @@ SpaceStore:
   - root: string — the id of this space's collection: the one CollectionBlock (kind 'space') everything top-level hangs off — calls, loose messages, posts, channels, extracted items, the canvas. Scope a top-level read through it: { anchor: 'CollectionBlock', via: 'children', anchorId: spaceStore.root }. Empty outside a space, and in a space made before spaces had one
   - landmarks: Record<name, id> — the records this space names as its landmarks, e.g. spaceStore.landmarks.canvas is the space's canvas. Written by the space's starter at creation. A landmark can be absent — a space can switch template and a template must never assume what another set up — so guard every read
   - landmarksLoaded: boolean — the landmarks have answered for the space on screen. Until then an absent landmark is not yet an answer, so gate a 'there is no board yet' on it: { $: 'spaceStore.landmarksLoaded && !spaceStore.landmarks.board' }. Not on `root`, which arrives first
+  - rootLoaded: boolean — root has answered for the space on screen. Until then an empty root is not yet an answer, so gate anything that compares an address with root on it — { $: 'spaceStore.rootLoaded' } around an $if on `channel == spaceStore.root` — or the wrong branch mounts, reads, and is torn down when root arrives
+  - firstScreenOpen: boolean — the first screen after boot is up: the Feed's first page drawn, or the screen drawn with no Feed on it. True from then on. Put it as the `when` of a $queries read the opening screen does not draw (a sidebar's list) so the read starts after that screen rather than beside it — { when: { $: 'spaceStore.firstScreenOpen' } }
   - extractionTargets: string[] — the models a NEW collection here starts out extracting. The middle of three layers: shapeStore.extractionCandidates says what COULD be extracted, this says which of them a new conversation begins with, and each collection then holds its own list, which its participants change (modules.transcribe.extractionFor[id].targets). A default, copied when a collection is made. Unset falls back to the two classes that were hardcoded before the setting existed, so no space silently stops extracting. Writing it is space-settings
   - taskWorkflowRule: '' | 'next' | 'next-and-back' — how a task may move between this space's states, in their order: anywhere, on to the next only, or on and back one. Anything but '' runs the states as a workflow, so a move the rule does not allow is refused on the board — say so beside a picker of states
   - taskWorkflowEnabled: boolean — this space’s task states ask for agreement: some state needs more than one approval, or names whose approval counts. Where true, a card dragged into such a state waits instead of moving, and arrangedBoard(…).workflow[card.id] describes what it is waiting on. Gate an explanation of the waiting on it; the board needs nothing else
@@ -4024,6 +4034,7 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - level — Microphone loudness as the voice detector measures it, 0–1.
   - levelPercent — The microphone level as a CSS width for a meter.
   - listening — True only while actually transcribing — what a record button highlights on.
+  - liveCallRecords — The record of every call somebody is in right now.
   - liveCollectionId — The record the call this agent is in is writing into, or empty when there is none.
   - modelMissing — No transcription model is installed on this node, as last read.
   - modelUnready — A transcription model is installed and cannot run yet — still downloading, or its server is not answering.
