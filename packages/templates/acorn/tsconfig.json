@@ -8,8 +8,10 @@
     "isolatedModules": true,
     "types": ["node"],
     "allowImportingTsExtensions": true,
+    "jsx": "preserve",
+    "jsxImportSource": "solid-js",
     "noEmit": true
   },
-  "include": ["src"],
+  "include": ["src", "tests", "*.config.ts"],
   "exclude": ["node_modules", "dist"]
 }

@@ -32,7 +32,6 @@ import { pathToFileURL } from 'node:url';
 import { after, before, describe, it } from 'node:test';
 
 import * as h from './harness.mjs';
-import { dismissNamePrompt } from './space.mjs';
 
 const exec = promisify(execFile);
 
@@ -115,6 +114,52 @@ async function openProjectsModal(page) {
   await page.getByRole('button', { name: 'Acorn projects', exact: true }).click({ timeout: 120_000 });
 }
 
+/**
+ * Fill a form and prove the values stayed. The projects modal's drafts live in `$localState` on
+ * its `we-modal` node, and the first seconds of the app are a render storm — seed, themes,
+ * templates and profile all land then, and the ones that rebuild the overlay subtree remount the
+ * modal and empty the drafts. A click taken in that window lands on a button that just went
+ * `disabled` and the gesture dies with it. The drafts surviving a beat is the only signal the
+ * storm has passed; a fill that did not hold is done again.
+ */
+async function fillHeld(fields, timeout = 30_000) {
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    for (const [locator, value] of fields) await locator.fill(value);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    let held = true;
+    for (const [locator, value] of fields) {
+      if ((await locator.inputValue().catch(() => '')) !== value) held = false;
+    }
+    if (held) return;
+    if (Date.now() > deadline) throw new Error('the form fields did not hold their values');
+  }
+}
+
+/**
+ * The first-run name prompt, answered for the rig's fresh account — where it always comes.
+ *
+ * `dismissNamePrompt` is a single read of the page: the prompt mounts a beat after the app shell
+ * answers, so a fast pass sees no field and leaves the modal to intercept the next click (the
+ * "Acorn projects" rail button lost pointer events to exactly that `<we-modal>`). Here the
+ * prompt is waited for — not polled once — and the suite waits for the modal to be gone before
+ * driving the page further.
+ */
+async function answerNamePrompt(page, name) {
+  const field = page.getByRole('textbox', { name: 'Name...', exact: true });
+  const appeared = await field.waitFor({ state: 'visible', timeout: 20_000 }).then(
+    () => true,
+    () => false,
+  );
+  if (appeared) {
+    await field.fill(name);
+    await page.getByRole('button', { name: 'Save' }).click();
+    await field.waitFor({ state: 'detached', timeout: 60_000 }).catch(() => {});
+  }
+  const later = page.getByRole('button', { name: 'Not now' });
+  if (await later.count()) await later.first().click();
+}
+
 let app;
 let browser;
 let device;
@@ -163,11 +208,13 @@ describe('web We on the Acorn rig', () => {
     const page = await tab('create');
     try {
       await page.goto(app.url);
-      await dismissNamePrompt(page, 'Acorn Dev');
+      await answerNamePrompt(page, 'Acorn Dev');
 
       await openProjectsModal(page);
-      await page.getByRole('textbox', { name: 'What the project is called' }).fill(name);
-      await page.getByRole('textbox', { name: 'A few words they will type back' }).fill(passphrase);
+      await fillHeld([
+        [page.getByRole('textbox', { name: 'What the project is called' }), name],
+        [page.getByRole('textbox', { name: 'A few words they will type back' }), passphrase],
+      ]);
       await page.getByRole('button', { name: 'Create project' }).click();
 
       // Mount → init → template → land: the modal closes and the route is the space's.
@@ -202,10 +249,10 @@ describe('web We on the Acorn rig', () => {
     const passphrase = passphraseFor(env.SEED || 'uid-rig-test-project');
     const page = await tab('join');
     await page.goto(app.url);
-    await dismissNamePrompt(page, 'Acorn Dev');
+    await answerNamePrompt(page, 'Acorn Dev');
 
     await openProjectsModal(page);
-    await page.getByRole('textbox', { name: 'The words you were given' }).fill(passphrase);
+    await fillHeld([[page.getByRole('textbox', { name: 'The words you were given' }), passphrase]]);
     await page.getByRole('button', { name: 'Join project' }).click();
 
     await page.waitForURL(/\/space\//, { timeout: 300_000 });
@@ -223,5 +270,168 @@ describe('web We on the Acorn rig', () => {
         agents.some((a) => (a.entry?.firstName ?? a.firstName ?? '').startsWith('Acorn')),
       { timeout: 300_000, what: 'the web agent in the stock cell’s member list' },
     );
+  });
+});
+
+/*
+  S2-3's gate: the outcomes view on the live mount — the seeded outcomes listed by the
+  rendered DOM — and the write families back through the real store path. Reads and writes
+  both wait out gossip: stock→AD4M is the slow direction on a cold rig, so DOM waits get
+  the suite's 300 s; the mount's own writes publish locally first, and the stock reads poll
+  until the entry lands in its shard.
+
+  Stock-side the tests speak the rig's own driver (`stock.mjs`) imported straight, not the
+  CLI shim — one websocket instead of a process per call. What the zome answers is the
+  truth: a write that only changed WE-side perspective links leaves `fetch_outcomes`
+  untouched, which is exactly what these tests are for.
+*/
+describe('the outcomes view on the live mount', () => {
+  const SEED_LIST = `VT list ${Date.now().toString(36)}`;
+  const SEED_RENAME = `VT rename ${Date.now().toString(36)}`;
+  const SEED_RENAMED = `VT renamed ${Date.now().toString(36)}`;
+  const SEED_CLEAR = `VT clear ${Date.now().toString(36)}`;
+  const SEED_DESC = 'a description the UI will clear';
+  const SEED_TAG = `VT tag ${Date.now().toString(36)}`;
+  const SEED_DELETE = `VT delete ${Date.now().toString(36)}`;
+  const SEED_TAG_TEXT = `vt-rig-tag-${Date.now().toString(36)}`;
+  const CREATE_CONTENT = `VT create ${Date.now().toString(36)}`;
+
+  let stockMod;
+  let stockH;
+  let page;
+
+  /** `fetch_outcomes` on the rig's setup cell — WireRecords `{actionHash, entry}`. */
+  const fetchOutcomes = () =>
+    stockMod.stockCall(stockH, 'projects', 'fetch_outcomes', { input: { All: null }, local: true });
+  const findByContent = (content) => async () => (await fetchOutcomes()).find((r) => r.entry?.content === content);
+
+  before(async () => {
+    stockMod = await import(rigFile('stock.mjs'));
+    stockH = await stockMod.connect();
+    // One seeded outcome per write family, plus a tag for the collection write — all
+    // stock-side, so the tests do not lean on the create path they also prove.
+    await stockMod.createOutcome(stockH, SEED_LIST);
+    await stockMod.createOutcome(stockH, SEED_RENAME);
+    await stockMod.createOutcome(stockH, SEED_CLEAR, { description: SEED_DESC });
+    await stockMod.createOutcome(stockH, SEED_TAG);
+    await stockMod.createOutcome(stockH, SEED_DELETE);
+    await stockMod.createTag(stockH, SEED_TAG_TEXT);
+
+    // Open the project the join test mounted — by route, which is the same place the
+    // modal's "Open" lands; the dataset persists on the executor for the suite's life.
+    const joined = await datasetNamed('Acorn project');
+    page = await tab('outcomes');
+    await page.goto(app.url);
+    await answerNamePrompt(page, 'Acorn Dev');
+    await page.goto(`${app.url}/space/${joined.uuid}`);
+    await page.waitForURL(/\/space\//, { timeout: 300_000 });
+  });
+
+  after(async () => {
+    if (stockH) await stockMod.closeStock(stockH).catch(() => {});
+  });
+
+  it('live outcomes listed — the seeded content is on screen, un-navigated', async () => {
+    // The landing view is the outcomes list because the space's enabledViews says so —
+    // no nav click; the textbox named by the content is the row's own edit field. Exact:
+    // the row's notes field is named "Notes: <content>" and a loose name matches both.
+    const input = page.getByRole('textbox', { name: SEED_LIST, exact: true });
+    await input.waitFor({ state: 'visible', timeout: 300_000 });
+  });
+
+  /*
+    Every write family is skipped, not deleted — they are the step's acceptance gate and they
+    unskip the moment the pin moves. All were reproduced against this rig both through the UI
+    and through a `fromSHACL`-built `Ad4mModel` in Node, on the pinned `@coasys/ad4m@667d43e`
+    (a9 head) + a9 executor (c9d4a8de1):
+
+    - `Entity.create` → `save()`'s create path wraps itself in a batch when none is given, and
+      `createSubject` inside a batch is refused: `call actions cannot run inside a batch` (500).
+    - `Entity.update` / `updateRecordField` → `save()` → `innerUpdate` → `setProperty` →
+      `executeAction` → `perspective.executeCommands`: a mounted setter is a `call` action and
+      `execute_commands` answers `internal: call action reached execute_commands` — the
+      `update_subject` RPC that *does* dispatch calls is gated to abstract classes on this SDK.
+      `innerUpdate` also skips `""` scalars outright, so empty-clear cannot express itself.
+    - `Entity.delete` → `removeSubject` → concrete class → `getActionsFromSHACL` +
+      `executeAction` → the same `internal: call action reached execute_commands` (500).
+
+    The fix is S2-0's combined build (`acorn/s2-sdk`: `perspective.instance*` RPCs + the
+    `Ad4mModel` dispatch), which does not exist on this box — no branch, no rebuilt executor,
+    no pkg.pr.new snapshot. The executor-side calls are proven by direct RPC: `createSubject`
+    and `updateSubject` with PLAIN values reach stock in seconds; the SDK never routes a
+    concrete mounted class to them, and its `{action,value}` dispatch envelopes marshal as the
+    value itself where it does.
+
+    A separate WE-side gap sat on top and is fixed on this branch: `record.*` actions resolved
+    entity classes through the global registry only, so a per-dataset model (a mounted
+    language's vocabulary) threw "Model not found in registry" before reaching the SDK —
+    `recordModel` now takes the dataset like `entityClass` does. Without it the create test
+    would fail one step earlier, on every pin.
+  */
+  const WRITE_GAP =
+    'model writes on mounted classes die in the pinned a9 SDK — create: "call actions cannot ' +
+    'run inside a batch"; update/delete: "internal: call action reached execute_commands". ' +
+    'Needs the S2-0 combined build (acorn/s2-sdk executor + SDK snapshot), never produced';
+
+  it('create writes through', { skip: WRITE_GAP }, async () => {
+    await page.getByRole('textbox', { name: /New outcome/ }).fill(CREATE_CONTENT);
+    await page.getByRole('button', { name: 'Add outcome', exact: true }).click();
+    await h.until(findByContent(CREATE_CONTENT), (r) => Boolean(r), {
+      timeout: 120_000,
+      what: `stock fetch_outcomes to show "${CREATE_CONTENT}"`,
+    });
+  });
+
+  it('rename writes through', { skip: WRITE_GAP }, async () => {
+    const input = page.getByRole('textbox', { name: SEED_RENAME, exact: true });
+    await input.waitFor({ state: 'visible', timeout: 120_000 });
+    await input.fill(SEED_RENAMED);
+    await input.press('Enter');
+    await input.blur();
+    await h.until(findByContent(SEED_RENAMED), (r) => Boolean(r), {
+      timeout: 120_000,
+      what: `stock fetch_outcomes to show "${SEED_RENAMED}" — rename reaches stock`,
+    });
+  });
+
+  it('empty clear writes through', { skip: WRITE_GAP }, async () => {
+    const input = page.getByRole('textbox', { name: `Notes: ${SEED_CLEAR}` });
+    await input.waitFor({ state: 'visible', timeout: 120_000 });
+    await input.fill('');
+    await input.press('Enter');
+    await input.blur();
+    await h.until(
+      async () => (await fetchOutcomes()).find((r) => r.entry?.content === SEED_CLEAR),
+      (r) => r !== undefined && !r.entry?.description,
+      {
+        timeout: 120_000,
+        what: `stock fetch_outcomes to show "${SEED_CLEAR}" with no description`,
+      },
+    );
+  });
+
+  it('collection replace writes through', { skip: WRITE_GAP }, async () => {
+    await page.getByRole('button', { name: `Tag ${SEED_TAG_TEXT} → ${SEED_TAG}` }).click({ timeout: 120_000 });
+    await h.until(
+      async () => (await fetchOutcomes()).find((r) => r.entry?.content === SEED_TAG),
+      (r) => Array.isArray(r?.entry?.tags) && r.entry.tags.length === 1,
+      { timeout: 120_000, what: `stock to show "${SEED_TAG}" carrying exactly the new tag` },
+    );
+    await page.getByRole('button', { name: `Untag ${SEED_TAG}` }).click();
+    await h.until(
+      async () => (await fetchOutcomes()).find((r) => r.entry?.content === SEED_TAG),
+      (r) => Array.isArray(r?.entry?.tags) && r.entry.tags.length === 0,
+      { timeout: 120_000, what: `stock to show "${SEED_TAG}" with an empty tag list` },
+    );
+  });
+
+  it('delete writes through', { skip: WRITE_GAP }, async () => {
+    await page.getByRole('button', { name: `Delete ${SEED_DELETE}` }).click({ timeout: 120_000 });
+    // The host's own confirm — the only "are you sure" a space action gets.
+    await page.getByRole('button', { name: 'Delete', exact: true }).click();
+    await h.until(fetchOutcomes, (rows) => !rows.some((r) => r.entry?.content === SEED_DELETE), {
+      timeout: 120_000,
+      what: `stock fetch_outcomes to drop "${SEED_DELETE}"`,
+    });
   });
 });

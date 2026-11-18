@@ -2275,9 +2275,42 @@ importers:
         specifier: workspace:*
         version: link:../../schema-system/shared
     devDependencies:
+      '@solidjs/testing-library':
+        specifier: ^0.8.10
+        version: 0.8.10(@solidjs/router@0.16.3(solid-js@1.9.18))(solid-js@1.9.18)
       '@types/node':
         specifier: ^26.6.6
         version: 26.6.6
+      '@we/acorn-fixture':
+        specifier: workspace:*
+        version: link:../../testing/acorn-fixture
+      '@we/backend-inmemory':
+        specifier: workspace:*
+        version: link:../../backend-system/inmemory
+      '@we/backend-shared':
+        specifier: workspace:*
+        version: link:../../backend-system/shared
+      '@we/entities':
+        specifier: workspace:*
+        version: link:../../entities
+      '@we/module-acorn':
+        specifier: workspace:*
+        version: link:../../module-system/acorn
+      '@we/schema-solid':
+        specifier: workspace:*
+        version: link:../../schema-system/frameworks/solid
+      jsdom:
+        specifier: ~30.0.1
+        version: 30.0.1(@noble/hashes@2.3.0)
+      solid-js:
+        specifier: ^1.9.18
+        version: 1.9.18
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vite-plugin-solid:
+        specifier: ^2.11.15
+        version: 2.11.15(solid-js@1.9.18)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.107.1)(tsx@4.23.15)(yaml@2.9.1))
       vitest:
         specifier: ^5.0.5
         version: 5.0.5(@types/node@26.6.6)(@vitest/coverage-v8@5.0.5)(happy-dom@21.0.4)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.107.1)(tsx@4.23.15)(yaml@2.9.1))
@@ -2420,12 +2453,18 @@ importers:
         specifier: workspace:*
         version: link:../../templates/fixtures
     devDependencies:
+      '@coasys/ad4m':
+        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@667d43e7640c0f2eca727819ce2e735fd113601d
+        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@667d43e7640c0f2eca727819ce2e735fd113601d
       '@types/node':
         specifier: ^26.6.6
         version: 26.6.6
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
+      vitest:
+        specifier: ^5.0.5
+        version: 5.0.5(@types/node@26.6.6)(@vitest/coverage-v8@5.0.5)(happy-dom@21.0.4)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.107.1)(tsx@4.23.15)(yaml@2.9.1))
 
 packages:
 

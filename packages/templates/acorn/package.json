@@ -17,7 +17,18 @@
     "@we/schema-shared": "workspace:*"
   },
   "devDependencies": {
+    "@solidjs/testing-library": "^0.8.10",
     "@types/node": "^26.6.6",
+    "@we/acorn-fixture": "workspace:*",
+    "@we/backend-inmemory": "workspace:*",
+    "@we/backend-shared": "workspace:*",
+    "@we/entities": "workspace:*",
+    "@we/module-acorn": "workspace:*",
+    "@we/schema-solid": "workspace:*",
+    "jsdom": "~30.0.1",
+    "solid-js": "^1.9.18",
+    "typescript": "^6.0.3",
+    "vite-plugin-solid": "^2.11.15",
     "vitest": "^5.0.5"
   }
 }

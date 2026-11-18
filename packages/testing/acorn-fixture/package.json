@@ -5,7 +5,8 @@
   "description": "An in-memory dataset shaped like a mounted Acorn project — the Acorn vocabulary as an EntityManifest, one project's records, and the applyFixture wrapper that writes them",
   "type": "module",
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "exports": {
     ".": {
@@ -20,7 +21,9 @@
     "@we/template-fixtures": "workspace:*"
   },
   "devDependencies": {
+    "@coasys/ad4m": "*",
     "@types/node": "^26.6.6",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.5"
   }
 }
