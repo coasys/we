@@ -217,24 +217,26 @@ export function buildEntityFromEntry(
     ...(entry.interpretationHint !== undefined ? { interpretationHint: entry.interpretationHint } : {}),
   })(cls);
 
-  // The parent's URI is the one its class emits. Naming it after `Model()` means the memoised
-  // shape is the one that gains the link; `addParentShape` ignores a repeat, so a second
-  // `generateSHACL()` does not write a second `sh://node`.
+  // The parent's URI is the one its class emits. The lookup waits until this child's shape is
+  // generated, which is after `compileManifest` has put every class in the resolver. Reading it
+  // here, while this child is still being built, would generate the parent early: a typed relation
+  // on that parent whose target is this child, or a class compiled later, resolves to nothing, and
+  // the SDK memoises that shape. `addParentShape` ignores a repeat, so a second `generateSHACL()`
+  // does not write a second `sh://node`. The SDK's own memo stays in place.
   if (parentClass !== undefined && abstractParent) {
-    const parentUri = (
-      parentClass as unknown as { generateSHACL?: () => { shape?: { nodeShapeUri?: string } } }
-    ).generateSHACL?.().shape?.nodeShapeUri;
-    if (parentUri) {
-      const compiled = cls as unknown as {
-        generateSHACL: () => { shape?: { addParentShape: (uri: string) => void } };
-      };
-      const generate = compiled.generateSHACL.bind(compiled);
-      compiled.generateSHACL = () => {
-        const result = generate();
-        result.shape?.addParentShape(parentUri);
-        return result;
-      };
-    }
+    const parent = parentClass as unknown as {
+      generateSHACL?: () => { shape?: { nodeShapeUri?: string } };
+    };
+    const compiled = cls as unknown as {
+      generateSHACL: () => { shape?: { addParentShape: (uri: string) => void } };
+    };
+    const generate = compiled.generateSHACL.bind(compiled);
+    compiled.generateSHACL = () => {
+      const parentUri = parent.generateSHACL?.().shape?.nodeShapeUri;
+      const result = generate();
+      if (parentUri) result.shape?.addParentShape(parentUri);
+      return result;
+    };
   }
   return cls;
 }
