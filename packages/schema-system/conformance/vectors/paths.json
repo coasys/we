@@ -1,0 +1,581 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "spec.dot",
+      "note": "resolvePath(\".\") and isRelativePath on the same input",
+      "to": ".",
+      "current": "/space/abc/board?id=ad4m://obj/x",
+      "base": {
+        "depth": 3,
+        "root": 2
+      },
+      "result": "/space/abc/board",
+      "relative": true
+    },
+    {
+      "id": "spec.empty",
+      "note": "resolvePath(\"\") and isRelativePath on the same input",
+      "to": "",
+      "current": "/space/abc/board?id=ad4m://obj/x",
+      "base": {
+        "depth": 3,
+        "root": 2
+      },
+      "result": "/space/abc/board",
+      "relative": true
+    },
+    {
+      "id": "spec.up",
+      "note": "resolvePath(\"..\") and isRelativePath on the same input",
+      "to": "..",
+      "current": "/space/abc/board?id=ad4m://obj/x",
+      "base": {
+        "depth": 3,
+        "root": 2
+      },
+      "result": "/space/abc",
+      "relative": true
+    },
+    {
+      "id": "spec.up-child",
+      "note": "resolvePath(\"../wall\") and isRelativePath on the same input",
+      "to": "../wall",
+      "current": "/space/abc/board?id=ad4m://obj/x",
+      "base": {
+        "depth": 3,
+        "root": 2
+      },
+      "result": "/space/abc/wall",
+      "relative": true
+    },
+    {
+      "id": "spec.down",
+      "note": "resolvePath(\"./cards\") and isRelativePath on the same input",
+      "to": "./cards",
+      "current": "/space/abc/board?id=ad4m://obj/x",
+      "base": {
+        "depth": 3,
+        "root": 2
+      },
+      "result": "/space/abc/board/cards",
+      "relative": true
+    },
+    {
+      "id": "spec.bare-child",
+      "note": "resolvePath(\"cards\") and isRelativePath on the same input",
+      "to": "cards",
+      "current": "/space/abc/board?id=ad4m://obj/x",
+      "base": {
+        "depth": 3,
+        "root": 2
+      },
+      "result": "/space/abc/board/cards",
+      "relative": true
+    },
+    {
+      "id": "spec.up-beyond",
+      "note": "resolvePath(\"../../..\") and isRelativePath on the same input",
+      "to": "../../..",
+      "current": "/space/abc/board?id=ad4m://obj/x",
+      "base": {
+        "depth": 3,
+        "root": 2
+      },
+      "result": "/space/abc",
+      "relative": true
+    },
+    {
+      "id": "spec.up-beyond-child",
+      "note": "resolvePath(\"../../../settings\") and isRelativePath on the same input",
+      "to": "../../../settings",
+      "current": "/space/abc/board?id=ad4m://obj/x",
+      "base": {
+        "depth": 3,
+        "root": 2
+      },
+      "result": "/space/abc/settings",
+      "relative": true
+    },
+    {
+      "id": "spec.chrome-child",
+      "note": "resolvePath(\"./board\") and isRelativePath on the same input",
+      "to": "./board",
+      "current": "/space/abc/board?id=ad4m://obj/x",
+      "base": {
+        "depth": 2,
+        "root": 2
+      },
+      "result": "/space/abc/board",
+      "relative": true
+    },
+    {
+      "id": "spec.chrome-dot",
+      "note": "resolvePath(\".\") and isRelativePath on the same input",
+      "to": ".",
+      "current": "/space/abc/board?id=ad4m://obj/x",
+      "base": {
+        "depth": 2,
+        "root": 2
+      },
+      "result": "/space/abc",
+      "relative": true
+    },
+    {
+      "id": "spec.root-slash",
+      "note": "resolvePath(\"~/\") and isRelativePath on the same input",
+      "to": "~/",
+      "current": "/space/abc/board?id=ad4m://obj/x",
+      "base": {
+        "depth": 3,
+        "root": 2
+      },
+      "result": "/space/abc",
+      "relative": true
+    },
+    {
+      "id": "spec.root",
+      "note": "resolvePath(\"~\") and isRelativePath on the same input",
+      "to": "~",
+      "current": "/space/abc/board?id=ad4m://obj/x",
+      "base": {
+        "depth": 3,
+        "root": 2
+      },
+      "result": "/space/abc",
+      "relative": true
+    },
+    {
+      "id": "spec.root-child",
+      "note": "resolvePath(\"~/wall\") and isRelativePath on the same input",
+      "to": "~/wall",
+      "current": "/space/abc/board?id=ad4m://obj/x",
+      "base": {
+        "depth": 3,
+        "root": 2
+      },
+      "result": "/space/abc/wall",
+      "relative": true
+    },
+    {
+      "id": "spec.root-chrome",
+      "note": "resolvePath(\"~/wall\") and isRelativePath on the same input",
+      "to": "~/wall",
+      "current": "/space/abc/board?id=ad4m://obj/x",
+      "base": {
+        "depth": 2,
+        "root": 2
+      },
+      "result": "/space/abc/wall",
+      "relative": true
+    },
+    {
+      "id": "spec.suffix",
+      "note": "resolvePath(\"~/board?id=ad4m://obj/y#top\") and isRelativePath on the same input",
+      "to": "~/board?id=ad4m://obj/y#top",
+      "current": "/space/abc/board?id=ad4m://obj/x",
+      "base": {
+        "depth": 3,
+        "root": 2
+      },
+      "result": "/space/abc/board?id=ad4m://obj/y#top",
+      "relative": true
+    },
+    {
+      "id": "spec.query-only",
+      "note": "resolvePath(\"?sort=new\") and isRelativePath on the same input",
+      "to": "?sort=new",
+      "current": "/space/abc/board?id=ad4m://obj/x",
+      "base": {
+        "depth": 3,
+        "root": 2
+      },
+      "result": "/space/abc/board?sort=new",
+      "relative": true
+    },
+    {
+      "id": "spec.absolute",
+      "note": "resolvePath(\"/settings/ai\") and isRelativePath on the same input",
+      "to": "/settings/ai",
+      "current": "/space/abc/board?id=ad4m://obj/x",
+      "base": {
+        "depth": 3,
+        "root": 2
+      },
+      "result": "/settings/ai",
+      "relative": false
+    },
+    {
+      "id": "spec.url",
+      "note": "resolvePath(\"https://example.org/x\") and isRelativePath on the same input",
+      "to": "https://example.org/x",
+      "current": "/space/abc/board?id=ad4m://obj/x",
+      "base": {
+        "depth": 3,
+        "root": 2
+      },
+      "result": "https://example.org/x",
+      "relative": false
+    },
+    {
+      "id": "spec.scheme",
+      "note": "resolvePath(\"mailto:a@example.org\") and isRelativePath on the same input",
+      "to": "mailto:a@example.org",
+      "current": "/space/abc/board?id=ad4m://obj/x",
+      "base": {
+        "depth": 3,
+        "root": 2
+      },
+      "result": "mailto:a@example.org",
+      "relative": false
+    },
+    {
+      "id": "spec.fragment",
+      "note": "resolvePath(\"#top\") and isRelativePath on the same input",
+      "to": "#top",
+      "current": "/space/abc/board?id=ad4m://obj/x",
+      "base": {
+        "depth": 3,
+        "root": 2
+      },
+      "result": "#top",
+      "relative": false
+    },
+    {
+      "id": "spec.base-past-address",
+      "note": "resolvePath(\"./x\") and isRelativePath on the same input",
+      "to": "./x",
+      "current": "/space/abc",
+      "base": {
+        "depth": 3,
+        "root": 2
+      },
+      "result": "/space/abc/x",
+      "relative": true
+    },
+    {
+      "id": "spec.base-zero",
+      "note": "resolvePath(\"./x\") and isRelativePath on the same input",
+      "to": "./x",
+      "current": "/",
+      "base": {
+        "depth": 0,
+        "root": 0
+      },
+      "result": "/x",
+      "relative": true
+    },
+    {
+      "id": "edge.up-exactly-root",
+      "note": "resolvePath(\"../..\") and isRelativePath on the same input",
+      "to": "../..",
+      "current": "/space/abc/board",
+      "base": {
+        "depth": 3,
+        "root": 2
+      },
+      "result": "/space/abc",
+      "relative": true
+    },
+    {
+      "id": "edge.up-past-root",
+      "note": "resolvePath(\"../../../../x\") and isRelativePath on the same input",
+      "to": "../../../../x",
+      "current": "/space/abc/board",
+      "base": {
+        "depth": 3,
+        "root": 2
+      },
+      "result": "/space/abc/x",
+      "relative": true
+    },
+    {
+      "id": "edge.up-at-root",
+      "note": "resolvePath(\"..\") and isRelativePath on the same input",
+      "to": "..",
+      "current": "/space/abc",
+      "base": {
+        "depth": 2,
+        "root": 2
+      },
+      "result": "/space/abc",
+      "relative": true
+    },
+    {
+      "id": "edge.up-at-top",
+      "note": "resolvePath(\"..\") and isRelativePath on the same input",
+      "to": "..",
+      "current": "/a",
+      "base": {
+        "depth": 0,
+        "root": 0
+      },
+      "result": "/",
+      "relative": true
+    },
+    {
+      "id": "edge.dot-slash",
+      "note": "resolvePath(\"./\") and isRelativePath on the same input",
+      "to": "./",
+      "current": "/space/abc/board?id=ad4m://obj/x",
+      "base": {
+        "depth": 3,
+        "root": 2
+      },
+      "result": "/space/abc/board",
+      "relative": true
+    },
+    {
+      "id": "edge.dots-inside",
+      "note": "resolvePath(\"./a/./b\") and isRelativePath on the same input",
+      "to": "./a/./b",
+      "current": "/space/abc/board?id=ad4m://obj/x",
+      "base": {
+        "depth": 3,
+        "root": 2
+      },
+      "result": "/space/abc/board/a/b",
+      "relative": true
+    },
+    {
+      "id": "edge.child-query",
+      "note": "resolvePath(\"./cards?x=1\") and isRelativePath on the same input",
+      "to": "./cards?x=1",
+      "current": "/space/abc/board?id=ad4m://obj/x",
+      "base": {
+        "depth": 3,
+        "root": 2
+      },
+      "result": "/space/abc/board/cards?x=1",
+      "relative": true
+    },
+    {
+      "id": "edge.child-fragment",
+      "note": "resolvePath(\"./cards#frag\") and isRelativePath on the same input",
+      "to": "./cards#frag",
+      "current": "/space/abc/board?id=ad4m://obj/x",
+      "base": {
+        "depth": 3,
+        "root": 2
+      },
+      "result": "/space/abc/board/cards#frag",
+      "relative": true
+    },
+    {
+      "id": "edge.query-empty-path",
+      "note": "resolvePath(\"?\") and isRelativePath on the same input",
+      "to": "?",
+      "current": "/space/abc/board?id=ad4m://obj/x",
+      "base": {
+        "depth": 3,
+        "root": 2
+      },
+      "result": "/space/abc/board?",
+      "relative": true
+    },
+    {
+      "id": "edge.query-with-hash",
+      "note": "resolvePath(\"?s=1#h\") and isRelativePath on the same input",
+      "to": "?s=1#h",
+      "current": "/space/abc/board?id=ad4m://obj/x",
+      "base": {
+        "depth": 3,
+        "root": 2
+      },
+      "result": "/space/abc/board?s=1#h",
+      "relative": true
+    },
+    {
+      "id": "edge.tilde-only-child",
+      "note": "resolvePath(\"~/?x=1\") and isRelativePath on the same input",
+      "to": "~/?x=1",
+      "current": "/space/abc/board?id=ad4m://obj/x",
+      "base": {
+        "depth": 3,
+        "root": 2
+      },
+      "result": "/space/abc?x=1",
+      "relative": true
+    },
+    {
+      "id": "edge.root-no-space",
+      "note": "resolvePath(\"~/x\") and isRelativePath on the same input",
+      "to": "~/x",
+      "current": "/app/board",
+      "base": {
+        "depth": 1,
+        "root": 0
+      },
+      "result": "/x",
+      "relative": true
+    },
+    {
+      "id": "edge.relative-no-space",
+      "note": "resolvePath(\"./y\") and isRelativePath on the same input",
+      "to": "./y",
+      "current": "/app/board",
+      "base": {
+        "depth": 1,
+        "root": 0
+      },
+      "result": "/app/y",
+      "relative": true
+    },
+    {
+      "id": "edge.up-no-space",
+      "note": "resolvePath(\"../y\") and isRelativePath on the same input",
+      "to": "../y",
+      "current": "/app/board",
+      "base": {
+        "depth": 1,
+        "root": 0
+      },
+      "result": "/y",
+      "relative": true
+    },
+    {
+      "id": "edge.root-deeper-than-segments",
+      "note": "resolvePath(\"~/x\") and isRelativePath on the same input",
+      "to": "~/x",
+      "current": "/a",
+      "base": {
+        "depth": 2,
+        "root": 3
+      },
+      "result": "/a/x",
+      "relative": true
+    },
+    {
+      "id": "edge.base-deeper-than-address",
+      "note": "resolvePath(\"./z\") and isRelativePath on the same input",
+      "to": "./z",
+      "current": "/a/b",
+      "base": {
+        "depth": 5,
+        "root": 1
+      },
+      "result": "/a/b/z",
+      "relative": true
+    },
+    {
+      "id": "edge.current-no-query",
+      "note": "resolvePath(\"./c\") and isRelativePath on the same input",
+      "to": "./c",
+      "current": "/x/y",
+      "base": {
+        "depth": 2,
+        "root": 0
+      },
+      "result": "/x/y/c",
+      "relative": true
+    },
+    {
+      "id": "edge.current-fragment",
+      "note": "resolvePath(\"./c\") and isRelativePath on the same input",
+      "to": "./c",
+      "current": "/x/y#frag",
+      "base": {
+        "depth": 2,
+        "root": 0
+      },
+      "result": "/x/y/c",
+      "relative": true
+    },
+    {
+      "id": "edge.current-query",
+      "note": "resolvePath(\"./c\") and isRelativePath on the same input",
+      "to": "./c",
+      "current": "/x/y?q=1",
+      "base": {
+        "depth": 2,
+        "root": 0
+      },
+      "result": "/x/y/c",
+      "relative": true
+    },
+    {
+      "id": "edge.to-whitespace",
+      "note": "resolvePath(\"  ./c  \") and isRelativePath on the same input",
+      "to": "  ./c  ",
+      "current": "/space/abc/board?id=ad4m://obj/x",
+      "base": {
+        "depth": 3,
+        "root": 2
+      },
+      "result": "/space/abc/board/c",
+      "relative": true
+    },
+    {
+      "id": "edge.to-dotdot-suffix",
+      "note": "resolvePath(\"..?q=1\") and isRelativePath on the same input",
+      "to": "..?q=1",
+      "current": "/space/abc/board?id=ad4m://obj/x",
+      "base": {
+        "depth": 3,
+        "root": 2
+      },
+      "result": "/space/abc?q=1",
+      "relative": true
+    },
+    {
+      "id": "edge.scheme-plus",
+      "note": "resolvePath(\"ad4m://obj/x\") and isRelativePath on the same input",
+      "to": "ad4m://obj/x",
+      "current": "/space/abc/board?id=ad4m://obj/x",
+      "base": {
+        "depth": 3,
+        "root": 2
+      },
+      "result": "ad4m://obj/x",
+      "relative": false
+    },
+    {
+      "id": "edge.scheme-mixed",
+      "note": "resolvePath(\"we:thing\") and isRelativePath on the same input",
+      "to": "we:thing",
+      "current": "/space/abc/board?id=ad4m://obj/x",
+      "base": {
+        "depth": 3,
+        "root": 2
+      },
+      "result": "we:thing",
+      "relative": false
+    },
+    {
+      "id": "edge.tilde-deep",
+      "note": "resolvePath(\"~/a/b/c\") and isRelativePath on the same input",
+      "to": "~/a/b/c",
+      "current": "/space/abc/board?id=ad4m://obj/x",
+      "base": {
+        "depth": 3,
+        "root": 2
+      },
+      "result": "/space/abc/a/b/c",
+      "relative": true
+    },
+    {
+      "id": "edge.multi-up-mid",
+      "note": "resolvePath(\"./a/../b\") and isRelativePath on the same input",
+      "to": "./a/../b",
+      "current": "/space/abc/board?id=ad4m://obj/x",
+      "base": {
+        "depth": 3,
+        "root": 2
+      },
+      "result": "/space/abc/board/a/../b",
+      "relative": true
+    },
+    {
+      "id": "edge.double-dot-seg",
+      "note": "resolvePath(\"a/../b\") and isRelativePath on the same input",
+      "to": "a/../b",
+      "current": "/space/abc/board?id=ad4m://obj/x",
+      "base": {
+        "depth": 3,
+        "root": 2
+      },
+      "result": "/space/abc/board/a/../b",
+      "relative": true
+    }
+  ]
+}
