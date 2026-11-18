@@ -261,6 +261,21 @@ pub fn scrub(text: &str) -> String {
         .join(" ")
 }
 
+/// A write grant asked after a discovered connect dials the executor this
+/// window already holds. An explicit `--executor-url` is left as it is:
+/// [`Io::allowed`] already refuses every other candidate.
+pub fn pin_grant_url(settings: &mut ConnectSettings, connected: &str) {
+    if settings.url.is_none() {
+        settings.url = Some(redact_url(connected));
+    }
+}
+
+/// Whether `a` and `b` name the same executor. `ws` matches `http`, a
+/// trailing slash does not count, and userinfo and query do not count.
+pub fn same_executor(a: &str, b: &str) -> bool {
+    normalize_base_url(&redact_url(a)) == normalize_base_url(&redact_url(b))
+}
+
 type Wake = Arc<dyn Fn() + Send + Sync>;
 
 struct Shared {
@@ -639,5 +654,31 @@ mod grant_tests {
         let app = app_info(&GrantScope::Write { space: "u".into() });
         assert_eq!(app.name, "WE (Rust renderer, writes)");
         assert_ne!(app.name, app_info(&GrantScope::ReadOnly).name);
+    }
+
+    #[test]
+    fn a_discovered_grant_pins_the_open_executor() {
+        let mut settings = ConnectSettings::default();
+        pin_grant_url(&mut settings, "http://alice:pw@127.0.0.1:12000/api?t=1");
+        assert_eq!(settings.url.as_deref(), Some("http://127.0.0.1:12000/api"));
+        settings.url = Some("http://explicit:9".into());
+        pin_grant_url(&mut settings, "http://127.0.0.1:12000/");
+        assert_eq!(settings.url.as_deref(), Some("http://explicit:9"));
+    }
+
+    #[test]
+    fn same_executor_ignores_scheme_slash_and_userinfo() {
+        assert!(same_executor(
+            "http://127.0.0.1:12000/",
+            "ws://127.0.0.1:12000"
+        ));
+        assert!(same_executor(
+            "http://alice:pw@127.0.0.1:12000/?t=x",
+            "http://127.0.0.1:12000"
+        ));
+        assert!(!same_executor(
+            "http://127.0.0.1:12000",
+            "http://127.0.0.1:12001"
+        ));
     }
 }

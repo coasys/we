@@ -164,10 +164,6 @@ pub struct WriteHost {
     notices: Notices,
     confirm: ConfirmSlot,
     wake: Option<Wake>,
-    /// A rail click (`spaceStore.navigateToSpace`) writes the space id here.
-    /// `None` leaves the invoke on the fallback, which is what a host that
-    /// never called [`WriteHost::watch_navigation`] does.
-    nav: Option<Arc<Mutex<Option<String>>>>,
     /// Set when the open perspective is shared. A watched window then
     /// refuses a write with [`SHARED_WRITE_REFUSED`] instead of asking
     /// for a grant.
@@ -197,16 +193,9 @@ impl WriteHost {
             notices: Notices::default(),
             confirm: Arc::new(Mutex::new(None)),
             wake: None,
-            nav: None,
             shared: false,
             grant_ask: None,
         }
-    }
-
-    /// Where a rail click reports the space it asked to open. The connected
-    /// window reads the slot and opens that perspective.
-    pub fn watch_navigation(&mut self, slot: Arc<Mutex<Option<String>>>) {
-        self.nav = Some(slot);
     }
 
     /// This perspective is shared, so a write is refused rather than asked
@@ -338,19 +327,9 @@ impl WriteHost {
 impl Host for WriteHost {
     fn act(&mut self, request: ActionRequest, done: Completer) -> Invoked {
         let Action::Invoke { target, args } = &request.action;
-        // The rail's click. Not a write row, and not something to send to
-        // the executor: the window opens that space itself.
-        if target.as_ref() == "spaceStore.navigateToSpace" && self.nav.is_some() {
-            if let Some(id) = args.iter().find_map(value_str) {
-                if let Some(slot) = &self.nav {
-                    if let Ok(mut g) = slot.lock() {
-                        *g = Some(id);
-                    }
-                }
-                self.wake();
-            }
-            return Invoked::Done(Ok(Value::Undefined));
-        }
+        // A rail click is not an invoke this host accepts.
+        // `spaceStore.navigateToSpace` falls through with every other
+        // target that has no write row, so a template cannot open a space.
         // `row` borrows `self`, and the gate needs `&mut self`, so the
         // lookup is checked first and repeated after the gate.
         if self.rows.get(target).is_none() {
@@ -426,13 +405,6 @@ fn cancelled() -> Value {
 
 fn lock(slot: &ConfirmSlot) -> std::sync::MutexGuard<'_, Option<PendingConfirm>> {
     slot.lock().unwrap_or_else(|e| e.into_inner())
-}
-
-fn value_str(v: &Value) -> Option<String> {
-    match v {
-        Value::Str(s) => Some(s.to_string()),
-        _ => None,
-    }
 }
 
 /// `{ message, code, kind }` — what a template's `onError` reads as

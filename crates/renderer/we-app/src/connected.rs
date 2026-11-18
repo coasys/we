@@ -7,7 +7,8 @@
 //!    connected, locked, or failed with the reason and a retry.
 //! 2. **The space** — the Coasys app against live data ([`crate::live`]).
 //!    The left rail lists every space the agent holds (system perspectives
-//!    aside); clicking one opens it. There is no space picker. F11 opens
+//!    aside). A click on a rail row opens that space through the host. A
+//!    template invoke cannot. There is no space picker. F11 opens
 //!    the data panel that says which store members are live and which still
 //!    come from the snapshot.
 //!
@@ -15,6 +16,7 @@
 //! --space <uuid>` still asks up front. Otherwise the first edit of a
 //! personal space asks, and the refused edit is not replayed. A shared
 //! space is not asked for.
+use std::collections::HashSet;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
@@ -22,6 +24,8 @@ use egui::{Color32, RichText};
 use we_ad4m::connect::{Ask, ConnectFlow, ConnectPhase, ConnectSettings, GrantScope};
 use we_ad4m::{Connection, Notices, SpaceRow, WriteHost};
 use we_data::writes::Confirm;
+use we_expr::Value;
+use we_template::{NodeId, ResolvedChild, ResolvedNode};
 
 use crate::live::{live_space_app, LiveSpace};
 
@@ -64,8 +68,8 @@ enum Stage {
         url: String,
         live: Box<LiveSpace>,
         panel: bool,
-        /// Every perspective from the connect, system ones included, so a
-        /// click can resolve an id the rail itself does not show.
+        /// Every perspective from the connect, system ones included, so
+        /// `--space` can name them. A rail click never opens a system one.
         spaces: Vec<SpaceRow>,
     },
 }
@@ -169,15 +173,37 @@ impl ConnectedApp {
         live.app
             .session
             .set_waker(Arc::new(move || ctx.request_repaint()));
-        // A notice, a confirmation or a rail click wakes the window too.
+        // A notice or a confirmation wakes the window too. A rail click is
+        // taken on this thread, before the template's invoke runs.
         let ctx = self.ctx.clone();
         if let Some(host) = live.app.session.host_mut_as::<WriteHost>() {
             host.set_shared(live.space.shared_url.is_some());
-            host.watch_navigation(self.nav.clone());
             host.watch_grant(self.grant_slot.clone());
             host.set_waker(Arc::new(move || ctx.request_repaint()));
         }
+        self.arm_rail(&mut live.app, spaces);
         Ok(Box::new(live))
+    }
+
+    /// The rail's clicks. Only an `app:` node whose nearest `data-we-id`
+    /// is one of the agent's spaces fills the slot. System perspectives
+    /// are not in that set. A space template cannot mint an `app:` id.
+    fn arm_rail(&self, app: &mut crate::RendererApp, spaces: &[SpaceRow]) {
+        let allowed: HashSet<String> = we_ad4m::agent_spaces(spaces)
+            .into_iter()
+            .map(|s| s.uuid)
+            .collect();
+        let nav = self.nav.clone();
+        app.set_rail_click(move |root, node| {
+            let Some(id) = rail_row_id(root, node, &allowed) else {
+                return false;
+            };
+            let Ok(mut slot) = nav.lock() else {
+                return false;
+            };
+            *slot = Some(id);
+            true
+        });
     }
 
     /// Which screen is up: `connect`, `opening`, `empty` or `space`.
@@ -300,8 +326,9 @@ impl ConnectedApp {
         }
     }
 
-    /// A rail click names a space. Open it, unless it is the one already
-    /// open. The click is not a write and never reaches the executor.
+    /// A host rail click names a space. Open it when it is one of the
+    /// agent's spaces and not the one already open. A system perspective
+    /// and an unknown id leave a notice and stay put.
     fn follow_rail(&mut self) {
         let id = match self.nav.lock() {
             Ok(mut slot) => slot.take(),
@@ -326,15 +353,16 @@ impl ConnectedApp {
             ),
             _ => return,
         };
-        let Some(space) = resolve_space(&spaces, &id).cloned() else {
+        if resolve_space(&spaces, &id).is_some_and(|s| s.uuid == current) {
+            return;
+        }
+        let Some(space) = open_from_rail(&spaces, &id) else {
             if let Stage::Space { live, .. } = &mut self.stage {
-                live.notice_list().push(format!("No space {id}."));
+                live.notice_list()
+                    .push(format!("No space {id} on the rail."));
             }
             return;
         };
-        if space.uuid == current {
-            return;
-        }
         // The grant in progress was for the space we are leaving.
         self.drop_grant();
         match self.open_space(&conn, space, &spaces) {
@@ -398,10 +426,7 @@ impl ConnectedApp {
         let Some(uuid) = uuid else {
             return;
         };
-        let mut settings = self.args.settings.clone();
-        settings.scope = GrantScope::Write {
-            space: uuid.clone(),
-        };
+        let settings = self.grant_settings(&uuid);
         let flow = start_flow(&self.rt, &self.ctx, &settings);
         self.grant = Some(GrantAsk {
             space: uuid,
@@ -410,9 +435,35 @@ impl ConnectedApp {
         });
     }
 
+    /// The grant dials the executor this window already holds. An explicit
+    /// URL is left alone. A discovered connect is pinned to the open one,
+    /// so the grant does not search again.
+    fn grant_settings(&self, space: &str) -> ConnectSettings {
+        let mut settings = self.args.settings.clone();
+        settings.scope = GrantScope::Write {
+            space: space.to_string(),
+        };
+        if let Some(url) = self.connected_url() {
+            we_ad4m::connect::pin_grant_url(&mut settings, &url);
+        }
+        settings
+    }
+
+    /// The executor the open window is connected to.
+    fn connected_url(&self) -> Option<String> {
+        match &self.stage {
+            Stage::Opening { url, .. } | Stage::Empty { url, .. } | Stage::Space { url, .. } => {
+                Some(url.clone())
+            }
+            Stage::Connect { .. } => None,
+        }
+    }
+
     /// The write-grant screen, over the space. A success swaps in the
     /// write token and reopens the space with it. A retry stays on this
-    /// ask. The space underneath is unchanged until then.
+    /// ask. Cancel, Escape, or a click outside drops the ask and leaves
+    /// the read-only session. The space underneath is unchanged until a
+    /// grant succeeds.
     fn draw_grant(&mut self, ui: &mut egui::Ui) {
         if self.grant.is_none() {
             return;
@@ -422,31 +473,40 @@ impl ConnectedApp {
             let scope = GrantScope::Write {
                 space: ask.space.clone(),
             };
-            egui::Modal::new(egui::Id::unique("we-write-grant")).show(ui.ctx(), |ui| {
-                ui.set_max_width(520.0);
-                match connect_screen(ui, &ask.flow, &scope, &mut ask.input) {
-                    Some(Next::Retry) => action = Some(GrantAction::Retry),
-                    Some(Next::Connected(conn, url)) => {
-                        action = Some(GrantAction::Granted(conn, url));
+            let response =
+                egui::Modal::new(egui::Id::unique("we-write-grant")).show(ui.ctx(), |ui| {
+                    ui.set_max_width(520.0);
+                    let next = connect_screen(ui, &ask.flow, &scope, &mut ask.input);
+                    match next {
+                        Some(Next::Retry) => action = Some(GrantAction::Retry),
+                        Some(Next::Connected(conn, url)) => {
+                            action = Some(GrantAction::Granted(conn, url));
+                        }
+                        None => {}
                     }
-                    None => {}
-                }
-            });
+                    if ui.button("Cancel").clicked() {
+                        action = Some(GrantAction::Cancel);
+                    }
+                });
+            if action.is_none() && response.should_close() {
+                action = Some(GrantAction::Cancel);
+            }
         }
         match action {
             Some(GrantAction::Retry) => self.restart_grant(),
             Some(GrantAction::Granted(conn, url)) => self.apply_grant(conn, url),
+            Some(GrantAction::Cancel) => self.drop_grant(),
             None => {}
         }
     }
 
     fn restart_grant(&mut self) {
-        let Some(ask) = self.grant.as_mut() else {
+        let Some(space) = self.grant.as_ref().map(|ask| ask.space.clone()) else {
             return;
         };
-        let mut settings = self.args.settings.clone();
-        settings.scope = GrantScope::Write {
-            space: ask.space.clone(),
+        let settings = self.grant_settings(&space);
+        let Some(ask) = self.grant.as_mut() else {
+            return;
         };
         ask.flow = start_flow(&self.rt, &self.ctx, &settings);
         ask.input.clear();
@@ -456,6 +516,20 @@ impl ConnectedApp {
     /// on, and reopen the space with it. The edit that asked is not
     /// replayed.
     fn apply_grant(&mut self, conn: Connection, url: String) {
+        let Some(open) = self.connected_url() else {
+            self.drop_grant();
+            return;
+        };
+        if !we_ad4m::connect::same_executor(&url, &open) {
+            self.drop_grant();
+            if let Stage::Space { live, .. } = &mut self.stage {
+                live.notice_list().push(
+                    "The write grant answered from a different executor. This window stays read-only."
+                        .into(),
+                );
+            }
+            return;
+        }
         let Some(ask) = self.grant.take() else {
             return;
         };
@@ -503,6 +577,7 @@ impl ConnectedApp {
 enum GrantAction {
     Retry,
     Granted(Connection, String),
+    Cancel,
 }
 
 enum Next {
@@ -741,6 +816,56 @@ enum Landing {
     None {
         message: String,
     },
+}
+
+/// The space a rail click may open: one the agent holds, never a system
+/// perspective. `id` is a uuid, a name, a shared URL, or the same with a
+/// `neighbourhood://` prefix.
+fn open_from_rail(spaces: &[SpaceRow], id: &str) -> Option<SpaceRow> {
+    let space = resolve_space(spaces, id)?;
+    if we_ad4m::is_system_space(&space.name) {
+        return None;
+    }
+    Some(space.clone())
+}
+
+/// The uuid a chrome rail click names. The clicked node must sit in the
+/// app chrome (`app:`). The nearest `data-we-id` must be one the host
+/// allows. A space template (`space:`) and a panel (`panel:`) cannot.
+fn rail_row_id(root: &ResolvedNode, clicked: &NodeId, allowed: &HashSet<String>) -> Option<String> {
+    if !clicked.as_str().starts_with("app:") {
+        return None;
+    }
+    let mut path = Vec::new();
+    if !path_to(root, clicked, &mut path) {
+        return None;
+    }
+    for node in path.iter().rev() {
+        match node.props.get("data-we-id") {
+            Some(Value::Str(id)) => {
+                return allowed.contains(id.as_ref()).then(|| id.to_string());
+            }
+            Some(_) => return None,
+            None => {}
+        }
+    }
+    None
+}
+
+fn path_to<'a>(node: &'a ResolvedNode, id: &NodeId, out: &mut Vec<&'a ResolvedNode>) -> bool {
+    out.push(node);
+    if &node.id == id {
+        return true;
+    }
+    for child in &node.children {
+        if let ResolvedChild::Node(n) = child {
+            if path_to(n, id, out) {
+                return true;
+            }
+        }
+    }
+    out.pop();
+    false
 }
 
 /// The id a rail click reports: a uuid, a name, a shared URL, or the same
@@ -1057,5 +1182,85 @@ mod tests {
         let text = format!("{:?}", sidebar_items(&[row("we-root"), row("Beta")]));
         assert!(text.contains("Beta"), "{text}");
         assert!(!text.contains("we-root"), "{text}");
+    }
+
+    fn node(id: &str, we_id: Option<&str>, children: Vec<ResolvedNode>) -> ResolvedNode {
+        let mut props = indexmap::IndexMap::new();
+        if let Some(we_id) = we_id {
+            props.insert(
+                std::sync::Arc::<str>::from("data-we-id"),
+                Value::from(we_id),
+            );
+        }
+        ResolvedNode {
+            id: id.into(),
+            ty: std::sync::Arc::from("div"),
+            props,
+            handlers: Default::default(),
+            slot: None,
+            children: children
+                .into_iter()
+                .map(|n| ResolvedChild::Node(Box::new(n)))
+                .collect(),
+            surfaces: Default::default(),
+            transition: None,
+        }
+    }
+
+    fn allowed(ids: &[&str]) -> HashSet<String> {
+        ids.iter().map(|s| (*s).to_string()).collect()
+    }
+
+    #[test]
+    fn a_chrome_row_click_names_an_allowed_space() {
+        let row = node(
+            "app:row",
+            Some("id-beta"),
+            vec![node("app:row/btn", None, vec![])],
+        );
+        let id = rail_row_id(&row, &"app:row/btn".into(), &allowed(&["id-beta"]));
+        assert_eq!(id.as_deref(), Some("id-beta"));
+    }
+
+    #[test]
+    fn a_space_template_click_cannot_name_a_rail_row() {
+        let row = node(
+            "space:row",
+            Some("id-beta"),
+            vec![node("space:row/btn", None, vec![])],
+        );
+        assert!(rail_row_id(&row, &"space:row/btn".into(), &allowed(&["id-beta"])).is_none());
+    }
+
+    #[test]
+    fn a_system_uuid_on_a_chrome_row_is_not_a_rail_click() {
+        let row = node(
+            "app:row",
+            Some("id-we-root"),
+            vec![node("app:row/btn", None, vec![])],
+        );
+        assert!(rail_row_id(&row, &"app:row/btn".into(), &allowed(&["id-beta"])).is_none());
+    }
+
+    #[test]
+    fn a_panel_click_cannot_name_a_rail_row() {
+        let row = node(
+            "panel:inspector",
+            Some("id-beta"),
+            vec![node("panel:inspector/btn", None, vec![])],
+        );
+        assert!(rail_row_id(&row, &"panel:inspector/btn".into(), &allowed(&["id-beta"])).is_none());
+    }
+
+    #[test]
+    fn the_rail_does_not_open_a_system_space() {
+        let rows = vec![row("we-root"), row("Beta"), row("we-custom")];
+        assert!(open_from_rail(&rows, "id-we-root").is_none());
+        assert!(open_from_rail(&rows, "we-root").is_none());
+        assert_eq!(open_from_rail(&rows, "id-Beta").unwrap().name, "Beta");
+        assert_eq!(
+            open_from_rail(&rows, "we-custom").unwrap().name,
+            "we-custom"
+        );
     }
 }

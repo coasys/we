@@ -31,7 +31,8 @@ use we_egui::{
 use we_screen::ScreenState;
 use we_session::Session;
 use we_template::{
-    MountCx, ResolvedChild, ResolvedNode, RootSpec, SchemaNode, StaticHost, StoreBag, SurfaceTag,
+    MountCx, NodeId, ResolvedChild, ResolvedNode, RootSpec, SchemaNode, StaticHost, StoreBag,
+    SurfaceTag,
 };
 
 /// Every input a resolved tree is styled against: the resolve count, the
@@ -157,6 +158,9 @@ pub fn static_dropped(session: &Session) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// A chrome rail click the connected window claims before `onClick` runs.
+type RailClick = Box<dyn Fn(&ResolvedNode, &NodeId) -> bool>;
+
 /// One frame's plumbing: the app wires host ↔ runtime ↔ registry; tests drive
 /// `frame_body` through `egui_kittest::Harness::new_ui`.
 pub struct RendererApp {
@@ -200,6 +204,10 @@ pub struct RendererApp {
     /// Print [`Stages`] and the lanes' widths every frame — `WE_FRAME_LOG`
     /// turns it on in the binary.
     pub frame_log: bool,
+    /// A chrome rail click the connected window claims. `true` means the
+    /// host took the click, so the template's `onClick` does not run.
+    /// Unset for the offline app: every click dispatches as before.
+    rail_click: Option<RailClick>,
 }
 
 /// Wall time of each stage of the last [`RendererApp::frame_body`]: the
@@ -253,7 +261,14 @@ impl RendererApp {
             stages: Stages::default(),
             frame_log: false,
             first_screen: None,
+            rail_click: None,
         }
+    }
+
+    /// The connected window's rail. A click the hook claims does not
+    /// dispatch, so a template `$invoke` cannot open a space.
+    pub fn set_rail_click(&mut self, hook: impl Fn(&ResolvedNode, &NodeId) -> bool + 'static) {
+        self.rail_click = Some(Box::new(hook));
     }
 
     /// What a frame draws: resolve (cached) → apply queued route ops →
@@ -495,6 +510,7 @@ impl RendererApp {
     }
 
     /// Run the events a paint produced — `onSelect`, `onOpenChange`, …
+    /// A rail click the host claimed does not dispatch.
     fn drain(&mut self, events: Vec<WidgetEvent>) {
         for WidgetEvent {
             node,
@@ -502,7 +518,25 @@ impl RendererApp {
             value,
         } in events
         {
+            if self.claim_rail_click(&node, &handler) {
+                continue;
+            }
             self.session.dispatch(&node, &handler, value);
+        }
+    }
+
+    /// `true` when this `onClick` is a rail row the host owns. The resolved
+    /// tree is cloned first so the hook does not borrow the session.
+    fn claim_rail_click(&mut self, node: &NodeId, handler: &str) -> bool {
+        if handler != "onClick" {
+            return false;
+        }
+        let Some(root) = self.session.runtime().resolved().cloned() else {
+            return false;
+        };
+        match self.rail_click.as_ref() {
+            Some(hook) => hook(&root, node),
+            None => false,
         }
     }
 
