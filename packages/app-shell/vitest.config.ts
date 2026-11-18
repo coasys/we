@@ -127,6 +127,8 @@ const SOLID_TESTS = [
   'tests/createSpaceServer.test.tsx',
   // The AI settings schema through the real renderer: what an install's progress re-renders.
   'tests/localAiProgressRender.test.tsx',
+  // The Acorn projects dialog through the real renderer: its busy/failure/Retry states are DOM.
+  'tests/acornProjectsModal.test.tsx',
 ];
 
 export default defineConfig({

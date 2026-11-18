@@ -517,6 +517,7 @@ export const storeEntries: StoreEntry[] = [
       myMentions: { type: 'array', properties: ['id', 'author', 'createdAt'] },
       acornAvailable: { type: 'boolean' },
       acornProjects: { type: 'array', properties: ['datasetId', 'name', 'languageAddress'] },
+      acornPending: { type: 'object' },
     },
     actions: [
       'createSpace',
@@ -528,6 +529,7 @@ export const storeEntries: StoreEntry[] = [
       'createAcornProject',
       'joinAcornProject',
       'openAcornProject',
+      'retryAcornProject',
       'removeSpace',
       'createPost',
       'updatePost',
@@ -1431,6 +1433,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         'boolean — this session can offer Acorn project chrome at all: the backend carries a mount-capable acornLifecycle port AND the acorn module is registered. Gate an "Acorn projects" entry on it — on any other backend it is false and the surface stays hidden rather than empty',
       acornProjects:
         '{ datasetId, name, languageAddress }[] — the datasets the executor reports an Acorn language mounted on, as listAcornProjects last answered. The mount is the truth — no separate registry is kept. Fetched only while the projects dialog is open and emptied when it closes, so a list drawn from it is the modal’s own; `languageAddress` is the mounted Acorn language its class/* interactions live under',
+      acornPending:
+        '{ phase, name, datasetId?, languageAddress?, attempt?, failure? } | null — where the in-flight or parked Acorn operation stands: phase preparing → mounting (attempt names which of 5 tries) → setting-up, or failed with { stage, cause, retryable }. Null when nothing is running or retained. The projects dialog draws its progress line and its resumable failure — with Retry on retryable — straight from this',
       root: "string — the id of this space's collection: the one CollectionBlock (kind 'space') everything top-level hangs off — calls, loose messages, posts, channels, extracted items, the canvas. Scope a top-level read through it: { anchor: 'CollectionBlock', via: 'children', anchorId: spaceStore.root }. Empty outside a space, and in a space made before spaces had one",
       rootLoaded:
         "boolean — root has answered for the space on screen. Until then an empty root is not yet an answer, so gate anything that compares an address with root on it — { $: 'spaceStore.rootLoaded' } around an $if on `channel == spaceStore.root` — or the wrong branch mounts, reads, and is torn down when root arrives",
@@ -1587,6 +1591,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '(languageAddress: string | null, passphrase: string, sourceLanguageHash?: string): joins an Acorn project somebody else started. Pass null for the address in the ordinary case — the same passphrase templates to the same language as the creator\u2019s — and the address only for a project whose language came from a different base. Mounts, initializes, creates the member profile and announces the join, then lands. Resolves the dataset id, or null where the backend cannot mount',
       openAcornProject:
         '(datasetId: string): opens a project the executor already has mounted — what a row of acornProjects calls. Runs the same tail create and join end in: a mounted dataset never initialized becomes a WE space here; one that was just gets switched to and its template confirmed. Resolves the dataset id, or null where the mount is gone',
+      retryAcornProject:
+        '(): resumes the retained Acorn operation acornPending reports — re-mounts or re-checks the SAME dataset/language it parked on, never allocating another, then runs the open tail. This is the projects dialog’s Retry: call it only when acornPending.phase is failed and its failure is retryable; changed inputs are a new create/join, not this. Resolves the dataset id, or null when nothing is parked or the ask stood down',
       removeSpace:
         '(uuid: string): removes a space — clears its global-discovery listing (when authored by this agent) and removes the backing dataset',
       createPost: '(editorState: unknown): creates a new post',

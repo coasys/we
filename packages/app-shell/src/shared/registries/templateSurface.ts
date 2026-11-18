@@ -808,10 +808,17 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     */
     acornAvailable: state('navigation'),
     acornProjects: state('navigation'),
+    /*
+      The operation's progress/parked-failure state is the same read the project
+      list is — the dialog's own chrome needs it and it names nothing new. The
+      Retry that resumes it stays `space-admin` beside the buttons that parked it.
+    */
+    acornPending: state('navigation'),
     listAcornProjects: action('space-admin'),
     openAcornProject: action('space-admin'),
     joinAcornProject: action('space-admin'),
     createAcornProject: action('space-admin'),
+    retryAcornProject: action('space-admin'),
 
     // ── agent: this agent's own preferences, private to them ──
     installedModules: state('agent'),

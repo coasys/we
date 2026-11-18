@@ -1,6 +1,7 @@
 import {
   ACORN_SECTION_IDS,
   ACORN_TEMPLATE_ID,
+  type AcornOperationState,
   type AcornProjectRef,
   type AcornSetupIntent,
   createAcornLifecycle,
@@ -958,6 +959,19 @@ export interface SpaceStore {
   acornAvailable: Accessor<boolean>;
   /** The mounted Acorn projects, fetched while the projects chrome is open — empty otherwise. */
   acornProjects: Accessor<AcornProjectRef[]>;
+  /**
+   * Where the in-flight or parked Acorn operation stands — `preparing →
+   * mounting(attempt) → setting-up`, or `failed` with the cause and whether a
+   * Retry resumes it. Null when nothing is running or retained: the projects
+   * dialog draws its progress and its resumable failure from this signal.
+   */
+  acornPending: Accessor<AcornOperationState | null>;
+  /**
+   * The projects dialog's Retry — resumes the retained operation on the same
+   * dataset and language it parked, never allocating another. The create/join
+   * forms' own buttons stay the way a *changed* ask is made.
+   */
+  retryAcornProject: () => Promise<string | null>;
   /** The agent's mounted Acorn projects — every dataset the executor reports a mount on. */
   listAcornProjects: () => Promise<AcornProjectRef[]>;
   /**
@@ -2854,6 +2868,12 @@ export function SpaceStoreProvider(props: ParentProps) {
       }
     },
   };
+  /*
+    The operation the projects dialog reports on — its live progress, and the
+    parked failure a close leaves retained for the next open to offer continuing.
+    Declared before the lifecycle: it is the `progress` sink the factory writes.
+  */
+  const [acornPending, setAcornPending] = createSignal<AcornOperationState | null>(null);
   const acorn = createAcornLifecycle({
     port: () => session.backendPorts()?.acornLifecycle,
     lifecycle: () => session.lifecycle(),
@@ -2905,6 +2925,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       const profile = did ? profileStore.profiles().find((entry) => entry.did === did) : undefined;
       return profile ? displayName(profile) : undefined;
     },
+    progress: setAcornPending,
   });
 
   /*
@@ -2929,12 +2950,17 @@ export function SpaceStoreProvider(props: ParentProps) {
   createEffect(() => {
     if (!shellStore.acornProjectsOpen()) {
       setAcornProjects([]);
+      acorn.dismissAcornOperation();
       return;
     }
     void acorn
       .listAcornProjects()
       .then(setAcornProjects)
       .catch(() => setAcornProjects([]));
+    void acorn
+      .pendingAcornOperation()
+      .then(setAcornPending)
+      .catch(() => {});
   });
 
   /**
@@ -6985,6 +7011,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     ...boards,
     acornAvailable,
     acornProjects,
+    acornPending,
+    retryAcornProject: () => acorn.resumeAcornOperation(),
     ...acorn,
     setAttending,
     mutedDids,

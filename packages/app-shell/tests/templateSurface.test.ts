@@ -181,11 +181,17 @@ describe('what the space tier can reach', () => {
       'spaceStore.joinAcornProject',
       'spaceStore.openAcornProject',
       'spaceStore.listAcornProjects',
+      'spaceStore.retryAcornProject',
     ]) {
       expect(reaches(spaceBag, path), `space: ${path}`).toBe(false);
       expect(reaches(chromeBag, path), `chrome: ${path}`).toBe(true);
     }
-    for (const path of ['spaceStore.acornAvailable', 'spaceStore.acornProjects', 'shellStore.setAcornProjectsOpen']) {
+    for (const path of [
+      'spaceStore.acornAvailable',
+      'spaceStore.acornProjects',
+      'spaceStore.acornPending',
+      'shellStore.setAcornProjectsOpen',
+    ]) {
       expect(reaches(spaceBag, path), `space: ${path}`).toBe(true);
     }
   });

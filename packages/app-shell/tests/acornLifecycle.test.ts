@@ -12,10 +12,16 @@
  * mounting before the language exists, or initializing before the mount's foreign
  * SDNA landed, are the ways this silently produces a space without a project.
  */
-import type { AcornSetupIntent, AcornSpaceSetup } from '@shared/acornLifecycle';
-import { ACORN_TEMPLATE_ID, type AcornLifecycleDeps, acornSeed, createAcornLifecycle } from '@shared/acornLifecycle';
+import type { AcornOperationState, AcornSetupIntent, AcornSpaceSetup } from '@shared/acornLifecycle';
+import {
+  ACORN_TEMPLATE_ID,
+  type AcornLifecycleDeps,
+  AcornLifecycleError,
+  acornSeed,
+  createAcornLifecycle,
+} from '@shared/acornLifecycle';
 import type { AcornLifecyclePort, DatasetLifecyclePort, DatasetRef, SchemaPort } from '@we/backend-shared';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const LANG = 'QmzAcornLanguageUnderTest';
 const BASE = 'QmzAcornBaseBundleUnderTest';
@@ -431,7 +437,13 @@ describe('openAcornProject', () => {
       if (call.name === 'info') return { dnaHash: 'QmdnaUnderTest' };
       if (call.name === 'whoami') return { address: 'profile/abc' };
       if (call.name === 'create' && url.includes('AcornProjectMeta')) {
-        throw new Error('OnlyOneOfEntryType: AcornProjectMeta already exists');
+        // The a9 wire form the rig observed: the wasm guest message nested inside
+        // the executor's forwarded CellError dump.
+        throw new Error(
+          'expression_interact failed: Runtime error in language: create: Conductor API error: ' +
+            'CellError(WorkflowError(RibosomeError(WasmRuntimeError(...Guest("Only one of this ' +
+            'entry type should exist and an existing one was found")))))',
+        );
       }
       return null;
     });
@@ -729,6 +741,300 @@ describe('listAcornProjects', () => {
     expect(record.find((c) => c.startsWith('navigate:'))).toBeUndefined();
     // No member interaction touched the foreign language.
     expect(record.filter((c) => c.startsWith('interact:') && !c.includes('info'))).toEqual([]);
+  });
+});
+
+/*
+  The fresh-cell stall (REPORT-s2b-2cell): a mounted cell's first network read can
+  outlive Holochain's 30 s init mutex — `CellError(InitTimeout)` — and the B10
+  language's own snapshot deadline — `reads missed the 15000 ms deadline` — fires
+  first. Both are transient by construction: the mount target the ask allocated is
+  still the project, so the lifecycle retries *that same target* inside a bounded
+  budget rather than minting another perspective (a failed mount writes no link,
+  so scanning mounts cannot find it again — the retained pending target is what a
+  retry reuses).
+*/
+describe('mount retry — the fresh-cell stall', () => {
+  const INIT_TIMEOUT = () => new Error('ConductorApiError: CellError(InitTimeout)');
+  const SNAPSHOT_DEADLINE = () => new Error('acorn snapshot: reads missed the 15000 ms deadline');
+  const ALREADY_MOUNTING = () => new Error(`${LANG} is already being mounted`);
+  const TRANSPORT_GAVE_UP = () => new Error(`acornLifecycle: perspective.mount heard nothing for 30s`);
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** `mount` rejects `n` times with `make()`, then installs the mount and resolves. */
+  const mountFailing = (record: string[], d: AcornLifecycleDeps, n: number, make: () => Error) => {
+    const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
+    let left = n;
+    (port.mount as ReturnType<typeof vi.fn>).mockImplementation(async (uuid: string, lang: string) => {
+      record.push(`mount:${uuid}:${lang}`);
+      if (left-- > 0) throw make();
+      port.mountsOf[uuid] = [lang];
+      return true;
+    });
+    return port;
+  };
+
+  /** Drive `create` through its sleeps until it settles, returning the outcome. */
+  const settle = async <T>(p: Promise<T>): Promise<{ value?: T; error?: unknown }> => {
+    const seen = p.then(
+      (value) => ({ value }),
+      (error) => ({ error }),
+    );
+    // Attempts, backoffs and the budget are timers; the port calls flush as microtasks.
+    for (let i = 0; i < 40; i += 1) await vi.advanceTimersByTimeAsync(20_000);
+    return seen;
+  };
+
+  it('retries the same target once an InitTimeout clears — one perspective, one landing', async () => {
+    vi.useFakeTimers();
+    const record: string[] = [];
+    const d = deps(record);
+    mountFailing(record, d, 1, INIT_TIMEOUT);
+    const acorn = createAcornLifecycle(d);
+
+    const out = settle(acorn.createAcornProject('Rig Project', 'a b c', BASE));
+    expect((await out).value).toBe('dataset-1');
+
+    // Two mount calls, one dataset, and the landing only after the mount answered.
+    expect(record.filter((c) => c.startsWith('mount:'))).toEqual([
+      `mount:dataset-1:${LANG}`,
+      `mount:dataset-1:${LANG}`,
+    ]);
+    expect(d.lifecycle()!.create).toHaveBeenCalledTimes(1);
+    expect(record).toContain('navigate:dataset-1');
+  });
+
+  it('retries the B10 snapshot-deadline text — the earlier failure InitTimeout alone would miss', async () => {
+    vi.useFakeTimers();
+    const record: string[] = [];
+    const d = deps(record);
+    mountFailing(record, d, 2, SNAPSHOT_DEADLINE);
+    const acorn = createAcornLifecycle(d);
+
+    expect((await settle(acorn.createAcornProject('P', 'a b c', BASE))).value).toBe('dataset-1');
+    expect(record.filter((c) => c.startsWith('mount:'))).toHaveLength(3);
+  });
+
+  it('keeps a mount that landed late — the deadline stopped waiting, the target did not change', async () => {
+    vi.useFakeTimers();
+    const record: string[] = [];
+    const d = deps(record);
+    // The mount lands server-side but the transport had already stopped listening:
+    // unknown completion — the retained target is what the resume asks about first.
+    const port = mountFailing(record, d, 1, TRANSPORT_GAVE_UP);
+    (port.mount as ReturnType<typeof vi.fn>).mockImplementation(async (uuid: string, lang: string) => {
+      record.push(`mount:${uuid}:${lang}`);
+      port.mountsOf[uuid] = [lang]; // it did land — the caller just never heard
+      throw TRANSPORT_GAVE_UP();
+    });
+    const acorn = createAcornLifecycle(d);
+
+    const out = await settle(acorn.createAcornProject('P', 'a b c', BASE));
+    expect(out.error).toBeInstanceOf(AcornLifecycleError);
+    expect(record.filter((c) => c.startsWith('mount:'))).toHaveLength(1); // no blind second attempt
+
+    await expect(acorn.resumeAcornOperation()).resolves.toBe('dataset-1');
+    // The resume asked mounts before mounting: the late answer was already there.
+    expect(record.filter((c) => c.startsWith('mount:'))).toHaveLength(1);
+    expect(record).toContain('navigate:dataset-1');
+  });
+
+  it('waits out a mount already in flight — Mounting that becomes Active is not retried over', async () => {
+    vi.useFakeTimers();
+    const record: string[] = [];
+    const d = deps(record, { pollMs: 500 });
+    const port = mountFailing(record, d, 1, ALREADY_MOUNTING);
+    // The in-flight mount lands while the budget waits: the second mounts read sees it.
+    let reads = 0;
+    (port.mounts as ReturnType<typeof vi.fn>).mockImplementation(async (uuid: string) => {
+      record.push(`mounts:${uuid}`);
+      reads += 1;
+      return reads >= 2 ? [LANG] : [];
+    });
+    const acorn = createAcornLifecycle(d);
+
+    expect((await settle(acorn.createAcornProject('P', 'a b c', BASE))).value).toBe('dataset-1');
+    // One mount call — nobody unmounted to "clear" it and nobody mounted a second.
+    expect(record.filter((c) => c.startsWith('mount:'))).toEqual([`mount:dataset-1:${LANG}`]);
+  });
+
+  it('stops after five attempts and parks the same target — a bounded failure, not a loop', async () => {
+    vi.useFakeTimers();
+    const record: string[] = [];
+    const d = deps(record);
+    mountFailing(record, d, 99, SNAPSHOT_DEADLINE);
+    const acorn = createAcornLifecycle(d);
+
+    const out = await settle(acorn.createAcornProject('P', 'a b c', BASE));
+    expect(out.error).toBeInstanceOf(AcornLifecycleError);
+    const err = out.error as AcornLifecycleError;
+    expect(err.stage).toBe('mount');
+    expect(String(err.cause)).toContain('15000');
+    expect(err.retryTarget).toEqual({ datasetId: 'dataset-1', languageAddress: LANG });
+    expect(record.filter((c) => c.startsWith('mount:'))).toHaveLength(5);
+
+    // The target survived the failed mount — the pending op names the project to resume.
+    expect(d.setupIntent!.get('dataset-1')).toMatchObject({ languageAddress: LANG, phase: 'mount' });
+    await expect(acorn.pendingAcornOperation()).resolves.toMatchObject({
+      phase: 'failed',
+      datasetId: 'dataset-1',
+      languageAddress: LANG,
+      failure: { stage: 'mount', retryable: true },
+    });
+    expect(record.find((c) => c.startsWith('navigate:'))).toBeUndefined();
+
+    // And the same target still mounts when the peer comes back — no new dataset.
+    mountFailing(record, d, 0, INIT_TIMEOUT);
+    await expect(acorn.resumeAcornOperation()).resolves.toBe('dataset-1');
+    expect(d.lifecycle()!.create).toHaveBeenCalledTimes(1);
+    expect(record.filter((c) => c.startsWith('mount:'))).toHaveLength(6);
+    expect(d.setupIntent!.get('dataset-1')).toBeNull(); // meta landed — nothing owed
+  });
+
+  it('stops scheduling at the 180 s wall-clock budget rather than finishing a fifth wait', async () => {
+    vi.useFakeTimers();
+    const record: string[] = [];
+    // Each snapshot-deadline failure costs its RPC window; a tight budget ends the loop early.
+    const d = deps(record, { mountBudgetMs: 3_000 });
+    mountFailing(record, d, 99, INIT_TIMEOUT);
+    const acorn = createAcornLifecycle(d);
+
+    const out = await settle(acorn.createAcornProject('P', 'a b c', BASE));
+    expect(out.error).toBeInstanceOf(AcornLifecycleError);
+    // t0 fails → wait 2 s → t2 fails → 1 s left, clamped → budget out: two attempts, not five.
+    expect(record.filter((c) => c.startsWith('mount:'))).toHaveLength(2);
+  });
+
+  it('does not retry what the executor refused — a permanent mount error parks unretryable', async () => {
+    vi.useFakeTimers();
+    const record: string[] = [];
+    const d = deps(record);
+    mountFailing(record, d, 1, () => new Error('the language is owned by another schema mirror'));
+    const acorn = createAcornLifecycle(d);
+
+    const out = await settle(acorn.createAcornProject('P', 'a b c', BASE));
+    expect(out.error).toBeInstanceOf(AcornLifecycleError);
+    expect((out.error as AcornLifecycleError).retryTarget).toBeNull();
+    expect(record.filter((c) => c.startsWith('mount:'))).toHaveLength(1);
+    await expect(acorn.pendingAcornOperation()).resolves.toMatchObject({
+      phase: 'failed',
+      failure: { retryable: false },
+    });
+  });
+
+  it('holds the target through a close — a late mount is reconciled, not abandoned', async () => {
+    vi.useFakeTimers();
+    const record: string[] = [];
+    const d = deps(record);
+    const port = mountFailing(record, d, 0, INIT_TIMEOUT);
+    let releaseMount!: () => void;
+    (port.mount as ReturnType<typeof vi.fn>).mockImplementation(async (uuid: string, lang: string) => {
+      record.push(`mount:${uuid}:${lang}`);
+      await new Promise<void>((resolve) => (releaseMount = resolve));
+      port.mountsOf[uuid] = [lang]; // the server-side mount still completes
+      return true;
+    });
+    const acorn = createAcornLifecycle(d);
+
+    const create = acorn.createAcornProject('P', 'a b c', BASE);
+    await vi.advanceTimersByTimeAsync(0); // let the mount call start
+    expect(record.filter((c) => c.startsWith('mount:'))).toHaveLength(1);
+    acorn.dismissAcornOperation(); // the modal's Close — UI ownership ends, the run does not pretend to
+    releaseMount();
+
+    await expect(create).resolves.toBeNull(); // stood down — no navigation off a closed dialog
+    expect(record.find((c) => c.startsWith('navigate:'))).toBeUndefined();
+    await expect(acorn.pendingAcornOperation()).resolves.toMatchObject({
+      phase: 'failed',
+      datasetId: 'dataset-1',
+      languageAddress: LANG,
+      failure: { retryable: true },
+    });
+
+    // Reopening offers the same operation: resume finds the mount already landed.
+    await expect(acorn.resumeAcornOperation()).resolves.toBe('dataset-1');
+    expect(record.filter((c) => c.startsWith('mount:'))).toHaveLength(1);
+  });
+
+  it('shares one pending target between a create and a join for the same language', async () => {
+    vi.useFakeTimers();
+    const record: string[] = [];
+    const d = deps(record);
+    let releaseMount!: () => void;
+    const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
+    (port.mount as ReturnType<typeof vi.fn>).mockImplementation(async (uuid: string, lang: string) => {
+      record.push(`mount:${uuid}:${lang}`);
+      await new Promise<void>((resolve) => (releaseMount = resolve));
+      port.mountsOf[uuid] = [lang];
+      return true;
+    });
+    const acorn = createAcornLifecycle(d);
+
+    const create = acorn.createAcornProject('P', 'a b c', BASE);
+    await vi.advanceTimersByTimeAsync(0); // create's mount is the one in flight
+    const join = acorn.joinAcornProject(undefined, 'a b c', BASE); // same seed — same language
+    await vi.advanceTimersByTimeAsync(0);
+    releaseMount();
+
+    const [created, joined] = await Promise.all([create, join]);
+    expect(d.lifecycle()!.create).toHaveBeenCalledTimes(1); // one perspective between them
+    expect(record.filter((c) => c.startsWith('mount:'))).toHaveLength(1); // one mount call too
+    expect(created ?? joined).toBe('dataset-1');
+    // The newest ask landed; the owed work ran exactly once.
+    expect(record.filter((c) => c.startsWith('navigate:'))).toHaveLength(1);
+    expect(record.filter((c) => c.includes('AcornProjectMeta'))).toHaveLength(1);
+    expect(record.filter((c) => c.startsWith('interact:announceJoin'))).toHaveLength(1);
+  });
+
+  it('a changed second ask supersedes the parked one — same language, the newer name wins', async () => {
+    vi.useFakeTimers();
+    const record: string[] = [];
+    const d = deps(record);
+    mountFailing(record, d, 99, INIT_TIMEOUT);
+    const acorn = createAcornLifecycle(d);
+
+    const first = await settle(acorn.createAcornProject('First name', 'a b c', BASE));
+    expect(first.error).toBeInstanceOf(AcornLifecycleError);
+
+    mountFailing(record, d, 0, INIT_TIMEOUT);
+    // A new submit is a new ask: the retained target is reused, the new name is owed.
+    expect((await settle(acorn.createAcornProject('Second name', 'a b c', BASE))).value).toBe('dataset-1');
+    expect(d.lifecycle()!.create).toHaveBeenCalledTimes(1);
+    expect(record).toContain('ensure:Second name:dataset-1');
+  });
+
+  it('keeps a mount discovery failure from minting a second dataset — unknown is not absent', async () => {
+    const record: string[] = [];
+    const d = deps(record);
+    (d.lifecycle()!.list as ReturnType<typeof vi.fn>).mockResolvedValue([ref('acorn-1', 'Project one')]);
+    (d.port()!.mounts as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+      throw new Error('executor unreachable');
+    });
+    const acorn = createAcornLifecycle(d);
+
+    await expect(acorn.createAcornProject('P', 'a b c', BASE)).rejects.toThrow();
+    expect(d.lifecycle()!.create).not.toHaveBeenCalled(); // nothing minted over an unknown mount
+  });
+
+  it('reports the phase the operation is in — preparing, mounting attempts, setting-up, failed', async () => {
+    vi.useFakeTimers();
+    const record: string[] = [];
+    const states: (AcornOperationState | null)[] = [];
+    const d = deps(record, { progress: (s: AcornOperationState | null) => states.push(s) });
+    mountFailing(record, d, 1, INIT_TIMEOUT);
+    const acorn = createAcornLifecycle(d);
+
+    expect((await settle(acorn.createAcornProject('P', 'a b c', BASE))).value).toBe('dataset-1');
+    const phases = states.filter(Boolean).map((s) => s!.phase);
+    expect(phases).toContain('preparing');
+    expect(phases).toContain('mounting');
+    expect(phases).toContain('setting-up');
+    // The mounting reports name the attempt — the modal shows "attempt n of 5".
+    expect(states.find((s) => s?.phase === 'mounting')).toMatchObject({ attempt: 1 });
+    expect(states.at(-1)).toBeNull(); // a landed project leaves nothing pending
   });
 });
 

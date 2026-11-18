@@ -21,15 +21,17 @@ import { ACORN_VIEWS } from '@we/template-acorn';
 
 /**
  * The Acorn base language bundle's address — its content hash, as the executor's
- * `language.publish`/`publishLocal` computes it (CIDv1, sha2-256 of the bundle).
+ * `language.publish`/`publishLocal` computes it (CIDv1 codec 0x00, sha2-256 of
+ * the bundle).
  *
- * The hash names a build, not a thing: `acorn-ad4m/language/build/bundle.js` at
- * the rig's checkout. A rebuilt bundle is a new hash, so the constant goes where
- * the sequence that needs it lives rather than where a caller might guess it —
- * `createAcornProject` takes a `sourceLanguageHash` override for a host holding
- * a different build.
+ * The hash names a build, not a thing: this is `acorn-ad4m` `b10-snapshot-deadline`
+ * (`2904210f`) `language/build/bundle.js` — the build whose full-snapshot reads
+ * carry the 15 s deadline the mount retry below is classified for. A rebuilt
+ * bundle is a new hash, so the constant goes where the sequence that needs it
+ * lives rather than where a caller might guess it — `createAcornProject` takes
+ * a `sourceLanguageHash` override for a host holding a different build.
  */
-export const ACORN_BASE_LANGUAGE = 'QmzSYwdfCQkVeBvQx1Ygx89h5L7P7ny5PTmj3J9VuwMPvfhb2B6';
+export const ACORN_BASE_LANGUAGE = 'QmzSYwdbjRfaHPqqDwswtBgL13hX7hEZXyryep4JqYB53MRFJg7';
 
 /** The template an opened Acorn project renders through — the space's `defaultTemplateId`. */
 export const ACORN_TEMPLATE_ID = 'acorn';
@@ -41,6 +43,54 @@ export const ACORN_TEMPLATE_ID = 'acorn';
  * the deployment's bundled order — which puts `about` first, not Acorn.
  */
 export const ACORN_SECTION_IDS = Object.keys(ACORN_VIEWS);
+
+/**
+ * The mount-recovery bounds: five attempts, backoffs 2·4·8·16 s, one 180 s
+ * wall-clock budget for the whole phase — connects, RPC waits and sleeps all
+ * count, and each wait clamps to what remains. Five B10 deadline failures cost
+ * ~105 s; the bound is what keeps "the peer never answers" a bounded failure
+ * instead of a call held open.
+ */
+const MOUNT_MAX_ATTEMPTS = 5;
+const MOUNT_BACKOFF_MS = [2_000, 4_000, 8_000, 16_000];
+const MOUNT_BUDGET_MS = 180_000;
+
+/**
+ * The only failures a same-target retry answers — the fresh cell's first network
+ * read stalling past either of the two clocks that time it out: Holochain's
+ * 30 s init mutex, and the B10 language's 15 s snapshot deadline, which fires
+ * first. Anything else the mount returns is a refusal or an unknown, and neither
+ * is fixed by running the same call again on schedule.
+ */
+const MOUNT_INIT_FAILURES = ['CellError(InitTimeout)', 'acorn snapshot: reads missed the 15000 ms deadline'];
+
+/** The mount slot is already held — an outcome to wait for, not an error to retry. */
+const MOUNT_IN_FLIGHT = 'is already being mounted';
+
+/**
+ * One language's operation — the unit concurrent same-seed asks share and a
+ * resume re-runs. The session's live half of the pending target; `setupIntent`'s
+ * `phase`/`languageAddress` fields are the durable half a restart reads.
+ */
+interface PendingAcornOp {
+  /** The resolved language — the operation's identity: same seed, same project. */
+  lang: string;
+  /** The name the meta write or space setup uses — the newest ask's, on resubmit. */
+  name: string;
+  /** The owed work this ask adds; the intent's debt merges over it at retain time. */
+  writeMeta: boolean;
+  announce: boolean;
+  /** The target once allocated or retained — the thing a failed mount cannot lose. */
+  ref?: DatasetRef;
+  /** The state last reported for this op — what `pendingAcornOperation` hands the chrome. */
+  state?: AcornOperationState;
+}
+
+/** What `prepareAndMount` hands `openMounted`: the mounted target plus the owed work the record says it owes. */
+interface PreparedMount {
+  ref: DatasetRef;
+  owed: { name: string; writeMeta: boolean; announce: boolean };
+}
 
 /** One mounted Acorn project, as `listAcornProjects` reports it. */
 export interface AcornProjectRef {
@@ -93,6 +143,70 @@ export interface AcornSetupIntent {
   writeMeta: boolean;
   /** The join's `announceJoin` has not landed. */
   announce: boolean;
+  /**
+   * The language this intent's target mounts, written *before* the mount attempt:
+   * a failed mount leaves no link a mounts scan could find the project by, so the
+   * address in the intent is the only record of which mount was owed. Absent on
+   * intents written before it was recorded — reads treat that as unknown.
+   */
+  languageAddress?: string;
+  /**
+   * Where the operation stood when the intent was written: `mount` while the
+   * mount itself was still unacknowledged — the mark a failed mount leaves —
+   * `open` once the mount answered and only the owed setup tail remained.
+   */
+  phase?: 'mount' | 'open';
+}
+
+/** Where a lifecycle operation stopped — the stage a resume picks up at. */
+export type AcornLifecycleStage = 'prepare' | 'mount' | 'setup';
+
+/** The mount a failed operation retained — the target an explicit Retry resumes. */
+export interface AcornRetryTarget {
+  datasetId: string;
+  languageAddress: string;
+}
+
+/**
+ * A lifecycle call's failure, typed — the one boundary where the executor's
+ * error strings are read. `stage` says where the run stopped; `cause` carries
+ * the underlying error untouched. `retryTarget` is the mount the run kept and
+ * an explicit Retry can resume: set when the answer was the known fresh-cell
+ * stall past the budget, an in-flight mount it could not outwait, or a
+ * transport that went quiet with the outcome unknown — and null for a refusal
+ * the executor actually answered, which a same-target Retry would only read
+ * a second time.
+ */
+export class AcornLifecycleError extends Error {
+  readonly stage: AcornLifecycleStage;
+  readonly retryTarget: AcornRetryTarget | null;
+  // Assigned in the constructor, not through `ErrorOptions` — the ES2022
+  // overload is not in every lib this file is typechecked under.
+  readonly cause: unknown;
+
+  constructor(init: { stage: AcornLifecycleStage; retryTarget: AcornRetryTarget | null; cause: unknown }) {
+    super(init.cause instanceof Error ? init.cause.message : String(init.cause));
+    this.name = 'AcornLifecycleError';
+    this.stage = init.stage;
+    this.retryTarget = init.retryTarget;
+    this.cause = init.cause;
+  }
+}
+
+/** The phases the projects dialog watches — the operation's own telling of where it is. */
+export type AcornOperationPhase = 'preparing' | 'mounting' | 'setting-up' | 'failed';
+
+/** Where the in-flight or retained Acorn operation stands. */
+export interface AcornOperationState {
+  phase: AcornOperationPhase;
+  /** The name the operation's meta write or space setup would give the project. */
+  name: string;
+  datasetId?: string;
+  languageAddress?: string;
+  /** The mount attempt in flight, while `phase` is `mounting`. */
+  attempt?: number;
+  /** Present only in `failed`: where it stopped, why, and whether a Retry resumes it. */
+  failure?: { stage: AcornLifecycleStage; cause: string; retryable: boolean };
 }
 
 /** What the lifecycle needs from the app around it — the same shape `BoardDeps` takes. */
@@ -187,9 +301,22 @@ export interface AcornLifecycleDeps {
   hasAcornTemplate: () => boolean;
   /** The agent's display name, for the Acorn member profile the first open creates. */
   agentName?: () => string | undefined;
+  /**
+   * Where the current operation stands, as it moves — the projects dialog's
+   * progress and resumable-failure read. Called with `null` when nothing is
+   * running or retained. Ownership-guarded inside: only the newest ask's
+   * reports surface; a superseded run parks its state without surfacing it.
+   */
+  progress?: (state: AcornOperationState | null) => void;
   /** Poll cadence and bound for the two waits (shapes landing, the cell answering). */
   pollMs?: number;
   timeoutMs?: number;
+  /**
+   * The wall-clock bound for one mount-recovery phase — connects, RPC waits and
+   * backoff sleeps all count. Language install and the setup tail keep their own
+   * bounds; this is the mount's alone.
+   */
+  mountBudgetMs?: number;
 }
 
 /**
@@ -236,6 +363,7 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
   // A mount's cell install + first sync routinely takes a minute on a cold rig;
   // the waits below bound themselves rather than trusting mount() to have meant "done".
   const timeoutMs = deps.timeoutMs ?? 180_000;
+  const mountBudgetMs = deps.mountBudgetMs ?? MOUNT_BUDGET_MS;
 
   /** The port's `interact` — every member guards on the port before reaching this. */
   const interact = (url: string, name: string, parameters?: object) => deps.port()!.interact(url, { name, parameters });
@@ -320,17 +448,130 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
     return run;
   };
 
+  /*
+    Mount attempts are serialized per language, the way setup is per dataset: a
+    create and a join sharing one seed — one language — queue rather than each
+    minting a dataset and racing the same mount slot. Queued work runs whether
+    the run ahead of it landed or failed.
+  */
+  const mountQueues = new Map<string, Promise<unknown>>();
+  const serializeMount = <T>(lang: string, work: () => Promise<T>): Promise<T> => {
+    const run = (mountQueues.get(lang) ?? Promise.resolve()).then(work, work);
+    mountQueues.set(lang, run);
+    const settle = () => {
+      if (mountQueues.get(lang) === run) mountQueues.delete(lang);
+    };
+    void run.then(settle, settle);
+    return run;
+  };
+
+  /*
+    The session's operation ledger, keyed by resolved language: one op per
+    project being created or joined. The pending *target* an entry retains is
+    the record a failed mount needs — that mount writes no link, so neither a
+    mounts scan nor a second create could find the dataset again. The durable
+    half is `setupIntent`'s `phase`/`languageAddress`; this map is the live
+    half: concurrent same-language asks share the entry, and the parked state
+    is what `pendingAcornOperation` reports across a modal close.
+  */
+  const pendingOps = new Map<string, PendingAcornOp>();
+
   /**
-   * The dataset that already carries `lang` mounted, or null — how a retried create
-   * or join finds the perspective its first attempt made instead of minting another.
-   * The language address is the project's identity: the same seed templates to the
-   * same address, so the dataset mounting it *is* the project being asked for.
+   * What one mount call's rejection means for the budget that called it:
+   *
+   * - `init` — the fresh-cell signature, retried on the same target: a stalled
+   *   first network read outliving Holochain's 30 s init mutex
+   *   (`CellError(InitTimeout)`) or the B10 language's own 15 s snapshot deadline
+   *   (`… missed the 15000 ms deadline`). Transient by construction.
+   * - `busy` — the executor is mid-mount on this slot already: the same outcome
+   *   this ask wants, so the budget waits and rechecks rather than starting a
+   *   second mount beside it or unmounting to "clear" it.
+   * - `unknown` — our own transport stopped listening (`heard nothing`, a closed
+   *   socket, an unreachable executor): the call may still have landed. The
+   *   automatic loop stops; the retained target is what an explicit Retry
+   *   re-checks before mounting again.
+   * - `permanent` — a refusal the executor answered: a bad address, an owned
+   *   schema mirror, an authorization. Retried on the same target it would
+   *   only read a second time, so it parks unretryable.
    */
-  const datasetMounting = async (lang: string): Promise<DatasetRef | null> => {
+  const mountFailureKind = (error: unknown): 'init' | 'busy' | 'unknown' | 'permanent' => {
+    const text = error instanceof Error ? error.message : String(error);
+    if (MOUNT_INIT_FAILURES.some((signature) => text.includes(signature))) return 'init';
+    if (text.includes(MOUNT_IN_FLIGHT)) return 'busy';
+    if (/heard nothing|timed?\s*out|socket|connect|unreachable|handed no url/i.test(text)) return 'unknown';
+    return 'permanent';
+  };
+
+  /**
+   * Whether `ref` already mounts `lang` — the one read an explicit Retry does
+   * first. A read that cannot answer is not "not mounted": it is the same
+   * unknown the transport gave up on, and it stays retryable rather than being
+   * taken as licence to mount again beside an answer already there.
+   */
+  const mountsInclude = async (refId: string, lang: string): Promise<boolean> => {
+    const mounted = await deps
+      .port()!
+      .mounts(refId)
+      .catch((error: unknown) => {
+        throw new AcornLifecycleError({
+          stage: 'mount',
+          retryTarget: { datasetId: refId, languageAddress: lang },
+          cause: error,
+        });
+      });
+    return mounted.includes(lang);
+  };
+
+  /**
+   * Write the pending-operation record for `ref` — the intent the next resume
+   * reads to recover the target a failed mount leaves no link to. `phase` is
+   * where the operation stood: `mount` until the mount is acknowledged, `open`
+   * once only the owed setup tail remains.
+   */
+  const retain = (
+    refId: string,
+    lang: string,
+    owed: { name: string; writeMeta: boolean; announce: boolean },
+    phase: 'mount' | 'open',
+  ): void => {
+    /*
+      A mounted target with nothing owed has no record to keep — the mount link
+      itself says where the language lives, and an intent carrying no debt would
+      only read as a pending mount it is not.
+    */
+    if (phase === 'open' && !owed.writeMeta && !owed.announce) {
+      deps.setupIntent?.clear(refId);
+      return;
+    }
+    deps.setupIntent?.set(refId, {
+      name: owed.name,
+      writeMeta: owed.writeMeta,
+      announce: owed.announce,
+      languageAddress: lang,
+      phase,
+    });
+  };
+
+  /**
+   * The dataset this language's operation should mount — in order:
+   * the pending target an earlier attempt retained (a failed mount leaves no
+   * link, so only the intent knows it), then the dataset already mounting the
+   * language (a mount that landed, late or old), else null to allocate one.
+   * `mounted` says which answered: a pending target still owes a mounts read
+   * before anything calls mount again; an Active mount is reused as it stands.
+   */
+  const targetFor = async (lang: string): Promise<{ ref: DatasetRef; mounted: boolean } | null> => {
     const port = deps.port();
     const lifecycle = deps.lifecycle();
     if (!port || !lifecycle) return null;
-    for (const ref of await lifecycle.list()) {
+    const refs = await lifecycle.list();
+    if (deps.setupIntent) {
+      for (const ref of refs) {
+        const intent = deps.setupIntent.get(ref.id);
+        if (intent?.phase === 'mount' && intent.languageAddress === lang) return { ref, mounted: false };
+      }
+    }
+    for (const ref of refs) {
       /*
         A mounts read that cannot answer is not "not mounted": swallowed, it
         would resume nothing and let the retry mint a second dataset over the
@@ -338,9 +579,187 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
         retries when the executor answers again.
       */
       const mounted = await port.mounts(ref.id);
-      if (mounted.includes(lang)) return ref;
+      if (mounted.includes(lang)) return { ref, mounted: true };
     }
     return null;
+  };
+
+  /**
+   * Mount `lang` on `ref`, bounded: the fresh-cell stall is retried while
+   * attempts and the wall-clock budget remain; an in-flight mount on the slot
+   * is waited out inside the same budget; a transport that stopped listening or
+   * a refusal the executor answered stops the loop here — each with its target
+   * classification attached. Returns false only when the run lost ownership
+   * mid-flight: the caller stands down silently and the retained target stays
+   * for whoever asks next.
+   */
+  const mountSameTarget = async (
+    ref: DatasetRef,
+    lang: string,
+    run: { owns: () => boolean; report: (attempt: number) => void },
+  ): Promise<boolean> => {
+    const port = deps.port()!;
+    const retryTarget = { datasetId: ref.id, languageAddress: lang };
+    const budgetEnd = Date.now() + mountBudgetMs;
+    const sleep = (ms: number) => new Promise<void>((done) => setTimeout(done, ms));
+    let lastError: unknown = null;
+    for (let attempt = 1; attempt <= MOUNT_MAX_ATTEMPTS; attempt += 1) {
+      if (!run.owns() || Date.now() >= budgetEnd) break;
+      run.report(attempt);
+      try {
+        await port.mount(ref.id, lang);
+        return true;
+      } catch (error) {
+        lastError = error;
+        const kind = mountFailureKind(error);
+        if (kind === 'permanent') throw new AcornLifecycleError({ stage: 'mount', retryTarget: null, cause: error });
+        if (kind === 'unknown') throw new AcornLifecycleError({ stage: 'mount', retryTarget, cause: error });
+        if (kind === 'busy') {
+          // The slot is held by a mount already in flight — the same outcome this
+          // ask wants. Wait it out inside the budget rather than starting a
+          // second mount beside it or unmounting to clear it.
+          while (run.owns() && Date.now() < budgetEnd) {
+            if (await mountsInclude(ref.id, lang)) return true;
+            await sleep(Math.min(pollMs, Math.max(0, budgetEnd - Date.now())));
+          }
+          break;
+        }
+        // `init` — the known fresh-cell stall: retry the same target while the
+        // attempt count and the budget both remain, each wait clamped to what is left.
+        const remaining = budgetEnd - Date.now();
+        if (attempt < MOUNT_MAX_ATTEMPTS && remaining > 0) {
+          await sleep(Math.min(MOUNT_BACKOFF_MS[attempt - 1] ?? 0, remaining));
+        }
+      }
+    }
+    if (!run.owns()) return false;
+    // Attempts or budget spent: a bounded failure, parked with the target an
+    // explicit Retry resumes — never a claim that the peer answered.
+    throw new AcornLifecycleError({ stage: 'mount', retryTarget, cause: lastError });
+  };
+
+  /**
+   * The shared first half of create/join/resume: resolve the target — the
+   * retained one, an already-mounted dataset, or a new allocation — retain it
+   * *before* the first mount call, then mount it with the bounded helper. A
+   * mount that landed late or was already Active is reused, never duplicated.
+   * Returns null only when the run stood down mid-flight.
+   */
+  const prepareAndMount = async (
+    op: PendingAcornOp,
+    owns: () => boolean,
+    report: (attempt: number) => void,
+  ): Promise<PreparedMount | null> => {
+    const found = op.ref ? { ref: op.ref, mounted: false } : await targetFor(op.lang);
+    const ref = found?.ref ?? (await deps.lifecycle()!.create(op.name));
+    op.ref = ref;
+    /*
+      The record's owed work beats this ask's: a resume inherits the debt the
+      interrupted run left. And the intent is written *before* the mount is
+      attempted — a failed mount is exactly when the record matters, since it
+      is the only place the target survives.
+    */
+    const current = deps.setupIntent?.get(ref.id);
+    /*
+      The name is this ask's — a resubmit's newer name wins, and an op rebuilt
+      from the intent already carries the intent's. The debt merges the other
+      way: what an interrupted run still owes is owed whoever asks next.
+    */
+    const owed = {
+      name: op.name,
+      writeMeta: Boolean(current?.writeMeta) || op.writeMeta,
+      announce: Boolean(current?.announce) || op.announce,
+    };
+    retain(ref.id, op.lang, owed, 'mount');
+    const mounted = found ? found.mounted || (await mountsInclude(ref.id, op.lang)) : false;
+    if (!mounted && !(await mountSameTarget(ref, op.lang, { owns, report }))) return null;
+    if (!owns()) return null;
+    retain(ref.id, op.lang, owed, 'open');
+    return { ref, owed };
+  };
+
+  /**
+   * One ask's run over `op` — preparing → mount → setting-up, or `failed` with
+   * the target retained. The newest ask owns the reports *and* the mount loop's
+   * lease: a superseded or dismissed run parks its state without surfacing it
+   * and hands its promise back through `null` — stood down, not failed.
+   */
+  const runLifecycle = async (op: PendingAcornOp): Promise<string | null> => {
+    const runId = ++openGeneration;
+    const nav = { generation: runId, selection: deps.currentDatasetId() };
+    const owns = () => runId === openGeneration;
+    pendingOps.set(op.lang, op);
+    /*
+      Only the newest ask writes `op.state`: a run superseded on its own op —
+      or dismissed — leaves the state alone, because the newer run's reports or
+      the dismiss's parked failure are the truth now, and a late report landing
+      over either would tell the dialog a story that is no longer running.
+    */
+    const report = (state: AcornOperationState) => {
+      if (!owns()) return;
+      op.state = state;
+      deps.progress?.(state);
+    };
+    const park = (failure: { stage: AcornLifecycleStage; cause: string; retryable: boolean }) =>
+      report({ phase: 'failed', name: op.name, datasetId: op.ref?.id, languageAddress: op.lang, failure });
+    try {
+      report({ phase: 'preparing', name: op.name, datasetId: op.ref?.id, languageAddress: op.lang });
+      const prepared = await serializeMount(op.lang, () =>
+        prepareAndMount(op, owns, (attempt) =>
+          report({ phase: 'mounting', attempt, name: op.name, datasetId: op.ref?.id, languageAddress: op.lang }),
+        ),
+      );
+      if (!prepared || !owns()) {
+        /*
+          Stood down — a close already parked this op as resumable, or the newer
+          ask's reports are the state. The defensive write covers only a run that
+          never reported at all; the offer to continue survives either way.
+        */
+        op.state ??= {
+          phase: 'failed',
+          name: op.name,
+          datasetId: op.ref?.id,
+          languageAddress: op.lang,
+          failure: { stage: 'mount', cause: '', retryable: true },
+        };
+        return null;
+      }
+      report({
+        phase: 'setting-up',
+        name: prepared.owed.name,
+        datasetId: prepared.ref.id,
+        languageAddress: op.lang,
+      });
+      const id = await openMounted(prepared.ref, op.lang, prepared.owed, nav);
+      /*
+        Delete only on this run's own success: a superseded run that stood down
+        inside `openMounted` must not remove the op its successor is still
+        running on.
+      */
+      if (owns() && pendingOps.get(op.lang) === op) pendingOps.delete(op.lang);
+      if (owns()) deps.progress?.(null);
+      return id;
+    } catch (error) {
+      /*
+        The typed failure carries its own classification; anything else reaching
+        this boundary is read once here — an error after the target was retained
+        is a setup failure resumable on it, an error before is a prepare failure
+        that retrying can only help if the cause was transient.
+      */
+      const failure =
+        error instanceof AcornLifecycleError
+          ? error
+          : new AcornLifecycleError({
+              stage: op.ref ? 'setup' : 'prepare',
+              retryTarget: op.ref ? { datasetId: op.ref.id, languageAddress: op.lang } : null,
+              cause: error,
+            });
+      const retryable =
+        Boolean(failure.retryTarget) ||
+        (!(error instanceof AcornLifecycleError) && mountFailureKind(error) !== 'permanent');
+      park({ stage: failure.stage, cause: failure.message, retryable });
+      throw failure;
+    }
   };
 
   /**
@@ -427,7 +846,10 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
             topPriorityOutcomes: [],
           });
         } catch (error) {
-          if (!String(error).includes('OnlyOneOfEntryType')) throw error;
+          // The refusal surfaces two wire forms: the enum name (`OnlyOneOfEntryType`)
+          // on some backends and the wasm guest text (`Only one of this entry type…`)
+          // the a9 conductor forwards inside its CellError dump.
+          if (!/OnlyOneOfEntryType|Only one of this entry type/.test(String(error))) throw error;
         }
         markDone('writeMeta');
       }
@@ -497,22 +919,18 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       const port = deps.port();
       const lifecycle = deps.lifecycle();
       if (!port || !lifecycle || !deps.hasAcornTemplate()) return null;
-      const nav = { generation: ++openGeneration, selection: deps.currentDatasetId() };
       const seed = acornSeed(passphrase);
       const { address: lang } = await port.applyTemplateLocal(sourceLanguageHash, { seed });
       /*
-        A retried create lands here too — the same seed templates to the same
-        address, so the dataset already mounting this language *is* the project.
-        Resume it rather than minting a second perspective over one mount.
+        One operation per language: a resubmit of the same seed — the same
+        project — merges into the pending op rather than starting a parallel
+        one beside it. The ask updates the name and adds the meta debt a create
+        always owes; the intent's own record merges over both at retain time.
       */
-      const existing = await datasetMounting(lang);
-      const ref = existing ?? (await lifecycle.create(name));
-      if (!existing) await port.mount(ref.id, lang);
-      // The meta write this run owes, remembered before it is attempted: the
-      // language cannot answer "done?" later, so the intent is the record an
-      // interrupted create leaves the next open.
-      deps.setupIntent?.set(ref.id, { name, writeMeta: true, announce: false });
-      return openMounted(ref, lang, { name, writeMeta: true, announce: false }, nav);
+      const op = pendingOps.get(lang) ?? { lang, name, writeMeta: false, announce: false };
+      op.name = name;
+      op.writeMeta = true;
+      return runLifecycle(op);
     },
 
     /**
@@ -528,7 +946,6 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       const port = deps.port();
       const lifecycle = deps.lifecycle();
       if (!port || !lifecycle || !deps.hasAcornTemplate()) return null;
-      const nav = { generation: ++openGeneration, selection: deps.currentDatasetId() };
       const lang =
         languageAddress || (await port.applyTemplateLocal(sourceLanguageHash, { seed: acornSeed(passphrase) })).address;
       /*
@@ -539,12 +956,14 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
         it is Acorn by construction.
       */
       if (languageAddress && !(await answering(() => acornInfo(lang), timeoutMs, pollMs))) return null;
-      // Same reuse as create: a retried join resumes the dataset it already made.
-      const existing = await datasetMounting(lang);
-      const ref = existing ?? (await lifecycle.create('Acorn project'));
-      if (!existing) await port.mount(ref.id, lang);
-      deps.setupIntent?.set(ref.id, { name: ref.name, writeMeta: false, announce: true });
-      return openMounted(ref, lang, { name: ref.name, writeMeta: false, announce: true }, nav);
+      /*
+        Same sharing as create: a retried join merges into the pending op —
+        the dataset it already made stays the target, and the announce the join
+        owes is added to the debt rather than assumed absent.
+      */
+      const op = pendingOps.get(lang) ?? { lang, name: 'Acorn project', writeMeta: false, announce: false };
+      op.announce = true;
+      return runLifecycle(op);
     },
 
     /**
@@ -556,12 +975,89 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       const port = deps.port();
       const lifecycle = deps.lifecycle();
       if (!port || !lifecycle || !deps.hasAcornTemplate()) return null;
-      const nav = { generation: ++openGeneration, selection: deps.currentDatasetId() };
+      const runId = ++openGeneration;
+      const nav = { generation: runId, selection: deps.currentDatasetId() };
+      const owns = () => runId === openGeneration;
       const ref = await lifecycle.get(datasetId);
       if (!ref) return null;
+      if (owns()) deps.progress?.({ phase: 'preparing', name: ref.name, datasetId });
       const lang = await firstAcornMount(await port.mounts(ref.id));
-      if (!lang) return null;
-      return openMounted(ref, lang, { name: ref.name, writeMeta: false, announce: false }, nav);
+      if (!lang) {
+        if (owns()) deps.progress?.(null);
+        return null;
+      }
+      if (owns()) deps.progress?.({ phase: 'setting-up', name: ref.name, datasetId, languageAddress: lang });
+      const id = await openMounted(ref, lang, { name: ref.name, writeMeta: false, announce: false }, nav);
+      if (owns()) deps.progress?.(null);
+      return id;
+    },
+
+    /**
+     * The operation the projects dialog should offer — the one in flight, or the
+     * parked one a failed mount left. Null when nothing is running and no mount
+     * target was retained: a completed setup clears the record entirely.
+     */
+    async pendingAcornOperation(): Promise<AcornOperationState | null> {
+      for (const op of pendingOps.values()) if (op.state) return op.state;
+      const port = deps.port();
+      const lifecycle = deps.lifecycle();
+      if (!port || !lifecycle || !deps.setupIntent) return null;
+      for (const ref of await lifecycle.list()) {
+        const intent = deps.setupIntent.get(ref.id);
+        if (intent?.phase === 'mount' && intent.languageAddress) {
+          return {
+            phase: 'failed',
+            name: intent.name,
+            datasetId: ref.id,
+            languageAddress: intent.languageAddress,
+            failure: { stage: 'mount', cause: '', retryable: true },
+          };
+        }
+      }
+      return null;
+    },
+
+    /**
+     * The dialog's Retry/Continue: re-run the retained operation — the parked op
+     * while the session still holds it, else the pending target the intent names.
+     * Resumes the same dataset and language; never allocates beside them.
+     */
+    async resumeAcornOperation(): Promise<string | null> {
+      const port = deps.port();
+      const lifecycle = deps.lifecycle();
+      if (!port || !lifecycle || !deps.hasAcornTemplate()) return null;
+      let op = [...pendingOps.values()][0];
+      if (!op && deps.setupIntent) {
+        for (const ref of await lifecycle.list()) {
+          const intent = deps.setupIntent.get(ref.id);
+          if (intent?.phase === 'mount' && intent.languageAddress) {
+            op = { lang: intent.languageAddress, name: intent.name, writeMeta: false, announce: false, ref };
+            break;
+          }
+        }
+      }
+      if (!op) return null;
+      return runLifecycle(op);
+    },
+
+    /**
+     * The dialog's Close: UI ownership ends — an in-flight run stands down and
+     * anything unfinished stays parked for the next open, rather than being
+     * unmounted or forgotten. Retention is the point: the target survives, and
+     * a late server-side mount is reconciled by the resume that asks after it.
+     */
+    dismissAcornOperation(): void {
+      openGeneration += 1;
+      for (const op of pendingOps.values()) {
+        if (op.state && op.state.phase !== 'failed') {
+          op.state = {
+            ...op.state,
+            phase: 'failed',
+            failure: { stage: op.state.phase === 'setting-up' ? 'setup' : 'mount', cause: '', retryable: true },
+          };
+        }
+      }
+      deps.progress?.(null);
     },
   };
 }

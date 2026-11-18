@@ -3,17 +3,32 @@ import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 const close = { $invoke: 'shellStore.setAcornProjectsOpen', args: [false] };
 
 /**
- * One lifecycle call's wiring: the busy flag around it, the modal closed when it lands,
- * the rejection turned into words where the dialog can read them — `local.error` is the
- * answer `JoinSpaceModal` gives for the same situation, an `$invoke` failure being the
- * only kind a schema can see.
+ * One lifecycle call's wiring: the busy flag around it, the modal closed only
+ * when the call actually landed — `null` is a stood-down or unanswered ask
+ * (superseded by a newer one, or a backend that cannot mount), not a landing to
+ * close over. The rejection is turned into words the dialog reads — `local.error`
+ * is the answer `JoinSpaceModal` gives for the same situation. The retained
+ * operation's own progress and its Retry/Close live in `spaceStore.acornPending`,
+ * the card below — parked there across this dialog closing, not in these locals.
  */
 const lifecycleCall = (invoke: Record<string, unknown>): SchemaProp[] => [
   { $setLocal: 'busy', value: true },
   { $setLocal: 'error', value: '' },
   {
     ...invoke,
-    onSuccess: [close],
+    onSuccess: [
+      {
+        $if: {
+          condition: { $: 'result' },
+          then: close,
+          else: {
+            $setLocal: 'error',
+            // A pending operation is already telling its own story in the card.
+            value: { $: "spaceStore.acornPending ? '' : 'That did not work — no project was opened.'" },
+          },
+        },
+      },
+    ],
     onError: [{ $setLocal: 'error', value: { $: "result && result.message ? result.message : 'That did not work'" } }],
     onFinally: [{ $setLocal: 'busy', value: false }],
   },
@@ -153,7 +168,7 @@ export const acornProjectsModal: SchemaNode = {
           props: {
             variant: 'solid',
             loading: { $: 'local.busy' },
-            disabled: { $: '!local.newName || !local.newPassphrase' },
+            disabled: { $: 'local.busy || !local.newName || !local.newPassphrase' },
             onClick: lifecycleCall({
               $invoke: 'spaceStore.createAcornProject',
               args: [{ $: 'local.newName' }, { $: 'local.newPassphrase' }],
@@ -212,7 +227,7 @@ export const acornProjectsModal: SchemaNode = {
           props: {
             variant: 'solid',
             loading: { $: 'local.busy' },
-            disabled: { $: '!local.joinPassphrase' },
+            disabled: { $: 'local.busy || !local.joinPassphrase' },
             onClick: lifecycleCall({
               $invoke: 'spaceStore.joinAcornProject',
               args: [{ $: 'local.joinAddress || null' }, { $: 'local.joinPassphrase' }],
@@ -224,14 +239,93 @@ export const acornProjectsModal: SchemaNode = {
     },
 
     /*
-      Mounting, initialising and landing: a cold rig takes a while, and a silent
-      spinner for that long reads as a hang — `joinSlow` is the store's version of
-      the same line; here the one busy flag covers all three calls.
+      The retained operation's card — what `spaceStore.acornPending` reports.
+      While it runs, the phase and the mount attempt; when it cannot finish, the
+      resumable failure: Retry picks the same dataset and language back up (the
+      form's fields are a *new* ask, not this one's) and Close only dismisses —
+      the operation stays retained for the next open either way.
     */
     {
       type: '$if',
       props: {
-        condition: { $: 'local.busy' },
+        condition: { $: 'spaceStore.acornPending' },
+        then: {
+          type: '$if',
+          props: {
+            condition: { $: "spaceStore.acornPending.phase == 'failed'" },
+            else: {
+              type: 'Row',
+              props: { gap: '200', ay: 'center' },
+              children: [
+                { type: 'we-animated-icon', props: { name: 'spinner', size: 'xs', color: 'text-faint' } },
+                {
+                  type: 'we-text',
+                  props: { variant: 'footnote', color: 'text-muted' },
+                  children: [
+                    {
+                      $: "spaceStore.acornPending.phase == 'mounting' ? 'Mounting the project — attempt ' + (spaceStore.acornPending.attempt ? spaceStore.acornPending.attempt : 1) + ' of 5. A first open can take a minute.' : spaceStore.acornPending.phase == 'setting-up' ? 'Setting the space up.' : 'Preparing the project.'",
+                    },
+                  ],
+                },
+              ],
+            },
+            then: {
+              type: 'Column',
+              props: { gap: '300', width: '100%' },
+              children: [
+                {
+                  type: 'we-alert',
+                  props: { variant: 'soft', tone: 'danger' },
+                  children: [
+                    {
+                      $: "'The project could not finish connecting. A peer may be unavailable' + (spaceStore.acornPending.failure && spaceStore.acornPending.failure.retryable ? ' — Retry continues this same project.' : '.') + (spaceStore.acornPending.failure && spaceStore.acornPending.failure.cause ? ' ' + spaceStore.acornPending.failure.cause : '')",
+                    },
+                  ],
+                },
+                {
+                  type: 'Row',
+                  props: { ax: 'end', gap: '200' },
+                  children: [
+                    {
+                      type: '$if',
+                      props: {
+                        condition: {
+                          $: 'spaceStore.acornPending.failure && spaceStore.acornPending.failure.retryable',
+                        },
+                        then: {
+                          type: 'we-button',
+                          props: {
+                            variant: 'solid',
+                            disabled: { $: 'local.busy' },
+                            onClick: lifecycleCall({ $invoke: 'spaceStore.retryAcornProject' }),
+                          },
+                          children: ['Retry'],
+                        },
+                      },
+                    },
+                    {
+                      type: 'we-button',
+                      props: { variant: 'soft', disabled: { $: 'local.busy' }, onClick: [close] },
+                      children: ['Close'],
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      },
+    },
+
+    /*
+      Mounting, initialising and landing: a cold rig takes a while, and a silent
+      spinner for that long reads as a hang — the pending card above narrates it
+      once the operation reports; this line covers only the first beat before it does.
+    */
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'local.busy && !spaceStore.acornPending' },
         then: {
           type: 'Row',
           props: { gap: '200', ay: 'center' },
