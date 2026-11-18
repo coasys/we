@@ -334,6 +334,23 @@ export function acornSeed(passphrase: string): string {
   return `uid-${passphrase.split(' ').join('-')}`;
 }
 
+/** The outcome `withinBudget` hands back when the phase's own clock, not the call, answered first. */
+const BUDGET_OUT = Symbol('acorn-budget-out');
+
+/**
+ * `work` given only what is left of the phase deadline. The deadline winning is
+ * not a failure of the call: its late answer is the server's to keep — a mount
+ * that lands afterward is still landed — and the next explicit Retry's mounts
+ * read is what reconciles it, never the run that stopped waiting.
+ */
+function withinBudget<T>(work: Promise<T>, ms: number): Promise<T | typeof BUDGET_OUT> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const out = new Promise<typeof BUDGET_OUT>((resolve) => {
+    timer = setTimeout(() => resolve(BUDGET_OUT), Math.max(0, ms));
+  });
+  return Promise.race([work, out]).finally(() => clearTimeout(timer));
+}
+
 /** Poll `read` until it answers truthy — an rpc that throws counts as "not yet". */
 async function waitFor<T>(read: () => Promise<T>, timeoutMs: number, pollMs: number): Promise<T | null> {
   const deadline = Date.now() + timeoutMs;
@@ -629,29 +646,38 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
   };
 
   /**
-   * Mount `lang` on `ref`, bounded: the fresh-cell stall is retried while
-   * attempts and the wall-clock budget remain; an in-flight mount on the slot
-   * is waited out inside the same budget; a transport that stopped listening or
-   * a refusal the executor answered stops the loop here — each with its target
-   * classification attached. Returns false only when the run lost ownership
+   * Mount `lang` on `ref` before `deadline`, bounded: the fresh-cell stall is
+   * retried while attempts and the wall-clock budget remain; an in-flight
+   * mount on the slot is waited out inside the same budget; a transport that
+   * stopped listening or a refusal the executor answered stops the loop here —
+   * each with its target classification attached. Every wait — the mount call,
+   * the mounts re-check, the sleeps — is given only what is left of the
+   * deadline, so a call still out at expiry abandons its answer rather than
+   * proceeding on it. Returns false only when the run lost ownership
    * mid-flight: the caller stands down silently and the retained target stays
    * for whoever asks next.
    */
   const mountSameTarget = async (
     ref: DatasetRef,
     lang: string,
+    deadline: number,
     run: { owns: () => boolean; report: (attempt: number) => void },
   ): Promise<boolean> => {
     const port = deps.port()!;
     const retryTarget = { datasetId: ref.id, languageAddress: lang };
-    const budgetEnd = Date.now() + mountBudgetMs;
     const sleep = (ms: number) => new Promise<void>((done) => setTimeout(done, ms));
     let lastError: unknown = null;
     for (let attempt = 1; attempt <= MOUNT_MAX_ATTEMPTS; attempt += 1) {
-      if (!run.owns() || Date.now() >= budgetEnd) break;
+      const remaining = deadline - Date.now();
+      if (!run.owns() || remaining <= 0) break;
       run.report(attempt);
       try {
-        await port.mount(ref.id, lang);
+        const answer = await withinBudget(port.mount(ref.id, lang), remaining);
+        // The clock answered first — stop waiting; the server's mount may still
+        // land, and the explicit Retry's mounts read is what reconciles it.
+        if (answer === BUDGET_OUT) break;
+        // A newer ask owns it now: this late answer is stale, not a success to proceed on.
+        if (!run.owns()) return false;
         return true;
       } catch (error) {
         lastError = error;
@@ -661,25 +687,32 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
         if (kind === 'busy') {
           // The slot is held by a mount already in flight — the same outcome this
           // ask wants. Wait it out inside the budget rather than starting a
-          // second mount beside it or unmounting to clear it.
-          while (run.owns() && Date.now() < budgetEnd) {
-            if (await mountsInclude(ref.id, lang)) return true;
-            await sleep(Math.min(pollMs, Math.max(0, budgetEnd - Date.now())));
+          // second mount beside it or unmounting to clear it — and bound each
+          // re-check too: a read that never answers cannot outwait the clock.
+          while (run.owns() && Date.now() < deadline) {
+            const read = await withinBudget(mountsInclude(ref.id, lang), deadline - Date.now());
+            if (read === BUDGET_OUT) break;
+            if (read === true) return run.owns();
+            await sleep(Math.min(pollMs, Math.max(0, deadline - Date.now())));
           }
           break;
         }
         // `init` — the known fresh-cell stall: retry the same target while the
         // attempt count and the budget both remain, each wait clamped to what is left.
-        const remaining = budgetEnd - Date.now();
-        if (attempt < MOUNT_MAX_ATTEMPTS && remaining > 0) {
-          await sleep(Math.min(MOUNT_BACKOFF_MS[attempt - 1] ?? 0, remaining));
+        const left = deadline - Date.now();
+        if (attempt < MOUNT_MAX_ATTEMPTS && left > 0) {
+          await sleep(Math.min(MOUNT_BACKOFF_MS[attempt - 1] ?? 0, left));
         }
       }
     }
     if (!run.owns()) return false;
     // Attempts or budget spent: a bounded failure, parked with the target an
     // explicit Retry resumes — never a claim that the peer answered.
-    throw new AcornLifecycleError({ stage: 'mount', retryTarget, cause: lastError });
+    throw new AcornLifecycleError({
+      stage: 'mount',
+      retryTarget,
+      cause: lastError ?? new Error(`the mount did not answer inside the ${mountBudgetMs / 1000} s budget`),
+    });
   };
 
   /**
@@ -694,6 +727,12 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
     owns: () => boolean,
     report: (attempt: number) => void,
   ): Promise<PreparedMount | null> => {
+    /*
+      One clock for the whole mount phase — target discovery, the mounts
+      re-check, every attempt and every wait all draw from it, so nothing the
+      phase awaits can outlive the budget that bounds it.
+    */
+    const deadline = Date.now() + mountBudgetMs;
     const found = op.ref ? { ref: op.ref, mounted: false } : await targetFor(op.lang);
     const ref = found?.ref ?? (await deps.lifecycle()!.create(op.name));
     op.ref = ref;
@@ -719,8 +758,15 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
     op.writeMeta = false;
     op.announce = false;
     retain(ref.id, op.lang, owed, 'mount');
-    const mounted = found ? found.mounted || (await mountsInclude(ref.id, op.lang)) : false;
-    if (!mounted && !(await mountSameTarget(ref, op.lang, { owns, report }))) return null;
+    /*
+      The retained target's mount check draws from the same clock — a read that
+      outlives it is not "unmounted", it is budget spent, and the mount phase's
+      own failure path answers for it.
+    */
+    const mounted = found
+      ? found.mounted || (await withinBudget(mountsInclude(ref.id, op.lang), deadline - Date.now())) === true
+      : false;
+    if (!mounted && !(await mountSameTarget(ref, op.lang, deadline, { owns, report }))) return null;
     if (!owns()) return null;
     retain(ref.id, op.lang, owed, 'open');
     return { ref, name: owed.name };
