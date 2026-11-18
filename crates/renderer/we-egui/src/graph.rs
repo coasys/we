@@ -12,6 +12,7 @@
 //! layout. Tree is the breadth-first placement in `we-graph`. Force uses
 //! the seeded layout there, not d3's Barnes-Hut positions.
 
+use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
 
 use indexmap::IndexMap;
@@ -37,13 +38,33 @@ pub struct GraphInstall {
     pub world: Arc<we_graph::World>,
     pub shapes: Arc<[we_graph::Shape]>,
     pub dataset: Arc<str>,
+    /// Assigned by [`install_graph`]. A caller may pass 0.
+    pub generation: u64,
 }
 
 const INSTALL_ID: &str = "we-graph-install";
 
 /// Replace the graph the widgets read. Call this on the UI thread.
-pub fn install_graph(ctx: &egui::Context, install: GraphInstall) {
-    ctx.data_mut(|d| d.insert_temp(egui::Id::unique(INSTALL_ID), install));
+///
+/// The generation stays when the same world arc is installed again. A new
+/// world, including the empty world that `--connect` installs first, gets
+/// the next generation. The drawn cache key includes that generation.
+pub fn install_graph(ctx: &egui::Context, mut install: GraphInstall) {
+    ctx.data_mut(|d| {
+        let id = egui::Id::unique(INSTALL_ID);
+        install.generation = match d.get_temp::<GraphInstall>(id) {
+            Some(old)
+                if Arc::ptr_eq(&old.world, &install.world)
+                    && Arc::ptr_eq(&old.shapes, &install.shapes)
+                    && old.dataset.as_ref() == install.dataset.as_ref() =>
+            {
+                old.generation
+            }
+            Some(old) => old.generation.saturating_add(1),
+            None => 1,
+        };
+        d.insert_temp(id, install);
+    });
 }
 
 fn installed(ctx: &egui::Context) -> Option<GraphInstall> {
@@ -58,6 +79,7 @@ pub fn install_coasys_fixture(ctx: &egui::Context) {
             world: Arc::new(we_graph::coasys_world()),
             shapes: we_graph::core_shapes().to_vec().into(),
             dataset: Arc::from(we_graph::FIXTURE_DATASET),
+            generation: 0,
         })
         .clone();
     install_graph(ctx, install);
@@ -103,10 +125,13 @@ impl Widget for GraphView {
             return;
         };
         let layout = prop_json(node, "layout");
+        let revision = prop_json(node, "revision");
+        let edge_rules = prop_json(node, "edgeStyle");
         let canvas = rect.with_max_y((rect.max.y - BAR).max(rect.min.y + 1.0));
         let key = format!(
-            "{}|{seeds}|{expansion}|{layout}|{:.0}x{:.0}",
+            "{}|g{}|{revision}|{seeds}|{expansion}|{layout}|{:.0}x{:.0}",
             install.dataset,
+            install.generation,
             canvas.width(),
             canvas.height()
         );
@@ -137,10 +162,15 @@ impl Widget for GraphView {
                     gap,
                 )
             };
+            let mut index = HashMap::with_capacity(graph.nodes.len());
+            for (i, gnode) in graph.nodes.iter().enumerate() {
+                index.insert(gnode.id.clone(), i);
+            }
             Drawn {
                 key: key.clone(),
                 graph,
                 pos,
+                index,
             }
         });
 
@@ -167,7 +197,7 @@ impl Widget for GraphView {
         for (id, p) in &drawn.pos {
             let at = to_screen(*p, &cam, canvas, zoom);
             by_id.insert(id.as_str(), at);
-            if let Some(i) = drawn.graph.nodes.iter().position(|n| &n.id == id) {
+            if let Some(&i) = drawn.index.get(id) {
                 screen.push((i, at));
             }
         }
@@ -188,7 +218,9 @@ impl Widget for GraphView {
                 let color = if relates { hyperlink } else { weak };
                 let width = if relates { 2.0 } else { 1.0 };
                 painter.line_segment([a, b], egui::Stroke::new(width, color));
-                arrow(&painter, a, b, color);
+                if edge_wants_arrow(edge, &edge_rules) {
+                    arrow(&painter, a, b, color);
+                }
                 if let Some(label) = &edge.label {
                     painter.text(
                         a.lerp(b, 0.5),
@@ -307,6 +339,7 @@ fn paint_empty(cx: &mut PaintCx, node: &ResolvedNode, rect: Rect) {
             edges: Vec::new(),
         },
         pos: Vec::new(),
+        index: HashMap::new(),
     };
     paint_bar(cx, node, &empty, bar, &mut cam);
     save_cam(cx.ui.ctx(), &node.id, &cam);
@@ -372,6 +405,7 @@ struct Drawn {
     key: String,
     graph: we_graph::Graph,
     pos: Vec<(String, Point)>,
+    index: HashMap<String, usize>,
 }
 
 #[derive(Clone)]
@@ -622,6 +656,78 @@ fn expr_obj(pairs: &[(&str, Value)]) -> Value {
     )
 }
 
+/// `edgeVisual` draws a target arrow when the merged style omits `arrow`.
+/// Rules apply in order. A nested list is one `$map` group, flattened once.
+/// `arrow: "none"` is the undirected relationship kind.
+fn edge_wants_arrow(edge: &we_graph::Edge, rules: &serde_json::Value) -> bool {
+    let mut arrow = "target";
+    let Some(items) = rules.as_array() else {
+        return true;
+    };
+    for rule in flatten_style_rules(items) {
+        let Some(obj) = rule.as_object() else {
+            continue;
+        };
+        if obj.len() == 1 && obj.contains_key("$") {
+            continue;
+        }
+        if !style_when_matches(edge, obj.get("when")) {
+            continue;
+        }
+        if let Some(next) = obj
+            .get("style")
+            .and_then(|style| style.as_object())
+            .and_then(|style| style.get("arrow"))
+            .and_then(|value| value.as_str())
+        {
+            arrow = next;
+        }
+    }
+    arrow != "none"
+}
+
+fn flatten_style_rules(items: &[serde_json::Value]) -> Vec<&serde_json::Value> {
+    let mut out = Vec::new();
+    for item in items {
+        if let Some(inner) = item.as_array() {
+            out.extend(inner);
+        } else {
+            out.push(item);
+        }
+    }
+    out
+}
+
+fn style_when_matches(edge: &we_graph::Edge, when: Option<&serde_json::Value>) -> bool {
+    let Some(when) = when.filter(|value| !value.is_null()) else {
+        return true;
+    };
+    let Some(obj) = when.as_object() else {
+        return false;
+    };
+    obj.iter().all(|(key, expected)| {
+        if expected.is_object() {
+            return false;
+        }
+        edge_field(edge, key) == *expected
+    })
+}
+
+fn edge_field(edge: &we_graph::Edge, key: &str) -> serde_json::Value {
+    if key == "type" {
+        return serde_json::Value::String(edge.ty.clone());
+    }
+    if let Some(rest) = key.strip_prefix("data.") {
+        return edge
+            .data
+            .as_ref()
+            .and_then(|data| data.get(rest))
+            .cloned()
+            .unwrap_or(serde_json::Value::Null);
+    }
+    serde_json::Value::Null
+}
+
 fn json_to_expr(value: &serde_json::Value) -> Value {
     match value {
         serde_json::Value::Null => Value::Null,
@@ -636,5 +742,61 @@ fn json_to_expr(value: &serde_json::Value) -> Value {
                 .map(|(k, v)| (k.as_str(), json_to_expr(v)))
                 .collect::<Vec<_>>(),
         ),
+    }
+}
+
+#[cfg(test)]
+mod arrow_style {
+    use super::edge_wants_arrow;
+    use serde_json::json;
+
+    fn relates(kind: &str) -> we_graph::Edge {
+        let mut data = serde_json::Map::new();
+        data.insert(
+            "relationshipTypeId".into(),
+            serde_json::Value::String(kind.into()),
+        );
+        we_graph::Edge {
+            id: format!("e-{kind}"),
+            source: "a".into(),
+            target: "b".into(),
+            ty: "relates".into(),
+            label: None,
+            data: Some(data),
+            reified_as: None,
+        }
+    }
+
+    fn rules() -> serde_json::Value {
+        // The knowledge template, after `$map` flattens one level.
+        json!([
+            { "style": { "curve": "arc", "arrow": "target" } },
+            { "when": { "type": "relates" }, "style": { "showLabel": true, "width": 2 } },
+            [
+                {
+                    "when": { "data.relationshipTypeId": "related-to" },
+                    "style": { "arrow": "none" }
+                },
+                {
+                    "when": { "data.relationshipTypeId": "contradicts" },
+                    "style": { "arrow": "target" }
+                }
+            ]
+        ])
+    }
+
+    #[test]
+    fn undirected_relationship_kind_has_no_arrow() {
+        let rules = rules();
+        assert!(
+            !edge_wants_arrow(&relates("related-to"), &rules),
+            "an undirected relationship kind must not draw an arrow"
+        );
+        assert!(edge_wants_arrow(&relates("contradicts"), &rules));
+        let content = json!([{ "style": { "curve": "step", "color": "neutral-200" } }]);
+        assert!(
+            edge_wants_arrow(&relates("related-to"), &content),
+            "a style that omits arrow still defaults to target"
+        );
     }
 }

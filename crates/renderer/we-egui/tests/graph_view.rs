@@ -4,14 +4,18 @@
 //! payload carries `recordId` and `recordType`, the same fields the
 //! template panel reads. Open emits `onNodeDoubleClick`. Zoom in moves
 //! the camera label from 100% to 125%.
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::Arc;
 
 use egui_kittest::kittest::Queryable;
 use indexmap::IndexMap;
-use we_egui::{install_coasys_fixture, layout, paint, EditState, MeasureCx, Registry, StyleCx};
+use we_egui::{
+    install_coasys_fixture, install_graph, layout, paint, EditState, GraphInstall, MeasureCx,
+    Registry, StyleCx,
+};
 use we_expr::Value;
+use we_graph::{core_shapes, shape_named, Record, World};
 use we_template::{NodeId, ResolvedNode};
 
 type Shared = Rc<RefCell<Vec<we_egui::WidgetEvent>>>;
@@ -151,4 +155,119 @@ fn content_select_open_and_zoom() {
     h.get_by_label("Zoom in").click();
     h.run();
     h.get_by_label("zoom 125%");
+}
+
+fn collection_record(id: &str, title: &str) -> Record {
+    Record::from_instance(
+        "CollectionBlock",
+        &serde_json::json!({ "id": id, "title": title }),
+        shape_named(core_shapes(), "CollectionBlock"),
+    )
+    .expect("collection")
+}
+
+/// Paint one content graph. `phase` picks the installed world. `revision`
+/// is the template revision prop. The harness size stays 960×720.
+fn render_phased(
+    phase: Rc<Cell<u8>>,
+    worlds: Vec<Arc<World>>,
+    revision: Rc<Cell<u8>>,
+) -> egui_kittest::Harness<'static> {
+    let shapes: Arc<[we_graph::Shape]> = core_shapes().to_vec().into();
+    let dataset: Arc<str> = Arc::from("space-delay");
+    let registry = Registry::with_builtins();
+    egui_kittest::Harness::builder()
+        .with_size(egui::vec2(960.0, 720.0))
+        .build_ui(move |ui| {
+            let ctx = ui.ctx().clone();
+            let index = phase.get() as usize;
+            install_graph(
+                &ctx,
+                GraphInstall {
+                    world: Arc::clone(&worlds[index]),
+                    shapes: Arc::clone(&shapes),
+                    dataset: Arc::clone(&dataset),
+                    generation: 0,
+                },
+            );
+            let mut root = content_node();
+            root.props.insert(
+                Arc::from("revision"),
+                Value::from(revision.get().to_string()),
+            );
+            we_egui::install_media(&ctx);
+            let scx = StyleCx::empty();
+            let lay = layout(&MeasureCx::new(&ctx), &scx, &registry, &root, ui.max_rect());
+            let mut events = Vec::new();
+            let mut edit = EditState::default();
+            paint(
+                ui,
+                &registry,
+                &scx,
+                &root,
+                &lay,
+                &mut events,
+                &mut edit,
+                1_000.0,
+            );
+        })
+}
+
+#[test]
+fn later_install_draws_without_a_resize() {
+    let phase = Rc::new(Cell::new(0u8));
+    let revision = Rc::new(Cell::new(1u8));
+    let worlds = vec![
+        Arc::new(World::from_records(Vec::new())),
+        Arc::new(World::from_records(vec![collection_record(
+            "col", "Late bin",
+        )])),
+        Arc::new(World::from_records(vec![collection_record(
+            "col2",
+            "Other bin",
+        )])),
+    ];
+    let mut h = render_phased(phase.clone(), worlds, revision);
+    h.run();
+    assert!(
+        h.query_by_label("Late bin").is_none(),
+        "the empty install must not show the collection"
+    );
+    phase.set(1);
+    h.run();
+    assert!(
+        h.query_by_label("Late bin").is_some(),
+        "a later install with the same dataset and size must draw the loaded collection"
+    );
+    phase.set(2);
+    h.run();
+    assert!(
+        h.query_by_label("Other bin").is_some(),
+        "a newer world must replace the cached snapshot"
+    );
+    assert!(
+        h.query_by_label("Late bin").is_none(),
+        "the previous snapshot must leave the canvas"
+    );
+}
+
+#[test]
+fn revision_prop_drops_the_cached_drawing() {
+    let phase = Rc::new(Cell::new(0u8));
+    let revision = Rc::new(Cell::new(1u8));
+    let worlds = vec![Arc::new(World::from_records(vec![collection_record(
+        "col", "Late bin",
+    )]))];
+    let mut h = render_phased(phase, worlds, revision.clone());
+    h.run();
+    h.get_by_label("Late bin");
+    h.get_by_label("Zoom in").click();
+    h.run();
+    h.get_by_label("zoom 125%");
+    revision.set(2);
+    h.run();
+    assert!(
+        h.query_by_label("zoom 100%").is_some(),
+        "a new revision must drop the cached camera"
+    );
 }

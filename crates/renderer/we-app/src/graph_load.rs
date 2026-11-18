@@ -29,6 +29,7 @@ impl GraphLoad {
                 world: Arc::new(World::from_records(Vec::new())),
                 shapes: Arc::clone(&shapes),
                 dataset: Arc::from(space),
+                generation: 0,
             },
         );
         let slot = Arc::new(Mutex::new(None));
@@ -103,5 +104,6 @@ async fn load(conn: &Connection, space: &str, shapes: Arc<[we_graph::Shape]>) ->
         world: Arc::new(World::from_records(records)),
         shapes,
         dataset: Arc::from(space),
+        generation: 0,
     }
 }
