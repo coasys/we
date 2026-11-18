@@ -2282,7 +2282,10 @@ export function SpaceStoreProvider(props: ParentProps) {
       const queryable = (findAll: (d: DatasetProxy) => Promise<unknown>) =>
         findAll(ds.handle).then(
           () => true,
-          (error) => (String(error).includes('No SHACL shape stored') ? false : Promise.reject(error)),
+          (error) =>
+            String(error).includes('No SHACL shape stored')
+              ? false
+              : Promise.reject(error instanceof Error ? error : new Error(String(error))),
         );
       for (;;) {
         const [spaceReady, collectionReady] = await Promise.all([
