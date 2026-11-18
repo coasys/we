@@ -19,7 +19,7 @@
 //!
 //! E18's agent chat is a second port, [`chat`], over the executor's AI
 //! sessions. Those rows are not perspective records, so [`Executor`] does
-//! not grow an AI-session method.
+//! not grow an AI-session method. we-ad4m fills the port.
 #![forbid(unsafe_code)]
 
 pub mod chat;

@@ -6,11 +6,10 @@
 //! reads in `packages/app-shell/.../chat/chatState.ts`. A session is an
 //! `ai_sessions` row, not a perspective record. Refs carry only `id`.
 //!
-//! This module does not call the executor. The rust `ad4m-client` pin has
-//! no `ai.session*` wrappers, and the task says not to add them. [`ChatPort`]
-//! is the seam a later client would fill. [`MemoryChat`] is the stand-in
-//! tests drive. Paging, `follow`, reconnect, and the 3s poll stay out until
-//! that client exists.
+//! This module does not call the executor. [`ChatPort`] is the seam.
+//! [`MemoryChat`] is the stand-in the headless tests drive. The live port
+//! sits in we-ad4m. [`ChatModel::follow`] reloads after `ai-session-changed`.
+//! [`ChatPort::messages_before`] pages older than a seq. Reconnect stays out.
 use std::sync::{Arc, Mutex};
 
 use serde_json::Value as Json;
@@ -174,10 +173,24 @@ pub struct ChatView {
 pub trait ChatPort: Send {
     fn list(&mut self) -> Result<Vec<ChatSummary>, ChatError>;
     fn messages(&mut self, id: &str) -> Result<Vec<TranscriptRow>, ChatError>;
+    /// Rows with `seq` strictly below `before`, oldest first. The page is
+    /// the newest `limit` of those rows, which is how `ai.sessionMessages`
+    /// answers `before`.
+    fn messages_before(
+        &mut self,
+        id: &str,
+        before: i64,
+        limit: u32,
+    ) -> Result<Vec<TranscriptRow>, ChatError>;
     fn create(&mut self, title: &str, scope: Option<&str>) -> Result<String, ChatError>;
     fn send(&mut self, id: &str, text: &str) -> Result<String, ChatError>;
     fn cancel(&mut self, id: &str) -> Result<bool, ChatError>;
     fn delete(&mut self, id: &str) -> Result<(), ChatError>;
+    /// `true` when an `ai-session-changed` event arrived since the last call.
+    /// The in-memory port has no events.
+    fn poll(&mut self) -> bool {
+        false
+    }
 }
 
 /// Whether a tool call wrote. `writes` on the row wins. Otherwise the
@@ -559,8 +572,18 @@ pub fn unfinished_words(status: ReplyStatus) -> Option<&'static str> {
     }
 }
 
-fn bad_scope_message(uuid: &str) -> String {
+/// What [`ChatModel::send`] stores when a space id is not a uuid.
+pub fn bad_scope_message(uuid: &str) -> String {
     format!("a space chat needs a perspective uuid; \"{uuid}\" is not one")
+}
+
+/// The one perspective cap a "this space only" chat is created with.
+pub fn space_cap(uuid: &str) -> ChatCap {
+    ChatCap {
+        domain: "perspective".to_string(),
+        pointers: vec![uuid.to_string()],
+        can: SCOPED_CAN.iter().map(|verb| (*verb).to_string()).collect(),
+    }
 }
 
 #[derive(Debug)]
@@ -703,6 +726,23 @@ impl MemoryChat {
             .ok_or_else(|| ChatError::Failed(format!("no chat {id}")))
     }
 
+    /// The newest `limit` rows older than `before`, oldest first.
+    fn page_before(
+        &self,
+        id: &str,
+        before: i64,
+        limit: u32,
+    ) -> Result<Vec<TranscriptRow>, ChatError> {
+        let mut rows = self.read_messages(id)?;
+        rows.retain(|row| row.seq < before);
+        rows.sort_by_key(|row| row.seq);
+        let keep = limit as usize;
+        if rows.len() > keep {
+            rows = rows.split_off(rows.len() - keep);
+        }
+        Ok(rows)
+    }
+
     fn create_session(&mut self, title: &str, scope: Option<&str>) -> Result<String, ChatError> {
         self.guard()?;
         if let Some(uuid) = scope {
@@ -715,11 +755,7 @@ impl MemoryChat {
         let id = format!("sess-{}", self.next_id);
         let now = self.tick();
         let capabilities = match scope {
-            Some(uuid) => vec![ChatCap {
-                domain: "perspective".to_string(),
-                pointers: vec![uuid.to_string()],
-                can: SCOPED_CAN.iter().map(|verb| (*verb).to_string()).collect(),
-            }],
+            Some(uuid) => vec![space_cap(uuid)],
             None => Vec::new(),
         };
         self.sessions.push(MemSession {
@@ -825,6 +861,14 @@ impl ChatPort for MemoryChat {
     fn messages(&mut self, id: &str) -> Result<Vec<TranscriptRow>, ChatError> {
         self.read_messages(id)
     }
+    fn messages_before(
+        &mut self,
+        id: &str,
+        before: i64,
+        limit: u32,
+    ) -> Result<Vec<TranscriptRow>, ChatError> {
+        self.page_before(id, before, limit)
+    }
     fn create(&mut self, title: &str, scope: Option<&str>) -> Result<String, ChatError> {
         self.create_session(title, scope)
     }
@@ -849,6 +893,16 @@ impl ChatPort for Arc<Mutex<MemoryChat>> {
         self.lock()
             .unwrap_or_else(|poison| poison.into_inner())
             .read_messages(id)
+    }
+    fn messages_before(
+        &mut self,
+        id: &str,
+        before: i64,
+        limit: u32,
+    ) -> Result<Vec<TranscriptRow>, ChatError> {
+        self.lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .page_before(id, before, limit)
     }
     fn create(&mut self, title: &str, scope: Option<&str>) -> Result<String, ChatError> {
         self.lock()
@@ -932,6 +986,19 @@ impl ChatModel {
         self.view.messages.clear();
         self.view.send_failed = None;
         self.refresh();
+    }
+
+    /// Reload the open transcript and the list when the port saw
+    /// `ai-session-changed`. Returns whether it did.
+    pub fn follow(&mut self) -> bool {
+        if !self.port.poll() {
+            return false;
+        }
+        if self.view.active.is_some() {
+            self.load();
+        }
+        self.refresh();
+        true
     }
 
     pub fn send(&mut self) {
@@ -1691,5 +1758,87 @@ mod tests {
                 .session_count(),
             0
         );
+    }
+
+    #[test]
+    fn a_page_is_the_rows_older_than_a_seq() {
+        let mut chat = MemoryChat::new();
+        let id = chat.create("t", None).unwrap();
+        chat.send(&id, "one").unwrap();
+        chat.send(&id, "two").unwrap();
+        let rows = chat.messages(&id).unwrap();
+        let two_seq = rows
+            .iter()
+            .find(|row| row.content.text.as_deref() == Some("two"))
+            .unwrap()
+            .seq;
+        let page = chat.messages_before(&id, two_seq, 10).unwrap();
+        assert!(page
+            .iter()
+            .any(|row| row.content.text.as_deref() == Some("one")));
+        assert!(page.iter().all(|row| row.seq < two_seq));
+        let newest_only = chat.messages_before(&id, two_seq, 1).unwrap();
+        assert_eq!(newest_only.len(), 1);
+        assert!(newest_only[0].seq < two_seq);
+        assert_ne!(newest_only[0].content.text.as_deref(), Some("one"));
+    }
+
+    /// `poll` seeds one session the first time, the way a create event arrives
+    /// after the list was already read.
+    struct Announce {
+        inner: MemoryChat,
+        announced: bool,
+    }
+
+    impl ChatPort for Announce {
+        fn poll(&mut self) -> bool {
+            if self.announced {
+                return false;
+            }
+            self.announced = true;
+            self.inner
+                .seed("web-1", "From the web", 1, "hello", "reply");
+            true
+        }
+        fn list(&mut self) -> Result<Vec<ChatSummary>, ChatError> {
+            self.inner.list()
+        }
+        fn messages(&mut self, id: &str) -> Result<Vec<TranscriptRow>, ChatError> {
+            self.inner.messages(id)
+        }
+        fn messages_before(
+            &mut self,
+            id: &str,
+            before: i64,
+            limit: u32,
+        ) -> Result<Vec<TranscriptRow>, ChatError> {
+            self.inner.messages_before(id, before, limit)
+        }
+        fn create(&mut self, title: &str, scope: Option<&str>) -> Result<String, ChatError> {
+            self.inner.create(title, scope)
+        }
+        fn send(&mut self, id: &str, text: &str) -> Result<String, ChatError> {
+            self.inner.send(id, text)
+        }
+        fn cancel(&mut self, id: &str) -> Result<bool, ChatError> {
+            self.inner.cancel(id)
+        }
+        fn delete(&mut self, id: &str) -> Result<(), ChatError> {
+            self.inner.delete(id)
+        }
+    }
+
+    #[test]
+    fn a_create_shows_up_when_the_port_polls() {
+        let mut model = ChatModel::new(Box::new(Announce {
+            inner: MemoryChat::new(),
+            announced: false,
+        }));
+        assert!(model.view.summaries.is_empty());
+        assert!(model.follow());
+        assert_eq!(model.view.summaries.len(), 1);
+        assert_eq!(model.view.summaries[0].id, "web-1");
+        assert_eq!(model.view.summaries[0].title, "From the web");
+        assert!(!model.follow());
     }
 }
