@@ -12,6 +12,8 @@
 import { cleanup, render } from '@solidjs/testing-library';
 import { createInMemoryBackendPorts, type InMemoryAgentOptions } from '@we/backend-inmemory';
 import type { AcornLifecyclePort } from '@we/backend-shared';
+import { CollectionBlock, registerEntityWriteCheck, Space } from '@we/entities';
+import { SPACE_COLLECTION_KIND } from '@we/schema-shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
@@ -106,6 +108,7 @@ import { type SessionStore, SessionStoreProvider, useSessionStore } from '../src
 import { ShapeStoreProvider } from '../src/frameworks/solid/stores/ShapeStore';
 import { ShellStoreProvider } from '../src/frameworks/solid/stores/ShellStore';
 import { type SpaceStore, SpaceStoreProvider, useSpaceStore } from '../src/frameworks/solid/stores/SpaceStore';
+import { relationId } from '../src/shared/involvements';
 import { provideSeed } from '../src/shared/seedRegistry';
 
 provideSeed({ name: 'test', modules: [] } as never);
@@ -202,6 +205,13 @@ function fakeAcorn() {
   return { port, calls, mountsOf, mountsFailing, interactFails, interactGates };
 }
 
+/** The dataset's own Space row, read through the model like the store does. */
+const spaceRecordOf = async (handle: unknown, ds: { id: string; sharedId?: string }) => {
+  const where = ds.sharedId ? { url: ds.sharedId } : { uuid: ds.id };
+  const [space] = await Space.findAll(handle, { where });
+  return space ?? null;
+};
+
 beforeEach(() => {
   agentOptions = { id: 'did:test:james', unlocked: true };
   seededDatasets = [];
@@ -214,6 +224,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  registerEntityWriteCheck(null);
   cleanup();
   vi.restoreAllMocks();
 });
@@ -254,5 +265,48 @@ describe('acorn open — the landing (F1)', () => {
     await expect(opening).resolves.toBeNull();
     expect(stores.datasets.currentDataset()?.id).toBe('ds-other');
     expect(navigate).not.toHaveBeenCalledWith('/space/ds-acorn');
+  });
+});
+
+describe('acorn open — the root relation (F2)', () => {
+  /*
+    `writeSpaceStructure` made the root collection and *then* linked it onto the Space.
+    A failure at that boundary commits the collection and loses the link — and a retry
+    that reads only "no root relation" mints another: one orphan per failed attempt.
+    The retry must find the orphan it made and attach it instead.
+  */
+  it('attaches the root a failed link left behind rather than minting a second one', async () => {
+    seededDatasets = [{ id: 'ds-acorn', name: 'Acorn project' }];
+    const acorn = fakeAcorn();
+    acorn.mountsOf.set('ds-acorn', [LANG]);
+    acornPort = acorn.port;
+    const stores = mountShell();
+    await ready(stores);
+    const ds = stores.datasets.datasets().find((d) => d.id === 'ds-acorn')!;
+
+    // Refuse once at the write boundary — every record write passes `checkEntityWrite`,
+    // so the create commits and the relation add is refused, exactly the half-state
+    // a dead link write leaves on the real backend.
+    let linkRefused = true;
+    registerEntityWriteCheck((write) => {
+      if (linkRefused && write.entity === 'Space' && write.kind === 'add' && write.relation === 'root')
+        throw new Error('root link refused');
+    });
+    await expect(stores.spaces.openAcornProject('ds-acorn')).rejects.toThrow('root link refused');
+    linkRefused = false;
+    registerEntityWriteCheck(null);
+
+    // The collection committed before the link was refused: one orphan, no root.
+    const orphans = (await CollectionBlock.findAll(ds.handle, { where: { kind: SPACE_COLLECTION_KIND } })).map(
+      (c) => c.id,
+    );
+    expect(orphans).toHaveLength(1);
+
+    // The retry attaches that collection — the channel count does not grow.
+    await expect(stores.spaces.openAcornProject('ds-acorn')).resolves.toBe('ds-acorn');
+    const channels = await CollectionBlock.findAll(ds.handle, { where: { kind: SPACE_COLLECTION_KIND } });
+    expect(channels.map((c) => c.id)).toEqual(orphans);
+    const space = await spaceRecordOf(ds.handle, ds);
+    expect(relationId(space?.root)).toBe(orphans[0]);
   });
 });

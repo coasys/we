@@ -2046,15 +2046,31 @@ export function SpaceStoreProvider(props: ParentProps) {
       otherwise about the messages typed outside calls (`input`).
     */
     const defaults = collectionExtractionDefaults(space);
-    const root = await CollectionBlock.create(dataset, {
-      kind: SPACE_COLLECTION_KIND,
-      // A feed: every member adds to it, so no one member's editor may ever reconcile it, and a
-      // response to anything that lives in it lives in it too.
-      mode: 'feed',
-      title: '',
-      ...defaults,
-      ...(starter?.input !== undefined && { autoExtract: starter.input }),
-    });
+    /*
+      But find one first. A run that committed this create and then failed before `setRoot`
+      left exactly one shape behind: a channel-kind collection with no parent (`partOf` is
+      `children` read backwards — the root is a child of nothing) and no space claiming it.
+      A retry that cannot see it mints another, and every retry after leaks one more root
+      the space never reads. A named channel is a child of the root it belongs to, so the
+      unparented-and-unclaimed pair is only ever what this write itself produced.
+    */
+    const claimed = new Set(
+      (await Space.findAll(dataset)).map((s) => relationId(s.root)).filter((id) => id.length > 0),
+    );
+    const existing = (await CollectionBlock.findAll(dataset, { where: { kind: SPACE_COLLECTION_KIND } })).find(
+      (c) => !relationId(c.partOf) && !claimed.has(c.id),
+    );
+    const root =
+      existing ??
+      (await CollectionBlock.create(dataset, {
+        kind: SPACE_COLLECTION_KIND,
+        // A feed: every member adds to it, so no one member's editor may ever reconcile it, and a
+        // response to anything that lives in it lives in it too.
+        mode: 'feed',
+        title: '',
+        ...defaults,
+        ...(starter?.input !== undefined && { autoExtract: starter.input }),
+      }));
     await space.setRoot({ id: root.id });
 
     const target = {
