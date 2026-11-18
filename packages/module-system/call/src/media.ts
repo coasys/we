@@ -132,14 +132,23 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
   const pending = new Set<MediaStreamTrack>();
 
   /**
-   * The microphone acquisition under way — an unmute's or a microphone switch's — or none.
+   * The device request under way — `start`'s, an unmute's, a camera turned on, a device switch — or
+   * none.
    *
-   * `getUserMedia` sits behind the permission prompt, so an unmute or a switch can arrive while
-   * another is already waiting. Each waits for this one to settle before it asks ([`micTurn`]),
-   * which is what keeps "one microphone" true: two at once would resolve into two live tracks, and
-   * a refusal of one would mark the call muted over the other, still sending.
+   * `getUserMedia` sits behind the permission prompt, so an unmute, a camera or a switch can arrive
+   * while another is already waiting. Each waits for this one to settle before it asks
+   * ([`deviceTurn`]), which is what keeps "one microphone, one camera" true: two at once would
+   * resolve into two live tracks, one of them in no stream `stop()` reaches, and a refusal of one
+   * would mark the call muted over the other, still sending.
    */
-  let pendingMic: Promise<void> | null = null;
+  let pendingRequest: Promise<void> | null = null;
+
+  /**
+   * Which `setAudioEnabled` call is newest, so a request made for an earlier one knows a later ask
+   * has happened. A refusal only mutes the state while it answers the latest ask — an earlier one
+   * failing must not switch off the microphone a newer unmute is still getting.
+   */
+  let audioRequests = 0;
 
   const state: MediaState = { audioEnabled: true, videoEnabled: true, screenShareEnabled: false };
 
@@ -258,38 +267,46 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
   }
 
   /**
-   * Runs `work`, a microphone acquisition, once no other is under way, as `pendingMic`.
+   * Runs `work`, a device request, once no other is under way, as `pendingRequest`.
+   *
+   * The guard is taken where the work is queued rather than inside it: `acquisitions.current()`
+   * asked after `stop()` answers for the new generation and always passes, which is how a queued
+   * unmute used to adopt a microphone for a call that had already left. Stale work is never
+   * dispatched — `undefined` says it did not run.
    */
-  async function micTurn<T>(work: () => Promise<T>): Promise<T> {
-    while (pendingMic) await pendingMic;
+  async function deviceTurn<T>(work: () => Promise<T>): Promise<T | undefined> {
+    const isMine = acquisitions.current();
+    while (pendingRequest) await pendingRequest;
+    if (!isMine()) return undefined;
     const run = work();
     const settled = run.then(
       () => undefined,
       () => undefined,
     );
-    pendingMic = settled;
+    pendingRequest = settled;
     try {
       return await run;
     } finally {
-      if (pendingMic === settled) pendingMic = null;
+      if (pendingRequest === settled) pendingRequest = null;
     }
   }
 
   /**
-   * Get a microphone for an unmute that has none, and adopt it. Run through [`micTurn`].
+   * Get a microphone for an unmute that has none, and adopt it. Run through [`deviceTurn`].
    *
    * What the track does when it lands is decided by `state.audioEnabled` *then*, not by who asked
    * first: a mute that arrived while the prompt was open keeps the microphone it raced, but silent —
    * the same state as muting a live track, so a later unmute only re-enables.
    */
-  async function acquireMic(): Promise<void> {
+  async function acquireMic(request: number): Promise<void> {
     const isMine = acquisitions.current();
     let acquired: MediaStream;
     try {
       acquired = await devices.getUserMedia({ audio: constraintsFor('audio') });
     } catch (error) {
       options.onError?.('turning the microphone on', error);
-      if (!isMine()) return;
+      // Only the latest ask may write the state back — a later `setAudioEnabled` owns it now.
+      if (!isMine() || request !== audioRequests) return;
       state.audioEnabled = false;
       emitState();
       return;
@@ -298,7 +315,7 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
     const track = acquired.getAudioTracks()[0] ?? null;
     for (const other of acquired.getTracks()) if (other !== track || !isMine()) other.stop();
     if (!isMine() || !track) {
-      if (isMine()) {
+      if (isMine() && request === audioRequests) {
         state.audioEnabled = false;
         emitState();
       }
@@ -313,6 +330,47 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
     watchForLoss(track, 'audio');
     publishAudio();
     emitState();
+  }
+
+  /**
+   * Get a camera for a call that has none, and adopt it. Run through [`deviceTurn`]. `true` when the
+   * call now has one; the caller then sets the flag as it would for a camera already there.
+   */
+  async function acquireCamera(): Promise<boolean> {
+    const isMine = acquisitions.current();
+    let acquired: MediaStream;
+    try {
+      // What was asked for at `start`, with whatever camera has been chosen since — not
+      // `DEFAULT_CONSTRAINTS`, which would revert a chosen camera to the system default.
+      acquired = await devices.getUserMedia({ video: constraintsFor('video') });
+    } catch (error) {
+      // Still refused. The flag goes back off rather than staying true with nothing behind it,
+      // which is the state that could not be recovered from.
+      options.onError?.('turning the camera on', error);
+      if (!isMine()) return false;
+      state.videoEnabled = false;
+      emitState();
+      return false;
+    }
+
+    const track = acquired.getVideoTracks()[0] ?? null;
+    if (!isMine() || !track) {
+      for (const orphan of acquired.getTracks()) orphan.stop();
+      if (isMine()) {
+        state.videoEnabled = false;
+        emitState();
+      }
+      return false;
+    }
+
+    // Merged into the stream already being sent rather than replacing it, so the microphone
+    // acquired earlier keeps running — and so `stop()` still closes everything from one place.
+    if (stream) stream.addTrack(track);
+    else stream = acquired;
+    // The camera acquired here is as losable as the one acquired at `start` — see `watchForLoss`.
+    watchForLoss(track, 'video');
+    publishVideo();
+    return true;
   }
 
   /** The work of `setDevice`: open the chosen device, then let the old one go. */
@@ -387,77 +445,85 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
         return false;
       };
 
-      let acquired: MediaStream;
-      try {
-        // Through `constraintsFor`, not the argument as given, so a device chosen *before* joining
-        // is asked for on the first acquisition rather than only on a later switch. That is the
-        // ordinary path: the choice is made once in settings and every call after it uses it.
-        acquired = await devices.getUserMedia({ audio: constraintsFor('audio'), video: constraintsFor('video') });
-      } catch (error) {
-        /*
-          A refused or missing device must not take the other one with it — audio-only and
-          video-only are both valid ways to be in a call. So each kind is asked for alone, and
-          whichever the device grants is kept.
-
-          Only audio used to be retried, so a refused *microphone* lost the camera too: a phone whose
-          app had no microphone permission joined with neither, though its camera was there to be had.
-        */
-        options.onError?.('acquiring camera and microphone', error);
-        if (!isMine()) return;
-        // One after the other rather than together: two permission prompts at once is a race some
-        // platforms lose. Each is checked against `isMine`, since either can sit on a prompt.
-        const mic = await acquireAlone('audio');
-        if (!isMine()) return void mic?.stop();
-        // Parked where `stop()` can reach it for as long as it is held only in this local — a
-        // leave while the camera prompt is still open must put the microphone out at once, not
-        // whenever the prompt happens to be answered.
-        if (mic) pending.add(mic);
-        const camera = await acquireAlone('video');
-        if (mic) pending.delete(mic);
-        if (!isMine()) {
-          mic?.stop();
-          camera?.stop();
-          return;
-        }
-        if (!mic && !camera) {
+      /*
+        A device request like an unmute's, a camera's or a switch's, so it takes the device turn: an
+        unmute or a camera pressed while the prompt is open waits for this to settle and adopts what
+        it got, rather than opening a second request beside it — one whose track `stream` would
+        orphan when this lands, and `stop()` could not reach.
+      */
+      await deviceTurn(async () => {
+        let acquired: MediaStream;
+        try {
+          // Through `constraintsFor`, not the argument as given, so a device chosen *before* joining
+          // is asked for on the first acquisition rather than only on a later switch. That is the
+          // ordinary path: the choice is made once in settings and every call after it uses it.
+          acquired = await devices.getUserMedia({ audio: constraintsFor('audio'), video: constraintsFor('video') });
+        } catch (error) {
           /*
-            Nothing was acquired — and saying so is the whole of this branch.
+            A refused or missing device must not take the other one with it — audio-only and
+            video-only are both valid ways to be in a call. So each kind is asked for alone, and
+            whichever the device grants is kept.
 
-            Denying the prompt denies the *request*, so the retries are refused too without
-            prompting again. This used to return here, leaving `state` claiming `videoEnabled: true`
-            and never calling `emitState()`. Both consequences were visible and neither was
-            recoverable: the self tile had already been built with "wants a picture, has none" and so
-            sat on **Connecting…** for the rest of the call, and `publishActivity` had already told
-            every peer `videoEnabled: true`, so their tile for this agent sat on it too.
-
-            The state is corrected to what is true — nothing is being sent — and emitted, which is
-            what republishes presence and rebuilds the tiles.
+            Only audio used to be retried, so a refused *microphone* lost the camera too: a phone whose
+            app had no microphone permission joined with neither, though its camera was there to be had.
           */
-          state.videoEnabled = false;
-          state.audioEnabled = false;
-          emitState();
-          return;
+          options.onError?.('acquiring camera and microphone', error);
+          if (!isMine()) return;
+          // One after the other rather than together: two permission prompts at once is a race some
+          // platforms lose. Each is checked against `isMine`, since either can sit on a prompt.
+          const mic = await acquireAlone('audio');
+          if (!isMine()) return void mic?.stop();
+          // Parked where `stop()` can reach it for as long as it is held only in this local — a
+          // leave while the camera prompt is still open must put the microphone out at once, not
+          // whenever the prompt happens to be answered.
+          if (mic) pending.add(mic);
+          const camera = await acquireAlone('video');
+          if (mic) pending.delete(mic);
+          if (!isMine()) {
+            mic?.stop();
+            camera?.stop();
+            return;
+          }
+          if (!mic && !camera) {
+            /*
+              Nothing was acquired — and saying so is the whole of this branch.
+
+              Denying the prompt denies the *request*, so the retries are refused too without
+              prompting again. This used to return here, leaving `state` claiming `videoEnabled: true`
+              and never calling `emitState()`. Both consequences were visible and neither was
+              recoverable: the self tile had already been built with "wants a picture, has none" and so
+              sat on **Connecting…** for the rest of the call, and `publishActivity` had already told
+              every peer `videoEnabled: true`, so their tile for this agent sat on it too.
+
+              The state is corrected to what is true — nothing is being sent — and emitted, which is
+              what republishes presence and rebuilds the tiles.
+            */
+            state.videoEnabled = false;
+            state.audioEnabled = false;
+            emitState();
+            return;
+          }
+          // Whichever is missing is off, for the same reason: never "on" with nothing behind it.
+          if (!mic) state.audioEnabled = false;
+          if (!camera) state.videoEnabled = false;
+          acquired = new MediaStream([mic, camera].filter((track): track is MediaStreamTrack => !!track));
         }
-        // Whichever is missing is off, for the same reason: never "on" with nothing behind it.
-        if (!mic) state.audioEnabled = false;
-        if (!camera) state.videoEnabled = false;
-        acquired = new MediaStream([mic, camera].filter((track): track is MediaStreamTrack => !!track));
-      }
-      if (!claim(acquired)) return;
-      stream = acquired;
+        if (!claim(acquired)) return;
+        stream = acquired;
 
-      for (const track of stream.getAudioTracks()) {
-        track.enabled = state.audioEnabled;
-        watchForLoss(track, 'audio');
-      }
-      for (const track of stream.getVideoTracks()) {
-        track.enabled = state.videoEnabled;
-        watchForLoss(track, 'video');
-      }
+        for (const track of stream.getAudioTracks()) {
+          track.enabled = state.audioEnabled;
+          watchForLoss(track, 'audio');
+        }
+        for (const track of stream.getVideoTracks()) {
+          track.enabled = state.videoEnabled;
+          watchForLoss(track, 'video');
+        }
 
-      options.onTrackChanged?.('audio', stream.getAudioTracks()[0] ?? null);
-      publishVideo();
-      emitState();
+        options.onTrackChanged?.('audio', stream.getAudioTracks()[0] ?? null);
+        publishVideo();
+        emitState();
+      });
     },
 
     /**
@@ -488,9 +554,10 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
      */
     async setDevice(kind, deviceId) {
       chosen[kind] = deviceId;
-      // A microphone switch is a microphone acquisition: one at a time with an unmute's, so the two
-      // never resolve into two live microphones, and the unmute adopts the one the switch got.
-      return kind === 'audio' ? micTurn(() => replaceDevice('audio')) : replaceDevice('video');
+      // A switch is a device request: one at a time with an unmute's or a camera's, so the two never
+      // resolve into two live devices, and the other adopts the one the switch got. A switch queued
+      // behind a leave never ran, which answers `false`: no switch happened.
+      return (await deviceTurn(() => replaceDevice(kind))) ?? false;
     },
 
     async setAudioEnabled(enabled) {
@@ -507,9 +574,14 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
         only if it got nothing. The tracks then take the flag as it stands after the wait.
       */
       state.audioEnabled = enabled;
-      if (enabled && (pendingMic || !micTrack())) {
-        await micTurn(() => (micTrack() ? Promise.resolve() : acquireMic()));
+      const request = ++audioRequests;
+      // Captured before the wait: a leave while this is queued or prompting must stop both the
+      // dispatch (`deviceTurn` checks it again there) and the publish below.
+      const isMine = acquisitions.current();
+      if (enabled && (pendingRequest || !micTrack())) {
+        await deviceTurn(() => (micTrack() ? Promise.resolve() : acquireMic(request)));
       }
+      if (!isMine()) return;
 
       for (const track of stream?.getAudioTracks() ?? []) track.enabled = state.audioEnabled;
       emitState();
@@ -529,44 +601,13 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
         to someone pressing the camera button: the usual reason they are pressing it is that they
         have just changed the permission.
       */
-      if (enabled && !state.screenShareEnabled && !cameraTrack()) {
-        const isMine = acquisitions.current();
-        let acquired: MediaStream;
-        try {
-          // What was asked for at `start`, with whatever camera has been chosen since — not
-          // `DEFAULT_CONSTRAINTS`, which would revert a chosen camera to the system default.
-          acquired = await devices.getUserMedia({ video: constraintsFor('video') });
-        } catch (error) {
-          // Still refused. The flag goes back off rather than staying true with nothing behind it,
-          // which is the state that could not be recovered from.
-          options.onError?.('turning the camera on', error);
-          if (!isMine()) return;
-          state.videoEnabled = false;
-          emitState();
-          return;
-        }
-
-        const track = acquired.getVideoTracks()[0] ?? null;
-        if (!isMine() || !track) {
-          for (const orphan of acquired.getTracks()) orphan.stop();
-          if (isMine()) {
-            state.videoEnabled = false;
-            emitState();
-          }
-          return;
-        }
-
-        // Merged into the stream already being sent rather than replacing it, so the microphone
-        // acquired earlier keeps running — and so `stop()` still closes everything from one place.
-        if (stream) stream.addTrack(track);
-        else stream = acquired;
-        track.enabled = true;
-        // The camera acquired here is as losable as the one acquired at `start` — see `watchForLoss`.
-        watchForLoss(track, 'video');
-        state.videoEnabled = true;
-        publishVideo();
-        emitState();
-        return;
+      if (enabled && !state.screenShareEnabled && (pendingRequest || !cameraTrack())) {
+        // In the device turn, so a camera pressed while `start` or a switch is prompting adopts what
+        // that got rather than opening a second one. It asks only if there is still none after.
+        const got = await deviceTurn(() => (cameraTrack() ? Promise.resolve(true) : acquireCamera()));
+        // Refused, or the call left (the turn never ran it, or `acquireCamera` dropped what it got):
+        // nothing to switch on, and `acquireCamera` has already set the state of a refusal.
+        if (!got) return;
       }
 
       state.videoEnabled = enabled;
