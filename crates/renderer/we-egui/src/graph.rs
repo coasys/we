@@ -73,9 +73,20 @@ impl Widget for GraphView {
         WidgetKind::Leaf
     }
     fn measure(&self, _cx: &MeasureCx, _n: &ResolvedNode, _s: &Style, avail: Size) -> Size {
-        let w = if avail.x.is_finite() { avail.x } else { 640.0 };
-        let h = if avail.y.is_finite() { avail.y } else { 480.0 };
-        Size::new(w.max(1.0), h.max(1.0))
+        // Taffy offers 0 on a min-content axis. The gallery node has no
+        // height, so that offer is the whole question. A view with
+        // `height: 100%` arrives as a definite size and fills its parent.
+        let w = if avail.x.is_finite() && avail.x > 1.0 {
+            avail.x
+        } else {
+            320.0
+        };
+        let h = if avail.y.is_finite() && avail.y > 1.0 {
+            avail.y
+        } else {
+            64.0
+        };
+        Size::new(w, h)
     }
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, _style: &Style, rect: Rect) {
         let bg = cx.ui.visuals().extreme_bg_color;
@@ -84,12 +95,11 @@ impl Widget for GraphView {
         // Hover only, so it does not take a click from a node.
         cx.label(rect, "GraphView");
 
-        let Some(install) = installed(cx.ui.ctx()) else {
-            return;
-        };
         let seeds = prop_json(node, "seeds");
         let expansion = prop_json(node, "expansion");
-        let Some(spec) = view_from_json(&seeds, &expansion) else {
+        let ready = installed(cx.ui.ctx()).zip(view_from_json(&seeds, &expansion));
+        let Some((install, spec)) = ready else {
+            paint_empty(cx, node, rect);
             return;
         };
         let layout = prop_json(node, "layout");
@@ -282,6 +292,24 @@ impl Widget for GraphView {
         paint_bar(cx, node, &drawn, bar, &mut cam);
         save_cam(cx.ui.ctx(), &node.id, &cam);
     }
+}
+
+/// Zoom chrome for a graph that has no world yet. The gallery lists
+/// `GraphView` with no seeds, and the bar is what shows the widget is real.
+fn paint_empty(cx: &mut PaintCx, node: &ResolvedNode, rect: Rect) {
+    let mut cam = cam_for(cx.ui.ctx(), &node.id);
+    let top = (rect.max.y - BAR).max(rect.min.y);
+    let bar = egui::Rect::from_min_max(egui::pos2(rect.min.x, top), rect.max);
+    let empty = Drawn {
+        key: String::new(),
+        graph: we_graph::Graph {
+            nodes: Vec::new(),
+            edges: Vec::new(),
+        },
+        pos: Vec::new(),
+    };
+    paint_bar(cx, node, &empty, bar, &mut cam);
+    save_cam(cx.ui.ctx(), &node.id, &cam);
 }
 
 fn paint_bar(cx: &mut PaintCx, node: &ResolvedNode, drawn: &Drawn, bar: Rect, cam: &mut Cam) {
