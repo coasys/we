@@ -479,6 +479,15 @@ fn lost_banner(ui: &mut egui::Ui, conn: &Connection) -> Option<Next> {
 const LIVE: Color32 = Color32::from_rgb(90, 200, 120);
 const LOST: Color32 = Color32::from_rgb(230, 160, 60);
 
+/// Clears the thread-local chat bind when the frame's closure ends.
+struct UnbindChat;
+
+impl Drop for UnbindChat {
+    fn drop(&mut self) {
+        we_egui::bind_chat(None);
+    }
+}
+
 fn space_screen(
     ui: &mut egui::Ui,
     url: &str,
@@ -545,6 +554,10 @@ fn space_screen(
         .frame(egui::Frame::NONE)
         .show(ui, |ui| {
             // The page's viewport is what the panels left, not the window.
+            // The chat port is the open space's. Clear it before the next
+            // frame, including when this paint panics.
+            we_egui::bind_chat(Some(live.chat.clone()));
+            let _unbind = UnbindChat;
             let room = ui.max_rect().size();
             live.app.frame_body_in(ui, room);
         });

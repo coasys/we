@@ -18,7 +18,7 @@
 //! is read-only; everything else is dropped and listed, as before. A write
 //! reaches the screen through the live query that reads it, never
 //! optimistically. Only a personal space may be opened for writing.
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use we_ad4m::live::{LiveMap, LiveMembers};
 use we_ad4m::write_host::ConfirmSlot;
@@ -26,6 +26,7 @@ use we_ad4m::{
     read_only_notice, Access, Ad4mQuerySource, Connection, Notice, Notices, SourceStats,
     SpaceBinding, SpaceRow, WriteHost,
 };
+use we_data::chat::{ChatModel, ChatPort};
 use we_data::writes::Confirm;
 use we_data::{OfflineData, Provenance, SpaceId, StoreMap};
 use we_egui::Registry;
@@ -159,6 +160,9 @@ pub struct LiveSpace {
     pub access: Access,
     notices: Notices,
     confirm: ConfirmSlot,
+    /// The agent chat for this open space. The space screen binds it for
+    /// one frame and clears the bind after. Offline frames stay unbound.
+    pub chat: Arc<Mutex<ChatModel>>,
     _live: LiveMembers,
 }
 
@@ -334,6 +338,8 @@ pub fn live_space_app(
     let set = gallery::load_theme_set();
     let (theme, fell_back) = set.theme(theme_id);
     app.theme = theme.clone();
+    let port: Box<dyn ChatPort + Send> = Box::new(we_ad4m::AiSessionChat::new(conn));
+    let chat = Arc::new(Mutex::new(ChatModel::new(port)));
     Ok((
         LiveSpace {
             app,
@@ -345,6 +351,7 @@ pub fn live_space_app(
             access: here,
             notices,
             confirm,
+            chat,
             _live: live,
         },
         fell_back,

@@ -3,9 +3,9 @@
 //! The widget does not touch a store and does not call the executor. The
 //! frame binds a [`we_data::chat::ChatModel`] for the paint
 //! ([`bind_chat`]) and clears it after. No bind means the panel says the
-//! Rust client has no AI session API. That is the truth at this pin.
-//! `AgentChatSheet` stays the closed sheet. This widget replaces only the
-//! `AgentChat` placeholder.
+//! Rust client has no AI session API. The connected window binds the live
+//! port. An offline frame stays unbound. `AgentChatSheet` stays the closed
+//! sheet. This widget replaces only the `AgentChat` placeholder.
 use std::cell::RefCell;
 use std::sync::{Arc, Mutex};
 
@@ -86,8 +86,15 @@ impl Widget for AgentChat {
             if let Some(text) = prefill {
                 guard.prefill_once(text);
             }
+            // Drain `ai-session-changed` before the frame reads the view.
+            guard.follow();
             guard.view.clone()
         };
+        // The next paint drains the next event. A delay, so a running reply
+        // does not pin the headless harness to an immediate repaint.
+        cx.ui
+            .ctx()
+            .request_repaint_after(std::time::Duration::from_millis(200));
         if view.unavailable.is_some() {
             paint_unavailable(cx, rect, view.unavailable.as_deref().unwrap_or(""));
             return;
