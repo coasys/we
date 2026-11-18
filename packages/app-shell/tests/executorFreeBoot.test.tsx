@@ -1391,6 +1391,74 @@ describe('dataset lifecycle through the real stores', () => {
     expect(stored?.defaultTemplateId).toBe('some-template');
   }, 10000);
 
+  /*
+    A publish for the space on screen keys on the dataset, but the record on screen lags the
+    switch: for a moment the dataset is already the new space's while the record is still the old
+    one's. A default set for the space being switched to must wait for its own record — written
+    onto the one still there, it repaints the old space with the new space's choice.
+  */
+  it('does not land a default for the space being switched to on the record still on screen', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    await stores.spaces.createSpace('From', '', 'personal', 'hidden');
+    await stores.spaces.createSpace('To', '', 'personal', 'hidden');
+    const refs = await lifecycle.list();
+    const from = refs.find((d) => d.name === 'From')!.id;
+    const to = refs.find((d) => d.name === 'To')!.id;
+    await stores.datasets.switchDataset(from);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(from));
+    await vi.waitFor(() => expect(stores.spaces.mySpaces().map((s) => s.uuid)).toContain(to));
+
+    // Hold To's record read — the live query that sets `currentSpace`, not the findOne
+    // `divertSpaceReads` wraps — so the dataset moves while the record on screen stays From's.
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let toRead = false;
+    const Entity = getEntity('Space') as unknown as {
+      query: (
+        handle: unknown,
+        q?: { where?: { uuid?: string; url?: string } },
+      ) => {
+        subscribe: (cb: (rows: unknown[]) => void) => Promise<unknown[]>;
+        dispose: () => void;
+      };
+    };
+    const query = Entity.query.bind(Entity);
+    const spy = vi.spyOn(Entity, 'query').mockImplementation((handle, q) => {
+      const which = q?.where?.uuid ?? q?.where?.url;
+      const builder = query(handle, q);
+      if (which !== to) return builder;
+      return {
+        subscribe: async (cb) => {
+          toRead = true;
+          await held;
+          return builder.subscribe(cb);
+        },
+        dispose: () => builder.dispose(),
+      };
+    });
+    try {
+      await stores.datasets.switchDataset(to);
+      expect(stores.datasets.currentDataset()?.id).toBe(to);
+      await vi.waitFor(() => expect(toRead).toBe(true));
+      expect(stores.spaces.currentSpace()?.uuid).toBe(from);
+
+      await stores.spaces.setSpaceDefaultTheme('retro', to);
+
+      // To's own row carries it; the record still on screen — From's — must not.
+      expect(stores.spaces.mySpaces().find((s) => s.uuid === to)?.defaultThemeId).toBe('retro');
+      expect(stores.spaces.currentSpace()?.defaultThemeId).not.toBe('retro');
+      expect(stores.spaces.spaceDefaultThemeId()).not.toBe('retro');
+
+      release();
+      await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(to));
+      expect(stores.spaces.currentSpace()?.defaultThemeId).toBe('retro');
+      expect(stores.spaces.spaceDefaultThemeId()).toBe('retro');
+    } finally {
+      spy.mockRestore();
+    }
+  }, 10000);
+
   it('stores a space setting, and shows it on the cached space and the space on screen', async () => {
     const stores = mountShell();
     await ready(stores);

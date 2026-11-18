@@ -2522,14 +2522,15 @@ export function SpaceStoreProvider(props: ParentProps) {
     heldSpace(ds) ?? (await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) }))[0];
 
   /**
-   * Show fields on the cached row and, when the dataset is on screen, on `currentSpace`.
+   * Show fields on the cached row and, when the dataset is on screen, on `currentSpace` — onto the
+   * record only when it is that dataset's own, since a switch moves the dataset ahead of the record.
    *
    * Each as a *new* instance: both are plain signals and Solid dedupes on `===`, so handing back the
    * object just written through notifies nothing and every reader keeps the previous value.
    */
   function publishSpaceFields(ds: AppDataset, fields: Partial<Space>): void {
     updateSpaceInCache(ds, fields);
-    if (isCurrent(ds)) setCurrentSpace((prev) => (prev ? withFields(prev, fields) : prev));
+    if (isCurrent(ds)) setCurrentSpace((prev) => (prev && isSpaceSelf(prev, ds) ? withFields(prev, fields) : prev));
   }
 
   /**
