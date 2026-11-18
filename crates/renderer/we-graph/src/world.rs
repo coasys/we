@@ -2,8 +2,10 @@
 //!
 //! Rows are flat: `id`, scalar fields, `author`, `createdAt`. An included
 //! relation is a hydrated object when the target record exists, otherwise
-//! the bare id. Cardinality `many` is an array. Cardinality `one` is one
-//! value or `null`. A hydrated object carries `__subjectClass`.
+//! the bare id. A classified object inside a relation is stored as its own
+//! record, so a child past the class preload still hydrates. Cardinality
+//! `many` is an array. Cardinality `one` is one value or `null`. A hydrated
+//! object carries `__subjectClass`.
 //!
 //! Record order is the fixture array order. The seed queries do not pass
 //! `order`, and the in-memory backend's default order is not what this
@@ -15,7 +17,7 @@ use serde::Deserialize;
 use serde_json::{Map, Value};
 
 use crate::address::NODE_TYPE_KEY;
-use crate::shape::{shape_named, Shape};
+use crate::shape::{core_shapes, shape_named, Shape};
 
 #[derive(Debug, Clone)]
 pub struct Record {
@@ -26,6 +28,8 @@ pub struct Record {
     pub fields: Map<String, Value>,
     /// Relation name → member ids, in the order the fixture stored them.
     pub relations: HashMap<String, Vec<String>>,
+    /// Classified objects found in relation values. `from_records` keeps them.
+    included: Vec<Record>,
 }
 
 #[derive(Debug, Clone)]
@@ -51,12 +55,28 @@ pub struct Query {
 
 impl World {
     pub fn from_records(records: Vec<Record>) -> Self {
-        let by_id = records
-            .iter()
-            .enumerate()
-            .map(|(i, r)| (r.id.clone(), i))
-            .collect();
-        Self { records, by_id }
+        let mut flat = Vec::new();
+        for record in records {
+            flatten_record(record, &mut flat);
+        }
+        let mut kept: Vec<Record> = Vec::new();
+        let mut by_id: HashMap<String, usize> = HashMap::new();
+        for record in flat {
+            if let Some(&index) = by_id.get(&record.id) {
+                // A class preload row and an included object can name the same id.
+                // Keep the copy with more fields. A tie keeps the earlier row.
+                if richness(&record) > richness(&kept[index]) {
+                    kept[index] = record;
+                }
+            } else {
+                by_id.insert(record.id.clone(), kept.len());
+                kept.push(record);
+            }
+        }
+        Self {
+            records: kept,
+            by_id,
+        }
     }
 
     /// `fixtures/coasys/fixture.json`.
@@ -155,43 +175,113 @@ impl Record {
             created_at: raw.created_at,
             fields: raw.fields,
             relations,
+            included: Vec::new(),
         }
     }
 
     /// One `model_query` instance, split into scalars and relation ids by `shape`.
+    ///
+    /// A relation value that is an object with a class becomes its own record.
+    /// The class is `__subjectClass` when that key is set, otherwise the
+    /// relation's target type. The parent's relation still stores the id.
     pub fn from_instance(entity: &str, instance: &Value, shape: Option<&Shape>) -> Option<Self> {
-        let obj = instance.as_object()?;
-        let id = obj.get("id").and_then(Value::as_str)?.to_string();
-        let mut fields = Map::new();
-        let mut relations = HashMap::new();
-        for (k, v) in obj {
-            if k == "id" || k == NODE_TYPE_KEY {
-                continue;
-            }
-            if shape.is_some_and(|s| s.relation(k).is_some()) {
-                relations.insert(k.clone(), ids_of(v));
-            } else if is_scalar(v) {
-                fields.insert(k.clone(), v.clone());
-            }
-        }
-        let author = fields
-            .get("author")
-            .and_then(Value::as_str)
-            .map(str::to_string);
-        let created_at = fields
-            .get("createdAt")
-            .and_then(Value::as_str)
-            .map(str::to_string);
-        let _ = entity;
-        Some(Self {
-            id,
-            entity: entity.to_string(),
-            author,
-            created_at,
-            fields,
-            relations,
-        })
+        from_instance_inner(entity, instance, shape, &mut Vec::new())
     }
+}
+
+fn from_instance_inner(
+    entity: &str,
+    instance: &Value,
+    shape: Option<&Shape>,
+    stack: &mut Vec<String>,
+) -> Option<Record> {
+    let obj = instance.as_object()?;
+    let id = obj.get("id").and_then(Value::as_str)?.to_string();
+    if stack.iter().any(|seen| seen == &id) {
+        return None;
+    }
+    stack.push(id.clone());
+    let mut fields = Map::new();
+    let mut relations = HashMap::new();
+    let mut included = Vec::new();
+    for (k, v) in obj {
+        if k == "id" || k == NODE_TYPE_KEY {
+            continue;
+        }
+        if let Some(rel) = shape.and_then(|s| s.relation(k)) {
+            relations.insert(k.clone(), ids_of(v));
+            for item in relation_items(v) {
+                if let Some(child) = classified_record(item, &rel.target, stack) {
+                    included.push(child);
+                }
+            }
+        } else if is_scalar(v) {
+            fields.insert(k.clone(), v.clone());
+        }
+    }
+    stack.pop();
+    let author = fields
+        .get("author")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let created_at = fields
+        .get("createdAt")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    Some(Record {
+        id,
+        entity: entity.to_string(),
+        author,
+        created_at,
+        fields,
+        relations,
+        included,
+    })
+}
+
+fn relation_items(value: &Value) -> Vec<&Value> {
+    match value {
+        Value::Array(items) => items.iter().collect(),
+        Value::Object(_) => vec![value],
+        _ => Vec::new(),
+    }
+}
+
+fn classified_record(
+    value: &Value,
+    relation_target: &str,
+    stack: &mut Vec<String>,
+) -> Option<Record> {
+    let obj = value.as_object()?;
+    let class = obj
+        .get(NODE_TYPE_KEY)
+        .and_then(Value::as_str)
+        .filter(|class| !class.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            if relation_target.is_empty() {
+                None
+            } else {
+                Some(relation_target.to_string())
+            }
+        })?;
+    let shape = shape_named(core_shapes(), &class);
+    from_instance_inner(&class, value, shape, stack)
+}
+
+fn flatten_record(mut record: Record, out: &mut Vec<Record>) {
+    let included = std::mem::take(&mut record.included);
+    out.push(record);
+    for child in included {
+        flatten_record(child, out);
+    }
+}
+
+fn richness(record: &Record) -> usize {
+    record.fields.len()
+        + record.relations.values().map(Vec::len).sum::<usize>()
+        + usize::from(record.author.is_some())
+        + usize::from(record.created_at.is_some())
 }
 
 fn is_scalar(v: &Value) -> bool {

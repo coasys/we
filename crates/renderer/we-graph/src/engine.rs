@@ -22,6 +22,8 @@ use crate::world::{Include, Query, World};
 const HOST_MAX_NODES: usize = 20_000;
 const DEFAULT_MAX_NODES: usize = 2_000;
 const DEFAULT_EXPAND_LIMIT: usize = 50;
+/// `querySeed` uses 100 when `options.limit` is omitted (`seeds.ts`).
+const DEFAULT_QUERY_LIMIT: u64 = 100;
 const LABEL_CANDIDATES: [&str; 8] = [
     "name",
     "title",
@@ -192,14 +194,46 @@ fn one_seed(value: &Value) -> Option<SeedSpec> {
             if entity.is_empty() {
                 return None;
             }
+            if query_options_rejected(options) {
+                return None;
+            }
+            // A scope with no anchor is a template nobody has picked. Loading
+            // the class there would draw every row. Load nothing instead.
+            if empty_scope(options.get("scope")) {
+                return Some(SeedSpec::Query { entity, limit: 0 });
+            }
             let limit = options
                 .get("limit")
                 .and_then(Value::as_u64)
-                .unwrap_or(1_000_000);
+                .unwrap_or(DEFAULT_QUERY_LIMIT);
             Some(SeedSpec::Query { entity, limit })
         }
         _ => None,
     }
+}
+
+/// `where`, `order`, `relations`, `dataset` and a scope that names an anchor
+/// are not applied here. Reject the seed rather than run a different query.
+fn query_options_rejected(options: &Map<String, Value>) -> bool {
+    const ALLOWED: &[&str] = &["entity", "limit", "scope"];
+    if options.keys().any(|key| !ALLOWED.contains(&key.as_str())) {
+        return true;
+    }
+    matches!(options.get("scope"), Some(scope) if scope_anchor(scope).is_some())
+}
+
+fn empty_scope(scope: Option<&Value>) -> bool {
+    match scope {
+        None | Some(Value::Null) => false,
+        Some(scope) => scope_anchor(scope).is_none(),
+    }
+}
+
+fn scope_anchor(scope: &Value) -> Option<&str> {
+    scope
+        .get("anchorId")
+        .and_then(Value::as_str)
+        .filter(|id| !id.is_empty())
 }
 
 fn static_dir(direction: &str) -> &'static str {

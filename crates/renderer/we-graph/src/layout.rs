@@ -30,6 +30,10 @@ pub struct LayoutEdge<'a> {
     pub target: &'a str,
 }
 
+/// All-pairs charge stops here. Knowledge caps expansion at 500 and content
+/// at 400, so those maps still run the d3 schedule. A larger map is one grid.
+const FORCE_PAIR_CAP: usize = 512;
+
 /// Force layout. `distance` is the link length (the space view passes 130).
 pub fn force(
     nodes: &[LayoutNode<'_>],
@@ -40,6 +44,9 @@ pub fn force(
 ) -> Vec<(String, Point)> {
     if nodes.is_empty() {
         return Vec::new();
+    }
+    if nodes.len() > FORCE_PAIR_CAP {
+        return grid(nodes, width, height);
     }
     // f64 matches d3's number. f32 overflows on the schema graph.
     let charge = -220.0_f64;
@@ -205,6 +212,30 @@ pub fn force(
                 Point {
                     x: p.x as f32,
                     y: p.y as f32,
+                },
+            )
+        })
+        .collect()
+}
+
+/// One pass. Column count is the square root of the node count.
+fn grid(nodes: &[LayoutNode<'_>], width: f32, height: f32) -> Vec<(String, Point)> {
+    let count = nodes.len().max(1);
+    let cols = (count as f32).sqrt().ceil().max(1.0) as usize;
+    let rows = count.div_ceil(cols);
+    let cell_w = width.max(1.0) / cols as f32;
+    let cell_h = height.max(1.0) / rows as f32;
+    nodes
+        .iter()
+        .enumerate()
+        .map(|(i, node)| {
+            let col = i % cols;
+            let row = i / cols;
+            (
+                node.id.to_string(),
+                Point {
+                    x: (col as f32 + 0.5) * cell_w,
+                    y: (row as f32 + 0.5) * cell_h,
                 },
             )
         })
