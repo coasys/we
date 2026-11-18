@@ -8065,6 +8065,7 @@
         "updateSpaceImage",
         "updateSpaceMeta",
         "setSpaceDefaultTemplate",
+        "setSpaceViews",
         "setSpaceDefaultTheme",
         "listAcornProjects",
         "createAcornProject",
@@ -8151,6 +8152,7 @@
         "updateSpaceImage",
         "updateSpaceMeta",
         "setSpaceDefaultTemplate",
+        "setSpaceViews",
         "setSpaceDefaultTheme",
         "createAcornProject",
         "joinAcornProject",
@@ -10459,6 +10461,9 @@
       "parts": [
         {
           "name": "projectsModal"
+        },
+        {
+          "name": "outcomeList"
         },
         {
           "name": "outcomeCard",

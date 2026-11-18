@@ -1057,8 +1057,14 @@ export function TemplateStoreProvider(props: ParentProps) {
         to the space, often before its record has synced, and settling then let the section guard
         rewrite a link into the space's own template before that template was known.
       */
-      if (cachedSpace) setTemplateResolvedFor(perspective.id);
-      else spaceRecord.wait(perspective.id);
+      if (cachedSpace) {
+        setTemplateResolvedFor(perspective.id);
+        // The sync pick above could see only the app's policy and the space's own default —
+        // never this agent's per-space override, which outranks both. The async read is the
+        // last word, same as on the miss path: it leaves what is there when no override says
+        // otherwise, and it puts the agent's own template up when one does.
+        void chooseSpaceTemplate(perspective);
+      } else spaceRecord.wait(perspective.id);
     } else {
       /*
         The app's display policy decides this space's template whenever the agent follows the space,

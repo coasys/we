@@ -23,6 +23,7 @@ import type {
   DatasetRef,
   SchemaPort,
 } from '@we/backend-shared';
+import { ACORN_VIEWS } from '@we/template-acorn';
 
 /**
  * The Acorn base language bundle's address — its content hash, as the executor's
@@ -38,6 +39,14 @@ export const ACORN_BASE_LANGUAGE = 'QmzSYwdfCQkVeBvQx1Ygx89h5L7P7ny5PTmj3J9VuwMP
 
 /** The template an opened Acorn project renders through — the space's `defaultTemplateId`. */
 export const ACORN_TEMPLATE_ID = 'acorn';
+
+/**
+ * The sections an Acorn space's nav carries, in order — the template package's own
+ * catalogue, so first in the object is where a member lands: the outcomes list. Written
+ * onto `Space.enabledViews` at open, because a space that names no sections falls back to
+ * the deployment's bundled order — which puts `about` first, not Acorn.
+ */
+export const ACORN_SECTION_IDS = Object.keys(ACORN_VIEWS);
 
 /** One mounted Acorn project, as `listAcornProjects` reports it. */
 export interface AcornProjectRef {
@@ -82,6 +91,20 @@ export interface AcornLifecycleDeps {
   initializeAsWeSpace: (name: string, description: string) => Promise<unknown>;
   /** The space's default template — written after init, per Q7. */
   setSpaceDefaultTemplate: (templateId: string, spaceUuid?: string) => Promise<void>;
+  /**
+   * The space's section list — `Space.enabledViews`. Written beside the template for the
+   * same reason: without it a fresh Acorn space inherits the deployment's default sections
+   * (about/cards/…) instead of its own, and the outcomes list is not where a member lands.
+   */
+  setSpaceViews: (viewIds: string[], spaceUuid?: string) => Promise<void>;
+  /**
+   * This agent's per-space template — `SpacePreference.templateId`. Needed beside the
+   * community default: an app whose bundle says "every space ours" (the Coasys app's
+   * `spaces: 'ours'` → `coasys--space`) outranks `Space.defaultTemplateId` for a member who
+   * follows the space, so the record alone never shows Acorn. The per-space override is
+   * the one thing that beats the app's policy, and it is what the same UI writes.
+   */
+  setSpaceTemplateOverride: (templateId: string, spaceUuid?: string) => Promise<void>;
   /** The agent's display name, for the Acorn member profile the first open creates. */
   agentName?: () => string | undefined;
   /** Poll cadence and bound for the two waits (shapes landing, the cell answering). */
@@ -178,6 +201,8 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       await deps.initializeAsWeSpace(opts.name, '');
     }
     await deps.setSpaceDefaultTemplate(ACORN_TEMPLATE_ID, ref.id);
+    await deps.setSpaceViews(ACORN_SECTION_IDS, ref.id);
+    await deps.setSpaceTemplateOverride(ACORN_TEMPLATE_ID, ref.id);
 
     if (opts.writeMeta) {
       // The project's meta — name + layering + priority list. The passphrase is

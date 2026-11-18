@@ -85,6 +85,12 @@ function deps(record: string[], overrides: Partial<AcornLifecycleDeps> = {}): Ac
     setSpaceDefaultTemplate: vi.fn(async (id: string, uuid?: string) => {
       record.push(`template:${id}:${uuid}`);
     }),
+    setSpaceViews: vi.fn(async (ids: string[], uuid?: string) => {
+      record.push(`views:${ids.join(',')}:${uuid}`);
+    }),
+    setSpaceTemplateOverride: vi.fn(async (id: string, uuid?: string) => {
+      record.push(`override:${id}:${uuid}`);
+    }),
     agentName: () => 'Test Agent',
     ...overrides,
   };
@@ -139,6 +145,10 @@ describe('createAcornProject', () => {
     expect(record).toContain(`mount:dataset-1:${LANG}`);
     expect(record).toContain('initialize:Rig Project');
     expect(record).toContain(`template:${ACORN_TEMPLATE_ID}:dataset-1`);
+    // The space's section list lands beside the template — the acorn nav, outcomes first.
+    expect(record).toContain('views:acorn-outcomes,acorn-table,acorn-priority,acorn-map,acorn-settings:dataset-1');
+    // And the agent's own override — the app's "every space ours" policy outranks the record.
+    expect(record).toContain(`override:${ACORN_TEMPLATE_ID}:dataset-1`);
     // The project meta is written through the language, and whoami asks the mounted project.
     expect(record).toContain(`interact:create:${LANG}://class/AcornProjectMeta`);
     expect(record).toContain(`interact:whoami:${LANG}://project`);

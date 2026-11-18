@@ -785,6 +785,12 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     */
     setViewEnabled: hereOnly('space-settings', 2),
     reorderViews: hereOnly('space-settings', 1),
+    /*
+      The whole section list at once — the lifecycle's "these are this space's sections" write.
+      Same tier and arity guard as `reorderViews` for the same reason: the space id is the last
+      parameter and a template must not name a space it is not standing in.
+    */
+    setSpaceViews: hereOnly('space-settings', 1),
     removeSpaceFromGlobal: destructive('space-admin'),
 
     /*

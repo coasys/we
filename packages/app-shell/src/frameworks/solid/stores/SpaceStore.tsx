@@ -935,6 +935,7 @@ export interface SpaceStore {
   updateSpaceImage: (field: 'avatar' | 'coverImage', imageFile: File, spaceUuid?: string) => Promise<void>;
   updateSpaceMeta: (updates: SpaceMetaUpdate, spaceUuid?: string) => Promise<void>;
   setSpaceDefaultTemplate: (templateId: string, spaceUuid?: string) => Promise<void>;
+  setSpaceViews: (viewIds: string[], spaceUuid?: string) => Promise<void>;
   setSpaceDefaultTheme: (themeId: string, spaceUuid?: string) => Promise<void>;
   /**
    * Whether this session's backend can mount Acorn languages — the gate the
@@ -2728,6 +2729,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     navigateToSpace: (id) => navigateToSpace(id),
     initializeAsWeSpace: (name, description) => initializeAsWeSpace(name, description),
     setSpaceDefaultTemplate: (templateId, spaceUuid) => setSpaceDefaultTemplate(templateId, spaceUuid),
+    setSpaceViews: (viewIds, spaceUuid) => setSpaceViews(viewIds, spaceUuid),
+    setSpaceTemplateOverride: (templateId, spaceUuid) => setSpaceTemplateOverride(templateId, spaceUuid),
     agentName: () => {
       const did = session.me()?.did?.replace('did://', '');
       const profile = did ? profileStore.profiles().find((entry) => entry.did === did) : undefined;
@@ -6505,6 +6508,19 @@ export function SpaceStoreProvider(props: ParentProps) {
     toastService.warning(`This template suggests a theme ("${suggested}") you don't have — using your own.`);
   });
 
+  /**
+   * A space's whole section list, written at once — the Acorn lifecycle's open sequence
+   * declares the space's sections rather than toggling them one at a time. Goes through
+   * `writeEnabledViews` so the merge that keeps sections this build does not know applies
+   * here the same as it does to the settings toggles.
+   */
+  async function setSpaceViews(viewIds: string[], spaceUuid?: string): Promise<void> {
+    const ds = targetDataset(spaceUuid);
+    if (!ds) return;
+    const [space] = await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) });
+    if (space) await writeEnabledViews(ds, space, viewIds);
+  }
+
   async function setSpaceDefaultTemplate(templateId: string, spaceUuid?: string): Promise<void> {
     const ds = targetDataset(spaceUuid);
     if (!ds) return;
@@ -6790,6 +6806,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     updateSpaceImage,
     updateSpaceMeta,
     setSpaceDefaultTemplate,
+    setSpaceViews,
     setSpaceDefaultTheme,
     setModuleEnabled,
     autoInterpret,

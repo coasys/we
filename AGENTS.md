@@ -3707,6 +3707,7 @@ SpaceStore:
   - updateSpaceImage(field: "avatar" | "coverImage", imageFile: File, spaceUuid?): uploads and sets the space avatar or cover image
   - updateSpaceMeta(updates: { name?, description?, discovery?, location? }, spaceUuid?): updates the space everyone sees. Omit spaceUuid to target the space on screen; pass one to configure a space from the spaces list without navigating to it
   - setSpaceDefaultTemplate(templateId: string, spaceUuid?): sets the template members see when they enter that space. Only repaints the app when the target is the space currently on screen
+  - setSpaceViews(viewIds: string[], spaceUuid?): sets the whole section LIST at once — which sections the space has and in what order. The lifecycle write for a space whose vocabulary declares its sections; the settings toggles (setViewEnabled) are the per-section form
   - setSpaceDefaultTheme(themeId: string, spaceUuid?): sets the theme members see when they enter that space
   - listAcornProjects(): the agent’s mounted Acorn projects ({ datasetId, name, languageAddress }[]) — every dataset the executor reports a mount on, walked fresh each call. Empty, not a rejection, on a backend without the acornLifecycle port. acornProjects already holds the same answer while the dialog is open
   - createAcornProject(name: string, passphrase: string, sourceLanguageHash?: string): starts a new Acorn project — templates the passphrase into the project language’s seed, creates the dataset, mounts the language, initializes it as a WE space on the acorn template, writes the project meta, and lands on it. Resolves the dataset id, or null where the backend cannot mount. The passphrase IS the join secret: anybody holding it joins the same project — say so beside the field that takes it
@@ -4216,7 +4217,7 @@ Needs: backends ad4m.
 ### Acorn (`acorn`)
 Project management over a mounted Acorn project — outcomes, the tree, priorities, members
 - No store: everything this module does is declared.
-- Parts: `acorn.projectsModal`, `acorn.outcomeCard` (subject: outcome; needs outcome — the AcornOutcome record this card draws), `acorn.expandedOutcome` (subject: outcome; needs outcome — the AcornOutcome record shown expanded), `acorn.outcomeTable`, `acorn.priorityList`, `acorn.projectDashboard`, `acorn.mapView`
+- Parts: `acorn.projectsModal`, `acorn.outcomeList`, `acorn.outcomeCard` (subject: outcome; needs outcome — the AcornOutcome record this card draws), `acorn.expandedOutcome` (subject: outcome; needs outcome — the AcornOutcome record shown expanded), `acorn.outcomeTable`, `acorn.priorityList`, `acorn.projectDashboard`, `acorn.mapView`
 - Functions:
   - acornTasks(taskList) — An outcome's task list, parsed from its JSON field into `{ task, complete }` rows.  e.g. acornTasks({ taskList: outcome.taskList })
   - acornTaskProgress(taskList) — How far an outcome's task list is — '2/3', or '' when it has none.  e.g. acornTaskProgress({ taskList: outcome.taskList })

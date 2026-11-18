@@ -1563,6 +1563,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '(viewId: string, enabled: boolean, spaceUuid?): adds or removes a section from a space. The community’s decision — every member sees it. Omit spaceUuid for the space on screen',
       reorderViews:
         "(viewIds: string[], spaceUuid?): sets the whole section order at once — what a drag-reorder writes. Pair with we-sortable's onReorder",
+      setSpaceViews:
+        '(viewIds: string[], spaceUuid?): sets the whole section LIST at once — which sections the space has and in what order. The lifecycle write for a space whose vocabulary declares its sections; the settings toggles (setViewEnabled) are the per-section form',
       setViewVisible:
         '(viewId: string, visible: boolean, spaceUuid?): shows or hides a section for this agent in one space, without changing what the community has. Private. Positively phrased so a switch can pass `event.detail` bare',
       createRelationshipType:

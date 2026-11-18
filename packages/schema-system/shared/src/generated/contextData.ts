@@ -3405,6 +3405,7 @@ export const contextData: ContextData = {
         'updateSpaceImage',
         'updateSpaceMeta',
         'setSpaceDefaultTemplate',
+        'setSpaceViews',
         'setSpaceDefaultTheme',
         'listAcornProjects',
         'createAcornProject',
@@ -3491,6 +3492,7 @@ export const contextData: ContextData = {
         'updateSpaceImage',
         'updateSpaceMeta',
         'setSpaceDefaultTemplate',
+        'setSpaceViews',
         'setSpaceDefaultTheme',
         'createAcornProject',
         'joinAcornProject',
@@ -5076,6 +5078,7 @@ export const contextData: ContextData = {
       members: [],
       parts: [
         { name: 'projectsModal' },
+        { name: 'outcomeList' },
         {
           name: 'outcomeCard',
           subject: 'outcome',
