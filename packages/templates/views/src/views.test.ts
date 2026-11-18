@@ -59,7 +59,14 @@ describe('the built-in views', () => {
     const block = /const CATALOGUE = \{([\s\S]*?)\n\};/.exec(script);
     expect(block, 'could not find CATALOGUE in generateViewRegistry.mjs').toBeTruthy();
 
-    const catalogued = [...block![1].matchAll(/^\s*([A-Za-z0-9_-]+):/gm)].map((m) => m[1]);
+    /*
+      Entries point at more than this package now (`@we/template-acorn` ships its own), so the
+      comparison is per-module: every id whose catalogue entry names this package, against every
+      key BUILT_IN_VIEWS holds.
+    */
+    const catalogued = [...block![1].matchAll(/^\s*'?([A-Za-z0-9_-]+)'?:\s*\{\s*module:\s*'([^']+)'/gm)]
+      .filter((m) => m[2] === '@we/template-views')
+      .map((m) => m[1]);
     expect([...catalogued].sort()).toEqual([...ids].sort());
   });
 });

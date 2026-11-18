@@ -654,6 +654,9 @@ importers:
       '@we/history':
         specifier: workspace:*
         version: link:../history
+      '@we/module-acorn':
+        specifier: workspace:*
+        version: link:../module-system/acorn
       '@we/module-call':
         specifier: workspace:*
         version: link:../module-system/call
@@ -702,6 +705,9 @@ importers:
       '@we/schema-solid':
         specifier: workspace:*
         version: link:../schema-system/frameworks/solid
+      '@we/template-acorn':
+        specifier: workspace:*
+        version: link:../templates/acorn
       '@we/template-default':
         specifier: workspace:*
         version: link:../templates/default

@@ -40,6 +40,11 @@ const CATALOGUE = {
   boards: { module: '@we/template-views', export: 'boardsView' },
   calendar: { module: '@we/template-views', export: 'calendarView' },
   flux: { module: '@we/template-views', export: 'fluxView' },
+  'acorn-outcomes': { module: '@we/template-acorn', export: 'acornOutcomesView' },
+  'acorn-table': { module: '@we/template-acorn', export: 'acornOutcomeTableView' },
+  'acorn-priority': { module: '@we/template-acorn', export: 'acornPriorityView' },
+  'acorn-map': { module: '@we/template-acorn', export: 'acornMapView' },
+  'acorn-settings': { module: '@we/template-acorn', export: 'acornSettingsView' },
 };
 
 const seed = seedFile.readSeed();

@@ -7,6 +7,7 @@
  *
  * Key order is the seed's order, and it is load-bearing: it is the module rail's order.
  */
+import { createModule as module_acorn } from '@we/module-acorn';
 import { createModule as module_call } from '@we/module-call';
 import { createModule as module_feed } from '@we/module-feed';
 import { createModule as module_flux } from '@we/module-flux';
@@ -29,5 +30,6 @@ export const bundledModules: Record<string, (host: ModuleHost) => ModuleDefiniti
   globe: module_globe,
   graph: module_graph,
   flux: module_flux,
+  acorn: module_acorn,
   polls: module_polls,
 };

@@ -58,6 +58,7 @@ const CATALOGUE = {
   scrapbook: { module: '@we/template-showcase', export: 'scrapbookTemplate', dev: true },
   'theme-lab': { module: '@we/template-showcase', export: 'themeLabTemplate', dev: true },
   workshop: { module: '@we/template-showcase', export: 'workshopTemplate' },
+  acorn: { module: '@we/template-acorn', export: 'acornTemplate', dev: true },
 };
 
 const seed = seedFile.readSeed();

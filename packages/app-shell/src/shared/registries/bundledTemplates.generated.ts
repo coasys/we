@@ -11,6 +11,7 @@
  */
 import { DEV_FEATURES } from '@we/module-shared';
 import type { TemplateSchema } from '@we/schema-shared';
+import { acornTemplate } from '@we/template-acorn';
 import { defaultTemplate } from '@we/template-default';
 import {
   discordTemplate,
@@ -36,6 +37,7 @@ export const bundledTemplates: Record<string, TemplateSchema> = {
     events: eventsTemplate,
     scrapbook: scrapbookTemplate,
     'theme-lab': themeLabTemplate,
+    acorn: acornTemplate,
   }),
 };
 
@@ -44,5 +46,7 @@ export const bundledTemplates: Record<string, TemplateSchema> = {
  * are showing (sessionStore.devTools). Empty in a production build, which has none of them.
  */
 export const devOnlyTemplateIds: ReadonlySet<string> = new Set(
-  DEV_FEATURES ? ['discord', 'twitter', 'instagram', 'youtube', 'trello', 'events', 'scrapbook', 'theme-lab'] : [],
+  DEV_FEATURES
+    ? ['discord', 'twitter', 'instagram', 'youtube', 'trello', 'events', 'scrapbook', 'theme-lab', 'acorn']
+    : [],
 );
