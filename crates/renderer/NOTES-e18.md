@@ -13,7 +13,10 @@ Branch `port/e18-agent-chat`, from `port/bugs1` at `aebab9a2e`. One commit per s
 | 7    | `b785d770d` | The new red breaks and the live gate.                                   |
 | 8    | `2214fe697` | The launcher asks for AI READ. The write grant also asks for AI CREATE. |
 | 9    | `344cd5ded` | The open space is the chat scope. Create never sends null capabilities. |
-| 10   | this file   | The fix-round red breaks and what stayed out.                           |
+| 10   | `10c9c00c1` | The fix-round red breaks and what stayed out.                           |
+| 11   | `b8db6885d` | Cancel and delete use the send gate. Create asks for READ and UPDATE.   |
+| 12   | `42bde6e8d` | A chat mutation needs a permit for the live app mount.                  |
+| 13   | this file   | The second fix-round red breaks and what stayed out.                    |
 
 ## What the panel does
 
@@ -426,3 +429,103 @@ The live binary is the local npm pin already named above. The rust client pin st
 - The other live executor tests with `EXECUTOR_PATH` set.
 - Reconnect, scroll, a slow RPC on the UI thread, and watch teardown when the space closes.
 - A live transcript longer than 200 rows.
+
+## Fix round 2
+
+Data's review of `10c9c00c1` on 2026-11-18 13:22Z. Lal closed the grant, the host scope, the null capabilities, the read-only send, and the paging. Two P1s stayed.
+
+Cancel and delete use the same access and scope check as send. A read-only window returns before any cancel or delete call. Send, resend, cancel, and delete read the session list again. A failed list refuses the call. A failed send keeps the draft.
+
+A space create asks for perspective READ and UPDATE. `scope_of` still accepts that pair. The request does not read the live token. The executor stored the two verbs as two capability rows. The live test checks that every stored verb is READ or UPDATE and that both verbs are present.
+
+Send, cancel, resend, and delete ask for a permit bound to the live app mount and its generation. Resolve stamps each node's mount, tier, and generation. The permit requires tier App, the same mount, and the same generation. The connected space binds mount `app` for the frame and clears it when the frame ends. Each new open space gets a new generation. Generation 0 matches no live permit.
+
+## Fix-round-2 red
+
+Each new test failed once. The missing check was the break. The check was added before the commit. The broken tree was not committed.
+
+`cargo test --locked --offline -p we-data --lib chat::tests -- --test-threads=8`
+
+Result: 20 passed, 3 failed.
+
+```
+thread 'chat::tests::a_read_only_window_does_not_cancel_or_delete' (2584301) panicked at we-data/src/chat.rs:2183:13:
+assertion `left == right` failed
+  left: 2
+ right: 0
+```
+
+Cancel ran on the read-only windows. `cancels` was 2.
+
+```
+thread 'chat::tests::a_send_does_not_trust_the_cached_scope' (2584303) panicked at we-data/src/chat.rs:2235:13:
+[("sess-1", "no")]
+```
+
+Send used the cached scope after the session moved.
+
+```
+thread 'chat::tests::a_space_cap_asks_only_for_the_held_verbs' (2584305) panicked at we-data/src/chat.rs:2262:9:
+assertion `left == right` failed
+  left: ["READ", "CREATE", "UPDATE", "DELETE", "SUBSCRIBE"]
+ right: ["READ", "UPDATE"]
+```
+
+`space_cap` asked for every scoped verb.
+
+`cargo test --locked --offline -p we-egui --test agent_chat a_space_template_chat_intent_is_refused -- --test-threads=1`
+
+Result: 0 passed, 1 failed.
+
+```
+thread 'a_space_template_chat_intent_is_refused' (2593221) panicked at we-egui/tests/agent_chat.rs:339:5:
+assertion `left == right` failed
+  left: 1
+ right: 0
+```
+
+A writable model sent from the space-template AgentChat. `creates` was 1.
+
+The live check required each stored capability to list both verbs. The executor stored one verb on each row. The create was accepted.
+
+`cargo test --locked --offline -p we-ad4m --test ai_session -- --test-threads=1`
+
+The binary is the local npm pin already named above. `--test-threads=1`.
+
+Result: 4 passed, 1 failed, finished in 3.06s.
+
+```
+thread 'a_user_create_does_not_receive_every_capability' (2975181) panicked at we-ad4m/tests/ai_session.rs:308:5:
+requested verbs are READ and UPDATE: [Capability { with: Resource { domain: "perspective", pointers: ["c16561b1-a71c-4125-a08c-8aa10cc58132"] }, can: ["READ"] }, Capability { with: Resource { domain: "perspective", pointers: ["c16561b1-a71c-4125-a08c-8aa10cc58132"] }, can: ["UPDATE"] }]
+```
+
+## What stayed out of this round
+
+Scroll, blocking IO, watch teardown, and a failed-watch retry stay deferred. They remain the items listed above.
+
+Reading the live token to choose the create verbs stayed out. The request asks for READ and UPDATE.
+
+## Fix-round-2 green
+
+Same environment as the earlier green section. `EXECUTOR_PATH` unset except for the live runs. `--offline` because the registry is already on disk. CI does not pass `--offline`.
+
+| command                                                                               | result                                              |
+| ------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| `cargo test --locked --offline -p we-data --lib chat::tests -- --test-threads=8`      | 23 passed                                           |
+| `cargo test --locked --offline -p we-egui --test agent_chat`                          | 4 passed, 0.74s                                     |
+| `cargo test --locked --offline -p we-ad4m --lib ai_session::tests`                    | 5 passed                                            |
+| `cargo fmt --all -- --check`                                                          | OK                                                  |
+| `cargo check --locked --offline --all-targets`                                        | OK, 52.94s                                          |
+| `cargo clippy --all-targets --locked --offline -- -D warnings`                        | OK, 40.06s, then 0.35s after the verb assertion     |
+| `cargo test --locked --offline -- --test-threads=8`                                   | OK, 183 harnesses, 1088 passed, 0 failed, 3 ignored |
+| `cargo check --locked --offline --target wasm32-unknown-unknown`                      | OK, 56.04s                                          |
+| `bash scripts/check-egui-free.sh`                                                     | OK                                                  |
+| live `cargo test --locked --offline -p we-ad4m --test ai_session -- --test-threads=1` | 5 passed, 0 failed, 2.91s                           |
+
+The full test run took 871.06s. `EXECUTOR_PATH` was unset, so the live file returned without an executor. The 0.35s clippy run is the same command after the stored-verb check used `contains`. That one live test then passed in 0.59s.
+
+`pnpm format:check` from the repo root passed. Prettier reported that all matched files use its style.
+
+## Still not tested after fix round 2
+
+The earlier list still stands. A grant that holds fewer perspective verbs than READ and UPDATE is also untested. The create request does not read the live token.
