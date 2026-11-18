@@ -2775,8 +2775,10 @@ export function createCallStore(deps: ModuleStoreDeps) {
      */
     toggleVideo: action(async () => {
       const wanted = !media().videoEnabled;
-      await controller?.setVideoEnabled(wanted);
-      if (wanted && !controller?.state().videoEnabled) setProblem(CAMERA_BLOCKED);
+      // The call the camera was for, as in `toggleAudio`: a prompt can outlast it.
+      const asked = controller;
+      await asked?.setVideoEnabled(wanted);
+      if (wanted && asked && asked === controller && !asked.state().videoEnabled) setProblem(CAMERA_BLOCKED);
     }, 'Turn this agent’s camera on or off, reporting through problem when it is refused.'),
     /**
      * Send a different microphone or camera, in a call or before one.

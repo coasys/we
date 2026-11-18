@@ -838,6 +838,35 @@ describe('transport and device lifetime', () => {
 
       expect(store.problem()).toBeNull();
     });
+
+    it('does not report a camera refused after its call was left', async () => {
+      // The camera-on waits on its permission prompt; the person leaves; the prompt then refuses.
+      let refuseCamera: (() => void) | undefined;
+      let cameraIs: 'refused' | 'prompting' = 'refused';
+      const microphone = { kind: 'audio', enabled: true, readyState: 'live', stop() {}, addEventListener() {} };
+      const { store } = callable({
+        getUserMedia: async (constraints) => {
+          if (constraints.video && cameraIs === 'refused') throw new Error('NotAllowedError');
+          if (constraints.video) {
+            await new Promise<void>((resolve) => (refuseCamera = resolve));
+            throw new Error('NotAllowedError');
+          }
+          return new MediaStream([microphone as unknown as MediaStreamTrack]);
+        },
+      });
+      await store.startCall();
+      await Promise.resolve();
+      cameraIs = 'prompting';
+      const cameraOn = store.toggleVideo();
+      await vi.waitFor(() => expect(refuseCamera).toBeDefined());
+
+      store.leave();
+      expect(store.problem()).toBeNull();
+      refuseCamera?.();
+      await cameraOn;
+
+      expect(store.problem()).toBeNull();
+    });
   });
 
   it('refuses to join on a host that lends no peer connections, and writes nothing', async () => {
