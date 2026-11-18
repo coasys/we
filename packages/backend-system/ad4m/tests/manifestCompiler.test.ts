@@ -370,6 +370,23 @@ describe('extends — the parent as a shape the child names', () => {
     expect(names).toContain('sightings');
   });
 
+  it('names an abstract parent by sh://node, and a second generateSHACL writes that link once', () => {
+    // `implements` still checks the child's names. It writes no link, so the parent's shape URI
+    // is added on the compiled shape itself. Sighting is declared before BirdBase; the link does
+    // not depend on that order. Calling generateSHACL again must not add a second link.
+    const classes = compileManifest(manifest, { moduleId: 'birds' });
+    const child = shapeOf(classes.Sighting);
+    const parent = shapeOf(classes.BirdBase);
+    expect(child.parentShapes).toContain(parent.nodeShapeUri);
+    const targets = () =>
+      shapeOf(classes.Sighting)
+        .toLinks()
+        .filter((l) => l.predicate === 'sh://node')
+        .map((l) => l.target);
+    expect(targets()).toContain(parent.nodeShapeUri);
+    expect(targets().filter((target) => target === parent.nodeShapeUri)).toHaveLength(1);
+  });
+
   it('extends a concrete parent in the TypeScript sense, so the shape names it by sh://node', () => {
     const classes = compileManifest(
       {

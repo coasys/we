@@ -13,9 +13,9 @@
  * automatically (one type flag per entity). `options` compiles to `sh:in` — the closed value set
  * the executor enforces from AD4M task A1 on — except on a `vocabulary` property, whose real value
  * set is the space's own (see options.ts). `abstract` compiles to `@Model({ abstract })`, and
- * `extends` to the parent's *shape*: an abstract parent is declared through `implements` (AD4M's
- * is-a is structural — the declaration is the mechanism), a concrete one by extending its class,
- * which is what writes the `sh://node` link.
+ * `extends` to the parent's *shape*. A concrete parent is extended in TypeScript, which writes
+ * `sh://node`. An abstract parent is declared through `implements` (the structural check) and the
+ * compiled shape also names that parent's shape URI, because `implements` itself writes no link.
  */
 import {
   Ad4mModel,
@@ -212,10 +212,30 @@ export function buildEntityFromEntry(
     // executor's model query matches its members by structure.
     ...(entry.abstract ? { abstract: true } : {}),
     // `implements` asserts structure and writes no link — `checkImplements` runs here, at
-    // declaration, which is the whole mechanism.
+    // declaration. The link itself is added below, from the parent's own shape URI.
     ...(parentClass !== undefined && abstractParent ? { implements: [parentClass] } : {}),
     ...(entry.interpretationHint !== undefined ? { interpretationHint: entry.interpretationHint } : {}),
   })(cls);
+
+  // The parent's URI is the one its class emits. Naming it after `Model()` means the memoised
+  // shape is the one that gains the link; `addParentShape` ignores a repeat, so a second
+  // `generateSHACL()` does not write a second `sh://node`.
+  if (parentClass !== undefined && abstractParent) {
+    const parentUri = (
+      parentClass as unknown as { generateSHACL?: () => { shape?: { nodeShapeUri?: string } } }
+    ).generateSHACL?.().shape?.nodeShapeUri;
+    if (parentUri) {
+      const compiled = cls as unknown as {
+        generateSHACL: () => { shape?: { addParentShape: (uri: string) => void } };
+      };
+      const generate = compiled.generateSHACL.bind(compiled);
+      compiled.generateSHACL = () => {
+        const result = generate();
+        result.shape?.addParentShape(parentUri);
+        return result;
+      };
+    }
+  }
   return cls;
 }
 
