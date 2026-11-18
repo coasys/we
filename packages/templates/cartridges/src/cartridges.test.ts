@@ -965,7 +965,10 @@ describe('the Coasys cartridge', () => {
           is a different graph with a layout of its own.
         */
         expect(graphJson.match(/"layout":/g)).toHaveLength(1);
-        expect(graphJson).toContain("{ type: 'forest', options: { spine: { field: 'data.relationshipTypeId'");
+        // The spine is the Workshop's, read once by `treeSpine` — nothing here decodes its spelling.
+        expect(graphJson).toContain("{ type: 'forest', options: { spine: treeSpine({ value: local.spine }).selector");
+        expect(graphJson).not.toContain('startsWith(local.spine');
+        expect(graphJson).not.toContain('split(local.spine');
         // Freeform as it was: manual, parked at the canvas's own card size. Nothing about the
         // positions people arranged is read by the tree, so switching back finds every card.
         expect(graphJson).toContain("{ type: 'manual', options: { size: { width: 200, height: 140 }");
@@ -978,7 +981,7 @@ describe('the Coasys cartridge', () => {
         expect(graphJson).toContain("'select', { type: 'arrange-nodes'");
         // A drag in the tree writes the structure the layout reads, not a position it then erases.
         expect(graphJson).toContain('"onNodeArrange":{"$invoke":"recordStore.arrangeOnTree"');
-        expect(graphJson).toContain('{"$":"local.spine"}');
+        expect(graphJson).toContain('{"$":"treeSpine({ value: local.spine })"}');
         expect(graphJson).toContain('"onNodeDragEnd":{"$invoke":"recordStore.dragOnCanvas"');
       });
 
@@ -988,9 +991,20 @@ describe('the Coasys cartridge', () => {
       });
 
       it('draws the connections it is not following, faintly', () => {
-        expect(graphJson).toContain("{ 'data.relationshipTypeId': { not: local.spine } }");
+        expect(graphJson).toContain('{ when: treeSpine({ value: local.spine }).offSpine,');
         expect(graphJson).toContain('opacity: 0.25');
         expect(graphJson).toContain("sourceAnchor: 's', targetAnchor: 'n'");
+      });
+
+      it('follows the models’ own relations in the tree, as the spine picker offers them', () => {
+        /*
+          The picker lists `rel:Class.prop` spines and the layout reads `data.relation`, but those
+          edges exist only when the seed is asked for them. Without `relations` a model-relation
+          spine drew every card in the unconnected zone.
+        */
+        expect(graphJson).toContain(
+          '"relations":{"$":"local.treeMode && treeSpine({ value: local.spine }).relations ? { children: true } : false"}',
+        );
       });
 
       it('fetches the reactions whenever the tree is up, so ordering by one is a re-sort and not a reload', () => {
@@ -1008,7 +1022,8 @@ describe('the Coasys cartridge', () => {
 
       it('offers the spine and the order in the strip', () => {
         expect(pane).toContain('"placeholder":"Any connection"');
-        expect(pane).toContain('local.relationshipKinds.map(k, { label: k.name, value: k.id, icon: k.icon })');
+        // The kinds plus the space's model relations, the same list the Workshop's strip offers.
+        expect(pane).toContain('treeSpines({ kinds: local.relationshipKinds, shapes: shapeStore.spaceShapes');
         expect(pane).toContain('"value":"manual"');
         expect(pane).toContain('"value":"date"');
         expect(pane).toContain('"value":"newest"');
