@@ -88,9 +88,9 @@ const accountMenu: SchemaNode = {
   a desktop build has no address bar, so an address somebody was sent needs a visible place to go.
   WE's sidebar keeps its menu, for the reason its narrow heading gives.
 
-  Acorn projects join them as a third row rather than inside either's dialog: the dialog itself is
-  the acorn module's chrome part, opened through the same shell-flag pattern, and the row exists
-  only where the session can mount a language at all.
+  Acorn projects join them as a third row rather than inside either's dialog: the dialog is host
+  chrome, opened through the same shell-flag pattern, and the row exists only where the session can
+  mount a language at all.
 */
 const addSpace: SchemaNode[] = [
   railItem({

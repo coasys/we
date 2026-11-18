@@ -4217,7 +4217,7 @@ Needs: backends ad4m.
 ### Acorn (`acorn`)
 Project management over a mounted Acorn project — outcomes, the tree, priorities, members
 - No store: everything this module does is declared.
-- Parts: `acorn.projectsModal`, `acorn.outcomeList`, `acorn.outcomeCard` (subject: outcome; needs outcome — the AcornOutcome record this card draws), `acorn.expandedOutcome` (subject: outcome; needs outcome — the AcornOutcome record shown expanded), `acorn.outcomeTable`, `acorn.priorityList`, `acorn.projectDashboard`, `acorn.mapView`
+- Parts: `acorn.outcomeList`, `acorn.outcomeCard` (subject: outcome; needs outcome — the AcornOutcome record this card draws), `acorn.expandedOutcome` (subject: outcome; needs outcome — the AcornOutcome record shown expanded), `acorn.outcomeTable`, `acorn.priorityList`, `acorn.projectDashboard`, `acorn.mapView`
 - Functions:
   - acornTasks(taskList) — An outcome's task list, parsed from its JSON field into `{ task, complete }` rows.  e.g. acornTasks({ taskList: outcome.taskList })
   - acornTaskProgress(taskList) — How far an outcome's task list is — '2/3', or '' when it has none.  e.g. acornTaskProgress({ taskList: outcome.taskList })

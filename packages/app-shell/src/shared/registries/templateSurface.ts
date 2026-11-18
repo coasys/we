@@ -797,20 +797,20 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       The Acorn project lifecycle — listing, creating, joining and opening a mounted
       project, which lands as an ordinary space underneath.
 
-      The reads and the two "get me there" actions are `navigation`, matching what they
-      parallel: `acornAvailable`/`acornProjects` answer what `spaceList` answers (my own
-      data, drawn by chrome); `openAcornProject` and `joinAcornProject` are the same act
-      as `joinSpace` — take me to a project, or into one I was given the passphrase for.
-      `createAcornProject` is `space-admin` on `createSpace`'s argument: making a project
-      makes a space, and that act keeps its own grant rather than being reachable from
-      anywhere that can navigate. `listAcornProjects` is an invoke only because the answer
-      crosses an rpc — it asks and reveals nothing `acornProjects` does not.
+      It looks like `joinSpace`'s act and is `createSpace`'s: each member ends by writing
+      this space's template and views on a dataset the template may never have been in —
+      and join begins by templating and installing a language — so all of it is
+      `space-admin`, the grant `createSpace` keeps rather than being reachable from
+      anywhere that can navigate. A space template still gets the navigation half: it can
+      read `acornAvailable`, see the same rows `spaceList` gives it elsewhere, and ask for
+      the dialog through `shellStore.setAcornProjectsOpen`. The buttons inside that dialog
+      are the host's own chrome, which is where the grant actually runs.
     */
     acornAvailable: state('navigation'),
     acornProjects: state('navigation'),
-    listAcornProjects: action('navigation'),
-    openAcornProject: action('navigation'),
-    joinAcornProject: action('navigation'),
+    listAcornProjects: action('space-admin'),
+    openAcornProject: action('space-admin'),
+    joinAcornProject: action('space-admin'),
     createAcornProject: action('space-admin'),
 
     // ── agent: this agent's own preferences, private to them ──

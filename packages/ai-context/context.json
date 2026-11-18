@@ -10460,9 +10460,6 @@
       "members": [],
       "parts": [
         {
-          "name": "projectsModal"
-        },
-        {
           "name": "outcomeList"
         },
         {

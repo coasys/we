@@ -164,6 +164,32 @@ describe('what the space tier can reach', () => {
     expect(reaches(chromeBag, 'sessionStore.credentialEntered')).toBe(true);
   });
 
+  it('refuses a space template the Acorn project lifecycle', () => {
+    /*
+      Templating a language, mounting it on a dataset, writing another space's template and
+      creating or joining the neighbourhood underneath it are `createSpace`/`joinSpace`'s act —
+      chrome's grant, because a community's template must not install code or redecorate a space
+      it was merely installed in. The dialog these drive is chrome for the same reason, so a
+      space-tier invoke finds nothing to call.
+
+      The split a space template does get is the navigation half: see that the door exists,
+      open it (`setAcornProjectsOpen` stays ambient — the review's request-the-chrome path), and
+      read the rows it would draw. The buttons inside are the host's own.
+    */
+    for (const path of [
+      'spaceStore.createAcornProject',
+      'spaceStore.joinAcornProject',
+      'spaceStore.openAcornProject',
+      'spaceStore.listAcornProjects',
+    ]) {
+      expect(reaches(spaceBag, path), `space: ${path}`).toBe(false);
+      expect(reaches(chromeBag, path), `chrome: ${path}`).toBe(true);
+    }
+    for (const path of ['spaceStore.acornAvailable', 'spaceStore.acornProjects', 'shellStore.setAcornProjectsOpen']) {
+      expect(reaches(spaceBag, path), `space: ${path}`).toBe(true);
+    }
+  });
+
   it('keeps the agent root dataset for chrome, and away from a space', () => {
     /*
       A handle to the agent's own perspective is what a `$query`'s `dataset` resolves against, and

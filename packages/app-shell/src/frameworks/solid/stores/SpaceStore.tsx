@@ -2745,15 +2745,15 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   /*
     Whether this session can offer the Acorn projects chrome at all — the mount-capable
-    backend, the module that draws it, and the template the lifecycle's last write names.
-    The first two alone would leave a sidebar entry on a deployment that did not seed the
-    module; the third alone a project that opens into `defaultTemplateId: 'acorn'` this
-    build cannot resolve.
+    backend, the module that draws the space's views, and the template the lifecycle's last
+    write names. The first alone would leave a sidebar entry whose lifecycle calls cannot
+    answer; the second or third alone a project that opens into views or a
+    `defaultTemplateId: 'acorn'` this build cannot resolve.
   */
   const acornAvailable = createMemo(
     () =>
       Boolean(session.backendPorts()?.acornLifecycle) &&
-      'acorn.projectsModal' in moduleRegistry.parts() &&
+      moduleRegistry.has('acorn') &&
       ACORN_TEMPLATE_ID in bundledTemplates,
   );
 

@@ -5077,7 +5077,6 @@ export const contextData: ContextData = {
       capabilities: [],
       members: [],
       parts: [
-        { name: 'projectsModal' },
         { name: 'outcomeList' },
         {
           name: 'outcomeCard',
