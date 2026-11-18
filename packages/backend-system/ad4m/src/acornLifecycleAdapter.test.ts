@@ -141,6 +141,50 @@ describe('the a9 socket', () => {
     expect(() => (p as { dispose?: () => void }).dispose?.()).not.toThrow();
   });
 
+  /*
+    A caller still in `open()` has not entered `pending`, so `release()` cannot reach
+    it — and the close handler's stale-socket guard means the corpse's `onclose` will
+    not either. Disposal must settle the connect promise itself: the session ending
+    is the answer the caller waits on, not the connect timeout ten seconds later.
+  */
+  it('settles a still-connecting call on dispose — the session end, not the timeout', async () => {
+    FakeWS.quiet = true;
+    const p = port();
+    const settled = p.mounts('dataset-1').then(
+      () => 'resolved',
+      (e: Error) => e.message,
+    );
+    await vi.waitFor(() => expect(FakeWS.instances).toHaveLength(1));
+    (p as { dispose?: () => void }).dispose!();
+
+    const outcome = await Promise.race([settled, new Promise<string>((r) => setTimeout(() => r('unsettled'), 50))]);
+    expect(outcome).toMatch(/ended/i);
+    expect(FakeWS.instances[0].closed).toBe(true);
+  });
+
+  it('settles the still-connecting socket the session replaces — its caller is not left waiting', async () => {
+    FakeWS.quiet = true;
+    let conn: Ad4mHttpConnection = { url: 'http://127.0.0.1:12000', token: 'token-one' };
+    const p = createAd4mAcornLifecycle({ expression: { interact: vi.fn() } }, () => conn);
+    const first = p.mounts('dataset-1').then(
+      () => 'resolved',
+      (e: Error) => e.message,
+    );
+    await vi.waitFor(() => expect(FakeWS.instances).toHaveLength(1));
+
+    // The session re-authorises while the first socket is still CONNECTING.
+    conn = { url: 'http://127.0.0.1:12000', token: 'token-two' };
+    FakeWS.quiet = false;
+    const second = p.mounts('dataset-1');
+    await vi.waitFor(() => expect(FakeWS.instances).toHaveLength(2));
+
+    const outcome = await Promise.race([first, new Promise<string>((r) => setTimeout(() => r('unsettled'), 50))]);
+    expect(outcome).toMatch(/changed/i);
+    await sent(FakeWS.instances[1]);
+    FakeWS.instances[1].reply([]);
+    await expect(second).resolves.toEqual([]);
+  });
+
   it('closes the socket it was authenticated under when the session credentials change', async () => {
     let conn: Ad4mHttpConnection = { url: 'http://127.0.0.1:12000', token: 'token-one' };
     const p = createAd4mAcornLifecycle({ expression: { interact: vi.fn() } }, () => conn);

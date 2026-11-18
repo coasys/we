@@ -67,6 +67,14 @@ function a9Socket(connection: () => Ad4mHttpConnection | null | undefined): A9So
   let socketFor = '';
   let disposed = false;
   let nextId = 1;
+  /*
+    The in-flight connect's reject — a caller awaiting `open()` is not in `pending`
+    yet, so `release` can never reach it, and the close handler's stale-socket guard
+    means the corpse's `onclose` will not either. Closing this socket has to settle
+    that promise itself, or the caller waits out the connect timeout for an answer
+    the session already knew.
+  */
+  let settleOpen: ((error: Error) => void) | null = null;
   const pending = new Map<
     string,
     { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }
@@ -85,16 +93,20 @@ function a9Socket(connection: () => Ad4mHttpConnection | null | undefined): A9So
   const closeSocket = (error: Error) => {
     const gone = socket;
     socket = null;
+    // `live` before `settle` — the settle function clears it on its own way out.
+    const ws = live;
+    live = null;
+    const settle = settleOpen;
+    settleOpen = null;
     release(error);
     // Close the socket itself — `live` is the object even while its open is
     // still in flight, which `gone.then` could never reach.
-    const ws = live;
-    live = null;
     try {
       ws?.close();
     } catch {
       /* closing a broken socket is allowed to fail */
     }
+    settle?.(error);
     // Whatever it was doing settles here — a promise nobody awaits must not go
     // on to reject (or open) on its own account.
     void gone?.then(
@@ -123,14 +135,17 @@ function a9Socket(connection: () => Ad4mHttpConnection | null | undefined): A9So
       live = ws;
       const opened = () => {
         clearTimeout(connectTimer);
+        if (settleOpen === failed) settleOpen = null;
         resolve(ws);
       };
       const failed = (error: Error) => {
         clearTimeout(connectTimer);
         if (socket === promise) socket = null;
         if (live === ws) live = null;
+        if (settleOpen === failed) settleOpen = null;
         reject(error);
       };
+      settleOpen = failed;
       const connectTimer = setTimeout(() => {
         try {
           ws.close();
