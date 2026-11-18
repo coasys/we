@@ -536,13 +536,16 @@ export function ShapeStoreProvider(props: ParentProps) {
     The same rule read through a handle rather than the signals a switch fills — SpaceStore's
     off-screen collection reads ask about the collection's own dataset, which may not be the one
     on screen. Its shapes are listed and validated as `loadShapes` validates them — a manifest
-    that could not stand is no candidate — and `foreignSchemas` answers the classes it already
-    had, registering them for the asking dataset as part of the same read.
+    that could not stand is no candidate — and `foreignEntries` answers the classes it already
+    had. The read is the pure one: `foreignSchemas` *registers* what it finds, which on AD4M
+    replaces the dataset's synthesised-class registry — adopted shapes' compiled classes
+    included — and an ask about a dataset nobody is adopting into must not take its classes
+    apart as the price of asking.
   */
   async function extractionCandidatesFor(dataset: DatasetHandle): Promise<string[]> {
     const [records, foreign] = await Promise.all([
       storage().list(dataset),
-      schemas()?.foreignSchemas(dataset) ?? Promise.resolve([]),
+      schemas()?.foreignEntries(dataset) ?? Promise.resolve([]),
     ]);
     const shapes = records.map((record) => {
       if (!record.manifest) return { name: record.name, manifest: null };

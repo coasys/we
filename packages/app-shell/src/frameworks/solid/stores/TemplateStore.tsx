@@ -45,6 +45,7 @@ import {
   SpaceTemplatePreference,
   Template,
 } from '@we/entities';
+import { latest } from '@we/module-shared';
 import type { SchemaNode, TemplateMeta, TemplateSchema } from '@we/schema-shared';
 import { ensureNodeIds, hasViewsMarker, templateThemeIds } from '@we/schema-shared';
 import { updateSchema } from '@we/schema-solid';
@@ -1161,6 +1162,15 @@ export function TemplateStoreProvider(props: ParentProps) {
     await chooseSpaceTemplate(perspective, fallback, options);
   }
 
+  /*
+    Chooses overlap: a republish for a failed default save starts another choose while an earlier
+    one is still inside the preference read, and the earlier one's record — read before the
+    rollback landed — must not paint over the newer one's. `latest` makes the newest choose the
+    only one still current after the await, and the record is re-read after it, so even the newest
+    answers with what the record says now rather than what it said when the choose began.
+  */
+  const chooseLatest = latest();
+
   /**
    * Which template this space shows, from what has already been read — its record, this agent's
    * override, the templates loaded. The half of `applySpaceTemplate` after the preload, so the
@@ -1171,8 +1181,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     fallback?: string,
     options: { shownEarly?: boolean } = {},
   ): Promise<void> {
-    // Use mySpaces cache for defaultTemplateId — avoids a redundant Space.findOne round-trip
-    const cachedSpace = resolveSpaceFromPerspective(perspective);
+    const still = chooseLatest.begin();
 
     // Read per-space preferences from we-root directly rather than through SpaceStore, which mounts
     // below this one — the same reason `provideSpaceLookup` exists.
@@ -1180,6 +1189,12 @@ export function TemplateStoreProvider(props: ParentProps) {
     const templateOverride = rootPerspective
       ? await migrateAndReadTemplateOverride(rootPerspective, perspective)
       : FOLLOW_SPACE;
+    if (!still()) return;
+
+    // Use mySpaces cache for defaultTemplateId — avoids a redundant Space.findOne round-trip. Read
+    // after the await: the record can have changed under the wait — a save rolled back republishes
+    // the stored id — and this paints what it says now.
+    const cachedSpace = resolveSpaceFromPerspective(perspective);
 
     // The override names *which* template this agent wants here, so it answers on its own —
     // including when the space set no default at all, which the community-default path cannot act

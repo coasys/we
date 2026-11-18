@@ -7,6 +7,7 @@
  * collections' own settings, which SpaceStore reads). It reads them directly; nothing is lent.
  */
 import { gatherTranscriptTurns, type TurnRecord } from '@shared/interpretation/transcriptTurns';
+import { oneAtATime } from '@shared/oneAtATime';
 import type { ModuleHostServices } from '@shared/registries/moduleHostServices';
 import { readSpaceRoot } from '@shared/spaceLandmarks';
 import type { DatasetHandle, InterpretationPort, ParentRef } from '@we/backend-shared';
@@ -146,30 +147,18 @@ async function filedUnder(handle: unknown, conversation: string): Promise<Parent
 const watchIdFor = (collectionId: string) => `we-call-${collectionId.replace(/[^a-zA-Z0-9]+/g, '-')}`;
 
 /*
-  One op at a time per (dataset, watch id).
+  One op at a time per watch id.
 
   A stop can land while its start is still resolving — leaving a call off screen does not wait on
   the reads a registration makes first — and a stop that ran past a start in flight left a
   processor registered with nothing ever coming back for it. Serialised, the start registers and
-  the stop then removes it, so what a stop names is always what it ends. Each op chains off the
-  last whether or not it succeeded, and the entry is dropped once the queue drains.
+  the stop then removes it, so what a stop names is always what it ends. The queue is the shared
+  one: an op runs after the last whether or not it succeeded, a failed op leaves no entry behind,
+  and the key is forgotten once nothing is queued on it. The dataset is inside each op's closure —
+  keying on the watch id alone means two datasets' like-named watches queue behind each other,
+  which is order they did not need, never one losing to the other.
 */
-const watchOps = new Map<DatasetHandle, Map<string, Promise<unknown>>>();
-
-function sequenced(handle: DatasetHandle, watchId: string, op: () => Promise<void>): Promise<void> {
-  let ops = watchOps.get(handle);
-  if (!ops) watchOps.set(handle, (ops = new Map<string, Promise<unknown>>()));
-  const run = (ops.get(watchId) ?? Promise.resolve()).then(op, op);
-  ops.set(watchId, run);
-  void run.then(
-    () => {
-      if (ops.get(watchId) === run) ops.delete(watchId);
-      if (!ops.size) watchOps.delete(handle);
-    },
-    () => {},
-  );
-  return run;
-}
+const watchOps = oneAtATime();
 
 export interface ExtractionRuntimeDeps {
   /**
@@ -240,7 +229,7 @@ export function createExtractionRuntime(deps: ExtractionRuntimeDeps): Extraction
     */
     const handle = target ?? deps.dataset();
     if (!handle) throw new Error('interpretation: no dataset to interpret into');
-    return sequenced(handle, watchIdFor(collectionId), async () => {
+    return watchOps(watchIdFor(collectionId), async () => {
       /*
         Asked about *this collection*, not about the space — through its own dataset either way.
 
@@ -274,7 +263,7 @@ export function createExtractionRuntime(deps: ExtractionRuntimeDeps): Extraction
     // registered anything is not a failure worth interrupting that with.
     if (!port?.unwatch || !handle) return;
     const unwatch = port.unwatch.bind(port);
-    await sequenced(handle, watchIdFor(collectionId), () => unwatch(handle, watchIdFor(collectionId)));
+    await watchOps(watchIdFor(collectionId), () => unwatch(handle, watchIdFor(collectionId)));
   }
 
   const services: ModuleHostServices = {

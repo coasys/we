@@ -4621,12 +4621,20 @@ export function SpaceStoreProvider(props: ParentProps) {
       through the handle.
     */
     const shown = currentSpace();
-    const space =
-      (onScreen && shown && ds && isSpaceSelf(shown, ds) ? shown : undefined) ??
-      (ds ? (await Space.findAll(handle, { where: spaceSelfWhere(ds) }))[0] : undefined);
-    const own = (onScreen && loadedCollections().has(collectionId)
-      ? collectionSettings()[collectionId]
-      : undefined) ?? { autoExtract: row?.autoExtract, extractionTargets: row?.extractionTargets };
+    /*
+      The live answers are taken now, before the next await: the space record's read below can
+      outlive the dataset on screen, and a switch landing inside it leaves the live signals
+      answering for the space that replaced this one — another space's collections and candidates,
+      read with this one's row and handle still in hand. What is live is read once, while the
+      dataset on screen is still provably this one's; everything after the await is the asking
+      dataset's own.
+    */
+    const shownSpace = onScreen && shown && ds && isSpaceSelf(shown, ds) ? shown : undefined;
+    const liveSettings =
+      onScreen && loadedCollections().has(collectionId) ? collectionSettings()[collectionId] : undefined;
+    const liveCandidates = onScreen ? shapeStore.extractionCandidates() : undefined;
+    const space = shownSpace ?? (ds ? (await Space.findAll(handle, { where: spaceSelfWhere(ds) }))[0] : undefined);
+    const own = liveSettings ?? { autoExtract: row?.autoExtract, extractionTargets: row?.extractionTargets };
     /*
       Narrowed by candidacy — the same rule the live list intersects, read for this dataset —
       not by resolvability: an adopted model whose manifest is not extractable resolves in the
@@ -4638,7 +4646,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       re-reading what the switch already read would only wait on it again — and the asking
       dataset's own read for one nobody is looking at.
     */
-    const candidates = onScreen ? shapeStore.extractionCandidates() : await shapeStore.extractionCandidatesFor(handle);
+    const candidates = liveCandidates ?? (await shapeStore.extractionCandidatesFor(handle));
     const resolvable = (entity: string) => getEntityForDataset(entity, handle) !== undefined;
     return {
       spaceName: space?.name,
