@@ -822,7 +822,14 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       : false;
     if (!mounted && !(await mountSameTarget(ref, op.lang, deadline, { owns, report }))) return null;
     if (!owns()) return null;
-    retain(ref.id, op.lang, owed, 'open');
+    /*
+      The phase moves on the debt as it stands, not as it stood when this run
+      banked its ask: the mounts read and the mount loop both ran under it, and
+      a previous run's write landing inside that window already paid through
+      the ledger. Re-read rather than restore the pre-await snapshot — a stale
+      restore re-owes an acknowledged write, and the queued setup pays it twice.
+    */
+    retain(ref.id, op.lang, owedFor(ref.id) ?? { name: owed.name, writeMeta: false, announce: false }, 'open');
     return { ref, name: owed.name };
   };
 

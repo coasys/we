@@ -1443,6 +1443,66 @@ describe('mount retry — the fresh-cell stall', () => {
   });
 
   /*
+    The paid-debt rule under a race, not a sequence: the previous run's
+    announce is still out when the modal closes and the Retry reaches the
+    mount reconciliation read. The announce landing inside that read's window
+    pays the debt through the ledger — and the phase change after the read
+    must move on the debt as it stands, not restore the snapshot the Retry
+    banked before the acknowledgement arrived.
+  */
+  it('does not re-owe an announce acknowledged inside the mounts-read window', async () => {
+    const record: string[] = [];
+    const d = deps(record);
+    const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
+    let releaseAnnounce!: () => void;
+    let announceHeld = true;
+    (port.interact as ReturnType<typeof vi.fn>).mockImplementation(
+      async (url: string, call: { name: string; parameters?: object }) => {
+        record.push(`interact:${call.name}:${url}`);
+        if (call.name === 'announceJoin' && announceHeld) {
+          announceHeld = false;
+          await new Promise<void>((resolve) => (releaseAnnounce = resolve));
+        }
+        return call.name === 'whoami' ? { address: 'profile/abc' } : null;
+      },
+    );
+    // The exact-target read the reconciliation makes — held until the announce has landed.
+    let releaseMounts!: (mounted: string[]) => void;
+    (port.mounts as ReturnType<typeof vi.fn>).mockImplementation(async (uuid: string) => {
+      record.push(`mounts:${uuid}`);
+      return new Promise<string[]>((resolve) => (releaseMounts = resolve));
+    });
+    const acorn = createAcornLifecycle(d);
+
+    // The join's announce is out when the modal closes.
+    const join = acorn.joinAcornProject(undefined, 'a b c', BASE);
+    await vi.waitFor(() => expect(record.filter((c) => c.startsWith('interact:announceJoin'))).toHaveLength(1));
+    acorn.dismissAcornOperation(); // Close — the announce still out
+    const retry = acorn.resumeAcornOperation(); // reopen → Retry, announce still out
+    await vi.waitFor(() => expect(record.filter((c) => c.startsWith('mounts:dataset-1'))).toHaveLength(1));
+
+    // The earlier announce lands inside the read's window — acknowledged, debt paid.
+    releaseAnnounce();
+    await expect(join).resolves.toBeNull(); // the close ended its ownership; nothing further runs
+
+    // …then the read answers mounted, and the phase moves on what is still owed now.
+    let releaseSetup!: (setup: AcornSpaceSetup) => void;
+    (d.spaceSetup as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      () => new Promise<AcornSpaceSetup>((resolve) => (releaseSetup = resolve)),
+    );
+    releaseMounts([LANG]);
+    await vi.waitFor(() => expect(d.spaceSetup).toHaveBeenCalledTimes(3));
+    const intentAfterPhaseMove = d.setupIntent!.get('dataset-1');
+    releaseSetup({ ...EMPTY_SETUP });
+
+    await expect(retry).resolves.toBe('dataset-1');
+    // Exactly one announce — in memory, and in the persisted intent alike.
+    expect(record.filter((c) => c.startsWith('interact:announceJoin'))).toHaveLength(1);
+    expect(intentAfterPhaseMove).toBeNull();
+    expect(d.setupIntent!.get('dataset-1')).toBeNull();
+  });
+
+  /*
     A setup queued behind one that already paid must read the debt as it stands
     when it runs, not as its own ask was filed: two creates landing on one
     target both see the intent's announce owed, the first pays it, and the
