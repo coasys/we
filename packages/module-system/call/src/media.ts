@@ -121,6 +121,26 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
    */
   const acquisitions = latest();
 
+  /**
+   * Tracks acquired but not yet owned by `stream`, parked where `stop()` can reach them.
+   *
+   * `start()` asks for the microphone and the camera one after the other, so while the camera
+   * prompt is open the already-granted microphone lives only in a local variable — `stop()` could
+   * not see it, and a leave kept it running until the prompt was answered, which can be never.
+   * `stop()` stops everything parked here; ownership moves to `stream` the moment it is built.
+   */
+  const pending = new Set<MediaStreamTrack>();
+
+  /**
+   * The microphone acquisition an unmute is waiting on, or none.
+   *
+   * `getUserMedia` sits behind the permission prompt, so a second unmute — or a device switch —
+   * can arrive while one is already waiting. Joining this promise rather than starting a second
+   * acquisition is what keeps "one microphone" true: two would resolve into two live tracks and
+   * `micTrack()` can only ever point at one of them.
+   */
+  let pendingMic: Promise<void> | null = null;
+
   const state: MediaState = { audioEnabled: true, videoEnabled: true, screenShareEnabled: false };
 
   const emitState = () => options.onStateChanged?.({ ...state });
@@ -237,6 +257,47 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
     return track;
   }
 
+  /**
+   * The work behind `pendingMic` — get a microphone for an unmute that has none, and adopt it.
+   *
+   * Kept as one promise so every unmute asked while it waits joins this acquisition rather than
+   * starting its own. What the track does when it lands is decided by `state.audioEnabled` *then*,
+   * not by who asked first: a mute that arrived while the prompt was open keeps the microphone it
+   * raced, but silent — the same state as muting a live track, so a later unmute only re-enables.
+   */
+  async function acquireMic(): Promise<void> {
+    const isMine = acquisitions.current();
+    let acquired: MediaStream;
+    try {
+      acquired = await devices.getUserMedia({ audio: constraintsFor('audio') });
+    } catch (error) {
+      options.onError?.('turning the microphone on', error);
+      if (!isMine()) return;
+      state.audioEnabled = false;
+      emitState();
+      return;
+    }
+
+    const track = acquired.getAudioTracks()[0] ?? null;
+    for (const other of acquired.getTracks()) if (other !== track || !isMine()) other.stop();
+    if (!isMine() || !track) {
+      if (isMine()) {
+        state.audioEnabled = false;
+        emitState();
+      }
+      return;
+    }
+
+    // A new stream rather than `addTrack` on the old one, for `setDevice`'s reason: the transcriber
+    // listens to the stream it was handed and dedupes on identity, so a microphone added in place
+    // would be sent to peers and heard by nothing local.
+    stream = new MediaStream([...(stream?.getTracks() ?? []), track]);
+    track.enabled = state.audioEnabled;
+    watchForLoss(track, 'audio');
+    publishAudio();
+    emitState();
+  }
+
   function stopScreenShare() {
     if (!screenStream) return;
     for (const track of screenStream.getTracks()) track.stop();
@@ -291,7 +352,12 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
         // platforms lose. Each is checked against `isMine`, since either can sit on a prompt.
         const mic = await acquireAlone('audio');
         if (!isMine()) return void mic?.stop();
+        // Parked where `stop()` can reach it for as long as it is held only in this local — a
+        // leave while the camera prompt is still open must put the microphone out at once, not
+        // whenever the prompt happens to be answered.
+        if (mic) pending.add(mic);
         const camera = await acquireAlone('video');
+        if (mic) pending.delete(mic);
         if (!isMine()) {
           mic?.stop();
           camera?.stop();
@@ -366,6 +432,11 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
      */
     async setDevice(kind, deviceId) {
       chosen[kind] = deviceId;
+      // A microphone already being acquired — an unmute waiting on its prompt — has to land before
+      // the switch is asked for: resolving in parallel would leave the retry's microphone running
+      // beside the chosen one, live and published by nobody. Waiting makes the switch the ordinary
+      // replacement below, which stops the retry's track like any other.
+      if (kind === 'audio') await pendingMic;
       // Nothing is open yet — the choice is remembered and `start` will ask for it. This is the
       // ordinary path when somebody picks a device before joining.
       if (!stream) return true;
@@ -409,43 +480,20 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
         `setVideoEnabled`, which audio never had. Join with the microphone refused and this only
         flipped a flag on a track that was not there: the button said unmuted, presence told every
         peer the same, and nothing ever asked for a microphone again, so audio never came back.
+
+        The flag is recorded before the wait, not after it: it is what the acquisition reads when
+        its track lands, so a mute that arrives while the prompt is open wins over the unmute that
+        started it — the landed track is kept, but silent.
       */
+      state.audioEnabled = enabled;
       if (enabled && !micTrack()) {
-        const isMine = acquisitions.current();
-        let acquired: MediaStream;
-        try {
-          acquired = await devices.getUserMedia({ audio: constraintsFor('audio') });
-        } catch (error) {
-          options.onError?.('turning the microphone on', error);
-          if (!isMine()) return;
-          state.audioEnabled = false;
-          emitState();
-          return;
-        }
-
-        const track = acquired.getAudioTracks()[0] ?? null;
-        for (const other of acquired.getTracks()) if (other !== track || !isMine()) other.stop();
-        if (!isMine() || !track) {
-          if (isMine()) {
-            state.audioEnabled = false;
-            emitState();
-          }
-          return;
-        }
-
-        // A new stream rather than `addTrack` on the old one, for `setDevice`'s reason: the
-        // transcriber listens to the stream it was handed and dedupes on identity, so a microphone
-        // added in place would be sent to peers and heard by nothing local.
-        stream = new MediaStream([...(stream?.getTracks() ?? []), track]);
-        track.enabled = true;
-        watchForLoss(track, 'audio');
-        state.audioEnabled = true;
-        publishAudio();
-        emitState();
+        pendingMic ??= acquireMic().finally(() => {
+          pendingMic = null;
+        });
+        await pendingMic;
         return;
       }
 
-      state.audioEnabled = enabled;
       for (const track of stream?.getAudioTracks() ?? []) track.enabled = enabled;
       emitState();
     },
@@ -553,6 +601,10 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
       // Before closing anything: an acquisition still waiting on the permission prompt has to learn
       // it has been cancelled, or it resolves into a device this call no longer owns.
       acquisitions.cancel();
+      // Tracks acquired but not yet owned by `stream` — the fallback's microphone while the
+      // camera prompt is still open — are parked in `pending` for exactly this.
+      for (const track of pending) track.stop();
+      pending.clear();
       for (const track of stream?.getTracks() ?? []) track.stop();
       for (const track of screenStream?.getTracks() ?? []) track.stop();
       stream = null;

@@ -204,6 +204,40 @@ describe('media controller', () => {
     expect(sent(tracks, 'audio')).toBeNull();
   });
 
+  /*
+    Leaving while the *camera* fallback is still on its prompt. The microphone was already granted
+    and held only in a local variable — `stop()` could not reach it, so it stayed live until the
+    camera prompt was answered, which can be never.
+  */
+  it('stops a granted microphone at once when the call is left during the camera prompt', async () => {
+    const mic = fakeTrack('audio');
+    const camera = fakeTrack('video');
+    const releases: Array<(stream: MediaStream) => void> = [];
+    const { controller, tracks } = setup({
+      getUserMedia: vi.fn((constraints: MediaStreamConstraints) => {
+        if (constraints.audio && constraints.video) return Promise.reject(new Error('NotAllowedError'));
+        return new Promise<MediaStream>((resolve) => releases.push(resolve));
+      }),
+    });
+
+    const starting = controller.start();
+    // The microphone alone was granted; the camera prompt is still open.
+    await vi.waitFor(() => expect(releases).toHaveLength(1));
+    releases[0](fakeStream([mic]));
+    await vi.waitFor(() => expect(releases).toHaveLength(2));
+
+    controller.stop();
+    expect(mic.stopped, 'the granted microphone stayed live after the leave').toBe(true);
+
+    releases[1](fakeStream([camera]));
+    await starting;
+
+    expect(camera.stopped).toBe(true);
+    expect(controller.localStream()).toBeNull();
+    expect(sent(tracks, 'audio')).toBeNull();
+    expect(sent(tracks, 'video')).toBeNull();
+  });
+
   describe('screen share', () => {
     it('replaces the outbound video track and flags the state', async () => {
       const { controller, screen, tracks } = setup();
@@ -573,6 +607,43 @@ describe('turning the microphone on when there is no microphone', () => {
     expect(mic.stopped).toBe(true);
     expect(sent(tracks, 'audio')).toBeNull();
   });
+
+  /*
+    Two unmute presses while the prompt is still open used to acquire a microphone each: whichever
+    resolved last was adopted on top of the first, leaving a second live track nothing pointed at —
+    and a mute pressed in between was overwritten by the stale resolution, which set
+    `audioEnabled` back to true unconditionally.
+  */
+  it('joins a second unmute to the one already waiting, and lets a mute between them win', async () => {
+    const mic = fakeTrack('audio');
+    const camera = fakeTrack('video');
+    let allowAudio = false;
+    const releases: Array<(stream: MediaStream) => void> = [];
+    const { controller, tracks } = setup({
+      getUserMedia: vi.fn((constraints: MediaStreamConstraints) => {
+        if (constraints.audio && !allowAudio) return Promise.reject(new Error('NotAllowedError'));
+        if (constraints.audio) return new Promise<MediaStream>((resolve) => releases.push(resolve));
+        return Promise.resolve(fakeStream([camera]));
+      }),
+    });
+    await controller.start();
+    expect(controller.state().audioEnabled).toBe(false);
+    allowAudio = true;
+
+    const first = controller.setAudioEnabled(true);
+    const second = controller.setAudioEnabled(true);
+    // One prompt, not two — a second acquisition is a second live microphone.
+    expect(releases).toHaveLength(1);
+    await controller.setAudioEnabled(false);
+    releases[0](fakeStream([mic]));
+    await Promise.all([first, second]);
+
+    expect(controller.localStream()?.getAudioTracks()).toEqual([mic]);
+    // The mute won: muted in state, and the microphone it raced is silent.
+    expect(controller.state().audioEnabled).toBe(false);
+    expect(mic.enabled).toBe(false);
+    expect(sent(tracks, 'audio')).toBe(mic);
+  });
 });
 
 describe('acquisition cancelled mid-prompt', () => {
@@ -821,5 +892,52 @@ describe('choosing a device', () => {
 
     const asked = (devices.getUserMedia as unknown as { mock: { calls: [MediaStreamConstraints][] } }).mock.calls;
     expect(asked.at(-1)?.[0].video).toMatchObject({ deviceId: { exact: 'cam-9' } });
+  });
+
+  /*
+    A switch while an unmute is still waiting on the prompt used to acquire in parallel with it, and
+    whichever resolved second decided the stream: the retry landing last appended its microphone
+    beside the chosen one — two live tracks, one published and one held by nothing. The switch waits
+    for the retry to land and then replaces it, so exactly one microphone survives: the chosen one.
+  */
+  it('settles a microphone already being asked for before switching to another', async () => {
+    const camera = fakeTrack('video');
+    const retried = fakeTrack('audio');
+    const chosenTrack = fakeTrack('audio');
+    let allowAudio = false;
+    const releases: Array<() => void> = [];
+    const { controller, tracks } = setup({
+      getUserMedia: vi.fn((constraints: MediaStreamConstraints) => {
+        if (constraints.audio && !allowAudio) return Promise.reject(new Error('NotAllowedError'));
+        if (constraints.audio) {
+          // The switch pins a device exactly; the retry asks for whatever the system offers.
+          const exact = typeof constraints.audio === 'object' && !!constraints.audio.deviceId;
+          return new Promise<MediaStream>((resolve) => {
+            releases.push(() => resolve(fakeStream([exact ? chosenTrack : retried])));
+          });
+        }
+        return Promise.resolve(fakeStream([camera]));
+      }),
+    });
+    await controller.start();
+    allowAudio = true;
+
+    const unmuting = controller.setAudioEnabled(true);
+    await vi.waitFor(() => expect(releases).toHaveLength(1));
+    const switching = controller.setDevice('audio', 'mic-2');
+
+    // Answer them newest-first — the order that used to leave the retry's microphone running beside
+    // the chosen one. Fixed, the switch only asks once the retry has landed, so its release appears
+    // here only once the first has been answered.
+    while (releases.length) {
+      releases.pop()!();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    await Promise.all([unmuting, switching]);
+
+    expect(controller.localStream()?.getAudioTracks()).toEqual([chosenTrack]);
+    expect(retried.stopped).toBe(true);
+    expect(chosenTrack.stopped).toBe(false);
+    expect(sent(tracks, 'audio')).toBe(chosenTrack);
   });
 });
