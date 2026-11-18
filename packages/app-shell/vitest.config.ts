@@ -13,6 +13,8 @@ const alias = { '@shared': r('./src/shared'), '@solid': r('./src/frameworks/soli
 const SOLID_TESTS = [
   // Renders the template root through the real part expansion and edits it live.
   'tests/liveSchema.test.tsx',
+  // Mounts a part's frame and changes its subject under it: real Solid effects and cleanups.
+  'tests/partWhileShown.test.tsx',
   'tests/executorFreeBoot.test.tsx',
   'tests/runtimeStore.test.tsx',
   'tests/accountStore.test.tsx',

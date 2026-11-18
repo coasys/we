@@ -12,7 +12,7 @@
  */
 import type { Activity, Peer } from '@we/backend-shared';
 import { markAction, markState, type ModuleStoreDeps } from '@we/module-shared';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 
 import { createTranscribeStore, TRANSCRIBE_ACTIVITY } from './store';
 
@@ -2825,6 +2825,50 @@ describe('typing into a transcript', () => {
     expect(block?.options?.parent).toEqual({ id: 'past-call', relation: 'children', entity: 'CollectionBlock' });
     // And in the space on screen, not in whichever space a live call happens to be running in.
     expect(block?.options?.dataset).toBeUndefined();
+  });
+
+  it('does not put somebody who messages a call they are not in on its roster', async () => {
+    /*
+      The roster says who was present. A call's page offers its composer to anybody, live or ended,
+      so writing into a call is not being in it: the line is written and nothing else.
+    */
+    const h = harness(inCall);
+
+    await h.store.addMessage('past-call', 'watched this back');
+    await Promise.resolve();
+
+    expect(h.created.find((c) => c.entity === 'TextBlock')?.options?.parent).toMatchObject({ id: 'past-call' });
+    // The store can link — it put this agent on the roster of the call it is in — and did not for this one.
+    expect(h.linked).toEqual([{ entity: 'CollectionBlock', id: RECORD, relation: 'participants', value: ME }]);
+  });
+
+  it('does put somebody who messages the call they are in on its roster', async () => {
+    /*
+      The standing roster effect links this agent as soon as the store starts, so a link seen after
+      the message proves nothing about the message. Here that first link fails — which clears the
+      guard, as a lost write does — and the message is what has to put the agent on the roster.
+    */
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+    onTestFinished(() => quiet.mockRestore());
+    const linked: Linked[] = [];
+    let attempts = 0;
+    const h = harness(inCall, {
+      records: {
+        link: async (entity: string, id: string, relation: string, value: string) => {
+          attempts += 1;
+          if (attempts === 1) throw new Error('the executor dropped it');
+          linked.push({ entity, id, relation, value });
+        },
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(attempts).toBe(1);
+    expect(linked).toEqual([]);
+
+    await h.store.addMessage(RECORD, 'Sam is joining late');
+    await Promise.resolve();
+
+    expect(linked).toEqual([{ entity: 'CollectionBlock', id: RECORD, relation: 'participants', value: ME }]);
   });
 });
 
