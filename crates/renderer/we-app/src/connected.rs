@@ -52,6 +52,8 @@ enum Stage {
         url: String,
         live: Box<LiveSpace>,
         panel: bool,
+        /// Rows for `GraphView`. Empty until `model_query` returns.
+        graph: crate::graph_load::GraphLoad,
     },
 }
 
@@ -188,7 +190,11 @@ impl ConnectedApp {
                 live,
                 panel,
                 conn,
-            } => space_screen(ui, url, conn, live, panel),
+                graph,
+            } => {
+                graph.poll(ui.ctx());
+                space_screen(ui, url, conn, live, panel)
+            }
         };
         if let Some(next) = next {
             self.go(next);
@@ -218,13 +224,16 @@ impl ConnectedApp {
                     return;
                 };
                 let (conn, url) = (conn.clone(), url.clone());
+                let uuid = space.uuid.clone();
                 match self.open_space(&conn, space) {
                     Ok(live) => {
+                        let graph = crate::graph_load::GraphLoad::begin(&conn, &uuid, &self.ctx);
                         self.stage = Stage::Space {
                             conn,
                             url,
                             live,
                             panel: false,
+                            graph,
                         }
                     }
                     Err(e) => {

@@ -17,6 +17,8 @@ pub mod connected;
 pub mod gallery;
 pub mod gallery_widgets;
 #[cfg(not(target_arch = "wasm32"))]
+mod graph_load;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod live;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod logging;

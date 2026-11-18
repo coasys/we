@@ -83,7 +83,6 @@ type Report = (&'static str, Resolved, Vec<(String, f64)>);
 
 /// The types `we_egui::placeholders::register` registers as grey boxes.
 const PLACEHOLDERS: &[&str] = &[
-    "GraphView",
     "BlockComposer",
     "EditableImage",
     "we-location-picker",

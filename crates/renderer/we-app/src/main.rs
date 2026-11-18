@@ -396,6 +396,7 @@ fn run_native(args: Args) -> eframe::Result<()> {
         options,
         Box::new(move |cc| {
             we_app::init_host(&cc.egui_ctx);
+            we_egui::install_coasys_fixture(&cc.egui_ctx);
             let mut shell = shell;
             // The inbox's wake is egui's own "draw again" — a completion
             // or a `set_root` landing off-thread repaints, and the poll
@@ -520,6 +521,7 @@ fn run_coasys(route: &str, theme_id: &str) -> eframe::Result<()> {
         options,
         Box::new(move |cc| {
             we_app::init_host(&cc.egui_ctx);
+            we_egui::install_coasys_fixture(&cc.egui_ctx);
             let ctx = cc.egui_ctx.clone();
             app.session
                 .set_waker(Arc::new(move || ctx.request_repaint()));

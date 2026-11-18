@@ -6371,6 +6371,7 @@ dependencies = [
  "we-data",
  "we-egui",
  "we-expr",
+ "we-graph",
  "we-legacy",
  "we-metrics",
  "we-screen",
