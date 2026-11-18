@@ -286,3 +286,20 @@ scripts/check-egui-free.sh
   write-token revocation, two windows, and an empty-screen reconnect are
   out of this slice.
 - Staging was not run by hand.
+
+## Follow-ups for a later slice (Lal, P2s on dfe85a62f)
+
+- Rail row identity: the host owns it. Today `rail_row_id` takes the
+  `app:` prefix plus a copyable `data-we-id`. Carry the original
+  activation target through bubbling (`paint.rs` re-emits a bubbled
+  `onClick` without it), so that the host claims only a click that
+  started on host-owned row content. Consider the lowered effective tier
+  for `meta.role` shell/view.
+- `a_template_invoke_cannot_navigate` does not arm a navigation watcher.
+  It would still pass if the old interception came back. Add a
+  connected-window test with real rail navigation that asserts the space
+  is unchanged.
+- Escape and click-outside lose to a completion that lands in the same
+  frame. The Cancel button wins. Make the precedence explicit.
+- Cancel does not revoke a grant that was already persisted. Document
+  that, or roll the grant back.
