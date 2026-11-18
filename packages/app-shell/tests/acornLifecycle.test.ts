@@ -521,7 +521,13 @@ describe('openAcornProject', () => {
     expect(record.find((c) => c.startsWith('switch:'))).toBeUndefined();
   });
 
-  it('lets only the newest open navigate — a superseded open finishes setup and stands down', async () => {
+  /*
+    The same ownership a close holds: the newest ask is the only run entitled to
+    keep issuing. A superseded open's in-flight reads settle, but the writes it
+    had not made yet are nobody's to replay — the retained target keeps them for
+    whoever opens the project next.
+  */
+  it('lets only the newest open keep going — a superseded open stands down mid-setup', async () => {
     const record: string[] = [];
     let current: string | undefined;
     const checks: ((setup: AcornSpaceSetup) => void)[] = [];
@@ -553,12 +559,12 @@ describe('openAcornProject', () => {
 
     checks[1]({ ...EMPTY_SETUP }); // B's check answers first — B is the newer open
     await expect(openB).resolves.toBe('dataset-b');
-    checks[0]({ ...EMPTY_SETUP }); // A's check answers after
+    checks[0]({ ...EMPTY_SETUP }); // A's check answers after — but its ask is stale now
     await expect(openA).resolves.toBeNull();
 
-    // Both setups completed on their own targets — the writes are real — but only
-    // the newest open navigated. A stale open finishing must not steal the landing.
-    expect(record).toContain('ensure:dataset-a:dataset-a');
+    // Only the newest open ran its setup to the landing; the superseded one
+    // stopped where it was — a stale open finishing issues nothing further.
+    expect(record).not.toContain('ensure:dataset-a:dataset-a');
     expect(record).toContain('ensure:dataset-b:dataset-b');
     expect(record.filter((c) => c.startsWith('navigate:'))).toEqual(['navigate:dataset-b']);
     expect(current).toBe('dataset-b');
@@ -859,6 +865,121 @@ describe('mount retry — the fresh-cell stall', () => {
     expect((await settle(acorn.createAcornProject('P', 'a b c', BASE))).value).toBe('dataset-1');
     // One mount call — nobody unmounted to "clear" it and nobody mounted a second.
     expect(record.filter((c) => c.startsWith('mount:'))).toEqual([`mount:dataset-1:${LANG}`]);
+  });
+
+  /*
+    Ownership is the newest ask's from the moment it is made — not from when its
+    language answer happens to arrive. A Close during templating bumps the
+    generation; the call that was still waiting for `applyTemplateLocal` must
+    not then claim a fresh one and run the whole tail against a closed dialog.
+  */
+  it('a close while the language is still templating stands the ask down — nothing after it runs', async () => {
+    const record: string[] = [];
+    const d = deps(record);
+    let releaseTemplate!: (v: { address: string }) => void;
+    (d.port()!.applyTemplateLocal as ReturnType<typeof vi.fn>).mockImplementation(
+      () => new Promise((resolve) => (releaseTemplate = resolve)),
+    );
+    const acorn = createAcornLifecycle(d);
+
+    const create = acorn.createAcornProject('P', 'a b c', BASE);
+    acorn.dismissAcornOperation(); // the modal's Close, mid-template
+    releaseTemplate({ address: LANG });
+
+    await expect(create).resolves.toBeNull();
+    expect(record.filter((c) => c.startsWith('create:'))).toHaveLength(0);
+    expect(record.filter((c) => c.startsWith('mount:'))).toHaveLength(0);
+    await expect(acorn.pendingAcornOperation()).resolves.toBeNull();
+  });
+
+  it('a slow prepare loses to a newer ask — its late language answer does not supersede', async () => {
+    const record: string[] = [];
+    const d = deps(record);
+    const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
+    let releaseA!: (v: { address: string }) => void;
+    (port.applyTemplateLocal as ReturnType<typeof vi.fn>).mockImplementation(
+      async (hash: string, data: Record<string, unknown>) => {
+        record.push(`applyTemplateLocal:${data.seed}`);
+        if (data.seed === 'uid-a-a-a') return new Promise((resolve) => (releaseA = resolve));
+        return { address: 'QmzLangB' };
+      },
+    );
+    const acorn = createAcornLifecycle(d);
+
+    const runA = acorn.createAcornProject('A', 'a a a', BASE); // templating stalls
+    await vi.waitFor(() => expect(record).toContain('applyTemplateLocal:uid-a-a-a'));
+    const runB = acorn.createAcornProject('B', 'b b b', BASE); // resolves first — owns
+    await vi.waitFor(() => expect(record).toContain('mount:dataset-1:QmzLangB'));
+    releaseA({ address: LANG }); // A's language finally answers
+
+    await expect(runA).resolves.toBeNull(); // stood down — it no longer owns anything
+    await expect(runB).resolves.toBe('dataset-1');
+    expect(record.filter((c) => c.startsWith('mount:'))).toEqual(['mount:dataset-1:QmzLangB']);
+    expect(record.filter((c) => c.startsWith('navigate:'))).toEqual(['navigate:dataset-1']);
+  });
+
+  /*
+    The same ownership is checked between setup's writes, not only at the
+    landing: a Close while a setup call is out lets that call settle — its
+    answer may pay a debt — but issues nothing after it.
+  */
+  it('a close during setup stops the tail — issued calls settle, nothing further is issued', async () => {
+    const record: string[] = [];
+    const d = deps(record);
+    let releaseViews!: () => void;
+    (d.setSpaceViews as ReturnType<typeof vi.fn>).mockImplementation(async (ids: string[], uuid?: string) => {
+      record.push(`views:${ids.join(',')}:${uuid}`);
+      await new Promise<void>((resolve) => (releaseViews = resolve));
+    });
+    const acorn = createAcornLifecycle(d);
+
+    const create = acorn.createAcornProject('P', 'a b c', BASE);
+    await vi.waitFor(() => expect(record.filter((c) => c.startsWith('views:'))).toHaveLength(1));
+    acorn.dismissAcornOperation(); // Close, mid-setup
+    releaseViews();
+
+    await expect(create).resolves.toBeNull();
+    // Issued before the close: ensure and the views write itself. Never issued
+    // after: the template write, marker, meta, announce, override, navigation.
+    expect(record).toContain('ensure:P:dataset-1');
+    expect(record.filter((c) => c.startsWith('template:'))).toHaveLength(0);
+    expect(record.filter((c) => c.includes('class/AcornProjectMeta'))).toHaveLength(0);
+    expect(record.filter((c) => c.startsWith('interact:announceJoin'))).toHaveLength(0);
+    expect(record.filter((c) => c.startsWith('override:'))).toHaveLength(0);
+    expect(record.filter((c) => c.startsWith('navigate:'))).toHaveLength(0);
+    // The retained target keeps its debt — the next open resumes the tail.
+    expect(d.setupIntent!.get('dataset-1')).toMatchObject({ writeMeta: true });
+    await expect(acorn.pendingAcornOperation()).resolves.toMatchObject({
+      phase: 'failed',
+      failure: { retryable: true },
+    });
+  });
+
+  it('a write in flight at the close still counts as paid — the tail after it does not run', async () => {
+    const record: string[] = [];
+    const d = deps(record);
+    let releaseMeta!: () => void;
+    (d.port()!.interact as ReturnType<typeof vi.fn>).mockImplementation(
+      async (url: string, call: { name: string; parameters?: object }) => {
+        record.push(`interact:${call.name}:${url}`);
+        if (call.name === 'create') await new Promise<void>((resolve) => (releaseMeta = resolve));
+        return call.name === 'whoami' ? { address: 'profile/abc' } : null;
+      },
+    );
+    const acorn = createAcornLifecycle(d);
+
+    const create = acorn.createAcornProject('P', 'a b c', BASE);
+    await vi.waitFor(() => expect(record.filter((c) => c.includes('class/AcornProjectMeta'))).toHaveLength(1));
+    acorn.dismissAcornOperation(); // Close while the meta write is out
+    releaseMeta();
+
+    await expect(create).resolves.toBeNull();
+    // The landed meta is paid even though the run stood down — nothing after it ran.
+    expect(record.filter((c) => c.startsWith('interact:announceJoin'))).toHaveLength(0);
+    expect(record.filter((c) => c.startsWith('navigate:'))).toHaveLength(0);
+    // Resume re-checks the mount and finishes the tail without re-writing meta.
+    await expect(acorn.resumeAcornOperation()).resolves.toBe('dataset-1');
+    expect(record.filter((c) => c.includes('class/AcornProjectMeta'))).toHaveLength(1);
   });
 
   /*
@@ -1234,13 +1355,17 @@ describe('mount retry — the fresh-cell stall', () => {
     await vi.waitFor(() => expect(record).toContain(`mount:dataset-1:${LANG_B}`));
 
     releaseSetup({ ...EMPTY_SETUP });
-    // B's later ask owns the landing — A stands down. The debt is the assertion:
+    // B's later ask owns the landing — A stands down where it was, its queued
+    // setup issuing nothing once it no longer owns the run. The debt is the
+    // assertion either way:
     await expect(runA).resolves.toBeNull();
     await expect(runB).resolves.toBe('dataset-1');
 
     // One meta, one announce — paid once whichever setup paid it, never replayed by the other.
     expect(record.filter((c) => c.includes('class/AcornProjectMeta'))).toHaveLength(1);
     expect(record.filter((c) => c.startsWith('interact:announceJoin'))).toHaveLength(1);
+    // And one structure write — B's run is the only one still entitled to issue it.
+    expect(record.filter((c) => c.startsWith('ensure:'))).toHaveLength(1);
   });
 
   it('a changed second ask supersedes the parked one — same language, the newer name wins', async () => {

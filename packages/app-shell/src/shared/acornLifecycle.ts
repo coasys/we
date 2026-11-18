@@ -88,6 +88,12 @@ interface PendingAcornOp {
   ref?: DatasetRef;
   /** The state last reported for this op — what `pendingAcornOperation` hands the chrome. */
   state?: AcornOperationState;
+  /**
+   * The run whose report `state` carries. A run standing down may park the state
+   * only while it is still this one's: a resubmit reporting through the same op
+   * owns the dialog's read now, and the old run's standdown must not overwrite it.
+   */
+  stateOwner?: number;
 }
 
 /** What `prepareAndMount` hands `openMounted`: the mounted target plus the name the newest ask gave it. */
@@ -445,10 +451,11 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
   };
 
   /*
-    The newest ask owns the landing. Earlier opens still finish what they were
-    doing — their writes name a target and are worth completing — but a superseded
-    open does not navigate: it would land the person on a space they have since
-    asked to leave.
+    The newest ask owns the whole operation, from the moment it is made — not
+    from when its language answer or its place in a queue arrives. A Close or a
+    newer ask invalidates every await still out for the old one: calls already
+    issued settle (a landed write still pays its debt), but nothing further is
+    issued, and the landing belongs to whoever asked last.
   */
   let openGeneration = 0;
 
@@ -778,9 +785,11 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
    * lease: a superseded or dismissed run parks its state without surfacing it
    * and hands its promise back through `null` — stood down, not failed.
    */
-  const runLifecycle = async (op: PendingAcornOp): Promise<string | null> => {
-    const runId = ++openGeneration;
-    const nav = { generation: runId, selection: deps.currentDatasetId() };
+  const runLifecycle = async (
+    op: PendingAcornOp,
+    nav: { generation: number; selection: string | undefined },
+  ): Promise<string | null> => {
+    const runId = nav.generation;
     const owns = () => runId === openGeneration;
     pendingOps.set(op.lang, op);
     /*
@@ -792,7 +801,25 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
     const report = (state: AcornOperationState) => {
       if (!owns()) return;
       op.state = state;
+      op.stateOwner = runId;
       deps.progress?.(state);
+    };
+    /*
+      The standdown's version of the same rule: this run parks the op only while
+      the state the dialog shows is still its own report (or nobody's) — never
+      over a newer run's, never over a parked failure a close or an earlier
+      catch already wrote.
+    */
+    const parkIfMine = (failure: { stage: AcornLifecycleStage; cause: string; retryable: boolean }) => {
+      if (op.state?.phase === 'failed') return;
+      if (op.stateOwner !== undefined && op.stateOwner !== runId) return;
+      op.state = {
+        phase: 'failed',
+        name: op.name,
+        datasetId: op.ref?.id,
+        languageAddress: op.lang,
+        failure,
+      };
     };
     const park = (failure: { stage: AcornLifecycleStage; cause: string; retryable: boolean }) =>
       report({ phase: 'failed', name: op.name, datasetId: op.ref?.id, languageAddress: op.lang, failure });
@@ -805,17 +832,11 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       );
       if (!prepared || !owns()) {
         /*
-          Stood down — a close already parked this op as resumable, or the newer
-          ask's reports are the state. The defensive write covers only a run that
-          never reported at all; the offer to continue survives either way.
+          Stood down before the mount finished — a close already parked this op
+          as resumable, or the newer ask's reports are the state. The parked
+          offer to continue survives either way.
         */
-        op.state ??= {
-          phase: 'failed',
-          name: op.name,
-          datasetId: op.ref?.id,
-          languageAddress: op.lang,
-          failure: { stage: 'mount', cause: '', retryable: true },
-        };
+        parkIfMine({ stage: 'mount', cause: '', retryable: true });
         return null;
       }
       report({
@@ -825,13 +846,23 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
         languageAddress: op.lang,
       });
       const id = await openMounted(prepared.ref, op.lang, { name: prepared.name }, nav);
+      if (!owns()) {
+        /*
+          Stood down inside the tail — the retained target and whatever debt
+          remains are the record, and the state this run was reporting is parked
+          so the dialog offers it rather than spinning on a run that is no
+          longer running.
+        */
+        parkIfMine({ stage: 'setup', cause: '', retryable: true });
+        return null;
+      }
       /*
         Delete only on this run's own success: a superseded run that stood down
         inside `openMounted` must not remove the op its successor is still
         running on.
       */
-      if (owns() && pendingOps.get(op.lang) === op) pendingOps.delete(op.lang);
-      if (owns()) deps.progress?.(null);
+      if (pendingOps.get(op.lang) === op) pendingOps.delete(op.lang);
+      deps.progress?.(null);
       return id;
     } catch (error) {
       /*
@@ -852,6 +883,13 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
         Boolean(failure.retryTarget) ||
         (!(error instanceof AcornLifecycleError) && mountFailureKind(error) !== 'permanent');
       park({ stage: failure.stage, cause: failure.message, retryable });
+      /*
+        The same failure parked when reporting is no longer ours: a run that
+        threw after losing ownership cannot surface the error through `report`,
+        but the op the dialog may still be showing must not spin on a dead run —
+        park the real failure on it where the last report was ours to replace.
+      */
+      parkIfMine({ stage: failure.stage, cause: failure.message, retryable });
       throw failure;
     }
   };
@@ -867,11 +905,19 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
     opts: { name: string },
     nav: { generation: number; selection: string | undefined },
   ): Promise<string | null> => {
+    /*
+      Ownership asked after every await: the newest ask holds the run, and a
+      Close or a newer ask arriving while a call is out ends this one's right to
+      issue anything further. Calls already issued settle — a landed write still
+      pays its debt — but the tail does not continue past an owner that is gone.
+    */
+    const own = () => nav.generation === openGeneration;
     // "Dataset appears" — the mount installed Acorn's shapes. Bounded, then on
     // anyway: a still-shapeless dataset gets WE's schemas installed next, which
     // is what `ensureSpaceStructure` is about to do itself — the order that matters
     // (mount before init) is already kept.
     await waitFor(() => deps.schemas()?.hasAnySchema(ref.handle) ?? Promise.resolve(true), timeoutMs, pollMs);
+    if (!own()) return null;
     /*
       Setup names its target everywhere — nothing below reads the current dataset.
       A navigation during any of these awaits no longer retargets the writes: they
@@ -880,11 +926,14 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
     */
     await serializeSetup(ref.id, async () => {
       /*
-        The owed remote work is read inside the queue, not before it: an open
-        serialized ahead of this one may already have landed the writes and
-        cleared the debt, and a capture taken while this run was still waiting
-        would replay what is already done.
+        The queue is where the check lands first: work queued while this run
+        still owned may be running after it stopped. Then the owed remote work
+        is read inside the queue, not before it: an open serialized ahead of
+        this one may already have landed the writes and cleared the debt, and a
+        capture taken while this run was still waiting would replay what is
+        already done.
       */
+      if (!own()) return;
       const owed = owedFor(ref.id);
       /*
         Reopen is repair: each invariant is read on its own and only the missing
@@ -895,17 +944,24 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
         record over the first would split the space's identity.
       */
       let setup = await deps.spaceSetup(ref).catch(() => null);
+      if (!own()) return;
       if (!setup || !setup.spaceRecord || !setup.root) {
         await deps.ensureSpaceStructure(owed?.name ?? opts.name, '', ref);
+        if (!own()) return;
         setup = await deps.spaceSetup(ref).catch(() => setup);
+        if (!own()) return;
       }
       if (setup && !setup.enabledViews) {
         // The section recipe is a setup write: `Space.enabledViews` is the
         // members' own list once the space has one, and an open is not entitled
         // to reset it — the flag says only whether the recipe was ever written.
         await deps.setSpaceViews(ACORN_SECTION_IDS, ref.id);
+        if (!own()) return;
       }
-      if (setup && !setup.defaultTemplate) await deps.setSpaceDefaultTemplate(ACORN_TEMPLATE_ID, ref.id);
+      if (setup && !setup.defaultTemplate) {
+        await deps.setSpaceDefaultTemplate(ACORN_TEMPLATE_ID, ref.id);
+        if (!own()) return;
+      }
       /*
         Completion is a write, not a reading: the marker says the setup above finished, so a
         members' list holding none of the recipe stays edited rather than being reset on every
@@ -913,7 +969,10 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
         spaces set up before there was a marker: they report `enabledViews` from membership
         and get the marker here, after which the marker alone says it.
       */
-      if (setup && !setup.setupDone) await deps.markSpaceSetupDone(ref.id);
+      if (setup && !setup.setupDone) {
+        await deps.markSpaceSetupDone(ref.id);
+        if (!own()) return;
+      }
 
       /*
         A create's meta and a join's announce are writes the mount cannot answer
@@ -939,14 +998,20 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
           // the a9 conductor forwards inside its CellError dump.
           if (!/OnlyOneOfEntryType|Only one of this entry type/.test(String(error))) throw error;
         }
+        // The write was already issued when the close or the newer ask landed —
+        // its answer still pays the debt it owed.
         markPaid(ref.id, 'writeMeta');
+        if (!own()) return;
       }
       await ensureProfile(lang);
+      if (!own()) return;
       if (owed?.announce) {
         await interact(`${lang}://project`, 'announceJoin');
         markPaid(ref.id, 'announce');
+        if (!own()) return;
       }
     });
+    if (!own()) return null;
     await deps.setSpaceTemplateOverride(ACORN_TEMPLATE_ID, ref.id);
     /*
       Land only once the space is whole — and only while this open is still the
@@ -1007,8 +1072,15 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       const port = deps.port();
       const lifecycle = deps.lifecycle();
       if (!port || !lifecycle || !deps.hasAcornTemplate()) return null;
+      /*
+        Ownership is claimed at the ask, not at the language's answer: a Close
+        while templating bumps the generation, and the call whose answer
+        arrives afterward stands down instead of claiming a fresh one.
+      */
+      const nav = { generation: ++openGeneration, selection: deps.currentDatasetId() };
       const seed = acornSeed(passphrase);
       const { address: lang } = await port.applyTemplateLocal(sourceLanguageHash, { seed });
+      if (nav.generation !== openGeneration) return null;
       /*
         One operation per language: a resubmit of the same seed — the same
         project — merges into the pending op rather than starting a parallel
@@ -1018,7 +1090,7 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       const op = pendingOps.get(lang) ?? { lang, name, writeMeta: false, announce: false };
       op.name = name;
       op.writeMeta = true;
-      return runLifecycle(op);
+      return runLifecycle(op, nav);
     },
 
     /**
@@ -1034,8 +1106,10 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       const port = deps.port();
       const lifecycle = deps.lifecycle();
       if (!port || !lifecycle || !deps.hasAcornTemplate()) return null;
+      const nav = { generation: ++openGeneration, selection: deps.currentDatasetId() };
       const lang =
         languageAddress || (await port.applyTemplateLocal(sourceLanguageHash, { seed: acornSeed(passphrase) })).address;
+      if (nav.generation !== openGeneration) return null;
       /*
         A supplied address is verified before a dataset is made for it — joining an
         address that is not an Acorn cell would otherwise create the dataset, mount
@@ -1044,6 +1118,7 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
         it is Acorn by construction.
       */
       if (languageAddress && !(await answering(() => acornInfo(lang), timeoutMs, pollMs))) return null;
+      if (nav.generation !== openGeneration) return null;
       /*
         Same sharing as create: a retried join merges into the pending op —
         the dataset it already made stays the target, and the announce the join
@@ -1051,7 +1126,7 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       */
       const op = pendingOps.get(lang) ?? { lang, name: 'Acorn project', writeMeta: false, announce: false };
       op.announce = true;
-      return runLifecycle(op);
+      return runLifecycle(op, nav);
     },
 
     /**
@@ -1063,15 +1138,15 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       const port = deps.port();
       const lifecycle = deps.lifecycle();
       if (!port || !lifecycle || !deps.hasAcornTemplate()) return null;
-      const runId = ++openGeneration;
-      const nav = { generation: runId, selection: deps.currentDatasetId() };
-      const owns = () => runId === openGeneration;
+      const nav = { generation: ++openGeneration, selection: deps.currentDatasetId() };
+      const owns = () => nav.generation === openGeneration;
       const ref = await lifecycle.get(datasetId);
-      if (!ref) return null;
+      if (!ref || !owns()) return null;
       if (owns()) deps.progress?.({ phase: 'preparing', name: ref.name, datasetId });
       const lang = await firstAcornMount(await port.mounts(ref.id));
+      if (!owns()) return null;
       if (!lang) {
-        if (owns()) deps.progress?.(null);
+        deps.progress?.(null);
         return null;
       }
       if (owns()) deps.progress?.({ phase: 'setting-up', name: ref.name, datasetId, languageAddress: lang });
@@ -1119,6 +1194,7 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       const port = deps.port();
       const lifecycle = deps.lifecycle();
       if (!port || !lifecycle || !deps.hasAcornTemplate()) return null;
+      const nav = { generation: ++openGeneration, selection: deps.currentDatasetId() };
       let op = languageAddress ? pendingOps.get(languageAddress) : undefined;
       if (!op && datasetId) op = [...pendingOps.values()].find((entry) => entry.ref?.id === datasetId);
       if (!op && !datasetId && !languageAddress) op = [...pendingOps.values()][0];
@@ -1133,14 +1209,14 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
           break;
         }
       }
-      if (!op) return null;
+      if (!op || nav.generation !== openGeneration) return null;
       /*
         The selected operation's own retryability rules: a refusal the executor
         answered parks unretryable — the card under it offers no Retry, and the
         resume refuses it too, even asked by name.
       */
       if (op.state?.phase === 'failed' && op.state.failure && !op.state.failure.retryable) return null;
-      return runLifecycle(op);
+      return runLifecycle(op, nav);
     },
 
     /**
