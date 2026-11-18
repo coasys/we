@@ -1,14 +1,18 @@
 /**
- * The parts of the feed-scale suite that need no executor: the signing, the messages, the shape read
- * off a written message, and the numbers it reports.
+ * The parts of the feed-scale suite that need no executor: the signing, the messages, the links
+ * file it generates, the import call's wire shape, and the numbers it reports.
  */
 import { createHash, createPublicKey, verify } from 'node:crypto';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 
 import { JOB, cpuSeconds, loadPhases, max, median, memory, metrics, summaryLine } from './results.mjs';
-import { AUTHORS, SPAN_MS, messageShape, messages, processorIds, random, words } from './seed.mjs';
+import { AUTHORS, SPAN_MS, generateSeedFile, messageShape, messages, processorIds, random, words } from './seed.mjs';
 import { base58, makeAgent } from './signer.mjs';
+import { openWriter } from './writer.mjs';
 
 const BASE58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
 
@@ -49,6 +53,24 @@ describe('signer', () => {
       .digest();
     expect(verify(null, digest, publicKey, Buffer.from(link.proof.signature, 'hex'))).toBe(true);
     expect(verify(null, Buffer.alloc(32), publicKey, Buffer.from(link.proof.signature, 'hex'))).toBe(false);
+  });
+
+  it('rebuilds the same agent from a 32-byte seed, a different one from another seed', () => {
+    const seed = createHash('sha256').update('an author seed').digest();
+    const a = makeAgent(seed);
+    const b = makeAgent(seed);
+    const c = makeAgent(createHash('sha256').update('another author seed').digest());
+    expect(a.did).toBe(b.did);
+    expect(a.did).not.toBe(c.did);
+    // A seeded agent still signs verifiably under its own did.
+    const link = a.link('ad4m://obj/a', 'we://flag', 'we://text_block', Date.UTC(2026, 5, 1));
+    const multikey = unbase58(a.did.slice('did:key:z'.length));
+    const publicKey = createPublicKey({
+      key: { kty: 'OKP', crv: 'Ed25519', x: multikey.subarray(2).toString('base64url') },
+      format: 'jwk',
+    });
+    const digest = createHash('sha256').update(JSON.stringify(link.data)).update(link.timestamp).digest();
+    expect(verify(null, digest, publicKey, Buffer.from(link.proof.signature, 'hex'))).toBe(true);
   });
 });
 
@@ -123,6 +145,128 @@ describe('seed', () => {
   });
 });
 
+describe('seed file', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'feed-scale-test-'));
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  // A shape of twelve links a message: the flag, ten properties, the collection's has_child.
+  const shape = {
+    root: 'ad4m://obj/root',
+    properties: [
+      { predicate: 'we://text', target: null },
+      { predicate: 'we://style', target: 'literal:string:normal' },
+      ...Array.from({ length: 8 }, (_, i) => ({ predicate: `we://prop${i}`, target: `literal:string:v${i}` })),
+    ],
+    links: 12,
+  };
+  const count = 2_000;
+  const endMs = Date.UTC(2026, 0, 1);
+
+  /** The public key inside a `did:key`, as node:crypto wants it. */
+  const publicKeyOf = (did) => {
+    const multikey = unbase58(did.slice('did:key:z'.length));
+    return createPublicKey({
+      key: { kty: 'OKP', crv: 'Ed25519', x: multikey.subarray(2).toString('base64url') },
+      format: 'jwk',
+    });
+  };
+
+  it('parses as {"links":[...]}, twelve signed links a message, the flag earliest', async () => {
+    const { filePath } = await generateSeedFile({ dir, shape, count, endMs, seed: 7, workers: 3 });
+    try {
+      const file = JSON.parse(readFileSync(filePath, 'utf8'));
+      expect(Object.keys(file)).toEqual(['links']);
+      expect(file.links).toHaveLength(count * shape.links);
+      const keys = new Map();
+      const byMessage = new Map();
+      for (const l of file.links) {
+        expect(l.status).toBe('local');
+        expect(l.proof.key.startsWith(`${l.author}#`)).toBe(true);
+        if (!keys.has(l.author)) keys.set(l.author, publicKeyOf(l.author));
+        // The signature is over sha256(serde_json(link) ++ timestamp): the `data` fields in
+        // predicate/source/target order, as the executor recomputes it.
+        const digest = createHash('sha256')
+          .update(JSON.stringify({ predicate: l.data.predicate, source: l.data.source, target: l.data.target }))
+          .update(l.timestamp)
+          .digest();
+        expect(verify(null, digest, keys.get(l.author), Buffer.from(l.proof.signature, 'hex'))).toBe(true);
+        const mid = l.data.source === shape.root ? l.data.target : l.data.source;
+        if (!byMessage.has(mid)) byMessage.set(mid, []);
+        byMessage.get(mid).push(l);
+      }
+      expect(byMessage.size).toBe(count);
+      for (const links of byMessage.values()) {
+        const flag = links.find((l) => l.data.predicate === 'we://flag');
+        expect(flag).toBeDefined();
+        for (const l of links) {
+          if (l !== flag) expect(Date.parse(l.timestamp)).toBeGreaterThan(Date.parse(flag.timestamp));
+        }
+      }
+    } finally {
+      rmSync(filePath);
+    }
+  }, 60_000);
+
+  it('writes the same file byte for byte whether one worker or many split the range', async () => {
+    const a = await generateSeedFile({ dir, shape, count, endMs, seed: 7, workers: 1 });
+    const b = await generateSeedFile({ dir, shape, count, endMs, seed: 7, workers: 4 });
+    const c = await generateSeedFile({ dir, shape, count, endMs, seed: 8, workers: 4 });
+    try {
+      expect(readFileSync(b.filePath)).toEqual(readFileSync(a.filePath));
+      expect(readFileSync(c.filePath).equals(readFileSync(a.filePath))).toBe(false);
+    } finally {
+      rmSync(a.filePath);
+      rmSync(b.filePath);
+      rmSync(c.filePath);
+    }
+  }, 60_000);
+});
+
+describe('import call', () => {
+  /**
+   * The executor end of the WebSocket, faked: records what it is asked and answers `runtime`
+   * calls with an empty import result, so the suite's wire can be checked without an executor.
+   */
+  class FakeSocket {
+    static sent = [];
+    static url = null;
+    constructor(url) {
+      FakeSocket.url = url;
+      setTimeout(() => this.onopen?.(), 0);
+    }
+    send(payload) {
+      const frame = JSON.parse(payload);
+      FakeSocket.sent.push(frame);
+      setTimeout(
+        () => this.onmessage?.({ data: JSON.stringify({ id: frame.id, result: { imported: 0, skipped: 0 } }) }),
+        0,
+      );
+    }
+    close() {}
+  }
+
+  it('sends runtime.importData as a perspective import with the file path and the perspective uuid', async () => {
+    FakeSocket.sent = [];
+    vi.stubGlobal('WebSocket', FakeSocket);
+    try {
+      const writer = await openWriter('http://127.0.0.1:40000', 'admin-token');
+      const result = await writer.importPerspective('persp-uuid', '/tmp/links.json');
+      writer.close();
+      expect(FakeSocket.url).toBe('ws://127.0.0.1:40000/api/v1/ws?token=admin-token');
+      expect(FakeSocket.sent).toHaveLength(1);
+      expect(FakeSocket.sent[0].type).toBe('runtime.importData');
+      expect(FakeSocket.sent[0].params).toEqual({
+        type: 'perspective',
+        filePath: '/tmp/links.json',
+        perspectiveUuid: 'persp-uuid',
+      });
+      expect(result).toEqual({ imported: 0, skipped: 0 });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
 describe('results', () => {
   it('takes a median and a max', () => {
     expect(median([])).toBe(null);
@@ -134,8 +278,7 @@ describe('results', () => {
 
   const full = {
     messages: 1_000_000,
-    mode: 'hybrid',
-    seed: { seconds: 2_000, links: 12_000_000 },
+    seed: { generateSeconds: 1_800, importSeconds: 200, links: 12_000_000 },
     newest: [900, 300, 320, 310, 350],
     newestCold: 900,
     older: [400, 410, 390, 420, 500],
@@ -172,9 +315,10 @@ describe('results', () => {
         'feed.older_page.failures',
         'feed.older_page.max',
         'feed.older_page.median',
+        'seed.generate_s',
+        'seed.import_s',
         'seed.links',
         'seed.links_per_second',
-        'seed.seconds',
       ].sort(),
     );
     expect(by['feed.newest_page.cold']).toEqual({
@@ -186,7 +330,10 @@ describe('results', () => {
     });
     expect(by['feed.newest_page.median'].value).toBe(320);
     expect(by['executor.feed_other_queries.max'].value).toBe(700);
-    expect(by['seed.links_per_second']).toMatchObject({ value: 6_000, better: 'higher', unit: 'links/s' });
+    expect(by['seed.generate_s']).toMatchObject({ value: 1_800, unit: 's', better: 'lower' });
+    expect(by['seed.import_s']).toMatchObject({ value: 200, unit: 's', better: 'lower' });
+    // The import's rate alone: 12M links over its 200 s, not over the generation's too.
+    expect(by['seed.links_per_second']).toMatchObject({ value: 60_000, better: 'higher', unit: 'links/s' });
     expect(by['executor.cpu_seconds.ui_phase']).toMatchObject({ value: 42.5, unit: 's', better: 'lower' });
     expect(by['executor.idle_cpu_percent.after_ui']).toMatchObject({ value: 180, unit: '%', better: 'lower' });
     for (const m of out) {
@@ -195,10 +342,6 @@ describe('results', () => {
       expect(Number.isFinite(m.value)).toBe(true);
     }
     expect(JOB).toBe('feed-scale');
-  });
-
-  it('keeps a run seeded another way apart', () => {
-    expect(metrics({ ...full, mode: 'executor' })[0].params).toEqual({ messages: 1_000_000, seed_mode: 'executor' });
   });
 
   it('reports no cold time when the cold load never drew', () => {
@@ -220,12 +363,12 @@ describe('results', () => {
   it('leaves out what a run that stopped early did not measure', () => {
     const out = metrics({
       messages: 10_000,
-      mode: 'hybrid',
-      seed: { seconds: 20, links: 120_000 },
+      seed: { generateSeconds: 18, importSeconds: 2, links: 120_000 },
       rss: { afterSeed: 900 },
     });
     expect(out.map((m) => m.metric)).toEqual([
-      'seed.seconds',
+      'seed.generate_s',
+      'seed.import_s',
       'seed.links',
       'seed.links_per_second',
       'executor.rss.after_seed',
@@ -234,7 +377,7 @@ describe('results', () => {
 
   it('says the whole run in one line', () => {
     expect(summaryLine(full, 'passed')).toBe(
-      'feed-scale passed: messages=1000000 seed=2000s/12000000links/hybrid newest(cold/median/max)=900/320/900ms ' +
+      'feed-scale passed: messages=1000000 seed=1800s+200s/12000000links newest(cold/median/max)=900/320/900ms ' +
         'older(median/max)=410/500ms query(median/max)=110/120ms others(max)=700ms ' +
         'cpu(ui/idle-seed/idle-ui)=43s/1%/180% rss(seed/ui/peak)=2048/2100/2300MiB runs=5',
     );
@@ -253,8 +396,7 @@ describe('results', () => {
   it('records a run that could not draw as a count, with no page times', () => {
     const out = metrics({
       messages: 1_000_000,
-      mode: 'hybrid',
-      seed: { seconds: 6_000, links: 12_000_000 },
+      seed: { generateSeconds: 5_900, importSeconds: 100, links: 12_000_000 },
       attempted: 5,
       newestFailures: [
         'feed-call-refused',

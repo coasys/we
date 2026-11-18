@@ -14,7 +14,7 @@
  * `{"predicate":…,"source":…,"target":…}` in that order and the timestamp is RFC 3339 with
  * milliseconds and a `Z` — what `Date.prototype.toISOString` writes.
  */
-import { createHash, generateKeyPairSync, sign } from 'node:crypto';
+import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, sign } from 'node:crypto';
 
 const BASE58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
 
@@ -37,9 +37,28 @@ export function base58(bytes) {
 /** The ed25519 multicodec prefix (0xed, as a varint) a `did:key` puts before the public key. */
 const ED25519_PUB = Uint8Array.of(0xed, 0x01);
 
-/** A fresh ed25519 agent: its `did:key` and a function that signs a link as it. */
-export function makeAgent() {
-  const { publicKey, privateKey } = generateKeyPairSync('ed25519');
+/**
+ * The fixed head of a PKCS#8 `OneAsymmetricKey` holding an ed25519 private key (RFC 8410):
+ * the private-key field is the raw 32-byte seed, so a key is rebuilt from a seed alone.
+ * Deriving the seeders' author keys this way — instead of drawing them at random — is what
+ * lets every generation worker hold the same set of agents without passing keys around.
+ */
+const ED25519_PKCS8_HEAD = Buffer.from('302e020100300506032b657004220420', 'hex');
+
+/**
+ * An ed25519 agent: its `did:key` and a function that signs a link as it.
+ * `seed` is a 32-byte ed25519 private key seed; with it the same agent is always rebuilt,
+ * without it a fresh key pair is drawn at random.
+ */
+export function makeAgent(seed = null) {
+  let publicKey;
+  let privateKey;
+  if (seed === null) {
+    ({ publicKey, privateKey } = generateKeyPairSync('ed25519'));
+  } else {
+    privateKey = createPrivateKey({ key: Buffer.concat([ED25519_PKCS8_HEAD, seed]), format: 'der', type: 'pkcs8' });
+    publicKey = createPublicKey(privateKey);
+  }
   const raw = Buffer.from(publicKey.export({ format: 'jwk' }).x, 'base64url');
   const fingerprint = `z${base58(Buffer.concat([ED25519_PUB, raw]))}`;
   const did = `did:key:${fingerprint}`;

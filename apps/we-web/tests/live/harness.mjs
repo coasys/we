@@ -64,15 +64,10 @@ function executorBinary() {
 /**
  * A multi-user executor with its main agent made — which a hosted node needs before anyone can
  * sign up, since the main agent signs every user's token.
- *
- * `dataPath` names the executor's data directory instead of a fresh one under `$TMPDIR`: a caller
- * passes one to keep the store after the run (it is never removed) or to start on a kept store
- * again (`init` is idempotent on a directory an executor already used).
  */
-export async function startExecutor({ mcp = false, dataPath = null } = {}) {
+export async function startExecutor({ mcp = false } = {}) {
   const binary = executorBinary();
-  const ownData = dataPath === null;
-  dataPath ??= mkdtempSync(join(tmpdir(), 'we-live-web-'));
+  const dataPath = mkdtempSync(join(tmpdir(), 'we-live-web-'));
   const [port, hcAdminPort, hcAppPort] = [await freePort(), await freePort(), await freePort()];
   const mcpPort = mcp ? await freePort() : null;
   const adminCredential = randomUUID();
@@ -112,7 +107,7 @@ export async function startExecutor({ mcp = false, dataPath = null } = {}) {
       await exited;
     }
     if (process.env.WE_LIVE_LOG) writeFileSync(process.env.WE_LIVE_LOG, output.join(''));
-    if (ownData) rmSync(dataPath, { recursive: true, force: true });
+    rmSync(dataPath, { recursive: true, force: true });
   };
 
   try {
@@ -134,8 +129,9 @@ export async function startExecutor({ mcp = false, dataPath = null } = {}) {
     const status = await admin.agent.status();
     if (!status.isInitialized) await within(admin.agent.generate('we-live'), 120_000, 'agent.generate');
     const mcpUrl = mcpPort ? `http://127.0.0.1:${mcpPort}/mcp` : undefined;
-    // `pid` lets a suite read the executor's own memory (`/proc/<pid>/status`).
-    return { url, admin, output, stop, mcpUrl, pid: child.pid };
+    // `pid` lets a suite read the executor's own memory (`/proc/<pid>/status`); `adminCredential`
+    // lets one authenticate as the operator on its own socket for calls `admin` cannot carry.
+    return { url, admin, adminCredential, output, stop, mcpUrl, pid: child.pid };
   } catch (error) {
     await stop();
     throw new Error(`${error.message}\n--- executor output ---\n${output.join('').slice(-8_000)}`);

@@ -1,21 +1,20 @@
 /**
- * The seeding's connection to the executor: the same two calls `PerspectiveClient` makes
- * (`perspective.addLinks`, `perspective.addLinkExpression`), the same frames, and no client-side
- * timeout.
+ * The seeding's connection to the executor: the one call `runtime.importData` needs, over the same
+ * WebSocket the SDK uses (`/api/v1/ws?token=…`), with no client-side timeout.
  *
- * Why not `Ad4mClient`: its calls give up after 30 s (`DEFAULT_TIMEOUT_MS`), and `addLinks` takes no
- * option to change that. The executor writes one transaction at a time per perspective, so a write
- * waits behind every write queued before it, and that wait grows with the store: at 90 000 messages a
- * queued batch passed 30 s and the run failed. A write that timed out on the client still runs to
- * its end on the executor, so it cannot be sent again without writing it twice. What the executor is
- * asked to do, and the path it takes to do it, are the same as through the SDK; only the client stops
- * keeping a clock on it. A dropped connection still fails every call it holds.
+ * Why not `Ad4mClient`: its calls give up after 30 s (`DEFAULT_TIMEOUT_MS`), and loading a file of
+ * twelve million links can take longer, so the suite sends `runtime.importData` on a raw socket and
+ * waits for the answer however long it takes. What the executor is
+ * asked to do, and the frames that carry it, are the same as through the SDK; only the client stops
+ * keeping a clock on it. A dropped connection still fails the call it holds.
+ *
+ * `token` must be the executor's admin credential: `runtime.importData` is operator-only and
+ * refuses a managed user's token.
  */
-import { linkExpressionToWire } from '@coasys/ad4m';
 
 /**
  * One WebSocket to the executor at `url` (http or https), as `token`.
- * @returns {Promise<{ addLinks, addLinkExpression, close }>}
+ * @returns {Promise<{ importPerspective, close }>}
  */
 export async function openWriter(url, token) {
   const wsUrl = `${url.replace(/^http/, 'ws')}/api/v1/ws?token=${encodeURIComponent(token)}`;
@@ -60,9 +59,8 @@ export async function openWriter(url, token) {
   };
 
   return {
-    addLinks: (uuid, links, status) => call('perspective.addLinks', { uuid, links, status }),
-    addLinkExpression: (uuid, link, status) =>
-      call('perspective.addLinkExpression', { uuid, link: linkExpressionToWire(link), status }),
+    importPerspective: (uuid, filePath) =>
+      call('runtime.importData', { type: 'perspective', filePath, perspectiveUuid: uuid }),
     close: () => ws.close(),
   };
 }

@@ -19,16 +19,17 @@ table is at the top of `feed-scale.live.mjs`.
 Each run loads the space once. The first run is cold (a new browser profile). The other runs are
 reloads (warm). There are 5 runs by default.
 
-| Metric                                                  | Unit                | What it is                                                                                                                     |
-| ------------------------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `feed.newest_page.cold` · `.median` · `.max`            | ms                  | From navigation (or reload) until the newest seeded message is visible and the 49th is in the DOM                              |
-| `feed.older_page.median` · `.max`                       | ms                  | From a scroll to the Feed's older edge until message 150 is in the DOM                                                         |
-| `executor.feed_query.median` · `.max`                   | ms                  | The round trip of each `TextBlock` model query that the page sent over the space's collection, measured from the page's socket |
-| `executor.feed_other_queries.max`                       | ms                  | The slowest of the Feed's other model queries in the same read (calls, tasks, events, relationships)                           |
-| `executor.cpu_seconds.ui_phase`                         | s                   | The executor's CPU time (user + system) over all the loads                                                                     |
-| `executor.idle_cpu_percent.after_seed` · `.after_ui`    | % of one core       | The executor's CPU over a quiet spell with no page open: after the seeding, and after the loads                                |
-| `executor.rss.after_seed` · `.after_ui` · `.peak`       | MiB                 | The executor's `VmRSS` after the seeding, after the loads, and its `VmHWM`                                                     |
-| `seed.seconds` · `seed.links` · `seed.links_per_second` | s · links · links/s | The seeding                                                                                                                    |
+| Metric                                               | Unit            | What it is                                                                                                                     |
+| ---------------------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `feed.newest_page.cold` · `.median` · `.max`         | ms              | From navigation (or reload) until the newest seeded message is visible and the 49th is in the DOM                              |
+| `feed.older_page.median` · `.max`                    | ms              | From a scroll to the Feed's older edge until message 150 is in the DOM                                                         |
+| `executor.feed_query.median` · `.max`                | ms              | The round trip of each `TextBlock` model query that the page sent over the space's collection, measured from the page's socket |
+| `executor.feed_other_queries.max`                    | ms              | The slowest of the Feed's other model queries in the same read (calls, tasks, events, relationships)                           |
+| `executor.cpu_seconds.ui_phase`                      | s               | The executor's CPU time (user + system) over all the loads                                                                     |
+| `executor.idle_cpu_percent.after_seed` · `.after_ui` | % of one core   | The executor's CPU over a quiet spell with no page open: after the seeding, and after the loads                                |
+| `executor.rss.after_seed` · `.after_ui` · `.peak`    | MiB             | The executor's `VmRSS` after the seeding, after the loads, and its `VmHWM`                                                     |
+| `seed.generate_s` · `seed.import_s`                  | s               | Generating the links file, and the executor's `runtime.importData` of it                                                       |
+| `seed.links` · `seed.links_per_second`               | links · links/s | The seeded link count, and the executor's import rate                                                                          |
 
 All of them are better when lower, except `seed.links_per_second`.
 
@@ -66,33 +67,13 @@ from outside the page is recorded the same way in `detail.direct[].error`. A slo
 measured to its end: the suite gives its calls `FEED_SCALE_PAGE_TIMEOUT` (10 minutes by default),
 so what bounds a measurement is the executor's own deadline, not the suite's.
 
-## Keeping the seeded store
-
-At a million messages the seeding is the expensive part of a run, and a failure in the load phase
-should not cost it again. Two environment variables keep and reuse the executor's data directory:
-
-- `FEED_SCALE_KEEP_STORE=<dir>` runs the suite as usual, but the executor's data directory is
-  `<dir>` (it must be empty or not exist) and it is kept after the run. Right after the seeding the
-  suite writes `feed-scale-store.json` into it — the space's URL, the collection the Feed reads,
-  the newest message's id, author and time — everything a later run needs to find it again.
-- `FEED_SCALE_REUSE_STORE=<dir>` starts the executor on a directory `KEEP` left, skips making the
-  space and seeding it, and runs the load phase on what is there: the sign-in, the newest-flag
-  check, the direct Feed query, the idle CPU read, the loads, and `results.json` as usual — only
-  the `seed.*` metrics are absent (this run did not seed). A watch the earlier run's loads left
-  registered is removed first, so the load phase is the same as after a seeding. The agent is
-  unlocked again at the start (a restart locks it).
-
-`FEED_SCALE_MESSAGES` must not disagree with the kept store's count; unset, it is read from the
-store. Keep the store on a disk with room — it is the whole executor data directory (tens of GB at
-a million messages) — and point `FEED_SCALE_KEEP_STORE` outside `$TMPDIR`, which the ad4m job
-empties around the suite. A store kept is reusable only by the same executor version (`init`
-cleans a directory whose recorded version is out of range).
-
 The last line of the log is one summary line:
 
 ```
-feed-scale passed: messages=100000 seed=258s/1200000links/hybrid newest(cold/median/max)=28199/28199/29310ms older(median/max)=19877/21494ms query(median/max)=17339/18344ms others(max)=1683ms cpu(ui/idle-seed/idle-ui)=1067s/4%/199% rss(seed/ui/peak)=2036/1642/2557MiB runs=5
+feed-scale passed: messages=100000 seed=3s+12s/1200000links newest(cold/median/max)=28199/28199/29310ms older(median/max)=19877/21494ms query(median/max)=17339/18344ms others(max)=1683ms cpu(ui/idle-seed/idle-ui)=1067s/4%/199% rss(seed/ui/peak)=2036/1642/2557MiB runs=5
 ```
+
+(`seed=` is the links file's generation seconds + the import's seconds, then the link count.)
 
 ## The space's watch
 
@@ -105,11 +86,11 @@ on by default. Its scope is every message under the collection with a `we://text
 The suite treats the watch in two ways:
 
 - **During the seeding, the suite removes it.** The seeding is setup, not a measurement. With the
-  watch in place, the executor's tick re-reads every message in scope while the suite writes, and
-  the seeding slows as the store grows (see below). The suite removes every auto-processor of the
-  space before it seeds, with `perspective.removeAutoProcessor`, and records which ones in
-  `detail.watch.removedBeforeSeed`. No page is open during the seeding, so nothing registers it
-  again. The suite checks this after the seeding (`detail.watch.afterSeed`).
+  watch in place, the executor's tick re-reads every message in scope twice a second, which costs
+  O(messages) per tick and would run while the import fills the perspective. The suite removes
+  every auto-processor of the space before it seeds, with `perspective.removeAutoProcessor`, and
+  records which ones in `detail.watch.removedBeforeSeed`. No page is open during the seeding, so
+  nothing registers it again. The suite checks this after the seeding (`detail.watch.afterSeed`).
 - **During the loads, the suite keeps it.** The app registers the watch again when it opens the
   space, as it does for every user. The page times and the executor's CPU include its cost.
   `executor.cpu_seconds.ui_phase` and `executor.idle_cpu_percent.after_ui` are the numbers that
@@ -129,131 +110,44 @@ the app wrote, and copies that shape for each seeded message (`seed.mjs`, `messa
 
 If the TextBlock model gets a new property, the seeding writes it with no change here.
 
-A message's author and `createdAt` come from its earliest link. The default mode, `hybrid`, writes
-the flag as a link that the suite signs itself. It uses one of 40 `did:key` agents, at the message's
-own time over the past year, and sends it with `perspective.addLinkExpression`. The executor
-verifies the signature. The other 11 links go in batches through `perspective.addLinks`, which the
-executor signs. This gives the Feed real authors and real times, at a fraction of the cost of
-signing every link.
+### The links file and the import
 
-| Mode                                    | 30k messages                                                                   | Messages/s | What the Feed reads                                                                            |
-| --------------------------------------- | ------------------------------------------------------------------------------ | ---------- | ---------------------------------------------------------------------------------------------- |
-| `executor` (all through `addLinks`)     | 44.9 s                                                                         | 670        | All by the account, in write order. The run stops after the seeding: the pages cannot be timed |
-| `hybrid` (default)                      | 77–87 s                                                                        | 345–390    | 40 authors over a year, in time order                                                          |
-| `signed` (all 12 signed, one call each) | not run at size; the signed-link rate (~770 links/s) gives about 64 messages/s | ~64        | The same as `hybrid`                                                                           |
+The suite does not push links through the executor's write path. It generates every link already
+signed into a file in `runtime.exportData`'s perspective format (`{"links":[ <link>, ... ]}`) and
+asks `runtime.importData` (`{type: "perspective", filePath, perspectiveUuid}`) to load it straight
+into the space's perspective. Writing through `perspective.addLinks` / `addLinkExpression` cost
+about 6 181 s at a million messages: roughly half of the perspective writer thread's time was
+ed25519 sign/verify of every link inside the executor's single-transaction write loop, and the
+fallback sync's O(links) passes stopped the writes for minutes about every 100 000 messages.
+Generation moves the signing to the suite, where it scales with cores, and the import is the
+executor's one bulk read of a file.
 
-### Why the suite has its own writer
+- **Why every link is signed by its author.** A link the executor signs is authored by the asking
+  account and stamped at write time — a million rows by one person in one afternoon is not a feed
+  anybody has. Every link is instead signed by one of 40 `did:key` agents, rebuilt from the run's
+  seed, at the message's own time over the past year (`signer.mjs`). The flag goes at the message's
+  `atMs`, the other links at `atMs + 1`, so the flag stays each message's earliest link and the
+  model reads the message's `author`/`createdAt` from it (ad4m `model_query/hydration.rs`). The
+  executor verifies the signatures on import, so the seeded flags are verified links — which is
+  what ad4m's scope index keys a member on (ad4m #1734). All links carry `status: "local"`: nothing
+  is published to the neighbourhood's link language; this is not a sync test.
+- **How it is generated.** The message range is split across `os.availableParallelism()` worker
+  threads (`seed-worker.mjs`; `FEED_SCALE_WORKERS` changes it), each writing its own part file;
+  the main thread then streams `{"links":[` + parts + `]}` into one file under `$TMPDIR` (not the
+  artifacts: a run stopped mid-import must not leave the file for CI to upload). Message `i`'s randomness is drawn from a generator keyed by `(seed, i)`
+  rather than one sequential stream, so a slice is identical however the range is divided, and the
+  same 40 author keys are rebuilt from `seed` in every worker — a one-worker file and a 32-worker
+  file are byte-identical. At a million messages the file is about 6 GB (twice that while the parts
+  are joined), so `$TMPDIR` needs the disk for it; it is deleted after the import.
+- **Why the suite has its own writer for the call.** `runtime.importData` is operator-only: it goes
+  on a raw WebSocket (`writer.mjs`) as the executor's admin credential, not the managed user's
+  token, and the SDK's `importPerspective` does not carry `perspectiveUuid`. The socket keeps no
+  client-side timeout — the SDK's fixed 30 s would give up on a call that can run for minutes at a
+  million messages.
 
-`writer.mjs` sends the same two calls with the same frames as the SDK, with no client-side timeout.
-The executor writes one transaction at a time per perspective, so a batch waits behind all the
-batches queued before it. When the store was large and the watch was on, a queued `addLinks` passed
-the SDK's fixed 30 s limit (`DEFAULT_TIMEOUT_MS`) at about 92 000 messages, and the run failed. The
-suite cannot send a timed-out write again, because the executor still completes it and the data
-would be written twice. If the connection drops, all pending calls still fail.
-
-### How fast the seeding is
-
-With the watch removed, the seeding on ad4m `dev` (2d341e651) is flat up to 100 000 messages. Each
-10 000 messages took 365, 398, 391, 400, 404, 401, 375, 395, 367 and 392 messages/s. 100 000
-messages took 258 s. Past that, the rate between stops stays the same, but the executor stops the
-writes for minutes about every 100 000 messages (see below). A million messages took 6 122 s.
-
-| Executor                             | 10k    | 100k           | 1M                                     | Messages/s from 0 to 100k                                     |
-| ------------------------------------ | ------ | -------------- | -------------------------------------- | ------------------------------------------------------------- |
-| `dev`, watch removed                 | 26.5 s | 258 s, 263 s   | 6 122 s (about 2 900 s of it in stops) | 365–404, flat                                                 |
-| #1734, watch removed                 | —      | 435 s          | —                                      | 288 at the start, 217–228 after 60k, with one 10k step at 107 |
-| `dev`, watch on (before this change) | 28.9 s | 629 s          | —                                      | 388 at the start, 196 from 10k to 50k                         |
-| #1734, watch on (before this change) | 32.2 s | 1571 s, 1958 s | —                                      | —                                                             |
-
-The batch settings do not change the rate. At 30 000 messages on `dev`, batches of 100, 500 and
-1000, with 2, 4 or 8 in flight, all took 77–87 s. At 100 000, batches of 100 and 500 took 258 s and
-263 s.
-
-A million messages does not meet a 20-minute target. With no stops, the `dev` rate gives about
-48 minutes. The `executor` mode, with no signed links at all, writes about 670 messages/s, so even
-that would take about 25 minutes. The limits are the executor's write path and its fallback sync, not
-the suite.
-
-#### Where the seeding time goes
-
-gdb stack samples of the executor while it seeds 30 000 messages on `dev` (the executor runs as
-gdb's child, and SIGUSR2 takes all thread stacks, every 0.5 s, 183 samples) show one busy thread at a
-time (1.04 busy threads for each sample). That thread is the perspective's writer. Of its busy
-stacks:
-
-| Share | Where                                                                                                                                                               |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 83%   | `addLinks` (`add_links_bulk` → `link_mutations`)                                                                                                                    |
-| 9%    | `addLinkExpression` (the signed flags)                                                                                                                              |
-| 53%   | `persist_link_diff` → `SparqlStore::apply_diff`                                                                                                                     |
-| 32%   | `write_link_quads_proof` → `verify_or_false`: the store verifies again the signature of each link as it writes it, also the links that the executor has just signed |
-| 18%   | `create_signed_expression`: signing each link, of which 12% is `did_document_for_context` (a DID document read for each link)                                       |
-| 21%   | the RocksDB commit (`oxigraph::store::Transaction::commit`)                                                                                                         |
-
-The shares overlap, because one stack can hold more than one of these functions. About half of the
-writer's time is ed25519 work: signing and verifying each link. This is executor behaviour. This
-suite does not change it.
-
-#### Why the seeding stops for minutes past 100 000 messages
-
-Past about 110 000 messages, the seeding on `dev` stops for a while about every 100 000 messages,
-and the stops grow longer. Between the stops, each 10 000 messages takes 26–34 s (about 345
-messages/s), from the first to the millionth. In the run of a million messages, the 10 000 messages
-that held a stop took this much more than the others:
-
-| Stop at | 120k | 220k  | 330k  | 430k  | 540k  | 650k  | 750k  | 850k  | 960k  |
-| ------- | ---- | ----- | ----- | ----- | ----- | ----- | ----- | ----- | ----- |
-| Added   | 69 s | 132 s | 238 s | 261 s | 303 s | 489 s | 489 s | 640 s | 625 s |
-
-The stops took about 2 900 s of the run's 6 122 s. The executor's peak RSS in that run was 9 957 MiB,
-against 2 557 MiB after the seeding.
-
-gdb samples of a stop (130 000 messages on `dev`, a 70 s stop at 110 500, 66 samples) show one busy
-thread. 94% of its stacks are in `PerspectiveInstance::share_links_missing_remotely` →
-`SparqlStore::get_all_links`: the fallback sync (`fallback_sync_loop`) reads every link of the
-perspective, to find the shared links that the link language lacks. The space is a neighbourhood,
-so the loop runs for it. After a pass that succeeds, it runs again 300 s later. The read costs
-O(links), so the stops grow with the store. While the read runs, the seeding's writes are not
-answered, and the writer threads have no busy stacks. The read holds `share_links_mutex`, and the
-commit loop takes the same lock. The samples do not show where the writes wait; that part is a
-guess. This is executor behaviour. This suite does not change it.
-
-#### Why the seeding is not flat with #1734
-
-The same sampling with #1734, at 100 000 messages (493 samples, 1.03 busy threads for each sample),
-split into the first 30 000 messages and the last 30 000:
-
-| Share of the writer's busy stacks                                      | First 30k (283 messages/s) | Last 30k (144 messages/s) |
-| ---------------------------------------------------------------------- | -------------------------- | ------------------------- |
-| `scope_index::writer::Apply::reconcile_member`                         | 13%                        | 41%                       |
-| of which `aux_count` (a RocksDB read of a counter)                     | 13%                        | 39%                       |
-| RocksDB merge of the counter's operands (`FullMergeV2`, `PushOperand`) | under 4%                   | 11–19%                    |
-| `addLinkExpression` (the signed flags)                                 | 20%                        | 46%                       |
-| `write_link_quads_proof` (verifying each link again)                   | 32%                        | 18%                       |
-
-The scope index's writer reads a member count for each link that it writes, and that read takes a
-larger share as the store grows. The merge frames suggest that the count is kept as RocksDB merge
-operands, which each read merges again until a compaction folds them. That is a guess from the
-stacks; the suite does not prove it. The rest of the write path is the same as on `dev`. The
-sampled run took 495 s under gdb, against 435 s without it.
-
-#### Why the seeding slowed with the watch on
-
-Before the suite removed the watch, the seeding slowed as the store grew. With no writes for 30 s,
-the executor used 0.2 s of CPU per 5 s at 0 messages, 4–5.5 s at 10 000, and 7.3–9 s at 50 000.
-gdb samples at 10 000 messages put 92% of the busy stacks while idle, and 75% while filling, in
-`PerspectiveInstance::run_auto_processor_tick`:
-
-- Each tick reads all the messages in scope again (`gather_transcript_sparql`), which costs
-  O(messages). It then adds each to the pending list through `WatcherState::record_item`, which
-  first checks for that item with a linear search (`auto_processor/watcher.rs:258`). That is
-  O(messages²) for each tick.
-- With no language model, no item is ever processed. Items stay pending, so the tick runs at its
-  fastest rate (500 ms). Two loops run it on the same space: the main agent's
-  (`auto_processor_watch_loop`) and the signed-in user's
-  (`managed_user_auto_processor_supervisor`).
-
-The same cost is in the loads, where the suite keeps the watch (see the next section).
+Measured on one Linux workstation (32 workers): 100 000 messages generate in about 2.3 s and a
+million in about 25 s — against about 258 s and 6 181 s when the same messages went through the
+executor's write path.
 
 ## Where a load's time goes
 
@@ -302,7 +196,9 @@ What fills the time:
 
 Measured on one Linux workstation, with executors built from ad4m `dev` at 2d341e651 and from
 [#1734](https://github.com/coasys/ad4m/pull/1734) (`feat/scope-index`, cb2901d0d). The watch is
-removed for the seeding and kept for the loads. Each row is one run of 5 loads.
+removed for the seeding and kept for the loads. Each row is one run of 5 loads. The `Seed` column
+predates the links-file path: those runs wrote through `addLinks`/`addLinkExpression`, which is why
+their seeding took minutes to hours where the file path now takes seconds.
 
 | Messages | Executor                           | Seed   | Newest page cold / median / max | Older page median / max | `TextBlock` query median / max | Same query from outside the page (50 rows) | Executor CPU over the loads | Idle CPU after seed / after loads | RSS seed / ui / peak   |
 | -------- | ---------------------------------- | ------ | ------------------------------- | ----------------------- | ------------------------------ | ------------------------------------------ | --------------------------- | --------------------------------- | ---------------------- |

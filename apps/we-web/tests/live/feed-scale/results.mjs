@@ -4,8 +4,8 @@
  * `results.json` is `{"job": "feed-scale", "metrics": [...], "detail": {...}}`. Each metric is
  * `{metric, value, unit, better, params}` — the record format of ad4m's `scripts/perf/record`, which
  * takes this file as it is; `job` and `detail` are for a reader and ignored by it. `params` holds
- * what the numbers depend on (`{"messages": 1000000}`, and the seeding mode when it is not the
- * default), so a run at another size is never compared with this one.
+ * what the numbers depend on (`{"messages": 1000000}`), so a run at another size is never compared
+ * with this one.
  */
 
 export const JOB = 'feed-scale';
@@ -26,12 +26,14 @@ const round = (n, places = 1) => (n === null ? null : Math.round(n * 10 ** place
  * The metrics of a run, from what it measured. Anything not measured (a run that stopped early) is
  * left out rather than written as zero, so a partial run never sets a baseline it did not earn.
  *
- * `run`: `{messages, mode, seed: {seconds, links}, newest: [ms…], newestCold, older: [ms…],
+ * `run`: `{messages, seed: {generateSeconds, importSeconds, links}, newest: [ms…], newestCold, older: [ms…],
  * queries: [ms…], otherQueries: [ms…], cpu: {uiPhase, idleAfterSeed, idleAfterUi},
  * rss: {afterSeed, afterUi, peak}, attempted, newestFailures: [kind…], olderAttempted,
  * olderFailures: [kind…], failedFeedCalls}` — times in milliseconds, memory in MiB. `newest` is
  * every drawn load's newest-page time; `newestCold` is the first load's own, kept apart so a cold
- * load that never drew does not lend a warm load's time to `feed.newest_page.cold`. `cpu.uiPhase`
+ * load that never drew does not lend a warm load's time to `feed.newest_page.cold`.
+ * `seed.generateSeconds` is the time to build the links file; `seed.importSeconds` the executor's
+ * `runtime.importData` of it. `cpu.uiPhase`
  * is the executor's CPU seconds over all the loads; `cpu.idle*` its CPU, as a percent of one core,
  * over a quiet spell with no page open: after the seeding (the space's watch removed) and after
  * the loads (the watch the app registered).
@@ -43,16 +45,18 @@ const round = (n, places = 1) => (n === null ? null : Math.round(n * 10 ** place
  * `failedFeedCalls` how many of the run's feed calls the executor answered with an error.
  */
 export function metrics(run) {
-  const params = { messages: run.messages, ...(run.mode && run.mode !== 'hybrid' ? { seed_mode: run.mode } : {}) };
+  const params = { messages: run.messages };
   const out = [];
   const add = (metric, value, unit, better) => {
     if (value === null || value === undefined || !Number.isFinite(value)) return;
     out.push({ metric, value: round(value, unit === 'ms' || unit === 'MiB' ? 1 : 3), unit, better, params });
   };
   if (run.seed) {
-    add('seed.seconds', run.seed.seconds, 's', 'lower');
+    add('seed.generate_s', run.seed.generateSeconds, 's', 'lower');
+    add('seed.import_s', run.seed.importSeconds, 's', 'lower');
     add('seed.links', run.seed.links, 'links', 'lower');
-    add('seed.links_per_second', run.seed.links / run.seed.seconds, 'links/s', 'higher');
+    // The executor's rate: the generation is the suite's own work, timed apart above.
+    add('seed.links_per_second', run.seed.links / run.seed.importSeconds, 'links/s', 'higher');
   }
   const newest = run.newest ?? [];
   add('feed.newest_page.cold', run.newestCold ?? null, 'ms', 'lower');
@@ -90,7 +94,7 @@ export function summaryLine(run, status) {
   return [
     `feed-scale ${status}:`,
     `messages=${run.messages}`,
-    `seed=${run.seed ? `${v(run.seed.seconds, 's')}/${run.seed.links}links/${run.mode}` : '-'}`,
+    `seed=${run.seed ? `${v(run.seed.generateSeconds, 's')}+${v(run.seed.importSeconds, 's')}/${run.seed.links}links` : '-'}`,
     `newest(cold/median/max)=${v(run.newestCold ?? null)}/${v(median(newest))}/${v(max(newest))}ms`,
     `older(median/max)=${v(median(older))}/${v(max(older))}ms`,
     `query(median/max)=${v(median(queries))}/${v(max(queries))}ms`,
