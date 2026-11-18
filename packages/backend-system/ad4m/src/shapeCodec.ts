@@ -561,7 +561,7 @@ function parentsMatch(
   const { shapeUri } = nodesOf(storedLinks);
   const raw = storedLinks.filter((link) => link.source === shapeUri && link.predicate === 'sh://node');
   if (raw.length !== 0 || storedSet.length !== 0 || rebuiltSet.length === 0) return false;
-  return samePresentAnnotation(storedLinks, rebuiltLinks, ANNOTATION.extends);
+  return samePresentAnnotation(storedLinks, rebuiltLinks, ANNOTATION.extends, shapeUri);
 }
 
 function propertiesMatch(
@@ -618,8 +618,8 @@ function inMatch(
   if (storedSet === 'bad' || rebuiltSet === 'bad') return false;
   if (storedSet === undefined && rebuiltSet === undefined) return true;
   if (storedSet === undefined && rebuiltSet !== undefined) {
-    if (raw.length !== 0 || rebuiltSet.values.length === 0) return false;
-    return samePresentAnnotation(storedLinks, rebuiltLinks, ANNOTATION.options);
+    if (!node || raw.length !== 0 || rebuiltSet.values.length === 0) return false;
+    return samePresentAnnotation(storedLinks, rebuiltLinks, ANNOTATION.options, node);
   }
   if (storedSet === undefined || rebuiltSet === undefined) return false;
   return storedSet.values === rebuiltSet.values && storedSet.fields === rebuiltSet.fields;
@@ -634,11 +634,19 @@ function arrayTarget(target: string): boolean {
   }
 }
 
-/** Both sides carry the annotation, and carry the same one. Both absent does not count. */
-function samePresentAnnotation(stored: readonly LinkLike[], rebuilt: readonly LinkLike[], predicate: string): boolean {
+/**
+ * Both sides carry this annotation on `source`, and carry the same one.
+ * Another node's copy of the predicate does not count. Both absent does not count.
+ */
+function samePresentAnnotation(
+  stored: readonly LinkLike[],
+  rebuilt: readonly LinkLike[],
+  predicate: string,
+  source: string,
+): boolean {
   const keys = (links: readonly LinkLike[]) =>
     links
-      .filter((link) => link.predicate === predicate)
+      .filter((link) => link.predicate === predicate && link.source === source)
       .map(linkKey)
       .sort();
   const a = keys(stored);

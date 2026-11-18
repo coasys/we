@@ -282,6 +282,19 @@ describe('whether a stored model can be saved from WE without loss', () => {
     expect(sameShape(duplicated, rebuilt(duplicated))).toBe(false);
   });
 
+  it('is not, when sh:in appears on a property that has no options annotation', () => {
+    // A missing sh:in is legacy only beside that property's own we://options.
+    // count has none. certainty does. The matching annotation on certainty must
+    // not make a new constraint on count editable.
+    const links = stored(input(SIGHTING));
+    const count = propertyNode(links, 'we://module/shape/x/count');
+    const gained = [
+      ...links,
+      { source: count, predicate: 'sh://in', target: `literal:string:${JSON.stringify([{ value: '1' }])}` },
+    ];
+    expect(sameShape(links, gained)).toBe(false);
+  });
+
   it('is not, when accepted values carry labels a manifest cannot write back', () => {
     const links = stored(input(SIGHTING));
     const labelled = replaceIn(links, CERTAINTY, [
