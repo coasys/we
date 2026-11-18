@@ -775,6 +775,79 @@ describe('turning the microphone on when there is no microphone', () => {
     expect(sent(tracks, 'audio')).toBe(mic);
   });
 
+  it('keeps an unmute queued behind start when start gets nothing at all', async () => {
+    const mic = fakeTrack('audio');
+    const requests: Array<{ resolve: (s: MediaStream) => void; reject: (e: unknown) => void }> = [];
+    const { controller, tracks } = setup({
+      getUserMedia: vi.fn(() => new Promise<MediaStream>((resolve, reject) => requests.push({ resolve, reject }))),
+    });
+
+    const starting = controller.start();
+    await vi.waitFor(() => expect(requests).toHaveLength(1));
+    const unmuting = controller.setAudioEnabled(true);
+
+    for (let i = 0; i < 3; i++) {
+      await vi.waitFor(() => expect(requests).toHaveLength(i + 1));
+      requests[i].reject(new DOMException('denied', 'NotAllowedError'));
+    }
+    await vi.waitFor(() => expect(requests).toHaveLength(4));
+    requests[3].resolve(fakeStream([mic]));
+    await Promise.all([starting, unmuting]);
+
+    expect(controller.state()).toMatchObject({ audioEnabled: true, videoEnabled: false });
+    expect(mic.enabled).toBe(true);
+    expect(sent(tracks, 'audio')).toBe(mic);
+  });
+
+  /*
+    Camera on, then off, while a microphone switch is on the prompt. The "on" waited for the switch
+    and wrote its state only afterwards, so it undid the "off" that came after it.
+  */
+  it('lets a later camera-off win over a camera-on queued behind a microphone switch', async () => {
+    const mic = fakeTrack('audio');
+    const camera = fakeTrack('video');
+    const requests: Array<{ resolve: (s: MediaStream) => void; reject: (e: unknown) => void }> = [];
+    const { controller, tracks } = setup({
+      getUserMedia: vi.fn(() => new Promise<MediaStream>((resolve, reject) => requests.push({ resolve, reject }))),
+    });
+    const starting = controller.start();
+    await vi.waitFor(() => expect(requests).toHaveLength(1));
+    requests[0].resolve(fakeStream([mic, camera]));
+    await starting;
+
+    const switching = controller.setDevice('audio', 'other-mic');
+    await vi.waitFor(() => expect(requests).toHaveLength(2));
+    const on = controller.setVideoEnabled(true);
+    await controller.setVideoEnabled(false);
+    requests[1].resolve(fakeStream([fakeTrack('audio')]));
+    await Promise.all([switching, on]);
+
+    expect(controller.state().videoEnabled).toBe(false);
+    expect(camera.enabled).toBe(false);
+    expect(sent(tracks, 'video')).toBe(camera);
+  });
+
+  it("lets a later camera-off win over a camera-on queued behind start's request", async () => {
+    const mic = fakeTrack('audio');
+    const camera = fakeTrack('video');
+    const requests: Array<{ resolve: (s: MediaStream) => void; reject: (e: unknown) => void }> = [];
+    const { controller, tracks } = setup({
+      getUserMedia: vi.fn(() => new Promise<MediaStream>((resolve, reject) => requests.push({ resolve, reject }))),
+    });
+
+    const starting = controller.start();
+    await vi.waitFor(() => expect(requests).toHaveLength(1));
+    const on = controller.setVideoEnabled(true);
+    await controller.setVideoEnabled(false);
+    requests[0].resolve(fakeStream([mic, camera]));
+    await Promise.all([starting, on]);
+
+    expect(requests).toHaveLength(1);
+    expect(controller.state().videoEnabled).toBe(false);
+    expect(camera.enabled).toBe(false);
+    expect(sent(tracks, 'video')).toBe(camera);
+  });
+
   /*
     The same race for the camera: turning it off and on while `start`'s request is on the prompt
     opened a second camera request, and whichever resolved last overwrote `stream`, leaving the
