@@ -50,7 +50,11 @@ function a9Calls(
       const auth = conn.token ? `?token=${encodeURIComponent(conn.token)}` : '';
       const ws = new WebSocket(`${base}/api/v1/ws${auth}`);
       ws.onmessage = ({ data }) => {
-        const msg = JSON.parse(String(data));
+        const msg = JSON.parse(String(data)) as {
+          id?: string | number;
+          result?: unknown;
+          error?: { message?: string };
+        };
         const call = msg.id != null && pending.get(String(msg.id));
         if (!call) return; // event frames carry no pending id — not ours to read
         pending.delete(String(msg.id));
@@ -108,7 +112,7 @@ export function createAd4mAcornLifecycle(
       );
       if (typeof result !== 'string') return result;
       try {
-        return JSON.parse(result);
+        return JSON.parse(result) as unknown;
       } catch {
         return result;
       }
