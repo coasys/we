@@ -3,7 +3,7 @@ import { OTHER_APP_CLASS_NAMES, SOCIAL_DNA_LABELS } from '@we/template-kit';
 
 import type { Crumb } from './bar.ts';
 import { DNA_AT, showDna } from './paths.ts';
-import { WE_VOCABULARY } from './vocabulary.ts';
+import { VOCABULARY_NAMES, WE_VOCABULARY } from './vocabulary.ts';
 
 /**
  * The space's Social DNA, named once for the three places that draw it: the tree lists it, the Social
@@ -43,9 +43,11 @@ const VOCABULARY_CLASSES = `[${WE_VOCABULARY.map(
 
 /**
  * WE's built-in blocks. Every built-in class `creatableEntities` lists is a block, since only a block
- * has a way to be made (`creationPath`), so no list of block names is kept here.
+ * has a way to be made (`creationPath`), so no list of block names is kept here. A vocabulary class
+ * is left out all the same: it is listed as a row of its own, and the rule that keeps one out of
+ * `creatableEntities` lives in another package, where a change would otherwise list it twice.
  */
-const BLOCK_CLASSES = `recordStore.creatableEntities.filter(k, k.group != 'This space').map(${asClass})`;
+const BLOCK_CLASSES = `recordStore.creatableEntities.filter(k, k.group != 'This space' && !(k.value in ${VOCABULARY_NAMES})).map(${asClass})`;
 
 /** WE's: its vocabulary, then its built-in blocks. */
 export const WE_CLASSES = `distinct(${VOCABULARY_CLASSES}, ${BLOCK_CLASSES})`;

@@ -661,6 +661,28 @@ describe('the Coasys cartridge', () => {
       expect(groups[0].sub).toEqual([]);
     });
 
+    it('lists a vocabulary class once, as a row, even if it were ever offered as built-in content', () => {
+      const evaluate = at(
+        [],
+        {},
+        {
+          recordStore: {
+            creatableEntities: [
+              { value: 'Topic', label: 'Topic', icon: 'hash', group: 'Built in' },
+              { value: 'TaskBlock', label: 'Task', icon: 'check', group: 'Built in' },
+            ],
+            plumbingClasses: [],
+            displays: {},
+          },
+          datasetStore: { currentDatasetEntities: [] },
+        },
+      );
+      type Cls = { id: string };
+      const [builtIn] = evaluate({ $: CLASS_GROUPS }) as { rows: Cls[]; sub: { classes: Cls[] }[] }[];
+      expect(builtIn.rows.map((c) => c.id)).toContain('Topic');
+      expect(builtIn.sub.map((s) => s.classes.map((c) => c.id))).toEqual([['TaskBlock']]);
+    });
+
     it('keeps the Blocks row open while a block is in focus, and not for a vocabulary class', () => {
       const row = (value: string) =>
         findNode(treeSection, (n) =>
