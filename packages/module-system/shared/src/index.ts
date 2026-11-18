@@ -22,6 +22,8 @@ export { DEV_FEATURES } from './devFeatures';
 export { DEV_TOOLS_KEY, devToolsEnabled, setDevToolsMuted } from './devTools';
 export type { InterpretationActivitySummary, InterpretationKernel } from './interpretation';
 export { KERNEL_NAMES } from './kernels';
+export { latest } from './latest';
+export type { Latest } from './latest';
 export { lintModule } from './lint';
 export type { ModuleLint } from './lint';
 export type {

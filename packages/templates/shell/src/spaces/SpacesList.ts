@@ -12,25 +12,34 @@ import { emptyNote } from '@we/template-kit';
  * WE space, which now appears here in its own state rather than as an id in a diagnostics list.
  */
 
-/** Shared / Personal / not-yet-a-space, as a badge rather than a heading. */
+/**
+ * Shared / Personal / not-yet-a-space, as a badge rather than a heading. None while the row is still
+ * loading: that is a space whose record the boot has not read yet, not a dataset from another app.
+ */
 const kindBadge: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $: 'space.isWeSpace' },
+    condition: { $: '!space.loading' },
     then: {
-      type: 'we-badge',
+      type: '$if',
       props: {
-        size: 'sm',
-        tone: { $: "space.kind == 'shared' ? 'accent' : ''" },
+        condition: { $: 'space.isWeSpace' },
+        then: {
+          type: 'we-badge',
+          props: {
+            size: 'sm',
+            tone: { $: "space.kind == 'shared' ? 'accent' : ''" },
+          },
+          children: [{ $: "space.kind == 'shared' ? 'Shared' : 'Personal'" }],
+        },
+        // Not an error state — a dataset synced in from another app is simply waiting to be initialized,
+        // and opening it is what surfaces that gate.
+        else: {
+          type: 'we-badge',
+          props: { size: 'sm', tone: 'warning' },
+          children: [{ $: '`Not a ${templateStore.brand.name} space`' }],
+        },
       },
-      children: [{ $: "space.kind == 'shared' ? 'Shared' : 'Personal'" }],
-    },
-    // Not an error state — a dataset synced in from another app is simply waiting to be initialized,
-    // and opening it is what surfaces that gate.
-    else: {
-      type: 'we-badge',
-      props: { size: 'sm', tone: 'warning' },
-      children: [{ $: '`Not a ${templateStore.brand.name} space`' }],
     },
   },
 };
@@ -66,7 +75,7 @@ const spaceCard: SchemaNode = {
               props: {
                 image: { $: 'space.avatar' },
                 initials: { $: 'space.name' },
-                icon: { $: "space.isWeSpace ? '' : 'intersect-three'" },
+                icon: { $: "space.isWeSpace || space.loading ? '' : 'intersect-three'" },
                 size: 'sm',
               },
             },

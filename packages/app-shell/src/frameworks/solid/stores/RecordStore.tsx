@@ -216,9 +216,8 @@ export function connectionKey(source: string, target: string, label?: unknown): 
  * A connection between two records, written as ONE commit — answering with its id.
  *
  * Its ends go in as one-element arrays for the reason `createPlacement` gives: a plain value is
- * skipped, and the generated `setSource`/`setTarget` each commit on their own. The line used to be
- * made that way — create, then one end, then the other — which was three round trips before it could
- * be drawn, and a moment in between where a peer could read a connection with one end or none.
+ * skipped, and the generated `setSource`/`setTarget` each commit on their own — three round trips,
+ * with a moment in between where a peer could read a connection with one end or none.
  */
 async function createConnection(
   dataset: unknown,
@@ -332,21 +331,18 @@ export interface RecordStore {
    * SpaceStore supplies the lists a *community* owns, for a property whose declaration names one —
    * see `vocabulary` on a property, and `offeredTaskStates`.
    *
-   * Injected rather than read, for the reason `provideAutoInterpretGate` is: the answer lives on
-   * records in the space, and SpaceStore mounts below this one. Unset, every display falls back to
-   * the declaration's own `options`, which is what they all did before this existed.
+   * Injected rather than read: the answer lives on records in the space, and SpaceStore mounts below
+   * this one. Unset, every display falls back to the declaration's own `options`.
    */
   provideVocabularies: (resolve: (vocabulary: string) => string[] | undefined) => () => void;
   /**
    * Where content lives — injected by the store that knows the space's structure.
    *
-   * A canvas holds its cards by containment, so a card made on a canvas used to be made *inside* it.
-   * A space canvas cannot work that way: what it shows is everything top-level in the space, read
+   * A canvas holds its cards by containment, but a space canvas cannot work that way: what it shows is everything top-level in the space, read
    * from the space collection, and a card hidden inside the canvas record would be on no feed, no
    * board and no other canvas. So `forCanvas` answers where content made on a canvas goes (the space
    * collection, for the space's canvas; the canvas itself otherwise), and `root` where content with
-   * no other home goes. Unset, a canvas holds its own cards and loose content has no parent, which
-   * is what everything did before spaces had a collection.
+   * no other home goes. Unset, a canvas holds its own cards and loose content has no parent.
    */
   provideContentHomes: (homes: { forCanvas: (canvas: string) => string; root: () => string }) => () => void;
   /** Validation errors from the last save attempt. */
@@ -2542,9 +2538,9 @@ export function RecordStoreProvider(props: ParentProps) {
 
     What is not reported, and so is not covered, is a peer moving a card's colour to a THIRD value:
     the graph never says "this disagrees", only "this agrees". Such a hold stands until the backstop
-    rather than retiring on the push that overtook it. That is exactly what it did before, so nothing
-    regresses — but it is the one place the canvas is still short of what the board and involvements
-    get, and closing it means the graph reporting observed values rather than a verdict.
+    rather than retiring on the push that overtook it — the one place the canvas is short of what
+    the board and involvements get. Closing it means the graph reporting observed values rather
+    than a verdict.
   */
   function confirmPending(recordIds: readonly string[]): void {
     if (!cardStyle.inFlight()) return;

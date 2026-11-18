@@ -153,3 +153,8 @@ export function spaceSelfWhere(ds: { id: string; sharedId?: string }): { url: st
 export function isSpaceSelf(space: Pick<Space, 'uuid' | 'url'>, ds: { id: string; sharedId?: string }): boolean {
   return ds.sharedId ? space.url === ds.sharedId : space.uuid === ds.id;
 }
+
+/** `space` with `fields` written over it, as a new object of the same class — so a signal holding it notifies. */
+export function withFields(space: Space, fields: Partial<Space>): Space {
+  return Object.assign(Object.create(Object.getPrototypeOf(space) as object | null), space, fields) as Space;
+}
