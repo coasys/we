@@ -183,6 +183,18 @@ jobs:
       - name: Browser tests
         run: pnpm --filter @we/primitives test:browser
 
+      # `vectors/tokens/*.json` are the browser-computed theme tables `pnpm test` compares style
+      # vectors against — committed precisely so the suite stays Chrome-free. Nothing else notices
+      # when a theme or the pipeline drifts from the committed tables, so regenerate them here and
+      # fail on any diff. The porcelain check covers the untracked-file case `git diff` cannot see.
+      - name: Token vectors are current
+        run: |
+          export WE_CHROME="${WE_CHROME:-$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || echo /usr/bin/google-chrome)}"
+          echo "Chrome: $WE_CHROME"
+          pnpm --filter @we/template-conformance record:tokens
+          git diff --exit-code -- packages/schema-system/conformance/vectors/tokens
+          test -z "$(git status --porcelain -- packages/schema-system/conformance/vectors/tokens)"
+
       # The agent tools' single-file bundle, run where a host runs it: Deno, with no DOM, no Node and
       # read access to nothing but the bundle and two templates. Everything above runs in Node, which
       # quietly allows what a host would refuse — an env read, a filesystem call — so only this
