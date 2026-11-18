@@ -65,7 +65,7 @@ pub use resolved::{
     normal_form, HandlerRef, NodeId, ResolvedChild, ResolvedNode, Scope, Transition,
     TransitionEffect, TransitionKind,
 };
-pub use runtime::{AppSpec, RootSpec, Runtime, StaticHost, Stats, ORPHANED_CAP};
+pub use runtime::{AppSpec, RootSpec, Runtime, StaticHost, Stats, BASE_MOUNT, ORPHANED_CAP};
 pub use scope::{
     content_eq, FieldMeta, LocalDecl, LocalNs, LocalScope, RootLayer, Roots, ScopeEnv, StoreBag,
 };

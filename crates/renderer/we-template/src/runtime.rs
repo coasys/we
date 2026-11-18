@@ -106,6 +106,9 @@ impl Orphans {
     }
 }
 
+/// The mount id of the built-in connect screen.
+pub const BASE_MOUNT: &str = "base";
+
 /// What the runtime resolves at the top: one template (tests, the panel
 /// harness), or a bundle's app — chrome + space template + pages + boot.
 pub enum RootSpec {
@@ -718,7 +721,7 @@ impl Runtime {
                 vec![Mount {
                     node: node.as_ref(),
                     cx: MountCx {
-                        mount: "base".into(),
+                        mount: BASE_MOUNT.into(),
                         tier: Self::slot_tier(Tier::App, role),
                         space: None,
                         provenance: Provenance::Bundle {
