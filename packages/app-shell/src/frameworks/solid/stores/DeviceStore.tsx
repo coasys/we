@@ -23,6 +23,7 @@ import {
   THIS_COMPUTER_ID,
 } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
+import { latest } from '@we/module-shared';
 import {
   type Accessor,
   createContext,
@@ -131,10 +132,10 @@ export function DeviceStoreProvider(props: ParentProps) {
   const [error, setError] = createSignal('');
 
   // As in the identity store: a reply belongs to the port it was asked of and to the latest read.
-  let generation = 0;
+  const reads = latest();
   createEffect(
     on(port, () => {
-      generation++;
+      reads.cancel();
       setRaw([]);
       setDevicesLoaded(false);
       setError('');
@@ -144,8 +145,8 @@ export function DeviceStoreProvider(props: ParentProps) {
   async function refresh(): Promise<void> {
     const p = port();
     if (!p?.devices) return;
-    const asked = ++generation;
-    const current = () => asked === generation && port() === p;
+    const isLatest = reads.begin();
+    const current = () => isLatest() && port() === p;
     try {
       // A device speaking for nobody has no log, so no devices; asking would only be refused.
       const next = identity.did() ? await p.devices() : [];
