@@ -123,6 +123,14 @@ pub enum RootSpec {
     /// A bundle: the app chrome, the space template's route table +
     /// `meta.panels` + `meta.recordViews`, the pages, the boot screen.
     App(Box<AppSpec>),
+    /// The built-in connect screen. One node, mounted as `bundle.base`.
+    Base {
+        /// The base template.
+        node: Box<SchemaNode>,
+        /// The built-in bundle id the host set. The permit checks this,
+        /// not a role string on the node.
+        bundle: Arc<str>,
+    },
 }
 
 impl RootSpec {
@@ -134,6 +142,14 @@ impl RootSpec {
             node: Box::new(node),
             cx: MountCx::explicit(mount),
             declared: crate::gate::Declared::default(),
+        }
+    }
+
+    /// The built-in base template, mounted at App under `bundle`.
+    pub fn base(node: SchemaNode, bundle: impl Into<Arc<str>>) -> Self {
+        Self::Base {
+            node: Box::new(node),
+            bundle: bundle.into(),
         }
     }
 }
@@ -213,6 +229,8 @@ pub struct Runtime {
     bindings: Arc<dyn BindingSource>,
     /// The single read choke point — mints the permits, logs the denials.
     gate: Arc<Gate>,
+    /// Copied into each dispatch. `None` until a base screen installs it.
+    base_facts: Option<crate::gate::BasePermitFacts>,
     /// The compat names `bindings` serves member-filtered (its
     /// `compat_roots`), cached so `root_domain` needn't ask the source.
     compat: Arc<[Arc<str>]>,
@@ -326,6 +344,7 @@ impl Runtime {
             ready: None,
             bindings,
             gate: Arc::new(Gate::new(handles.clone())),
+            base_facts: None,
             compat: Arc::from([]),
             handles,
             frame_locals: HashMap::new(),
@@ -405,6 +424,13 @@ impl Runtime {
         self.bindings = bindings;
         // A different source answers differently: the cached tree is stale.
         self.last = None;
+    }
+
+    /// The base-screen facts the next dispatch copies into its handlers.
+    /// `None` leaves every other app's invokes without a base permit and
+    /// without a denial.
+    pub fn set_base_facts(&mut self, facts: Option<crate::gate::BasePermitFacts>) {
+        self.base_facts = facts;
     }
 
     /// How many nested frames (parts) hold a `$localState` store — tests
@@ -685,6 +711,24 @@ impl Runtime {
                     }
                     Route::Landing => vec![chrome(spec, &open_space)],
                 }
+            }
+            RootSpec::Base { node, bundle } => {
+                let meta = node.extra.get("meta");
+                let role = meta.and_then(|m| m.get("role")).and_then(|r| r.as_str());
+                vec![Mount {
+                    node: node.as_ref(),
+                    cx: MountCx {
+                        mount: "base".into(),
+                        tier: Self::slot_tier(Tier::App, role),
+                        space: None,
+                        provenance: Provenance::Bundle {
+                            bundle: bundle.clone(),
+                            slot: BundleSlot::Base,
+                        },
+                    },
+                    declared: meta.map(Declared::from_meta).unwrap_or_default(),
+                    template: None,
+                }]
             }
         }
     }
@@ -1049,6 +1093,8 @@ impl Runtime {
                     node: &id,
                     mount: &frame.auth,
                     declared: &frame.declared,
+                    gate: self.gate.as_ref(),
+                    base_permit: self.base_facts.clone(),
                     warnings: &mut self.stats.warnings,
                 };
                 handlers::run(&tokens, &scope, event, &mut cx);
@@ -1191,6 +1237,8 @@ impl Runtime {
             node: &pending.node,
             mount: &pending.frame.auth,
             declared: &pending.frame.declared,
+            gate: self.gate.as_ref(),
+            base_permit: self.base_facts.clone(),
             warnings: &mut self.stats.warnings,
         };
         // A host result landing in a space-tier callback carries no usable
@@ -1402,6 +1450,12 @@ impl StaticHost {
 impl Host for StaticHost {
     fn act(&mut self, request: crate::ActionRequest, done: Completer) -> Invoked {
         let crate::Action::Invoke { target, .. } = &request.action;
+        // A base-store call without a permit does not run. A snapshot
+        // reply does not stand in for that permit.
+        if target.starts_with("baseStore.") && request.permit.is_none() {
+            self.dropped.push(target.to_string());
+            return Invoked::Done(Ok(Value::Undefined));
+        }
         if let Some(reply) = self.bag.invoke_reply(target) {
             if let Value::Obj(o) = &reply {
                 if matches!(o.get("$pending"), Some(Value::Bool(true))) {

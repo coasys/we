@@ -52,6 +52,8 @@ pub struct Bundle {
     /// The sign-in screen, in place of the host's. See `protected-pieces.md`.
     /// Renamed at serde: `bootScreen` on the wire.
     pub boot_screen: Option<SchemaNode>,
+    /// The connect screen (`meta.role: "base"`). A node, like `bootScreen`.
+    pub base: Option<SchemaNode>,
     /// What a space made in this app can start with. Kept raw for now — the
     /// renderer does not create spaces (the `SpaceStarter` shape lives in
     /// `spaceStarter.ts`).
@@ -81,6 +83,7 @@ const BUNDLE_FIELDS: &[&str] = &[
     "display",
     "brand",
     "bootScreen",
+    "base",
     "starters",
 ];
 
@@ -116,6 +119,7 @@ impl Serialize for Bundle {
         push(&mut named, "display", &self.display);
         push(&mut named, "brand", &self.brand);
         push(&mut named, "bootScreen", &self.boot_screen);
+        push(&mut named, "base", &self.base);
         push(&mut named, "starters", &self.starters);
         serialize_ordered(&self.key_order, named, &self.extra, serializer)
     }
@@ -142,6 +146,7 @@ impl<'de> Deserialize<'de> for Bundle {
             display: field::<D, _>(&map, "display")?,
             brand: field::<D, _>(&map, "brand")?,
             boot_screen: field::<D, _>(&map, "bootScreen")?,
+            base: field::<D, _>(&map, "base")?,
             starters: field::<D, _>(&map, "starters")?,
             extra: rest_of(&map, BUNDLE_FIELDS),
             key_order,

@@ -81,6 +81,11 @@ pub struct HandlerCx<'a> {
     /// `PendingCall`'s frame so the callback's gated reads hold the same
     /// set.
     pub declared: &'a crate::gate::Declared,
+    /// Mints a base-store permit for this call. The same gate the reads use.
+    pub gate: &'a crate::gate::Gate,
+    /// Copied at the start of the dispatch. `None` when the session has
+    /// no base screen.
+    pub base_permit: Option<crate::gate::BasePermitFacts>,
     pub warnings: &'a mut Vec<Arc<str>>,
 }
 
@@ -686,6 +691,12 @@ fn run_token(token: &HandlerToken, scope: &Scope, cx: &mut HandlerCx) {
                 return;
             };
             let call = done.call_id();
+            let permit = cx.gate.issue_base_permit(
+                cx.mount,
+                target.as_str(),
+                &evaluated,
+                cx.base_permit.as_ref(),
+            );
             let request = ActionRequest {
                 origin: Origin {
                     mount: cx.mount.mount.clone(),
@@ -697,6 +708,7 @@ fn run_token(token: &HandlerToken, scope: &Scope, cx: &mut HandlerCx) {
                     target: target.as_str().into(),
                     args: evaluated,
                 },
+                permit,
             };
             match cx.host.act(request, done) {
                 // A sync answer carries no lifecycle (WE: callbacks are a

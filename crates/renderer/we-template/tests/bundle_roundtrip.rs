@@ -31,3 +31,26 @@ fn coasys_bundle_round_trips() {
         "the bundle's keys came back in a different order"
     );
 }
+
+#[test]
+fn bundle_base_round_trips_and_stays_out_of_extra() {
+    let text = r#"{"format":"we-bundle","formatVersion":1,"id":"coasys","version":"0","name":"Coasys","base":{"type":"Column","children":["hi"]},"note":"kept"}"#;
+    let bundle = Bundle::parse(text).unwrap();
+    assert!(bundle.base.is_some());
+    assert!(bundle.extra.get("base").is_none());
+    assert_eq!(
+        bundle.extra.get("note").and_then(|v| v.as_str()),
+        Some("kept")
+    );
+    let again = serde_json::to_string(&bundle).unwrap();
+    let parsed = Bundle::parse(&again).unwrap();
+    assert_eq!(
+        parsed.base.as_ref().and_then(|n| n.ty.as_deref()),
+        Some("Column")
+    );
+
+    let absent = r#"{"format":"we-bundle","formatVersion":1,"id":"x","version":"0","name":"X"}"#;
+    let bundle = Bundle::parse(absent).unwrap();
+    assert!(bundle.base.is_none());
+    assert!(!serde_json::to_string(&bundle).unwrap().contains("\"base\""));
+}

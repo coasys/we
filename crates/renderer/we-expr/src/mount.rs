@@ -67,6 +67,8 @@ pub enum BundleSlot {
     Page(Arc<str>),
     /// `bundle.templates[id]` — a shell or a view.
     Template(Arc<str>),
+    /// `bundle.base` — the connect screen, before a session.
+    Base,
 }
 
 /// Where the mounted schema came from — decided by the host's loader,

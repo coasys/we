@@ -2,8 +2,9 @@
 //! renderer answers (design 4.6). Core never decides; it asks. This file
 //! holds the E3c-8a read half — `root` / `member` / `screen_read` /
 //! `dataset` — plus the nested-authority frame stack (4.6.3) and the
-//! member-filtering namespaces the bounds wear. `screen_verb` and
-//! `action` land with E3c-8b.
+//! member-filtering namespaces the bounds wear. `screen_verb` and the
+//! general `action` check land with E3c-8b. Base-store invokes are
+//! issued here ([`Gate::issue_base_permit`]): a permit, or no call.
 //!
 //! Two rules keep it honest:
 //!
@@ -19,7 +20,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
 
-use we_expr::{MapNamespace, MountCx, Namespace, Tier, Value};
+use we_expr::{BundleSlot, MapNamespace, MountCx, MountId, Namespace, Provenance, Tier, Value};
 
 use crate::bindings::{Bound, MemberRule, MemberTiers, RootDomain};
 use crate::query::DatasetSel;
@@ -29,6 +30,57 @@ use crate::query::DatasetSel;
 /// execution stay together).
 #[derive(Debug, Clone, Copy)]
 pub struct Permit(());
+
+/// What the host told the gate about the built-in base screen.
+///
+/// The gate copies this at the start of a dispatch. It does not read the
+/// live controller. A later call in the same dispatch still sees this copy.
+#[derive(Clone, Debug)]
+pub struct BasePermitFacts {
+    /// The built-in bundle id the host mounted. Provenance must name it.
+    pub builtin: Arc<str>,
+    /// The controller's generation at the start of this dispatch.
+    pub generation: u64,
+    /// Connection ids `baseStore.choose` may name.
+    pub catalog: Vec<Arc<str>>,
+    /// A connect attempt is in flight. Only `closePage` and
+    /// `clearPasswordWrong` are issued while this is set.
+    pub busy: bool,
+}
+
+/// Proof the gate allowed one base-store call. No public constructor:
+/// only [`Gate::issue_base_permit`] mints one.
+#[derive(Clone, Debug)]
+pub struct ActionPermit {
+    target: Arc<str>,
+    args_json: String,
+    generation: u64,
+    mount: MountId,
+}
+
+impl ActionPermit {
+    pub fn target(&self) -> &str {
+        &self.target
+    }
+
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    pub fn mount(&self) -> &MountId {
+        &self.mount
+    }
+
+    /// The call the host received is the call the gate allowed.
+    pub fn matches(&self, target: &str, args: &[Value]) -> bool {
+        self.target.as_ref() == target && self.args_json == args_json(args)
+    }
+}
+
+fn args_json(args: &[Value]) -> String {
+    let list: Vec<_> = args.iter().map(Value::to_json).collect();
+    serde_json::to_string(&list).unwrap_or_else(|_| "[]".to_string())
+}
 
 /// The gate's answer.
 #[derive(Debug)]
@@ -373,6 +425,71 @@ impl Gate {
                 }
             }
         }
+    }
+
+    /// Issue a permit for one `baseStore.*` call, or `None`.
+    ///
+    /// `facts == None` means this session has no base screen: the call
+    /// gets no permit and no denial, so every other app is unchanged.
+    /// When facts are installed, a call that is not the built-in base
+    /// mount, not an allowed target, or not the allowed arguments is
+    /// refused and counted. `meta.role` is not an input.
+    pub fn issue_base_permit(
+        &self,
+        auth: &MountCx,
+        target: &str,
+        args: &[Value],
+        facts: Option<&BasePermitFacts>,
+    ) -> Option<ActionPermit> {
+        let method = target.strip_prefix("baseStore.")?;
+        let facts = facts?;
+        if !trusted_base_mount(auth, &facts.builtin) {
+            self.deny(auth, format!("action:{target}"));
+            return None;
+        }
+        if !base_args_ok(method, args, &facts.catalog) {
+            self.deny(auth, format!("action:{target}"));
+            return None;
+        }
+        let exempt = matches!(method, "closePage" | "clearPasswordWrong");
+        if facts.busy && !exempt {
+            self.deny(auth, format!("action:{target}"));
+            return None;
+        }
+        Some(ActionPermit {
+            target: target.into(),
+            args_json: args_json(args),
+            generation: facts.generation,
+            mount: auth.mount.clone(),
+        })
+    }
+}
+
+/// The built-in base slot at App or above. The bundle id is the one the
+/// host mounted. A role string cannot satisfy this.
+fn trusted_base_mount(auth: &MountCx, builtin: &str) -> bool {
+    auth.tier >= Tier::App
+        && matches!(
+            &auth.provenance,
+            Provenance::Bundle { bundle, slot: BundleSlot::Base } if bundle.as_ref() == builtin
+        )
+}
+
+/// The targets the connect screen calls, with the argument list each one
+/// takes. Anything else is refused.
+fn base_args_ok(method: &str, args: &[Value], catalog: &[Arc<str>]) -> bool {
+    match method {
+        "openPage" => matches!(
+            args,
+            [Value::Str(page)] if page.as_ref() == "devices" || page.as_ref() == "security"
+        ),
+        "choose" => matches!(
+            args,
+            [Value::Str(id)] if catalog.iter().any(|row| row.as_ref() == id.as_ref())
+        ),
+        "closePage" | "makeIdentity" | "linkIdentity" | "useWords" | "startNow" | "retry"
+        | "showConnections" | "clearPasswordWrong" | "submitPassword" => args.is_empty(),
+        _ => false,
     }
 }
 

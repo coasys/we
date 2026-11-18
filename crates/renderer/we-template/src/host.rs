@@ -53,6 +53,9 @@ pub enum Action {
 pub struct ActionRequest {
     pub origin: Origin,
     pub action: Action,
+    /// Set when the gate issued a base-store permit for this call.
+    /// A base-store action with `None` does not run.
+    pub permit: Option<crate::gate::ActionPermit>,
 }
 
 /// What [`Host::act`] answered.

@@ -42,7 +42,10 @@ pub use bundle::{
     Bundle, BundleAuthor, BundleBrand, BundleDisplay, BundleRecordType, BundleTemplate,
     BundleTheme, DisplaySpaces, BUNDLE_FORMAT, BUNDLE_FORMAT_VERSION,
 };
-pub use gate::{screen_tiers, Declared, FilteredNs, Frame, Gate, MemberVerdict, Permit, Verdict};
+pub use gate::{
+    screen_tiers, ActionPermit, BasePermitFacts, Declared, FilteredNs, Frame, Gate, MemberVerdict,
+    Permit, Verdict,
+};
 pub use handler::{CallId, HandlerToken};
 pub use handlers::{run as run_handler, HandlerCx, PendingCall, PendingMap};
 pub use host::{Action, ActionRequest, CallBook, Completer, Host, Invoked, MountId, Origin};
