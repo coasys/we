@@ -2845,16 +2845,21 @@ export function SpaceStoreProvider(props: ParentProps) {
     spaceSetup: async (target) => {
       // The dataset's own Space row — `spaceSelfWhere`, not "any Space": a
       // discovery copy counts for nothing here. `root` reads off the row like
-      // `readSpaceRoot` does, and the recipe flag is "any Acorn section present"
-      // so a member's edited list is never mistaken for an unwritten one.
+      // `readSpaceRoot` does. The section flag is the completion marker first —
+      // a finished setup writes it — and "any Acorn section present" second, the
+      // pre-marker evidence a space set up before it existed still has: either
+      // says the list was decided, so a members' list holding none of the recipe
+      // is never mistaken for an unwritten one.
       const ds: AppDataset = { ...target };
       const [space] = await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) });
       const views = space ? parseIdList(space.enabledViews) : [];
+      const setupDone = parseSettings(space?.moduleSettings).acorn?.setupComplete === true;
       return {
         spaceRecord: Boolean(space),
         root: Boolean(space && relationId(space.root)),
-        enabledViews: views.some((id) => ACORN_SECTION_IDS.includes(id)),
+        enabledViews: setupDone || views.some((id) => ACORN_SECTION_IDS.includes(id)),
         defaultTemplate: space?.defaultTemplateId === ACORN_TEMPLATE_ID,
+        setupDone,
       };
     },
     currentDatasetId: () => datasetStore.currentDataset()?.id,
@@ -2862,6 +2867,20 @@ export function SpaceStoreProvider(props: ParentProps) {
     ensureSpaceStructure: (name, description, target) => ensureSpaceStructure(name, description, target),
     setupIntent: acornSetupIntents,
     setSpaceDefaultTemplate: (templateId, spaceUuid) => setSpaceDefaultTemplate(templateId, spaceUuid),
+    /*
+      The marker lives on the Space record's `moduleSettings` — the community-level
+      JSON bag, so it travels to every member and no settings surface renders it
+      (the `acorn` group declares no `ModuleSetting`). Written through the same
+      merge helper every other setting write uses, and only when absent.
+    */
+    markSpaceSetupDone: async (spaceUuid) => {
+      const ds = targetDataset(spaceUuid);
+      if (!ds) return;
+      const [space] = await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) });
+      if (!space) return;
+      const next = writeSetting(space.moduleSettings, 'acorn', 'setupComplete', true);
+      if (next !== space.moduleSettings) await Space.update(ds.handle, space.id, { moduleSettings: next });
+    },
     setSpaceViews: (viewIds, spaceUuid) => setSpaceViews(viewIds, spaceUuid),
     setSpaceTemplateOverride: (templateId, spaceUuid) => setSpaceTemplateOverride(templateId, spaceUuid),
     hasAcornTemplate: () => ACORN_TEMPLATE_ID in bundledTemplates,

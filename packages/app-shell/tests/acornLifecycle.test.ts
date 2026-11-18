@@ -21,9 +21,21 @@ const LANG = 'QmzAcornLanguageUnderTest';
 const BASE = 'QmzAcornBaseBundleUnderTest';
 
 /** The setup-invariant read: nothing of the space's structure exists yet. */
-const EMPTY_SETUP: AcornSpaceSetup = { spaceRecord: false, root: false, enabledViews: false, defaultTemplate: false };
+const EMPTY_SETUP: AcornSpaceSetup = {
+  spaceRecord: false,
+  root: false,
+  enabledViews: false,
+  defaultTemplate: false,
+  setupDone: false,
+};
 /** Every invariant holds — the answer a finished project gives on reopen. */
-const FULL_SETUP: AcornSpaceSetup = { spaceRecord: true, root: true, enabledViews: true, defaultTemplate: true };
+const FULL_SETUP: AcornSpaceSetup = {
+  spaceRecord: true,
+  root: true,
+  enabledViews: true,
+  defaultTemplate: true,
+  setupDone: true,
+};
 
 const ref = (id: string, name = id): DatasetRef => ({ id, name, handle: { id } });
 
@@ -105,6 +117,9 @@ function deps(
     },
     setSpaceDefaultTemplate: vi.fn(async (id: string, uuid?: string) => {
       record.push(`template:${id}:${uuid}`);
+    }),
+    markSpaceSetupDone: vi.fn(async (uuid: string) => {
+      record.push(`marker:${uuid}`);
     }),
     setSpaceViews: vi.fn(async (ids: string[], uuid?: string) => {
       record.push(`views:${ids.join(',')}:${uuid}`);
@@ -285,7 +300,14 @@ describe('openAcornProject', () => {
     const record: string[] = [];
     const d = deps(record, {
       spaceSetup: vi.fn(
-        async () => ({ spaceRecord: true, root: false, enabledViews: true, defaultTemplate: true }) as AcornSpaceSetup,
+        async () =>
+          ({
+            spaceRecord: true,
+            root: false,
+            enabledViews: true,
+            defaultTemplate: true,
+            setupDone: false,
+          }) as AcornSpaceSetup,
       ),
     });
     const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
@@ -304,7 +326,14 @@ describe('openAcornProject', () => {
     const record: string[] = [];
     const d = deps(record, {
       spaceSetup: vi.fn(
-        async () => ({ spaceRecord: true, root: true, enabledViews: false, defaultTemplate: true }) as AcornSpaceSetup,
+        async () =>
+          ({
+            spaceRecord: true,
+            root: true,
+            enabledViews: false,
+            defaultTemplate: true,
+            setupDone: false,
+          }) as AcornSpaceSetup,
       ),
     });
     const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
@@ -326,7 +355,14 @@ describe('openAcornProject', () => {
     const record: string[] = [];
     const d = deps(record, {
       spaceSetup: vi.fn(
-        async () => ({ spaceRecord: true, root: true, enabledViews: true, defaultTemplate: false }) as AcornSpaceSetup,
+        async () =>
+          ({
+            spaceRecord: true,
+            root: true,
+            enabledViews: true,
+            defaultTemplate: false,
+            setupDone: false,
+          }) as AcornSpaceSetup,
       ),
     });
     const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
@@ -551,6 +587,10 @@ describe('openAcornProject', () => {
       setSpaceDefaultTemplate: vi.fn(async (id: string, uuid?: string) => {
         record.push(`template:${id}:${uuid}`);
         flags.defaultTemplate = true;
+      }),
+      markSpaceSetupDone: vi.fn(async (uuid: string) => {
+        record.push(`marker:${uuid}`);
+        flags.setupDone = true;
       }),
       switchDataset: vi.fn(async (id: string) => {
         record.push(`switch:${id}`);

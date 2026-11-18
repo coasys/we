@@ -63,10 +63,20 @@ export interface AcornSpaceSetup {
   spaceRecord: boolean;
   /** The record's `root` relation — the space collection — exists. */
   root: boolean;
-  /** `Space.enabledViews` holds the Acorn section recipe (any of it — a member's own edits are kept). */
+  /**
+   * The section list was *decided* — the completion marker a finished setup leaves, or, for a
+   * space set up before the marker existed, a list still holding an Acorn section. Membership
+   * in the recipe is the fallback evidence, not the test: a members' list that removed every
+   * Acorn section was still decided, and an open that cannot tell the difference rewrites it.
+   */
   enabledViews: boolean;
   /** `Space.defaultTemplateId` names the Acorn template. */
   defaultTemplate: boolean;
+  /**
+   * The explicit end-of-setup marker — written by the lifecycle once the structure, recipe and
+   * template writes all landed. What `enabledViews` reads before it trusts a member-edited list.
+   */
+  setupDone: boolean;
 }
 
 /**
@@ -147,6 +157,13 @@ export interface AcornLifecycleDeps {
   };
   /** The space's default template — written after init, per Q7. */
   setSpaceDefaultTemplate: (templateId: string, spaceUuid?: string) => Promise<void>;
+  /**
+   * The end-of-setup marker, recorded on the space record once the structure, section and
+   * template writes all landed. It is what lets a later open tell "the recipe was written
+   * and members edited it since" from "setup never finished" — a distinction membership in
+   * today's recipe cannot make, since a community may remove every Acorn section.
+   */
+  markSpaceSetupDone: (spaceUuid: string) => Promise<void>;
   /**
    * The space's section list — `Space.enabledViews`. Written beside the template for the
    * same reason: without it a fresh Acorn space inherits the deployment's default sections
@@ -364,6 +381,14 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
         await deps.setSpaceViews(ACORN_SECTION_IDS, ref.id);
       }
       if (setup && !setup.defaultTemplate) await deps.setSpaceDefaultTemplate(ACORN_TEMPLATE_ID, ref.id);
+      /*
+        Completion is a write, not a reading: the marker says the setup above finished, so a
+        members' list holding none of the recipe stays edited rather than being reset on every
+        open. Written whenever setup ran and the marker is absent — which also migrates the
+        spaces set up before there was a marker: they report `enabledViews` from membership
+        and get the marker here, after which the marker alone says it.
+      */
+      if (setup && !setup.setupDone) await deps.markSpaceSetupDone(ref.id);
 
       /*
         The owed remote work, re-read inside the queue: a create's meta and a

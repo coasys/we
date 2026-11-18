@@ -16,6 +16,8 @@ import { CollectionBlock, registerEntityWriteCheck, Space } from '@we/entities';
 import { SPACE_COLLECTION_KIND } from '@we/schema-shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { ACORN_SECTION_IDS } from '../src/shared/acornLifecycle';
+
 // ── Module mocks ──────────────────────────────────────────────────────────────
 // Same arrangement as executorFreeBoot.test.tsx: the platform provider supplies the
 // in-memory backend plus an injectable Acorn port; template/theme/route stores are
@@ -110,6 +112,7 @@ import { ShellStoreProvider } from '../src/frameworks/solid/stores/ShellStore';
 import { type SpaceStore, SpaceStoreProvider, useSpaceStore } from '../src/frameworks/solid/stores/SpaceStore';
 import { relationId } from '../src/shared/involvements';
 import { provideSeed } from '../src/shared/seedRegistry';
+import { parseIdList } from '../src/shared/viewResolution';
 
 provideSeed({ name: 'test', modules: [] } as never);
 
@@ -308,5 +311,38 @@ describe('acorn open — the root relation (F2)', () => {
     expect(channels.map((c) => c.id)).toEqual(orphans);
     const space = await spaceRecordOf(ds.handle, ds);
     expect(relationId(space?.root)).toBe(orphans[0]);
+  });
+});
+
+describe('acorn open — the section recipe (F3)', () => {
+  /*
+    "Any Acorn section in the list" reads today's contents, not whether setup ever ran:
+    a project whose members removed every Acorn section looks unwritten, and reopening
+    rewrote the recipe over their choice. Completion has to be evidence, not membership
+    in the recipe — a marker the finished setup writes.
+  */
+  it('keeps a list that removed every Acorn section — completion is written, not inferred', async () => {
+    seededDatasets = [{ id: 'ds-acorn', name: 'Acorn project' }];
+    const acorn = fakeAcorn();
+    acorn.mountsOf.set('ds-acorn', [LANG]);
+    acornPort = acorn.port;
+    const stores = mountShell();
+    await ready(stores);
+    const ds = stores.datasets.datasets().find((d) => d.id === 'ds-acorn')!;
+
+    await expect(stores.spaces.openAcornProject('ds-acorn')).resolves.toBe('ds-acorn');
+    // The recipe landed at open…
+    let space = await spaceRecordOf(ds.handle, ds);
+    expect(parseIdList(space!.enabledViews)).toEqual(ACORN_SECTION_IDS);
+
+    // …then the community decided it wanted none of them.
+    await stores.spaces.setSpaceViews(['about'], 'ds-acorn');
+    space = await spaceRecordOf(ds.handle, ds);
+    expect(parseIdList(space!.enabledViews)).toEqual(['about']);
+
+    // Reopening must not rewrite the recipe over the community's own list.
+    await expect(stores.spaces.openAcornProject('ds-acorn')).resolves.toBe('ds-acorn');
+    space = await spaceRecordOf(ds.handle, ds);
+    expect(parseIdList(space!.enabledViews)).toEqual(['about']);
   });
 });
