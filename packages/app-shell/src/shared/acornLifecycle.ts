@@ -82,6 +82,13 @@ export interface AcornLifecycleDeps {
   /** Make a dataset the current one — `initializeAsWeSpace` reads the current dataset. */
   switchDataset: (id: string) => Promise<void>;
   /**
+   * The current dataset's id *now*. `await switchDataset` returning is not the switch
+   * having won — another navigation can land on top of it while it was in flight, and
+   * the writes that follow name no dataset, landing on whatever is current then. The
+   * sequence reads this once, after the await, before it writes.
+   */
+  currentDatasetId: () => string | undefined;
+  /**
    * Land on the space, last — after the mount, the init and the template write, so the
    * route effect never sees the dataset half-built and a list row's "open" is one call.
    * It re-switches only when the dataset changed, so calling it on the current one is free.
@@ -197,13 +204,23 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
     ref: DatasetRef,
     lang: string,
     opts: { name: string; writeMeta: boolean; announce: boolean },
-  ): Promise<string> => {
+  ): Promise<string | null> => {
     // "Dataset appears" — the mount installed Acorn's shapes. Bounded, then on
     // anyway: a switch into a still-shapeless dataset installs WE's schemas, which
     // is what `initializeAsWeSpace` is about to do itself — the order that matters
     // (mount before init) is already kept.
     await waitFor(() => deps.schemas()?.hasAnySchema(ref.handle) ?? Promise.resolve(true), timeoutMs, pollMs);
-    await deps.switchDataset(ref.id);
+    const targetId = ref.id;
+    await deps.switchDataset(targetId);
+    /*
+      The await's return is not the switch having won — a second open racing this one,
+      or the user clicking a space, can have landed on another dataset while it was in
+      flight. Every write below lands on `currentDataset` or on `lang` mounted to it —
+      `initializeAsWeSpace` most of all, which would install WE's space on the space the
+      person actually navigated to. If the target lost, stop: the mount stays, and the
+      next open resumes from it.
+    */
+    if (deps.currentDatasetId() !== targetId) return null;
     if (!(await deps.hasSpaceRecord(ref.handle).catch(() => false))) {
       await deps.initializeAsWeSpace(opts.name, '');
     }

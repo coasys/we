@@ -2730,6 +2730,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     schemas: () => session.backendPorts()?.schemas ?? null,
     hasSpaceRecord: (handle) => Space.findAll(handle).then((rows) => rows.length > 0),
     switchDataset: (id) => datasetStore.switchDataset(id),
+    currentDatasetId: () => datasetStore.currentDataset()?.id,
     navigateToSpace: (id) => navigateToSpace(id),
     initializeAsWeSpace: (name, description) => initializeAsWeSpace(name, description),
     setSpaceDefaultTemplate: (templateId, spaceUuid) => setSpaceDefaultTemplate(templateId, spaceUuid),

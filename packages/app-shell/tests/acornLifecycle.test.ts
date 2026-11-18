@@ -67,6 +67,7 @@ function deps(record: string[], overrides: Partial<AcornLifecycleDeps> = {}): Ac
     hasAnySchema: vi.fn(async () => true),
     hasCoreSchema: vi.fn(async () => false),
   };
+  let currentDatasetId: string | undefined;
   return {
     port: () => port,
     lifecycle: () => lifecycle as unknown as DatasetLifecyclePort,
@@ -74,7 +75,9 @@ function deps(record: string[], overrides: Partial<AcornLifecycleDeps> = {}): Ac
     hasSpaceRecord: vi.fn(async () => false),
     switchDataset: vi.fn(async (id: string) => {
       record.push(`switch:${id}`);
+      currentDatasetId = id;
     }),
+    currentDatasetId: () => currentDatasetId,
     navigateToSpace: vi.fn(async (id: string) => {
       record.push(`navigate:${id}`);
     }),
@@ -247,6 +250,35 @@ describe('openAcornProject', () => {
     await acorn.openAcornProject('dataset-1');
     expect(d.initializeAsWeSpace).not.toHaveBeenCalled();
     expect(record).toContain(`template:${ACORN_TEMPLATE_ID}:dataset-1`);
+  });
+
+  /*
+    `await switchDataset` returning is not the switch having won: a second open, or the
+    user clicking a space, can land on top of it while it was in flight — and every write
+    after it (`initializeAsWeSpace` and the template writes) names no dataset, landing on
+    whatever `currentDataset` is then. The sequence checks who won before it writes; the
+    mount it already made stays put, and the next open resumes from it.
+  */
+  it('stops before any write when the awaited switch was superseded', async () => {
+    const record: string[] = [];
+    let current = 'dataset-before';
+    const d = deps(record, {
+      switchDataset: vi.fn(async (id: string) => {
+        record.push(`switch:${id}`);
+        current = 'dataset-other';
+      }),
+      currentDatasetId: () => current,
+    });
+    const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
+    port.mountsOf['dataset-1'] = [LANG];
+    const acorn = createAcornLifecycle(d);
+
+    await expect(acorn.openAcornProject('dataset-1')).resolves.toBeNull();
+
+    // The switch was asked for; nothing after it ran — no init, no template write, no
+    // member interaction, no navigation. The mount stays for the next open to resume.
+    expect(record).toEqual(['mounts:dataset-1', 'switch:dataset-1']);
+    expect(d.initializeAsWeSpace).not.toHaveBeenCalled();
   });
 });
 
