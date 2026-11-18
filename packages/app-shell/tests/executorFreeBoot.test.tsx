@@ -14,7 +14,8 @@ import { cleanup, render } from '@solidjs/testing-library';
 import { createInMemoryBackendPorts, type InMemoryAgentOptions, type InMemoryLifecycle } from '@we/backend-inmemory';
 import { createBlocks, registerCoreBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
-import { AgentSettings, CollectionBlock, getEntity, Policy, Space, SpaceLandmark } from '@we/entities';
+import { provideFileSaver } from '@we/design-utils';
+import { AgentSettings, CollectionBlock, getEntity, ModelRun, Policy, Space, SpaceLandmark } from '@we/entities';
 import { type FeedFind, readFeedWindow } from '@we/module-feed';
 import { notesModule } from '@we/module-notes';
 import { pocketModule } from '@we/module-pocket';
@@ -146,7 +147,7 @@ vi.mock('../src/frameworks/solid/stores/TemplateStore', async () => {
       provideSpaceLookup: () => {},
       preloadSpaceTemplates: async () => {},
       allTemplates: () => [],
-      currentTemplate: () => undefined,
+      currentTemplate: {},
       defaultTemplateId: () => 'default',
       replaceTemplate: () => {},
     }),
@@ -1498,6 +1499,81 @@ describe('dataset lifecycle through the real stores', () => {
       update.mockRestore();
       refused.mockRestore();
     }
+  }, 10000);
+
+  /*
+    The default setters show the choice before it is stored. A write that fails has to take its own
+    optimism back — a default that reads as saved while the record kept the old one is the setting
+    that lies until the next visit.
+  */
+  it('restores the previous space default, and says so, when its save fails', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    await stores.spaces.createSpace('Defaults', '', 'personal', 'hidden');
+    const ref = (await lifecycle.list()).find((d) => d.name === 'Defaults')!;
+    const uuid = ref.id;
+    await stores.datasets.switchDataset(uuid);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(uuid));
+    await stores.spaces.setSpaceDefaultTheme('retro', uuid);
+    await stores.spaces.setSpaceDefaultTemplate('first', uuid);
+
+    const refused = vi.spyOn(toastService, 'error');
+    const update = vi
+      .spyOn(getEntity('Space') as unknown as { update: (...a: unknown[]) => Promise<unknown> }, 'update')
+      .mockRejectedValue(new Error('disk full'));
+    try {
+      await expect(stores.spaces.setSpaceDefaultTheme('neon', uuid)).rejects.toThrow('disk full');
+      await expect(stores.spaces.setSpaceDefaultTemplate('second', uuid)).rejects.toThrow('disk full');
+      // Reported the way every other field's failed write is.
+      expect(refused).toHaveBeenCalledWith('Could not save this change for the space.');
+    } finally {
+      update.mockRestore();
+      refused.mockRestore();
+    }
+
+    // The shown default is what stands, on the record and in the row the picker reads.
+    expect(stores.spaces.spaceDefaultThemeId()).toBe('retro');
+    expect(stores.spaces.spaceDefaultTemplateId()).toBe('first');
+    expect(stores.spaces.mySpaces().find((s) => s.uuid === uuid)?.defaultThemeId).toBe('retro');
+    const [stored] = await Space.findAll(ref.handle as never);
+    expect(stored?.defaultThemeId).toBe('retro');
+    expect(stored?.defaultTemplateId).toBe('first');
+  }, 10000);
+
+  it('does not take back a later choice that landed when an earlier save fails', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    await stores.spaces.createSpace('Defaults', '', 'personal', 'hidden');
+    const ref = (await lifecycle.list()).find((d) => d.name === 'Defaults')!;
+    const uuid = ref.id;
+    await stores.datasets.switchDataset(uuid);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(uuid));
+    await stores.spaces.setSpaceDefaultTheme('retro', uuid);
+
+    // The first save is held at the store write; the second goes past it and lands.
+    let fail!: () => void;
+    const held = new Promise<void>((_resolve, reject) => (fail = () => reject(new Error('disk full'))));
+    const Entity = getEntity('Space') as unknown as {
+      update: (handle: unknown, id: string, fields: unknown) => Promise<unknown>;
+    };
+    const update = vi.spyOn(Entity, 'update').mockImplementationOnce(async () => {
+      await held;
+    });
+    try {
+      const earlier = stores.spaces.setSpaceDefaultTheme('neon', uuid);
+      await vi.waitFor(() => expect(stores.spaces.spaceDefaultThemeId()).toBe('neon'));
+      await stores.spaces.setSpaceDefaultTheme('jade', uuid);
+      fail();
+      await expect(earlier).rejects.toThrow('disk full');
+    } finally {
+      update.mockRestore();
+    }
+
+    // 'neon' never persisted: what stands is the choice that did — not 'retro', and not 'neon'.
+    expect(stores.spaces.spaceDefaultThemeId()).toBe('jade');
+    expect(stores.spaces.mySpaces().find((s) => s.uuid === uuid)?.defaultThemeId).toBe('jade');
+    const [stored] = await Space.findAll(ref.handle as never);
+    expect(stored?.defaultThemeId).toBe('jade');
   }, 10000);
 
   /*
@@ -2904,18 +2980,20 @@ describe('what a collection extracts', () => {
   function watchPort() {
     const watched: string[] = [];
     const removed: string[] = [];
+    const registrations: { dataset: unknown; watchId: string; classes: string[] }[] = [];
 
     onPorts = (ports) => {
       (ports as unknown as { interpretation: unknown }).interpretation = {
-        watch: async (_dataset: unknown, args: { watchId: string; classes: string[] }) => {
+        watch: async (dataset: unknown, args: { watchId: string; classes: string[] }) => {
           watched.push(args.watchId);
+          registrations.push({ dataset, watchId: args.watchId, classes: [...args.classes] });
         },
         unwatch: async (_dataset: unknown, watchId: string) => {
           removed.push(watchId);
         },
       };
     };
-    return { watched, removed };
+    return { watched, removed, registrations };
   }
   /** Installed after boot: the backend registers its classes afresh each time it starts. */
   function standInContainmentShape() {
@@ -3313,6 +3391,209 @@ describe('what a collection extracts', () => {
     expect(port.watched).toContain(watchId(b.id));
     expect(port.watched).not.toContain(watchId(a.id));
     expect(stores.spaces.autoExtractFor(b.id)).toBe(true);
+  }, 15000);
+
+  /*
+    A watch for a call in a space nobody is looking at is decided by that call's own collection —
+    its switch and its class list live in its own dataset. The live reads answer for the space on
+    screen: left to them, a call in another space is either refused on a switch that is not its
+    own, or registered carrying the other space's classes.
+  */
+  it('registers a call in another space on that call’s own switch and class list', async () => {
+    const port = watchPort();
+    const stores = mountShell();
+    await ready(stores);
+    const handleA = await enterSpace(stores, 'Here');
+    const a = stores.datasets.currentDataset()!.id;
+    // The call's own answers: watched as it grows, looking for tasks only.
+    const call = await CollectionBlock.create(handleA, {
+      kind: 'call',
+      mode: 'feed',
+      autoExtract: true,
+      extractionTargets: '["TaskBlock"]',
+    } as never);
+
+    // Elsewhere's answers differ on both counts — off for the space, events for the list.
+    await enterSpace(stores, 'Elsewhere');
+    await stores.spaces.setAutoInterpret(false);
+    await stores.spaces.setExtractionTarget('TaskBlock', false);
+    provideModuleHostServices({
+      datasetByUri: (uri) => stores.datasets.datasets().find((d) => d.id === uri || d.sharedUri === uri)?.handle,
+    });
+
+    await kernel().watchCollection(call.id, { dataset: a });
+
+    // Registered on Here's dataset, with Here's call's own list — not Elsewhere's.
+    const registered = port.registrations.find((r) => r.watchId === watchId(call.id));
+    expect(registered?.dataset).toBe(handleA);
+    expect(registered?.classes).toEqual(['TaskBlock']);
+  }, 15000);
+
+  it('refuses a call whose own switch is off, though the space on screen’s is on', async () => {
+    const port = watchPort();
+    const stores = mountShell();
+    await ready(stores);
+    const handleA = await enterSpace(stores, 'Here');
+    const a = stores.datasets.currentDataset()!.id;
+    const call = await CollectionBlock.create(handleA, {
+      kind: 'call',
+      mode: 'feed',
+      autoExtract: false,
+      extractionTargets: '["TaskBlock"]',
+    } as never);
+
+    await enterSpace(stores, 'Elsewhere');
+    provideModuleHostServices({
+      datasetByUri: (uri) => stores.datasets.datasets().find((d) => d.id === uri || d.sharedUri === uri)?.handle,
+    });
+    /*
+      Waited on so the ask about this collection has been read — against the space on screen, which
+      is the bug. From then on the live gate answers for Elsewhere: on, where Here's call is off.
+      A gate that reads the live answers registers this watch instead of refusing it.
+    */
+    await vi.waitFor(() => expect(stores.spaces.autoExtractFor(call.id)).toBe(true));
+
+    await expect(kernel().watchCollection(call.id, { dataset: a })).rejects.toThrow('automatic extraction is off');
+    expect(port.registrations.some((r) => r.watchId === watchId(call.id))).toBe(false);
+  }, 15000);
+
+  it('asks for the call’s own classes when the space moves on mid-gather', async () => {
+    const requests: { dataset: unknown; classes: string[] }[] = [];
+    onPorts = (ports) => {
+      (ports as unknown as { interpretation: unknown }).interpretation = {
+        interpret: async (dataset: unknown, _turns: unknown, request: { classes: string[] }) => {
+          requests.push({ dataset, classes: [...request.classes] });
+          return { turns: 0, ids: [], proposed: [] };
+        },
+      };
+    };
+    const stores = mountShell();
+    await ready(stores);
+    const handleA = await enterSpace(stores, 'Here');
+    const a = stores.datasets.currentDataset()!.id;
+    const call = await CollectionBlock.create(handleA, {
+      kind: 'call',
+      mode: 'feed',
+      autoExtract: true,
+      extractionTargets: '["TaskBlock"]',
+    } as never);
+    // The call's own list — tasks only — is what a caller's open picker would already have read.
+    const interpretation = kernel();
+    await vi.waitFor(() => expect(looksFor(interpretation, call.id, 'EventBlock')).toBe(false));
+    expect(looksFor(interpretation, call.id, 'TaskBlock')).toBe(true);
+
+    // Elsewhere starts calls on events; the pass that follows must still ask for Here's tasks.
+    await enterSpace(stores, 'Elsewhere');
+    await stores.spaces.setExtractionTarget('TaskBlock', false);
+    const b = stores.datasets.currentDataset()!.id;
+    await stores.spaces.navigateToSpace(a);
+    await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(a));
+    // The switch reset what is loaded: the call's own list again, as the picker shows it.
+    await vi.waitFor(() => expect(looksFor(interpretation, call.id, 'EventBlock')).toBe(false));
+
+    // The gather is held while the screen moves to Elsewhere — the window the class list raced.
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const Text = getEntity('TextBlock') as unknown as {
+      findAll: (handle: unknown, options?: unknown) => Promise<unknown[]>;
+    };
+    const findAll = Text.findAll.bind(Text);
+    const spy = vi.spyOn(Text, 'findAll').mockImplementation(async (handle, options) => {
+      await held;
+      return findAll(handle, options);
+    });
+    try {
+      const pass = interpretation.runOnCollection(call.id);
+      await vi.waitFor(() => expect(spy).toHaveBeenCalled());
+      await stores.spaces.navigateToSpace(b);
+      await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(b));
+      release();
+      await pass;
+    } finally {
+      spy.mockRestore();
+    }
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0].dataset).toBe(handleA);
+    expect(requests[0].classes).toEqual(['TaskBlock']);
+  }, 15000);
+
+  /*
+    An export laid out after the save can outlast the space it was started in: what names the file —
+    the space's name, what the call looks for, the space's defaults — is the exporting space's, read
+    for the call's own dataset rather than whatever is on screen when the content lands.
+  */
+  it('labels an export with the space it was started in, not the space on screen when it lands', async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let proposalsAsked = false;
+    onPorts = (ports) => {
+      (ports as unknown as { interpretation: unknown }).interpretation = {
+        proposals: async () => {
+          proposalsAsked = true;
+          await held;
+          return [];
+        },
+      };
+    };
+    const saved: { name: string; text: string }[] = [];
+    const unbindSaver = provideFileSaver(async ({ name, bytes }) => {
+      saved.push({ name, text: new TextDecoder().decode(bytes) });
+      return true;
+    });
+    const stores = mountShell();
+    await ready(stores);
+    const handleA = await enterSpace(stores, 'Made in');
+    const a = stores.datasets.currentDataset()!.id;
+    const call = await CollectionBlock.create(handleA, {
+      kind: 'call',
+      mode: 'feed',
+      title: 'the call',
+      autoExtract: true,
+      extractionTargets: '["TaskBlock"]',
+    } as never);
+    // A pass, or the log is empty and nothing is written.
+    await ModelRun.create(
+      handleA,
+      {
+        kind: 'extraction',
+        outcome: 'done',
+        recordCount: 0,
+        detail: '{"targets":["TaskBlock"]}',
+        error: '',
+        trigger: 'auto',
+        prompt: 'p',
+        output: 'o',
+      } as never,
+      { parent: { id: call.id, relation: 'runs', entity: 'CollectionBlock' } } as never,
+    );
+
+    // Elsewhere answers every one of the exported fields differently.
+    await enterSpace(stores, 'Moved to');
+    await stores.spaces.setAutoInterpret(false);
+    await stores.spaces.setExtractionTarget('TaskBlock', false);
+    const b = stores.datasets.currentDataset()!.id;
+    await stores.spaces.navigateToSpace(a);
+    await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(a));
+
+    try {
+      // Started in Here; held in the gather while the screen moves to Elsewhere.
+      const exporting = stores.spaces.exportExtractionLog(call.id);
+      await vi.waitFor(() => expect(proposalsAsked).toBe(true));
+      await stores.spaces.navigateToSpace(b);
+      await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(b));
+      release();
+      await exporting;
+    } finally {
+      unbindSaver();
+    }
+
+    expect(saved).toHaveLength(1);
+    const log = saved[0].text;
+    expect(log).toContain('- Space: Made in');
+    expect(log).toContain('- Looking for, on this call: TaskBlock\n');
+    expect(log).toContain('- Space default: TaskBlock, EventBlock');
+    expect(log).toContain('- Extracts automatically as the call happens: yes');
   }, 15000);
 });
 

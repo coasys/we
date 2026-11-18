@@ -23,11 +23,15 @@ export interface CallExportDeps {
   dataset: () => { handle: DatasetProxy } | null | undefined;
   interpretation: () => InterpretationPort | undefined;
   profileStore: Pick<ProfileStore, 'fetchProfile' | 'profiles'>;
-  spaceName: () => string | undefined;
-  /** What this call extracts, what the space extracts, and whether this call is extracted as it grows. */
-  targetsFor: (callId: string) => string[];
-  spaceTargets: () => string[];
-  autoFor: (callId: string) => boolean;
+  /**
+   * The space's name and the call's extraction answers — what this call extracts, what the space
+   * extracts, and whether this call is extracted as it grows — read for the dataset named rather
+   * than the space on screen, which may have moved on by the time the gathered content is laid out.
+   */
+  exportMeta: (
+    handle: DatasetProxy,
+    callId: string,
+  ) => Promise<{ spaceName?: string; spaceTargets: string[]; auto: boolean; classes: string[] }>;
 }
 
 export function createCallExports(deps: CallExportDeps) {
@@ -120,7 +124,15 @@ export function createCallExports(deps: CallExportDeps) {
     const p = dataset.handle;
     try {
       const exportedAt = new Date();
-      const titled = await CollectionBlock.findOne(p, { where: { id: callId } });
+      /*
+        The space's answers are read for the call's own dataset, alongside the title read — the
+        content below is gathered after the save dialog, and by then the space on screen may be
+        another's, whose name and settings would sit beside this call's transcript and records.
+      */
+      const [titled, meta] = await Promise.all([
+        CollectionBlock.findOne(p, { where: { id: callId } }),
+        deps.exportMeta(p, callId),
+      ]);
       const outcome = await saveFile({
         name: exportFileName(titled?.title, 'call', 'md', exportedAt).replace(/\.md$/, '-extraction-log.md'),
         type: 'text/markdown;charset=utf-8',
@@ -170,11 +182,11 @@ export function createCallExports(deps: CallExportDeps) {
           return formatExtractionLog({
             callId,
             callTitle: row?.title,
-            spaceName: deps.spaceName(),
+            spaceName: meta.spaceName,
             exportedAt,
-            callTargets: deps.targetsFor(callId),
-            spaceTargets: deps.spaceTargets(),
-            autoInterpret: deps.autoFor(callId),
+            callTargets: meta.classes,
+            spaceTargets: meta.spaceTargets,
+            autoInterpret: meta.auto,
             transcript: turns,
             passes,
             records,

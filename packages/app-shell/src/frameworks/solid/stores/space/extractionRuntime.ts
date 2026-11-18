@@ -163,6 +163,13 @@ export interface ExtractionRuntimeDeps {
   /** Whether this collection is extracted as it grows — its own answer. */
   autoFor: (collectionId: string) => boolean;
   setAutoFor: (collectionId: string, on: boolean) => Promise<void>;
+  /**
+   * One collection's gate and class list, read for the dataset named rather than the space on
+   * screen. The live reads follow whichever space is showing and reset on every switch; a watch
+   * registered for a call in a space nobody is looking at has to read the collection through its
+   * own dataset — where its answer, and the space default it defers to, actually live.
+   */
+  collectionAnswers: (handle: DatasetHandle, collectionId: string) => Promise<{ auto: boolean; classes: string[] }>;
 }
 
 export interface ExtractionRuntime {
@@ -202,23 +209,30 @@ export function createExtractionRuntime(deps: ExtractionRuntimeDeps): Extraction
     const port = deps.port();
     if (!port?.watch) throw new Error('interpretation: this backend cannot run a standing watch');
     /*
+      The caller's dataset, not the one on screen: a call outlives the space on screen, and a watch
+      registered wherever the reader had wandered to interprets the call into a perspective that
+      does not hold it — and is then removed from the wrong one too, so it never stops.
+    */
+    const onScreen = deps.dataset();
+    const handle = target ?? onScreen;
+    if (!handle) throw new Error('interpretation: no dataset to interpret into');
+    /*
       Asked about *this collection*, not about the space.
 
       A collection holds its own answer, and one that has been turned off has to stay off — a check
       that could only see the space would re-register the watch on the next tick. False until the
       collection's settings have been read, which is the right way round for something that spends
       somebody's LLM budget.
-    */
-    if (!deps.autoFor(collectionId)) throw new Error('interpretation: automatic extraction is off for this collection');
-    /*
-      The caller's dataset, not the one on screen: a call outlives the space on screen, and a watch
-      registered wherever the reader had wandered to interprets the call into a perspective that
-      does not hold it — and is then removed from the wrong one too, so it never stops.
-    */
-    const handle = target ?? deps.dataset();
-    if (!handle) throw new Error('interpretation: no dataset to interpret into');
 
-    const classes = targetsForCollection(collectionId);
+      The live reads answer about the space on screen, so for the dataset handed in they are read
+      through it instead: another space's gate and class list registered on this call's watch is
+      the same mistake as another space's dataset.
+    */
+    const { auto, classes } =
+      handle === onScreen
+        ? { auto: deps.autoFor(collectionId), classes: targetsForCollection(collectionId) }
+        : await deps.collectionAnswers(handle, collectionId);
+    if (!auto) throw new Error('interpretation: automatic extraction is off for this collection');
     // Refused rather than registered empty: the executor rejects a processor with no classes, and
     // "this space has marked nothing for extraction" is a sentence worth saying in its own words.
     if (!classes.length) throw new Error('interpretation: nothing in this space is marked for AI extraction');
@@ -280,16 +294,21 @@ export function createExtractionRuntime(deps: ExtractionRuntimeDeps): Extraction
       const handle = untrack(deps.dataset);
       if (!handle) throw new Error('interpretation: no dataset to interpret into');
 
+      /*
+        The host resolves the class list, because the three layers that decide it — candidacy, the
+        space's default, this call's own — are all host state. A module names a collection and
+        nothing else, exactly as it does for the watch id and where a pass is filed.
+
+        Resolved with the handle, before the gather: read live afterwards it would answer for
+        whichever space is on screen by then, pairing one space's classes with another's transcript.
+      */
+      const classes = targetsForCollection(collectionId);
+
       const modelFor = (entity: string) => getEntityForDataset(entity, handle);
       const turns = await gatherTranscriptTurns(
         { modelFor: (entity) => modelFor(entity) as TurnRecord | undefined, handle },
         collectionId,
       );
-
-      // The host resolves the class list, because the three layers that decide it — candidacy, the
-      // space's default, this call's own — are all host state. A module names a collection and
-      // nothing else, exactly as it does for the watch id and where a pass is filed.
-      const classes = targetsForCollection(collectionId);
       const run = await openPass(handle, collectionId, classes);
       try {
         const result = await port.interpret(handle, turns, {

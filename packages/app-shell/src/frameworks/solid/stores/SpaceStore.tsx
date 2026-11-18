@@ -107,7 +107,7 @@ import {
   type ThemeResolutionInput,
 } from '@shared/themeResolution';
 import { uploadOf } from '@shared/uploadOf';
-import { copyText, deriveSlug } from '@shared/utils';
+import { copyText, deepClone, deriveSlug } from '@shared/utils';
 import type { ViewSetting } from '@shared/viewResolution';
 import {
   activeSections,
@@ -2854,10 +2854,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     dataset: () => datasetStore.currentDataset(),
     interpretation: () => session.backendPorts()?.interpretation,
     profileStore,
-    spaceName: () => currentSpace()?.name,
-    targetsFor: (callId) => extractionTargetsFor(callId),
-    spaceTargets: () => extractionTargets(),
-    autoFor: (callId) => autoExtractFor(callId),
+    exportMeta: collectionExtractionFor,
   });
 
   const [currentSpace, setCurrentSpace] = createSignal<Space | null>(null);
@@ -4587,6 +4584,36 @@ export function SpaceStoreProvider(props: ParentProps) {
     await writeCollectionSettings(collectionId, { extractionTargets: JSON.stringify([...next]) }, 'what this extracts');
   }
 
+  /**
+   * One collection's extraction answers, read for the dataset named rather than the space on screen.
+   *
+   * The live reads above follow whichever space is showing and reset on every switch; a watch
+   * registered for a call in a space nobody is looking at, and an export laid out after a save
+   * dialog, both answer about the collection's own dataset. The space's defaults come off its
+   * record there, so a collection made without a copy defers to its own space — and narrowing asks
+   * the dataset's own registry, since a name it cannot resolve has no shape there and would take
+   * the whole pass down.
+   */
+  async function collectionExtractionFor(
+    handle: DatasetProxy,
+    collectionId: string,
+  ): Promise<{ spaceName?: string; spaceTargets: string[]; auto: boolean; classes: string[] }> {
+    const [row]: CollectionBlock[] = await CollectionBlock.findAll(handle, {
+      where: { id: [collectionId] },
+      properties: [...COLLECTION_SETTINGS_FIELDS],
+    } as never);
+    const ds = datasetStore.datasets().find((d) => d.handle === handle);
+    const space = ds ? await spaceRow(ds) : undefined;
+    const resolvable = (entity: string) => getEntityForDataset(entity, handle) !== undefined;
+    const spaceChosen = parseEntityList(space?.extractionTargets) ?? LEGACY_EXTRACTION_TARGETS;
+    return {
+      spaceName: space?.name,
+      spaceTargets: spaceChosen.filter(resolvable),
+      auto: resolveCollectionAutoExtract(space?.autoInterpret === true, row?.autoExtract),
+      classes: (parseEntityList(row?.extractionTargets) ?? spaceChosen).filter(resolvable),
+    };
+  }
+
   /*
     The space's own standing watch: the messages typed straight into it, outside any call.
 
@@ -4611,6 +4638,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     setTargetFor: setExtractionTargetFor,
     autoFor: autoExtractFor,
     setAutoFor: setAutoExtractFor,
+    collectionAnswers: collectionExtractionFor,
   });
   onCleanup(provideModuleHostServices(extraction.services));
 
@@ -5762,9 +5790,20 @@ export function SpaceStoreProvider(props: ParentProps) {
     toastService.warning(`This template suggests a theme ("${suggested}") you don't have — using your own.`);
   });
 
+  /** The default `field` shown for `ds` — the cached row's, else the record on screen's. */
+  const shownDefault = (ds: AppDataset, field: 'defaultTemplateId' | 'defaultThemeId'): string | undefined =>
+    heldSpace(ds)?.[field] ?? (isCurrent(ds) ? currentSpace()?.[field] : undefined);
+
   async function setSpaceDefaultTemplate(templateId: string, spaceUuid?: string): Promise<void> {
     const ds = targetDataset(spaceUuid);
     if (!ds) return;
+    /*
+      Read before the optimistic publish writes over them — the template snapshot is cloned because
+      what is on screen is a store, and `replaceTemplate` reconciles it in place.
+    */
+    const previousId = shownDefault(ds, 'defaultTemplateId');
+    const previousTemplate =
+      isCurrent(ds) && templateStore.currentTemplate ? deepClone(templateStore.currentTemplate) : undefined;
     // Switching what is on screen is only right when the space being configured is the one on
     // screen. Setting another space's default from the spaces list must not repaint the app.
     // Published before it is stored, so template pre-loading reads the fresh id from the cache.
@@ -5774,16 +5813,34 @@ export function SpaceStoreProvider(props: ParentProps) {
       if (template) templateStore.replaceTemplate(template);
     }
     const space = await spaceRow(ds);
-    if (space) await Space.update(ds.handle, space.id, { defaultTemplateId: templateId });
+    if (!space) return;
+    try {
+      await writeSpaceFields(ds, space, { defaultTemplateId: templateId });
+    } catch (error) {
+      // Only this call's own optimism is taken back — a newer choice published meanwhile stays.
+      if (shownDefault(ds, 'defaultTemplateId') === templateId) {
+        publishSpaceFields(ds, { defaultTemplateId: previousId });
+        if (isCurrent(ds) && previousTemplate) templateStore.replaceTemplate(previousTemplate);
+      }
+      throw error;
+    }
   }
 
   async function setSpaceDefaultTheme(themeId: string, spaceUuid?: string): Promise<void> {
     const ds = targetDataset(spaceUuid);
     if (!ds) return;
+    const previousId = shownDefault(ds, 'defaultThemeId');
     publishSpaceFields(ds, { defaultThemeId: themeId });
     if (isCurrent(ds)) explainHiddenSpaceTheme();
     const space = await spaceRow(ds);
-    if (space) await Space.update(ds.handle, space.id, { defaultThemeId: themeId });
+    if (!space) return;
+    try {
+      await writeSpaceFields(ds, space, { defaultThemeId: themeId });
+    } catch (error) {
+      // Only this call's own optimism is taken back — a newer choice published meanwhile stays.
+      if (shownDefault(ds, 'defaultThemeId') === themeId) publishSpaceFields(ds, { defaultThemeId: previousId });
+      throw error;
+    }
   }
 
   /**
