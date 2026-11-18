@@ -16,8 +16,9 @@
  *
  * To run against an executor that is already running instead, set `AD4M_LIVE_URL` and
  * `AD4M_LIVE_TOKEN` — a token for an unlocked agent, or for an account on a multi-user node — and
- * `AD4M_LIVE_MCP_URL` for the MCP endpoint; and know that the tests then write their perspectives
- * into that agent.
+ * `AD4M_LIVE_MCP_URL` for the MCP endpoint, and `AD4M_LIVE_OPERATOR_TOKEN` for the calls only the
+ * operator may make (else `AD4M_LIVE_TOKEN` is used for them too); and know that the tests then
+ * write their perspectives into that agent.
  */
 import { Ad4mClient } from '@coasys/ad4m';
 import { type Executor, signUp, startExecutor } from '@we/e2e/executor';
@@ -28,6 +29,12 @@ export interface LiveExecutor {
   url: string;
   /** What the tests sign in with: the account's token on a fresh executor. */
   token: string;
+  /**
+   * The operator's credential, for the calls a person's account may not make: reading the
+   * executor's configuration and registering models. The admin credential on a fresh executor;
+   * for one already running, `AD4M_LIVE_OPERATOR_TOKEN`, else `token`.
+   */
+  operatorToken: string;
   /**
    * The executor's MCP endpoint (`http://…/mcp`), which is how a bot reaches the tools a waker is
    * configured from (`get_mention_waker_config`). Absent for an executor already running
@@ -71,7 +78,12 @@ export default async function setup(project: TestProject): Promise<() => Promise
     } finally {
       client.close();
     }
-    project.provide('ad4mExecutor', { url: presetUrl, token, mcpUrl: process.env.AD4M_LIVE_MCP_URL });
+    project.provide('ad4mExecutor', {
+      url: presetUrl,
+      token,
+      operatorToken: process.env.AD4M_LIVE_OPERATOR_TOKEN ?? token,
+      mcpUrl: process.env.AD4M_LIVE_MCP_URL,
+    });
     return async () => {};
   }
 
@@ -87,6 +99,12 @@ export default async function setup(project: TestProject): Promise<() => Promise
     throw new Error(`${(error as Error).message}\n--- executor output ---\n${executor.log().slice(-8_000)}`);
   }
 
-  project.provide('ad4mExecutor', { url: executor.url, token, mcpUrl: executor.mcpUrl, disposable: true });
+  project.provide('ad4mExecutor', {
+    url: executor.url,
+    token,
+    operatorToken: executor.adminCredential,
+    mcpUrl: executor.mcpUrl,
+    disposable: true,
+  });
   return () => executor.stop();
 }

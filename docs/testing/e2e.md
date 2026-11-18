@@ -125,17 +125,18 @@ journey wraps every step this way, and the spaces suite captures every page of t
 
 ## Environment
 
-| Variable                                                | Read by                | Use                                                                                                                   |
-| ------------------------------------------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `AD4M_EXECUTOR`                                         | every live test        | The executor binary. Without it, the seed's `ad4m.executorPath`, else the pinned download.                            |
-| `WE_CHROME`                                             | every browser test     | The Chrome or Chromium to drive. Without it, Playwright's own, then `google-chrome`, then `chromium`.                 |
-| `WE_E2E_ARTIFACTS`                                      | journeys               | Where failure artifacts go. Without it, a new temp directory, whose path the run prints.                              |
-| `WE_LIVE_LOG`                                           | `startExecutor`        | A file to write the executor's output to when it stops.                                                               |
-| `WE_SEED`                                               | the build, `serveDist` | The seed the app is built with and whose CSP it is served under (`we-seed.json` otherwise).                           |
-| `AD4M_LIVE_URL`, `AD4M_LIVE_TOKEN`, `AD4M_LIVE_MCP_URL` | `backend-live`         | An executor already running, instead of a fresh one.                                                                  |
-| `COASYS_SPACES_*`                                       | `spaces`               | Tier, verticals, model and artifacts: see the suite's README. `COASYS_SPACES_ARTIFACTS` overrides `WE_E2E_ARTIFACTS`. |
-| `CUSTODY_LIVE`, `AD4M_REPO`                             | `custody-live`         | Turns the test on, and names the ad4m checkout for the identity store and `tests/js`.                                 |
-| `GITHUB_TOKEN` / `GH_TOKEN`                             | `pnpm ad4m:executor`   | Raises GitHub's rate limit for the executor download.                                                                 |
+| Variable                                                | Read by                | Use                                                                                                                    |
+| ------------------------------------------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `AD4M_EXECUTOR`                                         | every live test        | The executor binary. Without it, the seed's `ad4m.executorPath`, else the pinned download.                             |
+| `WE_CHROME`                                             | every browser test     | The Chrome or Chromium to drive. Without it, Playwright's own, then `google-chrome`, then `chromium`.                  |
+| `WE_E2E_ARTIFACTS`                                      | journeys               | Where failure artifacts go. Without it, a new temp directory, whose path the run prints.                               |
+| `WE_LIVE_LOG`                                           | `startExecutor`        | A file to write the executor's output to when it stops.                                                                |
+| `WE_SEED`                                               | the build, `serveDist` | The seed the app is built with and whose CSP it is served under (`we-seed.json` otherwise).                            |
+| `AD4M_LIVE_URL`, `AD4M_LIVE_TOKEN`, `AD4M_LIVE_MCP_URL` | `backend-live`         | An executor already running, instead of a fresh one.                                                                   |
+| `AD4M_LIVE_OPERATOR_TOKEN`                              | `backend-live`         | With `AD4M_LIVE_URL`: the operator's credential, for reading the configuration and registering models. Else the token. |
+| `COASYS_SPACES_*`                                       | `spaces`               | Tier, verticals, model and artifacts: see the suite's README. `COASYS_SPACES_ARTIFACTS` overrides `WE_E2E_ARTIFACTS`.  |
+| `CUSTODY_LIVE`, `AD4M_REPO`                             | `custody-live`         | Turns the test on, and names the ad4m checkout for the identity store and `tests/js`.                                  |
+| `GITHUB_TOKEN` / `GH_TOKEN`                             | `pnpm ad4m:executor`   | Raises GitHub's rate limit for the executor download.                                                                  |
 
 ## Adding a test
 

@@ -145,27 +145,32 @@ describe('agent conversations, live', () => {
   describe.skipIf(!process.env.LLM_E2E)('a live LLM turn', () => {
     let endpointId = '';
     let modelId = '';
+    // Models are the operator's to register; the turn itself runs as the account.
+    let operator: Ad4mClient;
 
     beforeAll(async () => {
-      const endpoint = await client.ai.addEndpoint({
+      const { url, operatorToken } = inject('ad4mExecutor');
+      operator = new Ad4mClient(url, operatorToken);
+      const endpoint = await operator.ai.addEndpoint({
         name: 'marvin-ollama',
         kind: 'OLLAMA',
         baseUrl: 'http://127.0.0.1:11436/v1',
         maxNumCtx: 49_152,
       });
       endpointId = endpoint.id;
-      modelId = await client.ai.addModel({
+      modelId = await operator.ai.addModel({
         name: 'qwen3.8-27b-48k',
         modelType: 'LLM',
         endpointId,
         remoteModel: 'qwen3.8-27b-48k:latest',
       });
-      await client.ai.setDefaultModel('LLM', modelId);
+      await operator.ai.setDefaultModel('LLM', modelId);
     }, 60_000);
 
     afterAll(async () => {
-      if (modelId) await client.ai.removeModel(modelId).catch(() => undefined);
-      if (endpointId) await client.ai.removeEndpoint(endpointId).catch(() => undefined);
+      if (modelId) await operator.ai.removeModel(modelId).catch(() => undefined);
+      if (endpointId) await operator.ai.removeEndpoint(endpointId).catch(() => undefined);
+      operator?.close();
     });
 
     it('runs a turn in the scoped chat: a step shows, the reply lands whole', async () => {
