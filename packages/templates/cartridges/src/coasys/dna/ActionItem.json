@@ -1,0 +1,40 @@
+{
+  "target_class": "delivery://ActionItem",
+  "auto_accept": "never",
+  "interpretation_hint": "Work a named person will do after the call: 'I'll ...', 'can you ...', 'X could ...', 'let's ask X to ...'. Not things already done during the call. Write it in `title`.",
+  "properties": [
+    {
+      "path": "delivery://title",
+      "name": "title",
+      "datatype": "xsd://string",
+      "min_count": 1,
+      "max_count": 1,
+      "writable": true,
+      "interpretation_hint": "Imperative summary of the work.",
+      "setter": [{ "action": "setSingleTarget", "source": "this", "predicate": "delivery://title", "target": "value" }],
+      "identity": true
+    },
+    {
+      "path": "delivery://owner",
+      "name": "owner",
+      "datatype": "xsd://string",
+      "min_count": 0,
+      "max_count": 1,
+      "writable": true,
+      "interpretation_hint": "The person who will do the work. When someone asks another person to do it ('can you', 'could you ask X'), the owner is the person asked. Bots (Data, Marvin, Hex) can be owners. Use the name as spoken.",
+      "setter": [{ "action": "setSingleTarget", "source": "this", "predicate": "delivery://owner", "target": "value" }]
+    },
+    {
+      "path": "delivery://about",
+      "name": "about",
+      "min_count": 0,
+      "max_count": 1,
+      "writable": true,
+      "interpretation_hint": "The DiscussionTopic the task came out of.",
+      "setter": [{ "action": "setSingleTarget", "source": "this", "predicate": "delivery://about", "target": "value" }],
+      "relation_kind": "hasOne",
+      "target_class_name": "DiscussionTopic",
+      "node_kind": "IRI"
+    }
+  ]
+}

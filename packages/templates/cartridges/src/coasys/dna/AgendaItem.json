@@ -1,0 +1,56 @@
+{
+  "target_class": "conv://AgendaItem",
+  "auto_accept": "always",
+  "interpretation_hint": "One line of the call's agenda: a high-level part of the call such as 'Check in' or 'Pricing'. A one-hour call has 4 to 8. When someone states the agenda, in speech or in a chat message, create one AgendaItem per line, in the words used. When no agenda was stated and the conversation moves to a subject that none of the `existing` AgendaItems covers, create one for it; name it for the whole part of the call, not for the first point made in it. Never create a second AgendaItem for a part that is already in `existing`. Keep `status` up to date: when the turns show the call moving on to another part, emit the AgendaItem that starts with status `current` and the one that ended with status `done`, each with its `id`.",
+  "properties": [
+    {
+      "path": "conv://agenda_title",
+      "name": "title",
+      "datatype": "xsd://string",
+      "min_count": 1,
+      "max_count": 1,
+      "writable": true,
+      "interpretation_hint": "The agenda line as stated, or 2-6 words naming this part of the call.",
+      "setter": [
+        { "action": "setSingleTarget", "source": "this", "predicate": "conv://agenda_title", "target": "value" }
+      ],
+      "identity": true
+    },
+    {
+      "path": "conv://agenda_order",
+      "name": "order",
+      "datatype": "xsd://string",
+      "min_count": 0,
+      "max_count": 1,
+      "writable": true,
+      "interpretation_hint": "Position on the agenda as a number: 1 for the first line, 2 for the second.",
+      "setter": [
+        { "action": "setSingleTarget", "source": "this", "predicate": "conv://agenda_order", "target": "value" }
+      ]
+    },
+    {
+      "path": "conv://agenda_source",
+      "name": "source",
+      "datatype": "xsd://string",
+      "min_count": 0,
+      "max_count": 1,
+      "writable": true,
+      "interpretation_hint": "`stated` when someone gave this line as agenda, `detected` when you created it from the flow of the conversation.",
+      "setter": [
+        { "action": "setSingleTarget", "source": "this", "predicate": "conv://agenda_source", "target": "value" }
+      ]
+    },
+    {
+      "path": "conv://agenda_status",
+      "name": "status",
+      "datatype": "xsd://string",
+      "min_count": 0,
+      "max_count": 1,
+      "writable": true,
+      "interpretation_hint": "Where the call is: `upcoming` before this part starts, `current` while the call is in it, `done` once the call has moved on. Two parts can be `current` together when the talk goes back and forth between them.",
+      "setter": [
+        { "action": "setSingleTarget", "source": "this", "predicate": "conv://agenda_status", "target": "value" }
+      ]
+    }
+  ]
+}

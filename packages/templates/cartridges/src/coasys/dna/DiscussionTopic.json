@@ -1,0 +1,66 @@
+{
+  "target_class": "conv://DiscussionTopic",
+  "auto_accept": "when_placed",
+  "interpretation_hint": "One thread of discussion: a single question, proposal or problem that people go back and forth on for several turns. Keep topics narrow: 'Whether to buy drip irrigation' and 'Who pays the water bill' are two topics, not one 'Garden watering'. A 30-minute working call usually has 5-8 topics. Not small talk, audio problems, greetings or scheduling. If the thread is already in `existing`, do not emit it again unless its summary or clarity changed; then emit it with its `id`. When the turns open a new thread inside the area of an existing broad topic, create a new DiscussionTopic for it. Give every new topic its place: `agendaItem` for the part of the call it belongs to, or `subTopicOf` when it is one aspect of a topic already in `existing`.",
+  "properties": [
+    {
+      "path": "conv://title",
+      "name": "title",
+      "datatype": "xsd://string",
+      "min_count": 1,
+      "max_count": 1,
+      "writable": true,
+      "interpretation_hint": "Short label for the subject, 3-10 words.",
+      "setter": [{ "action": "setSingleTarget", "source": "this", "predicate": "conv://title", "target": "value" }],
+      "identity": true
+    },
+    {
+      "path": "conv://summary",
+      "name": "summary",
+      "datatype": "xsd://string",
+      "min_count": 0,
+      "max_count": 1,
+      "writable": true,
+      "interpretation_hint": "One or two sentences: what is being discussed, who holds which view, and where it stands now.",
+      "setter": [{ "action": "setSingleTarget", "source": "this", "predicate": "conv://summary", "target": "value" }]
+    },
+    {
+      "path": "conv://clarity",
+      "name": "clarity",
+      "datatype": "xsd://string",
+      "min_count": 0,
+      "max_count": 1,
+      "writable": true,
+      "interpretation_hint": "How clear the shared understanding is, judged from the whole exchange: low (people are confused, talk past each other, or the key question is open), medium, or high (everyone understands it the same way and agrees on what it means).",
+      "setter": [{ "action": "setSingleTarget", "source": "this", "predicate": "conv://clarity", "target": "value" }]
+    },
+    {
+      "path": "conv://agenda_item",
+      "name": "agendaItem",
+      "min_count": 0,
+      "max_count": 1,
+      "writable": true,
+      "interpretation_hint": "The AgendaItem this topic belongs to: the part of the call in which it is discussed, normally the one whose `status` is `current`. Choose by where the call is, not by which agenda title sounds closest to the topic. Leave empty only when no AgendaItem fits.",
+      "setter": [
+        { "action": "setSingleTarget", "source": "this", "predicate": "conv://agenda_item", "target": "value" }
+      ],
+      "relation_kind": "hasOne",
+      "target_class_name": "AgendaItem",
+      "node_kind": "IRI"
+    },
+    {
+      "path": "conv://sub_topic_of",
+      "name": "subTopicOf",
+      "min_count": 0,
+      "max_count": 1,
+      "writable": true,
+      "interpretation_hint": "Set only when this topic is one aspect of a broader DiscussionTopic already in `existing`, such as 'Encryption at rest' under 'Executor tenancy'. Do not set it because one topic followed another in the conversation. The target is always a DiscussionTopic, never an AgendaItem, and must itself have no `subTopicOf`.",
+      "setter": [
+        { "action": "setSingleTarget", "source": "this", "predicate": "conv://sub_topic_of", "target": "value" }
+      ],
+      "relation_kind": "hasOne",
+      "target_class_name": "DiscussionTopic",
+      "node_kind": "IRI"
+    }
+  ]
+}

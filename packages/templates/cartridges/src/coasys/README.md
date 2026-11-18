@@ -23,6 +23,7 @@ file in Settings.
 | `space/lockup.ts`                       | The mark and name, where the rail and the sign-in screen both draw them                              |
 | `space/paths.ts`                        | The addresses the tree and the views share                                                           |
 | `space/marks.ts`                        | The live dot and the count pill the tree and the views share                                         |
+| `dna/`                                  | The Social DNA installed by hand into the Coasys spaces, for review: four classes and two flows      |
 
 After any change, write the bundle again and check it in:
 
