@@ -21,6 +21,8 @@
 #![forbid(unsafe_code)]
 
 #[cfg(not(target_arch = "wasm32"))]
+pub mod base;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod connect;
 #[cfg(not(target_arch = "wasm32"))]
 mod connection;
