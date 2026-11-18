@@ -17,9 +17,7 @@ The template pin is `8aaf472e1e703ba948d173ccc86fadb9bb2e01a4` (we#438). The gen
 
 ## Screenshot
 
-`/home/marvin/.openclaw/workspace/agent-runs/we-egui-connect/connect-screen.png`
-
-The shot is the connect screen before a click. wgpu rendered it. The Coasys mark is visible.
+The connect-screen test is a render-and-export smoke test. It checks the accessible names and the stage. wgpu renders the screen and the test writes `connect-screen.png` under the cargo target temporary directory (`CARGO_TARGET_TMPDIR`). The test does not compare pixels and it does not compare a golden image.
 
 ## Tests
 
@@ -36,6 +34,29 @@ Commands ran from `crates/renderer`. `CARGO_TARGET_DIR=/mnt/hdd/work/target-we-e
 - `cargo fmt --all` — no extra diff outside this change.
 
 Live tests used `EXECUTOR_PATH=/mnt/hdd/work/target-autoproc/debug/ad4m-executor` (`ad4m 0.13.1-staging.11`). Each test starts its own executor on a free port. These tests did not use the production executor.
+
+## Fix round
+
+These tests failed before the fix. The assertion that failed is named here.
+
+- `a_supplied_bundle_does_not_replace_the_pinned_base` failed. The mounted node id was `supplied-base`. After the fix the mounted node id is `coasys-base` and the pinned screen is what resolves.
+- `a_permit_for_another_mount_starts_nothing` failed. The job count was 1. After `BaseHost` checks the permit mount, the job count is 0 and the stage stays `connect`.
+- `the_prompt_clears_when_the_ask_changes` failed. After a new request the field still held `123456`. After the fix a new request, a new attempt, or no ask leaves the field empty. The same ask keeps the typed text. This test does not draw the overlay.
+- `the_public_snapshot_has_no_secret_values` failed. `hostKind` was `desktop`. `the_public_chosen_is_the_connection_id` failed. `chosen` was the boolean `false`. `a_page_does_not_replace_the_stage` failed. The stage was `page`. After the fix `hostKind` is `computer`, `chosen` is the connection id, and opening or closing a page does not change the stage.
+
+The other production-host tests passed before the mount check. With the permit check taken out, `a_space_mount_choose_starts_nothing` failed. The job count was 1. The permit check is restored. The job count is 0. Those tests drive `BaseHost`. The session tests call `we_session::command_for` for the narrower controller cases.
+
+## Fix round commands
+
+Commands ran from `crates/renderer` unless a command names another directory. `CARGO_TARGET_DIR=/mnt/hdd/work/target-we-egui-connect`. `CARGO_BUILD_JOBS=8`.
+
+- `cargo check --locked --all-targets` passed.
+- `cargo fmt --all -- --check` passed.
+- `cargo clippy --all-targets --locked -- -D warnings` passed.
+- `cargo check --locked --target wasm32-unknown-unknown` passed.
+- `scripts/check-egui-free.sh` passed.
+- `cargo test --locked` passed. The session connect file has 11 tests. The app library has 14 tests. The permit file has 6 tests. The connect UI file has 3 tests. `EXECUTOR_PATH` was unset, so the live executor tests did not dial an executor.
+- `pnpm format:check` passed. The pinned `coasys-base.json` stays out of Prettier so its bytes do not change. A full workspace install cannot see `@we/cli` on this checkout. The check used root Prettier 3.9.10.
 
 ## Not in this slice
 

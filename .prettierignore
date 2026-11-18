@@ -34,3 +34,7 @@ packages/module-system/globe/layers/assets/*.geojson
 
 # A copy of the AD4M executor's test bootstrap seed, kept byte-identical to its source.
 crates/renderer/we-ad4m/testdata/bootstrapSeed.json
+
+# The pinned connect template. Generated from the we#438 pin and embedded as bytes.
+# Formatting it would change the artifact the renderer mounts.
+crates/renderer/we-session/data/coasys-base.json
