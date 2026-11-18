@@ -73,15 +73,16 @@ async function alreadyResolvedIsFalse(decide: () => Promise<boolean>): Promise<b
  */
 const DEFAULT_BASE_PREFIX = 'we://interpreted/';
 
-/** Where a turn's words live, and what marks a child as one rather than any other block. */
-const TEXT_PREDICATE = 'we://text';
-const TEXT_BLOCK_FLAG = { predicate: 'we://flag', value: 'we://text_block' } as const;
-/** The link from a thread's subject to every response under it — see {@link transcriptScopeQuery}. */
-const THREAD_PREDICATE = 'we://thread';
-/** Where a text line records how it came to be — see {@link transcriptScopeQuery}. */
-const TEXT_SOURCE_PREDICATE = 'we://text_source';
-/** What a person said or wrote, by that field. Anything else is not read as input. */
-const INPUT_SOURCES = ['spoken', 'typed', 'corrected'] as const;
+/**
+ * The class a watch reads its turns from — every conforming instance under the scope is one turn:
+ * its author the speaker, its link's timestamp the time, {@link SOURCE_TEXT} hydrated for the
+ * words. Named rather than spelled as an IRI because it is resolved to a target class at
+ * registration, the same way the interpretation classes are — the one spelling two apps' classes
+ * cannot share.
+ */
+const SOURCE_ENTITY = 'TextBlock';
+/** The `TextBlock` property the executor hydrates as a turn's text. */
+const SOURCE_TEXT = 'text';
 
 /**
  * The conversation a request is about: its provenance where it names one, else its parent.
@@ -1333,8 +1334,8 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
 
       // Same validation the one-shot path does, and for the same reason: a class the perspective
       // does not have is skipped server-side, so a watch registered against one runs forever and
-      // finds nothing.
-      await assertShapesInstalled(perspective, request.classes);
+      // finds nothing. The source class is a class the watch needs exactly as they are.
+      await assertShapesInstalled(perspective, [SOURCE_ENTITY, ...request.classes]);
 
       watchParents.set(request.watchId, {
         ...request.parent,
@@ -1345,17 +1346,23 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
       attachListener(perspective);
 
       // Read the conversation's own lines, through the containment predicate the caller resolved.
-      const sourceScopeQuery = transcriptScopeQuery(conversationOf(request)!, request.parent.predicate);
+      const sourceQuery = JSON.stringify({
+        parent: { id: conversationOf(request)!, predicate: request.parent.predicate },
+      });
       const interpretationClasses = await targetClasses(perspective, request.classes);
+      // The source class by its target-class IRI too, not its name — `sourceClass` resolves the way
+      // a model query resolves a class, and a bare "TextBlock" is one foreign shape away from
+      // meaning somebody else's.
+      const [sourceClass] = await targetClasses(perspective, [SOURCE_ENTITY]);
       /*
-        Both at debug, and the query included deliberately.
+        Both at debug, and the source scope included deliberately.
 
         A gather that binds nothing fails silently — the engine reports an empty transcript, which
         reads exactly like a conversation with nothing in it. That cost a day to find once. Keeping
-        the query one console-filter away means the next person can copy it and run it by hand.
+        what the watch reads one console-filter away means the next person can check it by hand.
       */
       trace('interpretation', 'watch:register', { watchId: request.watchId, classes: interpretationClasses });
-      trace('interpretation', 'watch:scope-query', { query: sourceScopeQuery });
+      trace('interpretation', 'watch:source', { watchId: request.watchId, class: sourceClass, query: sourceQuery });
 
       /*
         Create, or replace — never register over what is already there.
@@ -1383,7 +1390,15 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
       */
       const config = {
         processorId: request.watchId,
-        sourceScopeQuery,
+        /*
+          A turn is an instance of the source class: its author is the speaker, its creation
+          timestamp the time, and `sourceText` the words — so a forged link never reaches the
+          transcript. `sourceQuery` scopes the gather to the conversation's children; the model
+          query's `parent` takes the scope as a raw `{ id, predicate }`.
+        */
+        sourceClass,
+        sourceText: SOURCE_TEXT,
+        sourceQuery,
         basePrefix: prefixFor(conversationOf(request)!),
         interpretationClasses,
         debounceMs: request.debounceMs ?? WATCH_DEFAULTS.debounceMs,
@@ -1392,21 +1407,15 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
         maxWaitMs: WATCH_DEFAULTS.maxWaitMs,
         claimTtlMs: WATCH_DEFAULTS.claimTtlMs,
         /*
-          Emit the LLM exchange, never persist it — and the two are one decision only because #903
-          split them.
+          Emit the LLM exchange.
 
           `emitDebugEvents` is a *registration-time* switch on the shared processor, not a
           per-subscriber one, so a UI toggle cannot turn it on for a pass already in flight. Leaving
           it off would mean re-registering a watch every peer shares in order to answer one person
           opening a disclosure triangle. On costs a WebSocket message to this client: the events are
           DID-filtered and never leave the machine.
-
-          `persistDebug` is the opposite trade and stays off. It writes the prompt onto the pass's
-          `InterpretationRun` in the shared graph, where it syncs to every peer and stays there —
-          tens of KB per pass, permanently, for something worth reading for five minutes.
         */
         emitDebugEvents: true,
-        persistDebug: false,
       };
       const desired = [...new Set(interpretationClasses)].sort();
 
@@ -1425,17 +1434,27 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
         } catch (error) {
           trace('interpretation', 'watch:classes-unreadable', { error: String(error) });
         }
-        if (existing.classes.length) {
+        if (existing.classes.length || existing.scalars.size) {
           // Already registered as asked — by this client or any member. Nothing to write, which is
           // what keeps a watch called on every reactive re-run from churning the shared graph.
           if (sameRegistration(existing, desired, config)) {
             trace('interpretation', 'watch:unchanged', { watchId: request.watchId });
             return;
           }
-          // Same classes, a setting changed: the scalars are overwritten by a registration, so this
-          // rewrites them in place. Only a different class list needs the delete.
-          if (existing.classes.join(',') !== desired.join(',')) {
-            trace('interpretation', 'watch:classes-changed', {
+          /*
+            A config the engine cannot load is deleted outright, whatever its classes say.
+
+            One stored before the scope became a class and a property still holds
+            `ad4m://source_scope_query` and no `ad4m://source_class`; the loader refuses it, so the
+            watch it names is not running however present its links look. Rewriting in place would
+            leave the dead predicate beside the live ones — deleting takes the stale links with the
+            node, as a changed class list already did. Same classes with a changed setting still
+            falls through and rewrites in place: registration overwrites the scalars, and only these
+            two shapes of change need the node gone.
+          */
+          const unloadable = !existing.scalars.has(SOURCE_CLASS_PREDICATE);
+          if (unloadable || existing.classes.join(',') !== desired.join(',')) {
+            trace('interpretation', unloadable ? 'watch:config-outdated' : 'watch:classes-changed', {
               watchId: request.watchId,
               from: existing.classes,
               to: desired,
@@ -1527,59 +1546,6 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
   };
 }
 
-/**
- * Turns to read, as a query over the graph rather than a list the host gathered.
- *
- * The one-shot path hands the engine turns the *host* read out of the collection; a watch cannot
- * work that way, because the whole point is that it runs with nobody there to read anything. So the
- * scope is a query, and this is where WE's layout gets written in SPARQL.
- *
- * That is uncomfortable — dialect in a string is exactly what the port exists to avoid — but it is
- * the adapter's own file, which is the one place backend vocabulary is allowed. The alternative is
- * a query IR that can express reification, which is a much larger thing to want for one call site.
- *
- * ## What the shape has to be
- *
- * `?speaker`, `?text` and `?timestamp` are all three required; a query binding only speaker and
- * text fails the gather. `?timestamp` is what makes a turn *identifiable* — the processed-turn
- * cursor uses it to tell a re-gathered turn from the same words said again later — so it is load
- * bearing rather than decoration.
- *
- * Author and timestamp come off the **reifier of the body link**, not from properties on the block.
- * That is AD4M's own convention (`ad4m://ontology/author`, `ad4m://ontology/timestamp`, keyed by
- * `rdf:reifies`), and it is why a WE `TextBlock` needs no author field for this to work: every
- * agent transcribes their own microphone, so the link's author *is* the speaker.
- */
-/*
- * ## What it reads
- *
- * The conversation's own lines, and the replies to them — and of those only what a person said or
- * wrote: a line whose `we://text_source` is spoken, typed or corrected. A bot writing here does not
- * know that field, so its replies and digests are left out, which is what stops a summary being
- * extracted back into the records it summarises.
- *
- * A reply is a child of nothing. It is in the `we://thread` of the line it answers — every reply
- * under that line, at any depth, one link each — so the replies are one hop from the lines rather
- * than a walk down `we://response`. A `UNION` rather than a `?` path, so every predicate is written
- * out as a full IRI, which is what the executor reads a query's predicates from. A call held about a
- * line is in its thread too, and is not a text block, so the flag below leaves it out.
- */
-export function transcriptScopeQuery(parentId: string, childPredicate: string): string {
-  return `SELECT ?speaker ?text ?timestamp WHERE {
-  { <${parentId}> <${childPredicate}> ?m . }
-  UNION
-  { <${parentId}> <${childPredicate}> ?line . ?line <${THREAD_PREDICATE}> ?m . }
-  ?m <${TEXT_BLOCK_FLAG.predicate}> <${TEXT_BLOCK_FLAG.value}> .
-  ?m <${TEXT_SOURCE_PREDICATE}> ?source .
-  FILTER(?source IN (${INPUT_SOURCES.map((source) => `"${source}"`).join(', ')}))
-  ?m <${TEXT_PREDICATE}> ?text .
-  ?r <http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies> <<( ?m <${TEXT_PREDICATE}> ?text )>> .
-  ?r <ad4m://ontology/author> ?speaker .
-  ?r <ad4m://ontology/timestamp> ?timestamp .
-}
-ORDER BY ?timestamp`;
-}
-
 /** Where the executor mints a processor's config node — `processor_node` in `auto_processor`. */
 const processorNode = (watchId: string) => `ad4m://autoprocessor/${watchId}`;
 
@@ -1587,18 +1553,25 @@ const processorNode = (watchId: string) => `ad4m://autoprocessor/${watchId}`;
 const INTERPRETATION_CLASS_PREDICATE = 'ad4m://interpretation_class';
 
 /**
+ * The link that says which class a processor gathers from. Its absence is how a config written
+ * before the source scope became a class and a property is recognised — those hold
+ * `ad4m://source_scope_query` instead, which the loader no longer reads.
+ */
+const SOURCE_CLASS_PREDICATE = 'ad4m://source_class';
+
+/**
  * The scalars `write_processor` writes through its setters, by the `addAutoProcessor` field that sets
  * each — the paths `AutoProcessorConfig` declares. What {@link sameRegistration} compares, so a
- * watch whose settings changed (a new scope query in a release, a different batch size) is still
+ * watch whose settings changed (a different source scope, a different batch size) is still
  * rewritten, and one whose settings did not is left alone.
+ *
+ * Every setting `watch` writes that the executor stores on the config: one left out would read as
+ * unchanged when only it changed.
  */
-/*
-  Every setting `watch` writes that the executor stores on the config: one left out would read as
-  unchanged when only it changed. `persistDebug` is not here because the executor stores no field
-  for it (`AutoProcessorConfig` has none), so there is nothing to compare; add it if that changes.
-*/
 const PROCESSOR_SCALARS = {
-  sourceScopeQuery: 'ad4m://source_scope_query',
+  sourceClass: SOURCE_CLASS_PREDICATE,
+  sourceText: 'ad4m://source_text',
+  sourceQuery: 'ad4m://source_query',
   basePrefix: 'ad4m://base_prefix',
   debounceMs: 'ad4m://debounce_ms',
   batchMin: 'ad4m://batch_min',
