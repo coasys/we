@@ -623,10 +623,9 @@ export interface ShellStore {
   /**
    * Close a panel this interface supplied, and open it again.
    *
-   * Real methods taking an id, rather than the per-panel keys the dock entries used to name. The
-   * keys still answer `edge`/`size`/`float`, which the shell reads in TypeScript — but a close
-   * button is a schema `$invoke`, and `shellStore.close:extraction` names nothing on this store, so
-   * the button rendered and did nothing but log. See `closeAction` in `dockRegistry.ts`.
+   * Real methods taking an id, rather than per-panel keys: a close button is a schema `$invoke`, and
+   * a key like `shellStore.close:extraction` names nothing on this store. See `closeAction` in
+   * `dockRegistry.ts`.
    *
    * Reachable by a template as well, which is the other half: a panel with a close button and no
    * opener is a panel you lose once.
@@ -720,8 +719,7 @@ export interface ShellStore {
    *
    * `mode: 'band'` opens a lane of its own, `position` counting inward from the edge. `mode: 'lane'`
    * joins the lane named by `lane` — a number counting inward, or `'float'` for the floating one — at
-   * `position` along it. The arrangement used to be the registry's, so a panel dragged off an edge
-   * returned to the slot it left however far along it was dropped; this is the answer a drop can give.
+   * `position` along it — so a panel lands where it was dropped, not back in the slot it left.
    */
   insertDock: (
     id: string,
@@ -2591,11 +2589,8 @@ export function ShellStoreProvider(props: ParentProps) {
         /*
           Below `NARROW_VIEWPORT_PX` a floating lane is one seat.
 
-          Two cards over content on a phone leave nothing of either, so `columnLayout` used to give
-          every member the whole box and let the last one paint on top — a stack with no strip.
-          That *is* a seat, so it is said as one: the members become tabs, whichever was touched
-          last shows, and the titlebar names the rest. Same behaviour, now with a way to reach the
-          others.
+          Two cards over content on a phone leave nothing of either, so the members share one seat:
+          they become tabs, whichever was touched last shows, and the titlebar names the rest.
         */
         const narrow = !group.displacing && viewport().width < NARROW_VIEWPORT_PX;
         const seating = narrow ? [group.members] : group.seats;
@@ -2736,9 +2731,7 @@ export function ShellStoreProvider(props: ParentProps) {
     /*
       While a panel is full screen, it is the only panel.
 
-      Covering the others was not enough. A displacing sidebar used to be *kept clear of*, so full
-      screen stopped short of it; and even once the box reaches every edge, covering is a stacking
-      question a raise can reopen — the seams and lane grips outrank their own lane on purpose. So the
+      Covering the others is not enough: covering is a stacking question a raise can reopen — the seams and lane grips outrank their own lane on purpose. So the
       rest are hidden, the way a background tab is: gone from the screen, never unmounted, and back
       exactly where they were when full screen ends. Two maximised at once is a state a drag can leave
       behind; the one on top wins.
@@ -2987,18 +2980,10 @@ export function ShellStoreProvider(props: ParentProps) {
    *
    * ## Composed here, deliberately
    *
-   * These used to be `--we-dock-<edge>`: the dock inset alone, leaving each consumer to add whatever
-   * else held its edge. Nobody added the same list. The module rail summed the dock and a panel's
-   * title band; the editing bar summed the dock and the rail's width and *forgot the vertical term
-   * entirely*, so a panel docked along the top covered it; the call module's main bar composed the
-   * sidebar into its centring while the two smaller bars beside it — the join prompt and the problem
-   * alert — centred on the window and cleared nothing at all. Four consumers, four different sums,
-   * three of them wrong, and each one wrong in a way that only shows in one arrangement.
-   *
-   * So the shell publishes the answer rather than the ingredients. `contentInset` and
+   * The shell publishes the answer rather than the ingredients: a dock inset alone leaves each
+   * consumer to add whatever else holds its edge, and each consumer then sums a different list. `contentInset` and
    * `computeLeftOffset` in TemplateLayout are the same four numbers the content viewport is laid out
-   * from — chrome now reads exactly what the content reads, which is what "sit beside the content"
-   * should have meant all along. The one term that stays a consumer's own is `--we-chrome-rail-width`,
+   * from — chrome reads exactly what the content reads. The one term that stays a consumer's own is `--we-chrome-rail-width`,
    * and it has to: the rail is chrome at that edge, so the rail must *not* clear itself while
    * everything outside it must.
    *
@@ -3077,12 +3062,8 @@ export function ShellStoreProvider(props: ParentProps) {
    *
    * ## Only when something is actually under the rail
    *
-   * This used to fire for *any* open panel, wherever it was. Starting a call opens the video panel,
-   * so the rail dropped 98px the moment a call began — with the video floating in the bottom left,
-   * nowhere near it, and nothing on screen to explain why the rail had moved. The band is real but
-   * it is a collision, and a collision has a location.
-   *
-   * So it asks the resolved boxes instead. Since a floating panel now clears the rail on its own
+   * Not for *any* open panel, wherever it is: the band is a collision, and a collision has a
+   * location. So it asks the resolved boxes. Since a floating panel now clears the rail on its own
    * (`floatChrome`) and a displacing one has already slid it aside, the answer is normally no — what
    * remains is a maximised panel, which spans the content region including the rail's column, and
    * which is the case the band was written for.
@@ -3311,9 +3292,8 @@ export function ShellStoreProvider(props: ParentProps) {
       // space: the call's stage opened with nobody in it is an empty window over the content.
       .filter((panel) => panel.module && panel.open !== false)
       /*
-        By dock, not by module. A module with two declared panels used to collapse to one entry
-        here — the set is keyed by what it holds — so at most one of them was ever opened, and with
-        the launcher lookup broken neither was.
+        By dock, not by module: the set is keyed by what it holds, and a module with two declared
+        panels must give two entries.
       */
       .map((panel) => dockIdFor(panel))
       .filter((id): id is string => id !== null);
@@ -3433,12 +3413,9 @@ export function ShellStoreProvider(props: ParentProps) {
       /*
         The id and the name go through untouched, and the library decides what they become.
 
-        This used to be the way a built-in got saved over: the schema carries the id it was forked
-        from, so on a built-in the save landed *on* it — no new row, nothing to switch between, and
-        every later release of that template invisible from then on, while the control said "fork".
-        `saveTemplateAs` reserves the id and renames when it does, so the same call now forks a
-        built-in and saves in place on something you already own, which is what both readings of
-        this button wanted.
+        The schema carries the id it was forked from, so a plain save on a built-in would land *on*
+        it. `saveTemplateAs` reserves the id and renames when it does, so the same call forks a
+        built-in and saves in place on something you already own.
 
         Not the naming picker, which is what a considered fork gets: that lives on `editorStore`
         and this store has no edge to it. Worth doing when one exists — a reader would rather say
@@ -3526,10 +3503,8 @@ export function ShellStoreProvider(props: ParentProps) {
           A divider drag begins by making the lane's stored sizes what is on screen.
 
           A member's rendered extent is its base plus a share of the lane's spare room, handed out by
-          grow. The drag used to move the boundary within the sum of the two *bases* — which, for a
-          panel declared at `size: 'sm'`, are 16:9 card heights of 180px — so the pair could trade
-          120px between them on a column 900px tall, and the rest was slack each panel held by its
-          grow ratio and could not give up. Dragging felt like it had a wall a hand's width away.
+          grow. Moving the boundary within the sum of the two *bases* alone would leave slack each
+          panel holds by its grow ratio and cannot give up.
 
           So every member's base becomes its rendered extent and its grow becomes the same number.
           The slack is then zero, the clamp below is in real pixels, and — since the grows are now in
@@ -3939,10 +3914,9 @@ export function ShellStoreProvider(props: ParentProps) {
       /*
         Nothing moves until the pointer has, for every panel.
 
-        The threshold used to apply only to a panel pulled off something — maximised, or docked — and
-        a free card moved on the first pixel. That made a click on a card's titlebar a one-pixel drag
-        whenever the hand wobbled, which un-snapped it from its corner and, now that a click on a
-        folded bar opens it, would have swallowed the click. Past the threshold the drag is measured
+        The threshold applies to a free card too: otherwise a click on a card's titlebar is a
+        one-pixel drag whenever the hand wobbles, which un-snaps it from its corner and swallows the
+        click that opens a folded bar. Past the threshold the drag is measured
         from where it began, so nothing is lost by waiting for it.
       */
       if (!dragTravelled) {
@@ -4468,13 +4442,11 @@ export function ShellStoreProvider(props: ParentProps) {
 
         return [
           // An empty edge still offers its one new-lane slot — that is how an arrangement gets
-          // started. It used to return nothing here, so an edge with no panels on it could only ever
-          // be *floated* against.
+          // started.
           ...insertionSlots(edge, lanes, viewport(), occupied).map((slot) => draw('band', '', slot)),
           /*
             And a seat in each lane already there, displacing or floating alike — which is the whole
-            of what bands added. A displacing lane could previously only be *stacked against*; these
-            are the seams that let a panel join one and share its width.
+            of what bands added: these are the seams that let a panel join one and share its width.
 
             Bounded by the screen: a displacing lane spans its whole edge, so its outer two seams
             would otherwise sit just off it — see `columnSlots`.
