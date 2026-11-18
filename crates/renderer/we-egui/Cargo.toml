@@ -17,6 +17,7 @@ we-layout.workspace = true
 we-style.workspace = true
 we-metrics.workspace = true
 we-expr.workspace = true
+we-data.workspace = true
 wuff = "=0.2.9"
 
 [dev-dependencies]

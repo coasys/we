@@ -87,7 +87,10 @@ impl Registry {
             .with(crate::ColorPicker)
             .with(crate::IconPicker)
             // E5b — drag & drop
-            .with(crate::Sortable);
+            .with(crate::Sortable)
+            // E18 — the agent chat panel. Registered before the placeholders
+            // so the stage-5 box cannot replace it.
+            .with(crate::AgentChat);
         crate::placeholders::register(&mut reg);
         reg
     }

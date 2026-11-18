@@ -6434,6 +6434,7 @@ dependencies = [
  "serde_json",
  "taffy",
  "we-catalog",
+ "we-data",
  "we-expr",
  "we-layout",
  "we-metrics",

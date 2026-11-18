@@ -151,6 +151,5 @@ pub fn register(reg: &mut crate::Registry) {
     reg.register(Placeholder::new("we-location-picker", "E8"));
     reg.register(Placeholder::new("we-file-upload", "E8"));
     reg.register(Video);
-    reg.register(Placeholder::new("AgentChat", "stage 5"));
     reg.register(Sheet);
 }

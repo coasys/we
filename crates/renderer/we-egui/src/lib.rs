@@ -12,6 +12,7 @@
 //! without updating `_shared-architecture.md` §3.5.
 #![forbid(unsafe_code)]
 
+mod chat;
 mod clock;
 mod containers;
 mod controls;
@@ -42,6 +43,7 @@ use we_expr::Value;
 use we_style::Style;
 use we_template::{NodeId, ResolvedChild, ResolvedNode};
 
+pub use chat::{bind_chat, AgentChat};
 pub use clock::{now_secs, pin_now};
 pub use containers::{lane_drags, Card, Column, Div, Grid, Lane, Row, ScrollArea};
 pub use controls::Button;
