@@ -135,11 +135,12 @@ describe('the Acorn projects dialog', () => {
       expect(alertText(container)).toContain('InitTimeout');
     });
 
-    // Retry resumes the retained target — no form values travel with it. An
-    // unanswered (null) retry keeps the dialog open — the failure is still showing.
+    // Retry resumes the retained target — no form values travel with it, only
+    // the displayed failure's own identity. An unanswered (null) retry keeps
+    // the dialog open — the failure is still showing.
     (stores.spaceStore.retryAcornProject as ReturnType<typeof vi.fn>).mockResolvedValue(null);
     button(container, 'Retry').click();
-    await vi.waitFor(() => expect(stores.spaceStore.retryAcornProject).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(stores.spaceStore.retryAcornProject).toHaveBeenCalledWith('ds-1', 'QmL'));
     expect(stores.spaceStore.createAcornProject).not.toHaveBeenCalled();
     expect(stores.shellStore.setAcornProjectsOpen).not.toHaveBeenCalled();
 

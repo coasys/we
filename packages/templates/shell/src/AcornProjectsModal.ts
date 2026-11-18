@@ -297,7 +297,16 @@ export const acornProjectsModal: SchemaNode = {
                           props: {
                             variant: 'solid',
                             disabled: { $: 'local.busy' },
-                            onClick: lifecycleCall({ $invoke: 'spaceStore.retryAcornProject' }),
+                            // The failure on display names its own target — this
+                            // Retry resumes it, not whichever operation happens
+                            // to be parked first.
+                            onClick: lifecycleCall({
+                              $invoke: 'spaceStore.retryAcornProject',
+                              args: [
+                                { $: 'spaceStore.acornPending.datasetId' },
+                                { $: 'spaceStore.acornPending.languageAddress' },
+                              ],
+                            }),
                           },
                           children: ['Retry'],
                         },

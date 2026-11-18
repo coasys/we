@@ -994,6 +994,75 @@ describe('mount retry — the fresh-cell stall', () => {
     });
   });
 
+  /*
+    Two projects can both be parked: the failure on display is one of them, and
+    its Retry must resume that one — not whichever op happens to sit first in
+    the map. The displayed state carries its own datasetId/languageAddress;
+    Resume keys off it.
+  */
+  it('resumes the operation the displayed failure names, not the first parked one', async () => {
+    vi.useFakeTimers();
+    const record: string[] = [];
+    const LANG_B = 'QmzAcornLanguageB';
+    const d = deps(record, {
+      lifecycle: () =>
+        ({
+          list: vi.fn(async () => [] as DatasetRef[]),
+          get: vi.fn(async (id: string) => ref(id)),
+          create: vi.fn(async (name: string) => {
+            record.push(`create:${name}`);
+            return ref(`dataset-${name}`, name);
+          }),
+          remove: vi.fn(),
+          subscribe: vi.fn(() => () => {}),
+        }) as unknown as DatasetLifecyclePort,
+    });
+    const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
+    (port.applyTemplateLocal as ReturnType<typeof vi.fn>).mockImplementation(
+      async (_hash: string, data: Record<string, unknown>) => ({
+        address: data.seed === 'uid-b-b-b' ? LANG_B : LANG,
+      }),
+    );
+    (port.mount as ReturnType<typeof vi.fn>).mockImplementation(async (uuid: string, lang: string) => {
+      record.push(`mount:${uuid}:${lang}`);
+      throw INIT_TIMEOUT();
+    });
+    const acorn = createAcornLifecycle(d);
+
+    // A and B both park — B's failure is the one on display.
+    expect((await settle(acorn.createAcornProject('A', 'a a a', BASE))).error).toBeInstanceOf(AcornLifecycleError);
+    expect((await settle(acorn.createAcornProject('B', 'b b b', BASE))).error).toBeInstanceOf(AcornLifecycleError);
+    expect(record.filter((c) => c.startsWith('mount:dataset-A:'))).toHaveLength(5);
+    expect(record.filter((c) => c.startsWith('mount:dataset-B:'))).toHaveLength(5);
+
+    // The peer comes back; the displayed Retry resumes B's target, never A's.
+    (port.mount as ReturnType<typeof vi.fn>).mockImplementation(async (uuid: string, lang: string) => {
+      record.push(`mount:${uuid}:${lang}`);
+      port.mountsOf[uuid] = [lang];
+      return true;
+    });
+    await expect(acorn.resumeAcornOperation('dataset-B', LANG_B)).resolves.toBe('dataset-B');
+    expect(record.filter((c) => c.startsWith('mount:dataset-A:'))).toHaveLength(5); // untouched
+    expect(record).toContain('navigate:dataset-B');
+
+    // A stays parked — the dialog can still offer it, keyed by its own identity.
+    await expect(acorn.pendingAcornOperation()).resolves.toMatchObject({ phase: 'failed', languageAddress: LANG });
+  });
+
+  it('does not resume an operation whose displayed failure is not retryable', async () => {
+    vi.useFakeTimers();
+    const record: string[] = [];
+    const d = deps(record);
+    mountFailing(record, d, 1, () => new Error('the language is owned by another schema mirror'));
+    const acorn = createAcornLifecycle(d);
+
+    expect((await settle(acorn.createAcornProject('P', 'a b c', BASE))).error).toBeInstanceOf(AcornLifecycleError);
+    // The card offers no Retry for a refusal the executor answered — and the
+    // resume refuses it too, even asked by name.
+    await expect(acorn.resumeAcornOperation('dataset-1', LANG)).resolves.toBeNull();
+    expect(record.filter((c) => c.startsWith('mount:'))).toHaveLength(1);
+  });
+
   it('holds the target through a close — a late mount is reconciled, not abandoned', async () => {
     vi.useFakeTimers();
     const record: string[] = [];

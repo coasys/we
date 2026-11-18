@@ -1109,22 +1109,37 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
      * The dialog's Retry/Continue: re-run the retained operation — the parked op
      * while the session still holds it, else the pending target the intent names.
      * Resumes the same dataset and language; never allocates beside them.
+     *
+     * `datasetId`/`languageAddress` name the failure on display: several
+     * operations can be parked at once and the Retry under a card must resume
+     * that card's target, not whichever op happens to sit first in the map.
+     * With no identity the first retained op answers, as before.
      */
-    async resumeAcornOperation(): Promise<string | null> {
+    async resumeAcornOperation(datasetId?: string, languageAddress?: string): Promise<string | null> {
       const port = deps.port();
       const lifecycle = deps.lifecycle();
       if (!port || !lifecycle || !deps.hasAcornTemplate()) return null;
-      let op = [...pendingOps.values()][0];
+      let op = languageAddress ? pendingOps.get(languageAddress) : undefined;
+      if (!op && datasetId) op = [...pendingOps.values()].find((entry) => entry.ref?.id === datasetId);
+      if (!op && !datasetId && !languageAddress) op = [...pendingOps.values()][0];
       if (!op && deps.setupIntent) {
         for (const ref of await lifecycle.list()) {
           const intent = deps.setupIntent.get(ref.id);
-          if (intent?.phase === 'mount' && intent.languageAddress) {
-            op = { lang: intent.languageAddress, name: intent.name, writeMeta: false, announce: false, ref };
-            break;
+          if (!intent || intent.phase !== 'mount' || !intent.languageAddress) continue;
+          if ((datasetId || languageAddress) && ref.id !== datasetId && intent.languageAddress !== languageAddress) {
+            continue;
           }
+          op = { lang: intent.languageAddress, name: intent.name, writeMeta: false, announce: false, ref };
+          break;
         }
       }
       if (!op) return null;
+      /*
+        The selected operation's own retryability rules: a refusal the executor
+        answered parks unretryable — the card under it offers no Retry, and the
+        resume refuses it too, even asked by name.
+      */
+      if (op.state?.phase === 'failed' && op.state.failure && !op.state.failure.retryable) return null;
       return runLifecycle(op);
     },
 

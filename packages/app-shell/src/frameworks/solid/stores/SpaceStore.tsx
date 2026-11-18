@@ -968,10 +968,12 @@ export interface SpaceStore {
   acornPending: Accessor<AcornOperationState | null>;
   /**
    * The projects dialog's Retry — resumes the retained operation on the same
-   * dataset and language it parked, never allocating another. The create/join
-   * forms' own buttons stay the way a *changed* ask is made.
+   * dataset and language it parked, never allocating another. `datasetId` and
+   * `languageAddress` name the failure on display so its Retry resumes that
+   * target and not whichever operation happens to be parked first. The
+   * create/join forms' own buttons stay the way a *changed* ask is made.
    */
-  retryAcornProject: () => Promise<string | null>;
+  retryAcornProject: (datasetId?: string, languageAddress?: string) => Promise<string | null>;
   /** The agent's mounted Acorn projects — every dataset the executor reports a mount on. */
   listAcornProjects: () => Promise<AcornProjectRef[]>;
   /**
@@ -7012,7 +7014,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     acornAvailable,
     acornProjects,
     acornPending,
-    retryAcornProject: () => acorn.resumeAcornOperation(),
+    retryAcornProject: (datasetId?: string, languageAddress?: string) =>
+      acorn.resumeAcornOperation(datasetId, languageAddress),
     ...acorn,
     setAttending,
     mutedDids,
