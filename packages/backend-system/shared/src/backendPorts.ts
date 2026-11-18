@@ -8,6 +8,7 @@
  * named, a complete backend is exactly: these ports plus the query adapter — and the boot suite
  * doubles as the conformance test.
  */
+import type { AcornLifecyclePort } from './acornLifecycle';
 import type { AgentPort } from './agents';
 import type { CallPort } from './call';
 import type { DatasetHandle, RendererDataBindings } from './dataSource';
@@ -280,6 +281,12 @@ export interface BackendPorts {
    * {@link PersonPort} and `SELF_PERSONS`.
    */
   persons?: PersonPort;
+  /**
+   * Mounting a foreign language on a dataset and speaking to it — the Acorn project's
+   * open sequence. Optional: a backend with no mount concept omits it, and the Acorn
+   * project chrome says so rather than listing nothing.
+   */
+  acornLifecycle?: AcornLifecyclePort;
 }
 
 /**

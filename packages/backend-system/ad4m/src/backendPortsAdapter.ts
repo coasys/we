@@ -26,6 +26,7 @@ import {
   registerTransactionRunner,
 } from '@we/entities';
 
+import { createAd4mAcornLifecycle } from './acornLifecycleAdapter';
 import { createAd4mDataBindings } from './ad4mAdapter';
 import { createAd4mEphemeralPort } from './ad4mEphemeralAdapter';
 import {
@@ -262,6 +263,10 @@ export function createAd4mBackendPorts(
     identity: createAd4mIdentityPort(backendClient, options.custody),
     // Per-dataset like interpretation: every operation names the space the call is in.
     call: createAd4mCallPort(),
+    // Mounting a language on a dataset and speaking to it — present only where the
+    // connection can be handed to the RPC client it opens; absent there and the
+    // call sites degrade exactly as for any other optional port.
+    ...(options.connection ? { acornLifecycle: createAd4mAcornLifecycle(backendClient, options.connection) } : {}),
     ephemeral,
     dataBindings: (deps: DataBindingDeps) =>
       createAd4mDataBindings({
