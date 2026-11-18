@@ -142,6 +142,41 @@ function deps(
 /** The order within `record` of the named prefixes, for an ordered-sequence assertion. */
 const orderOf = (record: string[], prefixes: string[]) => prefixes.map((p) => record.findIndex((c) => c.startsWith(p)));
 
+/*
+  The fresh-cell failure fixtures — shared by every describe that needs a mount
+  to stall, fail, or report busy. The signatures are the executor's wire text:
+  Holochain's init mutex, the B10 snapshot deadline, an in-flight mount slot,
+  and our own transport giving up.
+*/
+const INIT_TIMEOUT = () => new Error('ConductorApiError: CellError(InitTimeout)');
+const SNAPSHOT_DEADLINE = () => new Error('acorn snapshot: reads missed the 15000 ms deadline');
+const ALREADY_MOUNTING = () => new Error(`${LANG} is already being mounted`);
+const TRANSPORT_GAVE_UP = () => new Error(`acornLifecycle: perspective.mount heard nothing for 30s`);
+
+/** `mount` rejects `n` times with `make()`, then installs the mount and resolves. */
+const mountFailing = (record: string[], d: AcornLifecycleDeps, n: number, make: () => Error) => {
+  const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
+  let left = n;
+  (port.mount as ReturnType<typeof vi.fn>).mockImplementation(async (uuid: string, lang: string) => {
+    record.push(`mount:${uuid}:${lang}`);
+    if (left-- > 0) throw make();
+    port.mountsOf[uuid] = [lang];
+    return true;
+  });
+  return port;
+};
+
+/** Drive a lifecycle call through its sleeps until it settles, returning the outcome. */
+const settle = async <T>(p: Promise<T>): Promise<{ value?: T; error?: unknown }> => {
+  const seen = p.then(
+    (value) => ({ value }),
+    (error) => ({ error }),
+  );
+  // Attempts, backoffs and the budget are timers; the port calls flush as microtasks.
+  for (let i = 0; i < 40; i += 1) await vi.advanceTimersByTimeAsync(20_000);
+  return seen;
+};
+
 describe('acorn lifecycle on a backend without the port', () => {
   it('degrades — no call throws and nothing is asked of a lifecycle that cannot answer', async () => {
     const d = deps([], { port: () => undefined });
@@ -267,6 +302,10 @@ describe('joinAcornProject', () => {
 });
 
 describe('openAcornProject', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   /*
     Reopen is repair, not a skip-list: each setup invariant is read on its own and
     only the missing pieces are finished. "A Space record exists" was never the
@@ -472,7 +511,15 @@ describe('openAcornProject', () => {
     const acorn = createAcornLifecycle(d);
 
     await expect(acorn.openAcornProject('dataset-1')).rejects.toThrow('zome unreachable');
-    expect(d.setupIntent!.get('dataset-1')).toEqual({ name: 'Rig Project', writeMeta: true, announce: false });
+    // The debt keeps its own name and the intent's newer fields — the mount it
+    // survived carries the language and the phase the retry reads.
+    expect(d.setupIntent!.get('dataset-1')).toEqual({
+      name: 'Rig Project',
+      writeMeta: true,
+      announce: false,
+      languageAddress: LANG,
+      phase: 'open',
+    });
   });
 
   /*
@@ -568,6 +615,76 @@ describe('openAcornProject', () => {
     expect(record).toContain('ensure:dataset-b:dataset-b');
     expect(record.filter((c) => c.startsWith('navigate:'))).toEqual(['navigate:dataset-b']);
     expect(current).toBe('dataset-b');
+  });
+
+  /*
+    Open is the same operation without its mount half: a tail that fails parks
+    the operation with the target named, and the Retry under it resumes the same
+    dataset — the spinner-then-nothing path is gone.
+  */
+  it('routes an Open failure through the retained state — its Retry finishes the tail', async () => {
+    const record: string[] = [];
+    let failedOnce = false;
+    const d = deps(record, {
+      setSpaceTemplateOverride: vi.fn(async (id: string, uuid?: string) => {
+        record.push(`override:${id}:${uuid}`);
+        if (!failedOnce) {
+          failedOnce = true;
+          throw new Error('zome unreachable');
+        }
+      }),
+    });
+    const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
+    port.mountsOf['dataset-1'] = [LANG];
+    const acorn = createAcornLifecycle(d);
+
+    await expect(acorn.openAcornProject('dataset-1')).rejects.toThrow('zome unreachable');
+    // Parked, not spinning: the retained op names its target and is resumable.
+    await expect(acorn.pendingAcornOperation()).resolves.toMatchObject({
+      phase: 'failed',
+      datasetId: 'dataset-1',
+      languageAddress: LANG,
+      failure: { stage: 'setup', cause: 'zome unreachable', retryable: true },
+    });
+
+    await expect(acorn.resumeAcornOperation('dataset-1', LANG)).resolves.toBe('dataset-1');
+    expect(record).toContain('navigate:dataset-1');
+    await expect(acorn.pendingAcornOperation()).resolves.toBeNull();
+  });
+
+  /*
+    The same entry, repaired: a create that failed its mount leaves the op and
+    the intent's owed meta; the list row's Open is the ask that finishes it —
+    and a finished operation is removed, so a close/reopen does not offer a
+    stale parked failure or re-owe the debt it paid.
+  */
+  it('a successful Open clears the parked operation it repaired — close/reopen offers nothing stale', async () => {
+    vi.useFakeTimers();
+    const record: string[] = [];
+    const d = deps(record);
+    mountFailing(record, d, 99, INIT_TIMEOUT);
+    const acorn = createAcornLifecycle(d);
+
+    // The create fails and parks — the dataset retained, its meta still owed.
+    expect((await settle(acorn.createAcornProject('P', 'a b c', BASE))).error).toBeInstanceOf(AcornLifecycleError);
+    await expect(acorn.pendingAcornOperation()).resolves.toMatchObject({ phase: 'failed' });
+
+    // The mount landed server-side meanwhile; the list row's Open is the repair.
+    const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
+    port.mountsOf['dataset-1'] = [LANG];
+    (port.mount as ReturnType<typeof vi.fn>).mockImplementation(async (uuid: string, lang: string) => {
+      record.push(`mount:${uuid}:${lang}`);
+      port.mountsOf[uuid] = [lang];
+      return true;
+    });
+    await expect(acorn.openAcornProject('dataset-1')).resolves.toBe('dataset-1');
+
+    // The owed meta was paid exactly once, the intent is clear, and the op is
+    // gone — close/reopen reports nothing pending.
+    expect(record.filter((c) => c.includes('class/AcornProjectMeta'))).toHaveLength(1);
+    expect(d.setupIntent!.get('dataset-1')).toBeNull();
+    acorn.dismissAcornOperation();
+    await expect(acorn.pendingAcornOperation()).resolves.toBeNull();
   });
 
   /*
@@ -761,38 +878,9 @@ describe('listAcornProjects', () => {
   retry reuses).
 */
 describe('mount retry — the fresh-cell stall', () => {
-  const INIT_TIMEOUT = () => new Error('ConductorApiError: CellError(InitTimeout)');
-  const SNAPSHOT_DEADLINE = () => new Error('acorn snapshot: reads missed the 15000 ms deadline');
-  const ALREADY_MOUNTING = () => new Error(`${LANG} is already being mounted`);
-  const TRANSPORT_GAVE_UP = () => new Error(`acornLifecycle: perspective.mount heard nothing for 30s`);
-
   afterEach(() => {
     vi.useRealTimers();
   });
-
-  /** `mount` rejects `n` times with `make()`, then installs the mount and resolves. */
-  const mountFailing = (record: string[], d: AcornLifecycleDeps, n: number, make: () => Error) => {
-    const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
-    let left = n;
-    (port.mount as ReturnType<typeof vi.fn>).mockImplementation(async (uuid: string, lang: string) => {
-      record.push(`mount:${uuid}:${lang}`);
-      if (left-- > 0) throw make();
-      port.mountsOf[uuid] = [lang];
-      return true;
-    });
-    return port;
-  };
-
-  /** Drive `create` through its sleeps until it settles, returning the outcome. */
-  const settle = async <T>(p: Promise<T>): Promise<{ value?: T; error?: unknown }> => {
-    const seen = p.then(
-      (value) => ({ value }),
-      (error) => ({ error }),
-    );
-    // Attempts, backoffs and the budget are timers; the port calls flush as microtasks.
-    for (let i = 0; i < 40; i += 1) await vi.advanceTimersByTimeAsync(20_000);
-    return seen;
-  };
 
   it('retries the same target once an InitTimeout clears — one perspective, one landing', async () => {
     vi.useFakeTimers();

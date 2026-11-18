@@ -1142,17 +1142,29 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       const owns = () => nav.generation === openGeneration;
       const ref = await lifecycle.get(datasetId);
       if (!ref || !owns()) return null;
-      if (owns()) deps.progress?.({ phase: 'preparing', name: ref.name, datasetId });
       const lang = await firstAcornMount(await port.mounts(ref.id));
       if (!owns()) return null;
       if (!lang) {
         deps.progress?.(null);
         return null;
       }
-      if (owns()) deps.progress?.({ phase: 'setting-up', name: ref.name, datasetId, languageAddress: lang });
-      const id = await openMounted(ref, lang, { name: ref.name }, nav);
-      if (owns()) deps.progress?.(null);
-      return id;
+      /*
+        Open is the same operation without its mount half — the mount it just
+        re-read is already there, so the run lands inside prepareAndMount's
+        mounted check and goes straight to the tail. It rides the op keyed by
+        the resolved language *when that op names this target*: a parked
+        create's operation is this project's, and a finished open is what
+        finally removes it — while a fresh op carries no debt of its own, and
+        names itself the way the debt already does where a durable record
+        survives (the intent's name is the one the owed meta write belongs to).
+        Its failures park and resume the way create's and join's do, on the
+        target it names.
+      */
+      let op = pendingOps.get(lang);
+      if (op?.ref && op.ref.id !== datasetId) op = undefined;
+      op ??= { lang, name: owedFor(datasetId)?.name ?? ref.name, writeMeta: false, announce: false };
+      op.ref = ref;
+      return runLifecycle(op, nav);
     },
 
     /**
