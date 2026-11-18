@@ -117,8 +117,13 @@ export interface AcornLifecycleDeps {
    * Land on the space, last — after the mount, the init and the template write, so the
    * route effect never sees the dataset half-built and a list row's "open" is one call.
    * It re-switches only when the dataset changed, so calling it on the current one is free.
+   *
+   * `stillWanted` is the open's ownership, carried through the navigation's own awaits:
+   * between the caller's check and the landing there are still round trips (template
+   * preload, the dataset switch), and a selection that moved during them is not this
+   * open's to take back. It is asked again after each — and inside the switch itself.
    */
-  navigateToSpace: (id: string) => Promise<void>;
+  navigateToSpace: (id: string, stillWanted: () => boolean) => Promise<void>;
   /**
    * Finish the structural setup on `target` — WE's space schemas, the Space record,
    * its root collection and starter structure — writing only what is absent: a
@@ -408,8 +413,18 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       work it did is finished and keeps.
     */
     if (nav.generation !== openGeneration || deps.currentDatasetId() !== nav.selection) return null;
-    await deps.navigateToSpace(ref.id);
-    return ref.id;
+    /*
+      The same ownership, held through the navigation's awaits: a selection that moved
+      during the preload or the switch means somebody else now owns where the person
+      stands — this open's work keeps, but it does not get the landing. The id the
+      dataset was asked for counts as the selection holding: reaching it is what the
+      navigation is for.
+    */
+    const stillWanted = () =>
+      nav.generation === openGeneration &&
+      (deps.currentDatasetId() === nav.selection || deps.currentDatasetId() === ref.id);
+    await deps.navigateToSpace(ref.id, stillWanted);
+    return stillWanted() ? ref.id : null;
   };
 
   return {

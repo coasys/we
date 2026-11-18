@@ -14,6 +14,8 @@ const SOLID_TESTS = [
   // Renders the template root through the real part expansion and edits it live.
   'tests/liveSchema.test.tsx',
   'tests/executorFreeBoot.test.tsx',
+  // Acorn setup through the real SpaceStore + in-memory backend: record writes, not mocks.
+  'tests/acornSpaceSetup.test.tsx',
   'tests/runtimeStore.test.tsx',
   'tests/accountStore.test.tsx',
   'tests/identityStore.test.tsx',

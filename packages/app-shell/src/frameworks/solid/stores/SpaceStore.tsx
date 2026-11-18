@@ -1191,7 +1191,12 @@ export interface SpaceStore {
   upsertSignal: (nodeId: string, signalTypeId: string, value: number | null) => Promise<void>;
   /** Take back this agent's reaction of one type on one record. */
   withdrawSignal: (nodeId: string, signalTypeId: string) => Promise<void>;
-  navigateToSpace: (spaceId: string, view?: string) => Promise<void>;
+  /**
+   * `stillWanted` is asked once more after each navigation await and just before the
+   * route commit — for a caller whose ask can go stale while the round trips run
+   * (the Acorn open's generation check, which a selection that moved since supersedes).
+   */
+  navigateToSpace: (spaceId: string, view?: string, options?: { stillWanted?: () => boolean }) => Promise<void>;
   openRecordRef: (ref: string) => Promise<void>;
   /** Whether this agent may change what every member of that space sees. */
   canAdministerSpace: (uuid: string) => boolean;
@@ -2346,7 +2351,8 @@ export function SpaceStoreProvider(props: ParentProps) {
    * navigation does that, guarded, and a superseded open must not reclaim it here.
    */
   const reswitchIfShowing = async (ds: AppDataset) => {
-    if (datasetStore.currentDataset()?.id === ds.id) await datasetStore.switchDataset(ds.id);
+    if (datasetStore.currentDataset()?.id === ds.id)
+      await datasetStore.switchDataset(ds.id, { stillWanted: () => datasetStore.currentDataset()?.id === ds.id });
   };
 
   /**
@@ -2836,7 +2842,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       };
     },
     currentDatasetId: () => datasetStore.currentDataset()?.id,
-    navigateToSpace: (id) => navigateToSpace(id),
+    navigateToSpace: (id, stillWanted) => navigateToSpace(id, undefined, { stillWanted }),
     ensureSpaceStructure: (name, description, target) => ensureSpaceStructure(name, description, target),
     setupIntent: acornSetupIntents,
     setSpaceDefaultTemplate: (templateId, spaceUuid) => setSpaceDefaultTemplate(templateId, spaceUuid),
@@ -2936,7 +2942,11 @@ export function SpaceStoreProvider(props: ParentProps) {
     lastPlaceInSpace.set(ds.id, query ? `${path}?${query}` : path);
   });
 
-  async function navigateToSpace(spaceId: string, view?: string): Promise<void> {
+  async function navigateToSpace(
+    spaceId: string,
+    view?: string,
+    options?: { stillWanted?: () => boolean },
+  ): Promise<void> {
     // spaceId may be a local id or a shared id — no shape-guessing needed with refs.
     const ds = datasetStore.datasets().find((d) => datasetAddressedBy(d, spaceId));
 
@@ -2987,7 +2997,20 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (ds && datasetStore.currentDataset()?.id !== ds.id) {
       // Pre-load space templates before switching so the template and data arrive together
       await templateStore.preloadSpaceTemplates(ds);
-      await datasetStore.switchDataset(ds.id);
+      /*
+        A caller whose ask can go stale gets asked again between the awaits — the
+        preload above and the switch below are each long enough for somebody to have
+        navigated past. The switch gets the same predicate, so it can refuse to
+        publish a dataset its asker no longer owns.
+      */
+      if (options?.stillWanted && !options.stillWanted()) return;
+      await datasetStore.switchDataset(ds.id, { stillWanted: options?.stillWanted });
+      /*
+        And whether the switch landed — it may itself have stood down at its own late
+        check, leaving the dataset somebody else picked. Continuing to the route write
+        then would put this space's address over another dataset's screen.
+      */
+      if (options?.stillWanted && datasetStore.currentDataset()?.id !== ds.id) return;
     }
     // If no dataset found, route change alone will show the join gate
 
@@ -3025,6 +3048,8 @@ export function SpaceStoreProvider(props: ParentProps) {
       `openRecordRef`'s is a host route rather than a section.
     */
     const section = view ?? (ds && !usesSectionsFor(ds.id) ? '' : carried);
+    // The last place ownership is asked: the route write and the overlay close are the commit.
+    if (options?.stillWanted && !options.stillWanted()) return;
     shellStore.closeShellView();
     /*
       Back where you were in it, when you have been in it this session and are arriving from somewhere
