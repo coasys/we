@@ -77,6 +77,24 @@ describe('manifestEntries', () => {
     expect(prop('Collection', 'allDay')?.type).toBe('boolean');
   });
 
+  it('names the forward a reverse relation inverts, so a caller moving the link knows where to write', () => {
+    const [post, comment] = manifestEntries({
+      version: '1',
+      entities: {
+        Post: {
+          properties: {},
+          relations: { comments: { target: 'Comment', cardinality: 'many', predicate: 'x://comment' } },
+        },
+        Comment: {
+          properties: {},
+          relations: { post: { target: 'Post', cardinality: 'one', predicate: 'x://comment', reverseOf: 'comments' } },
+        },
+      },
+    });
+    expect(post.properties[0]).not.toHaveProperty('reverseOf');
+    expect(comment.properties.find((p) => p.name === 'post')).toMatchObject({ reverse: true, reverseOf: 'comments' });
+  });
+
   it('carries the flag value as the target class, and tolerates its absence', () => {
     expect(entry('Collection').targetClass).toBe('we://collection');
     expect(entry('Image').targetClass).toBe('');

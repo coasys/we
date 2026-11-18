@@ -37,19 +37,48 @@ const L = SOCIAL_DNA_LABELS;
 const USES = 12;
 
 /**
- * The buckets, as an expression the vocabulary seed takes. Each definition opens into its uses — see
- * `VocabularyUses` in the graph's expanders: a signal type into what was reacted to with it, a kind of
- * connection into its connections, a state into its tasks, a kind of involvement into what somebody is
- * involved in that way, a topic into what was tagged with it. What a definition *is* is on its card.
+ * What a definition of each of WE's vocabulary classes opens into on the map — see `VocabularyUses`
+ * in the graph's expanders: a signal type into what was reacted to with it, a kind of connection into
+ * its connections, a state into its tasks, a kind of involvement into what somebody is involved in
+ * that way, a topic into what was tagged with it. Knowledge about those classes, so keyed by class
+ * name: a class another app brought has none, and the map shows it without uses.
+ */
+export const VOCABULARY_OPENS: Record<string, string> = {
+  SignalType: `{ entity: recordStore.creatableEntities.map(k, k.value), through: 'signals', field: 'signalTypeId', key: 'id', label: 'reacted to', limit: ${USES} }`,
+  RelationshipType: `{ entity: 'Relationship', field: 'relationshipTypeId', key: 'id', pair: ['source', 'target'], label: 'connects', limit: ${USES} }`,
+  TaskState: `{ entity: 'TaskBlock', field: 'status', key: 'slug', label: 'in it', limit: ${USES} }`,
+  InvolvementType: `{ entity: 'Involvement', field: 'kind', key: 'slug', follow: 'node', label: 'involved in', limit: ${USES} }`,
+  Topic: `{ entity: 'Relationship', through: 'target', field: 'id', key: 'id', follow: 'source', label: 'about it', limit: ${USES} }`,
+};
+
+/** A bucket of one of WE's vocabulary classes, opening as `VOCABULARY_OPENS` says. */
+const classBucket = (key: keyof typeof L, entity: keyof typeof VOCABULARY_OPENS) =>
+  `{ key: '${key}', label: '${L[key]}', entity: '${entity}', opens: ${VOCABULARY_OPENS[entity]} }`;
+
+/**
+ * The names of another app's classes: every class the space carries that is not one of its own models,
+ * not one of WE's vocabulary, and not WE's plumbing — a `Space` an older version wrote under another IRI
+ * is still WE's. Each name once. One expression, read by this map's "From other apps" bucket and by a
+ * space's tree alike, so the two cannot list different classes.
+ */
+export const OTHER_APP_CLASS_NAMES = `distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in [${Object.keys(
+  VOCABULARY_OPENS,
+)
+  .map((name) => `'${name}'`)
+  .join(', ')}])).map(e, e.name))`;
+
+/**
+ * The buckets, as an expression the vocabulary seed takes. Each definition opens into its uses (see
+ * `VOCABULARY_OPENS`); what a definition *is* is on its card.
  */
 export const VOCABULARY_BUCKETS = `[
-  { key: 'signals', label: '${L.signals}', entity: 'SignalType', opens: { entity: recordStore.creatableEntities.map(k, k.value), through: 'signals', field: 'signalTypeId', key: 'id', label: 'reacted to', limit: ${USES} } },
-  { key: 'connections', label: '${L.connections}', entity: 'RelationshipType', opens: { entity: 'Relationship', field: 'relationshipTypeId', key: 'id', pair: ['source', 'target'], label: 'connects', limit: ${USES} } },
-  { key: 'states', label: '${L.states}', entity: 'TaskState', opens: { entity: 'TaskBlock', field: 'status', key: 'slug', label: 'in it', limit: ${USES} } },
-  { key: 'kinds', label: '${L.kinds}', entity: 'InvolvementType', opens: { entity: 'Involvement', field: 'kind', key: 'slug', follow: 'node', label: 'involved in', limit: ${USES} } },
-  { key: 'topics', label: '${L.topics}', entity: 'Topic', opens: { entity: 'Relationship', through: 'target', field: 'id', key: 'id', follow: 'source', label: 'about it', limit: ${USES} } },
+  ${classBucket('signals', 'SignalType')},
+  ${classBucket('connections', 'RelationshipType')},
+  ${classBucket('states', 'TaskState')},
+  ${classBucket('kinds', 'InvolvementType')},
+  ${classBucket('topics', 'Topic')},
   { key: 'models', label: '${L.models}', models: recordStore.creatableEntities.map(k, { name: k.value, label: k.label }) },
-  { key: 'other', label: 'From other apps', models: datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value))).map(e, { name: e.name }) },
+  { key: 'other', label: 'From other apps', models: ${OTHER_APP_CLASS_NAMES}.map(n, { name: n }) },
   { key: 'workflows', label: '${L.workflows}', workflows: workflowStore.workflows.map(f, { name: f.name, label: f.label, steps: f.steps, moves: f.moves }) },
   { key: 'policy', label: '${L.policy}', items: spaceStore.policy.sentences.map(s, { id: s, label: s }) }
 ].filter(b, b.key != 'other' || count(b.models))`;

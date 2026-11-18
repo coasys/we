@@ -49,7 +49,7 @@ export async function check({ evaluate, screenshot }, width) {
     step.shadowRoot?.querySelector('button')?.click() ?? step.click();
   });
   const went = await evaluate(() => globalThis.__navigated);
-  if (went !== '/dna?dna=signal') problems.push(`pressing Signal types went to ${went}`);
+  if (went !== '/dna?dna=model%7CSignalType') problems.push(`pressing Signal types went to ${went}`);
 
   await screenshot(`coasys-bar-${width}`);
   return problems;
