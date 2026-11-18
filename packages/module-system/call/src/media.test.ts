@@ -940,4 +940,47 @@ describe('choosing a device', () => {
     expect(chosenTrack.stopped).toBe(false);
     expect(sent(tracks, 'audio')).toBe(chosenTrack);
   });
+
+  /*
+    The reverse order: a switch already asking for a microphone, then an unmute. The unmute used to
+    start a request of its own beside the switch's. A late refusal of it set the state to muted
+    while the switch's microphone was sending; a late grant appended a second live microphone. The
+    unmute waits for the switch instead, and unmutes the microphone the switch got.
+  */
+  // Each answer comes after the switch has landed: the order that went wrong.
+  const late = <T>(settle: (resolve: (value: T) => void, reject: (error: Error) => void) => void) =>
+    new Promise<T>((resolve, reject) => setTimeout(() => settle(resolve, reject), 20));
+  it.each([
+    ['refuses', () => late<MediaStream>((_, reject) => reject(new Error('NotAllowedError')))],
+    ['grants', () => late<MediaStream>((resolve) => resolve(fakeStream([fakeTrack('audio')])))],
+  ])('unmutes the microphone a switch is getting, whatever a second request would answer (%s)', async (_, second) => {
+    const camera = fakeTrack('video');
+    const chosenTrack = fakeTrack('audio');
+    let joined = false;
+    let release: (() => void) | undefined;
+    const { controller, tracks, states } = setup({
+      getUserMedia: vi.fn((constraints: MediaStreamConstraints) => {
+        if (!constraints.audio) return Promise.resolve(fakeStream([camera]));
+        if (!joined) return Promise.reject(new Error('NotAllowedError'));
+        // The first microphone request after the join is the switch's; any later one is a second.
+        if (release) return second();
+        return new Promise<MediaStream>((resolve) => (release = () => resolve(fakeStream([chosenTrack]))));
+      }),
+    });
+    await controller.start();
+    expect(controller.state().audioEnabled).toBe(false);
+    joined = true;
+
+    const switching = controller.setDevice('audio', 'mic-2');
+    await vi.waitFor(() => expect(release).toBeDefined());
+    const unmuting = controller.setAudioEnabled(true);
+    release!();
+    await Promise.all([switching, unmuting]);
+
+    const live = controller.localStream()?.getAudioTracks() ?? [];
+    expect(live).toEqual([chosenTrack]);
+    expect(sent(tracks, 'audio')).toBe(chosenTrack);
+    expect(controller.state().audioEnabled).toBe(true);
+    expect(states.at(-1)?.audioEnabled).toBe(chosenTrack.enabled);
+  });
 });

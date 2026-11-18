@@ -132,12 +132,12 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
   const pending = new Set<MediaStreamTrack>();
 
   /**
-   * The microphone acquisition an unmute is waiting on, or none.
+   * The microphone acquisition under way — an unmute's or a microphone switch's — or none.
    *
-   * `getUserMedia` sits behind the permission prompt, so a second unmute — or a device switch —
-   * can arrive while one is already waiting. Joining this promise rather than starting a second
-   * acquisition is what keeps "one microphone" true: two would resolve into two live tracks and
-   * `micTrack()` can only ever point at one of them.
+   * `getUserMedia` sits behind the permission prompt, so an unmute or a switch can arrive while
+   * another is already waiting. Each waits for this one to settle before it asks ([`micTurn`]),
+   * which is what keeps "one microphone" true: two at once would resolve into two live tracks, and
+   * a refusal of one would mark the call muted over the other, still sending.
    */
   let pendingMic: Promise<void> | null = null;
 
@@ -258,12 +258,29 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
   }
 
   /**
-   * The work behind `pendingMic` — get a microphone for an unmute that has none, and adopt it.
+   * Runs `work`, a microphone acquisition, once no other is under way, as `pendingMic`.
+   */
+  async function micTurn<T>(work: () => Promise<T>): Promise<T> {
+    while (pendingMic) await pendingMic;
+    const run = work();
+    const settled = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    pendingMic = settled;
+    try {
+      return await run;
+    } finally {
+      if (pendingMic === settled) pendingMic = null;
+    }
+  }
+
+  /**
+   * Get a microphone for an unmute that has none, and adopt it. Run through [`micTurn`].
    *
-   * Kept as one promise so every unmute asked while it waits joins this acquisition rather than
-   * starting its own. What the track does when it lands is decided by `state.audioEnabled` *then*,
-   * not by who asked first: a mute that arrived while the prompt was open keeps the microphone it
-   * raced, but silent — the same state as muting a live track, so a later unmute only re-enables.
+   * What the track does when it lands is decided by `state.audioEnabled` *then*, not by who asked
+   * first: a mute that arrived while the prompt was open keeps the microphone it raced, but silent —
+   * the same state as muting a live track, so a later unmute only re-enables.
    */
   async function acquireMic(): Promise<void> {
     const isMine = acquisitions.current();
@@ -296,6 +313,45 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
     watchForLoss(track, 'audio');
     publishAudio();
     emitState();
+  }
+
+  /** The work of `setDevice`: open the chosen device, then let the old one go. */
+  async function replaceDevice(kind: 'audio' | 'video'): Promise<boolean> {
+    // Nothing is open yet — the choice is remembered and `start` will ask for it. This is the
+    // ordinary path when somebody picks a device before joining.
+    if (!stream) return true;
+
+    const isMine = acquisitions.current();
+    let acquired: MediaStream;
+    try {
+      acquired = await devices.getUserMedia(
+        kind === 'audio' ? { audio: constraintsFor('audio') } : { video: constraintsFor('video') },
+      );
+    } catch (error) {
+      options.onError?.(`switching ${kind === 'audio' ? 'microphone' : 'camera'}`, error);
+      return false;
+    }
+
+    const next = (kind === 'audio' ? acquired.getAudioTracks() : acquired.getVideoTracks())[0] ?? null;
+    // Cancelled while the prompt was open, or a device that opened with nothing in it. Either way
+    // what was acquired belongs to nobody — the check is `start`'s, for its reason.
+    if (!isMine() || !next) {
+      for (const orphan of acquired.getTracks()) orphan.stop();
+      return false;
+    }
+
+    const replaced = kind === 'audio' ? stream.getAudioTracks() : stream.getVideoTracks();
+    const kept = stream.getTracks().filter((track) => !replaced.includes(track));
+    for (const old of replaced) old.stop();
+
+    next.enabled = kind === 'audio' ? state.audioEnabled : state.videoEnabled;
+    watchForLoss(next, kind);
+    stream = new MediaStream([...kept, next]);
+
+    if (kind === 'audio') publishAudio();
+    else publishVideo();
+    emitState();
+    return true;
   }
 
   function stopScreenShare() {
@@ -432,46 +488,9 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
      */
     async setDevice(kind, deviceId) {
       chosen[kind] = deviceId;
-      // A microphone already being acquired — an unmute waiting on its prompt — has to land before
-      // the switch is asked for: resolving in parallel would leave the retry's microphone running
-      // beside the chosen one, live and published by nobody. Waiting makes the switch the ordinary
-      // replacement below, which stops the retry's track like any other.
-      if (kind === 'audio') await pendingMic;
-      // Nothing is open yet — the choice is remembered and `start` will ask for it. This is the
-      // ordinary path when somebody picks a device before joining.
-      if (!stream) return true;
-
-      const isMine = acquisitions.current();
-      let acquired: MediaStream;
-      try {
-        acquired = await devices.getUserMedia(
-          kind === 'audio' ? { audio: constraintsFor('audio') } : { video: constraintsFor('video') },
-        );
-      } catch (error) {
-        options.onError?.(`switching ${kind === 'audio' ? 'microphone' : 'camera'}`, error);
-        return false;
-      }
-
-      const next = (kind === 'audio' ? acquired.getAudioTracks() : acquired.getVideoTracks())[0] ?? null;
-      // Cancelled while the prompt was open, or a device that opened with nothing in it. Either way
-      // what was acquired belongs to nobody — the check is `start`'s, for its reason.
-      if (!isMine() || !next) {
-        for (const orphan of acquired.getTracks()) orphan.stop();
-        return false;
-      }
-
-      const replaced = kind === 'audio' ? stream.getAudioTracks() : stream.getVideoTracks();
-      const kept = stream.getTracks().filter((track) => !replaced.includes(track));
-      for (const old of replaced) old.stop();
-
-      next.enabled = kind === 'audio' ? state.audioEnabled : state.videoEnabled;
-      watchForLoss(next, kind);
-      stream = new MediaStream([...kept, next]);
-
-      if (kind === 'audio') publishAudio();
-      else publishVideo();
-      emitState();
-      return true;
+      // A microphone switch is a microphone acquisition: one at a time with an unmute's, so the two
+      // never resolve into two live microphones, and the unmute adopts the one the switch got.
+      return kind === 'audio' ? micTurn(() => replaceDevice('audio')) : replaceDevice('video');
     },
 
     async setAudioEnabled(enabled) {
@@ -481,20 +500,18 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
         flipped a flag on a track that was not there: the button said unmuted, presence told every
         peer the same, and nothing ever asked for a microphone again, so audio never came back.
 
-        The flag is recorded before the wait, not after it: it is what the acquisition reads when
-        its track lands, so a mute that arrives while the prompt is open wins over the unmute that
-        started it — the landed track is kept, but silent.
+        The flag is recorded before the wait, not after it: it is what an acquisition reads when its
+        track lands, so a mute that arrives while the prompt is open wins over the unmute that
+        started it — the landed track is kept, but silent. An unmute while a microphone is being
+        acquired (another unmute's, or a switch's) waits for it and adopts what it got, asking again
+        only if it got nothing. The tracks then take the flag as it stands after the wait.
       */
       state.audioEnabled = enabled;
-      if (enabled && !micTrack()) {
-        pendingMic ??= acquireMic().finally(() => {
-          pendingMic = null;
-        });
-        await pendingMic;
-        return;
+      if (enabled && (pendingMic || !micTrack())) {
+        await micTurn(() => (micTrack() ? Promise.resolve() : acquireMic()));
       }
 
-      for (const track of stream?.getAudioTracks() ?? []) track.enabled = enabled;
+      for (const track of stream?.getAudioTracks() ?? []) track.enabled = state.audioEnabled;
       emitState();
     },
 
