@@ -38,6 +38,7 @@ testkit = ["dep:tempfile"]
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 we-ad4m = { path = ".", features = ["testkit"] }
 tempfile = "3"
+we-data.workspace = true
 we-session.workspace = true
 we-screen.workspace = true
 anyhow = "1"

@@ -15,11 +15,15 @@
 //!   from executor reads; members without a row stay on the snapshot.
 //! - [`translate`] lowers a compiled `$query` to `modelQuery`'s options, as
 //!   the TS adapter does.
+//! - [`ai_session`] calls `ai.session*` through `WsRpcClient::call` and
+//!   subscribes to `ai-session-changed`. [`AiSessionChat`] is the live chat port.
 //!
 //! Native only: on wasm32 the crate is empty (the connected web build is
 //! E10), so the workspace's wasm check never compiles tokio.
 #![forbid(unsafe_code)]
 
+#[cfg(not(target_arch = "wasm32"))]
+pub mod ai_session;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod connect;
 #[cfg(not(target_arch = "wasm32"))]
@@ -41,6 +45,8 @@ pub mod translate;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod write_host;
 
+#[cfg(not(target_arch = "wasm32"))]
+pub use ai_session::AiSessionChat;
 #[cfg(not(target_arch = "wasm32"))]
 pub use connection::{Connection, Runtime};
 #[cfg(not(target_arch = "wasm32"))]
