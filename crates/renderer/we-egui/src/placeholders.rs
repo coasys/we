@@ -145,7 +145,6 @@ impl Widget for Sheet {
 /// The E5a placeholder registrations — each names the stage that replaces it.
 /// The E5b types (`we-input` etc.) are NOT here; that branch registers them.
 pub fn register(reg: &mut crate::Registry) {
-    reg.register(Placeholder::new("GraphView", "stage 4"));
     reg.register(Placeholder::new("BlockComposer", "E8"));
     reg.register(Placeholder::new("EditableImage", "E8"));
     reg.register(Placeholder::new("we-location-picker", "E8"));

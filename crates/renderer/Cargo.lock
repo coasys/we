@@ -6435,6 +6435,7 @@ dependencies = [
  "taffy",
  "we-catalog",
  "we-expr",
+ "we-graph",
  "we-layout",
  "we-metrics",
  "we-style",

@@ -87,7 +87,10 @@ impl Registry {
             .with(crate::ColorPicker)
             .with(crate::IconPicker)
             // E5b — drag & drop
-            .with(crate::Sortable);
+            .with(crate::Sortable)
+            // The read-only space graph. `placeholders::register` used to
+            // paint a labelled box under this name. It no longer does.
+            .with(crate::GraphView);
         crate::placeholders::register(&mut reg);
         reg
     }
