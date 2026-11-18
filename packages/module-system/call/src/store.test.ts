@@ -8,7 +8,7 @@
  * inspection.
  */
 import { markAction, markState, storeSurface } from '@we/module-shared';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { DEFAULT_ICE_SERVERS } from './mesh';
 import { parseCallMessage } from './protocol';
@@ -800,6 +800,43 @@ describe('transport and device lifetime', () => {
       expect(store.problem()).toBeNull();
       // The stream with the microphone in it is what the transcriber is handed.
       expect((published.at(-1) as MediaStream | null)?.getAudioTracks()).toHaveLength(1);
+    });
+
+    it('does not report an unmute of a call already left against the next call', async () => {
+      // The unmute in the first call waits on its permission prompt; the person leaves, joins a
+      // second call with a working microphone and mutes it. The first prompt then refuses.
+      let refuseFirstUnmute: (() => void) | undefined;
+      let microphoneIs: 'refused' | 'prompting' | 'granted' = 'refused';
+      const microphone = { kind: 'audio', enabled: true, readyState: 'live', stop() {}, addEventListener() {} };
+      const camera = { kind: 'video', enabled: true, readyState: 'live', stop() {}, addEventListener() {} };
+      const { store } = callable({
+        getUserMedia: async (constraints) => {
+          if (constraints.audio && microphoneIs === 'refused') throw new Error('NotAllowedError');
+          if (constraints.audio && microphoneIs === 'prompting') {
+            await new Promise<void>((resolve) => (refuseFirstUnmute = resolve));
+            throw new Error('NotAllowedError');
+          }
+          return new MediaStream([(constraints.audio ? microphone : camera) as unknown as MediaStreamTrack]);
+        },
+      });
+      await store.startCall();
+      await Promise.resolve();
+      microphoneIs = 'prompting';
+      const firstUnmute = store.toggleAudio();
+      await vi.waitFor(() => expect(refuseFirstUnmute).toBeDefined());
+
+      microphoneIs = 'granted';
+      store.leave();
+      await store.startCall();
+      await Promise.resolve();
+      await store.toggleAudio();
+      expect(store.media().audioEnabled).toBe(false);
+      expect(store.problem()).toBeNull();
+
+      refuseFirstUnmute?.();
+      await firstUnmute;
+
+      expect(store.problem()).toBeNull();
     });
   });
 

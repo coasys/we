@@ -2760,9 +2760,11 @@ export function createCallStore(deps: ModuleStoreDeps) {
 
     toggleAudio: action(async () => {
       const wanted = !media().audioEnabled;
-      await controller?.setAudioEnabled(wanted);
+      // The call the unmute was for: a prompt can outlast it, and its answer says nothing of the next.
+      const asked = controller;
+      await asked?.setAudioEnabled(wanted);
       // Asked on the outcome, as `toggleVideo` does: wanting the microphone and not having it.
-      if (wanted && controller && !controller.state().audioEnabled) setProblem(MIC_BLOCKED);
+      if (wanted && asked && asked === controller && !asked.state().audioEnabled) setProblem(MIC_BLOCKED);
     }, 'Mute or unmute this agent’s microphone.'),
     /**
      * Turn the camera on or off — and say so when it refuses.
