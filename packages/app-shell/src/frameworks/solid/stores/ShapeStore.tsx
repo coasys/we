@@ -22,6 +22,7 @@
  */
 import { hostSlot } from '@shared/hostSlot';
 import {
+  type DatasetHandle,
   type EntityManifest,
   extractableEntities,
   manifestEntries,
@@ -201,6 +202,12 @@ export interface ShapeStore {
    * may be missing members that are coming.
    */
   extractionCandidatesLoaded: Accessor<boolean>;
+  /**
+   * The same candidacy, answered for a dataset that may not be the one on screen: its shapes and
+   * its foreign classes read through the handle, so a call asking about its own space while
+   * another is up narrows by the rule the live list does. Async — both are a read.
+   */
+  extractionCandidatesFor(dataset: DatasetHandle): Promise<string[]>;
   /** Options for the relationship target picker — `{ label, value }`, grouped and labelled. */
   relationshipTargets: Accessor<RelationshipTargetOption[]>;
   /**
@@ -488,15 +495,34 @@ export function ShapeStoreProvider(props: ParentProps) {
     Then the classes the space already had: every SHACL class WE did not write, apart from WE's own
     plumbing, those carrying an interpretation hint first — see `foreignExtractionCandidates`. Last,
     so WE's own read first.
+
+    One rule for the list on screen and for `extractionCandidatesFor` below: candidacy is which
+    models may be extracted into, not which names the registry happens to resolve — an adopted
+    model whose manifest is not extractable resolves all the same.
   */
-  const foreignCandidates = createMemo(() =>
-    foreignExtractionCandidates(datasetStore.currentDatasetEntities(), {
+  const extractionCandidatesOf = (
+    shapes: readonly { name: string; manifest: EntityManifest | null }[],
+    foreign: readonly { name: string; interpretationHint?: string }[],
+  ): { candidates: string[]; shadowed: string[] } => {
+    const { offered, shadowed } = foreignExtractionCandidates(foreign, {
       taken: [...Object.keys(CORE_MANIFEST.entities), ...getRegisteredEntityNames()],
-      adopted: spaceShapes().map((shape) => shape.name),
-    }),
-  );
+      adopted: shapes.map((shape) => shape.name),
+    });
+    return {
+      candidates: [
+        ...new Set([
+          ...coreExtractionTargets,
+          ...shapes.flatMap((shape) => (shape.manifest ? extractableEntities(shape.manifest) : [])),
+          ...offered,
+        ]),
+      ],
+      shadowed,
+    };
+  };
+
+  const candidatesRead = createMemo(() => extractionCandidatesOf(spaceShapes(), datasetStore.currentDatasetEntities()));
   createEffect(() => {
-    const { shadowed } = foreignCandidates();
+    const { shadowed } = candidatesRead();
     if (shadowed.length)
       console.warn(
         `extraction: not offering ${shadowed.map((n) => `"${n}"`).join(', ')} from this space's own classes — ` +
@@ -504,14 +530,33 @@ export function ShapeStoreProvider(props: ParentProps) {
       );
   });
 
-  const extractionCandidates = createMemo<string[]>(() => {
-    const names = [
-      ...coreExtractionTargets,
-      ...spaceShapes().flatMap((shape) => (shape.manifest ? extractableEntities(shape.manifest) : [])),
-      ...foreignCandidates().offered,
-    ];
-    return [...new Set(names)];
-  });
+  const extractionCandidates = createMemo<string[]>(() => candidatesRead().candidates);
+
+  /*
+    The same rule read through a handle rather than the signals a switch fills — SpaceStore's
+    off-screen collection reads ask about the collection's own dataset, which may not be the one
+    on screen. Its shapes are listed and validated as `loadShapes` validates them — a manifest
+    that could not stand is no candidate — and `foreignSchemas` answers the classes it already
+    had, registering them for the asking dataset as part of the same read.
+  */
+  async function extractionCandidatesFor(dataset: DatasetHandle): Promise<string[]> {
+    const [records, foreign] = await Promise.all([
+      storage().list(dataset),
+      schemas()?.foreignSchemas(dataset) ?? Promise.resolve([]),
+    ]);
+    const shapes = records.map((record) => {
+      if (!record.manifest) return { name: record.name, manifest: null };
+      const gate = validateManifest(record.manifest, {
+        externalEntities: [
+          ...Object.keys(CORE_MANIFEST.entities),
+          ...foreign.map((m) => m.name),
+          ...records.map((r) => r.name).filter((n) => n !== record.name),
+        ],
+      });
+      return { name: record.name, manifest: gate.valid ? gate.manifest : null };
+    });
+    return extractionCandidatesOf(shapes, foreign).candidates;
+  }
 
   /*
     Whether the candidates are whole. A picker shows the core classes at once; a standing watch
@@ -1409,6 +1454,7 @@ export function ShapeStoreProvider(props: ParentProps) {
     hintEntities,
     extractionCandidates,
     extractionCandidatesLoaded,
+    extractionCandidatesFor,
     provideExtractionEnroller: extractionEnroller.provide,
     relationshipTargets,
     identityOptions,

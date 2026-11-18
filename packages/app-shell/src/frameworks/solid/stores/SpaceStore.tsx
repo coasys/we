@@ -167,6 +167,7 @@ import {
   type TaskBlock,
   TaskState,
 } from '@we/entities';
+import { type Latest, latest } from '@we/module-shared';
 import type { ResolvedView, TemplateSchema } from '@we/schema-shared';
 import {
   applyStarterRecords,
@@ -2534,18 +2535,22 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   /**
-   * Persist fields on a space's own record, then publish them.
-   *
-   * A failure is logged, told to the person and rethrown: a setting that reports success without
-   * persisting is worse than one that fails visibly, because the setting is a community decision and
-   * the next member to open the page sees the old one.
+   * How a failed space write is told to the person: logged, and the same toast whatever it was.
+   * A setting that reports success without persisting is worse than one that fails visibly,
+   * because the setting is a community decision and the next member to open the page sees the old
+   * one.
    */
+  const reportSpaceSave = (what: string, error: unknown): void => {
+    console.error(`SpaceStore: could not persist ${what}`, error);
+    toastService.error('Could not save this change for the space.');
+  };
+
+  /** Persist fields on a space's own record, then publish them. */
   async function writeSpaceFields(ds: AppDataset, space: Space, fields: Partial<Space>): Promise<void> {
     try {
       await Space.update(ds.handle, space.id, fields);
     } catch (error) {
-      console.error(`SpaceStore: could not persist ${Object.keys(fields).join(', ')}`, error);
-      toastService.error('Could not save this change for the space.');
+      reportSpaceSave(Object.keys(fields).join(', '), error);
       throw error;
     }
     publishSpaceFields(ds, fields);
@@ -4604,13 +4609,22 @@ export function SpaceStoreProvider(props: ParentProps) {
     } as never);
     const ds = datasetStore.datasets().find((d) => d.handle === handle);
     const space = ds ? await spaceRow(ds) : undefined;
+    /*
+      Narrowed by candidacy — the same rule the live list intersects, read for this dataset —
+      not by resolvability: an adopted model whose manifest is not extractable resolves in the
+      registry all the same, and a check that only asks "does the name resolve" kept it. The
+      resolvable check stays: a candidate whose class is not installed in this dataset yet has no
+      shape there and would take the whole pass down.
+    */
+    const candidates = await shapeStore.extractionCandidatesFor(handle);
     const resolvable = (entity: string) => getEntityForDataset(entity, handle) !== undefined;
-    const spaceChosen = parseEntityList(space?.extractionTargets) ?? LEGACY_EXTRACTION_TARGETS;
     return {
       spaceName: space?.name,
-      spaceTargets: spaceChosen.filter(resolvable),
+      spaceTargets: resolveSpaceExtractionTargets(candidates, space?.extractionTargets).filter(resolvable),
       auto: resolveCollectionAutoExtract(space?.autoInterpret === true, row?.autoExtract),
-      classes: (parseEntityList(row?.extractionTargets) ?? spaceChosen).filter(resolvable),
+      classes: resolveCollectionExtractionTargets(candidates, space?.extractionTargets, row?.extractionTargets).filter(
+        resolvable,
+      ),
     };
   }
 
@@ -5790,56 +5804,117 @@ export function SpaceStoreProvider(props: ParentProps) {
     toastService.warning(`This template suggests a theme ("${suggested}") you don't have — using your own.`);
   });
 
-  /** The default `field` shown for `ds` — the cached row's, else the record on screen's. */
-  const shownDefault = (ds: AppDataset, field: 'defaultTemplateId' | 'defaultThemeId'): string | undefined =>
-    heldSpace(ds)?.[field] ?? (isCurrent(ds) ? currentSpace()?.[field] : undefined);
+  /*
+    A default save paints its choice before it is stored, and two can be out at once — so what a
+    failed save puts back is kept here rather than re-read off the screen, where mid-save it is
+    the other save's paint, not anything the record took. `confirmed` is the last value the record
+    took: seeded while nothing is pending (the value shown is then the value stored) and moved on
+    each save that lands. `ops` says whether a save is still the newest for its field — an earlier
+    one failing must not take back a later one's paint, or its landed value, with it. The record
+    is dropped when nothing is pending, so the next save seeds its baseline from what the cache
+    says then, which the live read may have moved on.
+  */
+  const defaultSaves = new Map<string, { key: string; confirmed: string | undefined; ops: Latest; pending: number }>();
+
+  const defaultSaveFor = (ds: AppDataset, field: 'defaultTemplateId' | 'defaultThemeId') => {
+    const key = `${ds.id}:${field}`;
+    let save = defaultSaves.get(key);
+    if (!save) {
+      // The shown fallback asks for ds's own record, not just the dataset: a switch moves the
+      // dataset ahead of the record on screen, and the space being left's record is not a baseline.
+      const shown = currentSpace();
+      save = {
+        key,
+        confirmed: heldSpace(ds)?.[field] ?? (shown && isSpaceSelf(shown, ds) ? shown[field] : undefined),
+        ops: latest(),
+        pending: 0,
+      };
+      defaultSaves.set(key, save);
+    }
+    return save;
+  };
+
+  /*
+    The row a default save writes through, inside the same failure boundary as the write. A read
+    that cannot answer, and a space with no record at all, were silent successes: the paint already
+    up stayed, with nothing saved and nothing said. Reported the way the write reports, so the
+    caller's failure path takes the publish back.
+  */
+  const spaceRowForSave = async (ds: AppDataset): Promise<Space> => {
+    try {
+      const space = await spaceRow(ds);
+      if (!space) throw new Error(`SpaceStore: no space record for ${ds.id}`);
+      return space;
+    } catch (error) {
+      reportSpaceSave('the space record', error);
+      throw error;
+    }
+  };
 
   async function setSpaceDefaultTemplate(templateId: string, spaceUuid?: string): Promise<void> {
     const ds = targetDataset(spaceUuid);
     if (!ds) return;
+    const save = defaultSaveFor(ds, 'defaultTemplateId');
+    const isNewest = save.ops.begin();
+    save.pending += 1;
+    const ownShown = () => {
+      const space = currentSpace();
+      return space && isSpaceSelf(space, ds) ? space : undefined;
+    };
     /*
-      Read before the optimistic publish writes over them — the template snapshot is cloned because
-      what is on screen is a store, and `replaceTemplate` reconciles it in place.
+      Snapshot — and swap — only while the record on screen is this space's own: a switch moves the
+      dataset ahead of the record, so `isCurrent` alone would capture the space being left's
+      template as this one's "previous", and a rollback would paint it into the space being
+      entered. Cloned because what is on screen is a store, and `replaceTemplate` reconciles it in
+      place.
     */
-    const previousId = shownDefault(ds, 'defaultTemplateId');
     const previousTemplate =
-      isCurrent(ds) && templateStore.currentTemplate ? deepClone(templateStore.currentTemplate) : undefined;
-    // Switching what is on screen is only right when the space being configured is the one on
-    // screen. Setting another space's default from the spaces list must not repaint the app.
-    // Published before it is stored, so template pre-loading reads the fresh id from the cache.
-    publishSpaceFields(ds, { defaultTemplateId: templateId });
-    if (isCurrent(ds)) {
-      const template = templateStore.allTemplates().find((t) => t.id === templateId);
-      if (template) templateStore.replaceTemplate(template);
-    }
-    const space = await spaceRow(ds);
-    if (!space) return;
+      ownShown() && templateStore.currentTemplate ? deepClone(templateStore.currentTemplate) : undefined;
+    /*
+      Kept by reference: a rollback puts the snapshot back only while the template this save put up
+      is still the one on screen — a template this space's own record loaded since is left alone.
+    */
+    const installed = ownShown() ? templateStore.allTemplates().find((t) => t.id === templateId) : undefined;
     try {
+      // Published before it is stored, so template pre-loading reads the fresh id from the cache.
+      publishSpaceFields(ds, { defaultTemplateId: templateId });
+      if (installed) templateStore.replaceTemplate(installed);
+      const space = await spaceRowForSave(ds);
       await writeSpaceFields(ds, space, { defaultTemplateId: templateId });
+      save.confirmed = templateId;
     } catch (error) {
-      // Only this call's own optimism is taken back — a newer choice published meanwhile stays.
-      if (shownDefault(ds, 'defaultTemplateId') === templateId) {
-        publishSpaceFields(ds, { defaultTemplateId: previousId });
-        if (isCurrent(ds) && previousTemplate) templateStore.replaceTemplate(previousTemplate);
+      // Only the newest save takes the paint back — an earlier one failing leaves the later one's.
+      if (isNewest()) {
+        publishSpaceFields(ds, { defaultTemplateId: save.confirmed });
+        if (previousTemplate && installed && ownShown() && templateStore.currentTemplate === installed)
+          templateStore.replaceTemplate(previousTemplate);
       }
       throw error;
+    } finally {
+      save.pending -= 1;
+      if (!save.pending) defaultSaves.delete(save.key);
     }
   }
 
   async function setSpaceDefaultTheme(themeId: string, spaceUuid?: string): Promise<void> {
     const ds = targetDataset(spaceUuid);
     if (!ds) return;
-    const previousId = shownDefault(ds, 'defaultThemeId');
-    publishSpaceFields(ds, { defaultThemeId: themeId });
-    if (isCurrent(ds)) explainHiddenSpaceTheme();
-    const space = await spaceRow(ds);
-    if (!space) return;
+    const save = defaultSaveFor(ds, 'defaultThemeId');
+    const isNewest = save.ops.begin();
+    save.pending += 1;
     try {
+      publishSpaceFields(ds, { defaultThemeId: themeId });
+      if (isCurrent(ds)) explainHiddenSpaceTheme();
+      const space = await spaceRowForSave(ds);
       await writeSpaceFields(ds, space, { defaultThemeId: themeId });
+      save.confirmed = themeId;
     } catch (error) {
-      // Only this call's own optimism is taken back — a newer choice published meanwhile stays.
-      if (shownDefault(ds, 'defaultThemeId') === themeId) publishSpaceFields(ds, { defaultThemeId: previousId });
+      // Only the newest save takes the paint back — an earlier one failing leaves the later one's.
+      if (isNewest()) publishSpaceFields(ds, { defaultThemeId: save.confirmed });
       throw error;
+    } finally {
+      save.pending -= 1;
+      if (!save.pending) defaultSaves.delete(save.key);
     }
   }
 
