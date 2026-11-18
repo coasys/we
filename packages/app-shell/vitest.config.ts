@@ -13,11 +13,19 @@ const alias = { '@shared': r('./src/shared'), '@solid': r('./src/frameworks/soli
 const SOLID_TESTS = [
   // Renders the template root through the real part expansion and edits it live.
   'tests/liveSchema.test.tsx',
+  // Mounts a part's frame and changes its subject under it: real Solid effects and cleanups.
+  'tests/partWhileShown.test.tsx',
   'tests/executorFreeBoot.test.tsx',
   'tests/runtimeStore.test.tsx',
   'tests/accountStore.test.tsx',
   'tests/identityStore.test.tsx',
   'tests/profileStore.test.tsx',
+  // Mounts the profile store and holds the app's first-screen gate: real signals and real promises.
+  'tests/firstScreenDeferral.test.tsx',
+  // The same gate and store: this agent's own profile, asked for before `me()` answered.
+  'tests/firstScreenOwnProfile.test.tsx',
+  // Mounts the interpretation store under the held gate and watches what it tells modules.
+  'tests/firstScreenInterpretation.test.tsx',
   // Counts effect re-runs through a real provider. The node project resolves solid-js to its SSR
   // build, where `createEffect` never runs again — so every count would be 1 and the test would
   // pass whether or not the cache is fine-grained, which is the one thing it exists to tell apart.

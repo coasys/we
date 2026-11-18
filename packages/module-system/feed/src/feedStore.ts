@@ -7,7 +7,8 @@
  * ## Staying live, cheaply
  *
  * The window is read whole (see `readFeedWindow`) and read again when something it shows may have
- * changed: the newest line written anywhere in the space (a message, a call's line or a reply), the newest
+ * changed: the newest line written anywhere in the space (a message, a call's line or a reply) — or,
+ * for one call's window, in that call — the newest
  * call started, an edit to any line it is showing, and the suggestions settling. Each of those is a one-row subscription
  * rather than a subscription over everything, and a burst of them is one re-read, not one each. Only
  * while somebody is looking — the panel open, or the Feed placed on screen as a part (a space's main
@@ -22,7 +23,15 @@
  */
 import type { InterpretationKernel, ModuleStoreDeps, RecordsKernel } from '@we/module-shared';
 
-import { FEED_FIRST_PAGE, FEED_PAGE, FeedReadStopped, type FeedRow, markPending, readFeedWindow } from './feed';
+import {
+  CALL_FIELDS,
+  FEED_FIRST_PAGE,
+  FEED_PAGE,
+  FeedReadStopped,
+  type FeedRow,
+  markPending,
+  readFeedWindow,
+} from './feed';
 
 /** How long a burst of changes is collected before the window is read again. */
 const SETTLE_MS = 250;
@@ -34,10 +43,28 @@ export interface FeedDeps {
   action: ModuleStoreDeps['action'];
   onDispose: ModuleStoreDeps['onDispose'];
   dataset: ModuleStoreDeps['dataset'];
-  /** The space collection, as the host knows it — see `ModuleStoreDeps.spaceRoot`. */
+  /**
+   * The collection the window is of: the space collection as the host knows it (see
+   * `ModuleStoreDeps.spaceRoot`), or one call's, for the Feed of that call.
+   */
   spaceRoot: ModuleStoreDeps['spaceRoot'];
+  /**
+   * Where what extraction found is kept, when that is not the window's own collection — the space's,
+   * for a call's Feed. See `FeedWindowOptions.activityRoot`.
+   */
+  activityRoot?: () => string;
+  /** What an activity row calls the window's own collection — "the space" unless said. */
+  rootTitle?: string;
   records: RecordsKernel | undefined;
   interpretation: InterpretationKernel | undefined;
+  /** The host's first screen — see `ModuleStoreDeps.firstScreen` and `firstPageReported` below. */
+  firstScreen?: ModuleStoreDeps['firstScreen'];
+  /**
+   * Whether this window's first read may be what the first screen waits on — asked once, as that read
+   * leaves. Absent: it may (the space's Feed). A window that answers no never says `waiting` or
+   * `answered`, so a Feed placed long after boot cannot hold, or open, anybody's first screen.
+   */
+  mayHoldFirstScreen?: () => boolean;
   /**
    * Whether this reader wants the lines a call spoke in the window — the Feed's
    * `showCallTranscripts` setting. Part of what the window holds: it is read as the window is,
@@ -59,6 +86,12 @@ export function createFeed(deps: FeedDeps) {
   const [unconfirmed, setUnconfirmed] = signal<string[]>([]);
   /** The space's collection — the one fact the Feed starts from. The host's, so it is never read twice. */
   const root = () => (deps.dataset?.() ? (deps.spaceRoot?.() ?? '') : '');
+  /*
+    Where what extraction found is read from — the space's collection, for a call's window. Part of
+    what the window is: the host can learn the space's collection after a call's page first reads,
+    and that read had only the call to look in.
+  */
+  const activityHeldIn = () => deps.activityRoot?.() || root();
   const [shown, setShown] = signal(FEED_FIRST_PAGE);
   const [fromStart, setFromStart] = signal(false);
   /** This reader's transcripts choice — everything said, unless they said to keep spoken lines out. */
@@ -84,13 +117,28 @@ export function createFeed(deps: FeedDeps) {
   */
   const [answered, setAnswered] = signal(false);
 
-  // Forgotten whenever the dataset changes, so a switch never draws the last space's rows under the
-  // new space's name.
+  // Forgotten whenever the dataset or the collection changes, so a switch never draws the last
+  // space's rows, or the last call's, under the new one's name.
+  let rootWas = '';
+  let datasetWas: unknown;
   effect?.(() => {
-    void deps.dataset?.();
+    const ds = deps.dataset?.();
+    const now = root();
+    // A root that reads other signals (the calls drawn) can re-run this for the same collection.
+    if (ds === datasetWas && now === rootWas) return;
+    datasetWas = ds;
     setRows([]);
     setLoaded(false);
     setAnswered(false);
+    /*
+      And how far it was read, when the collection is another one: a window paged out to 250 from the
+      start of one call opened the next at 250 from its start. Not on the dataset alone answering
+      again for the same collection, which is not somewhere new.
+    */
+    if (now === rootWas) return;
+    rootWas = now;
+    setShown(FEED_FIRST_PAGE);
+    setFromStart(false);
   });
 
   /*
@@ -122,6 +170,35 @@ export function createFeed(deps: FeedDeps) {
     Away, nothing is read, but everything the Feed listens to stays up, so coming back reads once, at
     once, if something changed while nobody looked, and draws what it has with no read otherwise.
   */
+  /*
+    The Feed is very often what a person opened the app to read, so it tells the host when its first
+    page is up: from the moment its first read leaves until that read lands or fails, the host holds
+    back the reads the first screen does not need (`ModuleStoreDeps.firstScreen`). Said once each, for
+    the life of the store — a later space switch is not a first screen.
+
+    Waiting is said where a request leaves, not where somebody starts looking: a Feed with nothing to
+    read (a space made before spaces had a collection) never sends one, and so never holds the gate.
+    And a Feed that stops waiting before its page lands — nobody looking any more, the space on screen
+    has no collection, or the store is gone — says answered then, because nothing else would: its read
+    is stopped, and the next screen's `drawn` cannot open a gate somebody still says they wait on.
+  */
+  let firstPageReported: 'not yet' | 'waiting' | 'answered' = 'not yet';
+  const firstPageWaiting = () => {
+    if (firstPageReported !== 'not yet') return;
+    if (deps.mayHoldFirstScreen && !deps.mayHoldFirstScreen()) {
+      // Not the first screen's: settled, and nothing said either way.
+      firstPageReported = 'answered';
+      return;
+    }
+    firstPageReported = 'waiting';
+    deps.firstScreen?.waiting();
+  };
+  const firstPageAnswered = () => {
+    if (firstPageReported !== 'waiting') return;
+    firstPageReported = 'answered';
+    deps.firstScreen?.answered();
+  };
+
   let dirty = true;
   let wasLooking = false;
   let reading = false;
@@ -138,16 +215,25 @@ export function createFeed(deps: FeedDeps) {
     dirty = false;
     setFailed(false);
     reading = true;
+    firstPageWaiting();
     const space = root();
     const size = shown();
     const anchoredAtStart = fromStart();
     const spoken = showSpoken();
+    const activityRoot = activityHeldIn();
     const same = () =>
-      !disposed && root() === space && shown() === size && fromStart() === anchoredAtStart && showSpoken() === spoken;
-    const activityTypes = (deps.interpretation?.targets(space) ?? []).map((t) => t.entity);
+      !disposed &&
+      root() === space &&
+      activityHeldIn() === activityRoot &&
+      shown() === size &&
+      fromStart() === anchoredAtStart &&
+      showSpoken() === spoken;
+    const activityTypes = (deps.interpretation?.targets(activityRoot) ?? []).map((t) => t.entity);
     try {
       const result = await readFeedWindow((entity, query) => records?.find(entity, query) ?? Promise.resolve([]), {
         root: space,
+        activityRoot,
+        rootTitle: deps.rootTitle,
         shown: size,
         fromStart: anchoredAtStart,
         spoken,
@@ -161,6 +247,7 @@ export function createFeed(deps: FeedDeps) {
         setHasMore(result.hasMore);
         setLoaded(true);
         setAnswered(true);
+        firstPageAnswered();
       }
     } catch (error) {
       if (error instanceof FeedReadStopped) {
@@ -172,6 +259,7 @@ export function createFeed(deps: FeedDeps) {
           setLoaded(true);
           setFailed(true);
           setAnswered(false);
+          firstPageAnswered();
         }
       }
     } finally {
@@ -202,7 +290,7 @@ export function createFeed(deps: FeedDeps) {
 
   // Read when the window moves, and when somebody starts looking at one that is owed a read.
   effect?.(() => {
-    const key = `${root()}|${shown()}|${fromStart()}|${showSpoken()}`;
+    const key = `${root()}|${activityHeldIn()}|${shown()}|${fromStart()}|${showSpoken()}`;
     if (key !== windowKey) {
       windowKey = key;
       dirty = true;
@@ -212,12 +300,14 @@ export function createFeed(deps: FeedDeps) {
     // lasts (this effect also re-runs on what the read itself reads, and a lasting error would loop).
     if (now && !wasLooking && lastReadFailed) dirty = true;
     wasLooking = now;
+    // Nobody waits on a first page that nobody is looking at, or that has no space to be read from.
+    if (!now || !root()) firstPageAnswered();
     if (now) start();
   });
 
   /*
-    The space's suggestions: asked while somebody is looking, and asked again only when the kernel
-    says the set moved — a pass staged more, or somebody kept or discarded one. The answer is kept
+    The space's suggestions: asked while somebody is looking, once the window has answered, and asked
+    again only when the kernel says the set moved — a pass staged more, or somebody kept or discarded one. The answer is kept
     between visits, so coming back to an unchanged Feed asks nothing.
 
     The set moving is also a change to the window: a staged record is in it, and a discarded one
@@ -234,7 +324,12 @@ export function createFeed(deps: FeedDeps) {
   let askedRevision: { root: string; revision: number } | null = null;
   effect?.(() => {
     const interpretation = deps.interpretation;
-    if (!looking() || !root() || typeof interpretation?.proposals !== 'function') return;
+    /*
+      Not before the window has answered: the suggestions only re-mark rows already drawn (see
+      `markPending`), and asking for them reads the space's whole schema — the largest answers at
+      boot — from the executor the first page is waiting on.
+    */
+    if (!looking() || !loaded() || !root() || typeof interpretation?.proposals !== 'function') return;
     const space = root();
     const revision = interpretation.proposalsRevision?.() ?? 0;
     if (askedRevision?.root === space && askedRevision.revision === revision) return;
@@ -286,8 +381,22 @@ export function createFeed(deps: FeedDeps) {
     unsubscribe();
     if (!space || typeof records?.subscribe !== 'function') return;
     const newest = { order: { createdAt: 'desc' as const }, limit: 1 };
-    stops.push(records.subscribe('TextBlock', newest, onChange()));
-    stops.push(records.subscribe('CollectionBlock', { within: space, where: { kind: 'call' }, ...newest }, onChange()));
+    /*
+      A window of one collection inside the space — a call's, whose activity is held in the space —
+      listens within it. It holds every line said or typed there, and a reply is heard through the
+      lines on screen below; space-wide, every line said anywhere would re-read the call's page.
+    */
+    const ownLines = deps.activityRoot ? { within: space } : {};
+    stops.push(records.subscribe('TextBlock', { ...ownLines, ...newest }, onChange()));
+    // The fields a window draws of a call: a new call or a renamed one moves them, and a line said in
+    // one is heard by the TextBlock subscription above rather than through the call's line list.
+    stops.push(
+      records.subscribe(
+        'CollectionBlock',
+        { within: space, where: { kind: 'call' }, ...newest, select: CALL_FIELDS },
+        onChange(),
+      ),
+    );
   });
   /*
     And the lines it is showing, by id — what an edit changes.
@@ -315,6 +424,7 @@ export function createFeed(deps: FeedDeps) {
   });
   deps.onDispose?.(() => {
     disposed = true;
+    firstPageAnswered();
     unsubscribe();
     shownStop?.();
     if (pending) clearTimeout(pending);

@@ -140,58 +140,70 @@ export const seedBundles: Bundle[] = [
                               ],
                             },
                             {
-                              type: 'we-button',
-                              props: {
-                                variant: 'ghost',
-                                size: 'lg',
-                                width: '100%',
-                                height: 'auto',
-                                ax: 'start',
-                                ay: 'center',
-                                gap: '200',
-                                py: '300',
-                                px: { $: 'local.railInset' },
-                                label: 'AI chat',
-                                onClick: { $invoke: 'chatStore.openChat' },
-                                bg: { $: "false ? 'accent-soft' : ''" },
-                                color: { $: "false ? 'accent-text' : 'text-muted'" },
-                                hoverProps: {
-                                  $: "false ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-hover', color: 'text' }",
-                                },
-                                activeProps: {
-                                  $: "false ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-active', color: 'text' }",
-                                },
-                              },
+                              type: 'Column',
+                              props: { px: '200', width: '100%' },
                               children: [
                                 {
-                                  type: 'Row',
-                                  props: { width: '2rem', height: '2rem', ax: 'center', ay: 'center', flexShrink: '0' },
-                                  children: [{ type: 'we-icon', props: { name: 'sparkle', size: 'sm' } }],
-                                },
-                                {
-                                  type: '$if',
+                                  type: 'we-button',
                                   props: {
-                                    condition: { $: 'local.expanded' },
-                                    enterTransition: [
-                                      { type: 'reveal', axis: 'inline', duration: 250 },
-                                      { type: 'fade', duration: 150 },
-                                    ],
-                                    exitTransition: [
-                                      { type: 'reveal', axis: 'inline', duration: 250 },
-                                      { type: 'fade', duration: 150 },
-                                    ],
-                                    then: {
-                                      type: 'Row',
-                                      props: { gap: '200', ay: 'center', minWidth: '0' },
-                                      children: [
-                                        {
-                                          type: 'we-text',
-                                          props: { truncate: true, fontSize: '300' },
-                                          children: ['AI chat'],
-                                        },
-                                      ],
+                                    variant: 'ghost',
+                                    size: 'lg',
+                                    width: '100%',
+                                    height: 'auto',
+                                    ax: 'start',
+                                    ay: 'center',
+                                    gap: '200',
+                                    py: '300',
+                                    px: { $: 'local.railInset' },
+                                    label: 'AI chat',
+                                    onClick: { $invoke: 'chatStore.openChat' },
+                                    bg: { $: "false ? 'accent-soft' : ''" },
+                                    color: { $: "false ? 'accent-text' : 'text-muted'" },
+                                    hoverProps: {
+                                      $: "false ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-hover', color: 'text' }",
+                                    },
+                                    activeProps: {
+                                      $: "false ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-active', color: 'text' }",
                                     },
                                   },
+                                  children: [
+                                    {
+                                      type: 'Row',
+                                      props: {
+                                        width: '2rem',
+                                        height: '2rem',
+                                        ax: 'center',
+                                        ay: 'center',
+                                        flexShrink: '0',
+                                      },
+                                      children: [{ type: 'we-icon', props: { name: 'sparkle', size: 'sm' } }],
+                                    },
+                                    {
+                                      type: '$if',
+                                      props: {
+                                        condition: { $: 'local.expanded' },
+                                        enterTransition: [
+                                          { type: 'reveal', axis: 'inline', duration: 250 },
+                                          { type: 'fade', duration: 150 },
+                                        ],
+                                        exitTransition: [
+                                          { type: 'reveal', axis: 'inline', duration: 250 },
+                                          { type: 'fade', duration: 150 },
+                                        ],
+                                        then: {
+                                          type: 'Row',
+                                          props: { gap: '200', ay: 'center', minWidth: '0' },
+                                          children: [
+                                            {
+                                              type: 'we-text',
+                                              props: { truncate: true, fontSize: '300' },
+                                              children: ['AI chat'],
+                                            },
+                                          ],
+                                        },
+                                      },
+                                    },
+                                  ],
                                 },
                               ],
                             },
@@ -1138,7 +1150,9 @@ export const seedBundles: Bundle[] = [
                     entity: 'CollectionBlock',
                     where: { kind: 'call' },
                     order: { createdAt: 'desc' },
+                    select: ['title', 'createdAt'],
                     limit: 12,
+                    when: { $: 'spaceStore.firstScreenOpen' },
                   },
                   signalTypes: { entity: 'SignalType', order: { name: 'asc' } },
                   relationshipTypes: { entity: 'RelationshipType', order: { name: 'asc' } },
@@ -1293,44 +1307,56 @@ export const seedBundles: Bundle[] = [
                     props: {
                       condition: { $: 'count(modules.call.liveCalls)' },
                       then: {
-                        type: 'Row',
-                        props: { gap: '200', ay: 'center', px: '300', pb: '300' },
+                        type: 'Column',
+                        props: { px: '300', pb: '300' },
                         children: [
-                          { type: 'we-animated-icon', props: { name: 'live', color: 'success', size: 'xs' } },
-                          {
-                            type: 'we-text',
-                            props: {
-                              variant: 'footnote',
-                              color: 'text-muted',
-                              flex: '1',
-                              minWidth: '0',
-                              truncate: true,
-                            },
-                            children: [{ $: '`Call running · ${first(modules.call.liveCalls).count} in it`' }],
-                          },
                           {
                             type: 'we-button',
                             props: {
-                              size: 'xs',
-                              variant: { $: "modules.call.active && !modules.call.elsewhere ? 'soft' : 'solid'" },
+                              variant: 'ghost',
+                              width: '100%',
+                              ax: 'start',
+                              gap: '200',
                               onClick: [
                                 {
                                   $if: {
                                     condition: { $: 'modules.call.active && !modules.call.elsewhere' },
-                                    then: {
-                                      $invoke: 'routeStore.navigate',
-                                      args: [
-                                        {
-                                          $: "(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (modules.call.callRecordId)) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (modules.call.callRecordId), '?') ? '&' : '?') + 'view=canvas' : '')",
-                                        },
-                                      ],
-                                    },
+                                    then: [
+                                      {
+                                        $invoke: 'routeStore.navigate',
+                                        args: [
+                                          {
+                                            $: "(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (modules.call.callRecordId)) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (modules.call.callRecordId), '?') ? '&' : '?') + 'view=canvas' : '')",
+                                          },
+                                        ],
+                                      },
+                                      { $invoke: 'modules.call.goToCall' },
+                                    ],
                                     else: { $invoke: 'modules.call.goToCall' },
                                   },
                                 },
                               ],
                             },
-                            children: [{ $: "modules.call.active && !modules.call.elsewhere ? 'Open' : 'Join'" }],
+                            children: [
+                              { type: 'we-animated-icon', props: { name: 'live', color: 'success', size: 'xs' } },
+                              {
+                                type: 'we-text',
+                                props: {
+                                  variant: 'footnote',
+                                  color: 'text-muted',
+                                  flex: '1',
+                                  minWidth: '0',
+                                  truncate: true,
+                                  ta: 'left',
+                                },
+                                children: [{ $: '`Call running · ${first(modules.call.liveCalls).count} in it`' }],
+                              },
+                              {
+                                type: 'we-text',
+                                props: { variant: 'footnote', color: 'accent' },
+                                children: [{ $: "modules.call.active && !modules.call.elsewhere ? 'Open' : 'Join'" }],
+                              },
+                            ],
                           },
                         ],
                       },
@@ -21175,14 +21201,14 @@ export const seedBundles: Bundle[] = [
                     condition: { $: '!(modules.call.callRecordId == routeStore.params.id)' },
                     then: {
                       type: 'Row',
-                      props: { gap: '300', p: '500', ay: 'center' },
+                      props: { gap: '300', p: '500', ay: 'center', wrap: true },
                       children: [
                         {
                           type: 'we-text',
-                          props: { color: 'text-muted', flex: '1' },
+                          props: { color: 'text-muted', flex: '1', minWidth: '240px' },
                           children: [
                             {
-                              $: "find(modules.call.liveCalls, { recordId: routeStore.params.id }) ? 'This call is happening now.' : 'This call has ended. Its transcript is below.'",
+                              $: "find(modules.call.liveCalls, { recordId: routeStore.params.id }) ? 'This call is happening now.' : 'This call has ended. Everything said and written in it is below.'",
                             },
                           ],
                         },
@@ -21208,16 +21234,12 @@ export const seedBundles: Bundle[] = [
                   props: {
                     flex: '1',
                     minHeight: '0',
+                    minWidth: '0',
                     px: '500',
                     pb: 'calc(var(--we-space-500) + var(--we-covered-bottom, 0px))',
                     transition: 'padding-bottom 300 ease',
                   },
-                  children: [
-                    {
-                      type: '$part',
-                      props: { id: 'transcribe.transcriptFeed', subject: { $: 'routeStore.params.id' } },
-                    },
-                  ],
+                  children: [{ type: '$part', props: { id: 'feed.callFeed', subject: { $: 'routeStore.params.id' } } }],
                 },
               ],
             },
@@ -24931,10 +24953,17 @@ export const seedBundles: Bundle[] = [
                 where: { id: { $: 'routeStore.params.channel ? routeStore.params.channel : spaceStore.root' } },
                 limit: 1,
                 when: {
-                  $: '!((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root)',
+                  $: 'spaceStore.rootLoaded && !((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root)',
                 },
               },
-              anyCall: { entity: 'CollectionBlock', where: { kind: 'call' }, limit: 1 },
+              anyCall: {
+                entity: 'CollectionBlock',
+                where: { kind: 'call' },
+                order: { createdAt: 'desc' },
+                select: ['title', 'createdAt'],
+                limit: 12,
+                when: { $: 'spaceStore.firstScreenOpen' },
+              },
             },
             $localState: {
               sending: { type: 'boolean', initial: false },
@@ -24979,7 +25008,7 @@ export const seedBundles: Bundle[] = [
                     type: 'we-icon',
                     props: {
                       name: {
-                        $: "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? 'chats-circle' : 'hash'",
+                        $: "!(spaceStore.rootLoaded) ? '' : ((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? 'chats-circle' : 'hash'",
                       },
                       color: 'text-muted',
                     },
@@ -24992,7 +25021,7 @@ export const seedBundles: Bundle[] = [
                         type: '$if',
                         props: {
                           condition: {
-                            $: '!((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root)',
+                            $: '(spaceStore.rootLoaded) && !((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root)',
                           },
                           then: {
                             type: 'Row',
@@ -25084,110 +25113,274 @@ export const seedBundles: Bundle[] = [
               {
                 type: '$if',
                 props: {
-                  condition: {
-                    $: '(routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root',
-                  },
+                  condition: { $: 'spaceStore.rootLoaded' },
                   then: {
-                    type: 'Column',
-                    props: { flex: '1', minHeight: '0', width: '100%' },
-                    children: [
-                      {
-                        type: '$if',
-                        props: {
-                          condition: {
-                            $: '((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) && local.anyCallLoaded && !count(local.anyCall)',
-                          },
-                          then: {
-                            type: 'Column',
-                            props: { gap: '300', px: '500', pt: '500' },
-                            children: [
-                              { type: 'we-text', props: { variant: 'overline' }, children: ['Start here'] },
-                              {
-                                type: 'we-text',
-                                props: { variant: 'heading-md' },
+                    type: '$if',
+                    props: {
+                      condition: {
+                        $: '(routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root',
+                      },
+                      then: {
+                        type: 'Column',
+                        props: { flex: '1', minHeight: '0', width: '100%' },
+                        children: [
+                          {
+                            type: '$if',
+                            props: {
+                              condition: {
+                                $: '((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) && local.anyCallLoaded && !count(local.anyCall)',
+                              },
+                              then: {
+                                type: 'Column',
+                                props: { gap: '300', px: '500', pt: '500' },
                                 children: [
-                                  'A space starts with ',
+                                  { type: 'we-text', props: { variant: 'overline' }, children: ['Start here'] },
                                   {
                                     type: 'we-text',
-                                    props: { inline: true, fontWeight: 'semibold', color: 'accent-text' },
-                                    children: ['a conversation'],
+                                    props: { variant: 'heading-md' },
+                                    children: [
+                                      'A space starts with ',
+                                      {
+                                        type: 'we-text',
+                                        props: { inline: true, fontWeight: 'semibold', color: 'accent-text' },
+                                        children: ['a conversation'],
+                                      },
+                                    ],
                                   },
-                                ],
-                              },
-                              {
-                                type: 'Row',
-                                props: { gap: '300', wrap: true },
-                                children: [
                                   {
-                                    type: 'we-button',
-                                    props: {
-                                      variant: 'bare',
-                                      label: 'Start a call',
-                                      flex: '1 1 200px',
-                                      onClick: { $invoke: 'modules.call.goToCall' },
-                                      disabled: { $: '!modules.call.canCall' },
-                                    },
+                                    type: 'Row',
+                                    props: { gap: '300', wrap: true },
                                     children: [
                                       {
-                                        type: 'Card',
+                                        type: 'we-button',
                                         props: {
-                                          bg: 'surface',
-                                          gap: '200',
-                                          width: '100%',
-                                          height: '100%',
-                                          border: '1px solid transparent',
-                                          hoverProps: { border: '1px solid accent-border', shadow: 'glow' },
+                                          variant: 'bare',
+                                          label: 'Start a call',
+                                          flex: '1 1 200px',
+                                          onClick: { $invoke: 'modules.call.goToCall' },
+                                          disabled: { $: '!modules.call.canCall' },
                                         },
                                         children: [
                                           {
-                                            type: 'we-icon',
-                                            props: { name: 'phone', color: 'accent-text', size: 'md' },
-                                          },
-                                          {
-                                            type: 'we-text',
-                                            props: { fontWeight: 'semibold' },
-                                            children: ['Start a call'],
-                                          },
-                                          {
-                                            type: 'we-text',
-                                            props: { variant: 'footnote', color: 'text-muted' },
+                                            type: 'Card',
+                                            props: {
+                                              bg: 'surface',
+                                              gap: '200',
+                                              width: '100%',
+                                              height: '100%',
+                                              border: '1px solid transparent',
+                                              hoverProps: { border: '1px solid accent-border', shadow: 'glow' },
+                                            },
                                             children: [
-                                              'Everyone here can join. What is said is written down, and what is decided becomes work you can see.',
+                                              {
+                                                type: 'we-icon',
+                                                props: { name: 'phone', color: 'accent-text', size: 'md' },
+                                              },
+                                              {
+                                                type: 'we-text',
+                                                props: { fontWeight: 'semibold' },
+                                                children: ['Start a call'],
+                                              },
+                                              {
+                                                type: 'we-text',
+                                                props: { variant: 'footnote', color: 'text-muted' },
+                                                children: [
+                                                  'Everyone here can join. What is said is written down, and what is decided becomes work you can see.',
+                                                ],
+                                              },
+                                            ],
+                                          },
+                                        ],
+                                      },
+                                      {
+                                        type: 'Column',
+                                        props: { flex: '1 1 200px' },
+                                        children: [
+                                          {
+                                            type: 'Card',
+                                            props: {
+                                              bg: 'surface',
+                                              gap: '200',
+                                              width: '100%',
+                                              height: '100%',
+                                              border: '1px solid transparent',
+                                            },
+                                            children: [
+                                              {
+                                                type: 'we-icon',
+                                                props: { name: 'chat-circle', color: 'accent-text', size: 'md' },
+                                              },
+                                              {
+                                                type: 'we-text',
+                                                props: { fontWeight: 'semibold' },
+                                                children: ['Say hello'],
+                                              },
+                                              {
+                                                type: 'we-text',
+                                                props: { variant: 'footnote', color: 'text-muted' },
+                                                children: [
+                                                  'Write in the box below. Everyone in the space reads the Feed.',
+                                                ],
+                                              },
                                             ],
                                           },
                                         ],
                                       },
                                     ],
                                   },
-                                  {
-                                    type: 'Column',
-                                    props: { flex: '1 1 200px' },
+                                ],
+                              },
+                            },
+                          },
+                          {
+                            type: 'Column',
+                            props: {
+                              flex: '1',
+                              minHeight: '0',
+                              px: '500',
+                              pt: '300',
+                              pb: 'calc(var(--we-space-500) + var(--we-covered-bottom, 0px))',
+                              transition: 'padding-bottom 300 ease',
+                            },
+                            children: [{ type: '$part', props: { id: 'feed.feedView' } }],
+                          },
+                        ],
+                      },
+                      else: {
+                        type: 'Column',
+                        props: { flex: '1', minHeight: '0', width: '100%' },
+                        children: [
+                          {
+                            type: 'Column',
+                            props: { flex: '1', minHeight: '0', px: '500', py: '300' },
+                            children: [
+                              {
+                                type: '$part',
+                                props: {
+                                  id: 'transcribe.transcriptFeed',
+                                  subject: {
+                                    $: 'routeStore.params.channel ? routeStore.params.channel : spaceStore.root',
+                                  },
+                                },
+                              },
+                            ],
+                          },
+                          {
+                            type: 'Column',
+                            props: {
+                              px: '500',
+                              pb: 'calc(var(--we-space-500) + var(--we-covered-bottom, 0px))',
+                              pt: '200',
+                              gap: '100',
+                              transition: 'padding-bottom 300 ease',
+                            },
+                            children: [
+                              {
+                                type: '$if',
+                                props: {
+                                  condition: { $: "modules.transcribe.replyingTo.surface == 'transcript'" },
+                                  then: {
+                                    type: 'Row',
+                                    props: { gap: '200', ay: 'center' },
                                     children: [
                                       {
-                                        type: 'Card',
+                                        type: 'we-text',
                                         props: {
-                                          bg: 'surface',
-                                          gap: '200',
-                                          width: '100%',
-                                          height: '100%',
-                                          border: '1px solid transparent',
+                                          variant: 'footnote',
+                                          color: 'text-muted',
+                                          flex: '1',
+                                          minWidth: '0',
+                                          truncate: true,
                                         },
-                                        children: [
-                                          {
-                                            type: 'we-icon',
-                                            props: { name: 'chat-circle', color: 'accent-text', size: 'md' },
+                                        children: [{ $: "'Replying to: ' + modules.transcribe.replyingTo.text" }],
+                                      },
+                                      {
+                                        type: 'we-button',
+                                        props: {
+                                          size: 'xs',
+                                          variant: 'ghost',
+                                          onClick: { $invoke: 'modules.transcribe.cancelReply' },
+                                        },
+                                        children: ['Cancel'],
+                                      },
+                                    ],
+                                  },
+                                },
+                              },
+                              {
+                                type: 'Row',
+                                props: { gap: '200', ay: 'end', width: '100%' },
+                                $localState: { sendLine: { type: 'function', initial: null } },
+                                children: [
+                                  {
+                                    type: 'Column',
+                                    props: { flex: '1', minWidth: '0' },
+                                    children: [
+                                      {
+                                        type: 'BlockComposer',
+                                        props: {
+                                          compact: true,
+                                          autoFocus: false,
+                                          handles: false,
+                                          placeholder: 'Write a message…',
+                                          onReady: [
+                                            { $setLocal: 'sendLine', value: { $: 'event.submit' } },
+                                            { $setLocal: 'focusLine', value: { $: 'event.focus' } },
+                                          ],
+                                          onSubmit: {
+                                            $if: {
+                                              condition: { $: '!local.sending' },
+                                              then: [
+                                                { $setLocal: 'sending', value: true },
+                                                {
+                                                  $if: {
+                                                    condition: {
+                                                      $: "modules.transcribe.replyingTo.surface == 'transcript'",
+                                                    },
+                                                    then: {
+                                                      $invoke: 'modules.transcribe.reply',
+                                                      args: [
+                                                        { $: 'modules.transcribe.replyingTo.id' },
+                                                        { $: 'event.text' },
+                                                        { $: 'event.marks' },
+                                                      ],
+                                                      onFinally: [{ $setLocal: 'sending', value: false }],
+                                                    },
+                                                    else: {
+                                                      $invoke: 'modules.transcribe.addMessage',
+                                                      args: [
+                                                        {
+                                                          $: 'routeStore.params.channel ? routeStore.params.channel : spaceStore.root',
+                                                        },
+                                                        { $: 'event.text' },
+                                                        { $: 'event.marks' },
+                                                      ],
+                                                      onFinally: [{ $setLocal: 'sending', value: false }],
+                                                    },
+                                                  },
+                                                },
+                                              ],
+                                            },
                                           },
-                                          {
-                                            type: 'we-text',
-                                            props: { fontWeight: 'semibold' },
-                                            children: ['Say hello'],
-                                          },
-                                          {
-                                            type: 'we-text',
-                                            props: { variant: 'footnote', color: 'text-muted' },
-                                            children: ['Write in the box below. Everyone in the space reads the Feed.'],
-                                          },
-                                        ],
+                                        },
+                                      },
+                                    ],
+                                  },
+                                  {
+                                    type: 'we-tooltip',
+                                    props: { content: 'Send' },
+                                    children: [
+                                      {
+                                        type: 'we-button',
+                                        props: {
+                                          label: 'Send',
+                                          square: true,
+                                          variant: 'soft',
+                                          disabled: { $: 'local.sending' },
+                                          loading: { $: 'local.sending' },
+                                          onClick: { $callLocal: 'sendLine' },
+                                        },
+                                        children: [{ type: 'we-icon', props: { name: 'paper-plane-tilt' } }],
                                       },
                                     ],
                                   },
@@ -25195,163 +25388,9 @@ export const seedBundles: Bundle[] = [
                               },
                             ],
                           },
-                        },
-                      },
-                      {
-                        type: 'Column',
-                        props: {
-                          flex: '1',
-                          minHeight: '0',
-                          px: '500',
-                          pt: '300',
-                          pb: 'calc(var(--we-space-500) + var(--we-covered-bottom, 0px))',
-                          transition: 'padding-bottom 300 ease',
-                        },
-                        children: [{ type: '$part', props: { id: 'feed.feedView' } }],
-                      },
-                    ],
-                  },
-                  else: {
-                    type: 'Column',
-                    props: { flex: '1', minHeight: '0', width: '100%' },
-                    children: [
-                      {
-                        type: 'Column',
-                        props: { flex: '1', minHeight: '0', px: '500', py: '300' },
-                        children: [
-                          {
-                            type: '$part',
-                            props: {
-                              id: 'transcribe.transcriptFeed',
-                              subject: { $: 'routeStore.params.channel ? routeStore.params.channel : spaceStore.root' },
-                            },
-                          },
                         ],
                       },
-                      {
-                        type: 'Column',
-                        props: {
-                          px: '500',
-                          pb: 'calc(var(--we-space-500) + var(--we-covered-bottom, 0px))',
-                          pt: '200',
-                          gap: '100',
-                          transition: 'padding-bottom 300 ease',
-                        },
-                        children: [
-                          {
-                            type: '$if',
-                            props: {
-                              condition: { $: "modules.transcribe.replyingTo.surface == 'transcript'" },
-                              then: {
-                                type: 'Row',
-                                props: { gap: '200', ay: 'center' },
-                                children: [
-                                  {
-                                    type: 'we-text',
-                                    props: {
-                                      variant: 'footnote',
-                                      color: 'text-muted',
-                                      flex: '1',
-                                      minWidth: '0',
-                                      truncate: true,
-                                    },
-                                    children: [{ $: "'Replying to: ' + modules.transcribe.replyingTo.text" }],
-                                  },
-                                  {
-                                    type: 'we-button',
-                                    props: {
-                                      size: 'xs',
-                                      variant: 'ghost',
-                                      onClick: { $invoke: 'modules.transcribe.cancelReply' },
-                                    },
-                                    children: ['Cancel'],
-                                  },
-                                ],
-                              },
-                            },
-                          },
-                          {
-                            type: 'Row',
-                            props: { gap: '200', ay: 'end', width: '100%' },
-                            $localState: { sendLine: { type: 'function', initial: null } },
-                            children: [
-                              {
-                                type: 'Column',
-                                props: { flex: '1', minWidth: '0' },
-                                children: [
-                                  {
-                                    type: 'BlockComposer',
-                                    props: {
-                                      compact: true,
-                                      autoFocus: false,
-                                      handles: false,
-                                      placeholder: 'Write a message…',
-                                      onReady: [
-                                        { $setLocal: 'sendLine', value: { $: 'event.submit' } },
-                                        { $setLocal: 'focusLine', value: { $: 'event.focus' } },
-                                      ],
-                                      onSubmit: {
-                                        $if: {
-                                          condition: { $: '!local.sending' },
-                                          then: [
-                                            { $setLocal: 'sending', value: true },
-                                            {
-                                              $if: {
-                                                condition: {
-                                                  $: "modules.transcribe.replyingTo.surface == 'transcript'",
-                                                },
-                                                then: {
-                                                  $invoke: 'modules.transcribe.reply',
-                                                  args: [
-                                                    { $: 'modules.transcribe.replyingTo.id' },
-                                                    { $: 'event.text' },
-                                                    { $: 'event.marks' },
-                                                  ],
-                                                  onFinally: [{ $setLocal: 'sending', value: false }],
-                                                },
-                                                else: {
-                                                  $invoke: 'modules.transcribe.addMessage',
-                                                  args: [
-                                                    {
-                                                      $: 'routeStore.params.channel ? routeStore.params.channel : spaceStore.root',
-                                                    },
-                                                    { $: 'event.text' },
-                                                    { $: 'event.marks' },
-                                                  ],
-                                                  onFinally: [{ $setLocal: 'sending', value: false }],
-                                                },
-                                              },
-                                            },
-                                          ],
-                                        },
-                                      },
-                                    },
-                                  },
-                                ],
-                              },
-                              {
-                                type: 'we-tooltip',
-                                props: { content: 'Send' },
-                                children: [
-                                  {
-                                    type: 'we-button',
-                                    props: {
-                                      label: 'Send',
-                                      square: true,
-                                      variant: 'soft',
-                                      disabled: { $: 'local.sending' },
-                                      loading: { $: 'local.sending' },
-                                      onClick: { $callLocal: 'sendLine' },
-                                    },
-                                    children: [{ type: 'we-icon', props: { name: 'paper-plane-tilt' } }],
-                                  },
-                                ],
-                              },
-                            ],
-                          },
-                        ],
-                      },
-                    ],
+                    },
                   },
                 },
               },
@@ -28402,7 +28441,13 @@ export const seedBundles: Bundle[] = [
             type: 'Column',
             props: { width: '100%', height: '100%' },
             $queries: {
-              calls: { entity: 'CollectionBlock', where: { kind: 'call' }, order: { createdAt: 'desc' }, limit: 100 },
+              calls: {
+                entity: 'CollectionBlock',
+                where: { kind: 'call' },
+                order: { createdAt: 'desc' },
+                select: ['title', 'createdAt'],
+                limit: 100,
+              },
             },
             children: [
               {

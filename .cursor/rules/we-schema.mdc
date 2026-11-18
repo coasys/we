@@ -1493,7 +1493,7 @@ Not a standalone selector — wrap in we-popover for dropdown behavior.
   Props: collapsible: boolean = false, open: boolean = false, heading: string = ''
 - we-menu-item (DesignSystemElement) — Single actionable item inside a we-menu.
 Supports selected and active states; `tone: 'danger'` marks a destructive item.
-  Props: selected: boolean = false, active: boolean = false, disabled: boolean = false, label: unknown, value: unknown
+  Props: selected: boolean = false, active: boolean = false, disabled: boolean = false, dismiss: boolean = false, label: unknown, value: unknown
 - we-modal (OverlayElement)
   Props: size: 'sm' | 'md' | 'lg' | 'fullscreen' = 'md', hideclosebutton: boolean = false, close: () => void
 - we-move-handle (LayoutElement)
@@ -3086,6 +3086,7 @@ DatasetStore:
   - currentDatasetUri: string | undefined — the shared URL of the current dataset with its scheme (neighbourhood://…), or undefined for a personal one. Prefer currentDatasetCid for comparisons; this is the form a share link carries
   - currentDatasetCid: string | undefined — the neighbourhood CID of the current dataset (prefix stripped)
   - currentDatasetEntities: EntityManifestEntry[] (non-WE SHACL models from the current dataset; injected as externalEntities into AI messages)
+  - currentDatasetEntitiesLoaded: boolean — currentDatasetEntities has been read for the dataset on screen. They arrive a few round trips after the switch, so until this is true an empty list means "not read yet" rather than "none"
   - isWeSpace: boolean — true once the current dataset is confirmed to have WE's Space SDNA installed (false for a joined-but-foreign dataset, e.g. one synced in from Flux)
   - joinedSpaceCids: string[] — CIDs of every joined shared dataset
   - datasetsLoaded: boolean — the backend has answered with the dataset list. An empty list is otherwise indistinguishable from "not fetched yet", so anything asking "have I joined this?" reads the boot frame as "no". The same reason accountStore.accountsLoaded exists
@@ -3480,6 +3481,7 @@ ShapeStore:
   - generating: boolean — an AI generation is in flight
   - hintEntities: { entity, source: 'core' | 'shape' }[] — entities offering AI-hint tuning in this space: core interpretable vocabulary (TaskBlock, EventBlock, Relationship) plus the space's own shapes
   - extractionCandidates: string[] — entity names an extraction pass COULD write here: core vocabulary that declares itself extractable, plus every adopted shape that does. Candidacy, not a decision — which of these a collection actually looks for is two layers down (spaceStore.extractionTargets, the default a new collection copies, then the collection's own list). Read it to offer a choice, and to display findings: a card should show a record somebody extracted an hour ago even if the target has since been switched off
+  - extractionCandidatesLoaded: boolean — extractionCandidates is the whole list: the space's models and the classes it already had have both been read. Until then the list is missing members that are coming; wait for this before treating the list as decided
   - relationshipTargets: { label, value }[] — what a relationship may point at here, ready for a we-select: this space's own models, then block types, then other apps' models. Core infrastructure entities are deliberately absent
   - identityOptions: { label, value }[] — "None" plus every named property of the open draft, for the identity picker. Built in the store because a schema can map options but cannot prepend one
   - nameOptions: { label, value }[] — "Work it out" (naming the field it worked out, "Work it out (title)") plus every named property of the open draft, for the naming-field picker. A different first entry from identityOptions on purpose: no identity means no dedup key, where no naming field means the name is DERIVED (a property called name or title, else whichever string is required or first) — there is no such thing as a record with no name
@@ -3618,7 +3620,7 @@ SpaceStore:
   - mySpaces: array of Space objects — every space the agent holds, across all joined datasets
   - personalSpaces: array of Space objects (local/personal spaces; all Space fields)
   - sharedSpaces: array of Space objects (shared/neighbourhood spaces; all Space fields)
-  - spaceList: { uuid, name, description, avatar, kind: 'shared' | 'personal' | 'foreign', isWeSpace, canAdminister }[] — one row per joined dataset the agent can act on, ordered like the sidebar and excluding the system datasets. Includes datasets that are not WE spaces (kind 'foreign', isWeSpace false), which are waiting to be initialized. `uuid` is the dataset id, so it keys navigation and settings whether or not a Space record exists. `sharing` is 'sharing' while a new shared space is still being shared (it is usable meanwhile), 'failed' when that did not work — `shareError` says why, and shareSpace tries again — and '' otherwise; a shared space has a `shareLink`
+  - spaceList: { uuid, name, description, avatar, kind: 'shared' | 'personal' | 'foreign', isWeSpace, loading, canAdminister }[] — one row per joined dataset the agent can act on, ordered like the sidebar and excluding the system datasets. Includes datasets that are not WE spaces (kind 'foreign', isWeSpace false), which are waiting to be initialized. `loading` is true for the first seconds of a boot while a row's Space record has not been read yet — then `isWeSpace` is false without meaning the dataset is from another app, so show a placeholder rather than the initialize state. `uuid` is the dataset id, so it keys navigation and settings whether or not a Space record exists. `sharing` is 'sharing' while a new shared space is still being shared (it is usable meanwhile), 'failed' when that did not work — `shareError` says why, and shareSpace tries again — and '' otherwise; a shared space has a `shareLink`
   - routeSpaceUnjoined: boolean — the current route points at a space this agent has not joined, as a settled fact. What a join gate should read: `currentDataset` being null is also true for the first frames of a refresh, so gating on that flashes a join prompt at someone already inside. False while the answer is still unknown
   - spacePath: string — the path a space's own pages hang off (`/space/<segment>`), empty outside a space. For a link that has to reach the space's own pages from any surface, the shell overlay included, whose '~/' is the overlay's own root: recordLink builds on it. Within a template, write '~/' instead. The segment is the neighbourhood CID for a shared space and the dataset id for a personal one — only the URL says which
   - creatingSpace: boolean (true while a new space is being created)
@@ -3667,6 +3669,8 @@ SpaceStore:
   - root: string — the id of this space's collection: the one CollectionBlock (kind 'space') everything top-level hangs off — calls, loose messages, posts, channels, extracted items, the canvas. Scope a top-level read through it: { anchor: 'CollectionBlock', via: 'children', anchorId: spaceStore.root }. Empty outside a space, and in a space made before spaces had one
   - landmarks: Record<name, id> — the records this space names as its landmarks, e.g. spaceStore.landmarks.canvas is the space's canvas. Written by the space's starter at creation. A landmark can be absent — a space can switch template and a template must never assume what another set up — so guard every read
   - landmarksLoaded: boolean — the landmarks have answered for the space on screen. Until then an absent landmark is not yet an answer, so gate a 'there is no board yet' on it: { $: 'spaceStore.landmarksLoaded && !spaceStore.landmarks.board' }. Not on `root`, which arrives first
+  - rootLoaded: boolean — root has answered for the space on screen. Until then an empty root is not yet an answer, so gate anything that compares an address with root on it — { $: 'spaceStore.rootLoaded' } around an $if on `channel == spaceStore.root` — or the wrong branch mounts, reads, and is torn down when root arrives
+  - firstScreenOpen: boolean — the first screen after boot is up: the Feed's first page drawn, or the screen drawn with no Feed on it. True from then on. Put it as the `when` of a $queries read the opening screen does not draw (a sidebar's list) so the read starts after that screen rather than beside it — { when: { $: 'spaceStore.firstScreenOpen' } }
   - extractionTargets: string[] — the models a NEW collection here starts out extracting. The middle of three layers: shapeStore.extractionCandidates says what COULD be extracted, this says which of them a new conversation begins with, and each collection then holds its own list, which its participants change (modules.transcribe.extractionFor[id].targets). A default, copied when a collection is made. Unset falls back to the two classes that were hardcoded before the setting existed, so no space silently stops extracting. Writing it is space-settings
   - taskWorkflowRule: '' | 'next' | 'next-and-back' — how a task may move between this space's states, in their order: anywhere, on to the next only, or on and back one. Anything but '' runs the states as a workflow, so a move the rule does not allow is refused on the board — say so beside a picker of states
   - taskWorkflowEnabled: boolean — this space’s task states ask for agreement: some state needs more than one approval, or names whose approval counts. Where true, a card dragged into such a state waits instead of moving, and arrangedBoard(…).workflow[card.id] describes what it is waiting on. Gate an explanation of the waiting on it; the board needs nothing else
@@ -4101,13 +4105,18 @@ Everything said and written in a space, and what was found in it, in one stream.
 Needs: kernels records, interpretation.
 - State (read in an expression as `modules.feed.<name>`):
   - botAuthors — The authors of lines in the Feed’s window whose own profile says they are a bot, by id — for `row.author in modules.feed.botAuthors`.
+  - callFeedFromStart — Whether the call’s Feed is read from the call’s beginning rather than its newest line.
+  - callFeedHasMore — Whether there is more of the call beyond its Feed’s window.
+  - callFeedLoaded — Whether the call’s Feed has answered for this call yet.
+  - callFeedRoot — The call whose Feed is drawn — the one shown most recently — or empty.
+  - callFeedRows — The Feed of the call on screen: every line said, typed or answered in it, and a row per group of things extracted from it, merged by time. Rows are shaped as `feedRows`' are; a line's `source` says how it arrived ('spoken', 'typed', 'corrected', or none for a bot or the system).
   - feedFromStart — Whether the Feed is read from the beginning rather than the live end.
   - feedHasMore — Whether there is more of the space beyond the Feed’s window.
   - feedLoaded — Whether the Feed has answered for this space yet.
   - feedOpen — Whether the Feed panel is open.
   - feedRoot — The space collection the Feed reads, and writes typed messages into.
   - feedRows — The Feed's window: every message in the space and a row per group of things extracted or made, merged by time — newest first while following the live end, oldest first from the start. A row is { kind: 'line', id, at, author, text, marks, source, call, callTitle, replyTo } or { kind: 'activity', id, at, author, origin, originTitle, summary, items, suggested }.
-  - replyingTo — The line a reply is being written to — { id, text, author } — or null.
+  - replyingTo — The line a reply is being written to — { id, text, author, surface } — or null. `surface` is the list it was started from, 'feed' or 'callFeed', so only that list's composer answers it.
   - showCallTranscripts — Whether this reader asked the Feed to draw the lines calls spoke — off until they do, in this space only.
   - timelineOrientation — Which way round this reader draws the Feed — 'newestBottom' or 'newestTop'. Their own setting.
 - Actions (`{ "$invoke": "modules.feed.<name>" }`):
@@ -4115,15 +4124,21 @@ Needs: kernels records, interpretation.
   - closeFeed — Closes the Feed panel.
   - editUtterance — Corrects the words on a line, marking a heard line as corrected.
   - openFeed — Opens the Feed panel.
+  - readCallFeedFromStart — Re-anchors the call’s Feed at its beginning.
+  - readCallFeedLive — Re-anchors the call’s Feed at its newest line.
   - readFeedFromStart — Re-anchors the Feed at the beginning of the space.
   - readFeedLive — Re-anchors the Feed at the newest message.
   - reply — Answers one line with a typed line of its own, linked from it as a reply.
+  - sendToCallFeed — Writes a typed message into the call on screen — with its marks, when the composer gave any. Nothing when no call is shown. Writing into a call does not put the writer on its roster.
   - sendToFeed — Writes a message straight into the space, outside any call — with its marks, when the composer gave any.
+  - showMoreCallFeed — Grows the call’s Feed by a page.
   - showMoreFeed — Grows the Feed’s window by a page.
-  - startReply — Starts a reply to one line — pass { id, text, author } — which the Feed’s composer then sends as a reply.
+  - startReply — Starts a reply to one line — pass { id, text, author, surface } — which the composer of that list ('feed', the default, or 'callFeed') then sends as a reply.
+  - unwatchCallFeed — One drawing of a call’s Feed was taken down.
   - unwatchFeed — One drawing of the Feed was taken down.
+  - watchCallFeed — A call’s Feed is drawn for this call: read it and keep it live.
   - watchFeed — The Feed is drawn somewhere: keep it live.
-- Parts: `feed.feedView`
+- Parts: `feed.feedView`, `feed.callFeed` (subject: routeStore.params.call)
 - Panels (`meta.panels[].dock`): `feed` "Feed" (module-owned openness)
 - Settings: `timelineOrder` (enum; agent) — Newest messages; `botNotices` (boolean; agent) — Tell me when a bot answers; `showCallTranscripts` (boolean; agent-in-space) — Show call transcripts
 

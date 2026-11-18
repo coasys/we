@@ -34,6 +34,7 @@ import {
 import { toastService } from '@we/components/solid';
 import { createJsonShapeStore, getRegisteredEntityNames, Shape } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
+import { latest } from '@we/module-shared';
 import type { BundleRecordType } from '@we/schema-shared';
 import {
   Accessor,
@@ -42,7 +43,6 @@ import {
   createEffect,
   createMemo,
   createSignal,
-  onCleanup,
   ParentProps,
   useContext,
 } from 'solid-js';
@@ -195,6 +195,12 @@ export interface ShapeStore {
    * somebody extracted an hour ago even if the target has since been switched off.
    */
   extractionCandidates: Accessor<string[]>;
+  /**
+   * `extractionCandidates` is the whole list. Core vocabulary is in it at once; this space's models
+   * and the classes it already had arrive a few round trips later, so until this is true the list
+   * may be missing members that are coming.
+   */
+  extractionCandidatesLoaded: Accessor<boolean>;
   /** Options for the relationship target picker — `{ label, value }`, grouped and labelled. */
   relationshipTargets: Accessor<RelationshipTargetOption[]>;
   /**
@@ -227,8 +233,7 @@ export interface ShapeStore {
    * SpaceStore supplies "add this model to the space's default extraction targets".
    *
    * Injected upward rather than read, because SpaceStore owns the `Space` record and sits *below*
-   * this store in the provider tree — the same arrangement in the same direction as
-   * `datasetStore.provideAutoInterpretGate`, which SpaceStore also fills in.
+   * this store in the provider tree.
    *
    * Used on save and nowhere else, which is what makes the imported case behave: a shape that
    * arrives already marked extractable — copied, forked, synced from a peer — becomes a *candidate*
@@ -509,13 +514,12 @@ export function ShapeStoreProvider(props: ParentProps) {
   });
 
   /*
-    Lend the candidates downward, the way SpaceStore lends `autoInterpret`.
-
-    DatasetStore publishes the interpretation surface modules reach, and sits *above* this store in
-    the provider tree, so it cannot read a shape. The accessor rather than the value, so it follows
-    a community defining a model without anything re-registering.
+    Whether the candidates are whole. A picker shows the core classes at once; a standing watch
+    waits for the rest, because a watch registered from part of the list is removed and registered
+    again when the rest arrives — writes to the shared graph from every member, ending where they
+    started.
   */
-  onCleanup(datasetStore.provideExtractionCandidates(extractionCandidates));
+  const extractionCandidatesLoaded = createMemo(() => shapesLoaded() && datasetStore.currentDatasetEntitiesLoaded());
 
   /**
    * What a relationship may point at here, grouped by where it comes from and labelled for the
@@ -631,10 +635,17 @@ export function ShapeStoreProvider(props: ParentProps) {
     });
   }
 
+  /** The newest `loadShapes` — see `current` inside it. */
+  const shapesLoad = latest();
+
   async function loadShapes(): Promise<void> {
     const ports = schemas();
     const dataset = handle();
     const uuid = datasetStore.currentDataset()?.id;
+    // Only the newest load publishes. Saving a model reloads while an earlier load can still be
+    // adopting, and that one finishing first showed the older list and called it whole.
+    const loadIsLatest = shapesLoad.begin();
+    const current = () => loadIsLatest() && datasetStore.currentDataset()?.id === uuid;
     if (!ports || !dataset || !datasetStore.isWeSpace()) {
       setSpaceShapes([]);
       setShapesLoaded(true);
@@ -652,7 +663,7 @@ export function ShapeStoreProvider(props: ParentProps) {
     try {
       const records = await storage().list(dataset);
       trace('shapes', 'records', { space: uuid, count: records.length, ms: lap() });
-      if (datasetStore.currentDataset()?.id !== uuid) return; // navigated away while loading
+      if (!current()) return; // navigated away, or reloaded, while loading
 
       const views: SpaceShapeView[] = [];
       const adopted = new Set<string>();
@@ -713,12 +724,12 @@ export function ShapeStoreProvider(props: ParentProps) {
         totalMs: Math.round(performance.now() - started),
         sincePageStartMs: Math.round(performance.now()),
       });
-      if (datasetStore.currentDataset()?.id === uuid) setSpaceShapes(views);
+      if (current()) setSpaceShapes(views);
     } catch (err) {
       console.error('ShapeStore: loading space shapes failed', err);
-      if (datasetStore.currentDataset()?.id === uuid) setSpaceShapes([]);
+      if (current()) setSpaceShapes([]);
     } finally {
-      if (datasetStore.currentDataset()?.id === uuid) setShapesLoaded(true);
+      if (current()) setShapesLoaded(true);
     }
   }
 
@@ -786,13 +797,8 @@ export function ShapeStoreProvider(props: ParentProps) {
     const draft = shapeDraft();
     if (!draft) return false;
     /*
-      Editing an existing model asks whether it *changed*, not whether it is filled in.
-
-      This used to answer `true` for every edit session on the reasoning that a stored model's
-      content came from the space and is therefore worth keeping — which is true of the model and
-      not of the *draft*, which has changed nothing yet. So opening a model to read it and pressing
-      Escape raised "discard this model?", every time, about nothing. That is the same failure the
-      new-model branch below goes out of its way to avoid.
+      Editing an existing model asks whether it *changed*, not whether it is filled in: opening a
+      model to read it and pressing Escape must not ask "discard this model?" about nothing.
 
       Compared against a snapshot taken when the wizard opened. Rows are mutated in place without
       touching the signal (see the note below `commitDraft`), so this has to be evaluated at close
@@ -1088,9 +1094,8 @@ export function ShapeStoreProvider(props: ParentProps) {
           classHint: authored.classHint || generated.classHint,
         };
         replaceDraft({ ...current, ...settled, members: generated.members, identityMember: generated.identityMember });
-        // Left closed. Generated hints are the part most worth reading before adopting, which is
-        // why every row used to be opened — but a collapsed row shows its hint now, so the reading
-        // is available without eight expanded cards standing between the author and the Save button.
+        // Left closed: a collapsed row shows its hint, so the generated hints can be read without
+        // eight expanded cards standing between the author and the Save button.
         setExpandedMembers([]);
         // '' for anything the author owns, so their words can never be mistaken for the machine's
         // on the next run — the record is of what generation contributed, not of what is on screen.
@@ -1403,6 +1408,7 @@ export function ShapeStoreProvider(props: ParentProps) {
     generating,
     hintEntities,
     extractionCandidates,
+    extractionCandidatesLoaded,
     provideExtractionEnroller: extractionEnroller.provide,
     relationshipTargets,
     identityOptions,

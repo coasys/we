@@ -119,15 +119,11 @@ describe('call module — contributions', () => {
     expect(store.active()).toBe(false);
   });
 
-  it('reports the band its bar occupies, so panels can keep clear of it', () => {
-    // Declared as `reserve`, so the shell reads a key the module named rather than scanning for one.
-    moduleRegistry.register(callModule, host, storeDeps);
-    const store = moduleStores.call as Record<string, unknown>;
-    const key = callModule.contributes?.reserve;
-    expect(key).toBeTruthy();
-    expect(typeof store[key!]).toBe('function');
-    // Zero with no call running, since the bar is not drawn then.
-    expect((store[key!] as () => { bottom: number })()).toEqual({ bottom: 0 });
+  it('reserves no band, because its bar no longer floats', () => {
+    // The reserve existed to keep floating panels and page bottoms clear of a fixed bar. With the
+    // bar inside the stage panel there is nothing to clear — and a band still declared is the
+    // Feed's blank space at the bottom, again.
+    expect(callModule.contributes?.reserve).toBeUndefined();
   });
 
   it('keeps volatile state off the tile, so a mute cannot remount the video', () => {
@@ -158,12 +154,35 @@ describe('call module — contributions', () => {
     moduleRegistry.register(callModule, host, storeDeps);
     const store = moduleStores.call as Record<string, unknown>;
     const panel = stage();
-    for (const key of [panel.open, panel.show, panel.close, typeof panel.bid === 'string' ? panel.bid : undefined]) {
+    for (const key of [
+      panel.open,
+      panel.show,
+      panel.close,
+      panel.reveal,
+      typeof panel.bid === 'string' ? panel.bid : undefined,
+    ]) {
       if (key) expect(typeof store[key], key).toBe('function');
     }
     // Closed until asked for: a call you have just joined must not shrink the app on its own.
     const entry = dockRegistry.get('call:stage')!;
     expect((entry.store!.edge as () => unknown)()).toBeNull();
+  });
+
+  it('reads the re-ask off the store, so a bump while open reaches the host', () => {
+    /*
+      `goToCall` on an already-open stage sets `stageOpen` to the value it already had — nothing to
+      observe. `reveal` is how the re-ask survives as an event: the plumbing reads the declared key
+      reactively, and the shell's watcher reveals the panel when the value moves.
+    */
+    moduleRegistry.register(callModule, host, storeDeps);
+    const controls = moduleRegistry.panel('call:stage')!;
+    const store = moduleStores.call as Record<string, () => unknown>;
+
+    const before = controls.revealRequest?.();
+    (store.openStage as () => void)();
+    expect(controls.revealRequest?.(), 'the counter did not move').not.toBe(before);
+    (store.openStage as () => void)();
+    expect(controls.revealRequest?.(), 'a second ask collapsed into the first').not.toBe(before);
   });
 
   it('publishes what templates read, and keeps its plumbing private', () => {

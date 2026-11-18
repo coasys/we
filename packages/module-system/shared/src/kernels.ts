@@ -88,6 +88,12 @@ export interface RecordQuery {
   limit?: number;
   offset?: number;
   include?: Record<string, unknown>;
+  /**
+   * The fields each row carries — `id` always comes. Without it a row carries every field, relation
+   * id lists included, and a container's `children` is the id of everything in it. The `select` a
+   * `$query` takes; a field left out reads as absent.
+   */
+  select?: string[];
 }
 
 /**
