@@ -443,7 +443,7 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
     log(
       `generated ${seeded.messages} messages (${seeded.links} links) in ${seeded.generateSeconds.toFixed(1)} s, ` +
         `imported in ${seeded.importSeconds.toFixed(1)} s` +
-        `${seeded.imported === null ? '' : ` (${seeded.imported} imported, ${seeded.skipped} skipped)`}; ` +
+        ` (${seeded.imported} imported, ${seeded.skipped} skipped); ` +
         `executor ${afterSeed.rss?.toFixed(0)} MiB`,
     );
 

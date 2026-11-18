@@ -358,15 +358,18 @@ export async function seedMessages({
     await unlink(generated.filePath).catch(() => {});
   }
   const importSeconds = (Date.now() - importStart) / 1_000;
+  // An executor before ad4m #1780 answers the call with the file echoed back and stores nothing.
+  if (typeof result?.imported !== 'number') {
+    throw new Error('runtime.importData did not import (needs an executor with ad4m #1780)');
+  }
 
   return {
     messages: generated.messages,
     links: generated.links,
-    seconds: (Date.now() - started) / 1_000,
     generateSeconds,
     importSeconds,
-    imported: result?.imported ?? null,
-    skipped: result?.skipped ?? null,
+    imported: result.imported,
+    skipped: result.skipped,
     authors: generated.authors,
     oldest: generated.oldest,
     newest: generated.newest,

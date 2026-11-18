@@ -141,13 +141,15 @@ executor's one bulk read of a file.
   are joined), so `$TMPDIR` needs the disk for it; it is deleted after the import.
 - **Why the suite has its own writer for the call.** `runtime.importData` is operator-only: it goes
   on a raw WebSocket (`writer.mjs`) as the executor's admin credential, not the managed user's
-  token, and the SDK's `importPerspective` does not carry `perspectiveUuid`. The socket keeps no
-  client-side timeout — the SDK's fixed 30 s would give up on a call that can run for minutes at a
-  million messages.
+  token. The socket keeps no client-side timeout — the SDK's fixed 30 s would give up on a call
+  that runs over a minute at a million messages.
+- **It needs an executor with the import.** Before ad4m #1780, `runtime.importData` with
+  `type: "perspective"` stored nothing; the suite then fails its check that the seeded messages
+  are there.
 
-Measured on one Linux workstation (32 workers): 100 000 messages generate in about 2.3 s and a
-million in about 25 s — against about 258 s and 6 181 s when the same messages went through the
-executor's write path.
+Measured on one Linux workstation (32 cores) at a million messages: the file generates in 20.4 s
+and the executor imports its 12 000 000 links in 78.1 s (154 000 links/s) — against 6 181 s when
+the same messages went through the executor's write path.
 
 ## Where a load's time goes
 
