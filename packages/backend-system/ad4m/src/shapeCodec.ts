@@ -597,8 +597,10 @@ function propertiesMatch(
 }
 
 /**
- * The allowed-value sets are the same multiset, labels included, order ignored.
- * One malformed or repeated `sh://in` is not "no constraint". A missing one is the legacy
+ * The allowed values are the same set. Order does not matter, and two copies of one unlabelled
+ * value accept the same writes as one. A label, or any other field on the entry, is compared on
+ * its own: equal values do not allow a save to drop it.
+ * One malformed or repeated `sh://in` link is not "no constraint". A missing one is the legacy
  * allowance only when both sides already carry the same `we://options` annotation.
  */
 function inMatch(
@@ -611,14 +613,16 @@ function inMatch(
   const raw = node ? storedLinks.filter((link) => link.source === node && link.predicate === 'sh://in') : [];
   if (raw.length > 1) return false;
   if (raw.length === 1 && !arrayTarget(raw[0].target)) return false;
-  const storedSet = asArray(storedIn);
-  const rebuiltSet = asArray(rebuiltIn);
+  const storedSet = normalizeEnum(storedIn);
+  const rebuiltSet = normalizeEnum(rebuiltIn);
   if (storedSet === 'bad' || rebuiltSet === 'bad') return false;
+  if (storedSet === undefined && rebuiltSet === undefined) return true;
   if (storedSet === undefined && rebuiltSet !== undefined) {
-    if (raw.length !== 0 || rebuiltSet.length === 0) return false;
+    if (raw.length !== 0 || rebuiltSet.values.length === 0) return false;
     return samePresentAnnotation(storedLinks, rebuiltLinks, ANNOTATION.options);
   }
-  return entryMultiset(storedSet) === entryMultiset(rebuiltSet);
+  if (storedSet === undefined || rebuiltSet === undefined) return false;
+  return storedSet.values === rebuiltSet.values && storedSet.fields === rebuiltSet.fields;
 }
 
 function arrayTarget(target: string): boolean {
@@ -628,11 +632,6 @@ function arrayTarget(target: string): boolean {
   } catch {
     return false;
   }
-}
-
-function asArray(value: unknown): unknown[] | undefined | 'bad' {
-  if (value === undefined) return undefined;
-  return Array.isArray(value) ? value : 'bad';
 }
 
 /** Both sides carry the annotation, and carry the same one. Both absent does not count. */
@@ -647,26 +646,50 @@ function samePresentAnnotation(stored: readonly LinkLike[], rebuilt: readonly Li
   return a.length > 0 && a.length === b.length && a.every((key, i) => key === b[i]);
 }
 
-function entryMultiset(value: unknown): string | undefined {
-  if (value === undefined) return '';
-  if (!Array.isArray(value)) return undefined;
-  const keys: string[] = [];
-  for (const entry of value) {
-    const key = entryKey(entry);
-    if (key === undefined) return undefined;
-    keys.push(key);
-  }
-  keys.sort();
-  return keys.join('\n');
+/**
+ * A supported `sh:in` entry as the scalar text AD4M compares, plus any field that is not that value.
+ * Bare strings and finite numbers count. So does `{ value }` of either. Anything else is not a value
+ * this manifest can store.
+ */
+function scalarText(entry: unknown): { text: string; fields: string } | undefined {
+  if (typeof entry === 'string') return { text: entry, fields: '' };
+  if (typeof entry === 'number' && Number.isFinite(entry)) return { text: String(entry), fields: '' };
+  if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) return undefined;
+  const record = entry as Record<string, unknown>;
+  if (!('value' in record)) return undefined;
+  const { value, ...rest } = record;
+  let text: string | undefined;
+  if (typeof value === 'string') text = value;
+  else if (typeof value === 'number' && Number.isFinite(value)) text = String(value);
+  if (text === undefined) return undefined;
+  const fields = Object.keys(rest).filter((key) => rest[key] !== undefined);
+  if (fields.length === 0) return { text, fields: '' };
+  return { text, fields: stable(Object.fromEntries(fields.map((key) => [key, rest[key]]))) };
 }
 
-/** `{ value: 2 }` and `{ value: "2" }` are one entry. A label or any other key is part of the entry. */
-function entryKey(entry: unknown): string | undefined {
-  if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) return undefined;
-  const record = { ...(entry as Record<string, unknown>) };
-  if (typeof record.value === 'number' && Number.isFinite(record.value)) record.value = String(record.value);
-  else if (typeof record.value !== 'string') return undefined;
-  return stable(record);
+/**
+ * The value set, and the non-value fields hanging off each value.
+ * `undefined` means no constraint. `'bad'` means an entry that is not a supported value.
+ * Repeated unlabelled entries collapse. A label or an unknown field does not: it stays on that value.
+ */
+function normalizeEnum(value: unknown): { values: string; fields: string } | undefined | 'bad' {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) return 'bad';
+  const fieldsByValue = new Map<string, Set<string>>();
+  for (const entry of value) {
+    const scalar = scalarText(entry);
+    if (!scalar) return 'bad';
+    const held = fieldsByValue.get(scalar.text) ?? new Set<string>();
+    held.add(scalar.fields);
+    fieldsByValue.set(scalar.text, held);
+  }
+  const values = [...fieldsByValue.keys()].sort();
+  return {
+    values: values.join('\n'),
+    fields: values
+      .map((text) => `${JSON.stringify(text)}:${[...(fieldsByValue.get(text) ?? [])].sort().join('\u0000')}`)
+      .join('\n'),
+  };
 }
 
 function stable(value: unknown): string {
@@ -725,11 +748,17 @@ function sameDeclaration(child: RawProperty, parent: RawProperty): boolean {
   for (const key of STRUCTURE_KEYS) {
     if ((child[key] ?? null) !== (parent[key] ?? null)) return false;
   }
-  return entryMultiset(child.in) === entryMultiset(parent.in);
+  const childSet = normalizeEnum(child.in);
+  const parentSet = normalizeEnum(parent.in);
+  if (childSet === 'bad' || parentSet === 'bad') return false;
+  if (childSet === undefined || parentSet === undefined) return childSet === parentSet;
+  return childSet.values === parentSet.values && childSet.fields === parentSet.fields;
 }
 
 /**
  * Options a manifest can store for a native `sh:in`.
+ * A bare string, a bare finite number, and `{ value }` of either all count. The same routine feeds the
+ * comparison, so a value recovered here is a value the equality check accepts.
  * An exact numeric text on a number property comes back as a number (`"2"` → `2`). `"2.0"` stays
  * text, because turning it into `2` would make the next write emit a different value. Labels are
  * not part of the manifest value; the lossless check keeps the shape read-only while they are there.
@@ -737,15 +766,21 @@ function sameDeclaration(child: RawProperty, parent: RawProperty): boolean {
 function recoverOptions(inn: unknown, type: string): (string | number)[] | undefined {
   if (!Array.isArray(inn) || inn.length === 0) return undefined;
   const options: (string | number)[] = [];
+  const seen = new Set<string>();
   for (const entry of inn) {
-    if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) return undefined;
-    const value = (entry as { value?: unknown }).value;
-    if (typeof value !== 'string') return undefined;
+    const scalar = scalarText(entry);
+    if (!scalar) return undefined;
+    if (seen.has(scalar.text)) continue;
+    seen.add(scalar.text);
     if (type === 'number') {
-      const numeric = Number(value);
-      options.push(value.trim() === value && Number.isFinite(numeric) && String(numeric) === value ? numeric : value);
+      const numeric = Number(scalar.text);
+      options.push(
+        scalar.text.trim() === scalar.text && Number.isFinite(numeric) && String(numeric) === scalar.text
+          ? numeric
+          : scalar.text,
+      );
     } else {
-      options.push(value);
+      options.push(scalar.text);
     }
   }
   return options;

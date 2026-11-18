@@ -367,6 +367,62 @@ describe('reading options, abstract and extends from the shape itself', () => {
     expect(readShape(mixed)?.manifest.entities.Note.properties.rating.options).toEqual([2, '2.0']);
   });
 
+  it('recovers bare strings from sh:in and stays editable without the annotation', () => {
+    // A native list can be the strings themselves. The compiler writes `{ value }` objects for the
+    // same set. The shape stays editable when nothing but that spelling differs.
+    const links = stored(input(SIGHTING));
+    const field = propertyNode(links, CERTAINTY);
+    const native = replaceIn(
+      links.filter((l) => !(l.source === field && l.predicate === ANNOTATION.options)),
+      CERTAINTY,
+      ['sure', 'probably', 'not sure'],
+    );
+    expect(readShape(native)?.manifest.entities.Sighting.properties.certainty.options).toEqual([
+      'sure',
+      'probably',
+      'not sure',
+    ]);
+    expect(sameShape(native, rebuilt(native))).toBe(true);
+  });
+
+  it('recovers numeric value objects without an annotation and stays editable', () => {
+    // `{ value: 2 }` is a number, not the string the compiler writes back. Reading it has to keep
+    // the number, and saving it has to count as the same set.
+    const manifest: EntityManifest = {
+      version: '1',
+      entities: {
+        Note: {
+          properties: { rating: { type: 'number', predicate: 'we://module/shape/x/rating', options: [1, 2, 3] } },
+          relations: {},
+        },
+      },
+    };
+    const links = stored(input(manifest));
+    const field = propertyNode(links, 'we://module/shape/x/rating');
+    const native = replaceIn(
+      links.filter((l) => !(l.source === field && l.predicate === ANNOTATION.options)),
+      'we://module/shape/x/rating',
+      [{ value: 1 }, { value: 2 }, { value: 3 }],
+    );
+    expect(readShape(native)?.manifest.entities.Note.properties.rating.options).toEqual([1, 2, 3]);
+    expect(sameShape(native, rebuilt(native))).toBe(true);
+  });
+
+  it('treats a repeated unlabelled value as the same set the manifest lists once', () => {
+    // Two copies of `sure` accept the same values as one. The annotation still lists each once,
+    // which is what a save writes back.
+    const links = stored(input(SIGHTING));
+    const repeated = replaceIn(links, CERTAINTY, [
+      { value: 'sure' },
+      { value: 'sure' },
+      { value: 'probably' },
+      { value: 'probably' },
+      { value: 'not sure' },
+      { value: 'not sure' },
+    ]);
+    expect(sameShape(repeated, rebuilt(repeated))).toBe(true);
+  });
+
   it('reads option values from a labelled sh:in and refuses to drop the labels', () => {
     const links = stored(input(SIGHTING));
     const field = propertyNode(links, CERTAINTY);
