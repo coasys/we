@@ -1,0 +1,51 @@
+{
+  "name": "@we/module-acorn",
+  "version": "0.1.0",
+  "description": "Acorn project management as a WE feature module — derived expression functions and parts over a mounted Acorn dataset",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build:steps": "tsup",
+    "build": "we-build",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "peerDependencies": {
+    "@we/module-shared": "workspace:*",
+    "@we/schema-shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@solidjs/testing-library": "^0.8.10",
+    "@types/node": "^26.6.6",
+    "@we/acorn-fixture": "workspace:*",
+    "@we/backend-inmemory": "workspace:*",
+    "@we/backend-shared": "workspace:*",
+    "@we/cli": "workspace:*",
+    "@we/entities": "workspace:*",
+    "@we/module-shared": "workspace:*",
+    "@we/schema-shared": "workspace:*",
+    "@we/schema-solid": "workspace:*",
+    "@we/template-acorn": "workspace:*",
+    "jsdom": "~30.0.1",
+    "solid-js": "^1.9.18",
+    "tsup": "^9.0.0",
+    "typescript": "^6.0.3",
+    "vite-plugin-solid": "^2.11.15",
+    "vitest": "^5.0.5"
+  },
+  "we": {
+    "module": true
+  }
+}

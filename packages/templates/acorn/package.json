@@ -1,0 +1,23 @@
+{
+  "name": "@we/template-acorn",
+  "version": "0.1.0",
+  "description": "The Acorn space template — a shell around a mounted Acorn project's views (outcomes, table, priority, map, settings)",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    }
+  },
+  "dependencies": {
+    "@we/schema-shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "vitest": "^5.0.5"
+  }
+}

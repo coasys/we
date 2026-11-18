@@ -1,0 +1,26 @@
+{
+  "private": true,
+  "name": "@we/acorn-fixture",
+  "version": "0.1.0",
+  "description": "An in-memory dataset shaped like a mounted Acorn project — the Acorn vocabulary as an EntityManifest, one project's records, and the applyFixture wrapper that writes them",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    }
+  },
+  "dependencies": {
+    "@we/backend-inmemory": "workspace:*",
+    "@we/backend-shared": "workspace:*",
+    "@we/entities": "workspace:*",
+    "@we/template-fixtures": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^6.0.3"
+  }
+}
