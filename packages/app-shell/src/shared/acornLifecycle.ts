@@ -105,6 +105,13 @@ export interface AcornLifecycleDeps {
    * the one thing that beats the app's policy, and it is what the same UI writes.
    */
   setSpaceTemplateOverride: (templateId: string, spaceUuid?: string) => Promise<void>;
+  /**
+   * Whether this build can render an Acorn space — the `acorn` template compiled in.
+   * `defaultTemplateId: 'acorn'` is the write every mutating member ends in; a deployment
+   * whose seed left the template out resolves it to nothing, so a member must not be
+   * callable there at all — an offer that cannot draw its result is worse than none.
+   */
+  hasAcornTemplate: () => boolean;
   /** The agent's display name, for the Acorn member profile the first open creates. */
   agentName?: () => string | undefined;
   /** Poll cadence and bound for the two waits (shapes landing, the cell answering). */
@@ -257,7 +264,7 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
     ): Promise<string | null> {
       const port = deps.port();
       const lifecycle = deps.lifecycle();
-      if (!port || !lifecycle) return null;
+      if (!port || !lifecycle || !deps.hasAcornTemplate()) return null;
       const seed = acornSeed(passphrase);
       const { address: lang } = await port.applyTemplateLocal(sourceLanguageHash, { seed });
       const ref = await lifecycle.create(name);
@@ -277,7 +284,7 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
     ): Promise<string | null> {
       const port = deps.port();
       const lifecycle = deps.lifecycle();
-      if (!port || !lifecycle) return null;
+      if (!port || !lifecycle || !deps.hasAcornTemplate()) return null;
       const lang =
         languageAddress || (await port.applyTemplateLocal(sourceLanguageHash, { seed: acornSeed(passphrase) })).address;
       const ref = await lifecycle.create('Acorn project');
@@ -293,7 +300,7 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
     async openAcornProject(datasetId: string): Promise<string | null> {
       const port = deps.port();
       const lifecycle = deps.lifecycle();
-      if (!port || !lifecycle) return null;
+      if (!port || !lifecycle || !deps.hasAcornTemplate()) return null;
       const ref = await lifecycle.get(datasetId);
       if (!ref) return null;
       const [lang] = await port.mounts(ref.id);

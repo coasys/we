@@ -28,6 +28,7 @@ import {
 export const bundledTemplates: Record<string, TemplateSchema> = {
   default: defaultTemplate,
   workshop: workshopTemplate,
+  acorn: acornTemplate,
   ...(DEV_FEATURES && {
     discord: discordTemplate,
     twitter: twitterTemplate,
@@ -37,7 +38,6 @@ export const bundledTemplates: Record<string, TemplateSchema> = {
     events: eventsTemplate,
     scrapbook: scrapbookTemplate,
     'theme-lab': themeLabTemplate,
-    acorn: acornTemplate,
   }),
 };
 
@@ -46,7 +46,5 @@ export const bundledTemplates: Record<string, TemplateSchema> = {
  * are showing (sessionStore.devTools). Empty in a production build, which has none of them.
  */
 export const devOnlyTemplateIds: ReadonlySet<string> = new Set(
-  DEV_FEATURES
-    ? ['discord', 'twitter', 'instagram', 'youtube', 'trello', 'events', 'scrapbook', 'theme-lab', 'acorn']
-    : [],
+  DEV_FEATURES ? ['discord', 'twitter', 'instagram', 'youtube', 'trello', 'events', 'scrapbook', 'theme-lab'] : [],
 );

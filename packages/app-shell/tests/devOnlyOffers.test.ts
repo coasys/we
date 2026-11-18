@@ -33,9 +33,9 @@ describe('what a picker offers', () => {
   offer. A template marked `dev` in the catalogue and missing here would show with the switch off.
 */
 describe('the developer-feature ids', () => {
-  it('name every bundled template but Default and Workshop', () => {
+  it('name every bundled template but Default, Workshop and Acorn', () => {
     const shipped = Object.keys(bundledTemplates).filter((id) => !devOnlyTemplateIds.has(id));
-    expect(shipped.sort()).toEqual(['default', 'workshop']);
+    expect(shipped.sort()).toEqual(['acorn', 'default', 'workshop']);
   });
 
   it('name the showcase themes', () => {

@@ -1,4 +1,4 @@
-import { type AcornProjectRef, createAcornLifecycle } from '@shared/acornLifecycle';
+import { ACORN_TEMPLATE_ID, type AcornProjectRef, createAcornLifecycle } from '@shared/acornLifecycle';
 import { boardOptimism } from '@shared/boardOptimism';
 import { createBoardActions, type CreateBoardOptions } from '@shared/boards';
 import { spaceStarterChoices, type StarterChoice } from '@shared/bundles/bundleStarter';
@@ -50,6 +50,7 @@ import {
   moduleSurface,
 } from '@shared/registries/moduleRegistry';
 import { seedBundlePieces } from '@shared/registries/seedBundles';
+import { bundledTemplates } from '@shared/registries/templateRegistry';
 import { defaultViewOrder, viewRegistry } from '@shared/registries/viewRegistry';
 import { seedDefaultEnabledModules } from '@shared/seedModules';
 import { getSeed } from '@shared/seedRegistry';
@@ -2734,6 +2735,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     setSpaceDefaultTemplate: (templateId, spaceUuid) => setSpaceDefaultTemplate(templateId, spaceUuid),
     setSpaceViews: (viewIds, spaceUuid) => setSpaceViews(viewIds, spaceUuid),
     setSpaceTemplateOverride: (templateId, spaceUuid) => setSpaceTemplateOverride(templateId, spaceUuid),
+    hasAcornTemplate: () => ACORN_TEMPLATE_ID in bundledTemplates,
     agentName: () => {
       const did = session.me()?.did?.replace('did://', '');
       const profile = did ? profileStore.profiles().find((entry) => entry.did === did) : undefined;
@@ -2743,11 +2745,16 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   /*
     Whether this session can offer the Acorn projects chrome at all — the mount-capable
-    backend AND the module that draws it. The first alone would leave a sidebar entry that
-    opens a `$part` nobody publishes on a deployment that did not seed the module.
+    backend, the module that draws it, and the template the lifecycle's last write names.
+    The first two alone would leave a sidebar entry on a deployment that did not seed the
+    module; the third alone a project that opens into `defaultTemplateId: 'acorn'` this
+    build cannot resolve.
   */
   const acornAvailable = createMemo(
-    () => Boolean(session.backendPorts()?.acornLifecycle) && 'acorn.projectsModal' in moduleRegistry.parts(),
+    () =>
+      Boolean(session.backendPorts()?.acornLifecycle) &&
+      'acorn.projectsModal' in moduleRegistry.parts() &&
+      ACORN_TEMPLATE_ID in bundledTemplates,
   );
 
   /*

@@ -91,6 +91,7 @@ function deps(record: string[], overrides: Partial<AcornLifecycleDeps> = {}): Ac
     setSpaceTemplateOverride: vi.fn(async (id: string, uuid?: string) => {
       record.push(`override:${id}:${uuid}`);
     }),
+    hasAcornTemplate: () => true,
     agentName: () => 'Test Agent',
     ...overrides,
   };
@@ -112,6 +113,39 @@ describe('acorn lifecycle on a backend without the port', () => {
     expect(d.lifecycle()!.create).not.toHaveBeenCalled();
     expect(d.switchDataset).not.toHaveBeenCalled();
     expect(d.initializeAsWeSpace).not.toHaveBeenCalled();
+  });
+});
+
+describe('acorn lifecycle on a build without the acorn template', () => {
+  /*
+    `defaultTemplateId: 'acorn'` is the last write every mutating member makes. A deployment
+    whose seed left the template out cannot resolve it — offering the creation there produces
+    a space that renders nothing, which is worse than not offering it. The mutating members
+    refuse; the read still answers, since what it reports is true either way.
+  */
+  it('create, join and open refuse — no mount, no dataset, no template write', async () => {
+    const record: string[] = [];
+    const d = deps(record, { hasAcornTemplate: () => false });
+    const acorn = createAcornLifecycle(d);
+
+    await expect(acorn.createAcornProject('P', 'some words here')).resolves.toBeNull();
+    await expect(acorn.joinAcornProject(undefined, 'some words here')).resolves.toBeNull();
+    await expect(acorn.openAcornProject('dataset-1')).resolves.toBeNull();
+
+    expect(d.lifecycle()!.create).not.toHaveBeenCalled();
+    expect(d.port()!.applyTemplateLocal).not.toHaveBeenCalled();
+    expect(record).toEqual([]);
+  });
+
+  it('still lists mounted projects — the read is true whether or not the build draws them', async () => {
+    const d = deps([], { hasAcornTemplate: () => false });
+    (d.lifecycle()!.list as ReturnType<typeof vi.fn>).mockResolvedValue([ref('acorn-1', 'Project one')]);
+    const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
+    port.mountsOf['acorn-1'] = [LANG];
+
+    await expect(createAcornLifecycle(d).listAcornProjects()).resolves.toEqual([
+      { datasetId: 'acorn-1', name: 'Project one', languageAddress: LANG },
+    ]);
   });
 });
 

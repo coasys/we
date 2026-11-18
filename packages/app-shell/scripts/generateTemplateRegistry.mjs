@@ -37,9 +37,9 @@ const outPath = seedFile.generatedPath(
  * a seed, which would have to repeat it in every seed, or in its `meta`, which travels with a shared
  * template to somebody for whom it means nothing. Every showcase template is marked: they are
  * studies of what the template and theme systems can express, not yet things to ship, and only
- * `default` and `workshop` are in a production build. Shipping one is one edit: drop the mark, and
- * give a template named after a product it imitates a descriptive name in the picker, since that
- * name is fine only while it ships to nobody.
+ * `default`, `workshop` and `acorn` are in a production build. Shipping one is one edit: drop the
+ * mark, and give a template named after a product it imitates a descriptive name in the picker,
+ * since that name is fine only while it ships to nobody.
  *
  * The catalogue lives here rather than being discovered from the filesystem, because a template's
  * *id* is a stable public name — it appears in `we-seed.json`, in `AgentSettings.defaultTemplateId`,
@@ -58,7 +58,7 @@ const CATALOGUE = {
   scrapbook: { module: '@we/template-showcase', export: 'scrapbookTemplate', dev: true },
   'theme-lab': { module: '@we/template-showcase', export: 'themeLabTemplate', dev: true },
   workshop: { module: '@we/template-showcase', export: 'workshopTemplate' },
-  acorn: { module: '@we/template-acorn', export: 'acornTemplate', dev: true },
+  acorn: { module: '@we/template-acorn', export: 'acornTemplate' },
 };
 
 const seed = seedFile.readSeed();
