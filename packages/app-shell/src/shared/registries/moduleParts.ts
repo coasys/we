@@ -45,6 +45,8 @@ interface Part {
   node: SchemaNode;
   subject?: string;
   inputs?: Record<string, { default?: string | number | boolean }>;
+  /** Store actions called as the part is drawn and taken down — see `ModulePart.whileShown`. */
+  whileShown?: { show: string; hide: string };
 }
 
 function partOf(id: string): Part | undefined {
@@ -211,10 +213,14 @@ export function resolveParts(node: SchemaNode): SchemaNode | SchemaNode[] {
       template's `$part` node rather than a node of the module's — and draws what is missing when the
       module is not here to draw it. Box-less, so a part lays out exactly as it did.
     */
-    const frame = (children: SchemaNode[]): SchemaNode => ({
+    const frame = (children: SchemaNode[], subject?: string): SchemaNode => ({
       type: 'PartFrame',
       ...(node.id ? { id: node.id } : {}),
-      props: { part: id, ...(node.id ? { at: node.id } : {}) },
+      props: {
+        part: id,
+        ...(node.id ? { at: node.id } : {}),
+        ...(subject ? { subject: { $: subject } } : {}),
+      },
       children,
     });
 
@@ -224,9 +230,15 @@ export function resolveParts(node: SchemaNode): SchemaNode | SchemaNode[] {
       return frame([]);
     }
 
+    /*
+      What the part is about, where it is placed — for its `whileShown`, which is told which record
+      the drawing is of. The frame resolves it as any prop is resolved, so it follows the placement.
+    */
+    const subject = part.whileShown && part.subject ? (subjectExpression(props.subject) ?? part.subject) : undefined;
+
     // Recursive: a part may itself be composed of parts, which is how a module's own panel is built.
     const expanded = resolveParts(instantiate(node, part));
-    return frame(Array.isArray(expanded) ? expanded : [expanded]);
+    return frame(Array.isArray(expanded) ? expanded : [expanded], subject);
   }
 
   const children = resolveList(node.children);
