@@ -11,7 +11,6 @@ use we_ad4m::connect::ConnectSettings;
 use we_app::connected::{ConnectArgs, ConnectedApp};
 
 const BUNDLE: &str = include_str!("../../../../bundles/coasys.bundle.json");
-const SHOT: &str = "/home/marvin/.openclaw/workspace/agent-runs/we-egui-connect/connect-screen.png";
 
 type H<'a> = egui_kittest::Harness<'a, Option<ConnectedApp>>;
 
@@ -93,7 +92,8 @@ fn the_connect_screen_shows_where_to_keep_your_spaces() {
         .is_some_and(|app| app.stage() == "connect"));
     assert!(h.query_by_label_contains("Opening your spaces").is_none());
     let image = h.render().expect("wgpu render of the connect screen");
-    image.save(SHOT).expect("write the connect screenshot");
+    let shot = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("connect-screen.png");
+    image.save(&shot).expect("write the connect screenshot");
 }
 
 /// A closed loopback port. The click must not read `~/.ad4m`.
