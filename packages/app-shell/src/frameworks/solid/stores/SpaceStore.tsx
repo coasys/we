@@ -803,7 +803,12 @@ export interface SpaceStore {
    * Rejects when the join could not be completed, so a caller's `onSuccess` means what it says.
    */
   joinSpace: (id: string, focus?: boolean) => Promise<void>;
-  initializeAsWeSpace: (name: string, description: string, avatarValue?: File | string | null) => Promise<Space>;
+  initializeAsWeSpace: (
+    name: string,
+    description: string,
+    avatarValue?: File | string | null,
+    target?: DatasetRef,
+  ) => Promise<Space>;
   /** Remove a space: clears its global-discovery listing (when authored by this agent) and
    * removes the backing dataset. */
   removeSpace: (uuid: string) => Promise<void>;
@@ -2263,8 +2268,17 @@ export function SpaceStoreProvider(props: ParentProps) {
     name: string,
     description: string,
     avatarValue?: File | string | null,
+    target?: DatasetRef,
   ): Promise<Space> {
-    const ds = datasetStore.currentDataset();
+    /*
+      `target` binds the setup to the dataset it was asked for — the Acorn open
+      sequence hands it over because "the current dataset" can change while any
+      of the awaits below is in flight, and these writes belong to the project
+      that was opened, not to wherever the person has since navigated.
+    */
+    const ds: AppDataset | null = target
+      ? { ...target, handle: target.handle as DatasetProxy }
+      : datasetStore.currentDataset();
     if (!ds) throw new Error('SpaceStore: initializeAsWeSpace called with no active dataset');
 
     // Additive/idempotent — does not remove or touch the dataset's existing foreign SDNA.
@@ -2327,11 +2341,16 @@ export function SpaceStoreProvider(props: ParentProps) {
       setMySpaces((prev) => [...prev, spaceRecord]);
     }
 
-    // Re-run switchDataset on the same uuid rather than hand-duplicating its
-    // classes/registerDynamicEntities/manifest refresh: this atomically flips isWeSpace,
-    // refreshes the dynamic model registry, and hands this store a new dataset handle
-    // so its currentSpace effect re-fires now that a Space instance exists.
-    await datasetStore.switchDataset(ds.id);
+    /*
+      Re-run switchDataset on the same uuid rather than hand-duplicating its
+      classes/registerDynamicEntities/manifest refresh: this atomically flips isWeSpace,
+      refreshes the dynamic model registry, and hands this store a new dataset handle
+      so its currentSpace effect re-fires now that a Space instance exists. Only while
+      the target is still the dataset on screen, though — a setup for a dataset nobody
+      is looking at does not get to move the selection; the open sequence's own
+      navigation does that, guarded, and a superseded open must not reclaim it here.
+    */
+    if (datasetStore.currentDataset()?.id === ds.id) await datasetStore.switchDataset(ds.id);
 
     return spaceRecord;
   }
@@ -2729,10 +2748,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     lifecycle: () => session.lifecycle(),
     schemas: () => session.backendPorts()?.schemas ?? null,
     hasSpaceRecord: (handle) => Space.findAll(handle).then((rows) => rows.length > 0),
-    switchDataset: (id) => datasetStore.switchDataset(id),
     currentDatasetId: () => datasetStore.currentDataset()?.id,
     navigateToSpace: (id) => navigateToSpace(id),
-    initializeAsWeSpace: (name, description) => initializeAsWeSpace(name, description),
+    initializeAsWeSpace: (name, description, target) => initializeAsWeSpace(name, description, undefined, target),
     setSpaceDefaultTemplate: (templateId, spaceUuid) => setSpaceDefaultTemplate(templateId, spaceUuid),
     setSpaceViews: (viewIds, spaceUuid) => setSpaceViews(viewIds, spaceUuid),
     setSpaceTemplateOverride: (templateId, spaceUuid) => setSpaceTemplateOverride(templateId, spaceUuid),

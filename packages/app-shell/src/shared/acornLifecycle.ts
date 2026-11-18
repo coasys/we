@@ -79,13 +79,11 @@ export interface AcornLifecycleDeps {
    * the class then skips the very init that would fix it.
    */
   hasSpaceRecord: (handle: DatasetHandle) => Promise<boolean>;
-  /** Make a dataset the current one — `initializeAsWeSpace` reads the current dataset. */
-  switchDataset: (id: string) => Promise<void>;
   /**
-   * The current dataset's id *now*. `await switchDataset` returning is not the switch
-   * having won — another navigation can land on top of it while it was in flight, and
-   * the writes that follow name no dataset, landing on whatever is current then. The
-   * sequence reads this once, after the await, before it writes.
+   * The current dataset's id *now* — read when an open starts and once more before
+   * it lands: if the answer moved, somebody navigated while the open ran, and the
+   * open does not get the last word on where the person stands. Setup itself never
+   * consults this — its writes name their target.
    */
   currentDatasetId: () => string | undefined;
   /**
@@ -94,8 +92,13 @@ export interface AcornLifecycleDeps {
    * It re-switches only when the dataset changed, so calling it on the current one is free.
    */
   navigateToSpace: (id: string) => Promise<void>;
-  /** Install WE's space schemas on the foreign dataset and write its Space record. */
-  initializeAsWeSpace: (name: string, description: string) => Promise<unknown>;
+  /**
+   * Install WE's space schemas on `target` and write its Space record — on the
+   * dataset named, never on whatever is current: the open that asked may be
+   * superseded while any of it is in flight, and setup's writes belong to the
+   * project that was opened.
+   */
+  initializeAsWeSpace: (name: string, description: string, target: DatasetRef) => Promise<unknown>;
   /** The space's default template — written after init, per Q7. */
   setSpaceDefaultTemplate: (templateId: string, spaceUuid?: string) => Promise<void>;
   /**
@@ -229,39 +232,63 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
     });
   };
 
+  /*
+    The newest ask owns the landing. Earlier opens still finish what they were
+    doing — their writes name a target and are worth completing — but a superseded
+    open does not navigate: it would land the person on a space they have since
+    asked to leave.
+  */
+  let openGeneration = 0;
+
+  /*
+    Setup for one target is serialized: two opens of the same project must not
+    each read "no Space record" and write it twice. Queued work runs whether or
+    not the run before it succeeded — a failed open does not bar the repair its
+    successor owes.
+  */
+  const setupQueues = new Map<string, Promise<void>>();
+  const serializeSetup = (id: string, work: () => Promise<void>): Promise<void> => {
+    const run = (setupQueues.get(id) ?? Promise.resolve()).then(work, work);
+    setupQueues.set(id, run);
+    const settle = () => {
+      if (setupQueues.get(id) === run) setupQueues.delete(id);
+    };
+    void run.then(settle, settle);
+    return run;
+  };
+
   /**
    * The shared tail of create/join/open once a mount exists — §L.4 steps 3–6:
-   * the mount's SDNA visible → the dataset current → a WE space on it → the acorn
-   * template → the member interactions.
+   * the mount's SDNA visible → a WE space on the target → the acorn template →
+   * the member interactions → the landing, if this open still owns it.
    */
   const openMounted = async (
     ref: DatasetRef,
     lang: string,
     opts: { name: string; writeMeta: boolean; announce: boolean },
+    nav: { generation: number; selection: string | undefined },
   ): Promise<string | null> => {
     // "Dataset appears" — the mount installed Acorn's shapes. Bounded, then on
-    // anyway: a switch into a still-shapeless dataset installs WE's schemas, which
+    // anyway: a still-shapeless dataset gets WE's schemas installed next, which
     // is what `initializeAsWeSpace` is about to do itself — the order that matters
     // (mount before init) is already kept.
     await waitFor(() => deps.schemas()?.hasAnySchema(ref.handle) ?? Promise.resolve(true), timeoutMs, pollMs);
-    const targetId = ref.id;
-    await deps.switchDataset(targetId);
     /*
-      The await's return is not the switch having won — a second open racing this one,
-      or the user clicking a space, can have landed on another dataset while it was in
-      flight. Every write below lands on `currentDataset` or on `lang` mounted to it —
-      `initializeAsWeSpace` most of all, which would install WE's space on the space the
-      person actually navigated to. If the target lost, stop: the mount stays, and the
-      next open resumes from it.
+      Setup names its target everywhere — nothing below reads the current dataset.
+      A navigation during any of these awaits no longer retargets the writes: they
+      belong to `ref`, and `initializeAsWeSpace` is handed it rather than asking
+      what is current when it runs.
     */
-    if (deps.currentDatasetId() !== targetId) return null;
-    const hadSpace = await deps.hasSpaceRecord(ref.handle).catch(() => false);
-    if (!hadSpace) {
-      await deps.initializeAsWeSpace(opts.name, '');
-      // The section recipe is a setup write: `Space.enabledViews` is the members' own
-      // list once the space has one, and an open is not entitled to reset it.
-      await deps.setSpaceViews(ACORN_SECTION_IDS, ref.id);
-    }
+    await serializeSetup(ref.id, async () => {
+      const hadSpace = await deps.hasSpaceRecord(ref.handle).catch(() => false);
+      if (!hadSpace) {
+        await deps.initializeAsWeSpace(opts.name, '', ref);
+        // The section recipe is a setup write: `Space.enabledViews` is the
+        // members' own list once the space has one, and an open is not
+        // entitled to reset it.
+        await deps.setSpaceViews(ACORN_SECTION_IDS, ref.id);
+      }
+    });
     await deps.setSpaceDefaultTemplate(ACORN_TEMPLATE_ID, ref.id);
     await deps.setSpaceTemplateOverride(ACORN_TEMPLATE_ID, ref.id);
 
@@ -277,8 +304,15 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
     }
     await ensureProfile(lang);
     if (opts.announce) await interact(`${lang}://project`, 'announceJoin');
-    // Land only once the space is whole: navigating earlier would put a route at a
-    // dataset that is still a mount rather than a space, and the join gate reads that.
+    /*
+      Land only once the space is whole — and only while this open is still the
+      newest ask and the selection has not moved since it started. The generation
+      covers opens racing each other; the selection read covers the person moving
+      on without another lifecycle call (a sidebar click lands on the dataset, not
+      on the counter). Either stale means the open stands down where it is: the
+      work it did is finished and keeps.
+    */
+    if (nav.generation !== openGeneration || deps.currentDatasetId() !== nav.selection) return null;
     await deps.navigateToSpace(ref.id);
     return ref.id;
   };
@@ -319,11 +353,12 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       const port = deps.port();
       const lifecycle = deps.lifecycle();
       if (!port || !lifecycle || !deps.hasAcornTemplate()) return null;
+      const nav = { generation: ++openGeneration, selection: deps.currentDatasetId() };
       const seed = acornSeed(passphrase);
       const { address: lang } = await port.applyTemplateLocal(sourceLanguageHash, { seed });
       const ref = await lifecycle.create(name);
       await port.mount(ref.id, lang);
-      return openMounted(ref, lang, { name, writeMeta: true, announce: false });
+      return openMounted(ref, lang, { name, writeMeta: true, announce: false }, nav);
     },
 
     /**
@@ -339,6 +374,7 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       const port = deps.port();
       const lifecycle = deps.lifecycle();
       if (!port || !lifecycle || !deps.hasAcornTemplate()) return null;
+      const nav = { generation: ++openGeneration, selection: deps.currentDatasetId() };
       const lang =
         languageAddress || (await port.applyTemplateLocal(sourceLanguageHash, { seed: acornSeed(passphrase) })).address;
       /*
@@ -351,7 +387,7 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       if (languageAddress && !(await answering(() => acornInfo(lang), timeoutMs, pollMs))) return null;
       const ref = await lifecycle.create('Acorn project');
       await port.mount(ref.id, lang);
-      return openMounted(ref, lang, { name: ref.name, writeMeta: false, announce: true });
+      return openMounted(ref, lang, { name: ref.name, writeMeta: false, announce: true }, nav);
     },
 
     /**
@@ -363,11 +399,12 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       const port = deps.port();
       const lifecycle = deps.lifecycle();
       if (!port || !lifecycle || !deps.hasAcornTemplate()) return null;
+      const nav = { generation: ++openGeneration, selection: deps.currentDatasetId() };
       const ref = await lifecycle.get(datasetId);
       if (!ref) return null;
       const lang = await firstAcornMount(await port.mounts(ref.id));
       if (!lang) return null;
-      return openMounted(ref, lang, { name: ref.name, writeMeta: false, announce: false });
+      return openMounted(ref, lang, { name: ref.name, writeMeta: false, announce: false }, nav);
     },
   };
 }
