@@ -3286,6 +3286,7 @@ export const contextData: ContextData = {
             'avatar',
             'kind',
             'isWeSpace',
+            'loading',
             'canAdminister',
             'modules',
             'shareLink',
@@ -4656,6 +4657,23 @@ export const contextData: ContextData = {
           kind: 'state',
           doc: 'The authors of lines in the Feed’s window whose own profile says they are a bot, by id — for `row.author in modules.feed.botAuthors`.',
         },
+        {
+          name: 'callFeedFromStart',
+          kind: 'state',
+          doc: 'Whether the call’s Feed is read from the call’s beginning rather than its newest line.',
+        },
+        { name: 'callFeedHasMore', kind: 'state', doc: 'Whether there is more of the call beyond its Feed’s window.' },
+        { name: 'callFeedLoaded', kind: 'state', doc: 'Whether the call’s Feed has answered for this call yet.' },
+        {
+          name: 'callFeedRoot',
+          kind: 'state',
+          doc: 'The call whose Feed is drawn — the one shown most recently — or empty.',
+        },
+        {
+          name: 'callFeedRows',
+          kind: 'state',
+          doc: "The Feed of the call on screen: every line said, typed or answered in it, and a row per group of things extracted from it, merged by time. Rows are shaped as `feedRows`' are; a line's `source` says how it arrived ('spoken', 'typed', 'corrected', or none for a bot or the system).",
+        },
         { name: 'cancelReply', kind: 'action', doc: 'Puts a reply down without sending it.', ambient: true },
         { name: 'closeFeed', kind: 'action', doc: 'Closes the Feed panel.', ambient: true },
         {
@@ -4683,6 +4701,18 @@ export const contextData: ContextData = {
         },
         { name: 'openFeed', kind: 'action', doc: 'Opens the Feed panel.', ambient: true },
         {
+          name: 'readCallFeedFromStart',
+          kind: 'action',
+          doc: 'Re-anchors the call’s Feed at its beginning.',
+          ambient: true,
+        },
+        {
+          name: 'readCallFeedLive',
+          kind: 'action',
+          doc: 'Re-anchors the call’s Feed at its newest line.',
+          ambient: true,
+        },
+        {
           name: 'readFeedFromStart',
           kind: 'action',
           doc: 'Re-anchors the Feed at the beginning of the space.',
@@ -4697,7 +4727,12 @@ export const contextData: ContextData = {
         {
           name: 'replyingTo',
           kind: 'state',
-          doc: 'The line a reply is being written to — { id, text, author } — or null.',
+          doc: "The line a reply is being written to — { id, text, author, surface } — or null. `surface` is the list it was started from, 'feed' or 'callFeed', so only that list's composer answers it.",
+        },
+        {
+          name: 'sendToCallFeed',
+          kind: 'action',
+          doc: 'Writes a typed message into the call on screen — with its marks, when the composer gave any. Nothing when no call is shown. Writing into a call does not put the writer on its roster.',
         },
         {
           name: 'sendToFeed',
@@ -4709,11 +4744,12 @@ export const contextData: ContextData = {
           kind: 'state',
           doc: 'Whether this reader asked the Feed to draw the lines calls spoke — off until they do, in this space only.',
         },
+        { name: 'showMoreCallFeed', kind: 'action', doc: 'Grows the call’s Feed by a page.', ambient: true },
         { name: 'showMoreFeed', kind: 'action', doc: 'Grows the Feed’s window by a page.', ambient: true },
         {
           name: 'startReply',
           kind: 'action',
-          doc: 'Starts a reply to one line — pass { id, text, author } — which the Feed’s composer then sends as a reply.',
+          doc: "Starts a reply to one line — pass { id, text, author, surface } — which the composer of that list ('feed', the default, or 'callFeed') then sends as a reply.",
           ambient: true,
         },
         {
@@ -4721,10 +4757,17 @@ export const contextData: ContextData = {
           kind: 'state',
           doc: "Which way round this reader draws the Feed — 'newestBottom' or 'newestTop'. Their own setting.",
         },
+        { name: 'unwatchCallFeed', kind: 'action', doc: 'One drawing of a call’s Feed was taken down.', ambient: true },
         { name: 'unwatchFeed', kind: 'action', doc: 'One drawing of the Feed was taken down.', ambient: true },
+        {
+          name: 'watchCallFeed',
+          kind: 'action',
+          doc: 'A call’s Feed is drawn for this call: read it and keep it live.',
+          ambient: true,
+        },
         { name: 'watchFeed', kind: 'action', doc: 'The Feed is drawn somewhere: keep it live.', ambient: true },
       ],
-      parts: [{ name: 'feedView' }],
+      parts: [{ name: 'feedView' }, { name: 'callFeed', subject: 'routeStore.params.call' }],
       panels: [{ name: 'feed', title: 'Feed', icon: 'chats-circle', hostOwned: false }],
       launchers: [],
       settings: [
