@@ -10,6 +10,7 @@ we-expr.workspace = true
 we-screen.workspace = true
 we-template.workspace = true
 we-legacy.workspace = true
+serde_json.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true

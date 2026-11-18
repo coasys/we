@@ -26,7 +26,14 @@ use std::sync::Arc;
 use we_expr::{HandleTable, Value};
 use we_screen::{Changed, ScreenOp, ScreenState};
 use we_template::{
-    Host, LocalState, NodeId, ResolvedNode, RootSpec, Runtime, StaticHost, Stats, StoreBag, Waker,
+    BindingSource, Host, LocalState, NodeId, ResolvedNode, RootSpec, Runtime, StaticHost, Stats,
+    StoreBag, Waker,
+};
+
+mod base;
+pub use base::{
+    base_template_for, coasys_base_template, BaseCommand, BaseController, ConnectionRow, HostJob,
+    BUILTIN_BUNDLE, UNREACHABLE,
 };
 
 /// What [`Session::poll`] answered — whether a `resolve` now would
@@ -159,6 +166,19 @@ impl Session {
         let legacy = we_legacy::LegacyBindings::install(runtime.layer(), runtime.view());
         runtime.set_bindings(Arc::new(legacy));
         self.runtime = runtime;
+    }
+
+    /// Replace the binding source. The base screen installs its own source
+    /// here. [`Session::new`] installs the legacy source first; this call
+    /// replaces it.
+    pub fn set_bindings(&mut self, bindings: Arc<dyn BindingSource>) {
+        self.runtime.set_bindings(bindings);
+    }
+
+    /// Facts the next dispatch copies when it issues a base-store permit.
+    /// `None` issues nothing and logs nothing.
+    pub fn set_base_facts(&mut self, facts: Option<we_template::BasePermitFacts>) {
+        self.runtime.set_base_facts(facts);
     }
 
     /// The runtime — what the tree resolved to, its stats, its query hub.
