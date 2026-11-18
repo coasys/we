@@ -2,15 +2,18 @@
 
 Branch `port/e18-agent-chat`, from `port/bugs1` at `aebab9a2e`. One commit per step.
 
-| step | commit      | what                                                                   |
-| ---- | ----------- | ---------------------------------------------------------------------- |
-| 1    | `ecaeaa7a8` | Transcript rows become turns. `ChatModel` sends on an open session id. |
-| 2    | `5f9959b59` | `AgentChat` paints the list, the transcript, and the input.            |
-| 3    | `f9d4dd0c1` | The first red breaks and the gate that stopped on the missing API.     |
-| 4    | `6b1aed25a` | Paging and follow on `ChatPort`. `MemoryChat` stays the fake.          |
-| 5    | `c2566025a` | `ai.session*` through `WsRpcClient::call`, and the live tests.         |
-| 6    | `fc4a320cb` | The connected window binds the live port. The panel follows events.    |
-| 7    | this file   | The new red breaks and the live gate.                                  |
+| step | commit      | what                                                                    |
+| ---- | ----------- | ----------------------------------------------------------------------- |
+| 1    | `ecaeaa7a8` | Transcript rows become turns. `ChatModel` sends on an open session id.  |
+| 2    | `5f9959b59` | `AgentChat` paints the list, the transcript, and the input.             |
+| 3    | `f9d4dd0c1` | The first red breaks and the gate that stopped on the missing API.      |
+| 4    | `6b1aed25a` | Paging and follow on `ChatPort`. `MemoryChat` stays the fake.           |
+| 5    | `c2566025a` | `ai.session*` through `WsRpcClient::call`, and the live tests.          |
+| 6    | `fc4a320cb` | The connected window binds the live port. The panel follows events.     |
+| 7    | `b785d770d` | The new red breaks and the live gate.                                   |
+| 8    | `2214fe697` | The launcher asks for AI READ. The write grant also asks for AI CREATE. |
+| 9    | `344cd5ded` | The open space is the chat scope. Create never sends null capabilities. |
+| 10   | this file   | The fix-round red breaks and what stayed out.                           |
 
 ## What the panel does
 
@@ -279,3 +282,147 @@ Result: 3 passed, 0 failed, finished in 1.72s. That binary is the npm pin alread
 - The web We browser. The session starts through the same RPC methods the web client calls.
 - The other live executor tests with `EXECUTOR_PATH` set. The full suite left it unset, as CI does.
 - Reconnect.
+
+## Fix round
+
+Data's review of `b785d770d` on 2026-11-18 12:04Z. Lal's static review asked for two P1 changes and listed the P2s. The grant is `2214fe697`. The scope, the paging, the transcript, and the step label are `344cd5ded`.
+
+The read-only grant now includes AI READ, so a read-only window can list chats. The write grant also includes AI CREATE, which session create and send require. Tags move to `read-only-2` and `write-2` so a cached token is requested again. The read-only grant still has no AI CREATE.
+
+`live_space_app` passes the open space and `Access::in_space` into `ChatModel::bound`. Paint reads `inputs.prefill` only. It does not read `inputs.perspectiveUuid`. A send with no open session uses that host space. An omitted scope is a host-authorized global chat and sends an empty capability list. A space sends one perspective cap. Neither request leaves `capabilities` absent, so the executor does not store every capability the caller holds. A uuid that is not plain is refused before any create. The list shows sessions of that space only. A global model shows sessions with no scope. A read-only window refuses create and send in the model, with no RPC. Opening or sending a session from another space is refused the same way.
+
+`messages` asks for 200 rows. `full_transcript` then walks `messages_before` until a short page, and keeps rows by id. Opening another chat clears the transcript before the read. A failed read of that new chat leaves it empty. A failed reload of the same chat keeps the transcript. `follow` closes a session that has left the list.
+
+`ChatStep.writes` is the declared write intent. It stays set when the step fails. The panel line is the tool name, then "write operation", then running, done, failed, or stopped. A step error is appended. The line does not say the space changed. A tool row also reads `arguments.perspective_id` and `arguments.perspectiveId`. A top-level id wins.
+
+Live tests mint `write_capabilities` for one space and connect as that user, not the operator. `agent.generate` still runs on the operator so the local test account has a DID, and on the user token when that agent has none. A separate test mints the read-only grant, lists, and expects create to fail. After a user send, `ai.session` must show only perspective caps whose pointer is that space.
+
+## Fix-round red
+
+Each new test failed once. The break was one line. The line was restored before the commit. The broken tree was not committed.
+
+The grant test ran before the grant existed.
+
+`cargo test --locked --offline -p we-ad4m --lib connect::grant_tests::the_chat_grant_names_ai_read_and_create -- --test-threads=1`
+
+```
+thread 'connect::grant_tests::the_chat_grant_names_ai_read_and_create' (2151094) panicked at we-ad4m/src/connect.rs:637:9:
+[{"can":["READ"],"with":{"domain":"agent","pointers":["*"]}},{"can":["READ"],"with":{"domain":"perspective","pointers":["*"]}},{"can":["UPDATE"],"with":{"domain":"perspective","pointers":["u"]}}]
+```
+
+The write grant had no artificial intelligence capability.
+
+The later breaks were applied after the tests had passed, one at a time, and then restored.
+
+`create_params` sent `capabilities: null` for a global chat.
+
+```
+thread 'ai_session::tests::a_create_never_sends_null_capabilities' (2262241) panicked at we-ad4m/src/ai_session.rs:735:9:
+{"title":"t","model":null,"defaultPerspective":null,"libraryPerspective":null,"capabilities":null}
+```
+
+`writes` also required a successful outcome.
+
+```
+thread 'chat::tests::a_failed_write_keeps_its_intent' (2258601) panicked at we-data/src/chat.rs:2370:9:
+assertion failed: step.writes
+```
+
+`open` left the previous transcript in place.
+
+```
+thread 'chat::tests::a_failed_open_clears_the_previous_transcript' (2258600) panicked at we-data/src/chat.rs:2160:9:
+[ChatTurn { id: "a-u", role: User, text: "from-a", ... }, ChatTurn { id: "a-a", role: Assistant, text: "reply-a", ... }]
+```
+
+`follow` left a deleted session open.
+
+```
+thread 'chat::tests::a_deleted_session_clears_the_transcript' (2258599) panicked at we-data/src/chat.rs:2237:9:
+assertion failed: model.view.active.is_none()
+```
+
+`full_transcript` returned the newest page and did not walk older rows.
+
+```
+thread 'chat::tests::the_full_transcript_includes_the_row_before_the_newest_page' (2258604) panicked at we-data/src/chat.rs:2321:9:
+newest page hid the oldest row: 200 turns
+```
+
+```
+thread 'chat::tests::a_tool_page_keeps_the_assistant_that_started_it' (2258603) panicked at we-data/src/chat.rs:2346:9:
+assertion failed: model.view.messages.iter().any(|turn| turn.text == "ask")
+```
+
+`row_content` did not read `arguments`.
+
+```
+thread 'ai_session::tests::a_tool_row_reads_perspective_id_from_arguments' (2262242) panicked at we-ad4m/src/ai_session.rs:750:9:
+assertion `left == right` failed
+  left: None
+ right: Some("a1a2a3a4-b1b2-c3c4-d5d6-e7e8e9f0a1b2")
+```
+
+Paint copied `inputs.perspectiveUuid` onto the view, and create read that field.
+
+```
+thread 'a_template_perspective_does_not_change_the_scope' (2263268) panicked at we-egui/tests/agent_chat.rs:180:9:
+assertion `left == right` failed
+  left: [Some("b1b2b3b4-c1c2-d3d4-e5e6-f7f8f9a0b1c2")]
+ right: [Some("a1a2a3a4-b1b2-c3c4-d5d6-e7e8e9f0a1b2")]
+```
+
+`live` minted the read-only grant for the write-grant tests.
+
+```
+thread 'a_user_create_does_not_receive_every_capability' (2301149) panicked at we-ad4m/tests/ai_session.rs:274:5:
+assertion `left == right` failed: draft "scoped hello"
+  left: Some("RPC error 403: Capability is not matched, you have capabilities: [Capability { with: Resource { domain: \"agent\", pointers: [\"*\"] }, can: [\"READ\"] }, Capability { with: Resource { domain: \"perspective\", pointers: [\"*\"] }, can: [\"READ\"] }, Capability { with: Resource { domain: \"artificial intelligence\", pointers: [\"*\"] }, can: [\"READ\"] }], expected: Capability { with: Resource { domain: \"artificial intelligence\", pointers: [\"*\"] }, can: [\"CREATE\"] }")
+ right: None
+```
+
+The same mint made `a_rust_chat_continues_a_session_the_web_api_started` fail in `session_create` with RPC error 403. The expected capability was artificial intelligence CREATE. Four tests failed. `a_read_only_grant_can_list_and_cannot_create` passed. Exit 101.
+
+## What stayed out
+
+Scroll and follow stayed out. The list and the transcript clip at a fixed body height. Text is an unwrapped galley in a 22px band. Paint is an absolute rect, so a scroll area is a paint rewrite. It does not stay small, and it would drop the kittest labels "hello from web", Send, and "No AI sessions". Web's unconditional scrollIntoView is not the behavior to copy.
+
+Blocking IO stayed out. `Handle::block_on` stays. Paint calls `follow` while it holds the model lock. The pinned client RPC timeout is 30s. There is no async inbox and no 3s poll.
+
+Unsubscribe on space switch stayed out. `watch_events` replaces the unnamed user interest. `set_watch` and `remove_watch` are `pub(crate)` on `WsRpcClient`. There is no public unwatch. Dropping the space drops the receiver, not the socket interest. A second `watch_events` replaces the same key. Overwriting another consumer's unnamed watch is not a fix. This needs an owned keyed watch in the rust client. Closing a space does not cancel the executor's detached turn.
+
+A failed read after the last event does not retry. A failed watch stays quiet. Both sit with reconnect.
+
+The step line shows the intent and the error. It does not show the tool target or the tool result.
+
+The walk past 200 rows is a fake port. The live tests still use two short exchanges.
+
+## Fix-round green
+
+Same environment as the earlier green section. `EXECUTOR_PATH` unset except for the live run. `--offline` because the registry is already on disk. CI does not pass `--offline`.
+
+| command                                                                               | result                                              |
+| ------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| `cargo test --locked --offline -p we-data --lib chat::tests -- --test-threads=8`      | 20 passed                                           |
+| `cargo test --locked --offline -p we-ad4m --lib ai_session::tests`                    | 5 passed                                            |
+| `cargo test --locked --offline -p we-egui --test agent_chat`                          | 3 passed                                            |
+| `cargo check --locked --offline -p we-app`                                            | OK                                                  |
+| `cargo fmt --all -- --check`                                                          | OK                                                  |
+| `cargo check --locked --offline --all-targets`                                        | OK, 22.88s                                          |
+| `cargo clippy --all-targets --locked --offline -- -D warnings`                        | OK                                                  |
+| `cargo test --locked --offline -- --test-threads=8`                                   | OK, 183 harnesses, 0 failed, 1084 passed, 3 ignored |
+| `cargo check --locked --offline --target wasm32-unknown-unknown`                      | OK, 15.20s                                          |
+| `bash scripts/check-egui-free.sh`                                                     | OK                                                  |
+| live `cargo test --locked --offline -p we-ad4m --test ai_session -- --test-threads=1` | 5 passed, 0 failed, 2.88s                           |
+
+The live binary is the local npm pin already named above. The rust client pin stays `d2e6fab93`. The first full `cargo test` stopped on SIGSEGV in `widgets_gallery` while other GPU snapshots ran. That file alone then passed 3 tests. The 183 harnesses are the rerun. `EXECUTOR_PATH` was unset, so the live file returned without an executor.
+
+`pnpm format:check` from the repo root passed. Prettier reported that all matched files use its style.
+
+## Still not tested
+
+- A completed model reply. The live tests cancel the running turn and check the user row.
+- The web We browser.
+- The other live executor tests with `EXECUTOR_PATH` set.
+- Reconnect, scroll, a slow RPC on the UI thread, and watch teardown when the space closes.
+- A live transcript longer than 200 rows.
