@@ -6,6 +6,7 @@
 //! The UI thread installs the world when the worker finishes. Until then
 //! the widget has an empty world and still draws the schema.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use egui::Context;
@@ -16,6 +17,16 @@ use we_graph::{core_shapes, Record, World};
 
 pub struct GraphLoad {
     slot: Arc<Mutex<Option<GraphInstall>>>,
+    /// Set when this load is dropped, which is a space switch or a back.
+    /// The worker checks it between classes. An in-flight `model_query`
+    /// still finishes. It does not install after the flag is set.
+    cancel: Arc<AtomicBool>,
+}
+
+impl Drop for GraphLoad {
+    fn drop(&mut self) {
+        self.cancel.store(true, Ordering::Relaxed);
+    }
 }
 
 impl GraphLoad {
@@ -34,6 +45,8 @@ impl GraphLoad {
         );
         let slot = Arc::new(Mutex::new(None));
         let out = Arc::clone(&slot);
+        let cancel = Arc::new(AtomicBool::new(false));
+        let stop = Arc::clone(&cancel);
         let conn = conn.clone();
         let space = space.to_string();
         let ctx = ctx.clone();
@@ -41,16 +54,23 @@ impl GraphLoad {
         let spawned = std::thread::Builder::new()
             .name("we-graph-load".into())
             .spawn(move || {
-                let install = handle.block_on(load(&conn, &space, shapes));
-                if let Ok(mut guard) = out.lock() {
-                    *guard = Some(install);
+                let install = handle.block_on(load(&conn, &space, shapes, Arc::clone(&stop)));
+                if stop.load(Ordering::Relaxed) {
+                    return;
                 }
-                ctx.request_repaint();
+                if let Some(install) = install {
+                    if let Ok(mut guard) = out.lock() {
+                        if !stop.load(Ordering::Relaxed) {
+                            *guard = Some(install);
+                        }
+                    }
+                    ctx.request_repaint();
+                }
             });
         if let Err(e) = spawned {
             log::warn!("graph load: {e}");
         }
-        Self { slot }
+        Self { slot, cancel }
     }
 
     /// Install the world once the worker has it.
@@ -62,11 +82,19 @@ impl GraphLoad {
     }
 }
 
-async fn load(conn: &Connection, space: &str, shapes: Arc<[we_graph::Shape]>) -> GraphInstall {
+async fn load(
+    conn: &Connection,
+    space: &str,
+    shapes: Arc<[we_graph::Shape]>,
+    cancel: Arc<AtomicBool>,
+) -> Option<GraphInstall> {
     let exec = Ad4mExecutor::new(conn.clone());
     let space_id = SpaceId::new(space);
     let mut records = Vec::new();
     for shape in shapes.iter() {
+        if cancel.load(Ordering::Relaxed) {
+            return None;
+        }
         if shape.name == "WeNode" {
             continue;
         }
@@ -100,10 +128,13 @@ async fn load(conn: &Connection, space: &str, shapes: Arc<[we_graph::Shape]>) ->
             Err(e) => log::warn!("graph load {}: {e}", shape.name),
         }
     }
-    GraphInstall {
+    if cancel.load(Ordering::Relaxed) {
+        return None;
+    }
+    Some(GraphInstall {
         world: Arc::new(World::from_records(records)),
         shapes,
         dataset: Arc::from(space),
         generation: 0,
-    }
+    })
 }
