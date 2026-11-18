@@ -67,11 +67,24 @@ export interface ModelServer {
   model: string;
 }
 
+/** A language model's server, with how the executor talks to it. Each field left out: the executor's default. */
+export interface LlmServer extends ModelServer {
+  /** Default `OPEN_AI_COMPATIBLE`. `LLAMA_SERVER` sends `enable_thinking: false`. */
+  kind?: 'OPEN_AI_COMPATIBLE' | 'LLAMA_SERVER' | 'VLLM' | 'OPEN_AI' | 'OLLAMA' | 'ANTHROPIC';
+  /** Send tools as tool definitions rather than in the prompt. */
+  nativeTools?: boolean;
+  /** How long one request may take, queueing included. */
+  requestTimeoutSecs?: number;
+  /** The context the server gives one request. */
+  maxNumCtx?: number;
+}
+
 /**
- * Registers an `OPEN_AI_COMPATIBLE` endpoint (capability `chat`) and an `LLM` model on it, and makes
- * that model the executor's default language model. Resolves with the model's id.
+ * Registers an endpoint of `server.kind` (default `OPEN_AI_COMPATIBLE`, capability `chat`) and an
+ * `LLM` model on it, and makes that model the executor's default language model. Resolves with the
+ * model's id.
  */
-export function registerLlm(admin: Pick<Ad4mClient, 'ai'>, server: ModelServer): Promise<string>;
+export function registerLlm(admin: Pick<Ad4mClient, 'ai'>, server: LlmServer): Promise<string>;
 
 /**
  * Registers an `OPEN_AI_AUDIO` endpoint (capability `transcription`) and a `TRANSCRIPTION` model on

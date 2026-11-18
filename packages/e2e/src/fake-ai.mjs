@@ -82,6 +82,8 @@ export function fakeAiAdmin({ unlisted = [] } = {}) {
         baseUrl: input.baseUrl,
         apiKey: input.apiKey ?? '',
         capabilities: input.capabilities ?? DEFAULT_CAPABILITIES[input.kind],
+        ...(input.requestTimeoutSecs !== undefined ? { requestTimeoutSecs: input.requestTimeoutSecs } : {}),
+        ...(input.maxNumCtx !== undefined ? { maxNumCtx: input.maxNumCtx } : {}),
       };
       endpoints.set(endpoint.id, endpoint);
       return { ...endpoint, apiKey: undefined, hasApiKey: Boolean(endpoint.apiKey), managed: false };

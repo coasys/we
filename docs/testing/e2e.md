@@ -82,7 +82,9 @@ tiers, the verticals, their backlog of `it.todo`, and how to read a red real-tie
 (`scripts/coasys-spaces.sh` there). It runs against ad4m `dev` rather than WE's pin: it packs the
 client from the commit under test and builds the executor from that same commit. It runs
 `pnpm --filter @we/app-web test:spaces` with `AD4M_EXECUTOR`, `COASYS_SPACES_TIER`,
-`COASYS_SPACES_LLM_BASE_URL`, `COASYS_SPACES_LLM_MODEL` and `COASYS_SPACES_ARTIFACTS`. That script,
+`COASYS_SPACES_LLM_BASE_URL`, `COASYS_SPACES_LLM_MODEL`, `COASYS_SPACES_ARTIFACTS` and, for a
+llama.cpp server, `COASYS_SPACES_LLM_ENDPOINT_KIND`, `COASYS_SPACES_LLM_NATIVE_TOOLS`,
+`COASYS_SPACES_LLM_REQUEST_TIMEOUT_SECS` and `COASYS_SPACES_LLM_MAX_NUM_CTX`. That script,
 its name and those variables are a contract with that repository: keep them working.
 
 ## `@we/e2e`: what the live tests share

@@ -157,6 +157,35 @@ describe('registerLlm', () => {
     const id = await registerLlm(admin, { baseUrl: 'https://models.example/v1', apiKey: 'secret', model: 'm' });
     assert.equal(admin.endpointOf(id).apiKey, 'secret');
   });
+
+  it('passes the endpoint kind, its limits and native tools through', async () => {
+    const admin = fakeAiAdmin();
+    const id = await registerLlm(admin, {
+      baseUrl: 'http://127.0.0.1:12460/v1',
+      model: 'qwen',
+      kind: 'LLAMA_SERVER',
+      nativeTools: true,
+      requestTimeoutSecs: 900,
+      maxNumCtx: 57344,
+    });
+
+    const endpoint = admin.endpointOf(id);
+    assert.equal(endpoint.kind, 'LLAMA_SERVER');
+    assert.equal(endpoint.requestTimeoutSecs, 900);
+    assert.equal(endpoint.maxNumCtx, 57344);
+    assert.equal((await admin.ai.getDefaultModel('LLM')).nativeTools, true);
+  });
+
+  it('leaves the limits and native tools to the executor when none are given', async () => {
+    const admin = fakeAiAdmin();
+    const id = await registerLlm(admin, { baseUrl: 'http://127.0.0.1:4000/v1', model: 'stub' });
+
+    const endpoint = admin.endpointOf(id);
+    assert.equal(endpoint.kind, 'OPEN_AI_COMPATIBLE');
+    assert.equal('requestTimeoutSecs' in endpoint, false);
+    assert.equal('maxNumCtx' in endpoint, false);
+    assert.equal('nativeTools' in (await admin.ai.getDefaultModel('LLM')), false);
+  });
 });
 
 describe('registerTranscriber', () => {

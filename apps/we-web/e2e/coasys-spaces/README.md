@@ -196,6 +196,10 @@ not get a `Task`, the cause can be model variance and not a product break. To fi
 | -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | `COASYS_SPACES_TIER`                               | `stub` (default) or `real`.                                                                                |
 | `COASYS_SPACES_LLM_BASE_URL`, `_MODEL`, `_API_KEY` | The real tier's OpenAI-compatible language model.                                                          |
+| `COASYS_SPACES_LLM_ENDPOINT_KIND`                  | The endpoint kind of that server. The default is `OPEN_AI_COMPATIBLE`. Use `LLAMA_SERVER` for llama.cpp.   |
+| `COASYS_SPACES_LLM_NATIVE_TOOLS`                   | `true`: send tools as tool definitions, not in the prompt. If it is not set, the executor decides.         |
+| `COASYS_SPACES_LLM_REQUEST_TIMEOUT_SECS`           | The time one request may take, queueing included. If it is not set, the executor's default applies.        |
+| `COASYS_SPACES_LLM_MAX_NUM_CTX`                    | The context the server gives one request. If it is not set, the executor sends no output cap.              |
 | `COASYS_SPACES_TRANSCRIPTION_BASE_URL`             | The real tier's OpenAI-compatible speech server. If it is not set, the stub server writes the transcript.  |
 | `COASYS_SPACES_TRANSCRIPTION_MODEL`                | The model on that server. The default is the transcription model that AD4M recommends.                     |
 | `COASYS_SPACES_TRANSCRIPTION_API_KEY`              | The key for that server. The default is no key.                                                            |

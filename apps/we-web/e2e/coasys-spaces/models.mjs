@@ -24,14 +24,43 @@ const RECOMMENDED_TRANSCRIPTION_MODEL = AI_RECOMMENDED_MODELS.find((m) => m.mode
 /** How long the executor may take to find the transcription model on its server. */
 const TRANSCRIBER_READY = 180_000;
 
-/** The real tier's language model, from the environment. */
+/** A positive whole number from `env[name]`, or `undefined` when it is unset. */
+function positiveInt(env, name) {
+  const value = env[name];
+  if (!value) return undefined;
+  if (!/^[1-9][0-9]*$/.test(value)) throw new Error(`${name} must be a positive whole number, not '${value}'.`);
+  return Number(value);
+}
+
+/** `true` or `false` from `env[name]`, or `undefined` when it is unset. */
+function flag(env, name) {
+  const value = env[name];
+  if (!value) return undefined;
+  if (value !== 'true' && value !== 'false') throw new Error(`${name} must be 'true' or 'false', not '${value}'.`);
+  return value === 'true';
+}
+
+/**
+ * The real tier's language model, from the environment. Besides the server and model, the run may
+ * say how the executor talks to it; each one unset leaves the default (`registerLlm`):
+ * `COASYS_SPACES_LLM_ENDPOINT_KIND` (default `OPEN_AI_COMPATIBLE`), `COASYS_SPACES_LLM_NATIVE_TOOLS`,
+ * `COASYS_SPACES_LLM_REQUEST_TIMEOUT_SECS` and `COASYS_SPACES_LLM_MAX_NUM_CTX`.
+ */
 export function realLlm(env) {
   const baseUrl = env.COASYS_SPACES_LLM_BASE_URL;
   const model = env.COASYS_SPACES_LLM_MODEL;
   if (!baseUrl || !model) {
     throw new Error('COASYS_SPACES_TIER=real needs COASYS_SPACES_LLM_BASE_URL and COASYS_SPACES_LLM_MODEL.');
   }
-  return { baseUrl, model, apiKey: env.COASYS_SPACES_LLM_API_KEY || undefined };
+  return {
+    baseUrl,
+    model,
+    apiKey: env.COASYS_SPACES_LLM_API_KEY || undefined,
+    kind: env.COASYS_SPACES_LLM_ENDPOINT_KIND || undefined,
+    nativeTools: flag(env, 'COASYS_SPACES_LLM_NATIVE_TOOLS'),
+    requestTimeoutSecs: positiveInt(env, 'COASYS_SPACES_LLM_REQUEST_TIMEOUT_SECS'),
+    maxNumCtx: positiveInt(env, 'COASYS_SPACES_LLM_MAX_NUM_CTX'),
+  };
 }
 
 /** The speech server the environment names, or `null` when it names none. */

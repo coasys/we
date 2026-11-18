@@ -12,7 +12,7 @@ import { AI_RECOMMENDED_MODELS } from '@coasys/ad4m';
 import { fakeAiAdmin } from '@we/e2e/fake-ai';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { modelsFor, needsStubServer, registerModels } from './models.mjs';
+import { modelsFor, needsStubServer, realLlm, registerModels } from './models.mjs';
 import { HEARD, startStubLlm, TRANSCRIPT } from './stub-llm.mjs';
 
 const STUB_SERVER = { baseUrl: 'http://127.0.0.1:4000/v1', model: 'stub-llm', transcriptionModel: 'stub-stt' };
@@ -82,6 +82,45 @@ describe('the world’s model setup', () => {
 
   it('real tier: refuses to start without a language model', () => {
     expect(() => modelsFor({ tier: 'real', env: {}, stub: STUB_SERVER })).toThrow(/COASYS_SPACES_LLM_BASE_URL/);
+  });
+
+  it('real tier: the endpoint kind, its limits and native tools come from the environment', async () => {
+    const env = {
+      ...REAL_LLM,
+      COASYS_SPACES_LLM_ENDPOINT_KIND: 'LLAMA_SERVER',
+      COASYS_SPACES_LLM_NATIVE_TOOLS: 'true',
+      COASYS_SPACES_LLM_REQUEST_TIMEOUT_SECS: '900',
+      COASYS_SPACES_LLM_MAX_NUM_CTX: '57344',
+    };
+    const { admin, ids } = await setUp('real', env);
+
+    expect(admin.endpointOf(ids.llmId)).toMatchObject({
+      kind: 'LLAMA_SERVER',
+      requestTimeoutSecs: 900,
+      maxNumCtx: 57344,
+    });
+    expect((await admin.ai.getDefaultModel('LLM')).nativeTools).toBe(true);
+  });
+
+  it('real tier: without them, an OpenAI-compatible endpoint and the executor’s defaults', async () => {
+    const { admin, ids } = await setUp('real', REAL_LLM);
+
+    const endpoint = admin.endpointOf(ids.llmId);
+    expect(endpoint.kind).toBe('OPEN_AI_COMPATIBLE');
+    expect(endpoint).not.toHaveProperty('requestTimeoutSecs');
+    expect(endpoint).not.toHaveProperty('maxNumCtx');
+    expect(await admin.ai.getDefaultModel('LLM')).not.toHaveProperty('nativeTools');
+  });
+
+  it('real tier: refuses a limit that is not a positive whole number, by name', () => {
+    for (const value of ['0', '-5', '900s', '1.5']) {
+      expect(() => realLlm({ ...REAL_LLM, COASYS_SPACES_LLM_MAX_NUM_CTX: value })).toThrow(
+        /COASYS_SPACES_LLM_MAX_NUM_CTX/,
+      );
+    }
+    expect(() => realLlm({ ...REAL_LLM, COASYS_SPACES_LLM_NATIVE_TOOLS: 'yes' })).toThrow(
+      /COASYS_SPACES_LLM_NATIVE_TOOLS/,
+    );
   });
 
   it('fails at setup, by name, when the speech server does not have the model', async () => {

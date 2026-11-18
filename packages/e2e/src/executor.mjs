@@ -172,14 +172,31 @@ export async function signUp(executor, email, password = 'test123') {
  * is. With no `apiKey`, no key is sent: the executor refuses a key over plain HTTP to another host.
  * Resolves with the model's id.
  */
-export async function registerModel(admin, { name, kind, capabilities, modelType, baseUrl, apiKey, model }) {
+export async function registerModel(
+  admin,
+  { name, kind, capabilities, modelType, baseUrl, apiKey, model, nativeTools, requestTimeoutSecs, maxNumCtx },
+) {
   const endpoint = await within(
-    admin.ai.addEndpoint({ name, kind, baseUrl, capabilities, ...(apiKey ? { apiKey } : {}) }),
+    admin.ai.addEndpoint({
+      name,
+      kind,
+      baseUrl,
+      capabilities,
+      ...(apiKey ? { apiKey } : {}),
+      ...(requestTimeoutSecs !== undefined ? { requestTimeoutSecs } : {}),
+      ...(maxNumCtx !== undefined ? { maxNumCtx } : {}),
+    }),
     60_000,
     'ai.addEndpoint',
   );
   const id = await within(
-    admin.ai.addModel({ name, modelType, endpointId: endpoint.id, remoteModel: model }),
+    admin.ai.addModel({
+      name,
+      modelType,
+      endpointId: endpoint.id,
+      remoteModel: model,
+      ...(nativeTools !== undefined ? { nativeTools } : {}),
+    }),
     60_000,
     'ai.addModel',
   );
@@ -189,17 +206,35 @@ export async function registerModel(admin, { name, kind, capabilities, modelType
 
 /**
  * Makes a model on an OpenAI-compatible server (`/v1/chat/completions`) the executor's default
- * language model: the one that call extraction runs on. Resolves with the model's id.
+ * language model: the one that call extraction runs on. `kind` names the server (default
+ * `OPEN_AI_COMPATIBLE`; `LLAMA_SERVER` turns its thinking off). `nativeTools`,
+ * `requestTimeoutSecs` and `maxNumCtx` are sent only when given; left out, the executor's defaults
+ * apply. Resolves with the model's id.
  */
-export function registerLlm(admin, { name = 'we-live-llm', baseUrl, apiKey, model }) {
+export function registerLlm(
+  admin,
+  {
+    name = 'we-live-llm',
+    baseUrl,
+    apiKey,
+    model,
+    kind = 'OPEN_AI_COMPATIBLE',
+    nativeTools,
+    requestTimeoutSecs,
+    maxNumCtx,
+  },
+) {
   return registerModel(admin, {
     name,
-    kind: 'OPEN_AI_COMPATIBLE',
+    kind,
     capabilities: ['chat'],
     modelType: 'LLM',
     baseUrl,
     apiKey,
     model,
+    nativeTools,
+    requestTimeoutSecs,
+    maxNumCtx,
   });
 }
 
