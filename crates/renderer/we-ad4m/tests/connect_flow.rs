@@ -173,7 +173,7 @@ fn capability_request_then_the_stored_token_needs_no_approval() {
     );
     // agent READ also reads the agent's grants (`agent.getApps`, without
     // tokens). That is how the executor shows what this app was granted:
-    // exactly the two READ capabilities it asked for.
+    // agent READ, perspective READ, and AI READ. Not AI CREATE.
     let apps: serde_json::Value = rt
         .block_on(conn.ws().call("agent.getApps", json!({})))
         .unwrap();
@@ -188,7 +188,8 @@ fn capability_request_then_the_stored_token_needs_no_approval() {
         ours[0]["auth"]["capabilities"],
         json!([
             { "with": { "domain": "agent", "pointers": ["*"] }, "can": ["READ"] },
-            { "with": { "domain": "perspective", "pointers": ["*"] }, "can": ["READ"] }
+            { "with": { "domain": "perspective", "pointers": ["*"] }, "can": ["READ"] },
+            { "with": { "domain": "artificial intelligence", "pointers": ["*"] }, "can": ["READ"] }
         ])
     );
 
@@ -429,7 +430,9 @@ fn the_write_grant_names_one_space() {
         json!([
             { "with": { "domain": "agent", "pointers": ["*"] }, "can": ["READ"] },
             { "with": { "domain": "perspective", "pointers": ["*"] }, "can": ["READ"] },
-            { "with": { "domain": "perspective", "pointers": [a] }, "can": ["UPDATE"] }
+            { "with": { "domain": "artificial intelligence", "pointers": ["*"] }, "can": ["READ"] },
+            { "with": { "domain": "perspective", "pointers": [a] }, "can": ["UPDATE"] },
+            { "with": { "domain": "artificial intelligence", "pointers": ["*"] }, "can": ["CREATE"] }
         ])
     );
     match create_call(&rt, &conn, &a) {

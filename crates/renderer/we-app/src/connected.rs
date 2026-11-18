@@ -279,13 +279,12 @@ fn card(ui: &mut egui::Ui, body: impl FnOnce(&mut egui::Ui)) {
 /// What the capability request asks for, as the connect screen says it.
 pub fn grant_sentence(scope: &GrantScope) -> String {
     match scope {
-        GrantScope::ReadOnly => {
-            "It asks to read your agent and your perspectives, and nothing else (read-only)."
-                .to_string()
-        }
+        GrantScope::ReadOnly => "It asks to read your agent, your perspectives, and your AI \
+             chats, and nothing else (read-only)."
+            .to_string(),
         GrantScope::Write { space } => format!(
-            "It asks to read your agent and your perspectives, and to change one space \
-             ({space}), and nothing else."
+            "It asks to read your agent, your perspectives, and your AI chats, to change \
+             one space ({space}), and to start AI chats, and nothing else."
         ),
     }
 }

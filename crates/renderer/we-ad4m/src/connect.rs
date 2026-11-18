@@ -23,7 +23,8 @@
 //! operator: the flow ends Connected at step 2 with nothing stored.
 //!
 //! [`ConnectSettings::scope`] picks the grant: read-only (agent and
-//! perspective READ, E7), or that plus perspective UPDATE on one perspective
+//! perspective READ, plus AI READ so a read-only window can list chats,
+//! E7), or that plus perspective UPDATE on one perspective and AI CREATE
 //! (`--write --space <uuid>`, E11), asked for as a separate app so neither
 //! token stands in for the other. See [`app_info`].
 use std::future::Future;
@@ -102,38 +103,70 @@ pub struct ConnectSettings {
 /// - `agent` READ: `agent.get` (who `me` is);
 /// - `perspective` READ: `perspective.all` for the picker, and
 ///   `perspective.modelQuery` / `modelSubscribe` / `disposeQuery`, which
-///   the executor guards with perspective READ (not SUBSCRIBE).
+///   the executor guards with perspective READ (not SUBSCRIBE);
+/// - `artificial intelligence` READ: `ai.sessionList` and
+///   `ai.sessionMessages`. A read-only window can show chats. It cannot
+///   start one.
 ///
 /// Not `neighbourhood` READ, although `neighbourhood.otherAgents` wants it:
 /// the executor also lets that capability call `neighbourhood.join`, which
 /// a read-only app must not be able to do. `spaceStore.memberDids` falls
-/// back to the agent alone when the executor refuses it.
+/// back to the agent alone when the executor refuses it. Not AI CREATE:
+/// that is what `ai.sessionCreate` and `ai.sessionSend` require.
 ///
 /// **Writes** (`--connect --write --space <uuid>`, E11): the same, plus
 /// `perspective` UPDATE on that one perspective, which is what the
-/// validated write RPC (`perspective.instance*`) is guarded by. A separate
-/// app name, so the token store (keyed by URL and app name) never hands
-/// the read-only window a write token or the other way round.
+/// validated write RPC (`perspective.instance*`) is guarded by, and AI
+/// CREATE, which is what a chat send requires. A separate app name, so
+/// the token store (keyed by URL and app name) never hands the read-only
+/// window a write token or the other way round.
 pub fn app_info(scope: &GrantScope) -> AppInfo {
     match scope {
         GrantScope::ReadOnly => AppInfo::new(
             "WE (Rust renderer)",
-            "Reads your spaces to render them natively. Read-only.",
+            "Reads your spaces and your AI chats. Read-only.",
             "https://github.com/coasys/we",
         )
         .capabilities(read_only_capabilities()),
         GrantScope::Write { space } => AppInfo::new(
             "WE (Rust renderer, writes)",
-            format!("Renders your spaces natively and makes changes in one space: {space}."),
+            format!(
+                "Renders your spaces natively, makes changes in one space ({space}), \
+                 and can start AI chats there."
+            ),
             "https://github.com/coasys/we",
         )
         .capabilities(write_capabilities(space)),
     }
 }
 
-/// The grant [`app_info`] asks for.
+/// The executor's domain for AI session capabilities (`caps::AI`).
+const AI_DOMAIN: &str = "artificial intelligence";
+
+fn ai_capability(can: &str) -> CapabilityInput {
+    CapabilityInput {
+        can: vec![can.to_string()],
+        with: ResourceInput {
+            domain: AI_DOMAIN.to_string(),
+            pointers: vec!["*".to_string()],
+        },
+    }
+}
+
+/// What a chat list needs: AI READ on `*`. Not AI CREATE.
+pub fn chat_read_capabilities() -> Vec<CapabilityInput> {
+    vec![ai_capability("READ")]
+}
+
+/// What a chat send needs: AI READ and AI CREATE on `*`.
+pub fn chat_write_capabilities() -> Vec<CapabilityInput> {
+    vec![ai_capability("READ"), ai_capability("CREATE")]
+}
+
+/// The grant [`app_info`] asks for: agent READ, perspective READ, and
+/// [`chat_read_capabilities`]. No AI CREATE.
 pub fn read_only_capabilities() -> Vec<CapabilityInput> {
-    ["agent", "perspective"]
+    let mut caps: Vec<CapabilityInput> = ["agent", "perspective"]
         .into_iter()
         .map(|domain| CapabilityInput {
             can: vec!["READ".to_string()],
@@ -142,12 +175,14 @@ pub fn read_only_capabilities() -> Vec<CapabilityInput> {
                 pointers: vec!["*".to_string()],
             },
         })
-        .collect()
+        .collect();
+    caps.extend(chat_read_capabilities());
+    caps
 }
 
 /// The write grant: [`read_only_capabilities`] plus perspective UPDATE on
-/// `space` alone. No neighbourhood, no perspective CREATE or DELETE, no `*`
-/// UPDATE.
+/// `space` alone and AI CREATE. No neighbourhood, no perspective CREATE or
+/// DELETE, no `*` UPDATE. AI READ is already in the read-only grant.
 pub fn write_capabilities(space: &str) -> Vec<CapabilityInput> {
     let mut caps = read_only_capabilities();
     caps.push(CapabilityInput {
@@ -157,6 +192,7 @@ pub fn write_capabilities(space: &str) -> Vec<CapabilityInput> {
             pointers: vec![space.to_string()],
         },
     });
+    caps.push(ai_capability("CREATE"));
     caps
 }
 
@@ -168,11 +204,13 @@ pub fn write_capabilities(space: &str) -> Vec<CapabilityInput> {
 /// dropped and the grant asked for again.
 const GRANT_FILE: &str = "we-renderer-grants.json";
 
-/// What the record says about a grant: `read-only-1`, or `write-1:<uuid>`.
+/// What the record says about a grant: `read-only-2`, or `write-2:<uuid>`.
+/// The `-2` tags drop tokens minted before the chat capabilities were asked
+/// for, so a cached launcher token is requested again.
 fn grant_tag(scope: &GrantScope) -> String {
     match scope {
-        GrantScope::ReadOnly => "read-only-1".to_string(),
-        GrantScope::Write { space } => format!("write-1:{space}"),
+        GrantScope::ReadOnly => "read-only-2".to_string(),
+        GrantScope::Write { space } => format!("write-2:{space}"),
     }
 }
 
@@ -619,10 +657,59 @@ mod grant_tests {
     #[test]
     fn grant_tag_and_key_per_scope() {
         let write = GrantScope::Write { space: "u".into() };
-        assert_eq!(grant_tag(&GrantScope::ReadOnly), "read-only-1");
-        assert_eq!(grant_tag(&write), "write-1:u");
+        assert_eq!(grant_tag(&GrantScope::ReadOnly), "read-only-2");
+        assert_eq!(grant_tag(&write), "write-2:u");
         assert_eq!(grant_key("http://h:1", &GrantScope::ReadOnly), "http://h:1");
         assert_eq!(grant_key("http://h:1", &write), "http://h:1#writes");
+    }
+
+    #[test]
+    fn the_chat_grant_names_ai_read_and_create() {
+        let write = serde_json::to_value(write_capabilities("u")).unwrap();
+        let ai: Vec<&serde_json::Value> = write
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|cap| cap["with"]["domain"] == "artificial intelligence")
+            .collect();
+        assert!(
+            ai.iter().any(|cap| cap["can"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|verb| verb == "READ")),
+            "{write}"
+        );
+        assert!(
+            ai.iter().any(|cap| cap["can"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|verb| verb == "CREATE")),
+            "{write}"
+        );
+        let read = serde_json::to_value(read_only_capabilities()).unwrap();
+        let read_ai: Vec<&serde_json::Value> = read
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|cap| cap["with"]["domain"] == "artificial intelligence")
+            .collect();
+        assert_eq!(read_ai.len(), 1, "{read}");
+        assert_eq!(read_ai[0]["can"], serde_json::json!(["READ"]));
+        assert!(
+            read_ai[0]["can"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|verb| verb != "CREATE"),
+            "{read}"
+        );
+        assert_eq!(grant_tag(&GrantScope::ReadOnly), "read-only-2");
+        assert_eq!(
+            grant_tag(&GrantScope::Write { space: "u".into() }),
+            "write-2:u"
+        );
     }
 
     #[test]
@@ -633,7 +720,9 @@ mod grant_tests {
             serde_json::json!([
                 { "with": { "domain": "agent", "pointers": ["*"] }, "can": ["READ"] },
                 { "with": { "domain": "perspective", "pointers": ["*"] }, "can": ["READ"] },
-                { "with": { "domain": "perspective", "pointers": ["u"] }, "can": ["UPDATE"] }
+                { "with": { "domain": "artificial intelligence", "pointers": ["*"] }, "can": ["READ"] },
+                { "with": { "domain": "perspective", "pointers": ["u"] }, "can": ["UPDATE"] },
+                { "with": { "domain": "artificial intelligence", "pointers": ["*"] }, "can": ["CREATE"] }
             ])
         );
         let app = app_info(&GrantScope::Write { space: "u".into() });
