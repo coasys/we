@@ -83,7 +83,7 @@ export const spaceIdentity: SchemaNode = {
           props: { variant: 'footnote', color: 'text-faint' },
           children: [
             {
-              $: "space.isWeSpace ? space.kind == 'shared' ? 'Shared space' : 'Personal space' : `Joined dataset — not yet a ${templateStore.brand.name} space`",
+              $: "space.isWeSpace ? space.kind == 'shared' ? 'Shared space' : 'Personal space' : space.loading ? 'Loading…' : `Joined dataset — not yet a ${templateStore.brand.name} space`",
             },
           ],
         },
@@ -1667,7 +1667,16 @@ export function spaceSettingsBody(uuid: SchemaProp, chrome: SchemaNode[], fill?:
                       ),
                     ],
                   },
-                  else: notAWeSpaceNotice,
+                  // A row still loading is a space whose record the boot has not read yet — not a
+                  // dataset from another app — so it waits rather than saying there is nothing here.
+                  else: {
+                    type: '$if',
+                    props: {
+                      condition: { $: 'space.loading' },
+                      then: { type: 'we-skeleton', props: { height: '120px' } },
+                      else: notAWeSpaceNotice,
+                    },
+                  },
                 },
               },
             ],
