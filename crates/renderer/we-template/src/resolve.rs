@@ -917,6 +917,23 @@ fn resolve_children(
 }
 
 /// Resolve `node` at `path` under `root`, in `scope`.
+/// The node's mount, tier, and the host's live generation. A missing
+/// live mount stamps generation 0, which matches no live permit.
+fn note_chat_origin(cx: &ResolveCx, id: &NodeId) {
+    let auth = cx.auth();
+    let generation = crate::chat_permit::chat_mount()
+        .map(|mount| mount.generation())
+        .unwrap_or(0);
+    crate::chat_permit::stamp_chat_origin(
+        id.clone(),
+        crate::chat_permit::ChatOrigin {
+            mount: auth.mount.clone(),
+            tier: auth.tier,
+            generation,
+        },
+    );
+}
+
 fn resolve_node(
     node: &SchemaNode,
     scope: &Scope,
@@ -1294,6 +1311,7 @@ fn resolve_node(
         }
         Some(ty) => {
             let id = cx.node_id(root, path);
+            note_chat_origin(cx, &id);
             cx.live.insert(id.clone());
             cx.parents.insert(id.clone(), parent.clone());
 

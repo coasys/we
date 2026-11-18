@@ -15,7 +15,7 @@ use we_data::chat::{
 };
 use we_expr::Value;
 use we_style::Style;
-use we_template::{NodeId, ResolvedNode};
+use we_template::{chat_mount, issue_chat_permit, ChatIntent, NodeId, ResolvedNode};
 
 use crate::{MeasureCx, PaintCx, Rect, Size, Widget, WidgetKind};
 
@@ -116,7 +116,7 @@ impl Widget for AgentChat {
         if draft != previous {
             guard.set_draft(draft);
         }
-        apply(&mut guard, act);
+        apply(&mut guard, &node.id, act);
     }
 }
 
@@ -397,16 +397,50 @@ fn set(act: &mut Act, next: Act) {
     }
 }
 
-fn apply(model: &mut ChatModel, act: Act) {
+fn apply(model: &mut ChatModel, node: &NodeId, act: Act) {
     match act {
         Act::None | Act::Focus => {}
-        Act::Send => model.send(),
-        Act::Cancel => model.cancel(),
         Act::Open(id) => model.open(&id),
         Act::Back => model.back(),
-        Act::Delete(id) => model.delete(&id),
-        Act::Resend(text) => model.resend(&text),
+        Act::Send => commit(model, node, ChatIntent::Send, ChatModel::send),
+        Act::Cancel => commit(model, node, ChatIntent::Cancel, ChatModel::cancel),
+        Act::Delete(id) => {
+            commit(model, node, ChatIntent::Delete(id.clone()), |model| {
+                model.delete(&id);
+            });
+        }
+        Act::Resend(text) => {
+            commit(model, node, ChatIntent::Resend(text.clone()), |model| {
+                model.resend(&text);
+            });
+        }
     }
+}
+
+/// Issue a permit for this node and run the mutation only when the permit
+/// is the live mount's. A missing permit does not call the model.
+fn commit(
+    model: &mut ChatModel,
+    node: &NodeId,
+    intent: ChatIntent,
+    run: impl FnOnce(&mut ChatModel),
+) {
+    let Some(permit) = issue_chat_permit(node, intent.clone()) else {
+        return;
+    };
+    let Some(live) = chat_mount() else {
+        return;
+    };
+    if permit.mount().as_str() != live.mount().as_str() {
+        return;
+    }
+    if permit.generation() != live.generation() {
+        return;
+    }
+    if !permit.matches(live.mount(), live.generation(), &intent) {
+        return;
+    }
+    run(model);
 }
 
 fn prefill_of(node: &ResolvedNode) -> Option<&str> {

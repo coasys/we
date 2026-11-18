@@ -218,6 +218,8 @@ pub struct Runtime {
     compat: Arc<[Arc<str>]>,
     cache: ParseCache,
     resolved: Option<Arc<ResolvedNode>>,
+    /// Origins stamped by the last resolve, republished on a cache hit.
+    chat_origins: HashMap<NodeId, crate::chat_permit::ChatOrigin>,
     /// (screen, data, local, pool, surfaces) the last resolve recorded —
     /// the data entry as read *before* its first pass, so a write mid-resolve
     /// leaves the source ahead and the next `poll` dirty.
@@ -331,6 +333,7 @@ impl Runtime {
             frame_locals: HashMap::new(),
             cache: ParseCache::new(),
             resolved: None,
+            chat_origins: HashMap::new(),
             last: None,
             view,
             layer,
@@ -689,6 +692,18 @@ impl Runtime {
         }
     }
 
+    /// Origins the last resolve stamped. A cache hit keeps them.
+    pub fn chat_origins(&self) -> &HashMap<NodeId, crate::chat_permit::ChatOrigin> {
+        &self.chat_origins
+    }
+
+    /// One desktop frame at `href`. The same [`Self::frame`] the window runs.
+    pub fn frame_at(&mut self, href: &str) -> Arc<ResolvedNode> {
+        let screen = we_screen::ScreenState::desktop(we_screen::ScreenSchema::default(), href);
+        let mut host = StaticHost::new(self.bag.clone());
+        self.frame(&mut host, &screen).clone()
+    }
+
     /// Run a frame: re-resolve iff a revision moved, then answer the cached
     /// tree. Syncs the `screen` view's snapshot when `screen.version`
     /// moved, resolves, then runs `commit → drain` on the hub — claims open at the
@@ -738,6 +753,9 @@ impl Runtime {
             let mut round_frames: HashSet<Arc<str>> = HashSet::new();
             let mut round_conditions: HashMap<NodeId, bool> = HashMap::new();
             for _ in 0..8 {
+                // The last pass's stamps are the live set. A node that
+                // left on a later pass must not keep an origin.
+                crate::chat_permit::clear_chat_origins();
                 // Claims a panicked pass recorded are dropped — a site
                 // that does not claim again does not keep a stale claim.
                 self.hub.begin_pass();
@@ -961,7 +979,9 @@ impl Runtime {
                 self.hub.bump();
                 self.inbox.wake();
             }
+            self.chat_origins = crate::chat_permit::take_chat_origins();
         }
+        crate::chat_permit::publish_chat_origins(&self.chat_origins);
         self.resolved.as_ref().unwrap()
     }
 

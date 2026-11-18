@@ -484,6 +484,7 @@ struct UnbindChat;
 impl Drop for UnbindChat {
     fn drop(&mut self) {
         we_egui::bind_chat(None);
+        we_template::bind_chat_mount(None);
     }
 }
 
@@ -556,6 +557,10 @@ fn space_screen(
             // The chat port is the open space's. Clear it before the next
             // frame, including when this paint panics.
             we_egui::bind_chat(Some(live.chat.clone()));
+            we_template::bind_chat_mount(Some(we_template::ChatMount::new(
+                "app",
+                live.chat_generation,
+            )));
             let _unbind = UnbindChat;
             let room = ui.max_rect().size();
             live.app.frame_body_in(ui, room);

@@ -18,6 +18,7 @@
 //! is read-only; everything else is dropped and listed, as before. A write
 //! reaches the screen through the live query that reads it, never
 //! optimistically. Only a personal space may be opened for writing.
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use we_ad4m::live::{LiveMap, LiveMembers};
@@ -163,7 +164,16 @@ pub struct LiveSpace {
     /// The agent chat for this open space. The space screen binds it for
     /// one frame and clears the bind after. Offline frames stay unbound.
     pub chat: Arc<Mutex<ChatModel>>,
+    /// The generation stamped into this space's chat permits. A new open
+    /// space takes the next number, so a permit from the previous space
+    /// does not match.
+    pub chat_generation: u64,
     _live: LiveMembers,
+}
+
+fn next_chat_generation() -> u64 {
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    NEXT.fetch_add(1, Ordering::Relaxed)
 }
 
 impl LiveSpace {
@@ -358,6 +368,7 @@ pub fn live_space_app(
             notices,
             confirm,
             chat,
+            chat_generation: next_chat_generation(),
             _live: live,
         },
         fell_back,

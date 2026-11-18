@@ -18,6 +18,7 @@
 
 mod bindings;
 mod bundle;
+mod chat_permit;
 mod gate;
 mod handler;
 mod handlers;
@@ -41,6 +42,10 @@ pub use bindings::{
 pub use bundle::{
     Bundle, BundleAuthor, BundleBrand, BundleDisplay, BundleRecordType, BundleTemplate,
     BundleTheme, DisplaySpaces, BUNDLE_FORMAT, BUNDLE_FORMAT_VERSION,
+};
+pub use chat_permit::{
+    bind_chat_mount, chat_mount, chat_origin, clear_chat_origins, issue_chat_permit,
+    publish_chat_origins, stamp_chat_origin, ChatIntent, ChatMount, ChatOrigin, ChatPermit,
 };
 pub use gate::{screen_tiers, Declared, FilteredNs, Frame, Gate, MemberVerdict, Permit, Verdict};
 pub use handler::{CallId, HandlerToken};
