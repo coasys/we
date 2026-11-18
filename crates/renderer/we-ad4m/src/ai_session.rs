@@ -739,7 +739,15 @@ mod tests {
         let scoped = create_params("t", Some("a1a2a3a4-b1b2-c3c4-d5d6-e7e8e9f0a1b2")).unwrap();
         let value = serde_json::to_value(&scoped).unwrap();
         assert!(value.get("capabilities").unwrap().is_array(), "{value}");
-        assert!(!value["capabilities"].as_array().unwrap().is_empty());
+        let caps = value["capabilities"].as_array().unwrap();
+        assert_eq!(caps.len(), 1, "{value}");
+        let verbs: Vec<&str> = caps[0]["can"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|verb| verb.as_str().unwrap())
+            .collect();
+        assert_eq!(verbs, ["READ", "UPDATE"]);
         assert!(create_params("t", Some("*")).is_err());
         assert!(create_params("t", Some("")).is_err());
     }

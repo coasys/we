@@ -305,5 +305,19 @@ fn a_user_create_does_not_receive_every_capability() {
         "{:?}",
         stored.capabilities
     );
+    let verbs: Vec<&str> = stored
+        .capabilities
+        .iter()
+        .flat_map(|cap| cap.can.iter().map(String::as_str))
+        .collect();
+    assert!(
+        verbs
+            .iter()
+            .all(|verb| *verb == "READ" || *verb == "UPDATE")
+            && verbs.contains(&"READ")
+            && verbs.contains(&"UPDATE"),
+        "requested verbs are READ and UPDATE: {:?}",
+        stored.capabilities
+    );
     model.cancel();
 }

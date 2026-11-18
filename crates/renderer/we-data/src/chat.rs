@@ -21,8 +21,14 @@ use serde_json::Value as Json;
 /// The executor's name for a call the session may not make.
 pub const CAPABILITY_REFUSAL: &str = "Capability is not matched";
 
-/// Verbs a "this space only" chat is created with. A cap may list fewer.
+/// Verbs a scoped cap may contain. A stored cap may list fewer.
 const SCOPED_CAN: [&str; 5] = ["READ", "CREATE", "UPDATE", "DELETE", "SUBSCRIBE"];
+
+/// Perspective verbs the launcher write grant holds for one space.
+/// READ is on `*`. UPDATE is on that space's uuid. The create request
+/// asks those two on the uuid. It does not ask CREATE, DELETE, or
+/// SUBSCRIBE, and it does not read the live token.
+const HELD_CAN: [&str; 2] = ["READ", "UPDATE"];
 
 /// The port could not run the call.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -618,12 +624,13 @@ pub fn step_label(step: &ChatStep) -> String {
     format!("{} · write operation · {word}", step.name)
 }
 
-/// The one perspective cap a "this space only" chat is created with.
+/// The perspective cap a "this space only" chat is created with.
+/// The verbs are the ones the write grant holds, not every scoped verb.
 pub fn space_cap(uuid: &str) -> ChatCap {
     ChatCap {
         domain: "perspective".to_string(),
         pointers: vec![uuid.to_string()],
-        can: SCOPED_CAN.iter().map(|verb| (*verb).to_string()).collect(),
+        can: HELD_CAN.iter().map(|verb| (*verb).to_string()).collect(),
     }
 }
 
@@ -649,12 +656,17 @@ pub struct MemoryChat {
     tick_ms: i64,
     fail_next_send: bool,
     fail_next_read: bool,
+    fail_next_list: bool,
     unavailable: Option<String>,
     /// Every successful `create`, in order. A refused scope does not count.
     pub creates: u32,
     /// The scope passed to each successful `create`. `None` is global.
     pub created: Vec<Option<String>>,
     pub sends: Vec<(String, String)>,
+    /// Every `cancel` call, including one that finds no session.
+    pub cancels: u32,
+    /// Every `delete` call, including one that finds no session.
+    pub deletes: u32,
 }
 
 impl MemoryChat {
@@ -665,10 +677,13 @@ impl MemoryChat {
             tick_ms: 0,
             fail_next_send: false,
             fail_next_read: false,
+            fail_next_list: false,
             unavailable: None,
             creates: 0,
             created: Vec::new(),
             sends: Vec::new(),
+            cancels: 0,
+            deletes: 0,
         }
     }
 
@@ -685,6 +700,23 @@ impl MemoryChat {
     /// The next `messages` read fails once and returns nothing.
     pub fn fail_next_read(&mut self) {
         self.fail_next_read = true;
+    }
+
+    /// The next `list` fails once and returns nothing.
+    pub fn fail_next_list(&mut self) {
+        self.fail_next_list = true;
+    }
+
+    /// Replace the session's perspective caps. The model's cached scope
+    /// stays until it reads the list again.
+    pub fn retarget(&mut self, id: &str, scope: Option<&str>) {
+        let Some(session) = self.sessions.iter_mut().find(|session| session.id == id) else {
+            return;
+        };
+        session.capabilities = match scope {
+            Some(uuid) => vec![space_cap(uuid)],
+            None => Vec::new(),
+        };
     }
 
     pub fn session_count(&self) -> usize {
@@ -743,8 +775,12 @@ impl MemoryChat {
         Ok(())
     }
 
-    fn list_sessions(&self) -> Result<Vec<ChatSummary>, ChatError> {
+    fn list_sessions(&mut self) -> Result<Vec<ChatSummary>, ChatError> {
         self.guard()?;
+        if self.fail_next_list {
+            self.fail_next_list = false;
+            return Err(ChatError::Failed("list failed".to_string()));
+        }
         let mut rows: Vec<ChatSummary> = self
             .sessions
             .iter()
@@ -873,6 +909,7 @@ impl MemoryChat {
     }
 
     fn cancel_session(&mut self, id: &str) -> Result<bool, ChatError> {
+        self.cancels += 1;
         self.guard()?;
         let now = self.tick();
         let session = self
@@ -894,6 +931,7 @@ impl MemoryChat {
     }
 
     fn delete_session(&mut self, id: &str) -> Result<(), ChatError> {
+        self.deletes += 1;
         self.guard()?;
         let before = self.sessions.len();
         self.sessions.retain(|session| session.id != id);
@@ -984,8 +1022,8 @@ impl ChatPort for Arc<Mutex<MemoryChat>> {
 
 /// Whether the host lets this window change chats.
 ///
-/// Read-only still lists and opens. Create and send are refused here, so
-/// a broader token (an operator connection) cannot send from this window.
+/// Read-only still lists and opens. Create, send, cancel, and delete are
+/// refused here, so a broader token cannot change a chat from this window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ChatAccess {
     #[default]
@@ -1133,7 +1171,8 @@ impl ChatModel {
         if text.is_empty() {
             return;
         }
-        if let Some(message) = self.blocked() {
+        let active_id = self.view.active.as_ref().map(|active| active.id.clone());
+        if let Some(message) = self.gate_mutation(active_id.as_deref()) {
             self.view.send_failed = Some(message);
             return;
         }
@@ -1175,7 +1214,7 @@ impl ChatModel {
         if text.is_empty() {
             return;
         }
-        if let Some(message) = self.blocked() {
+        if let Some(message) = self.gate_mutation(Some(&active.id)) {
             self.view.send_failed = Some(message);
             return;
         }
@@ -1196,6 +1235,10 @@ impl ChatModel {
         let Some(id) = self.view.active.as_ref().map(|active| active.id.clone()) else {
             return;
         };
+        if let Some(message) = self.gate_mutation(Some(&id)) {
+            self.view.error = Some(message);
+            return;
+        }
         match self.port.cancel(&id) {
             Ok(_) => self.load(),
             Err(ChatError::Unavailable(message)) => self.view.unavailable = Some(message),
@@ -1204,6 +1247,10 @@ impl ChatModel {
     }
 
     pub fn delete(&mut self, id: &str) {
+        if let Some(message) = self.gate_mutation(Some(id)) {
+            self.view.error = Some(message);
+            return;
+        }
         match self.port.delete(id) {
             Ok(()) => {
                 if self
@@ -1236,20 +1283,35 @@ impl ChatModel {
         Ok(active)
     }
 
-    /// Why this send must not touch the port. `None` means it may.
-    fn blocked(&self) -> Option<String> {
+    /// Why this mutation must not touch the port. `None` means it may.
+    ///
+    /// An open session is read from `list` again. The cached scope is not
+    /// enough: a failed list refuses, and a session that moved is refused.
+    fn gate_mutation(&mut self, id: Option<&str>) -> Option<String> {
         if self.authority.access != ChatAccess::Write {
             return Some(read_only_chat_message(self.authority.space.as_deref()));
-        }
-        if let Some(active) = &self.view.active {
-            if !self.allows(active.scope.as_deref()) {
-                return Some(FOREIGN_CHAT.to_string());
-            }
-            return None;
         }
         if let Some(uuid) = &self.authority.space {
             if !plain_uuid(uuid) {
                 return Some(bad_scope_message(uuid));
+            }
+        }
+        let id = id?;
+        let rows = match self.port.list() {
+            Ok(rows) => rows,
+            Err(ChatError::Unavailable(message) | ChatError::Failed(message)) => {
+                return Some(message);
+            }
+        };
+        let Some(row) = rows.into_iter().find(|row| row.id == id) else {
+            return Some(FOREIGN_CHAT.to_string());
+        };
+        if !self.allows(row.scope.as_deref()) {
+            return Some(FOREIGN_CHAT.to_string());
+        }
+        if let Some(active) = &mut self.view.active {
+            if active.id == id {
+                active.scope = row.scope;
             }
         }
         None
@@ -2111,6 +2173,124 @@ mod tests {
         drop(guard);
         assert_eq!(model.view.draft, "hello");
         assert_eq!(model.view.active, None);
+    }
+
+    /// The port records every cancel and delete and would perform them.
+    /// A read-only window, including a grant for A while B is open, must
+    /// not call either. A write window on A may delete A and must not
+    /// delete B.
+    #[test]
+    fn a_read_only_window_does_not_cancel_or_delete() {
+        let mem = Arc::new(Mutex::new(MemoryChat::new()));
+        let (id_a, id_b) = {
+            let mut guard = mem.lock().unwrap_or_else(|poison| poison.into_inner());
+            let id_a = guard.create_session("in-a", Some(SPACE_A)).unwrap();
+            let id_b = guard.create_session("in-b", Some(SPACE_B)).unwrap();
+            (id_a, id_b)
+        };
+        let mut readonly = ChatModel::bound(
+            Box::new(mem.clone()),
+            ChatAuthority::space(SPACE_A, Some("Garden".to_string()), ChatAccess::ReadOnly),
+        );
+        readonly.open(&id_a);
+        readonly.cancel();
+        readonly.delete(&id_a);
+        // `Access::in_space` for a grant on A while B is open is this model.
+        let mut other_space = ChatModel::bound(
+            Box::new(mem.clone()),
+            ChatAuthority::space(SPACE_B, None, ChatAccess::ReadOnly),
+        );
+        other_space.open(&id_b);
+        other_space.cancel();
+        other_space.delete(&id_b);
+        let mut global = ChatModel::bound(
+            Box::new(mem.clone()),
+            ChatAuthority::global(ChatAccess::ReadOnly),
+        );
+        global.delete(&id_a);
+        global.cancel();
+        {
+            let guard = mem.lock().unwrap_or_else(|poison| poison.into_inner());
+            assert_eq!(guard.cancels, 0);
+            assert_eq!(guard.deletes, 0);
+            assert_eq!(guard.session_count(), 2);
+        }
+        let mut writer = ChatModel::bound(
+            Box::new(mem.clone()),
+            ChatAuthority::space(SPACE_A, None, ChatAccess::Write),
+        );
+        writer.delete(&id_b);
+        writer.view.active = Some(ActiveChat {
+            id: id_b.clone(),
+            title: "in-b".to_string(),
+            scope: Some(SPACE_B.to_string()),
+        });
+        writer.cancel();
+        {
+            let guard = mem.lock().unwrap_or_else(|poison| poison.into_inner());
+            assert_eq!(guard.cancels, 0);
+            assert_eq!(guard.deletes, 0);
+            assert_eq!(guard.session_count(), 2);
+        }
+        writer.delete(&id_a);
+        let guard = mem.lock().unwrap_or_else(|poison| poison.into_inner());
+        assert_eq!(guard.deletes, 1);
+        assert_eq!(guard.cancels, 0);
+        assert!(guard.sessions.iter().all(|session| session.id != id_a));
+    }
+
+    /// A second client can change the session before this window sees the
+    /// event. Send, cancel, and delete read the list again. A failed list
+    /// is a refusal. The cached scope is not a permit.
+    #[test]
+    fn a_send_does_not_trust_the_cached_scope() {
+        let mem = Arc::new(Mutex::new(MemoryChat::new()));
+        let id = {
+            let mut guard = mem.lock().unwrap_or_else(|poison| poison.into_inner());
+            guard.create_session("in-a", Some(SPACE_A)).unwrap()
+        };
+        let mut model = ChatModel::bound(
+            Box::new(mem.clone()),
+            ChatAuthority::space(SPACE_A, None, ChatAccess::Write),
+        );
+        model.open(&id);
+        mem.lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .retarget(&id, Some(SPACE_B));
+        model.set_draft("no".to_string());
+        model.send();
+        model.cancel();
+        model.delete(&id);
+        {
+            let guard = mem.lock().unwrap_or_else(|poison| poison.into_inner());
+            assert!(guard.sends.is_empty(), "{:?}", guard.sends);
+            assert_eq!(guard.cancels, 0);
+            assert_eq!(guard.deletes, 0);
+        }
+        assert_eq!(model.view.draft, "no");
+        if let Some(active) = model.view.active.as_mut() {
+            active.scope = Some(SPACE_A.to_string());
+        }
+        mem.lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .retarget(&id, Some(SPACE_A));
+        mem.lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .fail_next_list();
+        model.set_draft("still".to_string());
+        model.send();
+        let guard = mem.lock().unwrap_or_else(|poison| poison.into_inner());
+        assert!(guard.sends.is_empty(), "{:?}", guard.sends);
+        drop(guard);
+        assert_eq!(model.view.draft, "still");
+    }
+
+    #[test]
+    fn a_space_cap_asks_only_for_the_held_verbs() {
+        let cap = space_cap(SPACE_A);
+        assert_eq!(cap.domain, "perspective");
+        assert_eq!(cap.pointers, vec![SPACE_A.to_string()]);
+        assert_eq!(cap.can, vec!["READ".to_string(), "UPDATE".to_string()]);
     }
 
     #[test]
