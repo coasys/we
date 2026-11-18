@@ -331,11 +331,12 @@ export const callBarAside = (callId: string): SchemaNode[] => [
 ];
 
 /**
- * A call, as its own page: what is being said in it.
+ * A call, as its own page: what is being said and written in it.
  *
  * The space template's page for a call's record (`meta.recordViews`), so wherever a call is linked —
- * the tree, a message, a search — it opens here rather than as a generic record. The transcript is
- * the transcribe module's, pointed at this call. Neither the controls nor the
+ * the tree, a message, a search — it opens here rather than as a generic record. Its body is the
+ * Feed, pointed at this call: every line said, typed and answered in it, with the space Feed's own
+ * Everything / Messages / Bots and its box, which writes into the call. Neither the controls nor the
  * people in the call are here: the call module's bar holds the controls on every page and its panel
  * draws everyone in the call, connecting and all, so a second set of either would be the same thing
  * twice. What the page adds, for somebody not in the call, is the way into it.
@@ -366,14 +367,15 @@ export const callPage: SchemaNode = {
         condition: { $: `!(${MINE})` },
         then: {
           type: 'Row',
-          props: { gap: '300', p: '500', ay: 'center' },
+          // Wraps, so a phone puts the button under the sentence rather than squeezing the sentence.
+          props: { gap: '300', p: '500', ay: 'center', wrap: true },
           children: [
             {
               type: 'we-text',
-              props: { color: 'text-muted', flex: '1' },
+              props: { color: 'text-muted', flex: '1', minWidth: '240px' },
               children: [
                 {
-                  $: `find(modules.call.liveCalls, { recordId: ${CALL_ID} }) ? 'This call is happening now.' : 'This call has ended. Its transcript is below.'`,
+                  $: `find(modules.call.liveCalls, { recordId: ${CALL_ID} }) ? 'This call is happening now.' : 'This call has ended. Everything said and written in it is below.'`,
                 },
               ],
             },
@@ -389,10 +391,15 @@ export const callPage: SchemaNode = {
         },
       },
     },
+    /*
+      The call's Feed, pointed at the call the address names — the same for somebody in the call,
+      somebody outside it and somebody reading it after it ended: anybody here can write into it.
+      One column, so a phone holds it as a desk does.
+    */
     {
       type: 'Column',
-      props: { flex: '1', minHeight: '0', px: '500', pb: CLEAR_OF_THE_BAR, transition: LIFT },
-      children: [{ type: '$part', props: { id: 'transcribe.transcriptFeed', subject: { $: CALL_ID } } }],
+      props: { flex: '1', minHeight: '0', minWidth: '0', px: '500', pb: CLEAR_OF_THE_BAR, transition: LIFT },
+      children: [{ type: '$part', props: { id: 'feed.callFeed', subject: { $: CALL_ID } } }],
     },
   ],
 };
