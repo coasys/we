@@ -9,7 +9,11 @@
 //! This module does not call the executor. [`ChatPort`] is the seam.
 //! [`MemoryChat`] is the stand-in the headless tests drive. The live port
 //! sits in we-ad4m. [`ChatModel::follow`] reloads after `ai-session-changed`.
-//! [`ChatPort::messages_before`] pages older than a seq. Reconnect stays out.
+//! [`ChatPort::messages_before`] pages older than a seq. [`ChatModel`] walks
+//! those pages, so a transcript longer than [`MESSAGE_PAGE`] still shows.
+//! The open space comes from [`ChatAuthority`], which the host sets. A
+//! template does not. Reconnect stays out.
+use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
 use serde_json::Value as Json;
@@ -103,11 +107,16 @@ pub enum Outcome {
 }
 
 /// One tool call hanging off the reply that made it.
+///
+/// `writes` is the declared intent, recorded when the tool is called.
+/// It does not mean the space changed. [`step_label`] says the outcome
+/// beside that intent.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChatStep {
     pub name: String,
     pub target: Option<String>,
-    pub wrote: bool,
+    /// Declared write intent. Independent of [`outcome`].
+    pub writes: bool,
     pub outcome: Outcome,
     pub refused: bool,
     pub error: Option<String>,
@@ -193,8 +202,12 @@ pub trait ChatPort: Send {
     }
 }
 
-/// Whether a tool call wrote. `writes` on the row wins. Otherwise the
-/// name's verb decides, and an unknown name is a write.
+/// How many transcript rows one page holds. The executor defaults to this.
+pub const MESSAGE_PAGE: u32 = 200;
+
+/// Whether a tool call declares a write. `writes` on the row wins. Otherwise
+/// the name's verb decides, and an unknown name is a write. This is intent,
+/// not a claim that the call changed the space.
 pub fn is_write_tool(tool: &str, writes: Option<bool>) -> bool {
     if let Some(writes) = writes {
         return writes;
@@ -373,7 +386,7 @@ fn to_step(row: &TranscriptRow, reply: ReplyStatus) -> ChatStep {
         outcome == Outcome::Error && error.as_deref().unwrap_or("").contains(CAPABILITY_REFUSAL);
     let summary = row.content.result.as_deref().and_then(summarize);
     ChatStep {
-        wrote: is_write_tool(&name, row.content.writes) && outcome == Outcome::Ok,
+        writes: is_write_tool(&name, row.content.writes),
         name,
         target: step_target(&row.content),
         outcome,
@@ -577,6 +590,34 @@ pub fn bad_scope_message(uuid: &str) -> String {
     format!("a space chat needs a perspective uuid; \"{uuid}\" is not one")
 }
 
+/// What a read-only window stores when a send is refused locally.
+pub fn read_only_chat_message(space: Option<&str>) -> String {
+    match space {
+        Some(uuid) => format!(
+            "This window is read-only. Start it with --write --space {uuid} to send in this chat."
+        ),
+        None => "This window is read-only. A read-only chat cannot send.".to_string(),
+    }
+}
+
+/// What a send stores when the open session is not the host's space.
+pub const FOREIGN_CHAT: &str = "This chat is not in the open space.";
+
+/// The line the panel paints for a step. A declared write stays visible
+/// when the call fails, and the words do not say the space changed.
+pub fn step_label(step: &ChatStep) -> String {
+    if !step.writes {
+        return step.name.clone();
+    }
+    let word = match step.outcome {
+        Outcome::Running => "running",
+        Outcome::Ok => "done",
+        Outcome::Error => "failed",
+        Outcome::Stopped => "stopped",
+    };
+    format!("{} · write operation · {word}", step.name)
+}
+
 /// The one perspective cap a "this space only" chat is created with.
 pub fn space_cap(uuid: &str) -> ChatCap {
     ChatCap {
@@ -607,9 +648,12 @@ pub struct MemoryChat {
     next_id: u64,
     tick_ms: i64,
     fail_next_send: bool,
+    fail_next_read: bool,
     unavailable: Option<String>,
     /// Every successful `create`, in order. A refused scope does not count.
     pub creates: u32,
+    /// The scope passed to each successful `create`. `None` is global.
+    pub created: Vec<Option<String>>,
     pub sends: Vec<(String, String)>,
 }
 
@@ -620,8 +664,10 @@ impl MemoryChat {
             next_id: 0,
             tick_ms: 0,
             fail_next_send: false,
+            fail_next_read: false,
             unavailable: None,
             creates: 0,
+            created: Vec::new(),
             sends: Vec::new(),
         }
     }
@@ -634,6 +680,11 @@ impl MemoryChat {
     /// The next `send` fails once and writes nothing.
     pub fn fail_next(&mut self) {
         self.fail_next_send = true;
+    }
+
+    /// The next `messages` read fails once and returns nothing.
+    pub fn fail_next_read(&mut self) {
+        self.fail_next_read = true;
     }
 
     pub fn session_count(&self) -> usize {
@@ -717,8 +768,12 @@ impl MemoryChat {
         Ok(rows)
     }
 
-    fn read_messages(&self, id: &str) -> Result<Vec<TranscriptRow>, ChatError> {
+    fn read_messages(&mut self, id: &str) -> Result<Vec<TranscriptRow>, ChatError> {
         self.guard()?;
+        if self.fail_next_read {
+            self.fail_next_read = false;
+            return Err(ChatError::Failed("read failed".to_string()));
+        }
         self.sessions
             .iter()
             .find(|session| session.id == id)
@@ -728,7 +783,7 @@ impl MemoryChat {
 
     /// The newest `limit` rows older than `before`, oldest first.
     fn page_before(
-        &self,
+        &mut self,
         id: &str,
         before: i64,
         limit: u32,
@@ -751,6 +806,7 @@ impl MemoryChat {
             }
         }
         self.creates += 1;
+        self.created.push(scope.map(str::to_string));
         self.next_id += 1;
         let id = format!("sess-{}", self.next_id);
         let now = self.tick();
@@ -926,30 +982,81 @@ impl ChatPort for Arc<Mutex<MemoryChat>> {
     }
 }
 
+/// Whether the host lets this window change chats.
+///
+/// Read-only still lists and opens. Create and send are refused here, so
+/// a broader token (an operator connection) cannot send from this window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ChatAccess {
+    #[default]
+    ReadOnly,
+    Write,
+}
+
+/// The host's chat authority. The template does not choose it.
+///
+/// [`ChatAuthority::space`] is the open perspective. [`ChatAuthority::global`]
+/// is a host-authorized chat with no space. A space window passes the space
+/// the host opened.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChatAuthority {
+    space: Option<String>,
+    name: Option<String>,
+    access: ChatAccess,
+}
+
+impl ChatAuthority {
+    pub fn space(uuid: impl Into<String>, name: Option<String>, access: ChatAccess) -> Self {
+        Self {
+            space: Some(uuid.into()).filter(|value| !value.is_empty()),
+            name: name.filter(|value| !value.is_empty()),
+            access,
+        }
+    }
+
+    /// A host-authorized chat that is not pinned to one space.
+    pub fn global(access: ChatAccess) -> Self {
+        Self {
+            space: None,
+            name: None,
+            access,
+        }
+    }
+}
+
 /// The panel's state. `send` on an open session uses that session's id.
 /// A first send, with nothing open, creates a session and then sends on it.
+/// The scope is [`ChatAuthority`], not a template input.
 pub struct ChatModel {
     port: Box<dyn ChatPort + Send>,
+    authority: ChatAuthority,
     pub view: ChatView,
     sending: bool,
     prefilled: bool,
 }
 
 impl ChatModel {
+    /// A host-authorized global chat that may send.
     pub fn new(port: Box<dyn ChatPort + Send>) -> Self {
+        Self::bound(port, ChatAuthority::global(ChatAccess::Write))
+    }
+
+    /// `authority` is the open space and the window's access.
+    pub fn bound(port: Box<dyn ChatPort + Send>, authority: ChatAuthority) -> Self {
+        let view = ChatView {
+            space_uuid: authority.space.clone(),
+            space_name: authority.name.clone(),
+            ..ChatView::default()
+        };
         let mut model = Self {
             port,
-            view: ChatView::default(),
+            authority,
+            view,
             sending: false,
             prefilled: false,
         };
         model.refresh();
         model
-    }
-
-    pub fn set_space(&mut self, uuid: Option<String>, name: Option<String>) {
-        self.view.space_uuid = uuid.filter(|value| !value.is_empty());
-        self.view.space_name = name.filter(|value| !value.is_empty());
     }
 
     pub fn set_draft(&mut self, draft: String) {
@@ -972,12 +1079,20 @@ impl ChatModel {
             self.view.error = Some(format!("no chat {id}"));
             return;
         };
+        if !self.allows(summary.scope.as_deref()) {
+            self.view.error = Some(FOREIGN_CHAT.to_string());
+            return;
+        }
+        // Drop the previous transcript before the read. A failed read of B
+        // must not leave A's messages under B.
+        self.view.messages.clear();
         self.view.active = Some(ActiveChat {
             id: summary.id,
             title: summary.title,
             scope: summary.scope,
         });
         self.view.send_failed = None;
+        self.view.error = None;
         self.load();
     }
 
@@ -988,16 +1103,25 @@ impl ChatModel {
         self.refresh();
     }
 
-    /// Reload the open transcript and the list when the port saw
-    /// `ai-session-changed`. Returns whether it did.
+    /// Reload the list, then the open transcript, when the port saw
+    /// `ai-session-changed`. Returns whether it did. A session that left
+    /// the list is closed. A failed read of the same session keeps the
+    /// transcript.
     pub fn follow(&mut self) -> bool {
         if !self.port.poll() {
             return false;
         }
-        if self.view.active.is_some() {
-            self.load();
-        }
+        let active_id = self.view.active.as_ref().map(|active| active.id.clone());
         self.refresh();
+        if let Some(id) = active_id {
+            if self.view.summaries.iter().any(|row| row.id == id) {
+                self.load();
+            } else {
+                self.view.active = None;
+                self.view.messages.clear();
+                self.view.send_failed = None;
+            }
+        }
         true
     }
 
@@ -1009,14 +1133,9 @@ impl ChatModel {
         if text.is_empty() {
             return;
         }
-        if self.view.active.is_none() {
-            if let Some(uuid) = &self.view.space_uuid {
-                if !plain_uuid(uuid) {
-                    self.view.send_failed = Some(bad_scope_message(uuid));
-                    self.view.draft = text;
-                    return;
-                }
-            }
+        if let Some(message) = self.blocked() {
+            self.view.send_failed = Some(message);
+            return;
         }
         self.sending = true;
         self.view.send_failed = None;
@@ -1054,6 +1173,10 @@ impl ChatModel {
         };
         let text = question.trim().to_string();
         if text.is_empty() {
+            return;
+        }
+        if let Some(message) = self.blocked() {
+            self.view.send_failed = Some(message);
             return;
         }
         self.sending = true;
@@ -1100,7 +1223,7 @@ impl ChatModel {
     }
 
     fn start_and_send(&mut self, text: &str) -> Result<ActiveChat, ChatError> {
-        let scope = self.view.space_uuid.clone();
+        let scope = self.authority.space.clone();
         let title: String = text.chars().take(60).collect();
         let id = self.port.create(&title, scope.as_deref())?;
         let active = ActiveChat {
@@ -1113,10 +1236,39 @@ impl ChatModel {
         Ok(active)
     }
 
+    /// Why this send must not touch the port. `None` means it may.
+    fn blocked(&self) -> Option<String> {
+        if self.authority.access != ChatAccess::Write {
+            return Some(read_only_chat_message(self.authority.space.as_deref()));
+        }
+        if let Some(active) = &self.view.active {
+            if !self.allows(active.scope.as_deref()) {
+                return Some(FOREIGN_CHAT.to_string());
+            }
+            return None;
+        }
+        if let Some(uuid) = &self.authority.space {
+            if !plain_uuid(uuid) {
+                return Some(bad_scope_message(uuid));
+            }
+        }
+        None
+    }
+
+    fn allows(&self, scope: Option<&str>) -> bool {
+        match self.authority.space.as_deref() {
+            Some(uuid) => scope == Some(uuid),
+            None => scope.is_none(),
+        }
+    }
+
     fn refresh(&mut self) {
         match self.port.list() {
             Ok(rows) => {
-                self.view.summaries = rows;
+                self.view.summaries = rows
+                    .into_iter()
+                    .filter(|row| self.allows(row.scope.as_deref()))
+                    .collect();
                 self.view.unavailable = None;
             }
             Err(ChatError::Unavailable(message)) => {
@@ -1131,7 +1283,7 @@ impl ChatModel {
         let Some(id) = self.view.active.as_ref().map(|active| active.id.clone()) else {
             return;
         };
-        match self.port.messages(&id) {
+        match self.full_transcript(&id) {
             Ok(rows) => {
                 self.view.messages = conversation_of(&rows);
                 self.view.error = None;
@@ -1139,6 +1291,34 @@ impl ChatModel {
             Err(ChatError::Unavailable(message)) => self.view.unavailable = Some(message),
             Err(ChatError::Failed(message)) => self.view.error = Some(message),
         }
+    }
+
+    /// The newest page, then older pages until one comes back short.
+    /// Rows are kept by id. A failed read leaves the caller to keep the
+    /// previous transcript.
+    fn full_transcript(&mut self, id: &str) -> Result<Vec<TranscriptRow>, ChatError> {
+        let mut rows = self.port.messages(id)?;
+        while let Some(oldest) = rows.iter().map(|row| row.seq).min() {
+            let page = self.port.messages_before(id, oldest, MESSAGE_PAGE)?;
+            if page.is_empty() {
+                break;
+            }
+            let mut known: HashSet<String> = rows.iter().map(|row| row.id.clone()).collect();
+            let mut added = 0usize;
+            for row in page {
+                if known.insert(row.id.clone()) {
+                    rows.push(row);
+                    added += 1;
+                }
+            }
+            if added == 0 || added < MESSAGE_PAGE as usize {
+                break;
+            }
+            if rows.iter().map(|row| row.seq).min().unwrap_or(oldest) >= oldest {
+                break;
+            }
+        }
+        Ok(rows)
     }
 }
 
@@ -1434,8 +1614,17 @@ mod tests {
                 Some("no"),
             ),
         ]);
-        let wrote: Vec<bool> = turns[1].steps.iter().map(|step| step.wrote).collect();
-        assert_eq!(wrote, vec![true, true, false, true, false, false]);
+        let writes: Vec<bool> = turns[1].steps.iter().map(|step| step.writes).collect();
+        assert_eq!(writes, vec![true, true, false, true, false, true]);
+        assert_eq!(
+            step_label(&turns[1].steps[0]),
+            "instance_create · write operation · done"
+        );
+        assert_eq!(
+            step_label(&turns[1].steps[5]),
+            "space_delete · write operation · failed"
+        );
+        assert!(!step_label(&turns[1].steps[5]).contains("wrote"));
     }
 
     #[test]
@@ -1583,9 +1772,13 @@ mod tests {
             .is_empty());
 
         model.back();
-        model.set_space(Some("*".to_string()), None);
-        model.set_draft("hello".to_string());
-        model.send();
+
+        let mut starred = ChatModel::bound(
+            Box::new(mem.clone()),
+            ChatAuthority::space("*", None, ChatAccess::Write),
+        );
+        starred.set_draft("hello".to_string());
+        starred.send();
         assert_eq!(
             mem.lock()
                 .unwrap_or_else(|poison| poison.into_inner())
@@ -1593,13 +1786,13 @@ mod tests {
             0
         );
         assert_eq!(
-            model.view.send_failed.as_deref(),
+            starred.view.send_failed.as_deref(),
             Some("a space chat needs a perspective uuid; \"*\" is not one")
         );
-        assert!(model.view.active.is_none());
-        assert_eq!(model.view.draft, "hello");
+        assert!(starred.view.active.is_none());
+        assert_eq!(starred.view.draft, "hello");
 
-        model.set_space(None, None);
+        let mut model = ChatModel::new(Box::new(mem.clone()));
         let long = "y".repeat(70);
         model.set_draft(long.clone());
         model.send();
@@ -1672,7 +1865,7 @@ mod tests {
         settled.steps = vec![ChatStep {
             name: "describe_perspective".to_string(),
             target: Some(SPACE_B.to_string()),
-            wrote: false,
+            writes: false,
             outcome: Outcome::Error,
             refused: true,
             error: Some("Capability is not matched".to_string()),
@@ -1840,5 +2033,368 @@ mod tests {
         assert_eq!(model.view.summaries[0].id, "web-1");
         assert_eq!(model.view.summaries[0].title, "From the web");
         assert!(!model.follow());
+    }
+
+    #[test]
+    fn a_send_uses_the_host_space() {
+        let mem = Arc::new(Mutex::new(MemoryChat::new()));
+        let mut model = ChatModel::bound(
+            Box::new(mem.clone()),
+            ChatAuthority::space(SPACE_A, Some("Garden".to_string()), ChatAccess::Write),
+        );
+        model.set_draft("hello".to_string());
+        model.send();
+        let guard = mem.lock().unwrap_or_else(|poison| poison.into_inner());
+        assert_eq!(guard.created, vec![Some(SPACE_A.to_string())]);
+        assert_eq!(guard.creates, 1);
+        assert_eq!(guard.sends.len(), 1);
+        drop(guard);
+        assert_eq!(
+            model
+                .view
+                .active
+                .as_ref()
+                .and_then(|active| active.scope.as_deref()),
+            Some(SPACE_A)
+        );
+    }
+
+    #[test]
+    fn the_list_is_the_open_space_only() {
+        let mem = Arc::new(Mutex::new(MemoryChat::new()));
+        {
+            let mut guard = mem.lock().unwrap_or_else(|poison| poison.into_inner());
+            guard.seed("global", "Global", 1, "g", "g");
+            guard.create_session("in-a", Some(SPACE_A)).unwrap();
+            guard.create_session("in-b", Some(SPACE_B)).unwrap();
+        }
+        let model = ChatModel::bound(
+            Box::new(mem),
+            ChatAuthority::space(SPACE_A, None, ChatAccess::Write),
+        );
+        assert_eq!(model.view.summaries.len(), 1);
+        assert_eq!(model.view.summaries[0].scope.as_deref(), Some(SPACE_A));
+    }
+
+    #[test]
+    fn a_read_only_window_does_not_send() {
+        let mem = Arc::new(Mutex::new(MemoryChat::new()));
+        mem.lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .seed("a", "A", 1, "hello", "there");
+        let mut model = ChatModel::bound(
+            Box::new(mem.clone()),
+            ChatAuthority::global(ChatAccess::ReadOnly),
+        );
+        assert_eq!(model.view.summaries.len(), 1);
+        model.open("a");
+        model.set_draft("nope".to_string());
+        model.send();
+        model.resend("hello");
+        let guard = mem.lock().unwrap_or_else(|poison| poison.into_inner());
+        assert!(guard.sends.is_empty());
+        assert_eq!(guard.creates, 0);
+        drop(guard);
+        assert_eq!(model.view.draft, "nope");
+        assert!(model.view.send_failed.is_some());
+
+        let mem = Arc::new(Mutex::new(MemoryChat::new()));
+        let mut model = ChatModel::bound(
+            Box::new(mem.clone()),
+            ChatAuthority::space(SPACE_A, Some("Garden".to_string()), ChatAccess::ReadOnly),
+        );
+        model.set_draft("hello".to_string());
+        model.send();
+        let guard = mem.lock().unwrap_or_else(|poison| poison.into_inner());
+        assert_eq!(guard.creates, 0);
+        assert!(guard.sends.is_empty());
+        drop(guard);
+        assert_eq!(model.view.draft, "hello");
+        assert_eq!(model.view.active, None);
+    }
+
+    #[test]
+    fn a_foreign_session_is_not_sent() {
+        let mem = Arc::new(Mutex::new(MemoryChat::new()));
+        mem.lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .seed("b", "B", 1, "x", "y");
+        let mut model = ChatModel::bound(
+            Box::new(mem.clone()),
+            ChatAuthority::space(SPACE_A, None, ChatAccess::Write),
+        );
+        model.view.active = Some(ActiveChat {
+            id: "b".to_string(),
+            title: "B".to_string(),
+            scope: Some(SPACE_B.to_string()),
+        });
+        model.set_draft("no".to_string());
+        model.send();
+        assert!(mem
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .sends
+            .is_empty());
+        assert_eq!(model.view.send_failed.as_deref(), Some(FOREIGN_CHAT));
+        assert_eq!(model.view.draft, "no");
+    }
+
+    #[test]
+    fn a_failed_open_clears_the_previous_transcript() {
+        let mem = Arc::new(Mutex::new(MemoryChat::new()));
+        {
+            let mut guard = mem.lock().unwrap_or_else(|poison| poison.into_inner());
+            guard.seed("a", "A", 1, "from-a", "reply-a");
+            guard.seed("b", "B", 2, "from-b", "reply-b");
+        }
+        let mut model = ChatModel::new(Box::new(mem.clone()));
+        model.open("a");
+        assert!(model.view.messages.iter().any(|turn| turn.text == "from-a"));
+        mem.lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .fail_next_read();
+        model.open("b");
+        assert_eq!(
+            model.view.active.as_ref().map(|active| active.id.as_str()),
+            Some("b")
+        );
+        assert!(model.view.messages.is_empty(), "{:?}", model.view.messages);
+        assert_eq!(model.view.error.as_deref(), Some("read failed"));
+    }
+
+    #[test]
+    fn a_failed_reload_keeps_the_open_transcript() {
+        let (mut model, mem) =
+            model_with(Some(("web-1", "From the web", "hello from web", "done")));
+        model.open("web-1");
+        let before = model.view.messages.clone();
+        assert!(!before.is_empty());
+        mem.lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .fail_next_read();
+        model.cancel();
+        assert_eq!(model.view.messages, before);
+        assert_eq!(model.view.error.as_deref(), Some("read failed"));
+        assert_eq!(
+            model.view.active.as_ref().map(|active| active.id.as_str()),
+            Some("web-1")
+        );
+    }
+
+    /// `poll` deletes the open session, the way a remote delete arrives.
+    struct DropActive {
+        inner: MemoryChat,
+        dropped: bool,
+    }
+
+    impl ChatPort for DropActive {
+        fn poll(&mut self) -> bool {
+            if self.dropped {
+                return false;
+            }
+            self.dropped = true;
+            self.inner.delete_session("a").unwrap();
+            true
+        }
+        fn list(&mut self) -> Result<Vec<ChatSummary>, ChatError> {
+            self.inner.list()
+        }
+        fn messages(&mut self, id: &str) -> Result<Vec<TranscriptRow>, ChatError> {
+            self.inner.messages(id)
+        }
+        fn messages_before(
+            &mut self,
+            id: &str,
+            before: i64,
+            limit: u32,
+        ) -> Result<Vec<TranscriptRow>, ChatError> {
+            self.inner.messages_before(id, before, limit)
+        }
+        fn create(&mut self, title: &str, scope: Option<&str>) -> Result<String, ChatError> {
+            self.inner.create(title, scope)
+        }
+        fn send(&mut self, id: &str, text: &str) -> Result<String, ChatError> {
+            self.inner.send(id, text)
+        }
+        fn cancel(&mut self, id: &str) -> Result<bool, ChatError> {
+            self.inner.cancel(id)
+        }
+        fn delete(&mut self, id: &str) -> Result<(), ChatError> {
+            self.inner.delete(id)
+        }
+    }
+
+    #[test]
+    fn a_deleted_session_clears_the_transcript() {
+        let mut inner = MemoryChat::new();
+        inner.seed("a", "A", 1, "from-a", "reply-a");
+        let mut model = ChatModel::new(Box::new(DropActive {
+            inner,
+            dropped: false,
+        }));
+        model.open("a");
+        assert!(model.view.messages.iter().any(|turn| turn.text == "from-a"));
+        assert!(model.follow());
+        assert!(model.view.active.is_none());
+        assert!(model.view.messages.is_empty());
+        assert!(model.view.summaries.is_empty());
+    }
+
+    /// `messages` returns only the newest [`MESSAGE_PAGE`] rows.
+    struct Paged {
+        rows: Vec<TranscriptRow>,
+    }
+
+    impl Paged {
+        fn rows(rows: Vec<TranscriptRow>) -> Self {
+            Self { rows }
+        }
+
+        fn page(&self, before: Option<i64>, limit: u32) -> Vec<TranscriptRow> {
+            let mut rows: Vec<TranscriptRow> = self
+                .rows
+                .iter()
+                .filter(|row| before.is_none_or(|seq| row.seq < seq))
+                .cloned()
+                .collect();
+            rows.sort_by_key(|row| row.seq);
+            let keep = limit as usize;
+            if rows.len() > keep {
+                rows = rows.split_off(rows.len() - keep);
+            }
+            rows
+        }
+    }
+
+    impl ChatPort for Paged {
+        fn list(&mut self) -> Result<Vec<ChatSummary>, ChatError> {
+            Ok(vec![ChatSummary {
+                id: "s".to_string(),
+                title: "Long".to_string(),
+                scope: None,
+                created_at_ms: 1,
+                updated_at_ms: 1,
+            }])
+        }
+        fn messages(&mut self, _id: &str) -> Result<Vec<TranscriptRow>, ChatError> {
+            Ok(self.page(None, MESSAGE_PAGE))
+        }
+        fn messages_before(
+            &mut self,
+            _id: &str,
+            before: i64,
+            limit: u32,
+        ) -> Result<Vec<TranscriptRow>, ChatError> {
+            Ok(self.page(Some(before), limit))
+        }
+        fn create(&mut self, _title: &str, _scope: Option<&str>) -> Result<String, ChatError> {
+            Err(ChatError::Failed("no create".to_string()))
+        }
+        fn send(&mut self, _id: &str, _text: &str) -> Result<String, ChatError> {
+            Err(ChatError::Failed("no send".to_string()))
+        }
+        fn cancel(&mut self, _id: &str) -> Result<bool, ChatError> {
+            Ok(false)
+        }
+        fn delete(&mut self, _id: &str) -> Result<(), ChatError> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn the_full_transcript_includes_the_row_before_the_newest_page() {
+        let mut rows = Vec::new();
+        for seq in 1..=201 {
+            let text = if seq == 1 {
+                "zero".to_string()
+            } else {
+                format!("row-{seq}")
+            };
+            rows.push(text_row(
+                &format!("r{seq}"),
+                seq,
+                TranscriptRole::User,
+                &text,
+            ));
+        }
+        let mut model = ChatModel::new(Box::new(Paged::rows(rows)));
+        model.open("s");
+        assert!(
+            model.view.messages.iter().any(|turn| turn.text == "zero"),
+            "newest page hid the oldest row: {} turns",
+            model.view.messages.len()
+        );
+        assert_eq!(model.view.messages.len(), 201);
+    }
+
+    #[test]
+    fn a_tool_page_keeps_the_assistant_that_started_it() {
+        let mut rows = vec![
+            text_row("u", 1, TranscriptRole::User, "ask"),
+            assistant("a", 2, "parent", "done", None),
+        ];
+        for seq in 3..=202 {
+            rows.push(tool(
+                &format!("t{seq}"),
+                seq,
+                named("instance_create"),
+                "done",
+                None,
+            ));
+        }
+        let mut model = ChatModel::new(Box::new(Paged::rows(rows)));
+        model.open("s");
+        assert!(model.view.messages.iter().any(|turn| turn.text == "ask"));
+        let parent = model
+            .view
+            .messages
+            .iter()
+            .find(|turn| turn.text == "parent")
+            .expect("parent assistant");
+        assert_eq!(parent.steps.len(), 200);
+        assert!(parent
+            .steps
+            .iter()
+            .all(|step| step.name == "instance_create"));
+    }
+
+    #[test]
+    fn a_failed_write_keeps_its_intent() {
+        let mut failed = named("space_delete");
+        failed.writes = Some(true);
+        let turns = conversation_of(&[
+            text_row("u", 1, TranscriptRole::User, "q"),
+            assistant("a", 2, "", "failed", None),
+            tool("t", 3, failed, "failed", Some("partial")),
+        ]);
+        let step = &turns[1].steps[0];
+        assert!(step.writes);
+        assert_eq!(step.outcome, Outcome::Error);
+        assert_eq!(step_label(step), "space_delete · write operation · failed");
+
+        let mut running = named("instance_create");
+        running.writes = Some(true);
+        let turns = conversation_of(&[
+            text_row("u", 1, TranscriptRole::User, "q"),
+            assistant("a", 2, "", "running", None),
+            tool("t", 3, running, "running", None),
+        ]);
+        assert_eq!(
+            step_label(&turns[1].steps[0]),
+            "instance_create · write operation · running"
+        );
+
+        let mut stopped = named("add_link");
+        stopped.writes = Some(true);
+        let turns = conversation_of(&[
+            text_row("u", 1, TranscriptRole::User, "q"),
+            assistant("a", 2, "", "cancelled", None),
+            tool("t", 3, stopped, "running", None),
+        ]);
+        assert_eq!(
+            step_label(&turns[1].steps[0]),
+            "add_link · write operation · stopped"
+        );
+        assert!(!step_label(&turns[1].steps[0]).contains("wrote"));
     }
 }

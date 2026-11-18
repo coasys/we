@@ -127,6 +127,7 @@ pub struct AiSessionMessage {
 
 /// `ai.sessionCreate`. Absent `capabilities` is JSON null: the executor
 /// stores everything the caller holds. An empty list is not the same.
+/// [`create_params`] never leaves this field absent.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiSessionCreate {
@@ -383,7 +384,7 @@ impl ChatPort for AiSessionChat {
     }
 
     fn messages(&mut self, id: &str) -> Result<Vec<TranscriptRow>, ChatError> {
-        self.load_messages(id, None, None)
+        self.load_messages(id, Some(we_data::chat::MESSAGE_PAGE), None)
     }
 
     fn messages_before(
@@ -491,7 +492,10 @@ fn create_params(title: &str, scope: Option<&str>) -> Result<AiSessionCreate, Ch
                 }]),
             )
         }
-        None => (None, None),
+        // An omitted scope is a host-authorized global chat. An empty list
+        // is not JSON null, so the executor does not store every capability
+        // the caller holds.
+        None => (None, Some(Vec::new())),
     };
     Ok(AiSessionCreate {
         title: Some(title.to_string()),
@@ -528,12 +532,18 @@ fn row_content(value: &Json) -> RowContent {
         text: json_str(value, "text"),
         name: json_str(value, "name"),
         perspective_id: json_str(value, "perspectiveId")
-            .or_else(|| json_str(value, "perspective_id")),
+            .or_else(|| json_str(value, "perspective_id"))
+            .or_else(|| argument_str(value, "perspectiveId"))
+            .or_else(|| argument_str(value, "perspective_id")),
         target: json_str(value, "target"),
         result,
         error: json_str(value, "error"),
         writes: value.get("writes").and_then(Json::as_bool),
     }
+}
+
+fn argument_str(value: &Json, key: &str) -> Option<String> {
+    value.get("arguments").and_then(|args| json_str(args, key))
 }
 
 fn json_str(value: &Json, key: &str) -> Option<String> {
@@ -718,6 +728,47 @@ mod tests {
         .unwrap();
         assert!(watch.get("ai-session-changed").unwrap().is_null());
         assert!(watch.get("ai_session_changed").is_none());
+    }
+
+    #[test]
+    fn a_create_never_sends_null_capabilities() {
+        let global = create_params("t", None).unwrap();
+        let value = serde_json::to_value(&global).unwrap();
+        assert!(value.get("capabilities").unwrap().is_array(), "{value}");
+        assert!(value["capabilities"].as_array().unwrap().is_empty());
+        let scoped = create_params("t", Some("a1a2a3a4-b1b2-c3c4-d5d6-e7e8e9f0a1b2")).unwrap();
+        let value = serde_json::to_value(&scoped).unwrap();
+        assert!(value.get("capabilities").unwrap().is_array(), "{value}");
+        assert!(!value["capabilities"].as_array().unwrap().is_empty());
+        assert!(create_params("t", Some("*")).is_err());
+        assert!(create_params("t", Some("")).is_err());
+    }
+
+    #[test]
+    fn a_tool_row_reads_perspective_id_from_arguments() {
+        let raw = r#"{"id":"m","sessionId":"s","seq":3,"role":"tool","content":{"name":"instance_create","arguments":{"perspective_id":"a1a2a3a4-b1b2-c3c4-d5d6-e7e8e9f0a1b2"},"writes":true},"status":"done","error":null,"createdAt":"2026-11-18T10:46:23Z"}"#;
+        let message: AiSessionMessage = serde_json::from_str(raw).unwrap();
+        let row = row_of(&message);
+        assert_eq!(
+            row.content.perspective_id.as_deref(),
+            Some("a1a2a3a4-b1b2-c3c4-d5d6-e7e8e9f0a1b2")
+        );
+        assert_eq!(row.content.name.as_deref(), Some("instance_create"));
+        assert_eq!(row.content.writes, Some(true));
+
+        let camel = r#"{"id":"m2","sessionId":"s","seq":4,"role":"tool","content":{"name":"x","arguments":{"perspectiveId":"b1b2b3b4-c1c2-d3d4-e5e6-f7f8f9a0b1c2"}},"status":"done","error":null,"createdAt":"2026-11-18T10:46:23Z"}"#;
+        let message: AiSessionMessage = serde_json::from_str(camel).unwrap();
+        assert_eq!(
+            row_of(&message).content.perspective_id.as_deref(),
+            Some("b1b2b3b4-c1c2-d3d4-e5e6-f7f8f9a0b1c2")
+        );
+
+        let top = r#"{"id":"m3","sessionId":"s","seq":5,"role":"tool","content":{"name":"x","perspectiveId":"a1a2a3a4-b1b2-c3c4-d5d6-e7e8e9f0a1b2","arguments":{"perspective_id":"b1b2b3b4-c1c2-d3d4-e5e6-f7f8f9a0b1c2"}},"status":"done","error":null,"createdAt":"2026-11-18T10:46:23Z"}"#;
+        let message: AiSessionMessage = serde_json::from_str(top).unwrap();
+        assert_eq!(
+            row_of(&message).content.perspective_id.as_deref(),
+            Some("a1a2a3a4-b1b2-c3c4-d5d6-e7e8e9f0a1b2")
+        );
     }
 
     #[test]

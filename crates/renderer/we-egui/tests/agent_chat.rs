@@ -5,9 +5,13 @@ use std::sync::{Arc, Mutex};
 
 use egui_kittest::kittest::Queryable;
 use indexmap::IndexMap;
-use we_data::chat::{ChatModel, MemoryChat};
+use we_data::chat::{ChatAccess, ChatAuthority, ChatModel, MemoryChat};
 use we_egui::{bind_chat, layout, paint, MeasureCx, Registry, StyleCx};
+use we_expr::Value;
 use we_template::{NodeId, ResolvedNode};
+
+const SPACE_A: &str = "a1a2a3a4-b1b2-c3c4-d5d6-e7e8e9f0a1b2";
+const SPACE_B: &str = "b1b2b3b4-c1c2-d3d4-e5e6-f7f8f9a0b1c2";
 
 struct ClearChat;
 impl Drop for ClearChat {
@@ -29,9 +33,27 @@ fn node(ty: &str, id: &str) -> ResolvedNode {
     }
 }
 
+fn inputs(pairs: &[(&str, &str)]) -> Value {
+    let mut map = IndexMap::new();
+    for (key, value) in pairs {
+        map.insert(Arc::from(*key), Value::Str(Arc::from(*value)));
+    }
+    Value::Obj(Arc::new(map))
+}
+
 fn panel(model: Option<Arc<Mutex<ChatModel>>>) -> egui_kittest::Harness<'static> {
+    panel_with(model, None)
+}
+
+fn panel_with(
+    model: Option<Arc<Mutex<ChatModel>>>,
+    fields: Option<Value>,
+) -> egui_kittest::Harness<'static> {
     let registry = Registry::with_builtins();
-    let root = node("AgentChat", "chat");
+    let mut root = node("AgentChat", "chat");
+    if let Some(fields) = fields {
+        root.props.insert(Arc::from("inputs"), fields);
+    }
     egui_kittest::Harness::builder()
         .with_size(egui::vec2(420.0, 640.0))
         .allow_missing_glyphs()
@@ -133,4 +155,70 @@ fn agent_chat_panel_unwired() {
     h.get_by_label("No AI sessions");
     h.get_by_label("The Rust client has no AI session API yet.");
     assert!(h.query_by_label("Send").is_none());
+}
+
+#[test]
+fn a_template_perspective_does_not_change_the_scope() {
+    let _clear = ClearChat;
+    let mem = Arc::new(Mutex::new(MemoryChat::new()));
+    let model = Arc::new(Mutex::new(ChatModel::bound(
+        Box::new(mem.clone()),
+        ChatAuthority::space(SPACE_A, Some("Garden".to_string()), ChatAccess::Write),
+    )));
+    let mut h = panel_with(
+        Some(model.clone()),
+        Some(inputs(&[
+            ("perspectiveUuid", SPACE_B),
+            ("prefill", "from the template"),
+        ])),
+    );
+    h.run();
+    h.get_by_label("Send").click();
+    settle(&mut h);
+    {
+        let guard = mem.lock().unwrap_or_else(|poison| poison.into_inner());
+        assert_eq!(guard.created, vec![Some(SPACE_A.to_string())]);
+        assert_eq!(
+            guard.sends,
+            vec![("sess-1".to_string(), "from the template".to_string())]
+        );
+    }
+
+    let mem = Arc::new(Mutex::new(MemoryChat::new()));
+    let model = Arc::new(Mutex::new(ChatModel::bound(
+        Box::new(mem.clone()),
+        ChatAuthority::space(SPACE_A, Some("Garden".to_string()), ChatAccess::Write),
+    )));
+    let mut omitted = panel_with(Some(model.clone()), None);
+    omitted.run();
+    omitted
+        .get_by_role(egui::accesskit::Role::TextInput)
+        .click();
+    omitted
+        .get_by_role(egui::accesskit::Role::TextInput)
+        .type_text("omitted scope");
+    settle(&mut omitted);
+    omitted.get_by_label("Send").click();
+    settle(&mut omitted);
+    omitted.get_by_label("Stop").click();
+    settle(&mut omitted);
+    let mut forged = panel_with(Some(model), Some(inputs(&[("perspectiveUuid", SPACE_B)])));
+    forged.run();
+    forged.get_by_role(egui::accesskit::Role::TextInput).click();
+    forged
+        .get_by_role(egui::accesskit::Role::TextInput)
+        .type_text("still garden");
+    settle(&mut forged);
+    forged.get_by_label("Send").click();
+    settle(&mut forged);
+    let guard = mem.lock().unwrap_or_else(|poison| poison.into_inner());
+    assert_eq!(guard.creates, 1);
+    assert_eq!(guard.created, vec![Some(SPACE_A.to_string())]);
+    assert_eq!(
+        guard.sends,
+        vec![
+            ("sess-1".to_string(), "omitted scope".to_string()),
+            ("sess-1".to_string(), "still garden".to_string()),
+        ]
+    );
 }

@@ -10,8 +10,8 @@ use std::cell::RefCell;
 use std::sync::{Arc, Mutex};
 
 use we_data::chat::{
-    ask_before, refusal_of, refusal_sentence, reply_running, unfinished_words, ChatModel,
-    ReplyStatus, TurnRole,
+    ask_before, refusal_of, refusal_sentence, reply_running, step_label, unfinished_words,
+    ChatModel, ReplyStatus, TurnRole,
 };
 use we_expr::Value;
 use we_style::Style;
@@ -79,10 +79,10 @@ impl Widget for AgentChat {
             );
             return;
         };
-        let (space_uuid, space_name, prefill) = inputs_of(node);
+        let prefill = prefill_of(node);
         let view = {
             let mut guard = model.lock().unwrap_or_else(|poison| poison.into_inner());
-            guard.set_space(space_uuid, space_name);
+            // The host set the space. A template input must not replace it.
             if let Some(text) = prefill {
                 guard.prefill_once(text);
             }
@@ -253,11 +253,10 @@ fn paint_body(
             );
         }
         for step in &message.steps {
-            let label = if step.wrote {
-                format!("{} wrote", step.name)
-            } else {
-                step.name.clone()
-            };
+            let mut label = step_label(step);
+            if let Some(error) = step.error.as_deref().filter(|error| !error.is_empty()) {
+                label = format!("{label} · {error}");
+            }
             y = line(cx, rect, y, input_top, &label, true);
         }
         if let Some(words) = unfinished_line(message) {
@@ -410,19 +409,14 @@ fn apply(model: &mut ChatModel, act: Act) {
     }
 }
 
-fn inputs_of(node: &ResolvedNode) -> (Option<String>, Option<String>, Option<&str>) {
+fn prefill_of(node: &ResolvedNode) -> Option<&str> {
     let Value::Obj(obj) = crate::props::prop(node, "inputs") else {
-        return (None, None, None);
+        return None;
     };
-    let string = |key: &str| match obj.get(key) {
-        Some(Value::Str(text)) if !text.is_empty() => Some(text.to_string()),
-        _ => None,
-    };
-    let prefill = match obj.get("prefill") {
+    match obj.get("prefill") {
         Some(Value::Str(text)) if !text.is_empty() => Some(text.as_ref()),
         _ => None,
-    };
-    (string("perspectiveUuid"), string("spaceName"), prefill)
+    }
 }
 
 fn badge_text(view: &we_data::chat::ChatView) -> String {

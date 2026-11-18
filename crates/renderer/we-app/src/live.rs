@@ -26,7 +26,7 @@ use we_ad4m::{
     read_only_notice, Access, Ad4mQuerySource, Connection, Notice, Notices, SourceStats,
     SpaceBinding, SpaceRow, WriteHost,
 };
-use we_data::chat::{ChatModel, ChatPort};
+use we_data::chat::{ChatAccess, ChatAuthority, ChatModel, ChatPort};
 use we_data::writes::Confirm;
 use we_data::{OfflineData, Provenance, SpaceId, StoreMap};
 use we_egui::Registry;
@@ -339,7 +339,13 @@ pub fn live_space_app(
     let (theme, fell_back) = set.theme(theme_id);
     app.theme = theme.clone();
     let port: Box<dyn ChatPort + Send> = Box::new(we_ad4m::AiSessionChat::new(conn));
-    let chat = Arc::new(Mutex::new(ChatModel::new(port)));
+    let chat_access = if here.writes(&space.uuid) {
+        ChatAccess::Write
+    } else {
+        ChatAccess::ReadOnly
+    };
+    let authority = ChatAuthority::space(space.uuid.clone(), Some(space.name.clone()), chat_access);
+    let chat = Arc::new(Mutex::new(ChatModel::bound(port, authority)));
     Ok((
         LiveSpace {
             app,
