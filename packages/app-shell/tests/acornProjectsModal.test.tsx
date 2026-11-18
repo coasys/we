@@ -116,7 +116,7 @@ describe('the Acorn projects dialog', () => {
     });
   });
 
-  it('shows a resumable failure — cause, Retry on the same target, Close that dismisses', async () => {
+  it('shows a resumable failure — the plain message up front, the raw cause in the details', async () => {
     const stores = fakeStores();
     const { container } = render(() => (
       <RenderSchema node={acornProjectsModalMount} stores={stores as never} registry={registry} />
@@ -127,12 +127,20 @@ describe('the Acorn projects dialog', () => {
       name: 'Rig Project',
       datasetId: 'ds-1',
       languageAddress: 'QmL',
-      failure: { stage: 'mount', cause: 'ConductorApiError: CellError(InitTimeout)', retryable: true },
+      failure: {
+        stage: 'mount',
+        cause: 'ConductorApiError: CellError(InitTimeout)',
+        display: 'The project’s cell did not start on the executor in time.',
+        retryable: true,
+      },
     });
 
     await vi.waitFor(() => {
-      expect(container.textContent).toContain('could not finish connecting');
-      expect(alertText(container)).toContain('InitTimeout');
+      // The headline is the plain message — the conductor's wire text is not it.
+      expect(alertText(container)).toContain('cell did not start');
+      expect(alertText(container)).not.toContain('InitTimeout');
+      // The raw cause stays where a diagnosis looks for it — the details line.
+      expect(container.textContent).toContain('CellError(InitTimeout)');
     });
 
     // Retry resumes the retained target — no form values travel with it, only
@@ -143,6 +151,16 @@ describe('the Acorn projects dialog', () => {
     await vi.waitFor(() => expect(stores.spaceStore.retryAcornProject).toHaveBeenCalledWith('ds-1', 'QmL'));
     expect(stores.spaceStore.createAcornProject).not.toHaveBeenCalled();
     expect(stores.shellStore.setAcornProjectsOpen).not.toHaveBeenCalled();
+
+    // A rejecting retry does not splash the raw error across the dialog — the
+    // card already carries the failure's own telling.
+    (stores.spaceStore.retryAcornProject as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('ConductorApiError: CellError(InitTimeout) on cell abc'),
+    );
+    await vi.waitFor(() => expect((button(container, 'Retry') as any).disabled).toBe(false));
+    button(container, 'Retry').click();
+    await vi.waitFor(() => expect(stores.spaceStore.retryAcornProject).toHaveBeenCalledTimes(2));
+    expect(alertText(container)).not.toContain('cell abc');
 
     // Close dismisses without claiming success — once the retry's finally has
     // cleared the busy flag that disables it while a call is out.
@@ -162,7 +180,12 @@ describe('the Acorn projects dialog', () => {
       name: 'Rig Project',
       datasetId: 'ds-1',
       languageAddress: 'QmL',
-      failure: { stage: 'mount', cause: 'CellError(InitTimeout)', retryable: true },
+      failure: {
+        stage: 'mount',
+        cause: 'CellError(InitTimeout)',
+        display: 'The project’s cell did not start on the executor in time.',
+        retryable: true,
+      },
     });
     await vi.waitFor(() => button(container, 'Retry'));
 
@@ -181,10 +204,20 @@ describe('the Acorn projects dialog', () => {
       name: 'Rig Project',
       datasetId: 'ds-1',
       languageAddress: 'QmL',
-      failure: { stage: 'mount', cause: 'the language is owned by another schema mirror', retryable: false },
+      failure: {
+        stage: 'mount',
+        cause: 'the language is owned by another schema mirror',
+        display: 'The executor refused the mount.',
+        retryable: false,
+      },
     });
 
-    await vi.waitFor(() => expect(alertText(container)).toContain('schema mirror'));
+    // The plain message is the alert; the refusal's own text stays in the details.
+    await vi.waitFor(() => {
+      expect(alertText(container)).toContain('refused the mount');
+      expect(alertText(container)).not.toContain('schema mirror');
+      expect(container.textContent).toContain('schema mirror');
+    });
     expect([...container.querySelectorAll('we-button')].some((el) => el.textContent?.trim() === 'Retry')).toBe(false);
     // Close still dismisses it.
     button(container, 'Close').click();

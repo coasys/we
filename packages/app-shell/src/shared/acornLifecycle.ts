@@ -215,8 +215,14 @@ export interface AcornOperationState {
   languageAddress?: string;
   /** The mount attempt in flight, while `phase` is `mounting`. */
   attempt?: number;
-  /** Present only in `failed`: where it stopped, why, and whether a Retry resumes it. */
-  failure?: { stage: AcornLifecycleStage; cause: string; retryable: boolean };
+  /**
+   * Present only in `failed`: where it stopped, why, and whether a Retry resumes
+   * it. `cause` is the diagnostic — the executor's own text, kept for the details
+   * line and the log; `display` is the plain sentence the card leads with — a
+   * classified, bounded message that never carries wire text (or anything a
+   * wire text could smuggle, like a passphrase-derived seed).
+   */
+  failure?: { stage: AcornLifecycleStage; cause: string; display: string; retryable: boolean };
 }
 
 /** What the lifecycle needs from the app around it — the same shape `BoardDeps` takes. */
@@ -339,6 +345,17 @@ export interface AcornLifecycleDeps {
 export function acornSeed(passphrase: string): string {
   return `uid-${passphrase.split(' ').join('-')}`;
 }
+
+/**
+ * The seed-bearing boundary: `applyTemplateLocal` is the one call whose error
+ * could echo `templateData` — and `seed` is the passphrase it was derived from.
+ * A message that carries it back out is redacted before it can reach a state, a
+ * details line or a log; one that does not passes through untouched.
+ */
+const redactSeed = (error: unknown, seed: string): unknown => {
+  if (!(error instanceof Error) || !error.message.includes(seed)) return error;
+  return new Error(error.message.split(seed).join('…'));
+};
 
 /** The outcome `withinBudget` hands back when the phase's own clock, not the call, answered first. */
 const BUDGET_OUT = Symbol('acorn-budget-out');
@@ -563,6 +580,36 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
     if (/heard nothing|timed?\s*out|socket|connect|unreachable|handed no url/i.test(text)) return 'unknown';
     return 'permanent';
   };
+
+  /**
+   * The plain sentence a failure card leads with — classified the same way the
+   * retry decision is, never the executor's own words. The wire text stays in
+   * `cause` for the details line and the log; what the card says out loud is
+   * bounded, and can never echo something the backend put in a message.
+   */
+  const displayForFailure = (stage: AcornLifecycleStage, cause: string): string => {
+    if (!cause) return 'It was closed before it finished.';
+    if (MOUNT_INIT_FAILURES.some((signature) => cause.includes(signature))) {
+      return 'The project’s cell did not start on the executor in time.';
+    }
+    if (cause.includes(MOUNT_IN_FLIGHT) || /did not answer inside the \d+ s budget/.test(cause)) {
+      return 'The mount did not finish inside its time budget.';
+    }
+    if (/heard nothing|timed?\s*out|socket|connect|unreachable|handed no url/i.test(cause)) {
+      return 'The executor stopped answering partway through.';
+    }
+    if (stage === 'mount') return 'The executor refused the mount.';
+    if (stage === 'setup') return 'The space’s setup could not finish.';
+    return 'The project could not be prepared.';
+  };
+
+  /** One failure record — stage and raw cause for the details, the classified display for the card. */
+  const makeFailure = (stage: AcornLifecycleStage, cause: string, retryable: boolean) => ({
+    stage,
+    cause,
+    display: displayForFailure(stage, cause),
+    retryable,
+  });
 
   /**
    * Whether `ref` already mounts `lang` — the one read an explicit Retry does
@@ -818,11 +865,17 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
         name: op.name,
         datasetId: op.ref?.id,
         languageAddress: op.lang,
-        failure,
+        failure: makeFailure(failure.stage, failure.cause, failure.retryable),
       };
     };
     const park = (failure: { stage: AcornLifecycleStage; cause: string; retryable: boolean }) =>
-      report({ phase: 'failed', name: op.name, datasetId: op.ref?.id, languageAddress: op.lang, failure });
+      report({
+        phase: 'failed',
+        name: op.name,
+        datasetId: op.ref?.id,
+        languageAddress: op.lang,
+        failure: makeFailure(failure.stage, failure.cause, failure.retryable),
+      });
     try {
       report({ phase: 'preparing', name: op.name, datasetId: op.ref?.id, languageAddress: op.lang });
       const prepared = await serializeMount(op.lang, () =>
@@ -1079,7 +1132,9 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       */
       const nav = { generation: ++openGeneration, selection: deps.currentDatasetId() };
       const seed = acornSeed(passphrase);
-      const { address: lang } = await port.applyTemplateLocal(sourceLanguageHash, { seed });
+      const { address: lang } = await port.applyTemplateLocal(sourceLanguageHash, { seed }).catch((error: unknown) => {
+        throw redactSeed(error, seed);
+      });
       if (nav.generation !== openGeneration) return null;
       /*
         One operation per language: a resubmit of the same seed — the same
@@ -1107,8 +1162,14 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       const lifecycle = deps.lifecycle();
       if (!port || !lifecycle || !deps.hasAcornTemplate()) return null;
       const nav = { generation: ++openGeneration, selection: deps.currentDatasetId() };
+      const seed = acornSeed(passphrase);
       const lang =
-        languageAddress || (await port.applyTemplateLocal(sourceLanguageHash, { seed: acornSeed(passphrase) })).address;
+        languageAddress ||
+        (
+          await port.applyTemplateLocal(sourceLanguageHash, { seed }).catch((error: unknown) => {
+            throw redactSeed(error, seed);
+          })
+        ).address;
       if (nav.generation !== openGeneration) return null;
       /*
         A supplied address is verified before a dataset is made for it — joining an
@@ -1185,7 +1246,7 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
             name: intent.name,
             datasetId: ref.id,
             languageAddress: intent.languageAddress,
-            failure: { stage: 'mount', cause: '', retryable: true },
+            failure: makeFailure('mount', '', true),
           };
         }
       }
@@ -1244,7 +1305,7 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
           op.state = {
             ...op.state,
             phase: 'failed',
-            failure: { stage: op.state.phase === 'setting-up' ? 'setup' : 'mount', cause: '', retryable: true },
+            failure: makeFailure(op.state.phase === 'setting-up' ? 'setup' : 'mount', '', true),
           };
         }
       }

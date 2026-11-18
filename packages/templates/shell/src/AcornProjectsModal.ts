@@ -29,7 +29,17 @@ const lifecycleCall = (invoke: Record<string, unknown>): SchemaProp[] => [
         },
       },
     ],
-    onError: [{ $setLocal: 'error', value: { $: "result && result.message ? result.message : 'That did not work'" } }],
+    // A typed lifecycle failure is already telling its own story in the parked
+    // card below — its plain message and the raw cause in the details. Only a
+    // call that failed without parking a state gets the log line here.
+    onError: [
+      {
+        $setLocal: 'error',
+        value: {
+          $: "spaceStore.acornPending && spaceStore.acornPending.failure ? '' : (result && result.message ? result.message : 'That did not work')",
+        },
+      },
+    ],
     onFinally: [{ $setLocal: 'busy', value: false }],
   },
 ];
@@ -278,9 +288,28 @@ export const acornProjectsModal: SchemaNode = {
                   props: { variant: 'soft', tone: 'danger' },
                   children: [
                     {
-                      $: "'The project could not finish connecting. A peer may be unavailable' + (spaceStore.acornPending.failure && spaceStore.acornPending.failure.retryable ? ' — Retry continues this same project.' : '.') + (spaceStore.acornPending.failure && spaceStore.acornPending.failure.cause ? ' ' + spaceStore.acornPending.failure.cause : '')",
+                      $: "'The project could not finish connecting.' + (spaceStore.acornPending.failure && spaceStore.acornPending.failure.display ? ' ' + spaceStore.acornPending.failure.display : ' A peer may be unavailable.') + (spaceStore.acornPending.failure && spaceStore.acornPending.failure.retryable ? ' Retry continues this same project.' : '')",
                     },
                   ],
+                },
+                /*
+                  The details, not the headline: the executor's own text stays
+                  where a diagnosis looks for it — never splashed across the
+                  card, and never trusted with a wire string it could smuggle a
+                  seed through. `display` above is the classified sentence.
+                */
+                {
+                  type: '$if',
+                  props: {
+                    condition: {
+                      $: 'spaceStore.acornPending.failure && spaceStore.acornPending.failure.cause',
+                    },
+                    then: {
+                      type: 'we-text',
+                      props: { variant: 'footnote', color: 'text-faint' },
+                      children: [{ $: "'Details: ' + spaceStore.acornPending.failure.cause" }],
+                    },
+                  },
                 },
                 {
                   type: 'Row',

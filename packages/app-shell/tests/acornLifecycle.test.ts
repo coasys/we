@@ -639,12 +639,18 @@ describe('openAcornProject', () => {
     const acorn = createAcornLifecycle(d);
 
     await expect(acorn.openAcornProject('dataset-1')).rejects.toThrow('zome unreachable');
-    // Parked, not spinning: the retained op names its target and is resumable.
+    // Parked, not spinning: the retained op names its target and is resumable,
+    // and the failure carries its classified display beside the raw cause.
     await expect(acorn.pendingAcornOperation()).resolves.toMatchObject({
       phase: 'failed',
       datasetId: 'dataset-1',
       languageAddress: LANG,
-      failure: { stage: 'setup', cause: 'zome unreachable', retryable: true },
+      failure: {
+        stage: 'setup',
+        cause: 'zome unreachable',
+        display: 'The executor stopped answering partway through.',
+        retryable: true,
+      },
     });
 
     await expect(acorn.resumeAcornOperation('dataset-1', LANG)).resolves.toBe('dataset-1');
@@ -953,6 +959,30 @@ describe('mount retry — the fresh-cell stall', () => {
     expect((await settle(acorn.createAcornProject('P', 'a b c', BASE))).value).toBe('dataset-1');
     // One mount call — nobody unmounted to "clear" it and nobody mounted a second.
     expect(record.filter((c) => c.startsWith('mount:'))).toEqual([`mount:dataset-1:${LANG}`]);
+  });
+
+  /*
+    The seed is the join secret: a templating error that echoes `templateData`
+    back carries the passphrase inside it. The boundary redacts it — the state,
+    the details line and the log never see the seed the ask was built from.
+  */
+  it('never lets a templating error carry the seed out — the passphrase stays out of every message', async () => {
+    const record: string[] = [];
+    const d = deps(record);
+    const seed = acornSeed('a b c');
+    (d.port()!.applyTemplateLocal as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+      throw new Error(`template install failed for templateData { seed: '${seed}' } on ${BASE}`);
+    });
+    const acorn = createAcornLifecycle(d);
+
+    const error = await acorn.createAcornProject('P', 'a b c', BASE).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain('template install failed');
+    expect((error as Error).message).not.toContain(seed);
+    expect((error as Error).message).not.toContain('a-b-c');
+
+    const joinError = await acorn.joinAcornProject(undefined, 'a b c', BASE).catch((e: unknown) => e);
+    expect((joinError as Error).message).not.toContain(seed);
   });
 
   /*
