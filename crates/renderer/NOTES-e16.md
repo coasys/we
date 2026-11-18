@@ -130,8 +130,9 @@ Commands from `crates/renderer`, offline, on 2026-11-18.
 | `UPDATE_SNAPSHOTS=1 cargo test -p we-app --test gallery_widgets -- --test-threads=1` | 2 passed in 6.36s. The row is now 64px and draws the zoom bar.                                           |
 | `cargo test -p we-app --test gallery_widgets -- --test-threads=1`                    | exit 0 at 13:21:27Z. The saved baselines match.                                                          |
 | `cargo clippy -p we-egui --all-targets --locked -- -D warnings`                      | exit 0 in 5.96s, after the row fix                                                                       |
+| `cargo test --locked -- --test-threads=1`                                            | exit 0. 1062 passed, 0 failed, 3 ignored. Finished 2026-11-18T13:40Z, after the row fix.                 |
 
-The full suite was not run again after the row fix. Every other test in that suite had already passed.
+The second full run is the one that counts. It includes the gallery row fix.
 
 ## Could not test
 
