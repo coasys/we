@@ -56,12 +56,28 @@ fn closed_port() -> u16 {
 const LISTENING: &str =
     "echo \"[2026-11-19T00:00:00Z INFO  rust_executor::api] API server starting on http://127.0.0.1:$PORT/api/v1\" >&2";
 
+/// Write an executable stand-in at `path`. The text is copied in by `cp`,
+/// so no file handle open for writing on `path` is ever in this process:
+/// a child another test forks meanwhile would inherit it, and running
+/// `path` would then fail with "Text file busy" (ETXTBSY).
+fn executable(path: &Path, text: impl AsRef<[u8]>) {
+    use std::os::unix::fs::PermissionsExt;
+    let source = path.with_extension("text");
+    std::fs::write(&source, text).unwrap();
+    let copied = std::process::Command::new("cp")
+        .arg(&source)
+        .arg(path)
+        .status()
+        .unwrap();
+    assert!(copied.success(), "cp {}", path.display());
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+}
+
 /// A stand-in executor: `init` succeeds; `run` says it listens on the port
 /// in `<dir>/port` (when there is one), then runs `body`.
 fn script(dir: &Path, name: &str, body: &str) -> PathBuf {
-    use std::os::unix::fs::PermissionsExt;
     let path = dir.join(name);
-    std::fs::write(
+    executable(
         &path,
         format!(
             "#!/bin/sh\nif [ \"$1\" = --version ]; then \
@@ -70,9 +86,7 @@ fn script(dir: &Path, name: &str, body: &str) -> PathBuf {
              PORT=$(cat \"$(dirname \"$0\")/port\" 2>/dev/null)\n\
              if [ -n \"$PORT\" ]; then {LISTENING}; fi\n{body}\n"
         ),
-    )
-    .unwrap();
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    );
     path
 }
 
@@ -513,21 +527,18 @@ fn exit_75_runs_it_again() {
 /// in it is the executor's own to migrate: `init` must not run over it.
 #[test]
 fn init_runs_only_for_an_empty_data_folder() {
-    use std::os::unix::fs::PermissionsExt;
     for existing in [false, true] {
         let dir = tempfile::tempdir().unwrap();
         let marker = dir.path().join("init-ran");
         let binary = dir.path().join("executor");
-        std::fs::write(
+        executable(
             &binary,
             format!(
                 "#!/bin/sh\nif [ \"$1\" = --version ]; then echo 'ad4m 0.13.1-staging.13'; exit 0; fi\n\
                  if [ \"$1\" = init ]; then touch '{}'; exit 0; fi\nexit 3\n",
                 marker.display()
             ),
-        )
-        .unwrap();
-        std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o755)).unwrap();
+        );
         if existing {
             std::fs::create_dir(dir.path().join("data")).unwrap();
             std::fs::write(dir.path().join("data").join("agent.json"), "{}").unwrap();
@@ -653,18 +664,15 @@ fn the_minimum_executor_version() {
 /// A stand-in whose `init` writes its pid to `<dir>/init-pid` and then
 /// blocks (as a seed path naming a FIFO does).
 fn blocking_init(dir: &Path) -> PathBuf {
-    use std::os::unix::fs::PermissionsExt;
     let path = dir.join("executor");
-    std::fs::write(
+    executable(
         &path,
         format!(
             "#!/bin/sh\nif [ \"$1\" = --version ]; then echo 'ad4m 0.13.1-staging.13'; exit 0; fi\n\
              if [ \"$1\" = init ]; then echo $$ > '{}'; exec sleep 60; fi\ncat > /dev/null\n",
             dir.join("init-pid").display()
         ),
-    )
-    .unwrap();
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    );
     path
 }
 
@@ -737,9 +745,8 @@ fn an_init_past_its_deadline_is_ended() {
 /// when the seed is missing). Each init appends a line to `<dir>/inits`.
 /// `run` says its port and waits on stdin.
 fn seeding_init(dir: &Path, delay: &str) -> PathBuf {
-    use std::os::unix::fs::PermissionsExt;
     let path = dir.join("executor");
-    std::fs::write(
+    executable(
         &path,
         format!(
             "#!/bin/sh\nif [ \"$1\" = --version ]; then echo 'ad4m 0.13.1-staging.13'; exit 0; fi\n\
@@ -749,9 +756,7 @@ fn seeding_init(dir: &Path, delay: &str) -> PathBuf {
              PORT=$(cat \"$(dirname \"$0\")/port\")\n{LISTENING}\ncat > /dev/null\n",
             inits = dir.join("inits").display()
         ),
-    )
-    .unwrap();
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    );
     path
 }
 
@@ -842,8 +847,7 @@ fn an_exit_75_restart_is_a_new_start() {
     // says it only after 2 s, so the restart can be looked at.
     let binary = dir.path().join("executor");
     {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::write(
+        executable(
             &binary,
             format!(
                 "#!/bin/sh\nif [ \"$1\" = --version ]; then echo 'ad4m 0.13.1-staging.13'; exit 0; fi\n\
@@ -855,9 +859,7 @@ fn an_exit_75_restart_is_a_new_start() {
                 m = mark.display(),
                 t = trigger.display()
             ),
-        )
-        .unwrap();
-        std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o755)).unwrap();
+        );
     }
     let reader = Arc::new(Reader::default());
     reader.answer(Ok(Some(Agent::Unlocked)));
