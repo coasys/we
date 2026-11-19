@@ -897,6 +897,28 @@ fn an_exit_75_restart_is_a_new_start() {
     );
 }
 
+/// Exit 75 after a run longer than the restart window is not "in a row":
+/// the count starts again, so an executor that asks for a restart now and
+/// then is never stopped for it.
+#[test]
+fn exit_75_after_a_long_run_starts_the_count_again() {
+    let dir = tempfile::tempdir().unwrap();
+    let binary = script(dir.path(), "executor", "sleep 0.4\nexit 75");
+    let mut config = config(dir.path(), binary, health());
+    config.restart_window = Duration::from_millis(200);
+    let sup = Supervisor::with_reader(config, Arc::new(Reader::default()));
+    sup.start();
+    let start = Instant::now();
+    while sup.starts() < 6 {
+        if let Lifecycle::Failed { reason, .. } = sup.state() {
+            panic!("stopped after {} starts: {reason}", sup.starts());
+        }
+        assert!(start.elapsed() < Duration::from_secs(20), "not run again");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    sup.stop();
+}
+
 /// Round 2: exit 75 again and again is not restarted forever: past three
 /// restarts in a row, the executor is stopped, with that reason.
 #[test]

@@ -85,10 +85,9 @@ pub const MIN_EXECUTOR_VERSION: &str = "0.13.1-staging.12";
 const VERSION_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Exit 75 restarts in a row allowed (a restart counts in a row when the
-/// run before it lasted less than [`RESTART_WINDOW`]); past that, the
-/// executor is not started again.
+/// run before it lasted less than [`SupervisorConfig::restart_window`]);
+/// past that, the executor is not started again.
 const MAX_RESTARTS: u32 = 3;
-const RESTART_WINDOW: Duration = Duration::from_secs(60);
 
 /// How long one `/health` probe may take, and how far apart they are.
 const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
@@ -135,6 +134,9 @@ pub struct SupervisorConfig {
     pub ready_timeout: Duration,
     /// How long `init` may take before it is ended and the start fails.
     pub init_timeout: Duration,
+    /// An exit-75 restart counts in a row when the run before it lasted
+    /// less than this; a longer run starts the count again.
+    pub restart_window: Duration,
 }
 
 impl SupervisorConfig {
@@ -147,6 +149,7 @@ impl SupervisorConfig {
             extra_args: Vec::new(),
             ready_timeout: Duration::from_secs(60),
             init_timeout: Duration::from_secs(120),
+            restart_window: Duration::from_secs(60),
         }
     }
 }
@@ -622,7 +625,7 @@ fn run_child(shared: &Shared) -> Lifecycle {
             // a new run number), so nothing answered for the old run is
             // published or sent to as the new one's.
             Ended::Early(exit) | Ended::Late(exit) if code(&exit) == Some(EXIT_RESTART) => {
-                restarts = if run_started.elapsed() >= RESTART_WINDOW {
+                restarts = if run_started.elapsed() >= config.restart_window {
                     1
                 } else {
                     restarts + 1
@@ -1132,4 +1135,48 @@ fn fresh_secret() -> String {
     let mut bytes = [0u8; 32];
     getrandom::getrandom(&mut bytes).expect("the OS gives random bytes");
     bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::process::Command;
+
+    fn status(child: Child) -> Status {
+        Status {
+            lifecycle: Lifecycle::Starting,
+            changes: 0,
+            running: true,
+            stopping: false,
+            child: Some(child),
+            stdin: None,
+            url: Some("http://127.0.0.1:4000".into()),
+            run: 1,
+        }
+    }
+
+    /// The admin credential goes only to a child that is still running:
+    /// once it exited, its port may be anyone's, even before the run loop
+    /// reaps it.
+    #[test]
+    fn admin_url_is_none_once_the_child_has_exited() {
+        let mut alive = status(Command::new("sleep").arg("30").spawn().unwrap());
+        assert_eq!(
+            admin_url(&mut alive, 1).as_deref(),
+            Some("http://127.0.0.1:4000")
+        );
+        assert_eq!(admin_url(&mut alive, 2), None, "another run's address");
+        let mut child = alive.child.take().unwrap();
+        let _ = child.kill();
+        let _ = child.wait();
+
+        let mut exited = Command::new("true").spawn().unwrap();
+        exited.wait().unwrap();
+        let mut ended = status(exited);
+        assert_eq!(
+            admin_url(&mut ended, 1),
+            None,
+            "the address of a child that exited"
+        );
+    }
 }
