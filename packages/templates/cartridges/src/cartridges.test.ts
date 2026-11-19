@@ -167,6 +167,45 @@ describe('the Coasys cartridge', () => {
   });
 
   /*
+    The button opens a panel of the transcribe module, and the rail offers only the modules a space
+    has on: with transcription off, `launchModule` opens nothing. So the button stands under the
+    same gate the rail uses, and the export beside it does not.
+  */
+  it('offers the Interpretation button only where the space has transcription on', () => {
+    type Node = { type?: string; props?: Record<string, unknown>; children?: unknown[] };
+    const aside = callBarAside("'call-1'") as Node[];
+    const gate = aside.find((n) => n.type === '$if' && JSON.stringify(n.props).includes('transcribe:extraction')) as
+      Node | undefined;
+    expect((gate?.props?.condition as { $?: string } | undefined)?.$).toBe("'transcribe' in spaceStore.activeModules");
+    const exportNode = aside[aside.length - 1];
+    expect(JSON.stringify(exportNode)).toContain('spaceStore.exportCallTranscript');
+    expect(JSON.stringify(exportNode)).not.toContain('activeModules');
+  });
+
+  /*
+    A call's page names its call to the modules, not only to the record view: the panel, its count
+    on the button and the transcript read `routeStore.params.call`, so an address without it showed
+    the joined call (or the space) on another call's page.
+  */
+  it('puts the call on its page’s address the way the modules read it', () => {
+    const url = new URL(
+      evaluateExpression(parseExpression(callPath("'c9'")), {
+        root: (name) => ({
+          bound: name === 'spaceStore' || name === 'routeStore',
+          value: name === 'spaceStore' ? { spacePath: '/space/s1' } : { params: {}, query: {}, templateSegments: [] },
+        }),
+        call: (name, args) =>
+          listFunctions()
+            .find((f) => f.name === name)
+            ?.impl(args, { context: {}, stores: {} }),
+      }) as string,
+      'http://we.test',
+    );
+    expect(url.searchParams.get('id')).toBe('c9');
+    expect(url.searchParams.get('call')).toBe('c9');
+  });
+
+  /*
     What the panel holds, on the button that opens it: how many suggestions are waiting for somebody
     to keep or drop them, and a spinner while a pass runs — both at once. Counted for the conversation
     the panel itself shows, so the number is what opening it will list. No badge at zero: a 0 is a
@@ -502,7 +541,9 @@ describe('the Coasys cartridge', () => {
 
     it('is carried by every navigation the tree makes, so choosing another thing stays on the canvas', () => {
       const evaluate = at([], { view: 'canvas' });
-      expect(evaluate({ $: callPath("'c9'") })).toBe('/space/s1/record/CollectionBlock?kind=call&id=c9&view=canvas');
+      expect(evaluate({ $: callPath("'c9'") })).toBe(
+        '/space/s1/record/CollectionBlock?kind=call&id=c9&call=c9&view=canvas',
+      );
       expect(evaluate({ $: personPath("'did:ada'") })).toBe('/space/s1/person?did=did:ada&view=canvas');
       expect(evaluate({ $: groupPath('calls') })).toBe('/space/s1/calls?view=canvas');
       expect(at([], {})({ $: groupPath('calls') })).toBe('/space/s1/calls');

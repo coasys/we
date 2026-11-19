@@ -322,6 +322,13 @@ const INTERPRETATION_SUBJECT =
   'routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : ' +
   'spaceStore.root)';
 
+/**
+ * Whether the space has transcription on. The panel the button opens belongs to the transcribe
+ * module, and `launchModule` opens nothing for a module the space has turned off, so the button is
+ * not offered there.
+ */
+const TRANSCRIBE_ON = "'transcribe' in spaceStore.activeModules";
+
 /** How many suggestions on it nobody has kept or dropped yet. */
 const WAITING = `count(modules.transcribe.proposalsFor[${INTERPRETATION_SUBJECT}])`;
 
@@ -352,44 +359,50 @@ export const callBarAside = (callId: string): SchemaNode[] => [
     },
   },
   {
-    type: 'we-tooltip',
-    props: { content: 'Interpretation', placement: 'bottom' },
-    children: [
-      {
-        type: 'we-button',
-        props: {
-          variant: 'ghost',
-          size: 'md',
-          square: { $: `!${WAITING}` },
-          label: {
-            $: `${WAITING} ? \`Interpretation, \${${WAITING}} \${plural(${WAITING}, 'suggestion', 'suggestions')} to review\` : 'Interpretation'`,
-          },
-          expanded: { $: 'modules.transcribe.extractionOpen' },
-          onClick: { $invoke: 'spaceStore.launchModule', args: ['transcribe:extraction'] },
-        },
+    type: '$if',
+    props: {
+      condition: { $: TRANSCRIBE_ON },
+      then: {
+        type: 'we-tooltip',
+        props: { content: 'Interpretation', placement: 'bottom' },
         children: [
           {
-            type: '$if',
+            type: 'we-button',
             props: {
-              condition: { $: 'modules.transcribe.passRunning' },
-              then: { type: 'we-animated-icon', props: { name: 'spinner' } },
-              else: { type: 'we-icon', props: { name: 'sparkle' } },
-            },
-          },
-          {
-            type: '$if',
-            props: {
-              condition: { $: WAITING },
-              then: {
-                type: 'we-badge',
-                props: { size: 'xs', variant: 'solid', tone: 'accent' },
-                children: [{ $: WAITING }],
+              variant: 'ghost',
+              size: 'md',
+              square: { $: `!${WAITING}` },
+              label: {
+                $: `${WAITING} ? \`Interpretation, \${${WAITING}} \${plural(${WAITING}, 'suggestion', 'suggestions')} to review\` : 'Interpretation'`,
               },
+              expanded: { $: 'modules.transcribe.extractionOpen' },
+              onClick: { $invoke: 'spaceStore.launchModule', args: ['transcribe:extraction'] },
             },
+            children: [
+              {
+                type: '$if',
+                props: {
+                  condition: { $: 'modules.transcribe.passRunning' },
+                  then: { type: 'we-animated-icon', props: { name: 'spinner' } },
+                  else: { type: 'we-icon', props: { name: 'sparkle' } },
+                },
+              },
+              {
+                type: '$if',
+                props: {
+                  condition: { $: WAITING },
+                  then: {
+                    type: 'we-badge',
+                    props: { size: 'xs', variant: 'solid', tone: 'accent' },
+                    children: [{ $: WAITING }],
+                  },
+                },
+              },
+            ],
           },
         ],
       },
-    ],
+    },
   },
   exportTranscriptButton(callId),
 ];
