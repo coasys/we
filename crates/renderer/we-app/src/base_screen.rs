@@ -103,8 +103,30 @@ pub enum Owned {
     Given(Arc<dyn OwnedExecutor>),
 }
 
+/// What the window asks of a connect flow. [`ConnectFlow`] is the real
+/// one; unit tests put a stand-in in the slot.
+trait LiveConnect: Send {
+    fn phase(&self) -> ConnectPhase;
+    fn answer(&self, text: String);
+    fn take_connection(&self) -> Option<Connection>;
+}
+
+impl LiveConnect for ConnectFlow {
+    fn phase(&self) -> ConnectPhase {
+        ConnectFlow::phase(self)
+    }
+
+    fn answer(&self, text: String) {
+        ConnectFlow::answer(self, text)
+    }
+
+    fn take_connection(&self) -> Option<Connection> {
+        ConnectFlow::take_connection(self)
+    }
+}
+
 struct LiveFlow {
-    flow: ConnectFlow,
+    flow: Box<dyn LiveConnect>,
     attempt: u64,
     /// The address the flow dials (`--executor-url` or the owned one).
     url: Option<String>,
@@ -720,7 +742,11 @@ fn spawn_flow(
     let url = settings.url.clone();
     let flow = ConnectFlow::start(handle, settings, move || ctx.request_repaint());
     let mut slot = lock_slot(slot);
-    slot.live = Some(LiveFlow { flow, attempt, url });
+    slot.live = Some(LiveFlow {
+        flow: Box::new(flow),
+        attempt,
+        url,
+    });
     slot.seen = None;
 }
 

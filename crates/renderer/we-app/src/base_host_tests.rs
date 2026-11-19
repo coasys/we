@@ -847,3 +847,130 @@ fn only_a_flow_to_the_owned_executor_is_approved() {
     assert!(!dials_owned(None, Some(owned)));
     assert!(!dials_owned(None, None));
 }
+
+/// A flow that asks for capability request `req-1` and keeps what it is
+/// answered.
+struct AskingFlow(Arc<Mutex<Vec<String>>>);
+
+impl super::LiveConnect for AskingFlow {
+    fn phase(&self) -> we_ad4m::connect::ConnectPhase {
+        we_ad4m::connect::ConnectPhase::Asking {
+            ask: we_ad4m::connect::Ask::CapabilityCode {
+                request_id: "req-1".into(),
+            },
+            note: None,
+        }
+    }
+
+    fn answer(&self, text: String) {
+        self.0.lock().unwrap().push(text);
+    }
+
+    fn take_connection(&self) -> Option<we_ad4m::Connection> {
+        None
+    }
+}
+
+/// The executor this window runs, at `url`, ready; counts approvals.
+struct ApproveSpy {
+    url: Option<String>,
+    approvals: Mutex<Vec<String>>,
+}
+
+impl super::OwnedExecutor for ApproveSpy {
+    fn state(&self) -> we_session::ExecutorState {
+        we_session::ExecutorState::Ready {
+            agent: Some(we_session::AgentState::Unlocked),
+        }
+    }
+    fn changes(&self) -> u64 {
+        0
+    }
+    fn start(&self) -> bool {
+        false
+    }
+    fn refresh(&self) {}
+    fn url(&self) -> Option<String> {
+        self.url.clone()
+    }
+    fn set_waker(&self, _waker: Arc<dyn Fn() + Send + Sync>) {}
+    fn starts(&self) -> u64 {
+        0
+    }
+    fn pid(&self) -> Option<u32> {
+        None
+    }
+    fn approve(
+        &self,
+        request_id: &str,
+        _scope: &we_ad4m::connect::GrantScope,
+    ) -> Result<String, String> {
+        self.approvals.lock().unwrap().push(request_id.to_string());
+        Ok("code-1".into())
+    }
+}
+
+/// A window running an executor at `owned`, whose flow (to `flow_url`)
+/// asks for capability request `req-1`; one poll, then a short wait for
+/// the approval thread. Returns (approvals, answers, whether the prompt
+/// shows).
+fn approve_round(owned: Option<&str>, flow_url: Option<&str>) -> (Vec<String>, Vec<String>, bool) {
+    let spy = Arc::new(ApproveSpy {
+        url: owned.map(str::to_string),
+        approvals: Mutex::default(),
+    });
+    let bundle =
+        we_template::Bundle::parse(include_str!("../../../../bundles/coasys.bundle.json")).unwrap();
+    let tokens = tempfile::tempdir().unwrap();
+    let settings = ConnectSettings {
+        token_dir: Some(tokens.path().to_path_buf()),
+        port_file: Some(tokens.path().join("no-port-file")),
+        ..ConnectSettings::default()
+    };
+    let mut screen = super::BaseScreen::open_owned(
+        egui::Context::default(),
+        &bundle,
+        settings,
+        None,
+        Some(super::Owned::Given(spy.clone())),
+    );
+    let answers = Arc::new(Mutex::new(Vec::new()));
+    {
+        let mut slot = super::lock_slot(&screen.slot);
+        slot.live = Some(super::LiveFlow {
+            flow: Box::new(AskingFlow(answers.clone())),
+            attempt: 1,
+            url: flow_url.map(str::to_string),
+        });
+        slot.seen = None;
+    }
+    screen.poll();
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    let prompt = screen.ask().is_some();
+    let approvals = spy.approvals.lock().unwrap().clone();
+    let answers = answers.lock().unwrap().clone();
+    (approvals, answers, prompt)
+}
+
+/// Round 2 (Lal B1 gap): the production poll approves the flow's request
+/// only when the flow dials the executor this window runs. Another
+/// address, or an unknown one, gets no approval and keeps the code
+/// prompt; the owned address gets one approval and the code is answered.
+/// A poll that skipped `dials_owned` would approve the mismatched flows.
+#[test]
+fn the_poll_approves_only_a_flow_to_the_owned_executor() {
+    let owned = "http://127.0.0.1:12000";
+    let (approvals, answers, prompt) = approve_round(Some(owned), Some("http://127.0.0.1:4000"));
+    assert!(approvals.is_empty(), "approved a flow to another address");
+    assert!(answers.is_empty());
+    assert!(prompt, "the code prompt was hidden");
+
+    let (approvals, _, _) = approve_round(Some(owned), None);
+    assert!(approvals.is_empty(), "approved a flow with no address");
+    let (approvals, _, _) = approve_round(None, None);
+    assert!(approvals.is_empty(), "approved with no owned address");
+
+    let (approvals, answers, _) = approve_round(Some(owned), Some(owned));
+    assert_eq!(approvals, vec!["req-1".to_string()]);
+    assert_eq!(answers, vec!["code-1".to_string()]);
+}
