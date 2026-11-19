@@ -182,6 +182,12 @@ struct Inner {
     /// [`BaseController::resume`] runs once per start.
     resumed: bool,
     online: Option<OnlineProbe>,
+    /// What the probe said last. A change to online with the offline
+    /// stage up retries (see [`BaseController::poll_network`]).
+    was_online: bool,
+    /// The attempt whose connection the window holds now, `0` for none.
+    /// A hand-back names it; one from an older session does nothing.
+    session: u64,
 }
 
 /// A connect attempt the host should start. `attempt` is the id a later
@@ -275,6 +281,8 @@ impl BaseController {
                 auto: true,
                 resumed: false,
                 online: None,
+                was_online: true,
+                session: 0,
             }),
             memory,
             model: Arc::new(BaseModel::new()),
@@ -418,7 +426,9 @@ impl BaseController {
     }
 
     pub fn note_connected(&self, attempt: u64) {
-        self.finish(attempt, Stage::Session, "", "");
+        if self.finish(attempt, Stage::Session, "", "") {
+            self.lock().session = attempt;
+        }
     }
 
     /// `false` when `attempt` is not the one in flight (it was already
@@ -436,42 +446,62 @@ impl BaseController {
     }
 
     /// The flow already handed the connection to the window, so the attempt
-    /// id is spent. A later refusal of that same session — the launcher
-    /// removed the grant — still returns the screen to connect.
-    /// A refusal while no session is open does nothing.
-    ///
-    /// Slice 2 behaviour (stub for the failing tests): `attempt` is not read.
-    pub fn note_adopted_refusal(&self, attempt: u64, reason: &str) {
-        let _ = attempt;
+    /// id is spent. A later refusal of that same session (the launcher
+    /// removed the grant) returns the screen to the list, with the reason.
+    /// The list stays up: it does not jump back to the place that refused.
+    /// A refusal for a session that is not the one open does nothing.
+    pub fn note_adopted_refusal(&self, attempt: u64, reason: &str) -> bool {
         let mut inner = self.lock();
-        if inner.stage != Stage::Session {
-            return;
+        if !hand_back(&mut inner, attempt) {
+            return false;
         }
-        inner.attempt = 0;
-        inner.busy = false;
-        // The list is shown, not jumped past again to the place that refused.
         inner.auto = false;
         inner.stage = Stage::Connect;
         inner.error = reason.to_string();
         inner.offline_reason.clear();
-        inner.page.clear();
         self.publish(&inner);
+        true
     }
 
-    /// The session that `attempt` opened lost its executor.
-    ///
-    /// Slice 2 behaviour (stub for the failing tests): nothing changes.
+    /// The session that `attempt` opened lost its executor (it stopped,
+    /// or its socket stayed down). The offline stage takes the window back,
+    /// with "Try again" for the place chosen. The host drops the session.
+    /// `false` when that session is not the one open.
     pub fn note_session_lost(&self, attempt: u64) -> bool {
-        let _ = attempt;
-        false
+        let mut inner = self.lock();
+        if !hand_back(&mut inner, attempt) {
+            return false;
+        }
+        inner.stage = Stage::Offline;
+        inner.error.clear();
+        inner.offline_reason = UNREACHABLE.to_string();
+        self.publish(&inner);
+        true
     }
 
-    /// The host's probe says the network is back while the offline stage
-    /// is up: the place chosen again, as "Try again" would.
-    ///
-    /// Slice 2 behaviour (stub for the failing tests): never.
+    /// Ask the host's probe again. When it changed to online while the
+    /// offline stage is up, reach the place chosen again, as "Try again"
+    /// would (TS: the window's `online` event). Not a click. Without a probe
+    /// the network counts as online and this never starts anything.
     pub fn poll_network(&self) -> Option<HostJob> {
-        None
+        let mut inner = self.lock();
+        let probe = inner.online.clone()?;
+        let up = probe();
+        let was = std::mem::replace(&mut inner.was_online, up);
+        if !up || was || inner.stage != Stage::Offline || inner.busy {
+            return None;
+        }
+        let row = chosen_row(&inner)?;
+        let job = reach(&mut inner, row, false);
+        self.publish(&inner);
+        job
+    }
+
+    /// Whether the host should keep asking [`BaseController::poll_network`]:
+    /// a probe is set and the offline stage is up.
+    pub fn watches_network(&self) -> bool {
+        let inner = self.lock();
+        inner.online.is_some() && inner.stage == Stage::Offline
     }
 
     fn finish(&self, attempt: u64, stage: Stage, error: &str, offline: &str) -> bool {
@@ -501,6 +531,21 @@ impl BaseController {
     }
 }
 
+/// Close the open session `attempt`, if it is the one open: no session,
+/// not busy, no page, and a new generation, so a permit from before the
+/// hand-back no longer matches.
+fn hand_back(inner: &mut Inner, attempt: u64) -> bool {
+    if attempt == 0 || inner.stage != Stage::Session || inner.session != attempt {
+        return false;
+    }
+    inner.session = 0;
+    inner.attempt = 0;
+    inner.busy = false;
+    inner.page.clear();
+    inner.generation = inner.generation.saturating_add(1);
+    true
+}
+
 fn chosen_row(inner: &Inner) -> Option<ConnectionRow> {
     inner
         .rows
@@ -514,6 +559,7 @@ fn chosen_row(inner: &Inner) -> Option<ConnectionRow> {
 fn reach(inner: &mut Inner, row: ConnectionRow, chosen: bool) -> Option<HostJob> {
     let offline = inner.online.as_ref().is_some_and(|online| !online());
     if offline && row.kind.as_ref() != ConnectionRow::this_computer().kind.as_ref() {
+        inner.was_online = false;
         inner.busy = false;
         inner.stage = Stage::Offline;
         inner.error.clear();
@@ -528,6 +574,7 @@ fn begin_attempt(inner: &mut Inner, chosen: bool, connection: ConnectionRow) -> 
     let next = inner.generation.checked_add(1)?;
     inner.generation = next;
     inner.attempt = next;
+    inner.session = 0;
     inner.busy = true;
     inner.stage = Stage::HandingOff;
     inner.error.clear();
