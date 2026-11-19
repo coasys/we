@@ -151,3 +151,22 @@ Commands ran from `crates/renderer` unless a command names another directory. `C
 - No password entry (slice 7). No identity or first-run work (slices 5 and 6). The agent is made outside the window (the live test uses the admin credential).
 - The stop sends no SIGTERM between closing stdin and the kill (the crate has `forbid(unsafe_code)`, and std has no SIGTERM). With `--watch-stdin` the executor stops cleanly when stdin closes.
 - The permit binds the mount name, not a mount incarnation (Lal P2 on slice 1). This slice does not change it.
+
+# egui Connect, slice 5: first run, skip and pages
+
+## What this slice does
+
+- The window reads the identity only when it runs the executor (`--executor-binary`). With `--executor-url` it keeps no identity source: no first run, as in TS when `host.identity` is absent.
+- The read: the supervisor, as the operator (the admin credential), calls `identity.status` and `identity.devices` on its own ready run. Both are in the pinned executor (ad4m 0.13.1-staging.12 and later). It keeps the DID (or none), whether the executor trusts a key for its identity store, and for each device in force (not revoked, not a bot) only whether it is this computer's. No device key, key id, enc key or log head is kept. An answer of another shape is an error, never an empty identity. The executor's own error words go to the log only, not to the screen.
+- The order is TS `evaluate`: the executor is ready → "Loading…" while the identity is read (three tries, 300 ms apart, off the UI thread) → a known identity with no DID and no "Skip for now" kept is B's first run → otherwise the place chosen (not a click) or the list.
+- A read that failed is not an empty identity. The list shows "Couldn't read your identity: …", and "Try again" reads it again. A fresh executor has no agent yet, so its read fails. When the agent's state changes while the list shows (the agent was made or unlocked), the identity is read again. An answer that comes after a newer read, or after the executor stopped or started again, changes nothing. A new executor process is read again.
+- Doors. No door opens in this slice: the identity windows are slice 6. Each says the first reason that holds: "Available once Coasys has started.", "Coasys on this computer is locked. This app can't unlock it yet.", "Coasys on this computer has no agent yet.", the custody service's no-store sentence (Create only, when the executor has no identity store or no key for it), else "Not available in this app yet.". A door called anyway runs nothing. The first run then says the reason (`lastOutcome` failed).
+- "Skip for now" is kept in the base file as `"skippedIdentity": true`, written by the same writer thread as the chosen id. The next start reads it, and the first run does not show again.
+- Devices and Security are read-only: their only action is Back. Devices lists the key log's devices in force: "This computer", or "Unnamed device" (the log has no names; those are in the identity's private record). Security says "Set up" or "Not set up" (never the DID), "This app can't read where your master key is kept yet.", and the no-store sentence when it applies. The DID is in the store (B's header tests `did != ''`, as in TS), but no screen draws it.
+
+## Not in this slice
+
+- The custody service (`we-custody`) is not bound. So the vault facts are not read: where the master key is kept (`holdsMaster`, `unlock`), an identity made here but not published yet (`unpublished` stays empty), and the device names, kinds and master-key holders of the private record (those need the custody service of ad4m `658e2941c`, which is not released).
+- Identity windows, create / show-code / restore (slice 6). Passwords (slice 7).
+- The header's Devices and Security show only with a DID. The pinned executor gets a DID only by publishing an identity, so the pages are tested with stand-ins only.
+- The permit binds the mount name, not a mount incarnation (Lal P2 on slice 1). This slice does not change it.
