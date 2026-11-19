@@ -46,20 +46,34 @@ pub trait OwnedExecutor: Send + Sync {
     /// Approve the window's own capability request `request_id` for
     /// `scope`, as the operator; the code that redeems it. Blocks.
     fn approve(&self, request_id: &str, scope: &GrantScope) -> Result<String, String>;
+    /// Which process this is: grows with every executor process started
+    /// (a start, a restart). `0` before the first.
+    fn incarnation(&self) -> u64 {
+        0
+    }
+    /// The state and the process it is about, read together.
+    fn state_at(&self) -> (ExecutorState, u64) {
+        (self.state(), self.incarnation())
+    }
+}
+
+/// The supervisor's state as the controller reads it.
+fn lifecycle_state(state: Lifecycle) -> ExecutorState {
+    match state {
+        Lifecycle::Starting => ExecutorState::Starting,
+        Lifecycle::Ready { agent } => ExecutorState::Ready {
+            agent: agent.map(|agent| match agent {
+                Agent::Unlocked => AgentState::Unlocked,
+                Agent::Locked => AgentState::Locked,
+            }),
+        },
+        Lifecycle::Failed { reason, stopped } => ExecutorState::Failed { reason, stopped },
+    }
 }
 
 impl OwnedExecutor for Supervisor {
     fn state(&self) -> ExecutorState {
-        match Supervisor::state(self) {
-            Lifecycle::Starting => ExecutorState::Starting,
-            Lifecycle::Ready { agent } => ExecutorState::Ready {
-                agent: agent.map(|agent| match agent {
-                    Agent::Unlocked => AgentState::Unlocked,
-                    Agent::Locked => AgentState::Locked,
-                }),
-            },
-            Lifecycle::Failed { reason, stopped } => ExecutorState::Failed { reason, stopped },
-        }
+        lifecycle_state(Supervisor::state(self))
     }
 
     fn changes(&self) -> u64 {
@@ -92,6 +106,15 @@ impl OwnedExecutor for Supervisor {
 
     fn approve(&self, request_id: &str, scope: &GrantScope) -> Result<String, String> {
         Supervisor::approve(self, request_id, scope)
+    }
+
+    fn incarnation(&self) -> u64 {
+        Supervisor::incarnation(self)
+    }
+
+    fn state_at(&self) -> (ExecutorState, u64) {
+        let (state, run) = Supervisor::state_at(self);
+        (lifecycle_state(state), run)
     }
 }
 
@@ -212,7 +235,8 @@ impl BaseScreen {
         if let Some(owned) = &owned {
             let ctx_wake = ctx.clone();
             owned.set_waker(Arc::new(move || ctx_wake.request_repaint()));
-            controller.own_executor(owned.state());
+            let (state, run) = owned.state_at();
+            controller.own_executor_run(state, run);
         }
         let slot = Arc::new(Mutex::new(SlotState {
             live: None,
@@ -289,7 +313,10 @@ impl BaseScreen {
             let changes = owned.changes();
             if changes != self.owned_seen {
                 self.owned_seen = changes;
-                let job = self.controller.note_executor(owned.state());
+                // State and process together: a restart the window never
+                // saw as Starting still spends the old session and flow.
+                let (state, run) = owned.state_at();
+                let job = self.controller.note_executor_run(state, run);
                 self.drop_obsolete_flow();
                 if let Some(job) = job {
                     self.spawn(job);

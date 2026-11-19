@@ -499,6 +499,18 @@ impl Supervisor {
         self.shared.lock().lifecycle.clone()
     }
 
+    /// Which executor process: grows with every process started (a start,
+    /// an exit-75 restart). `0` before the first.
+    pub fn incarnation(&self) -> u64 {
+        self.shared.lock().run
+    }
+
+    /// [`Supervisor::state`] and [`Supervisor::incarnation`], read together.
+    pub fn state_at(&self) -> (Lifecycle, u64) {
+        let status = self.shared.lock();
+        (status.lifecycle.clone(), status.run)
+    }
+
     /// Grows on every change [`Supervisor::state`] reports.
     pub fn changes(&self) -> u64 {
         self.shared.lock().changes

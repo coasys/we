@@ -423,3 +423,32 @@ fn a_restart_under_a_session_takes_the_window_back() {
         .expect("ready reaches the place chosen again");
     assert!(!job.chosen);
 }
+
+/// Round 3 (Lal P2): the host saw only Ready, but in a new executor
+/// process (a restart between two looks). The session on the old process
+/// ends, and the place chosen is reached again on the new one.
+#[test]
+fn a_new_executor_process_ends_the_old_session_even_if_only_ready_was_seen() {
+    let controller = BaseController::with_memory(
+        BUILTIN_BUNDLE,
+        vec![ConnectionRow::this_computer()],
+        Arc::new(NoMemory),
+    );
+    controller.own_executor_run(ready(), 1);
+    let mut open = open_with(controller);
+    open.click("This computer");
+    let attempt = open.dials()[0].attempt;
+    open.controller.note_connected(attempt);
+    assert!(open.controller.in_session());
+    // Same process, Ready again: nothing.
+    assert!(open.controller.note_executor_run(ready(), 1).is_none());
+    assert!(open.controller.in_session());
+    // A new process, seen only as Ready.
+    let job = open
+        .controller
+        .note_executor_run(ready(), 2)
+        .expect("the place chosen, on the new process");
+    assert!(!open.controller.in_session(), "the old session survived");
+    assert!(!job.chosen);
+    assert!(!open.controller.note_session_lost(attempt));
+}

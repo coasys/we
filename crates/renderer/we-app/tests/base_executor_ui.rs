@@ -35,6 +35,7 @@ struct Stand {
     refreshes: AtomicU64,
     url: Mutex<Option<String>>,
     waker: Mutex<Option<Waker>>,
+    run: AtomicU64,
 }
 
 impl Stand {
@@ -46,7 +47,19 @@ impl Stand {
             refreshes: AtomicU64::new(0),
             url: Mutex::new(None),
             waker: Mutex::new(None),
+            run: AtomicU64::new(1),
         })
+    }
+
+    /// The executor restarts (a new process) and is ready again, all
+    /// between two frames: the window sees only the newest state, Ready,
+    /// and a new incarnation.
+    fn restart_unseen(&self) {
+        self.run.fetch_add(1, Ordering::SeqCst);
+        self.changes.fetch_add(1, Ordering::SeqCst);
+        self.set(ExecutorState::Ready {
+            agent: Some(AgentState::Unlocked),
+        });
     }
 
     fn set(&self, state: ExecutorState) {
@@ -95,6 +108,10 @@ impl OwnedExecutor for Stand {
 
     fn approve(&self, _request_id: &str, _scope: &GrantScope) -> Result<String, String> {
         Err("a stand-in approves nothing".into())
+    }
+
+    fn incarnation(&self) -> u64 {
+        self.run.load(Ordering::SeqCst)
     }
 }
 
@@ -413,4 +430,79 @@ fn a_connected_flow_queued_before_a_stop_is_not_adopted() {
     h.run_steps(3);
     assert_eq!(h.state().as_ref().unwrap().stage(), "connect");
     assert!(h.query_by_label_contains("Coasys stopped").is_some());
+}
+
+/// Round 3 (Lal P2: a restart between two polls): a space list is open on
+/// the executor this window runs; the executor restarts and is ready again
+/// with no frame in between. The next frame must end that session (its
+/// process is gone), not keep it because the state still reads Ready.
+/// Live (`EXECUTOR_PATH`).
+#[test]
+fn a_restart_unseen_between_frames_ends_the_session() {
+    let Some(executor) = we_ad4m::testkit::start_executor() else {
+        return;
+    };
+    let rt = we_ad4m::Runtime::new().unwrap();
+    let writer = we_ad4m::testkit::connect(&rt, &executor.url);
+    we_ad4m::testkit::seed_space(&rt, &writer, "s4-restart");
+    drop(writer);
+    let tokens = tempfile::tempdir().unwrap();
+    let stand = Stand::new(ExecutorState::Ready {
+        agent: Some(AgentState::Unlocked),
+    });
+    *stand.url.lock().unwrap() = Some(executor.url.clone());
+    let mut h = harness(args(tokens.path(), None, None), Some(stand.clone()));
+    step_until(&mut h, "the list", Duration::from_secs(10), |h| {
+        h.query_by_label_contains("This computer").is_some()
+    });
+    h.get_by_label_contains("This computer").click();
+    step_until(&mut h, "the picker", Duration::from_secs(60), |h| {
+        h.state().as_ref().unwrap().stage() == "pick"
+    });
+    stand.restart_unseen();
+    h.step();
+    assert_eq!(
+        h.state().as_ref().unwrap().stage(),
+        "connect",
+        "the session outlived its executor's restart"
+    );
+}
+
+/// Round 3: a flow that connected to the old process is not adopted after
+/// a restart the window never saw as Starting.
+#[test]
+fn a_connected_flow_queued_across_an_unseen_restart_is_not_adopted() {
+    let Some(executor) = we_ad4m::testkit::start_executor() else {
+        return;
+    };
+    let rt = we_ad4m::Runtime::new().unwrap();
+    let writer = we_ad4m::testkit::connect(&rt, &executor.url);
+    we_ad4m::testkit::seed_space(&rt, &writer, "s4-queued");
+    drop(writer);
+    let tokens = tempfile::tempdir().unwrap();
+    let stand = Stand::new(ExecutorState::Ready {
+        agent: Some(AgentState::Unlocked),
+    });
+    *stand.url.lock().unwrap() = Some(executor.url.clone());
+    let mut h = harness(args(tokens.path(), None, None), Some(stand.clone()));
+    step_until(&mut h, "the list", Duration::from_secs(10), |h| {
+        h.query_by_label_contains("This computer").is_some()
+    });
+    h.get_by_label_contains("This computer").click();
+    h.step();
+    let start = Instant::now();
+    while !matches!(
+        h.state().as_ref().unwrap().flow_phase(),
+        Some(we_ad4m::connect::ConnectPhase::Connected { .. })
+    ) {
+        assert!(start.elapsed() < Duration::from_secs(60), "never connected");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    stand.restart_unseen();
+    h.step();
+    assert_eq!(
+        h.state().as_ref().unwrap().stage(),
+        "connect",
+        "a connection to the old process was adopted"
+    );
 }

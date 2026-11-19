@@ -196,6 +196,8 @@ struct Inner {
     /// runs none (it attaches to one someone else runs), and executor
     /// changes do nothing.
     executor: Option<ExecutorState>,
+    /// Which executor process the state is about ([`BaseController::note_executor_run`]).
+    executor_run: u64,
 }
 
 /// A connect attempt the host should start. `attempt` is the id a later
@@ -329,6 +331,7 @@ impl BaseController {
                 was_online: true,
                 session: 0,
                 executor: None,
+                executor_run: 0,
             }),
             memory,
             model: Arc::new(BaseModel::new()),
@@ -508,6 +511,31 @@ impl BaseController {
             _ => {}
         }
         self.publish(&inner);
+    }
+
+    /// [`BaseController::own_executor`], in executor process `run`.
+    pub fn own_executor_run(&self, state: ExecutorState, run: u64) {
+        self.lock().executor_run = run;
+        self.own_executor(state);
+    }
+
+    /// The host's executor is `state`, in process `run`, which grows with
+    /// every executor process the host starts. The host may see only the
+    /// newest state: a restart that went Starting → Ready between two of
+    /// its looks reads as Ready. So a new `run` counts as a restart
+    /// whatever the state: the session or the attempt on the old process
+    /// is spent first (as [`ExecutorState::Starting`] does), then `state`
+    /// applies. Ignored when the host runs none.
+    pub fn note_executor_run(&self, state: ExecutorState, run: u64) -> Option<HostJob> {
+        let restarted = {
+            let mut inner = self.lock();
+            inner.executor.as_ref()?;
+            std::mem::replace(&mut inner.executor_run, run) != run
+        };
+        if restarted {
+            let _ = self.note_executor(ExecutorState::Starting);
+        }
+        self.note_executor(state)
     }
 
     /// The host's executor changed to `state` (TS `executor.subscribe`).
