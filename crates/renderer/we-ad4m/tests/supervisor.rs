@@ -1050,3 +1050,39 @@ fn the_restart_budget_is_a_rolling_window() {
     }
     sup.stop();
 }
+
+/// Round 3 (Lal P3: loose version parsing): versions are read strictly
+/// (three numeric core parts), with pre-release and build suffixes
+/// handled on purpose: a build suffix (`+…`) never changes the answer; a
+/// higher core accepts any pre-release (`-dev`, `-rc.1`); on 0.13.1 only
+/// `staging.N` with N ≥ 12 (or no pre-release) passes.
+#[test]
+fn the_minimum_executor_version_is_read_strictly() {
+    use we_ad4m::supervisor::executor_version_ok;
+    for ok in [
+        "ad4m 0.13.1-staging.13+g1a2b3c",
+        "ad4m 0.13.1+20261119",
+        "ad4m 0.14.0-dev",
+        "ad4m 0.14.0-dev+local",
+    ] {
+        assert!(
+            executor_version_ok(ok).is_ok(),
+            "{ok}: {:?}",
+            executor_version_ok(ok)
+        );
+    }
+    for refused in [
+        "ad4m 0.13.q.1",
+        "ad4m 0.13.1.2",
+        "ad4m 0.13",
+        "ad4m 0.13.1-dev",
+        "ad4m 0.13.1-staging.11+g1a2b3c",
+        "ad4m 0.13.1-staging.x",
+        "ad4m 0.12.99+0.13.1",
+    ] {
+        assert!(
+            executor_version_ok(refused).is_err(),
+            "{refused} was accepted"
+        );
+    }
+}

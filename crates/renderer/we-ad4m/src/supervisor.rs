@@ -205,23 +205,46 @@ pub fn executor_version_ok(said: &str) -> Result<(), String> {
             said.trim()
         ));
     };
-    let (core, pre) = match version.split_once('-') {
+    // `<major>.<minor>.<patch>[-<pre-release>][+<build>]`. The build part
+    // never changes the answer.
+    let unreadable = || {
+        Err(format!(
+            "Couldn't read the ad4m version {version:?} of this executor. {need}"
+        ))
+    };
+    let without_build = version.split_once('+').map_or(version, |(v, _)| v);
+    let (core, pre) = match without_build.split_once('-') {
         Some((core, pre)) => (core, Some(pre)),
-        None => (version, None),
+        None => (without_build, None),
     };
-    let numbers: Vec<u64> = core.split('.').filter_map(|n| n.parse().ok()).collect();
+    let parts: Vec<&str> = core.split('.').collect();
+    let numbers: Option<Vec<u64>> = parts
+        .iter()
+        .map(|part| {
+            (!part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()))
+                .then(|| part.parse().ok())
+                .flatten()
+        })
+        .collect();
+    let (Some(numbers), 3) = (numbers, parts.len()) else {
+        return unreadable();
+    };
+    if pre.is_some_and(str::is_empty) {
+        return unreadable();
+    }
     let too_old = || Err(format!("This executor is ad4m {version}. {need}"));
-    let [major, minor, patch] = numbers[..] else {
-        return too_old();
-    };
-    let newer = match (major, minor, patch).cmp(&(0, 13, 1)) {
+    let newer = match (numbers[0], numbers[1], numbers[2]).cmp(&(0, 13, 1)) {
+        // A later release, any pre-release of it (`-dev`, `-rc.1`).
         std::cmp::Ordering::Greater => true,
         std::cmp::Ordering::Less => false,
-        // 0.13.1 itself, or one of its staging builds from .12 on.
+        // 0.13.1 itself, or one of its staging builds from .12 on. Any
+        // other pre-release of 0.13.1 (`-dev`, `-rc.1`) cannot be placed
+        // against staging.12 and is refused.
         std::cmp::Ordering::Equal => match pre {
             None => true,
             Some(pre) => pre
                 .strip_prefix("staging.")
+                .filter(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
                 .and_then(|n| n.parse::<u64>().ok())
                 .is_some_and(|n| n >= 12),
         },
@@ -1212,7 +1235,8 @@ fn fresh_secret() -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-#[cfg(test)]
+// The tests run `sleep` and `true`: unix only.
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use std::process::Command;
@@ -1253,5 +1277,47 @@ mod tests {
             None,
             "the address of a child that exited"
         );
+    }
+
+    /// The same for a child that exited and that nobody has reaped yet
+    /// (a zombie): `admin_url` is the first to look.
+    #[test]
+    fn admin_url_is_none_for_an_exited_child_not_yet_reaped() {
+        let child = Command::new("true").spawn().unwrap();
+        let pid = child.id();
+        wait_until_exited(pid);
+        let mut ended = status(child);
+        assert_eq!(
+            admin_url(&mut ended, 1),
+            None,
+            "the address of a child that exited, unreaped"
+        );
+    }
+
+    /// Wait until `pid` has exited, without reaping it. On Linux: until
+    /// /proc says it is a zombie. Elsewhere: half a second (`true` exits
+    /// at once).
+    fn wait_until_exited(pid: u32) {
+        #[cfg(target_os = "linux")]
+        {
+            let start = Instant::now();
+            loop {
+                let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).unwrap();
+                let state = stat.rsplit_once(") ").map(|(_, rest)| rest.as_bytes()[0]);
+                if state == Some(b'Z') {
+                    return;
+                }
+                assert!(
+                    start.elapsed() < Duration::from_secs(10),
+                    "{pid} never exited"
+                );
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = pid;
+            std::thread::sleep(Duration::from_millis(500));
+        }
     }
 }
