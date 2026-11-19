@@ -299,6 +299,15 @@ fn the_network_coming_back_retries_the_place_chosen() {
         open.controller.poll_network().is_none(),
         "one retry per return"
     );
+
+    // The place still does not answer: offline again. The network stayed
+    // up, so the probe does not retry again (no retry loop); Try again does.
+    assert!(open.controller.note_unreachable(job.attempt));
+    assert_eq!(stage(&open.controller), "offline");
+    assert!(
+        open.controller.poll_network().is_none(),
+        "retried without the network going down and up again"
+    );
 }
 
 /// The network probe acts only on the offline stage: online at the list,
