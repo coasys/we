@@ -44,6 +44,9 @@ const describeProperty = (p: SHACLShape['properties'][number]) => ({
   flagValue: p.hasValue ?? null,
   hint: p.interpretationHint ?? null,
   identity: p.identity ?? false,
+  // The closed value set (`sh:in`) — a compiler that dropped or reordered it would write a shape
+  // the other disagrees with, and a `vocabulary` property keeps it out on both sides.
+  in: p.in ?? null,
 });
 
 const shapeSummary = (cls: unknown) => {

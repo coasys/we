@@ -34,6 +34,9 @@ const { CONTAINMENT_PREDICATE, resolvesPolymorphically } = await import(resolve(
 // Containment is stored as AD4M's own `has_child`; the same translation the compiler applies, so
 // a generated class and a compiled one write the same links.
 const { toAd4mPredicate } = await import(resolve(here, '../src/containment.ts'));
+// `options` → `sh:in` is one rule for the same reason — a generated class and a compiled one must
+// suppress `vocabulary` properties identically, or a stored shape would disagree with its own SDNA.
+const { toAd4mOptions } = await import(resolve(here, '../src/options.ts'));
 
 const ENTITY_DIR = resolve(here, '../src/entities');
 const MANIFEST_DIR = resolve(here, '../../../entities/src/manifest');
@@ -78,6 +81,10 @@ function propertyDecorator(spec) {
   const opts = [`through: ${q(toAd4mPredicate(spec.containment ? CONTAINMENT_PREDICATE : spec.predicate))}`];
   if (spec.required) opts.push('required: true');
   if (spec.identity) opts.push('identity: true');
+  // The closed value set, as `sh:in`. Absent on a `vocabulary` property — its real list is the
+  // space's own, and once the executor enforces `sh:in` a fixed list would reject it (options.ts).
+  const options = toAd4mOptions(spec);
+  if (options) opts.push(`options: [${options.map((o) => `{ value: ${q(o.value)} }`).join(', ')}]`);
   if (spec.format === 'file') opts.push('resolveLanguage: FILE_STORAGE_LANGUAGE');
   if (spec.readAs === 'dataUri') opts.push('transform: fileToDataUri');
   if (spec.interpretationHint !== undefined) opts.push(`interpretationHint: ${q(spec.interpretationHint)}`);

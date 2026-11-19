@@ -109,6 +109,7 @@ export class TaskBlock extends WeNode {
 
   @Property({
     through: 'we://priority',
+    options: [{ value: 'low' }, { value: 'medium' }, { value: 'high' }],
     interpretationHint:
       'Exactly one of: "low", "medium", "high". Use "medium" unless urgency is stated; do not infer it from tone.',
   })

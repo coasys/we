@@ -448,29 +448,21 @@ export function linkKey(link: LinkLike): string {
 }
 
 /**
- * Whether a stored shape says exactly what its manifest can hold: rebuilt from the manifest read back
- * — compiled, and annotated again — it reads the same as what is stored.
+ * Whether a stored shape says nothing a save from WE would lose: rebuilt from the manifest read
+ * — compiled, and annotated again — it says at least what is stored.
  *
  * Compared as the SDK reads a shape (`fromLinks`) rather than link for link, because the executor
  * writes a shape's links itself from its JSON, and how it spells them is its own business; plus the
- * annotations, link for link, since those are this file's. A field, a constraint or an annotation
- * nothing here writes makes the two differ — including one on a predicate the SDK does not read.
+ * annotations, link for link, since those are this file's. Both halves are a subset, not an
+ * equality: a rebuild writes what the compilers now say — `sh:node` for `extends`, `sh:in` for
+ * `options` — that a shape stored before they did was never given, and adding it loses nothing.
+ * Anything stored the rebuild does not say — a field, a constraint or an annotation nothing here
+ * writes — is what a save would lose, and that is what makes a shape not editable.
  */
 export function sameShape(stored: readonly LinkLike[], rebuilt: readonly LinkLike[]): boolean {
-  /*
-    As the SDK reads it, with the property shapes in one order: an executor lists them in its own,
-    and the same shape read in two orders is the same shape. Order is what `sh:order` says, and that
-    is an annotation, compared below.
-  */
   const asRead = (links: readonly LinkLike[]) => {
     const { shapeUri } = nodesOf(links);
-    const json = SHACLShape.fromLinks(links as never, shapeUri).toJSON() as {
-      properties?: { path?: string; name?: string }[];
-    };
-    // By path, then name: several relations can share one path (containment's).
-    const key = (p: { path?: string; name?: string }) => `${p.path ?? ''}\u0000${p.name ?? ''}`;
-    const properties = [...(json.properties ?? [])].sort((x, y) => key(x).localeCompare(key(y)));
-    return JSON.stringify(sortKeys({ ...json, properties }));
+    return SHACLShape.fromLinks(links as never, shapeUri).toJSON();
   };
   const annotations = (links: readonly LinkLike[]) => new Set(links.filter(isAnnotation).map(linkKey));
   const a = annotations(stored);
@@ -479,16 +471,33 @@ export function sameShape(stored: readonly LinkLike[], rebuilt: readonly LinkLik
   // no field for would pass it. Any node and predicate a rebuild does not write is one saving drops.
   const written = new Set(rebuilt.map((l) => `${l.source}\u0000${l.predicate ?? ''}`));
   const unknown = stored.some((l) => !written.has(`${l.source}\u0000${l.predicate ?? ''}`));
-  return !unknown && asRead(stored) === asRead(rebuilt) && a.size === b.size && [...a].every((key) => b.has(key));
+  return !unknown && isSubset(asRead(stored), asRead(rebuilt)) && [...a].every((key) => b.has(key));
 }
 
-/** A JSON value with every object's keys in one order, so two readings compare as text. */
-function sortKeys(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(sortKeys);
-  if (!value || typeof value !== 'object') return value;
-  return Object.fromEntries(
-    Object.keys(value as Record<string, unknown>)
-      .sort()
-      .map((key) => [key, sortKeys((value as Record<string, unknown>)[key])]),
-  );
+/**
+ * Whether `rebuilt` says everything `stored` does: scalars equal, and every key and every element
+ * of `stored` is matched in `rebuilt` — elements wherever they sit, since an executor lists a
+ * shape's properties in its own order (order is what `sh:order` says, and that is an annotation).
+ * A key `stored` leaves `undefined` asks nothing — `toJSON` spells an absent field that way — so
+ * what a rebuild newly writes cannot make an older stored shape differ; what `stored` holds and
+ * `rebuilt` lacks can.
+ */
+function isSubset(stored: unknown, rebuilt: unknown): boolean {
+  if (Array.isArray(stored)) {
+    if (!Array.isArray(rebuilt)) return false;
+    const pool = [...(rebuilt as unknown[])];
+    return stored.every((element) => {
+      const index = pool.findIndex((candidate) => isSubset(element, candidate));
+      if (index === -1) return false;
+      pool.splice(index, 1);
+      return true;
+    });
+  }
+  if (stored !== null && typeof stored === 'object') {
+    if (rebuilt === null || typeof rebuilt !== 'object' || Array.isArray(rebuilt)) return false;
+    return Object.entries(stored).every(
+      ([key, value]) => value === undefined || isSubset(value, (rebuilt as Record<string, unknown>)[key]),
+    );
+  }
+  return stored === rebuilt;
 }

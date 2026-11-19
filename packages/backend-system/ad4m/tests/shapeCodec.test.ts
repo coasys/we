@@ -11,6 +11,7 @@ import type { EntityManifest, EntitySchema, ShapeInput } from '@we/backend-share
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import { describe, expect, it } from 'vitest';
 
+import { WeNode } from '../src/entities';
 import { compileManifest, manifestToEntries } from '../src/manifestCompiler';
 import { annotationLinks, isAnnotation, type LinkLike, readShape, sameShape } from '../src/shapeCodec';
 
@@ -73,8 +74,8 @@ const input = (manifest: EntityManifest, over: Partial<ShapeInput> = {}): ShapeI
 });
 
 /** What a perspective holds for a model: its compiled SHACL, and the annotations beside it. */
-function stored(shape: ShapeInput): LinkLike[] {
-  const classes = compileManifest(shape.manifest, { moduleId: 'shape/test', resolveExternal: () => undefined });
+function stored(shape: ShapeInput, resolve: (name: string) => unknown = () => undefined): LinkLike[] {
+  const classes = compileManifest(shape.manifest, { moduleId: 'shape/test', resolveExternal: resolve as never });
   const shacl = (classes[shape.name] as unknown as Shaped).generateSHACL().shape.toLinks();
   return [...shacl, ...annotationLinks(shape, shacl)];
 }
@@ -165,9 +166,9 @@ describe('a space model kept as SHACL', () => {
 });
 
 describe('whether a stored model can be saved from WE without loss', () => {
-  const rebuilt = (links: LinkLike[]) => {
+  const rebuilt = (links: LinkLike[], resolve?: (name: string) => unknown) => {
     const read = readShape(links)!;
-    return stored(input(read.manifest, read));
+    return stored(input(read.manifest, read), resolve);
   };
 
   it('is, whatever order the shape is listed in', () => {
@@ -187,6 +188,37 @@ describe('whether a stored model can be saved from WE without loss', () => {
     const field = links.find((l) => l.predicate === 'sh://path' && l.target === 'we://module/shape/x/count')!.source;
     const extra = [...links, { source: field, predicate: 'sh://maxInclusive', target: 'literal:100^^xsd:integer' }];
     expect(sameShape(extra, rebuilt(extra))).toBe(false);
+  });
+
+  it('is, for a shape stored before the compilers wrote sh:node and sh:in', () => {
+    // A model saved before `extends` and `options` reached SHACL lacks the links a rebuild now
+    // writes for them. Writing more loses nothing, so the model is still editable — exact
+    // equality read every model stored that way as foreign instead.
+    const resolveWeNode = (name: string) => (name === 'WeNode' ? WeNode : undefined);
+    const links = stored(input(SIGHTING), resolveWeNode);
+    // The shape under test carries both links the old compiler did not write.
+    expect(links.filter((l) => l.predicate === 'sh://node')).toHaveLength(1);
+    expect(links.filter((l) => l.predicate === 'sh://in')).toHaveLength(1);
+    const prePR = links.filter((l) => l.predicate !== 'sh://node' && l.predicate !== 'sh://in');
+    expect(sameShape(prePR, rebuilt(prePR, resolveWeNode))).toBe(true);
+  });
+
+  it('is not, when the stored shape says something a save would drop', () => {
+    // The other direction of the subset: an `sh:in` value held by storage that the manifest no
+    // longer declares is one a save loses — what `editable` exists to say.
+    const links = stored(input(SIGHTING));
+    const read = readShape(links)!;
+    const entity = read.manifest.entities.Sighting;
+    const manifest = {
+      ...read.manifest,
+      entities: {
+        Sighting: {
+          ...entity,
+          properties: { ...entity.properties, certainty: { ...entity.properties.certainty, options: ['sure'] } },
+        },
+      },
+    } as EntityManifest;
+    expect(sameShape(links, stored(input(manifest)))).toBe(false);
   });
 });
 
