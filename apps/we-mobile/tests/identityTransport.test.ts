@@ -15,14 +15,18 @@ import deviceKeySource from '../../we-web/src/platform/deviceKey.ts?raw';
 import keyHostSource from '../../we-web/src/platform/keyHost.ts?raw';
 import mainSource from '../src/identity/main.ts?raw';
 import {
+  ANSWER_ON_A_COMPUTER,
   backPath,
   executorUrl,
+  NOT_SECURE,
   ON_A_COMPUTER,
   pageStart,
   type PhoneOutcome,
   phoneTransport,
   revokeTargets,
+  ROTATE_AFTER,
 } from '../src/identity/transport';
+import transportSource from '../src/identity/transport.ts?raw';
 
 type Calls = Array<[string, unknown]>;
 
@@ -456,7 +460,7 @@ describe('answering another device', () => {
     expect(await transport.step({ kind: 'answer' })).toMatchObject({
       screen: 'request',
       id: 'r2',
-      error: ON_A_COMPUTER,
+      error: ANSWER_ON_A_COMPUTER,
     });
   });
 
@@ -496,7 +500,7 @@ describe('naming and revoking a device', () => {
     expect(calls.find(([m]) => m === 'rename')?.[1]).toEqual({ keyId: 'd1', name: 'Old laptop' });
   });
 
-  it('revokes without replacing the master key, which needs a computer, and names the entry', async () => {
+  it('revokes without replacing the master key, which Settings replaces after, and names the entry', async () => {
     const calls: Calls = [];
     const transport = phoneTransport(
       { kind: 'revoke', keyId: 'd1' },
@@ -521,7 +525,8 @@ describe('naming and revoking a device', () => {
     });
     const rotate = await transport.step({ kind: 'revoke', rotate: true });
     expect(rotate).toMatchObject({ screen: 'revoke-confirm', keyId: 'd1' });
-    expect((rotate as { error: string }).error).toContain('recovery phrase');
+    expect((rotate as { error: string }).error).toBe(ROTATE_AFTER);
+    expect((rotate as { error: string }).error).toContain('Replace master key');
     expect(calls.map(([m]) => m)).not.toContain('revoke');
 
     expect(await transport.step({ kind: 'revoke', rotate: false })).toEqual({ screen: 'revoked', keyId: 'd1', seq: 5 });
@@ -537,9 +542,518 @@ describe('naming and revoking a device', () => {
   });
 });
 
+const WORDS = 'abandon ability able about above absent absorb abstract absurd abuse access accident';
+const keys = { sign: 'a', enc: 'b', didKey: 'c' };
+const MADE = 'did:scid:coasys:1:made';
+
+/** The methods and options called, the secure marks shown as `secure:on` / `secure:off`. */
+const trail = (calls: Calls): string[] =>
+  calls.map(([m, o]) => (m === 'setSecure' ? `secure:${(o as { on: boolean }).on ? 'on' : 'off'}` : m));
+
+describe('making an identity on the phone', () => {
+  it('shows the words, asks two back, names the phone, and shows the identity it made', async () => {
+    const calls: Calls = [];
+    const { outcomes, leave } = left();
+    const transport = phoneTransport(
+      { kind: 'create' },
+      {
+        plugin: plugin(
+          {
+            status: emptyStatus,
+            create: { ...keys, protection: 'tee' },
+            setSecure: {},
+            startMake: { flow: 'f1', ended: false, screen: { screen: 'show-words', words: WORDS.split(' ') } },
+            identityStep: [
+              { ended: false, screen: { screen: 'confirm-words', positions: [3, 9], error: null } },
+              {
+                ended: false,
+                screen: { screen: 'confirm-words', positions: [2, 7], error: 'Those are not the words.' },
+              },
+              { ended: false, screen: { screen: 'name-device' } },
+              {
+                ended: true,
+                screen: { screen: 'identity-ready', did: MADE, keyId: 'd0', note: null },
+              },
+            ],
+          },
+          calls,
+        ),
+        leave,
+        hint: 'Pixel',
+      },
+    );
+
+    expect(await transport.start()).toEqual({ screen: 'show-words', words: WORDS.split(' ') });
+    // The window is secure before the plugin makes a word.
+    expect(trail(calls)).toEqual(['status', 'create', 'secure:on', 'startMake']);
+
+    expect(await transport.step({ kind: 'words-written' })).toEqual({
+      screen: 'confirm-words',
+      positions: [3, 9],
+      error: null,
+    });
+    expect(await transport.step({ kind: 'words', answers: ['about', 'absurd'] })).toEqual({
+      screen: 'confirm-words',
+      positions: [2, 7],
+      error: 'Those are not the words.',
+    });
+    expect(await transport.step({ kind: 'words', answers: ['ability', 'abstract'] })).toEqual({
+      screen: 'name-device',
+      name: 'Pixel',
+    });
+    expect(await transport.step({ kind: 'name-device', name: 'My phone' })).toEqual({
+      screen: 'identity-ready',
+      did: MADE,
+      keyId: 'd0',
+      note: null,
+    });
+    expect(calls.filter(([m]) => m === 'identityStep').map(([, o]) => o)).toEqual([
+      { flow: 'f1', input: { input: 'words-written' } },
+      { flow: 'f1', input: { input: 'confirm-words', first: 'about', second: 'absurd' } },
+      { flow: 'f1', input: { input: 'confirm-words', first: 'ability', second: 'abstract' } },
+      { flow: 'f1', input: { input: 'name-device', name: 'My phone' } },
+    ]);
+    // Secure from before the words through every step: a screen is answered before the window draws
+    // it, so the words are still in the page when the screen after them is answered.
+    expect(trail(calls)).toEqual([
+      'status',
+      'create',
+      'secure:on',
+      'startMake',
+      'identityStep',
+      'identityStep',
+      'identityStep',
+      'identityStep',
+    ]);
+
+    await transport.finish();
+    expect(outcomes).toEqual(['done']);
+    // The flow had ended: nothing to cancel. The mark goes only as the page leaves.
+    expect(trail(calls)).not.toContain('identityCancel');
+    expect(trail(calls).slice(-2)).toEqual(['identityStep', 'secure:off']);
+  });
+
+  it('says a make that stopped, and tries the publish again', async () => {
+    const calls: Calls = [];
+    const transport = phoneTransport(
+      { kind: 'create' },
+      {
+        plugin: plugin(
+          {
+            status: { ...emptyStatus, keys },
+            setSecure: {},
+            startMake: { flow: 'f2', ended: false, screen: { screen: 'name-device' } },
+            identityStep: [
+              {
+                ended: false,
+                screen: { screen: 'make-stopped', did: MADE, reason: 'The store did not answer.', pending: true },
+              },
+              { ended: true, screen: { screen: 'identity-ready', did: MADE, keyId: 'd0', note: null } },
+            ],
+          },
+          calls,
+        ),
+        leave: () => {},
+      },
+    );
+    expect(await transport.start()).toEqual({ screen: 'name-device', name: 'Phone' });
+    const stopped = await transport.step({ kind: 'name-device' });
+    // No DID on the stop screen: only `identity-ready` shows it.
+    expect(stopped).toEqual({ screen: 'make-stopped', reason: 'The store did not answer.', pending: true });
+    expect(await transport.step({ kind: 'try-again' })).toMatchObject({ screen: 'identity-ready' });
+    expect(calls.filter(([m]) => m === 'identityStep').map(([, o]) => o)).toEqual([
+      { flow: 'f2', input: { input: 'name-device' } },
+      { flow: 'f2', input: { input: 'try-again' } },
+    ]);
+  });
+
+  it('shows the identity at once when the phone had one made and not published', async () => {
+    const transport = phoneTransport(
+      { kind: 'create' },
+      {
+        plugin: plugin({
+          status: { ...emptyStatus, keys },
+          setSecure: {},
+          startMake: {
+            flow: 'f3',
+            ended: true,
+            screen: { screen: 'identity-ready', did: MADE, keyId: 'd0', note: null },
+          },
+        }),
+        leave: () => {},
+      },
+    );
+    expect(await transport.start()).toMatchObject({ screen: 'identity-ready', did: MADE });
+  });
+
+  it('says why a make could not start, in the page’s words, and leaves the window as it was', async () => {
+    const cases: Array<[string, RegExp]> = [
+      ['NoBiometrics', /fingerprint or face unlock/],
+      ['WeakProtection', /No identity was created/],
+      ['AlreadyJoined', /already linked/],
+      ['Unavailable', /Can’t save your identity/],
+      ['Rpc', /the plugin’s own words/],
+    ];
+    for (const [code, text] of cases) {
+      const calls: Calls = [];
+      const transport = phoneTransport(
+        { kind: 'create' },
+        {
+          plugin: plugin(
+            {
+              status: { ...emptyStatus, keys },
+              setSecure: {},
+              startMake: refusal(code, 'the plugin’s own words'),
+            },
+            calls,
+          ),
+          leave: () => {},
+        },
+      );
+      const screen = await transport.start();
+      expect(screen).toMatchObject({ screen: 'failed' });
+      expect((screen as { message: string }).message).toMatch(text);
+      expect(trail(calls).filter((m) => m.startsWith('secure'))).toEqual(['secure:on', 'secure:off']);
+    }
+  });
+
+  it('shows no words when the window cannot be kept out of screenshots', async () => {
+    const calls: Calls = [];
+    const transport = phoneTransport(
+      { kind: 'create' },
+      {
+        plugin: plugin({ status: { ...emptyStatus, keys }, setSecure: refusal('Unavailable', 'no window') }, calls),
+        leave: () => {},
+      },
+    );
+    expect(await transport.start()).toEqual({ screen: 'failed', message: NOT_SECURE });
+    expect(trail(calls)).not.toContain('startMake');
+  });
+
+  it('ends the flow and clears the secure mark when the person leaves', async () => {
+    const calls: Calls = [];
+    const { outcomes, leave } = left();
+    const transport = phoneTransport(
+      { kind: 'create' },
+      {
+        plugin: plugin(
+          {
+            status: { ...emptyStatus, keys },
+            setSecure: {},
+            startMake: { flow: 'f4', ended: false, screen: { screen: 'show-words', words: WORDS.split(' ') } },
+            identityCancel: {},
+          },
+          calls,
+        ),
+        leave,
+      },
+    );
+    await transport.start();
+    expect(await transport.cancel()).toBeNull();
+    expect(calls.find(([m]) => m === 'identityCancel')?.[1]).toEqual({ flow: 'f4' });
+    expect(trail(calls).slice(-2)).toEqual(['identityCancel', 'secure:off']);
+    expect(outcomes).toEqual(['cancelled']);
+  });
+
+  it('clears the secure mark only as the page leaves, after the flow has ended', async () => {
+    for (const leaveBy of ['cancel', 'finish'] as const) {
+      const calls: Calls = [];
+      const { outcomes, leave } = left();
+      const transport = phoneTransport(
+        { kind: 'create' },
+        {
+          plugin: plugin(
+            {
+              status: { ...emptyStatus, keys },
+              setSecure: {},
+              startMake: { flow: 'f9', ended: false, screen: { screen: 'show-words', words: WORDS.split(' ') } },
+              identityStep: [
+                { ended: false, screen: { screen: 'confirm-words', positions: [3, 9], error: null } },
+                { ended: false, screen: { screen: 'name-device' } },
+                { ended: false, screen: { screen: 'make-stopped', reason: 'No answer.', pending: true } },
+              ],
+              identityCancel: {},
+            },
+            calls,
+          ),
+          leave,
+        },
+      );
+      await transport.start();
+      await transport.step({ kind: 'words-written' });
+      // The words were on screen when this was answered: the next screens leave the mark on.
+      await transport.step({ kind: 'words', answers: ['about', 'absurd'] });
+      await transport.step({ kind: 'name-device' });
+      expect(trail(calls)).not.toContain('secure:off');
+
+      await (leaveBy === 'cancel' ? transport.cancel() : transport.finish());
+      const secure = trail(calls).filter((m) => m.startsWith('secure'));
+      expect(secure).toEqual(['secure:on', 'secure:off']);
+      expect(trail(calls).slice(-2)).toEqual(['identityCancel', 'secure:off']);
+      expect(outcomes).toEqual([leaveBy === 'cancel' ? 'cancelled' : 'done']);
+    }
+  });
+
+  it('ends the flow and clears the mark when the page goes without Cancel or Done', async () => {
+    const calls: Calls = [];
+    const { outcomes, leave } = left();
+    const transport = phoneTransport(
+      { kind: 'create' },
+      {
+        plugin: plugin(
+          {
+            status: { ...emptyStatus, keys },
+            setSecure: {},
+            startMake: { flow: 'f5', ended: false, screen: { screen: 'show-words', words: WORDS.split(' ') } },
+            identityCancel: {},
+          },
+          calls,
+        ),
+        leave,
+      },
+    );
+    await transport.start();
+    await transport.gone();
+    expect(calls.find(([m]) => m === 'identityCancel')?.[1]).toEqual({ flow: 'f5' });
+    expect(trail(calls).slice(-2)).toEqual(['identityCancel', 'secure:off']);
+    // The page is going already: nothing is sent back to WE.
+    expect(outcomes).toEqual([]);
+    // After Cancel or Done it finds nothing to end.
+    await transport.gone();
+    expect(trail(calls).filter((m) => m === 'identityCancel' || m === 'secure:off')).toHaveLength(2);
+    // The page empties itself before it asks, on `pagehide`.
+    expect(mainSource).toMatch(
+      /addEventListener\('pagehide', \(\) => \{\n {4}document\.body\.replaceChildren\(\);\n {4}void transport\.gone\(\);/,
+    );
+  });
+
+  it('keeps the flow open on an input it did not take, and leaves through it', async () => {
+    const calls: Calls = [];
+    const transport = phoneTransport(
+      { kind: 'create' },
+      {
+        plugin: plugin(
+          {
+            status: { ...emptyStatus, keys },
+            setSecure: {},
+            startMake: { flow: 'f7', ended: false, screen: { screen: 'name-device' } },
+            identityStep: refusal('WrongInput', 'That does not answer this screen.'),
+            identityCancel: {},
+          },
+          calls,
+        ),
+        leave: () => {},
+      },
+    );
+    await transport.start();
+    expect(await transport.step({ kind: 'try-again' })).toEqual({
+      screen: 'failed',
+      message: 'That does not answer this screen.',
+    });
+    // The failed screen's Done leaves the page, and the flow the plugin kept open ends with it.
+    await transport.finish();
+    expect(calls.find(([m]) => m === 'identityCancel')?.[1]).toEqual({ flow: 'f7' });
+  });
+
+  it('ends a flow a refusal ended, and sends nothing more to it', async () => {
+    const calls: Calls = [];
+    const transport = phoneTransport(
+      { kind: 'create' },
+      {
+        plugin: plugin(
+          {
+            status: { ...emptyStatus, keys },
+            setSecure: {},
+            startMake: { flow: 'f5', ended: false, screen: { screen: 'name-device' } },
+            identityStep: refusal('Rpc', 'the flow is gone'),
+          },
+          calls,
+        ),
+        leave: () => {},
+      },
+    );
+    await transport.start();
+    expect(await transport.step({ kind: 'name-device' })).toEqual({ screen: 'failed', message: 'the flow is gone' });
+    expect(await transport.step({ kind: 'try-again' })).toMatchObject({ screen: 'failed' });
+    expect(calls.filter(([m]) => m === 'identityStep')).toHaveLength(1);
+    await transport.cancel();
+    expect(trail(calls)).not.toContain('identityCancel');
+  });
+
+  it('keeps none of the words it showed or was given', async () => {
+    const calls: Calls = [];
+    const transport = phoneTransport(
+      { kind: 'restore' },
+      {
+        plugin: plugin(
+          {
+            status: { ...emptyStatus, keys },
+            setSecure: {},
+            startRestore: {
+              flow: 'f6',
+              ended: false,
+              screen: { screen: 'enter-words', purpose: 'restore', error: null, position: null },
+            },
+            identityStep: { ended: false, screen: { screen: 'show-words', words: WORDS.split(' ') } },
+            identityCancel: {},
+          },
+          calls,
+        ),
+        leave: () => {},
+      },
+    );
+    await transport.start();
+    await transport.step({ kind: 'twelve-words', words: WORDS });
+    // Whatever the transport closes over, a fresh look at it finds no word: it keeps screen names.
+    expect(JSON.stringify(transport)).not.toContain('abandon');
+    expect(transportSource).not.toMatch(/let \w+: Screen \| null/);
+    expect(transportSource).not.toMatch(/console\.|localStorage|sessionStorage|navigator\.clipboard|history\./);
+  });
+});
+
+describe('restoring an identity on the phone', () => {
+  it('takes the 12 words, asks which devices to lock out, and restores', async () => {
+    const calls: Calls = [];
+    const transport = phoneTransport(
+      { kind: 'restore' },
+      {
+        plugin: plugin(
+          {
+            status: emptyStatus,
+            create: { ...keys, protection: 'tee' },
+            setSecure: {},
+            startRestore: {
+              flow: 'r1',
+              ended: false,
+              screen: { screen: 'enter-words', purpose: 'restore', error: null, position: null },
+            },
+            identityStep: [
+              {
+                ended: false,
+                screen: { screen: 'enter-words', purpose: 'restore', error: 'Not one of the 2048 words.', position: 4 },
+              },
+              {
+                ended: false,
+                screen: {
+                  screen: 'restore-devices',
+                  did: MADE,
+                  devices: [{ keyId: 'd1', name: 'Laptop', kind: 'desktop-app', lockOut: true }],
+                  note: null,
+                },
+              },
+              {
+                ended: true,
+                screen: { screen: 'restored', did: MADE, name: 'Phone', keyId: 'd3', revoked: ['d1'], note: null },
+              },
+            ],
+          },
+          calls,
+        ),
+        leave: () => {},
+      },
+    );
+    expect(await transport.start()).toMatchObject({ screen: 'enter-words', purpose: 'restore' });
+    expect(await transport.step({ kind: 'twelve-words', words: WORDS })).toEqual({
+      screen: 'enter-words',
+      purpose: 'restore',
+      error: 'Not one of the 2048 words.',
+      position: 4,
+    });
+    const devices = await transport.step({ kind: 'twelve-words', words: WORDS });
+    expect(devices).toMatchObject({ screen: 'restore-devices' });
+    expect(await transport.step({ kind: 'lock-out', keyIds: ['d1'], name: 'Phone' })).toMatchObject({
+      screen: 'restored',
+      revoked: ['d1'],
+    });
+    expect(calls.filter(([m]) => m === 'identityStep').map(([, o]) => o)).toEqual([
+      { flow: 'r1', input: { input: 'twelve-words', words: WORDS } },
+      { flow: 'r1', input: { input: 'twelve-words', words: WORDS } },
+      { flow: 'r1', input: { input: 'lock-out', keyIds: ['d1'], name: 'Phone' } },
+    ]);
+    // The window is secure while the words are asked, the failed answer included, and stays so to
+    // the end of the flow.
+    expect(trail(calls).filter((m) => m !== 'identityStep')).toEqual(['status', 'create', 'secure:on', 'startRestore']);
+    await transport.finish();
+    expect(trail(calls).at(-1)).toBe('secure:off');
+  });
+
+  it('says a phone of an identity already restores none', async () => {
+    const transport = phoneTransport(
+      { kind: 'restore' },
+      {
+        plugin: plugin({
+          status: { ...emptyStatus, keys },
+          setSecure: {},
+          startRestore: refusal('AlreadyJoined', 'joined as did:scid:coasys:1:abc'),
+        }),
+        leave: () => {},
+      },
+    );
+    const screen = await transport.start();
+    expect((screen as { message: string }).message).toMatch(/already linked/);
+    expect((screen as { message: string }).message).not.toContain('did:');
+  });
+});
+
+describe('replacing the master key on the phone', () => {
+  it('takes the 12 words and replaces the key, or says it could not keep it and tries again', async () => {
+    const calls: Calls = [];
+    const transport = phoneTransport(
+      { kind: 'replace-master' },
+      {
+        plugin: plugin(
+          {
+            status: { ...emptyStatus, keys, identity: { scid: 'abc', did: MADE, seq: 4 } },
+            setSecure: {},
+            startRotate: {
+              flow: 'm1',
+              ended: false,
+              screen: { screen: 'enter-words', purpose: 'replace', error: null, position: null },
+            },
+            identityStep: [
+              {
+                ended: false,
+                screen: { screen: 'master-not-kept', index: 2, revoked: [], reason: 'Keystore busy.', note: null },
+              },
+              { ended: true, screen: { screen: 'master-replaced', index: 2, revoked: [], note: null } },
+            ],
+          },
+          calls,
+        ),
+        leave: () => {},
+      },
+    );
+    expect(await transport.start()).toMatchObject({ screen: 'enter-words', purpose: 'replace' });
+    expect(await transport.step({ kind: 'twelve-words', words: WORDS })).toMatchObject({
+      screen: 'master-not-kept',
+      index: 2,
+    });
+    expect(await transport.step({ kind: 'try-again' })).toEqual({
+      screen: 'master-replaced',
+      index: 2,
+      revoked: [],
+      note: null,
+    });
+    expect(trail(calls).filter((m) => m.startsWith('secure'))).toEqual(['secure:on']);
+    await transport.finish();
+    expect(trail(calls).filter((m) => m.startsWith('secure'))).toEqual(['secure:on', 'secure:off']);
+  });
+
+  it('says a phone in no identity has no master key to replace', async () => {
+    const transport = phoneTransport(
+      { kind: 'replace-master' },
+      {
+        plugin: plugin({ status: { ...emptyStatus, keys }, setSecure: {}, startRotate: refusal('NoIdentity', 'x') }),
+        leave: () => {},
+      },
+    );
+    expect(((await transport.start()) as { message: string }).message).toMatch(/no master key to replace/);
+  });
+});
+
 describe('what the phone does not run', () => {
-  it('sends a change that needs the 12 words to a computer', async () => {
-    for (const kind of ['replace-master', 'restore', 'remove-master', 'create', 'add-bot']) {
+  it('sends removing the master key and adding a bot to a computer', async () => {
+    for (const kind of ['remove-master', 'add-bot']) {
       const transport = phoneTransport({ kind }, { plugin: plugin({}), leave: () => {} });
       expect(await transport.start()).toEqual({ screen: 'failed', message: ON_A_COMPUTER });
     }

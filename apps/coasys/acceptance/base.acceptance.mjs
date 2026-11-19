@@ -3,8 +3,8 @@
  * anywhere. Each case acts as a person does — reads the words on screen, presses a control by them —
  * and checks what the page shows next.
  *
- * - The phone: the first run's three doors, "Link to another device" leaving for the phone's identity
- *   page, "Skip for now" → where to connect → the hand-off to WE's app; and offline → "Try again".
+ * - The phone: the first run's three doors, each leaving for the phone's identity page, "Skip for
+ *   now" → where to connect → the hand-off to WE's app; and offline → "Try again".
  * - The browser: where to connect → the hand-off.
  *
  * The phone's native layer is the one stand-in. A Playwright init script answers as the phone app's
@@ -79,6 +79,7 @@ function phoneBridge() {
       if (method === 'devices') return Promise.resolve({ devices: [] });
       if (method === 'requests') return Promise.resolve({ requests: [] });
       if (method === 'masterWaiting') return Promise.resolve({ waiting: false });
+      if (method === 'pendingIdentity') return Promise.resolve({ did: null });
       return refuse('NoIdentity');
     },
   };
@@ -133,23 +134,25 @@ async function handedOff(page) {
 }
 
 describe('the phone, with no identity and no executor', () => {
-  it('opens on the first run, with the one door a phone opens', async () => {
+  it('opens on the first run, with its three doors open', async () => {
     const { context, page } = await open({ phone: true });
-    await sees(page, 'Link this phone');
+    await sees(page, 'Set up Coasys');
+    await sees(page, 'No email or password needed.');
     await shot(page, 'phone-first-run');
     assert.equal(await closed(control(page, 'Link to another device')), false);
-    assert.equal(await closed(control(page, 'Create new identity')), true);
-    assert.equal(await closed(control(page, 'Restore with recovery phrase')), true);
-    await sees(page, 'Create it on a computer, then link this phone.');
+    assert.equal(await closed(control(page, 'Create new identity')), false);
+    assert.equal(await closed(control(page, 'Restore with recovery phrase')), false);
+    await sees(page, 'Your master key stays on this phone.');
+    await sees(page, 'Enter your 12 words.');
     // A phone is the one scanned or handed an offer, never the one showing a code to scan.
-    await sees(page, 'Enter the code from a computer that has your master key.');
+    await sees(page, 'Enter the code from a device that has your master key.');
     assert.equal(await page.getByText('Show a code to scan').count(), 0);
     await context.close();
   });
 
   it("leaves for the phone's identity page to join, coming back to the app", async () => {
     const { context, page } = await open({ phone: true });
-    await sees(page, 'Link this phone');
+    await sees(page, 'Set up Coasys');
     await Promise.all([
       page.waitForURL(/\/mobile\/identity\.html\?/, { timeout: STEP_MS }),
       control(page, 'Link to another device').click(),
@@ -160,9 +163,27 @@ describe('the phone, with no identity and no executor', () => {
     await context.close();
   });
 
+  for (const [door, kind] of [
+    ['Create new identity', 'create'],
+    ['Restore with recovery phrase', 'restore'],
+  ]) {
+    it(`leaves for the phone's identity page on "${door}"`, async () => {
+      const { context, page } = await open({ phone: true });
+      await sees(page, 'Set up Coasys');
+      await Promise.all([
+        page.waitForURL(/\/mobile\/identity\.html\?/, { timeout: STEP_MS }),
+        control(page, door).click(),
+      ]);
+      const url = new URL(page.url());
+      assert.deepEqual(JSON.parse(url.searchParams.get('change')), { kind });
+      assert.equal(url.searchParams.get('back'), '/');
+      await context.close();
+    });
+  }
+
   it("starts now, offers where to connect, and hands the page to WE's app", async () => {
     const { context, page } = await open({ phone: true });
-    await sees(page, 'Link this phone');
+    await sees(page, 'Set up Coasys');
     await control(page, 'Skip for now').click();
     await sees(page, 'Where to keep your spaces');
     await sees(page, '127.0.0.1:9');

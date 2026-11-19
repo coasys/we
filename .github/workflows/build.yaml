@@ -371,6 +371,54 @@ jobs:
             crates/custody/target
           key: custody-${{ runner.os }}-${{ hashFiles('crates/custody/Cargo.lock', 'crates/custody/rust-toolchain.toml') }}
 
+  # The identity steps (`crates/identity-steps`): making, restoring and replacing the master key
+  # from the 12 words, which the custody crate above and the phone's crate (`phone-app.yaml`) both
+  # run. Each of those builds it as a path dependency, under its own lockfile; this checks the crate
+  # by its own, with its lints, and `tests/boundary.rs` checks the three crates name one ad4m commit.
+  identity-steps:
+    name: Identity steps crate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: crates/identity-steps
+    steps:
+      - uses: actions/checkout@v7
+
+      # rustup reads the channel from the crate's `rust-toolchain.toml`.
+      - name: Install the pinned toolchain
+        run: rustup toolchain install
+
+      - name: Restore the cargo cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            crates/identity-steps/target
+          key: identity-steps-${{ runner.os }}-${{ hashFiles('crates/identity-steps/Cargo.lock', 'crates/identity-steps/rust-toolchain.toml') }}
+          restore-keys: identity-steps-${{ runner.os }}-
+
+      - name: Lint
+        run: |
+          cargo fmt --check
+          cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test --locked
+
+      - name: Build
+        run: cargo build --locked
+
+      - name: Save the cargo cache
+        if: github.ref == 'refs/heads/dev'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            crates/identity-steps/target
+          key: identity-steps-${{ runner.os }}-${{ hashFiles('crates/identity-steps/Cargo.lock', 'crates/identity-steps/rust-toolchain.toml') }}
+
   schemas:
     name: Validate schemas
     needs: build

@@ -281,6 +281,39 @@ describe('deviceKeyPlugin', () => {
       ['DeviceKey', 'status', {}],
     ]);
   });
+
+  it('calls the identity flows by the names and with the options the Kotlin plugin reads', async () => {
+    const calls: unknown[][] = [];
+    const plugin = deviceKeyPlugin({
+      isPluginAvailable: (name) => name === 'DeviceKey',
+      nativePromise: async (...args) => {
+        calls.push(args);
+        return {};
+      },
+    })!;
+    await plugin.startMake();
+    await plugin.startRestore();
+    await plugin.startRotate();
+    await plugin.identityStep({ flow: 'f1', input: { input: 'confirm-words', first: 'apple', second: 'zoo' } });
+    await plugin.identityStep({ flow: 'f1', input: { input: 'lock-out', keyIds: ['d1'], name: 'Phone' } });
+    await plugin.identityCancel({ flow: 'f1' });
+    await plugin.pendingIdentity();
+    await plugin.finishPending();
+    await plugin.retryMasterPushes();
+    await plugin.setSecure({ on: true });
+    expect(calls).toEqual([
+      ['DeviceKey', 'startMake', {}],
+      ['DeviceKey', 'startRestore', {}],
+      ['DeviceKey', 'startRotate', {}],
+      ['DeviceKey', 'identityStep', { flow: 'f1', input: { input: 'confirm-words', first: 'apple', second: 'zoo' } }],
+      ['DeviceKey', 'identityStep', { flow: 'f1', input: { input: 'lock-out', keyIds: ['d1'], name: 'Phone' } }],
+      ['DeviceKey', 'identityCancel', { flow: 'f1' }],
+      ['DeviceKey', 'pendingIdentity', {}],
+      ['DeviceKey', 'finishPending', {}],
+      ['DeviceKey', 'retryMasterPushes', {}],
+      ['DeviceKey', 'setSecure', { on: true }],
+    ]);
+  });
 });
 
 describe('keyLoginTarget', () => {

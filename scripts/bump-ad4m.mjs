@@ -5,8 +5,9 @@
  *
  * Moves WE's pin of @coasys/ad4m and @coasys/ad4m-connect: the root `pnpm.overrides`, which decide
  * what every workspace package installs. Nothing else declares a version (the packages say `*`), so
- * a bump is that and the lockfile — and the custody crate's ad4m revs and its Cargo.lock, which build
- * the desktop app's Rust against the same commit.
+ * a bump is that and the lockfile — and the ad4m revs and Cargo.lock of the Rust crates (custody,
+ * identity-steps, phone-custody), which build the desktop's and the phone's Rust against the same
+ * commit.
  *
  * Two kinds of target (scripts/ad4m-pin.mjs has why):
  *
@@ -316,32 +317,50 @@ writeFileSync(rootPath, JSON.stringify(root, null, 2) + '\n');
 console.log(`Pinned ${PACKAGES.join(' and ')} to ${describePin(next)}${commit ? ` (${commit})` : ''}.`);
 
 /*
-  The custody crate builds against the same ad4m, by commit (`crates/custody/tests/boundary.rs`
-  checks the two agree). Its revs move with the pin, and its lockfile with them; a bump that moved
-  only the JavaScript left the desktop app's Rust on the old ad4m, unnoticed until a release.
+  The Rust crates build against the same ad4m, by commit: the desktop's custody crate
+  (`crates/custody/tests/boundary.rs` checks it agrees with the pin), the identity steps it shares
+  with the phone, and the phone's (`crates/identity-steps/tests/boundary.rs` checks all three name
+  one rev, or the ad4m types the steps take would not be the types the others pass). Their revs
+  move with the pin, and their lockfiles with them; a bump that moved only the JavaScript left the
+  desktop app's Rust on the old ad4m, unnoticed until a release. Every manifest moves before any
+  lockfile is updated: custody and the phone resolve the identity steps by path.
 */
-const custodyDir = join(ROOT, 'crates', 'custody');
-const custodyManifest = join(custodyDir, 'Cargo.toml');
-const custodyText = readFileSync(custodyManifest, 'utf8');
+const RUST_CRATES = [
+  { dir: 'identity-steps', packages: ['ad4m-identity-client', 'ad4m-identity-core'] },
+  { dir: 'custody', packages: ['ad4m-identity-client', 'ad4m-identity-core', 'ad4m-client', 'ad4m-ldk'] },
+  {
+    dir: 'phone-custody',
+    packages: ['ad4m-identity-client', 'ad4m-identity-core', 'ad4m-hash-chain', 'ad4m-ldk', 'identity-store'],
+  },
+];
 const AD4M_REV = /(git = "https:\/\/github\.com\/coasys\/ad4m", rev = ")[0-9a-f]+(")/g;
 if (!to) {
   console.warn(
-    `\nThe ad4m commit of ${describePin(next)} is unknown, so crates/custody/Cargo.toml still names the old one: move its revs by hand.`,
+    `\nThe ad4m commit of ${describePin(next)} is unknown, so ${RUST_CRATES.map((c) => `crates/${c.dir}`).join(', ')} ` +
+      'still name the old one: move their revs by hand.',
   );
-} else if (custodyText.replace(AD4M_REV, `$1${to}$2`) !== custodyText) {
-  writeFileSync(custodyManifest, custodyText.replace(AD4M_REV, `$1${to}$2`));
-  console.log(`Moved crates/custody to ad4m ${to.slice(0, 9)}.`);
-  try {
-    // From the crate's folder, so rustup takes the toolchain its `rust-toolchain.toml` pins.
-    execSync('cargo update -p ad4m-identity-client -p ad4m-identity-core -p ad4m-client -p ad4m-ldk', {
-      cwd: custodyDir,
-      stdio: 'inherit',
-    });
-  } catch {
-    fail(
-      'crates/custody/Cargo.lock could not be updated (is cargo installed?). From crates/custody, run:\n' +
-        '  cargo update -p ad4m-identity-client -p ad4m-identity-core -p ad4m-client -p ad4m-ldk',
-    );
+} else {
+  const moved = [];
+  for (const crate of RUST_CRATES) {
+    const manifest = join(ROOT, 'crates', crate.dir, 'Cargo.toml');
+    const text = readFileSync(manifest, 'utf8');
+    const next = text.replace(AD4M_REV, `$1${to}$2`);
+    if (next === text) continue;
+    writeFileSync(manifest, next);
+    console.log(`Moved crates/${crate.dir} to ad4m ${to.slice(0, 9)}.`);
+    moved.push(crate);
+  }
+  for (const crate of moved) {
+    const update = `cargo update ${crate.packages.map((p) => `-p ${p}`).join(' ')}`;
+    try {
+      // From the crate's folder, so rustup takes the toolchain its `rust-toolchain.toml` pins.
+      execSync(update, { cwd: join(ROOT, 'crates', crate.dir), stdio: 'inherit' });
+    } catch {
+      fail(
+        `crates/${crate.dir}/Cargo.lock could not be updated (is cargo installed?). From crates/${crate.dir}, run:\n` +
+          `  ${update}`,
+      );
+    }
   }
 }
 
