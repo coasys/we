@@ -166,7 +166,7 @@ const GROUPS: Record<string, string> = {
   calls: 'Calls',
   people: 'People',
   channels: 'Channels',
-  workflows: 'Workflows',
+  workflows: 'Flows',
 };
 const GROUP = `(${CALL}) ? 'calls' : (${PERSON}) ? 'people' : ({ ${Object.keys(GROUPS)
   .map((g) => `${g}: '${g}'`)
@@ -175,7 +175,7 @@ const ITEM = `(${CALL}) || (${PERSON}) || ${WORKFLOW}`;
 
 /**
  * Where the bar says this is: the Social DNA in focus, or what the tree chose and the group it is in —
- * Calls › the call, People › a person, Workflows › one — each step back staying on the canvas.
+ * Calls › the call, People › a person, Flows › one — each step back staying on the canvas.
  */
 const CRUMBS: Crumb[] = [
   ...dnaCrumbs(ON_DNA),

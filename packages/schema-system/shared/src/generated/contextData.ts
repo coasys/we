@@ -3709,13 +3709,29 @@ export const contextData: ContextData = {
         canEdit: { type: 'boolean' },
         workflows: {
           type: 'array',
-          properties: ['name', 'label', 'editable', 'records', 'managedBy', 'archived', 'steps', 'moves'],
+          properties: ['name', 'label', 'editable', 'records', 'running', 'managedBy', 'archived', 'steps', 'moves'],
         },
         workflowsLoaded: { type: 'boolean' },
         startable: { type: 'array', properties: ['name', 'label', 'entities'] },
         open: { type: 'object' },
         draft: { type: 'object' },
         recordWorkflows: { type: 'object' },
+        active: {
+          type: 'array',
+          properties: [
+            'id',
+            'workflow',
+            'label',
+            'record',
+            'title',
+            'kind',
+            'state',
+            'stateLabel',
+            'lastActivity',
+            'waiting',
+            'stalled',
+          ],
+        },
       },
       actions: [
         'refreshWorkflows',
@@ -4540,6 +4556,11 @@ export const contextData: ContextData = {
           kind: 'action',
           doc: 'Loads one more page of the transcript, in whichever direction it is being read.',
           ambient: true,
+        },
+        {
+          name: 'skipped',
+          kind: 'state',
+          doc: 'Utterances let go in this session without a transcript: the speech model was too far behind or could not be reached.',
         },
         { name: 'speaking', kind: 'state', doc: 'Whether the microphone level currently counts as speech.' },
         {
