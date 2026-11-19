@@ -4155,6 +4155,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     space: governedSpace,
   });
   registerEntityWriteCheck(async (write) => {
+    // A switch shows a known space before its schema upkeep has run, so a read may be ahead of the
+    // shapes. A write waits for them here, the one place every write passes; reads never do.
+    await datasetStore.schemaReady(write.dataset);
     try {
       await policyCheck(write);
     } catch (error) {

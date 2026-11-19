@@ -55,10 +55,20 @@ interface Entry {
   failed: boolean;
   settled: boolean;
   disposed: boolean;
+  /** The session it was opened in — see {@link sessionGeneration}. */
+  generation: number;
+  /** The host's schema revision it was opened under — an asker under a newer one opens its own. */
+  revision: number;
 }
 
 /** How long a subscription nobody holds is kept for somebody to ask again. Tests set it to 0. */
-export const subscriptionPoolConfig = { releaseGraceMs: 1500, lastAnswersLimit: 300 };
+export const subscriptionPoolConfig = {
+  releaseGraceMs: 1500,
+  lastAnswersLimit: 300,
+  // The bound above counts questions, not their size. An answer longer than this is not kept: it
+  // is the one that costs memory, and the one a live answer is least likely to look different from.
+  lastAnswerRowsLimit: 500,
+};
 
 /** Keyed by entity, then by dataset id, then by the question as JSON. Emptied as entries go. */
 const pool = new Map<unknown, Map<unknown, Map<string, Entry>>>();
@@ -75,6 +85,13 @@ const pool = new Map<unknown, Map<unknown, Map<string, Entry>>>();
  */
 const lastAnswers = new Map<string, Rows>();
 
+/**
+ * Moves when a session ends. An entry opened in an earlier session may be released, or answer, after
+ * the sign-out emptied `lastAnswers` — and must not put its rows back, or be shown or joined by the
+ * next agent. Emptying the map alone cannot fence that: only a stamp on the entry can.
+ */
+let sessionGeneration = 0;
+
 function lastAnswerKey(kind: string, at: string, key: string): string {
   return `${kind}\u0000${at}\u0000${key}`;
 }
@@ -84,9 +101,12 @@ function rememberLastAnswer(kind: unknown, at: unknown, key: string | null, entr
   // Only string kinds (entity names) and string dataset keys are cached; an object key — a caller
   // with no name, a handle with no uuid — identifies nothing across releases.
   if (key === null || typeof kind !== 'string' || typeof at !== 'string') return;
-  if (entry.failed || entry.latest === null) return;
+  if (entry.generation !== sessionGeneration) return;
   const id = lastAnswerKey(kind, at, key);
+  // Whatever is kept is replaced by this release, or dropped by it: a failed answer or one too long
+  // to keep must not leave the older rows to be shown on the next ask.
   lastAnswers.delete(id);
+  if (entry.failed || entry.latest === null || entry.latest.length > subscriptionPoolConfig.lastAnswerRowsLimit) return;
   lastAnswers.set(id, entry.latest);
   if (lastAnswers.size > subscriptionPoolConfig.lastAnswersLimit) {
     lastAnswers.delete(lastAnswers.keys().next().value!);
@@ -104,15 +124,27 @@ function lastAnswerFor(kind: unknown, at: unknown, key: string): Rows | undefine
   return rows;
 }
 
-/** Forget every kept last answer — a session ending or changing agent, so one user never sees another's rows. */
+/**
+ * Forget every kept last answer — a session ending or changing agent, so one user never sees another's rows.
+ * Entries still open or waiting out their grace belong to the ended session and keep nothing.
+ */
 export function clearLastAnswers(): void {
+  sessionGeneration++;
   lastAnswers.clear();
+}
+
+/** Forget the kept last answers of one dataset — it was removed, so nothing it said is shown again. */
+export function clearLastAnswersFor(datasetId: string): void {
+  for (const id of [...lastAnswers.keys()]) {
+    if (id.split('\u0000')[1] === datasetId) lastAnswers.delete(id);
+  }
 }
 
 /** Forget every shared subscription without disposing any — for a test's isolation, never the app. */
 export function resetSubscriptionPool(): void {
   pool.clear();
   lastAnswers.clear();
+  sessionGeneration++;
 }
 
 /** A dataset by its id where it has one — a handle may be rebuilt for the same dataset between reads. */
@@ -154,6 +186,7 @@ export function acquireSubscription(
   onRows: (rows: Rows) => void,
   onError: (err: unknown) => void,
   entityName = '',
+  revision = 0,
 ): () => void {
   const listener: Listener = { onRows, onError };
   const key = questionKey(options);
@@ -162,9 +195,11 @@ export function acquireSubscription(
   const kind: unknown = entityName || model;
 
   let entry = key === null ? undefined : pool.get(kind)?.get(at)?.get(key);
-  if (entry?.failed) {
-    // A failure already answered is not a subscription to share: whoever asks next retries it —
-    // which is how a query that failed on a missing schema recovers once the shape is written.
+  if (entry && (entry.failed || entry.revision !== revision || entry.generation !== sessionGeneration)) {
+    // Not a subscription to share. A failure already answered: whoever asks next retries it, for a
+    // cause no revision announces. One opened under an older schema revision: its answer — or its
+    // failure, not yet delivered — predates the shapes written since, which is how a query that
+    // failed on a missing schema recovers. One from an ended session: another agent's.
     if (key !== null) forget(kind, at, key, entry);
     if (!entry.disposed) dispose(entry);
     entry = undefined;
@@ -187,6 +222,8 @@ export function acquireSubscription(
       failed: false,
       settled: false,
       disposed: false,
+      generation: sessionGeneration,
+      revision,
     };
     entry = created;
     if (key !== null) {
@@ -219,16 +256,24 @@ export function acquireSubscription(
         created.settled = true;
         created.failed = true;
         created.error = err;
+        // What it last said no longer holds — access may have narrowed — so the next ask must not
+        // flash it before this failure comes round again.
+        if (key !== null && typeof kind === 'string' && typeof at === 'string') {
+          lastAnswers.delete(lastAnswerKey(kind, at, key));
+        }
         for (const each of [...created.listeners]) each.onError(err);
       });
     if (key !== null) {
       // What this question last answered, shown while the live subscription is still out —
       // asynchronously, as a fresh subscription would answer. A live answer always wins: the kept
-      // rows are delivered only while the subscription has said nothing yet.
+      // rows are delivered only while the subscription has said nothing yet. They are delivered
+      // as rows, indistinguishable from live ones (`loaded` turns true): intended — the view draws
+      // at once and the live answer corrects it.
       const rows = lastAnswerFor(kind, at, key);
       if (rows !== undefined) {
         queueMicrotask(() => {
           if (!created.listeners.has(listener) || created.latest !== null || created.failed) return;
+          if (created.generation !== sessionGeneration) return;
           listener.onRows(rows);
         });
       }

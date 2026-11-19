@@ -7,7 +7,12 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 
-import { acquireSubscription, clearLastAnswers, subscriptionPoolConfig } from '../src/subscriptionPool';
+import {
+  acquireSubscription,
+  clearLastAnswers,
+  clearLastAnswersFor,
+  subscriptionPoolConfig,
+} from '../src/subscriptionPool';
 
 const tick = () => new Promise<void>((r) => setTimeout(r, 0));
 
@@ -282,5 +287,133 @@ describe('the last answer of a question let go of', () => {
     builders[0].answer([{ id: 'i1' }]);
     await tick();
     expect(retry).toHaveBeenCalledWith([{ id: 'i1' }]);
+  });
+
+  it('puts nothing back from a release that was waiting when the session ended', async () => {
+    const { Model, builders } = model();
+    subscriptionPoolConfig.releaseGraceMs = 20;
+    const release = acquireSubscription(Model, dataset, question, vi.fn(), vi.fn(), 'Involvement');
+    builders[0].answer([{ id: 'old-agent' }]);
+    await tick();
+    release();
+    clearLastAnswers();
+    // The grace runs out after the clear: the old agent's rows must not be remembered by it.
+    await new Promise((r) => setTimeout(r, 40));
+
+    const next = vi.fn();
+    acquireSubscription(Model, dataset, question, next, vi.fn(), 'Involvement');
+    await tick();
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('does not join, or show the rows of, a subscription opened in the session that ended', async () => {
+    const { Model, builders } = model();
+    subscriptionPoolConfig.releaseGraceMs = 20;
+    acquireSubscription(Model, dataset, question, vi.fn(), vi.fn(), 'Involvement');
+    builders[0].answer([{ id: 'old-agent' }]);
+    await tick();
+    clearLastAnswers();
+
+    const next = vi.fn();
+    acquireSubscription(Model, dataset, question, next, vi.fn(), 'Involvement');
+    await tick();
+    expect(Model.query).toHaveBeenCalledTimes(2);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('is emptied for one dataset by clearLastAnswersFor, and for no other', async () => {
+    const { Model, builders } = model();
+    await askAndLetGo(Model, builders, [{ id: 'i1' }]);
+    const elsewhere = acquireSubscription(Model, { uuid: 'elsewhere' }, question, vi.fn(), vi.fn(), 'Involvement');
+    builders[builders.length - 1].answer([{ id: 'e1' }]);
+    await tick();
+    elsewhere();
+    await tick();
+    clearLastAnswersFor('space');
+
+    const gone = vi.fn();
+    const kept = vi.fn();
+    acquireSubscription(Model, dataset, question, gone, vi.fn(), 'Involvement');
+    acquireSubscription(Model, { uuid: 'elsewhere' }, question, kept, vi.fn(), 'Involvement');
+    await tick();
+    expect(gone).not.toHaveBeenCalled();
+    expect(kept).toHaveBeenCalledWith([{ id: 'e1' }]);
+  });
+
+  it('drops the kept rows of a question whose live answer then fails', async () => {
+    const { Model, builders } = model();
+    await askAndLetGo(Model, builders, [{ id: 'i1' }]);
+    Model.query.mockImplementationOnce(
+      () => ({ subscribe: vi.fn(() => Promise.reject(new Error('denied'))), dispose: vi.fn() }) as never,
+    );
+    const denied = acquireSubscription(Model, dataset, question, vi.fn(), vi.fn(), 'Involvement');
+    await tick();
+    denied();
+    await tick();
+
+    const retry = vi.fn();
+    acquireSubscription(Model, dataset, question, retry, vi.fn(), 'Involvement');
+    await tick();
+    expect(retry).not.toHaveBeenCalled();
+  });
+
+  it('does not keep an answer longer than the row bound, nor the older one it replaces', async () => {
+    subscriptionPoolConfig.lastAnswerRowsLimit = 2;
+    try {
+      const { Model, builders } = model();
+      await askAndLetGo(Model, builders, [{ id: 'a' }]);
+      await askAndLetGo(Model, builders, [{ id: 'a' }, { id: 'b' }, { id: 'c' }]);
+
+      const again = vi.fn();
+      acquireSubscription(Model, dataset, question, again, vi.fn(), 'Involvement');
+      await tick();
+      expect(again).not.toHaveBeenCalled();
+    } finally {
+      subscriptionPoolConfig.lastAnswerRowsLimit = 500;
+    }
+  });
+});
+
+describe('a subscription and the schema revision', () => {
+  const dataset = { uuid: 'space' };
+  const question = { where: { kind: 'reviewer' } };
+
+  it('is not joined by a question asked under a newer revision, so a late rejection cannot stick', async () => {
+    const { Model, builders } = model();
+    let reject: (err: Error) => void = () => {};
+    Model.query.mockImplementationOnce(
+      () =>
+        ({
+          subscribe: vi.fn(() => new Promise<unknown[]>((_, r) => (reject = r))),
+          dispose: vi.fn(),
+        }) as never,
+    );
+    const first = vi.fn();
+    const releaseFirst = acquireSubscription(Model, dataset, question, vi.fn(), first, 'Involvement', 0);
+    // Upkeep finishes first: the effect re-runs under revision 1, before the rejection has landed.
+    releaseFirst();
+    const second = vi.fn();
+    const secondError = vi.fn();
+    acquireSubscription(Model, dataset, question, second, secondError, 'Involvement', 1);
+    expect(Model.query).toHaveBeenCalledTimes(2);
+    reject(new Error('No SHACL shape stored for class X'));
+    await tick();
+    builders[0].answer([{ id: 'i1' }]);
+    await tick();
+    expect(secondError).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledWith([{ id: 'i1' }]);
+  });
+
+  it('still shows the rows kept under an older revision', async () => {
+    const { Model, builders } = model();
+    const release = acquireSubscription(Model, dataset, question, vi.fn(), vi.fn(), 'Involvement', 0);
+    builders[0].answer([{ id: 'i1' }]);
+    await tick();
+    release();
+    await tick();
+    const again = vi.fn();
+    acquireSubscription(Model, dataset, question, again, vi.fn(), 'Involvement', 3);
+    await tick();
+    expect(again).toHaveBeenCalledWith([{ id: 'i1' }]);
   });
 });

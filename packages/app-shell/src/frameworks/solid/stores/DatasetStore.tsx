@@ -26,6 +26,7 @@ import { datasetKey, type DatasetRef, type EntityManifestEntry, trace } from '@w
 import { toastService } from '@we/components/solid';
 import { AgentSettings, type DatasetProxy } from '@we/entities';
 import { latest } from '@we/module-shared';
+import { clearLastAnswersFor } from '@we/schema-solid';
 import {
   Accessor,
   batch,
@@ -195,6 +196,11 @@ export interface DatasetStore {
    * dataset nothing has been written into.
    */
   schemaRevision: (dataset: unknown) => number;
+  /**
+   * Settles when the schema upkeep a switch started for a dataset has — at once when none is in
+   * flight. Writes wait on it; reads do not, so a known space still opens at once.
+   */
+  schemaReady: (dataset: unknown) => Promise<void>;
 }
 
 const DatasetContext = createContext<DatasetStore>();
@@ -261,18 +267,38 @@ export function DatasetStoreProvider(props: ParentProps) {
    * the recovery for. A refresh that wrote nothing moves nothing: re-asking every open query on
    * every switch is the whole cost this avoids.
    */
-  const [schemaRevisions, setSchemaRevisions] = createSignal<Readonly<Record<string, number>>>({});
-  const schemaRevision = (dataset: unknown): number => {
+  // One signal per dataset, made when first read: a bump in one space re-runs only that space's queries.
+  const schemaRevisions = new Map<string, ReturnType<typeof createSignal<number>>>();
+  const revisionSignal = (uuid: string) => {
+    let signal = schemaRevisions.get(uuid);
+    if (!signal) schemaRevisions.set(uuid, (signal = createSignal(0)));
+    return signal;
+  };
+  const datasetIdOfHandle = (dataset: unknown): string | null => {
     const key =
       (dataset as { uuid?: unknown } | null | undefined)?.uuid ?? (dataset as { id?: unknown } | null | undefined)?.id;
-    return typeof key === 'string' ? (schemaRevisions()[key] ?? 0) : 0;
+    return typeof key === 'string' ? key : null;
   };
-  const bumpSchemaRevision = (uuid: string) =>
-    setSchemaRevisions((prev) => ({ ...prev, [uuid]: (prev[uuid] ?? 0) + 1 }));
+  const schemaRevision = (dataset: unknown): number => {
+    const uuid = datasetIdOfHandle(dataset);
+    return uuid === null ? 0 : revisionSignal(uuid)[0]();
+  };
+  const bumpSchemaRevision = (uuid: string) => revisionSignal(uuid)[1]((n) => n + 1);
+  /**
+   * Upkeep in flight, by dataset id, as a promise that settles — never rejects — when it has. A write
+   * waits on it (`schemaReady`) so it meets the shapes a read may run ahead of; a failed upkeep
+   * releases the write all the same, as writing without the shapes is no worse than not writing.
+   */
+  const upkeepInFlight = new Map<string, Promise<void>>();
+  const schemaReady = (dataset: unknown): Promise<void> => {
+    const uuid = datasetIdOfHandle(dataset);
+    return (uuid !== null && upkeepInFlight.get(uuid)) || Promise.resolve();
+  };
   /** What a gone dataset can never answer again — a re-added one is asked fresh. */
   const forgetSpaceAnswers = (uuid: string) => {
     weSpaceAnswers.delete(uuid);
     spaceSchemaRefreshed.delete(uuid);
+    clearLastAnswersFor(uuid);
   };
   /*
     Counted up each time the agent locks. The personal space's install runs after the app appears,
@@ -287,7 +313,8 @@ export function DatasetStoreProvider(props: ParentProps) {
     // answer differently, and another session's refreshes have not run.
     weSpaceAnswers.clear();
     spaceSchemaRefreshed.clear();
-    setSchemaRevisions({});
+    upkeepInFlight.clear();
+    for (const [, set] of schemaRevisions.values()) set(0);
   });
   const [testDataset, setTestDataset] = createSignal<AppDataset | null>(null);
   const [agentSettings, setAgentSettings] = createSignal<AgentSettings | null>(null, { equals: false });
@@ -913,7 +940,9 @@ export function DatasetStoreProvider(props: ParentProps) {
       // Background: the schema upkeep the switch no longer waits for.
       if (existingWeSpace && !spaceSchemaRefreshed.has(uuid)) {
         spaceSchemaRefreshed.add(uuid);
-        void (async () => {
+        // The session it belongs to: what it finds after the agent locked is another session's to ignore.
+        const sessionAtStart = sessionsEnded;
+        const upkeep = (async () => {
           let failed = false;
           const failure = (err: unknown) => {
             console.error('DatasetStore: space schema refresh failed', err);
@@ -938,6 +967,7 @@ export function DatasetStoreProvider(props: ParentProps) {
             schemas.refreshSpace(handle).catch(failure),
           ]);
           const written = lists.flat();
+          if (sessionAtStart !== sessionsEnded) return;
           // A failure is not a refresh: the next switch to this space tries again.
           if (failed) spaceSchemaRefreshed.delete(uuid);
           if (written.length) {
@@ -947,6 +977,13 @@ export function DatasetStoreProvider(props: ParentProps) {
           }
           trace('dataset', 'switch:refresh', { dataset: uuid, written: written.length, failed });
         })();
+        const ready = upkeep
+          .catch((err) => console.error('DatasetStore: space schema refresh failed', err))
+          .then(() => {
+            // Only its own entry: a later session's upkeep for the same space may be in the map by now.
+            if (upkeepInFlight.get(uuid) === ready) upkeepInFlight.delete(uuid);
+          });
+        upkeepInFlight.set(uuid, ready);
       }
 
       // Background: discover schemas foreign to the host (another app's entities synced into
@@ -1011,6 +1048,7 @@ export function DatasetStoreProvider(props: ParentProps) {
 
   const store: DatasetStore = {
     schemaRevision,
+    schemaReady,
     datasets,
     orderedDatasets,
     currentDataset,

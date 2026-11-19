@@ -63,6 +63,18 @@ const gate = vi.hoisted(() => ({
   current: undefined as unknown as import('../src/shared/firstScreen').FirstScreen,
   reset: () => {},
 }));
+const lastAnswers = vi.hoisted(() => ({ cleared: [] as string[] }));
+vi.mock('@we/schema-solid', async (original) => {
+  const real = await original<typeof import('@we/schema-solid')>();
+  return {
+    ...real,
+    clearLastAnswersFor: (id: string) => {
+      lastAnswers.cleared.push(id);
+      real.clearLastAnswersFor(id);
+    },
+  };
+});
+
 vi.mock('../src/frameworks/solid/firstScreen', async () => {
   const { createFirstScreen } = await import('../src/shared/firstScreen');
   const { createSignal } = await import('solid-js');
@@ -2899,6 +2911,130 @@ describe('switching to a space already known', () => {
     await stores.datasets.switchDataset('ds-b');
     await vi.waitFor(() => expect(stores.datasets.schemaRevision({ uuid: 'ds-b' })).toBe(1));
     expect(stores.datasets.schemaRevision({ uuid: 'ds-a' })).toBe(0);
+  }, 10000);
+});
+
+describe('the schema upkeep behind a switch', () => {
+  /** Holds the refresh of one space until the returned release; what it then writes is `writes`, or what it would have. */
+  function holdRefresh(dataset: string, writes: string[] = []) {
+    let release!: () => void;
+    const until = new Promise<void>((resolve) => (release = resolve));
+    onPorts = (ports) => {
+      const { refreshSpace } = ports.schemas;
+      ports.schemas.refreshSpace = async (target) => {
+        if ((target as { id: string }).id === dataset) await until;
+        return writes.length ? writes : refreshSpace(target);
+      };
+    };
+    return release;
+  }
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 30));
+
+  it('holds a write to the space until the upkeep has settled, and does not hold a read', async () => {
+    seededDatasets = [{ id: 'ds-a', name: 'A' }];
+    const release = holdRefresh('ds-a');
+    const stores = mountShell();
+    await ready(stores);
+    await stores.datasets.switchDataset('ds-a');
+    expect(stores.datasets.currentDataset()?.id).toBe('ds-a');
+    const handle = (await lifecycle.list()).find((d) => d.id === 'ds-a')!.handle as never;
+
+    // A read goes straight through.
+    await expect(CollectionBlock.findAll(handle, {})).resolves.toBeDefined();
+
+    let written = false;
+    const writing = CollectionBlock.create(handle, { kind: 'post', textContent: 'hi' } as never).then(() => {
+      written = true;
+    });
+    await settle();
+    expect(written).toBe(false);
+
+    release();
+    await writing;
+    expect(written).toBe(true);
+  }, 10000);
+
+  it('does not hold a write for ever when the upkeep fails', async () => {
+    seededDatasets = [{ id: 'ds-a', name: 'A' }];
+    let fail!: () => void;
+    const until = new Promise<string[]>((_, reject) => (fail = () => reject(new Error('refresh failed'))));
+    until.catch(() => {});
+    onPorts = (ports) => {
+      ports.schemas.refreshSpace = async () => until;
+    };
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const stores = mountShell();
+      await ready(stores);
+      await stores.datasets.switchDataset('ds-a');
+      const handle = (await lifecycle.list()).find((d) => d.id === 'ds-a')!.handle as never;
+      const writing = CollectionBlock.create(handle, { kind: 'post', textContent: 'hi' } as never);
+      fail();
+      await expect(writing).resolves.toBeDefined();
+    } finally {
+      errors.mockRestore();
+    }
+  }, 10000);
+
+  it('drops what an upkeep finds after the agent locked', async () => {
+    seededDatasets = [{ id: 'ds-a', name: 'A' }];
+    const release = holdRefresh('ds-a', ['Task']);
+    const stores = mountShell();
+    await ready(stores);
+    await stores.datasets.switchDataset('ds-a');
+
+    await stores.session.logout();
+    expect(stores.session.bootState()).toBe('login');
+    release();
+    await settle();
+    expect(stores.datasets.schemaRevision({ uuid: 'ds-a' })).toBe(0);
+  }, 10000);
+
+  it('re-runs only the effects of the dataset whose shapes were written', async () => {
+    seededDatasets = [
+      { id: 'ds-a', name: 'A' },
+      { id: 'ds-b', name: 'B' },
+    ];
+    onPorts = (ports) => {
+      const { refreshSpace } = ports.schemas;
+      ports.schemas.refreshSpace = async (target) =>
+        (target as { id: string }).id === 'ds-b' ? ['Task'] : refreshSpace(target);
+    };
+    const stores = mountShell();
+    await ready(stores);
+
+    const runs = { a: 0, b: 0 };
+    const dispose = createRoot((off) => {
+      createEffect(() => {
+        stores.datasets.schemaRevision({ uuid: 'ds-a' });
+        runs.a++;
+      });
+      createEffect(() => {
+        stores.datasets.schemaRevision({ uuid: 'ds-b' });
+        runs.b++;
+      });
+      return off;
+    });
+    try {
+      await settle();
+      const before = { ...runs };
+      await stores.datasets.switchDataset('ds-b');
+      await vi.waitFor(() => expect(stores.datasets.schemaRevision({ uuid: 'ds-b' })).toBe(1));
+      await settle();
+      expect(runs.b).toBe(before.b + 1);
+      expect(runs.a).toBe(before.a);
+    } finally {
+      dispose();
+    }
+  }, 10000);
+
+  it('forgets the kept answers of a space that was removed', async () => {
+    seededDatasets = [{ id: 'ds-a', name: 'A' }];
+    const stores = mountShell();
+    await ready(stores);
+    lastAnswers.cleared.length = 0;
+    await stores.datasets.removeDataset('ds-a');
+    expect(lastAnswers.cleared).toContain('ds-a');
   }, 10000);
 });
 
