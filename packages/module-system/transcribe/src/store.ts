@@ -2326,15 +2326,26 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * in. See the leave effect below.
    */
   async function syncWatch(next: string | null, options?: { keepWatch?: boolean }): Promise<void> {
+    /*
+      The gates below — the class list, the auto switch, whether the list is whole — all read the
+      space on screen, the only space a module can ask about. A call in another space outlives the
+      reader's wander (see `callElsewhere`), and its answers live in its own dataset: the space on
+      screen selecting nothing says nothing about the call's. So for a call elsewhere none of them
+      are read — the watch is attempted and the host, which resolves the collection through its own
+      dataset, refuses or registers with the call's own answers. Its refusal is already the message
+      `watchProblem` shows.
+    */
+    const elsewhere = next !== null && callElsewhere();
     // Keyed on what this call currently extracts, so a group changing it mid-call moves the watch.
     // The host owns the list; this only has to notice when the answer changed.
-    const key = next
-      ? targetsFor(next)
-          .filter((t) => t.selected)
-          .map((t) => t.entity)
-          .join(',')
-      : '';
-    const auto = next ? autoEnabled(next) : true;
+    const key =
+      next && !elsewhere
+        ? targetsFor(next)
+            .filter((t) => t.selected)
+            .map((t) => t.entity)
+            .join(',')
+        : '';
+    const auto = next && !elsewhere ? autoEnabled(next) : true;
     /*
       Nothing decided from a list the host has not finished reading.
 
@@ -2349,13 +2360,13 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       Only while extraction is on. Switching it off needs no list, and waiting would leave the watch
       spending a pass per batch on a community that has just said stop.
     */
-    if (next && auto && !targetsLoaded()) {
+    if (next && !elsewhere && auto && !targetsLoaded()) {
       deferredWatch = next;
       return;
     }
     const deferred = deferredWatch === next ? next : null;
     deferredWatch = null;
-    if (watched === next && watchedClasses === key && watchedAuto === auto) return;
+    if (watched === next && (elsewhere || (watchedClasses === key && watchedAuto === auto))) return;
     const previous = watched;
     /*
       A class-set change re-registers the *same* collection, so the teardown below has to run for it.
@@ -2443,7 +2454,12 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       return;
     }
 
-    if (next && key && typeof interpretation?.watchCollection === 'function') {
+    /*
+      For a call elsewhere there is no local `key` to gate on — `watchCollection` is attempted
+      unconditionally and the host's refusal, if the call's own dataset says off or empty, is the
+      message `watchProblem` shows. So the "no models selected" toast below is on-screen only.
+    */
+    if (next && (key || elsewhere) && typeof interpretation?.watchCollection === 'function') {
       try {
         await interpretation.watchCollection(next, watchedTarget);
         setWatchProblem('');
@@ -2466,7 +2482,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
         setWatchProblem(error instanceof Error ? error.message : String(error));
         console.warn('[transcribe] could not watch this call for auto-extraction', error);
       }
-    } else if (next && !key) {
+    } else if (next && !key && !elsewhere) {
       /*
         Said once, out loud, rather than printed under the controls for the rest of the call.
 

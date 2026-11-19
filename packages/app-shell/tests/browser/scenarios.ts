@@ -1782,8 +1782,8 @@ const bundleUpdatePrompt =
  */
 /**
  * The create-space modal on a deployment that can share a space both ways, listed as the AD4M
- * backend lists them: peer-to-peer first, then the server link language with AD4M's two link
- * servers. The sharing option and server `createSpace` was given are marked on the body.
+ * backend lists them: the server link language with AD4M's two link servers first, then
+ * peer-to-peer. The sharing option and server `createSpace` was given are marked on the body.
  */
 const createSpaceShared = (): Scenario => ({
   node: createSpaceModal as SchemaNode,
@@ -1791,15 +1791,15 @@ const createSpaceShared = (): Scenario => ({
   stores: {
     spaceStore: {
       sharingOptions: sharingPickerOptions([
-        { id: 'Qm-p2p', name: 'perspective-diff-sync', kind: 'peer-to-peer' },
         {
           id: 'Qm-server',
           name: 'server-link-language',
           kind: 'server',
           servers: ['https://link.ad4m.dev', 'https://link-staging.ad4m.dev'],
         },
+        { id: 'Qm-p2p', name: 'perspective-diff-sync', kind: 'peer-to-peer' },
       ]),
-      defaultSharing: 'Qm-p2p',
+      defaultSharing: 'Qm-server',
       starterChoices: [
         {
           id: 'coasys-default',
@@ -2185,7 +2185,10 @@ const coasysBar = (): Scenario => {
         viewBar(
           [
             { label: 'Social DNA', onClick: { $invoke: 'routeStore.navigate', args: ['/dna'] } },
-            { label: 'Signal types', onClick: { $invoke: 'routeStore.navigate', args: ['/dna?dna=signal'] } },
+            {
+              label: 'Signal types',
+              onClick: { $invoke: 'routeStore.navigate', args: ['/dna?dna=model%7CSignalType'] },
+            },
             { label: 'Like' },
           ],
           'dna',
@@ -2423,12 +2426,30 @@ const coasysTreeDna = (): Scenario => {
         },
       },
       shapeStore: { spaceShapes: [{ id: 'shape-hive', name: 'Hive', icon: 'hexagon' }] },
-      recordStore: {
-        // What the tree's Models lists, as the vocabulary map's Models does: every kind of record.
-        creatableEntities: [
-          { value: 'Hive', label: 'Hive', icon: 'hexagon', hue: 'yellow', group: '', description: '', via: 'form' },
+      // Another app's class, and WE's plumbing an older version wrote under another IRI, which is left out.
+      datasetStore: {
+        currentDatasetEntities: [
+          { name: 'Placement', targetClass: 'old://Placement', properties: [] },
+          { name: 'Question', targetClass: 'conv://Question', properties: [] },
         ],
+      },
+      recordStore: {
+        // The space's own model and one of WE's blocks: the This space group, and the built-in group's vocabulary and Blocks.
+        creatableEntities: [
+          {
+            value: 'Hive',
+            label: 'Hive',
+            icon: 'hexagon',
+            hue: 'yellow',
+            group: 'This space',
+            description: '',
+            via: 'form',
+          },
+          { value: 'TaskBlock', label: 'Task', icon: 'check-square', hue: 'green', group: 'Built in', via: 'form' },
+        ],
+        plumbingClasses: ['Placement', 'Space', 'SignalType', 'TaskState'],
         displays: {
+          Question: { label: 'Question', icon: 'cube', fields: [] },
           Hive: {
             fields: [
               { name: 'name', label: 'Name', kind: 'text' },

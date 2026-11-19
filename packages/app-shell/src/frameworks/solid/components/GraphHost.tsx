@@ -36,6 +36,7 @@ import { createComputed, createEffect, createMemo, createSignal, For, type JSX, 
 import { createStore, reconcile } from 'solid-js/store';
 
 import { toEntityShape } from '../../../shared/graphEntityShape';
+import { type GraphScope, inboundAsWhere } from '../../../shared/graphScope';
 import { followRead, idsOf, readKey } from '../../../shared/graphWatch';
 import {
   actAs,
@@ -74,12 +75,7 @@ import { ReactionBadge } from './ReactionBadge';
  */
 const REVERSE_SCAN_LIMIT = 200;
 
-interface ScopeRequest {
-  anchor: string;
-  via: string;
-  anchorId: string;
-  direction?: 'in' | 'out';
-}
+type ScopeRequest = GraphScope;
 
 /**
  * A card that draws its own contents, rather than its first sixty characters.
@@ -372,7 +368,14 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
     if (limit !== undefined) options.limit = limit;
     if (offset !== undefined) options.offset = offset;
     if (include) options.include = include;
-    if (scope) {
+    /*
+      An inbound read through a child's own to-one is a filter on that field — native on both
+      backends, and watchable — rather than the scan `reverseLookup` falls back to. See `graphScope`.
+    */
+    const inbound = scope ? inboundAsWhere(manifest(), request.entity, scope) : undefined;
+    if (inbound) {
+      options.where = { ...(where ?? {}), ...inbound };
+    } else if (scope) {
       const parent = parentFor(scope);
       if (!parent) return undefined;
       (options as Record<string, unknown>).parent = parent;
@@ -382,6 +385,8 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
 
   /** A neutral drill-down as the parent a read narrows to — the relation by name, on its entity. */
   function parentFor(scope: ScopeRequest): ParentRef | undefined {
+    // One anchor: a list is asked anchor by anchor by `query`, and the scan answers an inbound read.
+    if (typeof scope.anchorId !== 'string' || scope.direction === 'in') return undefined;
     const entry = manifest().find((m) => m.name === scope.anchor);
     if (!entry?.properties.some((p) => p.name === scope.via)) return undefined;
     return { id: scope.anchorId, relation: scope.via, entity: scope.anchor };
@@ -404,6 +409,7 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
     if (!model || !handle) return [];
 
     warn(`reading what points at ${scope.anchor} by scanning up to ${REVERSE_SCAN_LIMIT} ${entity} records`);
+    const anchors = new Set(Array.isArray(scope.anchorId) ? scope.anchorId : [scope.anchorId]);
 
     const rows = await model.findAll(handle, {
       limit: REVERSE_SCAN_LIMIT,
@@ -415,8 +421,8 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
       const targets = Array.isArray(value) ? value : value == null ? [] : [value];
       return targets.some((target) =>
         typeof target === 'string'
-          ? target === scope.anchorId
-          : typeof target === 'object' && target !== null && (target as { id?: unknown }).id === scope.anchorId,
+          ? anchors.has(target)
+          : typeof target === 'object' && target !== null && anchors.has(String((target as { id?: unknown }).id)),
       );
     });
   }
@@ -676,7 +682,7 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
       const handle = datasetStore.currentDataset()?.handle;
       if (!handle) return [];
 
-      if (scope?.direction === 'in') {
+      if (scope?.direction === 'in' && !inboundAsWhere(manifest(), entity, scope)) {
         // The graph collects warnings through its own context; throwing here would take down the
         // whole expansion for a lookup that is legitimately unavailable on some backends.
         const warn = (message: string) => console.warn(`[graph] ${message}`);
@@ -685,6 +691,23 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
           return [];
         }
         return reverseLookup(entity, scope, dataset, warn);
+      }
+      /*
+        An outbound drill from several anchors: the model layer's `parent` names one, so each is asked
+        and the answers merged. Nothing in the app asks this today — a forward relation is read with
+        `include` — but the read type allows it and a silent empty answer would be the worst reply.
+      */
+      if (scope && scope.direction !== 'in' && Array.isArray(scope.anchorId)) {
+        const seen = new Set<string>();
+        const answers = await Promise.all(
+          scope.anchorId.map((anchorId) => host!.query({ ...request, scope: { ...scope, anchorId } })),
+        );
+        return answers.flat().filter((row) => {
+          const id = String(row.id);
+          if (seen.has(id)) return false;
+          seen.add(id);
+          return true;
+        });
       }
 
       const model = modelFor(entity, dataset);

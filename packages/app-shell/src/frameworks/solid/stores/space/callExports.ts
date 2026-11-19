@@ -23,11 +23,15 @@ export interface CallExportDeps {
   dataset: () => { handle: DatasetProxy } | null | undefined;
   interpretation: () => InterpretationPort | undefined;
   profileStore: Pick<ProfileStore, 'fetchProfile' | 'profiles'>;
-  spaceName: () => string | undefined;
-  /** What this call extracts, what the space extracts, and whether this call is extracted as it grows. */
-  targetsFor: (callId: string) => string[];
-  spaceTargets: () => string[];
-  autoFor: (callId: string) => boolean;
+  /**
+   * The space's name and the call's extraction answers — what this call extracts, what the space
+   * extracts, and whether this call is extracted as it grows — read for the dataset named rather
+   * than the space on screen, which may have moved on by the time the gathered content is laid out.
+   */
+  exportMeta: (
+    handle: DatasetProxy,
+    callId: string,
+  ) => Promise<{ spaceName?: string; spaceTargets: string[]; auto: boolean; classes: string[] }>;
 }
 
 export function createCallExports(deps: CallExportDeps) {
@@ -120,11 +124,26 @@ export function createCallExports(deps: CallExportDeps) {
     const p = dataset.handle;
     try {
       const exportedAt = new Date();
+      /*
+        Only the title is read before `saveFile`: a browser opens the save dialog only while the
+        click that asked for it is still being handled, and the settings read can outlive that —
+        the dialog would refuse and the file would land as a plain download. The space's answers
+        are gathered inside the content callback instead, still for the call's own dataset through
+        the captured handle, so by the time they resolve the space on screen may be another's and
+        none of that reaches the file.
+      */
       const titled = await CollectionBlock.findOne(p, { where: { id: callId } });
       const outcome = await saveFile({
         name: exportFileName(titled?.title, 'call', 'md', exportedAt).replace(/\.md$/, '-extraction-log.md'),
         type: 'text/markdown;charset=utf-8',
         content: async () => {
+          // The settings head the log and are not its substance: unreadable, the history still goes.
+          // Started with the call's read but awaited only once there is a log to head, so a call with
+          // no passes is answered without them; the fallback keeps an early return from leaving a rejection.
+          const settings = deps.exportMeta(p, callId).catch((error) => {
+            console.error('SpaceStore: exportExtractionLog could not read the settings', error);
+            return undefined;
+          });
           const call = await CollectionBlock.findOne(p, {
             where: { id: callId },
             /*
@@ -148,6 +167,7 @@ export function createCallExports(deps: CallExportDeps) {
           const records = Array.isArray(row?.extracted) ? (row.extracted as unknown[]) : [];
           const amendments = (Array.isArray(row?.amendments) ? row.amendments : []) as AmendmentEntry[];
           if (!passes.length) return null;
+          const meta = await settings;
 
           const { turns } = await callTranscript(p, callId);
           // Scoped to this call, as the review list is; best effort, since a log without the waiting
@@ -170,11 +190,11 @@ export function createCallExports(deps: CallExportDeps) {
           return formatExtractionLog({
             callId,
             callTitle: row?.title,
-            spaceName: deps.spaceName(),
+            spaceName: meta?.spaceName,
             exportedAt,
-            callTargets: deps.targetsFor(callId),
-            spaceTargets: deps.spaceTargets(),
-            autoInterpret: deps.autoFor(callId),
+            callTargets: meta?.classes,
+            spaceTargets: meta?.spaceTargets,
+            autoInterpret: meta?.auto,
             transcript: turns,
             passes,
             records,

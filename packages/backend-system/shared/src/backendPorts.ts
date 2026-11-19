@@ -79,8 +79,21 @@ export interface SchemaPort {
   /**
    * Discover schemas foreign to the host (another app's entities synced into the dataset),
    * registering them for name-based query resolution and returning their manifest entries.
+   *
+   * Registering is the switch's to do: it replaces what the dataset's names resolve to, which on
+   * this backend means the whole synthesised-class registry — adopted shapes' compiled classes
+   * included. A caller that only needs the answer uses {@link foreignEntries}.
    */
   foreignSchemas(dataset: DatasetHandle): Promise<EntityManifestEntry[]>;
+  /**
+   * The read half of `foreignSchemas`: the same manifest entries, with nothing registered.
+   *
+   * An ask is not an adoption. Candidacy questions — what could a call in this space extract —
+   * answer from the entries alone, and one asked about a dataset somebody is merely *named in* (a
+   * watch for a call in another space, an export's settings) must not reach inside the dataset's
+   * registry as the price of asking.
+   */
+  foreignEntries(dataset: DatasetHandle): Promise<EntityManifestEntry[]>;
   /**
    * Compile a declared manifest into this backend's installable schema payloads, registered for
    * name-based query resolution. Keys are entity names. `resolveExternal` resolves relation
