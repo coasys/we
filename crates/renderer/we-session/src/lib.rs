@@ -33,8 +33,9 @@ use we_template::{
 mod base;
 pub use base::{
     base_template_for, coasys_base_template, command_for, AgentState, BaseCommand, BaseController,
-    BaseJob, ChoiceMemory, ConnectionRow, ExecutorState, HostJob, MemoryCell, NoMemory,
-    OnlineProbe, BUILTIN_BUNDLE, NOT_LISTED, NO_NETWORK, UNREACHABLE,
+    BaseJob, ChoiceMemory, ConnectionRow, Door, ExecutorState, HostJob, IdentityDevice,
+    IdentityFacts, MemoryCell, NoMemory, OnlineProbe, BUILTIN_BUNDLE, NOT_LISTED, NO_NETWORK,
+    UNREACHABLE,
 };
 
 /// What [`Session::poll`] answered — whether a `resolve` now would

@@ -32,6 +32,8 @@ mod connection;
 #[cfg(not(target_arch = "wasm32"))]
 mod executor;
 #[cfg(not(target_arch = "wasm32"))]
+pub mod identity;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod live;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod relations;

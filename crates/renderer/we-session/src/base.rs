@@ -36,6 +36,13 @@ pub trait ChoiceMemory: Send + Sync {
     fn remembered(&self) -> Option<String>;
     /// Keep `id` for the next start.
     fn remember(&self, id: &str);
+    /// "Skip for now" was chosen on this computer, at this start or an
+    /// earlier one.
+    fn skipped(&self) -> bool {
+        false
+    }
+    /// Keep "Skip for now" for the next starts.
+    fn remember_skip(&self) {}
 }
 
 /// A [`ChoiceMemory`] that keeps nothing.
@@ -53,21 +60,33 @@ impl ChoiceMemory for NoMemory {
 /// A [`ChoiceMemory`] in this process. Two controllers that share one
 /// cell behave as two starts of the app.
 #[derive(Debug, Default)]
-pub struct MemoryCell(Mutex<Option<String>>);
+pub struct MemoryCell(Mutex<(Option<String>, bool)>);
 
 impl MemoryCell {
     pub fn holding(id: &str) -> Self {
-        Self(Mutex::new(Some(id.to_string())))
+        Self(Mutex::new((Some(id.to_string()), false)))
+    }
+
+    fn lock(&self) -> MutexGuard<'_, (Option<String>, bool)> {
+        self.0.lock().unwrap_or_else(|p| p.into_inner())
     }
 }
 
 impl ChoiceMemory for MemoryCell {
     fn remembered(&self) -> Option<String> {
-        self.0.lock().unwrap_or_else(|p| p.into_inner()).clone()
+        self.lock().0.clone()
     }
 
     fn remember(&self, id: &str) {
-        *self.0.lock().unwrap_or_else(|p| p.into_inner()) = Some(id.to_string());
+        self.lock().0 = Some(id.to_string());
+    }
+
+    fn skipped(&self) -> bool {
+        self.lock().1
+    }
+
+    fn remember_skip(&self) {
+        self.lock().1 = true;
     }
 }
 
@@ -240,6 +259,35 @@ pub enum ExecutorState {
     },
 }
 
+/// What this host's identity source could read about the identity, with
+/// no session: public facts only. No key, key id, enc key or word is ever
+/// in here; a device is only whether it is this computer.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct IdentityFacts {
+    /// The identity this computer's agent speaks for; `None`: none yet.
+    pub did: Option<String>,
+    /// The executor has an identity store it trusts a key for, so a
+    /// change made here could be published. `false`: no store, or no key.
+    pub store_trusted: bool,
+    /// The identity's devices still in force, as its key log lists them.
+    pub devices: Vec<IdentityDevice>,
+}
+
+/// One device of the identity, as the key log lists it. The log has no
+/// names and no kinds (those are in the identity's private record).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IdentityDevice {
+    pub this_device: bool,
+}
+
+/// One of the first run's three ways in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Door {
+    Make,
+    Link,
+    Words,
+}
+
 /// Work a permitted call or an executor change asks the host to do.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BaseJob {
@@ -258,8 +306,12 @@ pub enum BaseCommand {
     OpenPage(String),
     ClosePage,
     ClearPasswordWrong,
-    /// Identity and password calls. The adapters are absent, so these
-    /// change nothing.
+    /// "Skip for now".
+    StartNow,
+    /// One of the three doors.
+    OpenDoor(Door),
+    /// The password call. Its adapter is absent (slice 7), so it changes
+    /// nothing.
     Nop,
 }
 
@@ -493,7 +545,10 @@ impl BaseController {
                 inner.page.clear();
                 None
             }
-            BaseCommand::ClearPasswordWrong | BaseCommand::Nop => None,
+            BaseCommand::ClearPasswordWrong
+            | BaseCommand::StartNow
+            | BaseCommand::OpenDoor(_)
+            | BaseCommand::Nop => None,
         };
         self.publish(&inner);
         job.map(BaseJob::Dial)
@@ -602,6 +657,25 @@ impl BaseController {
         };
         self.publish(&inner);
         job
+    }
+
+    /// This host keeps an identity source (it runs this computer's
+    /// executor and reads its identity). Call before the executor's state.
+    pub fn keep_identity(&self) {}
+
+    /// The identity read the host should run now, by its token, once.
+    pub fn identity_read_due(&self) -> Option<u64> {
+        None
+    }
+
+    /// The read `read` answered.
+    pub fn note_identity(
+        &self,
+        read: u64,
+        answer: Result<IdentityFacts, String>,
+    ) -> Option<HostJob> {
+        let _ = (read, answer);
+        None
     }
 
     /// Whether a session holds the window.

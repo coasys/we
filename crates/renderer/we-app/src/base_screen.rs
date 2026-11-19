@@ -12,6 +12,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use we_ad4m::base::{select, BaseFile};
 use we_ad4m::connect::{Ask, ConnectFlow, ConnectPhase, ConnectSettings, FailureKind, GrantScope};
+use we_ad4m::identity::Identity;
 use we_ad4m::supervisor::{Agent, Lifecycle, Supervisor, SupervisorConfig};
 use we_ad4m::Connection;
 use we_egui::Registry;
@@ -54,6 +55,11 @@ pub trait OwnedExecutor: Send + Sync {
     /// The state and the process it is about, read together.
     fn state_at(&self) -> (ExecutorState, u64) {
         (self.state(), self.incarnation())
+    }
+    /// The identity's public facts, read as the operator, while it is
+    /// ready. Blocks.
+    fn identity(&self) -> Result<Identity, String> {
+        Err("this executor reads no identity".into())
     }
 }
 
@@ -115,6 +121,10 @@ impl OwnedExecutor for Supervisor {
     fn state_at(&self) -> (ExecutorState, u64) {
         let (state, run) = Supervisor::state_at(self);
         (lifecycle_state(state), run)
+    }
+
+    fn identity(&self) -> Result<Identity, String> {
+        Supervisor::identity(self)
     }
 }
 

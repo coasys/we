@@ -189,9 +189,22 @@ pub struct BaseFile {
     pub connection: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub servers: Vec<SavedServer>,
+    /// "Skip for now" was chosen on the first run.
+    #[serde(
+        default,
+        rename = "skippedIdentity",
+        skip_serializing_if = "std::ops::Not::not"
+    )]
+    pub skipped_identity: bool,
 }
 
 impl BaseFile {
+    /// Keep "Skip for now". The id chosen and the server list are kept.
+    pub fn skip_identity(path: &Path) -> std::io::Result<()> {
+        let _ = path;
+        Ok(())
+    }
+
     /// The file at `path`. A missing or unreadable file is an empty one.
     pub fn load(path: &Path) -> Self {
         std::fs::read_to_string(path)

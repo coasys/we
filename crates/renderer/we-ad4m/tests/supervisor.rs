@@ -16,6 +16,7 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use we_ad4m::identity::Identity;
 use we_ad4m::supervisor::{
     agent_from_status, Agent, AgentReader, Lifecycle, Supervisor, SupervisorConfig,
 };
@@ -113,6 +114,7 @@ type Answer = (Option<mpsc::Receiver<()>>, Result<Option<Agent>, String>);
 struct Reader {
     answers: Mutex<VecDeque<Answer>>,
     calls: Mutex<Vec<(String, String)>>,
+    identities: Mutex<Vec<(String, String)>>,
 }
 
 impl Reader {
@@ -148,6 +150,18 @@ impl AgentReader for Reader {
             }
             None => Ok(Some(Agent::Unlocked)),
         }
+    }
+
+    fn identity(&self, url: &str, admin: &str) -> Result<Identity, String> {
+        self.identities
+            .lock()
+            .unwrap()
+            .push((url.to_string(), admin.to_string()));
+        Ok(Identity {
+            did: None,
+            store_trusted: true,
+            devices: vec![],
+        })
     }
 }
 
@@ -1204,4 +1218,44 @@ fn a_malformed_build_suffix_is_refused() {
             executor_version_ok(ok)
         );
     }
+}
+
+/// Slice 5: the identity is read as the operator, from the run that is
+/// ready, at the port its child said; never while it starts or after it
+/// stopped.
+#[test]
+fn the_identity_is_read_only_from_the_ready_run() {
+    let dir = tempfile::tempdir().unwrap();
+    let port = health();
+    let reader = Arc::new(Reader::default());
+    let (tx, rx) = mpsc::channel::<()>();
+    // The first agent read waits, so the run is seen while it starts.
+    reader
+        .answers
+        .lock()
+        .unwrap()
+        .push_back((Some(rx), Ok(Some(Agent::Unlocked))));
+    let sup = Supervisor::with_reader(
+        config(dir.path(), waits_on_stdin(dir.path()), port),
+        reader.clone(),
+    );
+    assert!(sup.identity().is_err(), "read before a start");
+    sup.start();
+    wait_for(&sup, "a url", 10, |_| sup.url().is_some());
+    assert!(sup.identity().is_err(), "read while it starts");
+    assert!(reader.identities.lock().unwrap().is_empty());
+    tx.send(()).unwrap();
+    wait_for(&sup, "ready", 10, |s| matches!(s, Lifecycle::Ready { .. }));
+    let identity = sup.identity().expect("the ready run's identity");
+    assert_eq!(identity.did, None);
+    assert_eq!(
+        *reader.identities.lock().unwrap(),
+        [(format!("http://127.0.0.1:{port}"), ADMIN.to_string())]
+    );
+    kill_9(sup.pid().unwrap());
+    wait_for(&sup, "stopped", 10, |s| {
+        matches!(s, Lifecycle::Failed { .. })
+    });
+    assert!(sup.identity().is_err(), "read after it stopped");
+    assert_eq!(reader.identities.lock().unwrap().len(), 1);
 }

@@ -69,6 +69,7 @@ use std::sync::{mpsc, Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use crate::connect::{app_info, GrantScope};
+use crate::identity::Identity;
 use crate::Connection;
 
 /// The executor's exit codes: its run contract with a supervisor (ad4m
@@ -185,6 +186,12 @@ pub trait AgentReader: Send + Sync {
     fn permit(&self, url: &str, admin: &str, auth: &str) -> Result<String, String> {
         let _ = (url, admin, auth);
         Err("this reader approves nothing".into())
+    }
+
+    /// The identity's public facts (`identity.status`, `identity.devices`).
+    fn identity(&self, url: &str, admin: &str) -> Result<Identity, String> {
+        let _ = (url, admin);
+        Err("this reader reads no identity".into())
     }
 }
 
@@ -497,6 +504,12 @@ impl Supervisor {
         })
         .to_string();
         self.shared.reader.permit(&url, &self.shared.admin, &auth)
+    }
+
+    /// Read the identity's public facts, as the operator. Blocks; call it
+    /// off the UI thread. Only while the executor is ready.
+    pub fn identity(&self) -> Result<Identity, String> {
+        Err("not read yet".into())
     }
 
     /// Read the agent again (TS `executor.refresh`), off this thread. The
