@@ -113,9 +113,7 @@ export function processorIds(links) {
 
 /** A small, fast, seeded generator, so a run's messages are the same each time it is asked for. */
 export function random(seed) {
-  // xorshift has no state 0. Key 0 (a `seed: 0` run's message 0) takes the last state, not key 1's,
-  // which that run's message 1 uses: the two messages would share an id, text and author.
-  let s = seed >>> 0 || 0xffffffff;
+  let s = seed >>> 0 || 1;
   return () => {
     s ^= s << 13;
     s ^= s >>> 17;
@@ -142,10 +140,17 @@ export function words(rand, i) {
 
 const ID_LETTERS = 'abcdefghijklmnopqrstuvwxyz';
 
-/** An id of the form the model gives a new record: `ad4m://obj/` and 24 lowercase letters. */
-function objectId(rand) {
+/**
+ * An id of the form the model gives a new record: `ad4m://obj/` and 24 lowercase letters, from
+ * `(seed, i)`. Not from the message's generator: xorshift has no state 0, so two keys share one
+ * state (key 0 and key 1), and the two messages would share an id. The generator still advances by
+ * the 24 draws it always gave the id, so each message's words and author stay what they were.
+ */
+function objectId(seed, i, rand) {
+  for (let k = 0; k < 24; k++) rand();
+  const digest = createHash('sha256').update(`feed-scale-id:${seed}:${i}`).digest();
   let s = 'ad4m://obj/';
-  for (let k = 0; k < 24; k++) s += ID_LETTERS[Math.floor(rand() * 26)];
+  for (let k = 0; k < 24; k++) s += ID_LETTERS[digest[k] % 26];
   return s;
 }
 
@@ -177,7 +182,13 @@ export function* messages({ count, endMs, seed = 1, authors, from = 0, to = coun
   for (let i = from; i < to; i++) {
     const rand = random(seed * 0x9e3779b1 + i);
     const atMs = Math.floor(startMs + i * step + rand() * step * 0.5);
-    yield { i, id: objectId(rand), text: words(rand, i), atMs, author: authors[Math.floor(rand() * authors.length)] };
+    yield {
+      i,
+      id: objectId(seed, i, rand),
+      text: words(rand, i),
+      atMs,
+      author: authors[Math.floor(rand() * authors.length)],
+    };
   }
 }
 

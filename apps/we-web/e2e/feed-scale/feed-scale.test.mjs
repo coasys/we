@@ -145,11 +145,15 @@ describe('seed', () => {
   });
 
   it('gives every message its own id, including at seed 0', () => {
-    // `random` has no state 0: key 0 (seed 0, message 0) must not take message 1's state.
+    // xorshift has no state 0, so `random` gives keys 0 and 1 one state: seed 0's messages 0 and 1,
+    // and seed 2584's messages 765288 and 765289 (whose keys are 0 and 1 modulo 2^32).
     const authors = Array.from({ length: 3 }, (_, i) => ({ did: `did:test:${i}` }));
-    const a = [...messages({ count: 500, endMs: Date.UTC(2026, 0, 1), seed: 0, authors })];
+    const endMs = Date.UTC(2026, 0, 1);
+    const a = [...messages({ count: 500, endMs, seed: 0, authors })];
     expect(a[0].id).not.toBe(a[1].id);
     expect(new Set(a.map((m) => m.id)).size).toBe(a.length);
+    const [b, c] = messages({ count: 765290, endMs, seed: 2584, authors, from: 765288 });
+    expect(b.id).not.toBe(c.id);
   });
 
   it('writes a sentence of 3 to 30 words, numbered', () => {
