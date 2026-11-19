@@ -58,14 +58,61 @@ interface Entry {
 }
 
 /** How long a subscription nobody holds is kept for somebody to ask again. Tests set it to 0. */
-export const subscriptionPoolConfig = { releaseGraceMs: 1500 };
+export const subscriptionPoolConfig = { releaseGraceMs: 1500, lastAnswersLimit: 300 };
 
 /** Keyed by entity, then by dataset id, then by the question as JSON. Emptied as entries go. */
 const pool = new Map<unknown, Map<unknown, Map<string, Entry>>>();
 
+/**
+ * The last rows a released subscription answered with, kept so the same question asked again —
+ * a space returned to after the grace period let its entries go — can draw them at once and then
+ * be corrected by the live answer.
+ *
+ * Insertion order is the eviction order: reading an entry re-queues it, and the oldest goes once
+ * the bound is passed. Keyed as the pool is — entity name, dataset id and the question as JSON,
+ * joined on NUL, which JSON.stringify escapes so it cannot appear in the question key. Memory
+ * only, deliberately: nothing here is persisted.
+ */
+const lastAnswers = new Map<string, Rows>();
+
+function lastAnswerKey(kind: string, at: string, key: string): string {
+  return `${kind}\u0000${at}\u0000${key}`;
+}
+
+/** Keep an entry's last answer for the next asker, where the question has a name at all. */
+function rememberLastAnswer(kind: unknown, at: unknown, key: string | null, entry: Entry): void {
+  // Only string kinds (entity names) and string dataset keys are cached; an object key — a caller
+  // with no name, a handle with no uuid — identifies nothing across releases.
+  if (key === null || typeof kind !== 'string' || typeof at !== 'string') return;
+  if (entry.failed || entry.latest === null) return;
+  const id = lastAnswerKey(kind, at, key);
+  lastAnswers.delete(id);
+  lastAnswers.set(id, entry.latest);
+  if (lastAnswers.size > subscriptionPoolConfig.lastAnswersLimit) {
+    lastAnswers.delete(lastAnswers.keys().next().value!);
+  }
+}
+
+/** The kept rows for a question being asked again, re-queued as most recently used. */
+function lastAnswerFor(kind: unknown, at: unknown, key: string): Rows | undefined {
+  if (typeof kind !== 'string' || typeof at !== 'string') return undefined;
+  const id = lastAnswerKey(kind, at, key);
+  const rows = lastAnswers.get(id);
+  if (rows === undefined) return undefined;
+  lastAnswers.delete(id);
+  lastAnswers.set(id, rows);
+  return rows;
+}
+
+/** Forget every kept last answer — a session ending or changing agent, so one user never sees another's rows. */
+export function clearLastAnswers(): void {
+  lastAnswers.clear();
+}
+
 /** Forget every shared subscription without disposing any — for a test's isolation, never the app. */
 export function resetSubscriptionPool(): void {
   pool.clear();
+  lastAnswers.clear();
 }
 
 /** A dataset by its id where it has one — a handle may be rebuilt for the same dataset between reads. */
@@ -115,6 +162,13 @@ export function acquireSubscription(
   const kind: unknown = entityName || model;
 
   let entry = key === null ? undefined : pool.get(kind)?.get(at)?.get(key);
+  if (entry?.failed) {
+    // A failure already answered is not a subscription to share: whoever asks next retries it —
+    // which is how a query that failed on a missing schema recovers once the shape is written.
+    if (key !== null) forget(kind, at, key, entry);
+    if (!entry.disposed) dispose(entry);
+    entry = undefined;
+  }
   if (entry && !entry.disposed) {
     entry.listeners.add(listener);
     const joined = entry;
@@ -167,6 +221,18 @@ export function acquireSubscription(
         created.error = err;
         for (const each of [...created.listeners]) each.onError(err);
       });
+    if (key !== null) {
+      // What this question last answered, shown while the live subscription is still out —
+      // asynchronously, as a fresh subscription would answer. A live answer always wins: the kept
+      // rows are delivered only while the subscription has said nothing yet.
+      const rows = lastAnswerFor(kind, at, key);
+      if (rows !== undefined) {
+        queueMicrotask(() => {
+          if (!created.listeners.has(listener) || created.latest !== null || created.failed) return;
+          listener.onRows(rows);
+        });
+      }
+    }
   }
 
   const held = entry;
@@ -178,6 +244,7 @@ export function acquireSubscription(
     if (held.listeners.size) return;
     const letGo = () => {
       if (held.listeners.size || held.disposed) return;
+      rememberLastAnswer(kind, at, key, held);
       if (key !== null) forget(kind, at, key, held);
       dispose(held);
     };

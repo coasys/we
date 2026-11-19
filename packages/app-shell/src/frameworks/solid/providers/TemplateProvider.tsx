@@ -461,6 +461,9 @@ export default function TemplateProvider() {
     // query for one waits until they have been, rather than reporting it missing.
     $modelsPending: (dataset: unknown) =>
       !!dataset && dataset === datasetStore.currentDataset()?.handle && !shapeStore.shapesLoaded(),
+    // Moves when a switch's background refresh wrote shapes, so a query that failed for want of
+    // one is asked again.
+    $schemaRevision: (dataset: unknown) => datasetStore.schemaRevision(dataset),
     // The router binding behind $localState's syncParam: view state a template
     // mirrors into the URL (?type=…&sort=…) so a shared link reproduces the view.
     $routeParams: {

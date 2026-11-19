@@ -517,6 +517,12 @@ function createQuerySignal(
       return;
     }
 
+    // The schema revision, for the dependency alone: a switch's background schema refresh writes
+    // shapes a mounted query may have failed on ("No SHACL shape stored for class X"), and the
+    // bump re-asks it here rather than leaving it failed until remount. It only moves when the
+    // refresh wrote something.
+    stores.$schemaRevision?.(p);
+
     // Read inside the effect, so a name that comes from an expression re-runs the query when it
     // changes — and so a name that is not there yet is a frame to wait through, not a failure.
     const entities = resolveEntityNames(descriptor.entity, stores, context);

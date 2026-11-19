@@ -48,8 +48,11 @@ export interface SchemaPort {
   installRoot(dataset: DatasetHandle): Promise<void>;
   /** Install the host's space schemas plus the given module schemas. Idempotent. */
   installSpace(dataset: DatasetHandle, moduleSchemas: readonly unknown[]): Promise<void>;
-  /** Install only the given module schemas (runs on every space switch — diffs before writing). */
-  installModules(dataset: DatasetHandle, moduleSchemas: readonly unknown[]): Promise<void>;
+  /**
+   * Install only the given module schemas (runs on every space switch — diffs before writing).
+   * Returns the schemas it wrote, or an empty array — the common case — like `refreshSpace`.
+   */
+  installModules(dataset: DatasetHandle, moduleSchemas: readonly unknown[]): Promise<string[]>;
   /**
    * Bring a dataset's space schemas up to date with the ones this build declares, for a dataset that
    * `installSpace` deliberately skips because it is already a host space.

@@ -246,7 +246,7 @@ export function createInMemorySchemaPort(runtime: EntityRuntime): SchemaPort {
   return {
     installRoot: async () => {},
     installSpace: async () => {},
-    installModules: async () => {},
+    installModules: () => Promise.resolve([]),
     // Nothing to bring up to date: entities here are compiled from the manifest this build ships,
     // so a stored shape can never predate the declared one.
     refreshSpace: () => Promise.resolve([]),
