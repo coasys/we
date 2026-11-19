@@ -4666,7 +4666,11 @@ export function SpaceStoreProvider(props: ParentProps) {
     return {
       spaceName: space?.name,
       spaceTargets: resolveSpaceExtractionTargets(candidates, space?.extractionTargets).filter(resolvable),
-      auto: resolveCollectionAutoExtract(space?.autoInterpret === true, own.autoExtract),
+      // A record that could not be read has not said it inherits: the space's default must not start
+      // a watch the record's own switch may forbid, and nothing re-registers it once the record arrives.
+      auto:
+        (liveSettings !== undefined || row !== undefined) &&
+        resolveCollectionAutoExtract(space?.autoInterpret === true, own.autoExtract),
       classes: resolveCollectionExtractionTargets(candidates, space?.extractionTargets, own.extractionTargets).filter(
         resolvable,
       ),
@@ -5733,7 +5737,11 @@ export function SpaceStoreProvider(props: ParentProps) {
       include: { location: true, taskStates: true },
     });
     const handleResult = (results: Space[]) => {
-      const space = results[0] ?? null;
+      const row = results[0] ?? null;
+      // A default still being saved stays shown over the row the record last took, which is the
+      // older choice until the write lands.
+      const pending = row ? pendingDefaults(ds) : {};
+      const space = row && Object.keys(pending).length ? withFields(row, pending) : row;
       if (space) pushedSpaces.add(space);
       setCurrentSpace(space);
     };
@@ -5862,8 +5870,25 @@ export function SpaceStoreProvider(props: ParentProps) {
   */
   const defaultSaves = new Map<
     string,
-    { key: string; confirmed: string | undefined; ops: Latest; pending: number; tail: Promise<unknown> }
+    {
+      key: string;
+      confirmed: string | undefined;
+      value: string | undefined;
+      ops: Latest;
+      pending: number;
+      tail: Promise<unknown>;
+    }
   >();
+
+  /** The newest choice of each default still being saved for a dataset, for a live row to show over. */
+  const pendingDefaults = (ds: AppDataset): Partial<Space> => {
+    const fields: Partial<Space> = {};
+    for (const field of ['defaultTemplateId', 'defaultThemeId'] as const) {
+      const save = defaultSaves.get(`${ds.id}:${field}`);
+      if (save) fields[field] = save.value;
+    }
+    return fields;
+  };
 
   const defaultSaveFor = (ds: AppDataset, field: 'defaultTemplateId' | 'defaultThemeId') => {
     const key = `${ds.id}:${field}`;
@@ -5875,6 +5900,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       save = {
         key,
         confirmed: heldSpace(ds)?.[field] ?? (shown && isSpaceSelf(shown, ds) ? shown[field] : undefined),
+        value: undefined,
         ops: latest(),
         pending: 0,
         tail: Promise.resolve(),
@@ -5892,10 +5918,11 @@ export function SpaceStoreProvider(props: ParentProps) {
   };
 
   /*
-    The row a default save writes through, inside the same failure boundary as the write. A read
-    that cannot answer, and a space with no record at all, were silent successes: the paint already
-    up stayed, with nothing saved and nothing said. Reported the way the write reports, so the
-    caller's failure path takes the publish back.
+    The row a default save writes through, inside the same failure boundary as the write — and read
+    inside the queued write, so two saves whose reads finish out of order still write in the order
+    they were asked. A read that cannot answer, and a space with no record at all, were silent
+    successes: the paint already up stayed, with nothing saved and nothing said. Reported the way
+    the write reports, so the caller's failure path takes the publish back.
   */
   const spaceRowForSave = async (ds: AppDataset): Promise<Space> => {
     try {
@@ -5913,6 +5940,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (!ds) return;
     const save = defaultSaveFor(ds, 'defaultTemplateId');
     const isNewest = save.ops.begin();
+    save.value = templateId;
     save.pending += 1;
     try {
       /*
@@ -5924,8 +5952,9 @@ export function SpaceStoreProvider(props: ParentProps) {
         capture, so a template the record itself brought in mid-save is never rolled back over.
       */
       publishSpaceFields(ds, { defaultTemplateId: templateId });
-      const space = await spaceRowForSave(ds);
-      await queueDefaultWrite(save, () => writeSpaceFields(ds, space, { defaultTemplateId: templateId }, isNewest));
+      await queueDefaultWrite(save, async () =>
+        writeSpaceFields(ds, await spaceRowForSave(ds), { defaultTemplateId: templateId }, isNewest),
+      );
       save.confirmed = templateId;
     } catch (error) {
       // Only the newest save takes the paint back — an earlier one failing leaves the later one's.
@@ -5942,12 +5971,14 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (!ds) return;
     const save = defaultSaveFor(ds, 'defaultThemeId');
     const isNewest = save.ops.begin();
+    save.value = themeId;
     save.pending += 1;
     try {
       publishSpaceFields(ds, { defaultThemeId: themeId });
       if (isCurrent(ds)) explainHiddenSpaceTheme();
-      const space = await spaceRowForSave(ds);
-      await queueDefaultWrite(save, () => writeSpaceFields(ds, space, { defaultThemeId: themeId }, isNewest));
+      await queueDefaultWrite(save, async () =>
+        writeSpaceFields(ds, await spaceRowForSave(ds), { defaultThemeId: themeId }, isNewest),
+      );
       save.confirmed = themeId;
     } catch (error) {
       // Only the newest save takes the paint back — an earlier one failing leaves the later one's.

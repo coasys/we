@@ -914,11 +914,23 @@ export function TemplateStoreProvider(props: ParentProps) {
     setSpaceTemplateIdSet(read.ids);
   }
 
+  /**
+   * Which space's templates were last asked to be put in the lists. A read that was started for one
+   * space and answers after another's was asked for is cached but not placed — placed, it would
+   * replace the newer space's templates with its own, and a choice for the newer space naming an id
+   * both define would be applied from the wrong one. It is a turn count rather than "is the dataset
+   * current" because a preload puts a space's templates in place *before* the switch to it.
+   */
+  let spaceTemplateTurn = 0;
+
   /** Load templates from a space perspective, merge into allTemplates, and populate the cache */
   async function loadSpaceTemplates(dataset: AppDataset): Promise<void> {
+    const turn = ++spaceTemplateTurn;
     clearSpaceTemplates();
     try {
-      placeSpaceTemplates(dataset, await readSpaceTemplates(dataset));
+      const read = await readSpaceTemplates(dataset);
+      if (turn === spaceTemplateTurn) placeSpaceTemplates(dataset, read);
+      else spaceTemplateCache.set(dataset.id, read);
     } catch (error) {
       console.error('TemplateStore: loadSpaceTemplates error', error);
     }
@@ -951,6 +963,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     if (inFlight) return inFlight;
     const cached = spaceTemplateCache.get(dataset.id);
     if (cached) {
+      spaceTemplateTurn++;
       clearSpaceTemplates();
       if (cached.schemas.length > 0) {
         cached.models.forEach((model, id) => spaceTemplateMap.set(id, model));

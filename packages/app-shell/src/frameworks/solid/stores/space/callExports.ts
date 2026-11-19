@@ -137,26 +137,26 @@ export function createCallExports(deps: CallExportDeps) {
         name: exportFileName(titled?.title, 'call', 'md', exportedAt).replace(/\.md$/, '-extraction-log.md'),
         type: 'text/markdown;charset=utf-8',
         content: async () => {
-          const [call, meta] = await Promise.all([
-            CollectionBlock.findOne(p, {
-              where: { id: callId },
-              /*
-                `polymorphic` said here rather than trusted to the declaration. `extracted` names no
-                target class — a pass writes whatever models the call looks for — and the class this
-                store reads through does not carry the flag, so the executor would refuse to hydrate it.
-              */
-              include: {
-                runs: { where: { kind: 'extraction' } },
-                extracted: { polymorphic: true },
-                amendments: true,
-              },
-            } as never),
-            // The settings head the log and are not its substance: unreadable, the history still goes.
-            deps.exportMeta(p, callId).catch((error) => {
-              console.error('SpaceStore: exportExtractionLog could not read the settings', error);
-              return undefined;
-            }),
-          ]);
+          // The settings head the log and are not its substance: unreadable, the history still goes.
+          // Started with the call's read but awaited only once there is a log to head, so a call with
+          // no passes is answered without them; the fallback keeps an early return from leaving a rejection.
+          const settings = deps.exportMeta(p, callId).catch((error) => {
+            console.error('SpaceStore: exportExtractionLog could not read the settings', error);
+            return undefined;
+          });
+          const call = await CollectionBlock.findOne(p, {
+            where: { id: callId },
+            /*
+              `polymorphic` said here rather than trusted to the declaration. `extracted` names no
+              target class — a pass writes whatever models the call looks for — and the class this
+              store reads through does not carry the flag, so the executor would refuse to hydrate it.
+            */
+            include: {
+              runs: { where: { kind: 'extraction' } },
+              extracted: { polymorphic: true },
+              amendments: true,
+            },
+          } as never);
           const row = call as unknown as {
             title?: string;
             runs?: unknown;
@@ -167,6 +167,7 @@ export function createCallExports(deps: CallExportDeps) {
           const records = Array.isArray(row?.extracted) ? (row.extracted as unknown[]) : [];
           const amendments = (Array.isArray(row?.amendments) ? row.amendments : []) as AmendmentEntry[];
           if (!passes.length) return null;
+          const meta = await settings;
 
           const { turns } = await callTranscript(p, callId);
           // Scoped to this call, as the review list is; best effort, since a log without the waiting

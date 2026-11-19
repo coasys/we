@@ -549,12 +549,17 @@ export function ShapeStoreProvider(props: ParentProps) {
     dataset: DatasetHandle,
   ): Promise<{ candidates: string[]; installed: string[] }> {
     // `loadShapes` publishes no adopted shapes for a dataset that is not a WE space, so neither
-    // does this: a stored shape document there is no candidate on screen and none off it.
+    // does this: a stored shape document there is no candidate on screen and none off it. The
+    // foreign read still answers a stored shape's class, though, so its name is kept out of the
+    // foreign candidates instead of being offered as though the space had brought it.
     const weSpace = (await schemas()?.hasCoreSchema(dataset)) === true;
-    const [records, foreign] = await Promise.all([
-      weSpace ? storage().list(dataset) : Promise.resolve([]),
+    const [stored, allForeign] = await Promise.all([
+      storage().list(dataset),
       schemas()?.foreignEntries(dataset) ?? Promise.resolve([]),
     ]);
+    const records = weSpace ? stored : [];
+    const storedNames = new Set(stored.map((record) => record.name));
+    const foreign = weSpace ? allForeign : allForeign.filter((m) => !storedNames.has(m.name));
     const shapes = records.map((record) => {
       if (!record.manifest) return { name: record.name, manifest: null };
       const gate = validateManifest(record.manifest, {
@@ -566,7 +571,7 @@ export function ShapeStoreProvider(props: ParentProps) {
       });
       return { name: record.name, manifest: gate.valid ? gate.manifest : null };
     });
-    return { candidates: extractionCandidatesOf(shapes, foreign).candidates, installed: foreign.map((m) => m.name) };
+    return { candidates: extractionCandidatesOf(shapes, foreign).candidates, installed: allForeign.map((m) => m.name) };
   }
 
   /*

@@ -25,6 +25,7 @@ import {
   Policy,
   Space,
   SpaceLandmark,
+  unregisterEntity,
 } from '@we/entities';
 import { type FeedFind, readFeedWindow } from '@we/module-feed';
 import { notesModule } from '@we/module-notes';
@@ -1482,6 +1483,52 @@ describe('dataset lifecycle through the real stores', () => {
   }, 10000);
 
   /*
+    A space whose record is not held is read before it is written. Two saves each starting that read
+    would write in the order the reads happened to answer, so the older choice could be stored last.
+  */
+  it('stores the newer of two default saves last when the older one’s record read answers last', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    const ref = await lifecycle.create('Unheld Order');
+    await Space.create(ref.handle as never, { name: 'Unheld Order', uuid: ref.id } as never);
+    await vi.waitFor(() => expect(stores.datasets.datasets().map((d) => d.id)).toContain(ref.id));
+    expect(stores.spaces.mySpaces().some((s) => s.uuid === ref.id)).toBe(false);
+
+    const Entity = getEntity('Space') as unknown as { findAll: (...a: unknown[]) => Promise<unknown> };
+    const findAll = Entity.findAll.bind(Entity);
+    const reads: (() => void)[] = [];
+    const spy = vi.spyOn(Entity, 'findAll').mockImplementation(async (...args: unknown[]) => {
+      await new Promise<void>((resolve) => reads.push(resolve));
+      return findAll(...args);
+    });
+    let outcome: { error?: unknown } | undefined;
+    const saving = Promise.all([
+      stores.spaces.setSpaceDefaultTheme('neon', ref.id),
+      stores.spaces.setSpaceDefaultTheme('moss', ref.id),
+    ]).then(
+      () => ({}),
+      (error: unknown) => ({ error }),
+    );
+    void saving.then((result) => (outcome = result));
+    try {
+      // Reads are answered newest first: whatever is out is let finish in reverse order of asking.
+      for (let attempt = 0; attempt < 200 && !outcome; attempt++) {
+        reads
+          .splice(0)
+          .reverse()
+          .forEach((release) => release());
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+    } finally {
+      reads.splice(0).forEach((release) => release());
+      spy.mockRestore();
+    }
+    expect(outcome).toEqual({});
+    const [stored] = await Space.findAll(ref.handle as never);
+    expect(stored?.defaultThemeId).toBe('moss');
+  }, 10000);
+
+  /*
     A publish for the space on screen keys on the dataset, but the record on screen lags the
     switch: for a moment the dataset is already the new space's while the record is still the old
     one's. A default set for the space being switched to must wait for its own record — written
@@ -1891,18 +1938,47 @@ describe('dataset lifecycle through the real stores', () => {
       }
     }, 10000);
 
+    it('keeps the newer pending choice shown when the live record delivers the older one that landed', async () => {
+      const { stores, ref, uuid, writes, spy } = await twoSaves();
+      try {
+        const first = stores.spaces.setSpaceDefaultTheme('neon', uuid);
+        const second = stores.spaces.setSpaceDefaultTheme('moss', uuid);
+        await vi.waitFor(() => expect(writes).toHaveLength(1));
+        writes[0].release();
+        await first;
+        // The older choice is really stored now, and the live read is free to deliver it.
+        await vi.waitFor(async () =>
+          expect((await Space.findAll(ref.handle as never))[0]?.defaultThemeId).toBe('neon'),
+        );
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        expect(stores.spaces.currentSpace()?.defaultThemeId).toBe('moss');
+        expect(stores.spaces.mySpaces().find((s) => s.uuid === uuid)?.defaultThemeId).toBe('moss');
+        await vi.waitFor(() => expect(writes).toHaveLength(2));
+        writes[1].release();
+        await second;
+        await vi.waitFor(() => expect(stores.spaces.currentSpace()?.defaultThemeId).toBe('moss'));
+      } finally {
+        writes.forEach((w) => w.release());
+        spy.mockRestore();
+      }
+    }, 10000);
+
     it('stores the newer choice last even when the backend would finish the older one last', async () => {
       const { stores, ref, uuid, writes, spy } = await twoSaves();
+      // Fulfilment and rejection are both watched from here, so a failed write is reported as that.
+      let outcome: { error?: unknown } | undefined;
       try {
         const saving = Promise.all([
           stores.spaces.setSpaceDefaultTheme('neon', uuid),
           stores.spaces.setSpaceDefaultTheme('moss', uuid),
-        ]);
+        ]).then(
+          () => ({}),
+          (error: unknown) => ({ error }),
+        );
+        void saving.then((result) => (outcome = result));
         // Released newest first: whatever is out is let finish in reverse order of asking.
-        let done = false;
-        void saving.finally(() => (done = true));
         await vi.waitFor(() => expect(writes.length).toBeGreaterThan(0));
-        while (!done) {
+        for (let attempt = 0; attempt < 200 && !outcome; attempt++) {
           writes
             .filter((w) => !w.released)
             .at(-1)
@@ -1910,8 +1986,10 @@ describe('dataset lifecycle through the real stores', () => {
           await new Promise((resolve) => setTimeout(resolve, 10));
         }
       } finally {
+        writes.forEach((w) => w.release());
         spy.mockRestore();
       }
+      expect(outcome).toEqual({});
       const [stored] = await Space.findAll(ref.handle as never);
       expect(stored?.defaultThemeId).toBe('moss');
     }, 10000);
@@ -4009,6 +4087,30 @@ describe('what a collection extracts', () => {
   }, 15000);
 
   /*
+    A call whose record cannot be read has said nothing about automatic extraction, which is not the
+    same as saying nothing *yet to override*: the space's default must not start a watch the call's
+    own stored switch may turn out to forbid, and nothing re-registers it when the record arrives.
+  */
+  it('refuses a call whose record cannot be read, though the space default is on', async () => {
+    const port = watchPort();
+    const stores = mountShell();
+    await ready(stores);
+    await enterSpace(stores, 'Here');
+    const a = stores.datasets.currentDataset()!.id;
+    await stores.spaces.setAutoInterpret(true);
+
+    await enterSpace(stores, 'Elsewhere');
+    provideModuleHostServices({
+      datasetByUri: (uri) => stores.datasets.datasets().find((d) => d.id === uri || d.sharedUri === uri)?.handle,
+    });
+
+    await expect(kernel().watchCollection('call-not-yet-synced', { dataset: a })).rejects.toThrow(
+      'automatic extraction is off',
+    );
+    expect(port.registrations.some((r) => r.watchId === watchId('call-not-yet-synced'))).toBe(false);
+  }, 15000);
+
+  /*
     Leaving a call does not wait on the reads a start makes first, so a stop can land while its
     start is still resolving. Serialised per (dataset, watch id), the stop runs *after* the start
     it supersedes: the start registers and the stop removes it, where a stop that raced past left
@@ -4492,6 +4594,49 @@ describe('what a collection extracts', () => {
   }, 15000);
 
   /*
+    The settings head the log and are not its substance, so a call with no passes says so without
+    waiting on them.
+  */
+  it('says no extraction has run without waiting on the export’s settings', async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let metaRead = false;
+    let spy: ReturnType<typeof vi.spyOn> | undefined;
+    const warned = vi.spyOn(toastService, 'warning');
+    (globalThis as { showSaveFilePicker?: unknown }).showSaveFilePicker = async () => ({
+      createWritable: async () => ({ write: async () => {}, close: async () => {} }),
+    });
+    try {
+      const stores = mountShell();
+      await ready(stores);
+      const handleA = await enterSpace(stores, 'Quiet');
+      const call = await CollectionBlock.create(handleA, { kind: 'call', mode: 'feed', title: 'quiet' } as never);
+      const Entity = getEntity('CollectionBlock') as unknown as {
+        findAll: (handle: unknown, q?: { properties?: readonly string[] }) => Promise<unknown[]>;
+      };
+      const findAll = Entity.findAll.bind(Entity);
+      spy = vi.spyOn(Entity, 'findAll').mockImplementation(async (handle, q) => {
+        if (q?.properties) {
+          metaRead = true;
+          await held;
+        }
+        return findAll(handle, q as never);
+      });
+
+      await stores.spaces.exportExtractionLog(call.id);
+      // The settings read is still out, and the answer is already given.
+      expect(metaRead).toBe(true);
+      expect(warned).toHaveBeenCalledWith('No extraction has run on this call yet.');
+      release();
+    } finally {
+      release();
+      spy?.mockRestore();
+      warned.mockRestore();
+      delete (globalThis as { showSaveFilePicker?: unknown }).showSaveFilePicker;
+    }
+  }, 15000);
+
+  /*
     Back on a space, the shape list still held is the one for the space just left until this
     space's own load publishes. A call asked about in that window narrows by this space's own
     candidates, not the stale list — which lacks the models only this space adopted.
@@ -4752,6 +4897,43 @@ describe('what a collection extracts', () => {
     try {
       expect((await stores.shapes.extractionCandidatesFor(handleA)).candidates).not.toContain('Sighting');
     } finally {
+      core.mockRestore();
+    }
+  }, 15000);
+
+  /*
+    The foreign read answers every SHACL class that is not registered in the session — a WE-authored
+    model whose shape document is stored included. Where there is no core schema that class is no
+    candidate, though a genuinely foreign one still is.
+  */
+  it('keeps a stored WE model out of the foreign candidates of a dataset that is not a WE space', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    const handleA = await enterSpace(stores, 'Here');
+    const manifest: EntityManifest = {
+      version: '1',
+      entities: {
+        Sighting: { extractable: true, properties: { note: { type: 'string' } }, relations: {} },
+      },
+    };
+    expect(await stores.shapes.addRecordTypes('test', [{ name: 'Sighting', manifest }])).toEqual([]);
+    await vi.waitFor(() => expect(stores.shapes.spaceShapes().map((s) => s.name)).toContain('Sighting'));
+    // The class WE registered for it is gone, as it is for a model the session never compiled.
+    unregisterEntity('Sighting');
+    await enterSpace(stores, 'Elsewhere');
+
+    const schemas = stores.session.backendPorts()!.schemas;
+    const core = vi.spyOn(schemas, 'hasCoreSchema').mockResolvedValue(false);
+    const reading = vi.spyOn(schemas, 'foreignEntries').mockResolvedValue([
+      { name: 'Sighting', manifest },
+      { name: 'Heron', manifest },
+    ] as never);
+    try {
+      const { candidates } = await stores.shapes.extractionCandidatesFor(handleA);
+      expect(candidates).not.toContain('Sighting');
+      expect(candidates).toContain('Heron');
+    } finally {
+      reading.mockRestore();
       core.mockRestore();
     }
   }, 15000);
