@@ -3486,6 +3486,99 @@ describe('a stream that went away', () => {
     expect(opens).toBeLessThanOrEqual(3);
   });
 
+  /**
+   * A full queue (ad4m#1805) means the speech model is behind, not that the stream is gone. A new
+   * stream would close this one, and the text of what it already took would go nowhere.
+   */
+  describe('a stream whose queue is full', () => {
+    const FULL = new Error(
+      '[AIClient] feed failed: 500 Internal Server Error All streams failed: s1: The utterance queue of this stream is full. This audio was not accepted.',
+    );
+    const sized = (samples: number) => ({ data: { kind: 'utterance', audio: new Float32Array(samples) } });
+
+    /** One stream that refuses the first `refusals` feeds as full, then takes everything. */
+    function behind(refusals: number) {
+      const fed: number[] = [];
+      let opens = 0;
+      let left = refusals;
+      return {
+        fed,
+        opens: () => opens,
+        transcription: {
+          available: () => true,
+          models: async () => [{ id: 'small', name: 'Whisper small', ready: true, isDefault: true }],
+          open: async () => {
+            opens += 1;
+            return {
+              feed: async (audio: Float32Array) => {
+                if (left > 0) {
+                  left -= 1;
+                  throw FULL;
+                }
+                fed.push(audio.length);
+              },
+              close: async () => {},
+            };
+          },
+        },
+      };
+    }
+
+    it('sends again to the same stream, in the order it was said, without reconnecting', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        const s = behind(2);
+        const h = harness(IN_CALL, { dataset: () => ({}), transcription: s.transcription });
+        await settle();
+
+        nodes[0].port.onmessage?.(sized(1600));
+        await settle();
+        nodes[0].port.onmessage?.(sized(1601));
+        nodes[0].port.onmessage?.(sized(1602));
+        await settle();
+        expect(s.fed).toEqual([]);
+        expect(h.store.reconnecting()).toBe(false);
+
+        await vi.advanceTimersByTimeAsync(10_000);
+
+        expect(s.opens()).toBe(1);
+        expect(s.fed).toEqual([1600, 1601, 1602]);
+        expect(h.store.skipped()).toBe(0);
+        expect(h.store.status()).toBe('listening');
+
+        // Once caught up, the next utterance goes straight to the stream again.
+        nodes[0].port.onmessage?.(sized(1603));
+        await settle();
+        expect(s.fed).toEqual([1600, 1601, 1602, 1603]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('lets go of the oldest speech past 30 s while the stream stays full, and counts it', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        // Full for the whole test, so all of it waits.
+        const s = behind(1_000);
+        const h = harness(IN_CALL, { dataset: () => ({}), transcription: s.transcription });
+        await settle();
+
+        // Four utterances of 10 s each: 40 s behind a full queue.
+        for (let i = 0; i < 4; i++) nodes[0].port.onmessage?.(sized(160_000));
+        await settle();
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        // The oldest is let go to stay within 30 s, and the stream is not replaced.
+        expect(h.store.skipped()).toBe(1);
+        expect(h.store.reconnecting()).toBe(false);
+        expect(s.opens()).toBe(1);
+        expect(h.store.status()).toBe('listening');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
   it('keeps trying, and stops only once a minute of attempts has failed', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {

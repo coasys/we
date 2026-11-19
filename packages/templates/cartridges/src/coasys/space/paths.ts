@@ -158,7 +158,12 @@ export const SELECTED_EXPR = [
   `routeStore.params.card && ${INSPECTED_DNA} ? 'dna|model|' + routeStore.params.cardType`,
   `: (${PAGE_EXPR}) == 'record' ? 'call|' + routeStore.params.id`,
   `: (${PAGE_EXPR}) == 'person' ? 'person|' + routeStore.params.did`,
-  `: (${PAGE_EXPR}) == 'workflows' ? (workflowStore.open ? 'workflow|' + workflowStore.open.name : 'group|workflows')`,
+  /*
+    A record chosen on the flows page lights its row under Active flows. One that has finished has no
+    row there, so nothing is lit: asking whether it is still running would take this expression past
+    the length an expression may be.
+  */
+  `: (${PAGE_EXPR}) == 'workflows' ? (workflowStore.open ? (routeStore.params.card ? 'run|' + workflowStore.open.name + '|' + routeStore.params.card : 'workflow|' + workflowStore.open.name) : 'group|workflows')`,
   `: (${PAGE_EXPR}) in [${GROUP_PAGES.filter((p) => p !== 'workflows')
     .map((p) => `'${p}'`)
     .join(', ')}] ? 'group|' + (${PAGE_EXPR})`,

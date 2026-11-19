@@ -273,7 +273,8 @@ const chatRoute: RouteSchema = {
 /**
  * The space's workflows: WE's own Workflows page — every workflow down the left, the one chosen beside it with
  * the records going through it, and the editor for a new or changed one. `?new=1` opens the new-flow
- * dialog, which is what the + on the tree's Workflows row goes to.
+ * dialog, which is what the + on the tree's Flows row, under Social DNA, goes to. Its crumb says Flows, as
+ * the tree does.
  */
 const workflowsRoute: RouteSchema = {
   path: '/workflows',
@@ -284,7 +285,7 @@ const workflowsRoute: RouteSchema = {
     viewBar(
       [
         {
-          label: 'Workflows',
+          label: 'Flows',
           onClick: [{ $invoke: 'workflowStore.closeWorkflow' }, navigateTo(groupPath('workflows'))],
         },
         { label: { $: 'workflowStore.open.label' }, when: 'workflowStore.open' },

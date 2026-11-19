@@ -1555,6 +1555,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     open: state('content'),
     draft: state('view-state'),
     recordWorkflows: state('content'),
+    active: state('content'),
     refreshWorkflows: ambient('content'),
     openWorkflow: ambient('view-state'),
     closeWorkflow: ambient('view-state'),

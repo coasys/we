@@ -163,6 +163,15 @@ export interface StoredShape {
   classHint?: string;
   /** `sh://path` of the property marked `ad4m://identity`, if any. */
   identityPath?: string;
+  /**
+   * `sh://path` of every relation the stored shape marks `ad4m://polymorphic`.
+   *
+   * The executor applies a relation's declared polymorphism as the include default at every depth,
+   * and it reads that declaration off the stored shape. A shape stored before the SDK wrote the flag
+   * has none, so `include: { node: { include: { extractedFrom: true } } }` fails there with "the
+   * relation declares no target class" — and no path, count or hint differs to say so.
+   */
+  polymorphicPaths: Set<string>;
   /** Property-level interpretation hints, decoded, keyed by `sh://path`. */
   propHints: Map<string, string>;
   /**
@@ -189,7 +198,12 @@ async function storedShapes(p: PerspectiveProxy): Promise<Map<string, StoredShap
   const entry = (targetClass: string): StoredShape => {
     const existing = shapes.get(targetClass);
     if (existing) return existing;
-    const created: StoredShape = { paths: new Set(), pathCounts: new Map(), propHints: new Map() };
+    const created: StoredShape = {
+      paths: new Set(),
+      pathCounts: new Map(),
+      polymorphicPaths: new Set(),
+      propHints: new Map(),
+    };
     shapes.set(targetClass, created);
     return created;
   };
@@ -203,9 +217,9 @@ async function storedShapes(p: PerspectiveProxy): Promise<Map<string, StoredShap
       ?shapeUri <sh://property> ?prop .
       ?prop <sh://path> ?path .`;
 
-  // Run all five queries concurrently — same queries, same processing, but
-  // saves four sequential round trips (~1.2 s on a 300 ms RTT connection).
-  const [pathRows, hintRows, identityRows, propHintRows, customizedRows] = await Promise.all([
+  // Run all six queries concurrently — same queries, same processing, but
+  // saves five sequential round trips (~1.2 s on a 300 ms RTT connection).
+  const [pathRows, hintRows, identityRows, propHintRows, customizedRows, polymorphicRows] = await Promise.all([
     select(`SELECT ?targetClass ?path WHERE { ${CHAIN} }`),
     select(
       `SELECT ?targetClass ?hint WHERE {
@@ -223,6 +237,7 @@ async function storedShapes(p: PerspectiveProxy): Promise<Map<string, StoredShap
         ?shapeUri <we://interpretation_customized> ?flag .
       }`,
     ),
+    select(`SELECT ?targetClass ?path WHERE { ${CHAIN} ?prop <ad4m://polymorphic> ?flag . }`),
   ]);
 
   for (const row of pathRows) {
@@ -241,6 +256,9 @@ async function storedShapes(p: PerspectiveProxy): Promise<Map<string, StoredShap
     if (row.targetClass && row.path && row.hint !== undefined) {
       entry(row.targetClass).propHints.set(row.path, decodeHint(row.hint));
     }
+  }
+  for (const row of polymorphicRows) {
+    if (row.targetClass && row.path) entry(row.targetClass).polymorphicPaths.add(row.path);
   }
   for (const row of customizedRows) {
     if (row.targetClass) entry(row.targetClass).hintsCustomized = true;
@@ -337,6 +355,7 @@ export function declaredShape(model: EntityClass): StoredShape {
   const out: StoredShape = {
     paths: new Set(getEntityPredicates(model)),
     pathCounts: new Map(),
+    polymorphicPaths: new Set(),
     propHints: new Map(),
   };
   const generate = (
@@ -344,7 +363,7 @@ export function declaredShape(model: EntityClass): StoredShape {
       generateSHACL?: () => {
         shape?: {
           interpretationHint?: string;
-          properties?: { path?: string; identity?: boolean; interpretationHint?: string }[];
+          properties?: { path?: string; identity?: boolean; polymorphic?: boolean; interpretationHint?: string }[];
         };
       };
     }
@@ -357,6 +376,7 @@ export function declaredShape(model: EntityClass): StoredShape {
       if (!property.path) continue;
       out.pathCounts.set(property.path, (out.pathCounts.get(property.path) ?? 0) + 1);
       if (property.identity) out.identityPath = property.path;
+      if (property.polymorphic) out.polymorphicPaths.add(property.path);
       if (property.interpretationHint) out.propHints.set(property.path, property.interpretationHint);
     }
   } catch {
@@ -412,6 +432,12 @@ export function shapeIsStale(model: typeof Ad4mModel, stored: ReadonlyMap<string
     }
   }
   if (declared.identityPath !== current.identityPath) return true;
+  // A relation the model declares polymorphic whose stored property lacks the flag: the executor
+  // reads the include default off the stored shape, so an old shape fails a nested include of it.
+  // Structural like identity, so it is compared even once hints are space-owned.
+  for (const path of declared.polymorphicPaths) {
+    if (!current.polymorphicPaths?.has(path)) return true;
+  }
   // Hints are space-owned once customized (see StoredShape.hintsCustomized): a stored hint that
   // differs from the declaration is then the community's tuning, not staleness, and rewriting it
   // would silently revert their work on every space switch.
