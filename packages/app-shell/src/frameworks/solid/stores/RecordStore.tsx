@@ -78,6 +78,7 @@ import { toEntityShape } from '../../../shared/graphEntityShape';
 import { hostSlot } from '../../../shared/hostSlot';
 import { kindHue } from '../../../shared/kindHue';
 import { notifyCopiedIn } from '../../../shared/registries/moduleHostServices';
+import { WE_PLUMBING_CLASSES } from '../../../shared/shapes/extractionCandidates';
 import {
   presentationFields,
   presentationOf,
@@ -320,6 +321,12 @@ export interface RecordStore {
    * which is the whole point — a content type that is manifest + fragments needs no component.
    */
   displays: Accessor<Record<string, RecordDisplay>>;
+  /**
+   * WE's own structural classes — a Space, a setting, a placement, a community's vocabularies — by
+   * name: what a list of a space's classes leaves out wherever their shape came from. The one part of
+   * that list a template cannot name for itself (`WE_PLUMBING_CLASSES`).
+   */
+  plumbingClasses: Accessor<readonly string[]>;
   /**
    * Every kind of record that can be shown here — what can be made, then every core block and the
    * kinds read without being made (a drawn connection, the space's vocabulary) — each with its name,
@@ -976,14 +983,15 @@ export function RecordStoreProvider(props: ParentProps) {
       });
     }
     /*
-      A class the space already had and offers for extraction (`foreignExtractionCandidates`). No WE
-      model says how to show one, so its scalar properties are listed as its SHACL names them —
-      without this an accepted record of one is an empty card. Display only: `schemaFor` still does
+      A class the space already had — every one Social DNA lists from other apps, which is also every
+      one a call may extract into. No WE model says how to show one, so its scalar properties
+      are listed as its SHACL names them — without this an accepted record of one is an empty card,
+      and opening the class from the DNA lists nothing readable. Display only: `schemaFor` still does
       not know it, so nothing here makes one creatable or placeable.
     */
-    const extractable = new Set(shapeStore.extractionCandidates());
+    const plumbing = new Set(WE_PLUMBING_CLASSES);
     for (const entry of datasetStore.currentDatasetEntities()) {
-      if (out[entry.name] || !extractable.has(entry.name)) continue;
+      if (out[entry.name] || plumbing.has(entry.name)) continue;
       const scalars = entry.properties.filter((p) => p.relatedEntity === undefined);
       const properties = Object.fromEntries(
         scalars.map((p) => [p.name, { type: p.type === 'uri' ? ('string' as const) : p.type }]),
@@ -3683,6 +3691,7 @@ export function RecordStoreProvider(props: ParentProps) {
     recordDraftDirty,
     displays,
     kinds: displayableEntities,
+    plumbingClasses: () => WE_PLUMBING_CLASSES,
     provideVocabularies: vocabularies.provide,
     provideContentHomes: contentHomes.provide,
     recordErrors,

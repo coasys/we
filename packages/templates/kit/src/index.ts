@@ -113,7 +113,13 @@ export {
   themeChoice,
 } from './we/designChoices.ts';
 export type { Choice } from './we/designChoices.ts';
-export { SOCIAL_DNA_LABELS, VOCABULARY_BUCKETS, vocabularyMap } from './we/vocabularyMap.ts';
+export {
+  OTHER_APP_CLASS_NAMES,
+  SOCIAL_DNA_LABELS,
+  VOCABULARY_BUCKETS,
+  VOCABULARY_OPENS,
+  vocabularyMap,
+} from './we/vocabularyMap.ts';
 export type { VocabularyMapOptions } from './we/vocabularyMap.ts';
 export { askWhatGoesHere, BACK_TO_CHOOSER, CARD_LOCALS, newNoteModal, newThingChooser } from './we/canvasCards.ts';
 export {

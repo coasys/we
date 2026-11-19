@@ -3787,6 +3787,30 @@ describe('what a collection extracts', () => {
     for (const entity of partial) expect(whole).toContain(entity);
   }, 15000);
 
+  /*
+    What a list of the space's DNA reads to list another app's classes, as a template expression: the
+    classes by name, so a flat list of them is in order, and WE's plumbing, the one thing a template
+    cannot name for itself. Each of those classes is drawn by the generic display; the plumbing is not.
+  */
+  it("publishes another app's classes by name, and WE's plumbing for a list of the space's DNA to leave out", async () => {
+    onPorts = (ports) => {
+      ports.schemas.foreignSchemas = async () => [
+        { name: 'Question', targetClass: 'conv://Question', properties: [] },
+        { name: 'Space', targetClass: 'old://Space', properties: [] },
+        { name: 'Channel', targetClass: 'flux://Channel', properties: [] },
+      ];
+    };
+    const stores = mountShell();
+    await ready(stores);
+    await enterSpace(stores, 'Classes');
+    await vi.waitFor(() => expect(stores.datasets.currentDatasetEntitiesLoaded()).toBe(true));
+
+    expect(stores.datasets.currentDatasetEntities().map((e) => e.name)).toEqual(['Channel', 'Question', 'Space']);
+    expect(stores.records.plumbingClasses()).toEqual(expect.arrayContaining(['Space', 'SignalType', 'Placement']));
+    expect(stores.records.displays().Question).toMatchObject({ label: 'Question', icon: 'cube' });
+    expect(stores.records.displays().Space).toBeUndefined();
+  }, 15000);
+
   it('removes the space collection’s watch when extraction is switched off before this visit registers it', async () => {
     // The watch is one row in the shared graph, so it can be there from an earlier visit while this
     // visit waits for the class list. Switched off in that wait, it must still be removed.

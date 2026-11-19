@@ -108,6 +108,7 @@ Glossary (these terms pervade stores, models, and `$query`/`perspective` in sche
 | `@we/app-shell` | packages/app-shell | App shell, stores, registries, built-in template schemas | Solid |
 | `@we/identity-window` | packages/identity-window | The desktop identity window's screens (make an identity, add or revoke a device) over an `IdentityTransport`; each desktop app supplies the transport to its custody service (`crates/custody`) | Vanilla DOM |
 | `@we/ai-context` | packages/ai-context | Generates this reference (CLAUDE.md et al.) from code + fragments | Build tool |
+| `@we/e2e` | packages/e2e | What every live test shares: a fresh multi-user executor and its accounts, a build served under the production CSP, Chrome, waits and failure artifacts (docs/testing/e2e.md) | Test tool |
 | `@we/agent-tools` | packages/agent-tools | What a model can do with WE: templates and themes as tools for any host, a space's records and WE's conventions for a conversation WE runs itself, and a single-file bundle for agent hosts | **Agnostic** |
 
 Apps (`apps/we-web`, `apps/we-electron`, `apps/we-tauri`) are thin hosts over `@we/app-shell`.
@@ -3087,7 +3088,7 @@ DatasetStore:
   - currentDataset: dataset handle | null (the dataset currently being viewed)
   - currentDatasetUri: string | undefined — the shared URL of the current dataset with its scheme (neighbourhood://…), or undefined for a personal one. Prefer currentDatasetCid for comparisons; this is the form a share link carries
   - currentDatasetCid: string | undefined — the neighbourhood CID of the current dataset (prefix stripped)
-  - currentDatasetEntities: EntityManifestEntry[] (non-WE SHACL models from the current dataset; injected as externalEntities into AI messages)
+  - currentDatasetEntities: EntityManifestEntry[] (non-WE SHACL models from the current dataset, by name; injected as externalEntities into AI messages)
   - currentDatasetEntitiesLoaded: boolean — currentDatasetEntities has been read for the dataset on screen. They arrive a few round trips after the switch, so until this is true an empty list means "not read yet" rather than "none"
   - isWeSpace: boolean — true once the current dataset is confirmed to have WE's Space SDNA installed (false for a joined-but-foreign dataset, e.g. one synced in from Flux)
   - joinedSpaceCids: string[] — CIDs of every joined shared dataset
@@ -3262,6 +3263,7 @@ RecordStore:
   - recordDraft: the open form's draft ({ entity, label, icon, fields[] }) or null while closed — its non-nullness is what mounts the modal. Each field is { name, label, control, required, options, placeholder, value, accept, target, targetLabel, many, canCreate, canPick, entries }, derived from the model's own declaration, so a form exists for a model nobody wrote a form for. control 'file' is a we-file-upload (accept names the types); control 'relation' points at another record: entries are the chips ({ key, label }), canCreate offers openRelationForm, canPick offers a picker over existing target records, and inline ('location' | 'image' | '') names the in-place control a target is made with instead — see setRelationLocation and addRelationImage; an image entry carries preview, a data URI
   - recordDraftDirty: boolean — the open form holds something worth keeping. What a discard guard reads: the fields come from the model, so a shape this community defined has properties no schema was written against and there is no set of local names an expression could test. Pass it to discardGuard's `dirty`
   - displays: Record<entity, RecordDisplay> — how to show an instance of each creatable model, every core block (a divider or a quote card included) and Relationship, keyed by entity name and derived from its declaration: { entity, label, icon, title, summary, media, mediaRelation, fields[] }, where title/summary/media name the properties playing those roles ('' when none does) and mediaRelation names a relation to an ImageBlock that pictures the record when no property does — look the image up by the ids it holds ({ entity: 'ImageBlock', where: { id: row[display.mediaRelation] } }) rather than drawing them and each field is { name, label, kind, role, options, vocabulary }. kind is one of text, longText, number, boolean, date, datetime, color, url, image, file, json, relation (with target, the model it points at); role is title, summary, media or detail. `options` is the values a field is allowed to hold where the model closes the set (a task's status), empty otherwise — count() it to tell a state worth drawing as a we-badge from free text, and map it into a we-select rather than offering a text box that accepts a word the model does not know. `vocabulary` names the community list a value is a slug of ('taskState' for a task's status, looked up in spaceStore.taskStates for its name and colour), empty otherwise. Index it by a row's type — { $: 'recordStore.displays[row.type]' } — and render the fields with $each; see "A record of any type" in the patterns
+  - plumbingClasses: string[] — WE's own structural classes by name (a Space, a setting, a placement, a community's vocabularies), which a list of a space's classes leaves out wherever their shape came from. What a template cannot name for itself: another app's classes are `datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses))`
   - kinds: { label, value, icon, hue, group }[] — every kind of record that can be shown here: what can be made, then every core block and the kinds read without being made (a drawn connection, the space's vocabulary). hue is the palette hue the kind is drawn in where the community has chosen no colour — WE's own kinds have one chosen for what they are, and any other takes one from its name, the same everywhere. For colouring cards by kind: the kit's kindColour reads the community's choice first
   - recordErrors: string[] — validation errors from the last save attempt, plus any backend failure
   - savingRecord: boolean — a create is in flight
@@ -6094,17 +6096,29 @@ checkout run a local build path. `pnpm dev:electron` runs the same command witho
 `[ad4m:executor]` line rather than scrolling past it. Details:
 `docs/contributing/ad4m-and-deploys.md`, "The executor you run locally".
 
-### Live tests (real executor, real browser)
+### End-to-end tests: three kinds
 
-`apps/we-web/tests/live/` drives the built app (`pnpm build:web` first) in Chromium against a fresh
-multi-user executor from the same chooser. `pnpm --filter @we/app-web test:live` runs the call suite;
-`test:spaces` runs the coasys-spaces product suite (space, call and extraction, social DNA, two
-workflows, an agent over MCP, the canvas, the page and a theme) — a stub LLM by default,
-`COASYS_SPACES_TIER=real` for a real model. Its Feed checks are `it.todo`, pending a product bug (the
-Feed does not read a class a bundle declares). Its env vars, its `it.todo` backlog and the ad4m
-nightly job that will run it are in
-`apps/we-web/tests/live/coasys-spaces/README.md`. Selectors are roles and accessible names: when one
-is missing, add a `label` to the product node rather than reaching for a CSS selector.
+Beyond the jsdom suites, WE has three kinds of test that need a real browser or a real executor.
+`pnpm e2e` lists every suite; `pnpm e2e <suite>` builds what it needs, fetches the executor and runs
+it. The helpers they share (start an executor, sign up an account, serve a build under the
+production CSP, find Chrome, wait, keep artifacts) are `@we/e2e` (`packages/e2e`). The full map,
+env vars and CI homes: `docs/testing/e2e.md`.
+
+| Kind | Where | Runner · suffix | Run | CI |
+|---|---|---|---|---|
+| **Browser layout** — real Chrome, no executor | `packages/app-shell/tests/browser/`; `3-primitives/src/*.browser.test.ts` | own runner (`run.mjs`); vitest · `.browser.test.ts` | `pnpm e2e browser-layout`, `pnpm e2e primitives-browser` | `build.yaml` test job |
+| **Live contract** — one surface against a real executor | `packages/backend-system/ad4m/tests/live/`; `crates/custody/tests/live.rs` | vitest · `.live.ts`; cargo (`CUSTODY_LIVE=1`) | `pnpm e2e backend-live` (= `pnpm verify:ad4m`), `pnpm e2e custody-live` | `ad4m-live.yaml` `live`; custody: by hand |
+| **Journey** — the built app, a person's path through it | `apps/we-web/e2e/` (steps in `e2e/steps/`) | node:test · `.e2e.mjs` | `pnpm e2e calls`, `pnpm e2e spaces [--tier stub\|real] [--only v1,v2]` | `ad4m-live.yaml` `calls` and `spaces` (stub); real tier: the ad4m nightly |
+
+Every live test runs a fresh **multi-user** executor from the same chooser, as a hosted node does, and
+signs up an account on it. The spaces suite is the coasys-spaces product suite (space, call and
+extraction, social DNA, two workflows, an agent over MCP, the canvas, the page and a theme) — a stub
+LLM by default, `--tier real` for a real model. Its Feed checks are `it.todo`, pending a product bug
+(the Feed does not read a class a bundle declares); its env vars and backlog are in
+`apps/we-web/e2e/coasys-spaces/README.md`. A failing journey step leaves a screenshot, the page's
+aria snapshot and the executor log in `WE_E2E_ARTIFACTS` (a temp dir otherwise). Selectors are roles
+and accessible names: when one is missing, add a `label` to the product node rather than reaching for
+a CSS selector.
 
 ### Building the AD4M Executor Binary
 
