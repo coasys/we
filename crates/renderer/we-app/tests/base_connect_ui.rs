@@ -214,3 +214,47 @@ fn save_shot(h: &mut H, name: &str) {
     let shot = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
     image.save(&shot).expect("write the connect screenshot");
 }
+
+/// The words the last frame painted: each text shape's glyphs, a line per
+/// shape. An elided label reads as painted ("Choose …"), not as named.
+fn painted_text(h: &H) -> String {
+    fn walk(shape: &egui::Shape, out: &mut String) {
+        match shape {
+            egui::Shape::Vec(shapes) => shapes.iter().for_each(|shape| walk(shape, out)),
+            egui::Shape::Text(text) => {
+                for row in &text.galley.rows {
+                    out.extend(row.row.glyphs.iter().map(|glyph| glyph.chr));
+                }
+                out.push('\n');
+            }
+            _ => {}
+        }
+    }
+    let mut out = String::new();
+    for clipped in &h.output().shapes {
+        walk(&clipped.shape, &mut out);
+    }
+    out
+}
+
+/// The offline stage's "Choose another" (a secondary `we-button` with a
+/// text child) is painted whole. It was painted "Choose …".
+#[test]
+fn choose_another_is_painted_whole() {
+    let (_tokens, settings) = isolated(Some(format!("http://127.0.0.1:{}", closed_port())));
+    let mut h = harness(settings);
+    step_until(&mut h, "the connect screen", Duration::from_secs(10), |h| {
+        h.query_by_label_contains("This computer").is_some()
+    });
+    h.get_by_label_contains("This computer").click();
+    step_until(&mut h, "the offline stage", Duration::from_secs(60), |h| {
+        h.query_by_label_contains("Choose another").is_some()
+    });
+    h.run_steps(2);
+    let painted = painted_text(&h);
+    assert!(painted.contains("Try again"), "{painted}");
+    assert!(
+        painted.lines().any(|line| line == "Choose another"),
+        "the button was painted as: {painted}"
+    );
+}

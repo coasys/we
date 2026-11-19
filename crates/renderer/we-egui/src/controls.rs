@@ -38,6 +38,10 @@ impl Button {
         }
         let g = crate::text::text_job(&text, style, ctx, avail.max(1.0), true, None);
         let mut s = g.size();
+        // Layout rounds each box edge to a whole pixel. A label 124.6px
+        // wide got a 124px content box and painted "Choose …": a whole
+        // pixel up is never less than the galley.
+        s.x = s.x.ceil();
         if loading {
             s.x += SPINNER + SPINNER_GAP;
         }
