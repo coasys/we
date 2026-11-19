@@ -166,6 +166,13 @@ fn a_restart_resumes_the_remembered_place() {
     assert_eq!(job.connection.id.as_ref(), "this-device");
     assert!(open.text().contains("Opening your spaces"));
     assert!(open.controller.resume().is_none(), "one resume per start");
+    // Not only while the first job is busy: once it has ended, a second
+    // resume in the same start still does nothing.
+    open.controller.note_unreachable(job.attempt);
+    assert!(
+        open.controller.resume().is_none(),
+        "one resume per start, also after the job ended"
+    );
 }
 
 /// A remembered id the catalog no longer lists is not resumed and is not
