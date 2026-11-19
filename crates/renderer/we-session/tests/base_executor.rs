@@ -399,3 +399,27 @@ fn a_host_without_its_own_executor_reports_none() {
     assert!(text.contains("This computer"), "{text}");
     assert!(!text.contains("Coasys stopped"), "{text}");
 }
+
+/// Round 2 (Lal: exit 75): the executor this host runs starts again under
+/// an open session (it asked to be restarted). The session's executor is
+/// gone, so the base takes the window back on the starting stage; once
+/// ready, the place chosen is reached again (not a click).
+#[test]
+fn a_restart_under_a_session_takes_the_window_back() {
+    let mut open = owned();
+    let attempt = in_session(&mut open);
+    let before = open.controller.generation();
+    assert!(open
+        .controller
+        .note_executor(ExecutorState::Starting)
+        .is_none());
+    assert!(!open.controller.in_session(), "the session kept the window");
+    assert_eq!(stage(&open.controller), "starting");
+    assert!(open.controller.generation() > before);
+    assert!(!open.controller.note_session_lost(attempt));
+    let job = open
+        .controller
+        .note_executor(ready())
+        .expect("ready reaches the place chosen again");
+    assert!(!job.chosen);
+}

@@ -513,10 +513,11 @@ impl BaseController {
     /// The host's executor changed to `state` (TS `executor.subscribe`).
     /// Ignored when the host runs none.
     ///
-    /// - Under an open session, only a failure matters: the executor
-    ///   stopped, so the base takes the window back on the failed stage,
-    ///   with the button that starts it again. The session is closed and
-    ///   the generation advances, as a hand-back does.
+    /// - Under an open session, a failure or a new start takes the window
+    ///   back: the executor stopped (the failed stage, with the button that
+    ///   starts it again) or is being started again (the starting stage;
+    ///   ready then reaches the place chosen again). The session is closed
+    ///   and the generation advances, as a hand-back does.
     /// - Ready twice is nothing new.
     /// - Otherwise the stage is worked out again: starting or failed, or,
     ///   once ready, the place chosen (not a click) or the list. A connect
@@ -527,12 +528,21 @@ impl BaseController {
         let before = inner.executor.clone()?;
         inner.executor = Some(state.clone());
         if inner.stage == Stage::Session {
-            if matches!(state, ExecutorState::Failed { .. }) {
-                let session = inner.session;
-                hand_back(&mut inner, session);
-                inner.stage = Stage::Failed;
-                inner.error.clear();
-                inner.offline_reason.clear();
+            // The session's executor is gone: it stopped, or it is being
+            // started again (it asked to be restarted, a new process on a
+            // new port). Unlike TS, starting takes the window back too.
+            match state {
+                ExecutorState::Failed { .. } => {
+                    let session = inner.session;
+                    hand_back(&mut inner, session);
+                    failed(&mut inner);
+                }
+                ExecutorState::Starting => {
+                    let session = inner.session;
+                    hand_back(&mut inner, session);
+                    starting(&mut inner);
+                }
+                ExecutorState::Ready { .. } => {}
             }
             self.publish(&inner);
             return None;

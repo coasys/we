@@ -84,6 +84,12 @@ pub const MIN_EXECUTOR_VERSION: &str = "0.13.1-staging.12";
 /// How long `ad4m-executor --version` may take.
 const VERSION_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// Exit 75 restarts in a row allowed (a restart counts in a row when the
+/// run before it lasted less than [`RESTART_WINDOW`]); past that, the
+/// executor is not started again.
+const MAX_RESTARTS: u32 = 3;
+const RESTART_WINDOW: Duration = Duration::from_secs(60);
+
 /// How long one `/health` probe may take, and how far apart they are.
 const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 const PROBE_INTERVAL: Duration = Duration::from_millis(250);
@@ -579,7 +585,9 @@ fn run_child(shared: &Shared) -> Lifecycle {
         Err(Prep::Stopped) => return stopped_by_us(),
         Err(Prep::Failed(reason)) => return failed(reason),
     }
+    let mut restarts = 0;
     loop {
+        let run_started = Instant::now();
         let (mut child, tail) = match spawn(shared) {
             Ok(spawned) => spawned,
             Err(reason) => return failed(reason),
@@ -609,7 +617,33 @@ fn run_child(shared: &Shared) -> Lifecycle {
                     config.ready_timeout.as_secs()
                 ))
             }
-            Ended::Early(exit) | Ended::Late(exit) if code(&exit) == Some(EXIT_RESTART) => {}
+            // The executor asked to be started again: a new run. The old
+            // run's state and address go first (Starting, a new change and
+            // a new run number), so nothing answered for the old run is
+            // published or sent to as the new one's.
+            Ended::Early(exit) | Ended::Late(exit) if code(&exit) == Some(EXIT_RESTART) => {
+                restarts = if run_started.elapsed() >= RESTART_WINDOW {
+                    1
+                } else {
+                    restarts + 1
+                };
+                if restarts > MAX_RESTARTS {
+                    return Lifecycle::Failed {
+                        reason: format!(
+                            "It asked to be restarted {} times in a row; it was not started \
+                             again.",
+                            restarts
+                        ),
+                        stopped: true,
+                    };
+                }
+                let mut status = shared.lock();
+                if status.stopping {
+                    return stopped_by_us();
+                }
+                status.url = None;
+                shared.publish(status, Lifecycle::Starting);
+            }
             Ended::Early(exit) => match code(&exit) {
                 Some(EXIT_DATA_FOLDER_BUSY) => {
                     return failed(

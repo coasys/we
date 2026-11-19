@@ -828,3 +828,91 @@ fn two_windows_init_a_fresh_folder_once() {
     wait_for(&b, "b ready", 15, |s| matches!(s, Lifecycle::Ready { .. }));
     assert_eq!(inits(dir.path()), 1, "both windows ran init");
 }
+
+/// Round 2 (Lal: exit 75 keeps Ready): the executor asks to be started
+/// again. From its exit until the new child is ready, the state is
+/// Starting (not the old run's Ready), and a refresh asked of the old run
+/// that answers in between publishes nothing.
+#[test]
+fn an_exit_75_restart_is_a_new_start() {
+    let dir = tempfile::tempdir().unwrap();
+    let mark = dir.path().join("ran-once");
+    let trigger = dir.path().join("restart-now");
+    // Not `script`: its preamble says the port at once. The second run
+    // says it only after 2 s, so the restart can be looked at.
+    let binary = dir.path().join("executor");
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::write(
+            &binary,
+            format!(
+                "#!/bin/sh\nif [ \"$1\" = --version ]; then echo 'ad4m 0.13.1-staging.13'; exit 0; fi\n\
+                 if [ \"$1\" = init ]; then exit 0; fi\n\
+                 PORT=$(cat \"$(dirname \"$0\")/port\")\n\
+                 if [ ! -e '{m}' ]; then touch '{m}'; {LISTENING}\n\
+                 while [ ! -e '{t}' ]; do sleep 0.05; done; exit 75; fi\n\
+                 sleep 2\n{LISTENING}\ncat > /dev/null\n",
+                m = mark.display(),
+                t = trigger.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let reader = Arc::new(Reader::default());
+    reader.answer(Ok(Some(Agent::Unlocked)));
+    let release = reader.gated(Ok(Some(Agent::Locked)));
+    let sup = Supervisor::with_reader(config(dir.path(), binary, health()), reader.clone());
+    sup.start();
+    wait_for(&sup, "ready", 10, |s| matches!(s, Lifecycle::Ready { .. }));
+    sup.refresh();
+    let start = Instant::now();
+    while reader.calls() < 2 {
+        assert!(start.elapsed() < Duration::from_secs(10), "no refresh read");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    std::fs::write(&trigger, "").unwrap();
+    let start = Instant::now();
+    while sup.starts() < 2 {
+        assert!(start.elapsed() < Duration::from_secs(10), "not run again");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(
+        sup.state(),
+        Lifecycle::Starting,
+        "the old run's state outlived its exit"
+    );
+    assert_eq!(sup.url(), None, "the old run's address outlived its exit");
+    release.send(()).unwrap();
+    std::thread::sleep(Duration::from_millis(300));
+    assert_ne!(
+        sup.state(),
+        Lifecycle::Ready {
+            agent: Some(Agent::Locked)
+        },
+        "the old run's refresh was published"
+    );
+}
+
+/// Round 2: exit 75 again and again is not restarted forever: past three
+/// restarts in a row, the executor is stopped, with that reason.
+#[test]
+fn repeated_exit_75_has_a_budget() {
+    let dir = tempfile::tempdir().unwrap();
+    let binary = script(dir.path(), "executor", "sleep 0.1\nexit 75");
+    let sup = Supervisor::with_reader(
+        config(dir.path(), binary, health()),
+        Arc::new(Reader::default()),
+    );
+    sup.start();
+    wait_for(&sup, "failed", 15, |s| {
+        matches!(s, Lifecycle::Failed { .. })
+    });
+    let Lifecycle::Failed { reason, stopped } = sup.state() else {
+        unreachable!()
+    };
+    assert!(stopped, "{reason}");
+    assert!(reason.contains("restarted"), "{reason}");
+    assert_eq!(sup.starts(), 4, "one start and three restarts");
+}
