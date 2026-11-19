@@ -183,6 +183,98 @@ describe('a requirement the form adds', () => {
   });
 });
 
+describe('the records running through a flow', () => {
+  const COUNTED: WorkflowDefinition = { ...REVIEW, name: 'counted' };
+
+  // A record at a final step has finished: Flows in the space tree counts what is running, not every
+  // record that ever went through.
+  it('leaves out records at a final step', async () => {
+    await workflowPort.install(dataset, COUNTED);
+    await workflowPort.start(dataset, 'counted', 'c1');
+    await workflowPort.start(dataset, 'counted', 'c2');
+    await workflowPort.move(dataset, 'counted', 'c2', 'published');
+    const store = mount();
+    await vi.waitFor(() => expect(store.workflows().find((f) => f.name === 'counted')?.running).toBe(1));
+  });
+
+  // The list is read once, so a count copied from it never moved: a run started here, or by
+  // somebody else, has to show from the watched records.
+  it('follows a run started here and one started by somebody else, with no refresh', async () => {
+    const LIVE: WorkflowDefinition = { ...REVIEW, name: 'live' };
+    await workflowPort.install(dataset, LIVE);
+    const store = mount();
+    await vi.waitFor(() => expect(store.workflows().find((f) => f.name === 'live')?.running).toBe(0));
+    await store.startWorkflow('live', 'l1');
+    await vi.waitFor(() => expect(store.workflows().find((f) => f.name === 'live')?.running).toBe(1));
+    await workflowPort.start(dataset, 'live', 'l2');
+    await vi.waitFor(() => expect(store.workflows().find((f) => f.name === 'live')?.running).toBe(2));
+    await store.moveRecord('live', 'l1', 'published');
+    await vi.waitFor(() => expect(store.workflows().find((f) => f.name === 'live')?.running).toBe(1));
+  });
+});
+
+describe('what is going on across the flows', () => {
+  const STAGED: WorkflowDefinition = {
+    name: 'staged',
+    entities: [],
+    states: [{ name: 'draft' }, { name: 'review' }, { name: 'published' }],
+    transitions: [
+      { from: 'draft', to: 'review' },
+      { from: 'review', to: 'published' },
+    ],
+  };
+
+  // The space tree lists every running record, the liveliest first: a run moved since another started
+  // comes before it, and one at a final step has finished and is not listed.
+  it('lists the records still running, the one with the latest activity first, finished ones left out', async () => {
+    await workflowPort.install(dataset, STAGED);
+    const store = mount();
+    await vi.waitFor(() => expect(store.startable().map((f) => f.name)).toContain('staged'));
+    await store.startWorkflow('staged', 'a1');
+    await store.startWorkflow('staged', 'a2');
+    await store.moveRecord('staged', 'a1', 'review');
+    await workflowPort.start(dataset, 'staged', 'a3', { at: 'published' });
+
+    const staged = () => store.active().filter((row) => row.workflow === 'staged');
+    await vi.waitFor(() => expect(staged().map((row) => row.record)).toEqual(['a1', 'a2']));
+    expect(staged()[0]).toMatchObject({ label: 'Staged', state: 'review', stateLabel: 'Review', waiting: 0 });
+    expect(staged()[0]?.lastActivity).toMatch(/^\d{4}-/);
+  });
+
+  /*
+    Opening a workflow read its definition again after dropping the one held, so until the read landed
+    `open` was null — the tree lit Active flows instead of the record chosen — and none of its records
+    counted as running, so its rows went and came back. Each row has an id, so a list keeps it in place.
+  */
+  it('keeps the workflow open and its records listed while it is read again', async () => {
+    await workflowPort.install(dataset, { ...STAGED, name: 'kept' });
+    const store = mount();
+    await vi.waitFor(() => expect(store.startable().map((f) => f.name)).toContain('kept'));
+    await store.startWorkflow('kept', 'k1');
+    await vi.waitFor(() => expect(store.active().find((row) => row.workflow === 'kept')?.id).toBe('kept|k1'));
+    await store.openWorkflow('kept');
+
+    const reopening = store.openWorkflow('kept');
+    expect(store.open()?.label).toBe('Kept');
+    expect(store.active().filter((row) => row.workflow === 'kept')).toHaveLength(1);
+    await reopening;
+    expect(store.open()?.records.map((r) => r.id)).toEqual(['k1']);
+  });
+
+  // Only the open workflow's records were named, so a list across every flow read "Record 3f9a2c".
+  it('names a record of a workflow nobody has opened', async () => {
+    stored.TaskBlock = [{ id: 'n1', title: 'Fix the roof' }];
+    await workflowPort.install(dataset, { ...STAGED, name: 'unopened' });
+    const store = mount();
+    await vi.waitFor(() => expect(store.startable().map((f) => f.name)).toContain('unopened'));
+    await workflowPort.start(dataset, 'unopened', 'n1');
+    await vi.waitFor(() =>
+      expect(store.active().find((row) => row.record === 'n1')).toMatchObject({ title: 'Fix the roof', kind: 'Task' }),
+    );
+    expect(store.open()).toBeNull();
+  });
+});
+
 describe('a record going through the open workflow', () => {
   // Every row read "Untitled": a record of the space's own model was looked for before that model was
   // registered, the miss was kept for good, and its naming field was not one the store knew.

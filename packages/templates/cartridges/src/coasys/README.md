@@ -16,11 +16,11 @@ file in Settings.
 | `app.ts`                                | The chrome around every space: one rail, no module rail                                                     |
 | `firstRun.ts`                           | "Welcome to Coasys": make your identity here, or start without one                                          |
 | `space/shell.ts`                        | A space as one tree and one view, on a home lane                                                            |
-| `space/tree.ts`                         | The tree: channels, calls, workflows, people, Social DNA                                                    |
-| `space/dna.ts`                          | Social DNA, named once: the classes in three groups (the space's, other apps', WE's), the focus, the crumbs |
+| `space/tree.ts`                         | The tree: the Feed, calls, running flows, people, Social DNA, themes                                        |
+| `space/dna.ts`                          | Social DNA, named once: Models (the space's and other apps' classes), WE's, flows, the focus, crumbs        |
 | `space/vocabulary.ts`                   | WE's vocabulary classes as Social DNA shows them — labels, glyphs, the store list two of them are read from |
-| `space/socialDna.ts`                    | The Social DNA page: the classes, a class's records, the policy                                             |
-| `space/views.ts`                        | The pages: the Feed, the workflows, and a call's own page                                                   |
+| `space/socialDna.ts`                    | The Social DNA page: Models, Flows, Templates, Built in, a class's records, the policy                      |
+| `space/views.ts`                        | The pages: the Feed, the flows, and a call's own page                                                       |
 | `space/canvas.ts`                       | Canvas mode: the space's canvas, dimmed to what the tree has chosen, and the vocabulary map                 |
 | `space/bar.ts`                          | The bar over every view, with the Page / Canvas switch at its end                                           |
 | `space/lockup.ts`                       | The mark and name, where the rail and the sign-in screen both draw them                                     |
