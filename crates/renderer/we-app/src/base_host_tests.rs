@@ -760,15 +760,18 @@ fn a_choose_does_not_wait_for_the_base_file() {
     let chosen = returned
         .is_ok()
         .then(|| controller.public_json()["chosen"].clone());
-    // Read-write never waits for a partner. A read stalled on the FIFO
-    // gets "{}", then its end of file.
-    let mut fifo = std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(&path)
-        .unwrap();
-    fifo.write_all(b"{}").unwrap();
-    drop(fifo);
+    // Release the FIFO only once the writer reads it: a write-only open
+    // waits for a reader, which then gets "{}" and its end of file. The
+    // writer thread is shared with the other tests of this process and
+    // can reach the file late; data put in a FIFO nobody has open is lost.
+    let fifo = path.clone();
+    std::thread::spawn(move || {
+        let mut fifo = std::fs::OpenOptions::new()
+            .write(true)
+            .open(&fifo)
+            .expect("open the base-file FIFO for its reader");
+        fifo.write_all(b"{}").unwrap();
+    });
 
     assert_eq!(returned, Ok(true), "the choose waited for the base file");
     assert_eq!(chosen, Some(serde_json::json!("this-device")));
