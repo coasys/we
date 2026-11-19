@@ -20,7 +20,7 @@ use we_expr::Value;
 use we_screen::{ScreenSchema, ScreenState};
 use we_session::{
     AgentState, BaseController, BaseJob, ChoiceMemory, ConnectionRow, ExecutorState, HostJob,
-    NoMemory,
+    IdentityDevice, IdentityFacts, NoMemory,
 };
 use we_template::{Action, ActionRequest, Completer, Host, Invoked, RootSpec, StoreBag};
 
@@ -165,6 +165,8 @@ struct LiveFlow {
     url: Option<String>,
 }
 
+type IdentityAnswer = (u64, Result<IdentityFacts, String>);
+
 struct SlotState {
     live: Option<LiveFlow>,
     /// The phase already applied. `None` after a new flow starts, so the
@@ -186,6 +188,9 @@ pub struct BaseScreen {
     /// its changes the controller has seen.
     owned: Option<Arc<dyn OwnedExecutor>>,
     owned_seen: u64,
+    /// The answer to the identity read that is out, by its token, once it
+    /// came (read off the UI thread, applied in [`BaseScreen::poll`]).
+    identity_answer: Arc<Mutex<Option<IdentityAnswer>>>,
     /// The capability request of the window's own flow that the owned
     /// executor's operator is approving (`false`) or failed to (`true`).
     approving: Arc<Mutex<Option<(String, bool)>>>,
@@ -243,6 +248,9 @@ impl BaseScreen {
         // again at the next poll.
         let owned_seen = owned.as_ref().map_or(0, |owned| owned.changes());
         if let Some(owned) = &owned {
+            // The executor this window runs is the identity source: its
+            // operator reads the identity's public facts.
+            controller.keep_identity();
             let ctx_wake = ctx.clone();
             owned.set_waker(Arc::new(move || ctx_wake.request_repaint()));
             let (state, run) = owned.state_at();
@@ -293,6 +301,7 @@ impl BaseScreen {
             ready: None,
             owned,
             owned_seen,
+            identity_answer: Arc::default(),
             approving: Arc::default(),
             rt,
         };
@@ -335,6 +344,7 @@ impl BaseScreen {
             }
         }
         if let Some(owned) = self.owned.clone() {
+            self.read_identity(owned.clone());
             self.approve_own_request(owned);
         }
         if let Some(job) = self.controller.poll_network() {
@@ -378,6 +388,57 @@ impl BaseScreen {
             apply_phase(&self.controller, attempt, phase, self.owned.as_ref());
         }
         self.sync_facts();
+    }
+
+    /// The identity: a read the controller asks for runs off this thread,
+    /// against the executor this window runs; its answer is applied here,
+    /// on the next poll. A read the controller no longer waits for (the
+    /// executor stopped or started again) stops asking, and its answer
+    /// changes nothing ([`BaseController::note_identity`]).
+    fn read_identity(&mut self, owned: Arc<dyn OwnedExecutor>) {
+        let answer = self
+            .identity_answer
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .take();
+        if let Some((read, answer)) = answer {
+            if let Some(job) = self.controller.note_identity(read, answer) {
+                self.spawn(job);
+            }
+            self.sync_facts();
+        }
+        let Some(read) = self.controller.identity_read_due() else {
+            return;
+        };
+        let controller = self.controller.clone();
+        let slot = self.identity_answer.clone();
+        let ctx = self.ctx.clone();
+        let spawned = std::thread::Builder::new()
+            .name("we-identity-read".into())
+            .spawn(move || {
+                let mut answer = Err(String::new());
+                for attempt in 0..IDENTITY_ATTEMPTS {
+                    if !controller.is_reading(read) {
+                        return;
+                    }
+                    answer = owned.identity().map(identity_facts);
+                    if answer.is_ok() {
+                        break;
+                    }
+                    if attempt + 1 < IDENTITY_ATTEMPTS {
+                        std::thread::sleep(IDENTITY_RETRY);
+                    }
+                }
+                *slot.lock().unwrap_or_else(|p| p.into_inner()) = Some((read, answer));
+                ctx.request_repaint();
+            });
+        if let Err(e) = spawned {
+            let answer = Err(format!("couldn't start the read: {e}"));
+            if let Some(job) = self.controller.note_identity(read, answer) {
+                self.spawn(job);
+            }
+            self.sync_facts();
+        }
     }
 
     /// After an executor change: a flow whose attempt the controller spent
@@ -620,8 +681,29 @@ fn apply_phase(
 
 /// What the list says when the agent of the executor this window runs is
 /// locked. This app cannot unlock it yet (slice 7: the password).
-pub(crate) const OWNED_LOCKED: &str =
-    "Coasys on this computer is locked. This app can't unlock it yet.";
+pub(crate) use we_session::OWNED_LOCKED;
+
+/// How often the identity is asked before the read counts as failed, and
+/// how far apart (TS `identityAttempts` / `identityRetryMs`, fewer: the
+/// executor already answered its health check when this is asked).
+const IDENTITY_ATTEMPTS: u32 = 3;
+const IDENTITY_RETRY: std::time::Duration = std::time::Duration::from_millis(300);
+
+/// The public facts the controller keeps, from what the executor said:
+/// whether each device is this computer's, and nothing of its keys.
+fn identity_facts(identity: Identity) -> IdentityFacts {
+    IdentityFacts {
+        did: identity.did,
+        store_trusted: identity.store_trusted,
+        devices: identity
+            .devices
+            .into_iter()
+            .map(|device| IdentityDevice {
+                this_device: device.this_device,
+            })
+            .collect(),
+    }
+}
 
 /// The settings `job` dials, or `None` when its row is refused. A refusal
 /// is the connect stage's reason; nothing is dialed, so this computer's
@@ -662,7 +744,16 @@ impl ChoiceMemory for FileMemory {
     }
 
     fn remember(&self, id: &str) {
-        BaseWrites::get().ask(&self.0, id);
+        BaseWrites::get().ask(&self.0, Some(id), false);
+    }
+
+    fn skipped(&self) -> bool {
+        BaseWrites::get().settle(&self.0);
+        BaseFile::load(&self.0).skipped_identity
+    }
+
+    fn remember_skip(&self) {
+        BaseWrites::get().ask(&self.0, None, true);
     }
 }
 
@@ -677,9 +768,17 @@ struct BaseWrites {
     changed: std::sync::Condvar,
 }
 
+/// What waits to be written to one base file: the newest id chosen, and
+/// whether "Skip for now" is to be kept.
+#[derive(Clone, Debug, Default)]
+struct Pending {
+    id: Option<String>,
+    skip: bool,
+}
+
 #[derive(Default)]
 struct WriteState {
-    waiting: Vec<(PathBuf, String)>,
+    waiting: Vec<(PathBuf, Pending)>,
     writing: Option<PathBuf>,
     /// No writer thread: `ask` writes in place.
     inline: bool,
@@ -707,19 +806,28 @@ impl BaseWrites {
             .unwrap_or_else(|poison| poison.into_inner())
     }
 
-    fn ask(&self, path: &std::path::Path, id: &str) {
+    fn ask(&self, path: &std::path::Path, id: Option<&str>, skip: bool) {
         let mut state = self.lock();
+        let ask = Pending {
+            id: id.map(str::to_string),
+            skip,
+        };
         if state.inline {
             drop(state);
-            return write_choice(path, id);
+            return write_choice(path, &ask);
         }
         match state
             .waiting
             .iter_mut()
             .find(|(waiting, _)| waiting == path)
         {
-            Some((_, newest)) => *newest = id.to_string(),
-            None => state.waiting.push((path.to_path_buf(), id.to_string())),
+            Some((_, pending)) => {
+                if ask.id.is_some() {
+                    pending.id = ask.id;
+                }
+                pending.skip |= ask.skip;
+            }
+            None => state.waiting.push((path.to_path_buf(), ask)),
         }
         self.changed.notify_all();
     }
@@ -747,10 +855,10 @@ impl BaseWrites {
                     .unwrap_or_else(|poison| poison.into_inner());
                 continue;
             }
-            let (path, id) = state.waiting.remove(0);
+            let (path, pending) = state.waiting.remove(0);
             state.writing = Some(path.clone());
             drop(state);
-            write_choice(&path, &id);
+            write_choice(&path, &pending);
             state = self.lock();
             state.writing = None;
             self.changed.notify_all();
@@ -758,9 +866,16 @@ impl BaseWrites {
     }
 }
 
-fn write_choice(path: &std::path::Path, id: &str) {
-    if let Err(error) = BaseFile::remember(path, id) {
-        log::warn!("we-app: could not keep the connection chosen: {error}");
+fn write_choice(path: &std::path::Path, pending: &Pending) {
+    if let Some(id) = &pending.id {
+        if let Err(error) = BaseFile::remember(path, id) {
+            log::warn!("we-app: could not keep the connection chosen: {error}");
+        }
+    }
+    if pending.skip {
+        if let Err(error) = BaseFile::skip_identity(path) {
+            log::warn!("we-app: could not keep \"Skip for now\": {error}");
+        }
     }
 }
 

@@ -785,6 +785,11 @@ impl BaseController {
         }
     }
 
+    /// Whether read `read` is the one the controller waits for.
+    pub fn is_reading(&self, read: u64) -> bool {
+        self.lock().identity == IdentityRead::Reading(read)
+    }
+
     /// Read `read` answered. A read that is not the one out (a newer one
     /// was asked, or the executor stopped or started again since) changes
     /// nothing. A failure leaves the identity unknown, never empty: no
