@@ -588,7 +588,22 @@ const recordRow: SchemaNode = {
             variant: 'bare',
             onClick: { $invoke: 'routeStore.setParam', args: ['card', { $: 'rec.record' }] },
           },
-          children: [text({ $: "rec.title ? rec.title : 'Untitled'" }, { truncate: true, maxWidth: '360px' })],
+          // What the record is, which workflow it is going through and where it stands in it.
+          children: [
+            {
+              type: 'Column',
+              props: { gap: '0', ax: 'start' },
+              children: [
+                text({ $: 'rec.title' }, { truncate: true, maxWidth: '360px' }),
+                text(
+                  {
+                    $: `(rec.kind ? rec.kind + ' in ' : 'In ') + ${OPEN}.label + (rec.stateLabel ? ' · at ' + rec.stateLabel : '')`,
+                  },
+                  { variant: 'footnote', color: 'text-muted', truncate: true, maxWidth: '360px' },
+                ),
+              ],
+            },
+          ],
         },
         {
           type: '$if',
