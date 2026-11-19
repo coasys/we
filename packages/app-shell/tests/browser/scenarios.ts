@@ -2382,9 +2382,26 @@ const coasysTreeDna = (): Scenario => {
       Topic: [{ id: 'topic-bees', name: 'Bees', description: 'Hives, honey and swarms' }],
     },
     stores: {
+      // A flow written, with records going through it, and one put away: Social DNA lists the first, and
+      // the top level's Flows counts what is running in it.
+      workflowStore: {
+        workflows: [
+          { name: 'review', label: 'Review', archived: false, records: 2, editable: true, managedBy: '' },
+          { name: 'old', label: 'Old process', archived: true, records: 4, editable: true, managedBy: '' },
+        ],
+      },
+      templateStore: {
+        currentSwitcherId: 'coasys-space',
+        switcherGroups: [
+          { label: 'Space templates', items: [{ id: 'space::ours', name: 'Our layout', icon: 'layout' }] },
+          { label: 'My templates', items: [] },
+          { label: 'Built-in', items: [{ id: 'coasys-space', name: 'Coasys space', icon: 'layout' }] },
+        ],
+      },
       spaceStore: {
         root: 'root',
         members: [],
+        spaceDefaultTemplateId: 'coasys-space',
         taskStates: [
           {
             id: 'st-todo',

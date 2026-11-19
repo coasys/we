@@ -35,7 +35,16 @@ import { describe, expect, it } from 'vitest';
 
 import { coasysFirstRun } from './coasys/firstRun.ts';
 import { canvasPane } from './coasys/space/canvas.ts';
-import { CLASS_GROUPS, CLASS_ROWS, CLASS_ROWS_COUNT, DNA_AT, dnaCrumbs, OTHER_CLASSES } from './coasys/space/dna.ts';
+import {
+  CLASS_GROUPS,
+  CLASS_ROWS,
+  CLASS_ROWS_COUNT,
+  classGroup,
+  DNA_AT,
+  dnaCrumbs,
+  OTHER_CLASSES,
+  RUNNING_FLOWS,
+} from './coasys/space/dna.ts';
 import { callPath, groupPath, personPath, SELECTED_EXPR } from './coasys/space/paths.ts';
 import { treeSection } from './coasys/space/tree.ts';
 import { callPage, spaceRoutes } from './coasys/space/views.ts';
@@ -561,7 +570,7 @@ describe('the Coasys cartridge', () => {
         at([], params, { local: { openRows: [] }, ...extra })((row(value).props as { open: unknown }).open);
       const onCanvas = { view: 'canvas', dna: 'model|SignalType|like' };
       const we = { group: { key: 'we', classes: [{ id: 'SignalType' }, { id: 'TaskBlock' }] } };
-      const other = { group: { key: 'other', classes: [{ id: 'Question' }] } };
+      const other = { group: { key: 'models', classes: [{ id: 'Question' }] } };
       expect(open("'group|dna'", onCanvas)).toBe(true);
       expect(open("'dnagroup|' + group.key", onCanvas, we)).toBe(true);
       expect(open("'dnagroup|' + group.key", onCanvas, other)).toBe(false);
@@ -569,11 +578,11 @@ describe('the Coasys cartridge', () => {
     });
 
     /*
-      One tree of classes: the space's own models, other apps' classes and WE's — WE's vocabulary
-      first, in the settings' order and words, then its built-in blocks. There is no Models category
-      and no second reading to switch to.
+      One tree of classes: Models — the space's own and other apps', one list, another app's carrying its
+      namespace — and WE's, its vocabulary first, in the settings' order and words, then its built-in
+      blocks. There is no second reading to switch to.
     */
-    it('lists Social DNA as classes in three groups, with no lens to switch', () => {
+    it('lists Social DNA as classes in two groups, Models and Built in, with no lens to switch', () => {
       const evaluate = at(
         [],
         {},
@@ -597,8 +606,16 @@ describe('the Coasys cartridge', () => {
         rows: Cls[];
         sub: { key: string; label: string; classes: Cls[] }[];
       }[];
-      expect(groups.map((g) => g.label)).toEqual(['This space', 'Other apps', 'Built in']);
-      expect(groups[2].classes.map((c) => [c.id, c.label])).toEqual([
+      expect(groups.map((g) => [g.key, g.label])).toEqual([
+        ['models', 'Models'],
+        ['we', 'Built in'],
+      ]);
+      // The space's own model first, then another app's class, which says its namespace.
+      expect(groups[0].rows.map((c) => [c.id, (c as Cls & { namespace?: string }).namespace ?? ''])).toEqual([
+        ['Sighting', ''],
+        ['Question', 'conv://'],
+      ]);
+      expect(groups[1].classes.map((c) => [c.id, c.label])).toEqual([
         ['SignalType', 'Signal types'],
         ['RelationshipType', 'Connection types'],
         ['TaskState', 'Task states'],
@@ -607,25 +624,91 @@ describe('the Coasys cartridge', () => {
         ['TaskBlock', 'Task'],
       ]);
       // The vocabulary is listed in the group itself; the blocks sit together in one nested group.
-      expect(groups[2].rows.map((c) => c.id)).toEqual([
+      expect(groups[1].rows.map((c) => c.id)).toEqual([
         'SignalType',
         'RelationshipType',
         'TaskState',
         'InvolvementType',
         'Topic',
       ]);
-      expect(groups[2].sub.map((s) => [s.key, s.label, s.classes.map((c) => c.id)])).toEqual([
+      expect(groups[1].sub.map((s) => [s.key, s.label, s.classes.map((c) => c.id)])).toEqual([
         ['blocks', 'Blocks', ['TaskBlock']],
       ]);
-      // The other groups list their classes directly and nest nothing.
-      expect(groups[0].rows.map((c) => c.id)).toEqual(['Sighting']);
+      // Models lists its classes directly and nests nothing.
       expect(groups[0].sub).toEqual([]);
-      expect(groups[1].sub).toEqual([]);
       const tree = JSON.stringify(treeSection);
       expect(tree).not.toContain('dnaLens');
       expect(tree).not.toContain('dnakind|signal');
       expect(tree).toContain("'dna|model|' + cls.id");
       expect(tree).toContain('group.sub');
+    });
+
+    /*
+      Social DNA holds Models, Flows and Templates, then the built-in classes and the policy. The top
+      level is what happens in the space: its Flows row is the flows running, counted, and Templates is
+      no longer a group of its own.
+    */
+    it('holds Models, Flows, Templates, Built in and Policy, and leaves running flows at the top', () => {
+      type Node = { type?: string; slot?: string; props?: Record<string, unknown>; children?: unknown[] };
+      const label = (row: Node) =>
+        ((row.children?.[0] as Node).children as Node[]).find((c) => c.type === 'we-text')?.children?.[0];
+      // A group of classes is drawn by an `$each` over that one group: named here by the group it lists.
+      const groupOf = (items: string) =>
+        items === classGroup('models') ? 'Models' : items === classGroup('we') ? 'Built in' : items;
+      const describe = (row: Node) =>
+        row.type === '$each' ? groupOf((row.props?.items as { $: string }).$) : label(row);
+      const tree = findNode(treeSection, (n) => n.type === 'we-tree') as Node;
+      const top = tree.children as Node[];
+      expect(top.map((row) => row.props?.value)).toEqual([
+        { $: "'channel|' + spaceStore.root" },
+        'group|calls',
+        'group|workflows',
+        'group|people',
+        'group|dna',
+        'group|themes',
+      ]);
+      expect(top.map(label)).toEqual(['Feed', 'Calls', 'Flows', 'People', 'Social DNA', 'Themes']);
+
+      const dna = top.find((row) => row.props?.value === 'group|dna')!;
+      const inside = (dna.children as Node[]).slice(1);
+      expect(inside.map(describe)).toEqual(['Models', 'Flows', 'Templates', 'Built in', 'Policy']);
+      // Every row inside Social DNA is nested in its children slot.
+      for (const row of inside)
+        expect(row.type === '$each' ? (row.children?.[0] as Node).slot : row.slot).toBe('children');
+
+      // Social DNA's Flows lists the flows written, each opening as before, with the + that writes one.
+      const flows = inside[1];
+      expect(flows.props?.value).toBe('dnagroup|flows');
+      expect(JSON.stringify(flows)).toContain("'workflow|' + workflow.name");
+      expect(JSON.stringify(flows)).toContain('"New flow"');
+      // Templates moved in unchanged: its rows, its + and its value, so an open tree stays open.
+      expect(inside[2].props?.value).toBe('group|templates');
+      expect(JSON.stringify(inside[2])).toContain('"New template"');
+
+      // The top level's Flows counts what is running, lists no rows and so has no caret.
+      const running = top[2];
+      expect(running.children).toHaveLength(1);
+      expect(running.props?.expandable).toBe(false);
+      const workflows = [
+        { name: 'a', archived: false, records: 2 },
+        { name: 'b', archived: false, records: 3 },
+        { name: 'c', archived: true, records: 9 },
+      ];
+      expect(at([], {}, { workflowStore: { workflows } })({ $: RUNNING_FLOWS })).toBe(5);
+    });
+
+    it('reads the Social DNA page in the order the tree lists it', () => {
+      const page = JSON.stringify(spaceRoutes.find((route) => route.path === '/dna'));
+      const at = [
+        JSON.stringify(classGroup('models')).slice(1, -1),
+        '["Flows"]',
+        '["Templates"]',
+        JSON.stringify(classGroup('we')).slice(1, -1),
+        '["Policy"]',
+      ].map((part) => page.indexOf(part));
+      expect(at.every((i) => i >= 0)).toBe(true);
+      expect([...at].sort((a, b) => a - b)).toEqual(at);
+      expect(page).not.toContain('Workflows');
     });
 
     it('nests no Blocks group in the built-in group when the space offers no blocks', () => {
@@ -637,9 +720,13 @@ describe('the Coasys cartridge', () => {
           datasetStore: { currentDatasetEntities: [] },
         },
       );
-      const groups = evaluate({ $: CLASS_GROUPS }) as { label: string; sub: unknown[] }[];
-      expect(groups.map((g) => g.label)).toEqual(['Built in']);
-      expect(groups[0].sub).toEqual([]);
+      const groups = evaluate({ $: CLASS_GROUPS }) as { label: string; classes: unknown[]; sub: unknown[] }[];
+      // Models is listed with nothing in it: it is one of the three things Social DNA holds.
+      expect(groups.map((g) => [g.label, g.classes.length])).toEqual([
+        ['Models', 0],
+        ['Built in', 5],
+      ]);
+      expect(groups[1].sub).toEqual([]);
     });
 
     it('lists a vocabulary class once, as a row, even if it were ever offered as built-in content', () => {
@@ -659,7 +746,7 @@ describe('the Coasys cartridge', () => {
         },
       );
       type Cls = { id: string };
-      const [builtIn] = evaluate({ $: CLASS_GROUPS }) as { rows: Cls[]; sub: { classes: Cls[] }[] }[];
+      const [, builtIn] = evaluate({ $: CLASS_GROUPS }) as { rows: Cls[]; sub: { classes: Cls[] }[] }[];
       expect(builtIn.rows.map((c) => c.id)).toContain('Topic');
       expect(builtIn.sub.map((s) => s.classes.map((c) => c.id))).toEqual([['TaskBlock']]);
     });
@@ -857,10 +944,10 @@ describe('the Coasys cartridge', () => {
         ]);
         const open = { name: 'review', label: 'Review' };
         expect(trailAt(route('/workflows'), ['workflows'], {}, { workflowStore: { open } })).toEqual([
-          { label: 'Workflows', to: '/space/s1/workflows' },
+          { label: 'Flows', to: '/space/s1/workflows' },
           { label: 'Review' },
         ]);
-        expect(trailAt(route('/workflows'), ['workflows'], {})).toEqual([{ label: 'Workflows' }]);
+        expect(trailAt(route('/workflows'), ['workflows'], {})).toEqual([{ label: 'Flows' }]);
         expect(trailAt(route('/calls'), ['calls'], {})).toEqual([{ label: 'Calls' }]);
       });
 

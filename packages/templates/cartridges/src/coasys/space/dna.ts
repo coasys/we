@@ -10,7 +10,7 @@ import { VOCABULARY_NAMES, WE_VOCABULARY } from './vocabulary.ts';
  * DNA page reads it as cards, and the canvas draws it as the vocabulary map. Each reads the same
  * lists, and the same focus from the address (`?dna=`).
  *
- * Social DNA is the classes the space has — its own models, other apps' classes and WE's — and its
+ * Social DNA is the classes the space has — its models (its own and other apps') and WE's — and its
  * policy. A class in focus is `model|<name>`, whoever wrote it, and one of its records
  * `model|<name>|<id>`; a rule of the policy is `policy|<words>`.
  */
@@ -67,22 +67,39 @@ export const OTHER_CLASSES = [
 ].join('');
 
 /**
- * The groups the classes are listed in — the space's own, other apps', the built-in ones — those with
- * any. Each group is `{ key, label, classes, rows, sub }`:
+ * The groups the classes are listed in — Models, then the built-in ones. Each group is
+ * `{ key, label, classes, rows, sub }`:
  *
  * - `classes` is every class in the group, nested ones included: what a count, a "this class is in
  *   here" test and the page's sections read.
  * - `rows` is the classes listed directly in the group, and `sub` its nested groups, each
  *   `{ key, label, classes }`, listed after the rows.
  *
+ * Models is the space's own models and then other apps' classes, one list: who wrote a class is said
+ * by its namespace, quietly, not by a group of its own. A name the space and another app both carry
+ * is one row, the space's. Models is listed even with nothing in it, since it is one of the three
+ * things Social DNA holds; the built-in group is listed when it has anything.
+ *
  * Only the built-in group nests: its vocabulary classes are its rows, and the blocks sit together
  * in one "Blocks" group at the end. They are different kinds of thing, a community's own definitions
  * and the kinds of content, and every block listed among the vocabulary classes buried them.
  */
-const flat = (key: string, label: string, classes: string) =>
-  `{ key: '${key}', label: '${label}', classes: ${classes}, rows: ${classes}, sub: [] }`;
+export const MODEL_CLASSES = `distinct(${SPACE_CLASSES}, ${OTHER_CLASSES})`;
+const MODELS_GROUP = `{ key: 'models', label: 'Models', classes: ${MODEL_CLASSES}, rows: ${MODEL_CLASSES}, sub: [] }`;
 const BUILT_IN = `{ key: 'we', label: 'Built in', classes: ${WE_CLASSES}, rows: ${VOCABULARY_CLASSES}, sub: [{ key: 'blocks', label: 'Blocks', classes: ${BLOCK_CLASSES} }].filter(s, count(s.classes) > 0) }`;
-export const CLASS_GROUPS = `[${flat('space', 'This space', SPACE_CLASSES)}, ${flat('other', 'Other apps', OTHER_CLASSES)}, ${BUILT_IN}].filter(g, count(g.classes) > 0)`;
+export const CLASS_GROUPS = `[${MODELS_GROUP}, ${BUILT_IN}].filter(g, g.key == 'models' || count(g.classes) > 0)`;
+/** One of those groups by its key, as a list of it or of nothing — for the places that draw them apart. */
+export const classGroup = (key: 'models' | 'we'): string => `${CLASS_GROUPS}.filter(g, g.key == '${key}')`;
+/** The flows a record can go through: written, not put away — Social DNA's Flows. */
+export const FLOW_DEFINITIONS = 'workflowStore.workflows.filter(f, !f.archived)';
+
+/**
+ * The flows running: how many records are going through the space's flows, as the store counts them
+ * for each. Counted rather than listed, since the store keeps no list of runs across flows; the flows
+ * page lists them a flow at a time.
+ */
+export const RUNNING_FLOWS = `sum(${FLOW_DEFINITIONS}.map(f, f.records))`;
+
 /** How many classes there are. */
 export const CLASS_COUNT = `sum(${CLASS_GROUPS}.map(g, count(g.classes)))`;
 

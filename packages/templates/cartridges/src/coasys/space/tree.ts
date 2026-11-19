@@ -14,7 +14,7 @@ import {
   treeRow,
 } from '@we/template-kit';
 
-import { CLASS_COUNT, CLASS_GROUPS, MODEL, POLICY, POLICY_RULES } from './dna.ts';
+import { CLASS_COUNT, classGroup, FLOW_DEFINITIONS, MODEL, POLICY, POLICY_RULES, RUNNING_FLOWS } from './dna.ts';
 import { countPill, liveDot } from './marks.ts';
 import {
   callPath,
@@ -31,8 +31,8 @@ import {
 } from './paths.ts';
 
 /**
- * The space as a tree: its Feed, its calls, its workflows, its people and its Social DNA, under the
- * space's name and what it is for. Nico's d12 inner sidebar, built on `we-tree`.
+ * The space as a tree: its Feed, its calls, its running flows, its people, its Social DNA and its
+ * themes, under the space's name and what it is for. Nico's d12 inner sidebar, built on `we-tree`.
  *
  * Each group is a query, not a list somebody keeps: a call held, a workflow written, a member joining
  * — each appears here because it exists. Choosing a row navigates; the view beside the tree draws
@@ -64,8 +64,10 @@ const toggle = (value: SchemaProp): SchemaProp => ({ $toggleLocalIn: 'openRows',
  *
  * `count` is how many rows it holds, as an expression. Every group says it at the end of its row, and
  * only a group with something in it has a caret and opens: an empty one has nothing to show, and a
- * caret on it promised rows that were not there. `tone` colours the count — Calls goes green while
- * one is running. `action` is a control beside the count, the + that makes one more.
+ * caret on it promised rows that were not there — `expandable` says otherwise where the count is not
+ * of rows (running flows are counted and not listed). `tone` colours the count — Calls goes green
+ * while one is running. `action` is a control beside the count, the + that makes one more. `nested`
+ * draws it as a row inside another group, and `kind` is its value's prefix (`group|<key>`).
  */
 const group = (
   key: string,
@@ -77,14 +79,21 @@ const group = (
     tone?: SchemaProp;
     action?: SchemaNode;
     openness?: { open: SchemaProp; onOpenChange: SchemaProp };
+    expandable?: SchemaProp;
+    nested?: boolean;
+    kind?: string;
   },
 ): SchemaNode =>
   treeRow({
-    value: `group|${key}`,
+    ...(opts.nested ? { nested: true } : {}),
+    value: `${opts.kind ?? 'group'}|${key}`,
     label,
     icon,
-    ...(opts.openness ?? { open: isOpen(`group|${key}`), onOpenChange: toggle(`group|${key}`) }),
-    expandable: { $: `${opts.count} > 0` },
+    ...(opts.openness ?? {
+      open: isOpen(`${opts.kind ?? 'group'}|${key}`),
+      onOpenChange: toggle(`${opts.kind ?? 'group'}|${key}`),
+    }),
+    expandable: opts.expandable ?? { $: `${opts.count} > 0` },
     badge: {
       type: 'Row',
       props: { gap: '100', ay: 'center' },
@@ -185,14 +194,25 @@ const calls = group(
 
 const FLOWS_PAGE = "spaceStore.spacePath + '/workflows'";
 
-const workflows = group(
-  'workflows',
-  'Workflows',
+/**
+ * Flows: what is running in the space. Its row opens the flows page (still `/workflows`, and still
+ * `group|workflows` as a row, so an open tree and a link keep working); what a flow *is* is listed
+ * under Social DNA.
+ */
+const runningFlows = group('workflows', 'Flows', 'flow-arrow', [], {
+  count: RUNNING_FLOWS,
+  expandable: false,
+});
+
+/** The flows written for this space, under Social DNA: a row each, opening it, and the + that writes another. */
+const flowDefinitions = group(
+  'flows',
+  'Flows',
   'flow-arrow',
   [
     {
       type: '$each',
-      props: { items: { $: 'workflowStore.workflows.filter(f, !f.archived)' }, as: 'workflow' },
+      props: { items: { $: FLOW_DEFINITIONS }, as: 'workflow' },
       children: [
         treeRow({
           nested: true,
@@ -205,8 +225,10 @@ const workflows = group(
     },
   ],
   {
-    count: 'count(workflowStore.workflows.filter(f, !f.archived))',
-    action: addButton('New workflow', { $invoke: 'routeStore.navigate', args: [{ $: `${FLOWS_PAGE} + '?new=1'` }] }),
+    kind: 'dnagroup',
+    nested: true,
+    count: `count(${FLOW_DEFINITIONS})`,
+    action: addButton('New flow', { $invoke: 'routeStore.navigate', args: [{ $: `${FLOWS_PAGE} + '?new=1'` }] }),
   },
 );
 
@@ -232,14 +254,16 @@ const people = group(
 );
 
 /*
-  Social DNA: the classes the space has, in three groups — its own models, other apps' classes, WE's —
-  and its policy. Four levels — the group, each group of classes, each class, and for the policy each
-  rule — so the tree is the space's own graph read as an outline, the same things the canvas draws.
+  Social DNA: what the space has defined about itself — its Models (its own and other apps' classes),
+  its Flows, its Templates, WE's built-in classes and its policy. Four levels — the group, each group
+  in it, each class or flow or template, and for the policy each rule — so the tree is the space's own
+  graph read as an outline, the same classes the canvas draws.
 
-  Values are `dnagroup|<group>` for a group of classes, `dna|model|<name>` for a class — any class,
-  whoever wrote it — and `dnaprop|policy|<rule>` for one rule of the policy. A class is a leaf: its
-  records are on its page (or on the vocabulary map, in Canvas mode), never rows under it here, since
-  a class can hold thousands.
+  Values are `dnagroup|<group>` for a group of classes (`models`, `we`, `we.blocks`) and for the flows
+  (`dnagroup|flows`), `dna|model|<name>` for a class — any class, whoever wrote it — and
+  `dnaprop|policy|<rule>` for one rule of the policy. Templates keeps `group|templates`. A class is a
+  leaf: its records are on its page (or on the vocabulary map, in Canvas mode), never rows under it
+  here, since a class can hold thousands.
 */
 
 /**
@@ -300,17 +324,18 @@ const holdsFocus = (classes: string) =>
 
 /**
  * A group of classes, open while a class in it is in focus: its own classes a row each, then its
- * nested groups (the built-in group's Blocks), each a row holding its classes.
+ * nested groups (the built-in group's Blocks), each a row holding its classes. `items` lists the group,
+ * or nothing where it has nothing to list.
  */
-const classGroups: SchemaNode = {
+const classGroupRows = (items: string): SchemaNode => ({
   type: '$each',
-  props: { items: { $: CLASS_GROUPS }, as: 'group' },
+  props: { items: { $: items }, as: 'group' },
   children: [
     treeRow({
       nested: true,
       value: { $: "'dnagroup|' + group.key" },
       label: { $: 'group.label' },
-      icon: { $: "group.key == 'we' ? 'cube' : group.key == 'space' ? 'users-three' : 'package'" },
+      icon: { $: "group.key == 'we' ? 'cube' : 'shapes'" },
       ...revealing("'dnagroup|' + group.key", holdsFocus('group.classes'), "'all'"),
       expandable: { $: 'count(group.classes) > 0' },
       badge: countPill('count(group.classes)'),
@@ -335,7 +360,7 @@ const classGroups: SchemaNode = {
       ],
     }),
   ],
-};
+});
 
 /** The space's policy: who may do what, one rule a row, as the people settings word them. */
 const policyKind: SchemaNode = treeRow({
@@ -354,13 +379,6 @@ const policyKind: SchemaNode = treeRow({
       children: [treeRow({ nested: true, value: { $: "'dnaprop|policy|' + rule" }, label: { $: 'rule' } })],
     },
   ],
-});
-
-/** Everything the space has defined about itself — see above. */
-const socialDna = group('dna', 'Social DNA', 'dna', [classGroups, policyKind], {
-  count: CLASS_COUNT,
-  // Open while anything in it is in focus; closing it then shows all of it.
-  openness: revealing("'group|dna'", `${DNA_AT} != 'all'`, "'all'"),
 });
 
 /*
@@ -411,6 +429,7 @@ const templatesGroup = group(
     },
   ],
   {
+    nested: true,
     count: `count(${SPACE_TEMPLATE_CHOICES})`,
     action: newButton('New template', { $invoke: 'editorStore.startFresh' }),
   },
@@ -433,6 +452,24 @@ const themesGroup = group(
   },
 );
 
+/**
+ * Everything the space has defined about itself — see above: Models, Flows, Templates, then WE's
+ * built-in classes and the policy. It always holds something (Models, Flows and Templates are listed
+ * empty), so it always opens; its count is of its classes.
+ */
+const socialDna = group(
+  'dna',
+  'Social DNA',
+  'dna',
+  [classGroupRows(classGroup('models')), flowDefinitions, templatesGroup, classGroupRows(classGroup('we')), policyKind],
+  {
+    count: CLASS_COUNT,
+    expandable: true,
+    // Open while anything in it is in focus; closing it then shows all of it.
+    openness: revealing("'group|dna'", `${DNA_AT} != 'all'`, "'all'"),
+  },
+);
+
 /** A class row's kind and name — `dna|model|<name>`. */
 const DEF_KIND = "split(event.detail.value, '|')[1]";
 const DEF_ID = "split(event.detail.value, '|')[2]";
@@ -440,7 +477,7 @@ const DEF_ID = "split(event.detail.value, '|')[2]";
 /**
  * What choosing a row does, by the kind its value names.
  *
- * Every row is a place. A group's row opens its page — Channels, Calls, Workflows and People are full
+ * Every row is a place. A group's row opens its page — Channels, Calls, Flows and People are full
  * views of what the group lists — and opens or closes the group, as its caret does. Opening on a press
  * but closing only on the caret read as two rules for one row, so a press folds as well. Social DNA's
  * page is the vocabulary map (`showDna`).
@@ -462,7 +499,7 @@ const onSelect: SchemaProp = [
       then: { $invoke: 'routeStore.navigate', args: [{ $: withView(`spaceStore.spacePath + '/' + ${ROW_ID}`) }] },
     },
   },
-  // Workflows' page shows every workflow until one is chosen, so choosing the group closes the one open.
+  // The flows page shows every flow until one is chosen, so choosing the group closes the one open.
   {
     $if: {
       condition: { $: "event.detail.value == 'group|workflows'" },
@@ -816,7 +853,7 @@ export const treeSection: SchemaNode = {
             is the one thing that folds. Guides drop from each row's glyph, so a lead's width is given.
           */
           props: { label: 'This space', selected: { $: SELECTED_EXPR }, onSelect, caret: 'end', lead: TREE_LEAD },
-          children: [feedRow, calls, workflows, people, socialDna, templatesGroup, themesGroup],
+          children: [feedRow, calls, runningFlows, people, socialDna, themesGroup],
         },
       ],
     },
