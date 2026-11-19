@@ -212,11 +212,25 @@ pub fn executor_version_ok(said: &str) -> Result<(), String> {
             "Couldn't read the ad4m version {version:?} of this executor. {need}"
         ))
     };
-    let without_build = version.split_once('+').map_or(version, |(v, _)| v);
+    let (without_build, build) = match version.split_once('+') {
+        Some((v, build)) => (v, Some(build)),
+        None => (version, None),
+    };
     let (core, pre) = match without_build.split_once('-') {
         Some((core, pre)) => (core, Some(pre)),
         None => (without_build, None),
     };
+    // SemVer identifiers: dot-separated, each non-empty `[0-9A-Za-z-]`.
+    let identifiers_ok = |text: &str| {
+        text.split('.').all(|part| {
+            !part.is_empty() && part.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+        })
+    };
+    if build.is_some_and(|build| !identifiers_ok(build))
+        || pre.is_some_and(|pre| !identifiers_ok(pre))
+    {
+        return unreadable();
+    }
     let parts: Vec<&str> = core.split('.').collect();
     let numbers: Option<Vec<u64>> = parts
         .iter()
@@ -229,9 +243,6 @@ pub fn executor_version_ok(said: &str) -> Result<(), String> {
     let (Some(numbers), 3) = (numbers, parts.len()) else {
         return unreadable();
     };
-    if pre.is_some_and(str::is_empty) {
-        return unreadable();
-    }
     let too_old = || Err(format!("This executor is ad4m {version}. {need}"));
     let newer = match (numbers[0], numbers[1], numbers[2]).cmp(&(0, 13, 1)) {
         // A later release, any pre-release of it (`-dev`, `-rc.1`).

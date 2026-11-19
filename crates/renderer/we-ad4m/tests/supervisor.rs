@@ -1171,3 +1171,37 @@ fn a_start_that_never_said_its_port_names_what_hides_it() {
     assert!(reason.contains("didn't respond"), "{reason}");
     assert!(!reason.contains("AD4M_LOG_DIR"), "{reason}");
 }
+
+/// Slice-4 leftover (Lal P3 on e14efd725): a build suffix is read as
+/// SemVer build metadata: dot-separated, non-empty `[0-9A-Za-z-]` parts.
+/// An empty one, a second `+`, or another character is refused.
+#[test]
+fn a_malformed_build_suffix_is_refused() {
+    use we_ad4m::supervisor::executor_version_ok;
+    for refused in [
+        "ad4m 0.13.1+",
+        "ad4m 0.13.1-staging.13+",
+        "ad4m 0.13.1+bad+more",
+        "ad4m 0.13.1+a..b",
+        "ad4m 0.13.1+.a",
+        "ad4m 0.13.1+a.",
+        "ad4m 0.13.1+g1a2_b3c",
+        "ad4m 0.14.0-dev+",
+    ] {
+        assert!(
+            executor_version_ok(refused).is_err(),
+            "{refused} was accepted"
+        );
+    }
+    for ok in [
+        "ad4m 0.13.1+20261119",
+        "ad4m 0.13.1-staging.13+g1a2b3c.dirty",
+        "ad4m 0.14.0-dev+local-build.2",
+    ] {
+        assert!(
+            executor_version_ok(ok).is_ok(),
+            "{ok}: {:?}",
+            executor_version_ok(ok)
+        );
+    }
+}
