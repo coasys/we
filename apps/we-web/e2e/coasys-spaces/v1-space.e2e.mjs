@@ -25,8 +25,8 @@ vertical('V1 space: create, invite, join', (v) => {
     await page.getByText('Feed', { exact: true }).first().waitFor({ timeout: 120_000 });
     await page.getByText('A space starts with a conversation').first().waitFor();
     await page.getByText('Nothing said here yet.', { exact: false }).first().waitFor();
-    // Flows at the top is what is running; the flows written are under Social DNA.
-    for (const row of [/^Feed/, /^Calls/, /^Flows/, /^People 1/, /^Social DNA \d+/]) {
+    // Active flows at the top is what is running; the flows written are under Social DNA.
+    for (const row of [/^Feed/, /^Calls/, /^Active flows/, /^People 1/, /^Social DNA \d+/]) {
       await treeRow(page, row).first().waitFor({ timeout: 30_000 });
     }
     await page.getByRole('button', { name: 'Send to the space' }).waitFor();
