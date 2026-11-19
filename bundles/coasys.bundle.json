@@ -25160,13 +25160,31 @@
                                                                   },
                                                                   "children": [
                                                                     {
-                                                                      "type": "we-text",
-                                                                      "props": {
-                                                                        "truncate": true,
-                                                                        "maxWidth": "360px"
-                                                                      },
+                                                                      "type": "Column",
+                                                                      "props": { "gap": "0", "ax": "start" },
                                                                       "children": [
-                                                                        { "$": "rec.title ? rec.title : 'Untitled'" }
+                                                                        {
+                                                                          "type": "we-text",
+                                                                          "props": {
+                                                                            "truncate": true,
+                                                                            "maxWidth": "360px"
+                                                                          },
+                                                                          "children": [{ "$": "rec.title" }]
+                                                                        },
+                                                                        {
+                                                                          "type": "we-text",
+                                                                          "props": {
+                                                                            "variant": "footnote",
+                                                                            "color": "text-muted",
+                                                                            "truncate": true,
+                                                                            "maxWidth": "360px"
+                                                                          },
+                                                                          "children": [
+                                                                            {
+                                                                              "$": "(rec.kind ? rec.kind + ' in ' : 'In ') + workflowStore.open.label + (rec.stateLabel ? ' · at ' + rec.stateLabel : '')"
+                                                                            }
+                                                                          ]
+                                                                        }
                                                                       ]
                                                                     }
                                                                   ]

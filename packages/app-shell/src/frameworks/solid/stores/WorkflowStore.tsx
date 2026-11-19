@@ -38,6 +38,7 @@ import {
   type WorkflowPreset,
 } from '@shared/workflowDraft';
 import { toLanes, type WorkflowSequenceRule } from '@shared/workflowLanes';
+import { type SubjectName, subjectTitleOf } from '@shared/workflowSubjects';
 import {
   approvalsRule,
   editorView,
@@ -53,6 +54,7 @@ import {
 import { firstScreen } from '@solid/firstScreen';
 import { useDatasetStore } from '@solid/stores/DatasetStore';
 import { useSessionStore } from '@solid/stores/SessionStore';
+import { useShapeStore } from '@solid/stores/ShapeStore';
 import { useSpaceStore } from '@solid/stores/SpaceStore';
 import type {
   Requirement,
@@ -61,9 +63,10 @@ import type {
   WorkflowItem,
   WorkflowSummary,
 } from '@we/backend-shared';
-import { validateWorkflowDefinition } from '@we/backend-shared';
+import { nameFromProperties, namePropertyOf, validateWorkflowDefinition } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import { getEntityForDataset } from '@we/entities';
+import { CORE_MANIFEST } from '@we/entities/manifest';
 import {
   type Accessor,
   createContext,
@@ -224,25 +227,17 @@ function workflowLabelOf(name: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-/** The entities searched for a record's title, when a workflow names none. */
+/** WE's own entities a record may be, searched for its name when a workflow names none. */
 const ANY_RECORD = ['TaskBlock', 'TextBlock', 'CollectionBlock', 'EventBlock'];
 
-const titleOf = (row: Record<string, unknown>): string => {
-  // A post or a note is a collection with no title of its own: what it says is in `textContent`.
-  for (const key of ['title', 'name', 'textContent', 'text']) {
-    const value = row[key];
-    if (typeof value === 'string' && value.trim()) {
-      const plain = value.replace(/<[^>]*>/g, '').trim();
-      return plain.length > 80 ? `${plain.slice(0, 79)}…` : plain;
-    }
-  }
-  return '';
-};
+/** A record not read yet: a row names it by a short id until it is. */
+const NO_SUBJECT: SubjectName = { title: '', entity: '' };
 
 export function WorkflowStoreProvider(props: ParentProps) {
   const session = useSessionStore();
   const datasetStore = useDatasetStore();
   const spaceStore = useSpaceStore();
+  const shapeStore = useShapeStore();
 
   const port = () => (datasetStore.isWeSpace() ? (session.backendPorts()?.workflows ?? null) : null);
   const handle = () => datasetStore.currentDataset()?.handle;
@@ -428,35 +423,88 @@ export function WorkflowStoreProvider(props: ParentProps) {
     setDraftState(null);
   });
 
-  // ─── Titles ──────────────────────────────────────────────────────────────────
+  // ─── Subjects ────────────────────────────────────────────────────────────────
 
-  const [titles, setTitles] = createSignal<Record<string, string>>({});
+  /**
+   * What each record going through the open workflow is called, by record id. Only records that were
+   * found are kept: one not found yet — its model not registered for this space when it was looked
+   * for — is looked for again when the space's models arrive, rather than read as nameless for good.
+   */
+  const [subjects, setSubjects] = createSignal<Record<string, SubjectName>>({});
+  /**
+   * Which models each record was already looked for in and not found, so a run moving does not ask
+   * again. A read that failed is not kept, and opening a workflow forgets them all.
+   */
+  const searched = new Map<string, string>();
+
+  /**
+   * The property that names a record of each of the space's models. A model the space adopted is named
+   * as it declares (`namePropertyOf` reads `display.title` first), and wins over the foreign snapshot,
+   * which carries no declaration and so only ever gives the guess — the same precedence as
+   * `RecordStore.schemaFor`.
+   */
+  const nameProperties = createMemo(() => {
+    const out = new Map<string, string>();
+    for (const entry of datasetStore.currentDatasetEntities()) {
+      out.set(entry.name, nameFromProperties(entry.properties.filter((p) => !p.isCollection)));
+    }
+    for (const shape of shapeStore.spaceShapes()) {
+      const schema = shape.manifest?.entities[shape.name];
+      if (schema) out.set(shape.name, namePropertyOf(schema));
+      else if (!out.has(shape.name)) out.set(shape.name, '');
+    }
+    return out;
+  });
+  const namePropertyFor = (entity: string): string => {
+    const core = CORE_MANIFEST.entities[entity];
+    return nameProperties().get(entity) ?? (core ? namePropertyOf(core) : '');
+  };
+
+  createEffect(() => {
+    datasetId();
+    setSubjects({});
+    searched.clear();
+  });
 
   createEffect(() => {
     const h = handle();
     const name = openName();
     const list = items()[name] ?? [];
     const definition = definitions()[name];
+    // Tracked so a record whose model was not registered yet is looked for again once it is. The
+    // foreign snapshot is read on navigation; a model adopted since is only in the shape store's list.
+    const spaceModels = [...nameProperties().keys()];
     if (!h || !list.length) return;
-    const known = untrack(titles);
-    const missing = list.map((item) => item.record).filter((id) => !(id in known));
+    const candidates = definition?.entities.length
+      ? definition.entities
+      : [...new Set([...ANY_RECORD, ...spaceModels])];
+    const models = candidates.flatMap((entity) => {
+      const Model = getEntityForDataset(entity, h) as
+        { findAll(d: unknown, q: unknown): Promise<Record<string, unknown>[]> } | undefined;
+      return Model ? [{ entity, Model }] : [];
+    });
+    const looking = models.map((m) => m.entity).join(',');
+    const known = untrack(subjects);
+    const missing = list.map((item) => item.record).filter((id) => !(id in known) && searched.get(id) !== looking);
     if (!missing.length) return;
-    const entities = definition?.entities.length ? definition.entities : ANY_RECORD;
+    for (const id of missing) searched.set(id, looking);
     void (async () => {
-      const found: Record<string, string> = Object.fromEntries(missing.map((id) => [id, '']));
-      for (const entity of entities) {
-        const Model = getEntityForDataset(entity, h) as
-          { findAll(d: unknown, q: unknown): Promise<Record<string, unknown>[]> } | undefined;
-        if (!Model) continue;
+      const found: Record<string, SubjectName> = {};
+      for (const { entity, Model } of models) {
+        const wanted = missing.filter((id) => !found[id]);
+        if (!wanted.length) break;
         try {
-          for (const row of await Model.findAll(h, { where: { id: missing } })) {
-            if (typeof row.id === 'string' && !found[row.id]) found[row.id] = titleOf(row);
+          for (const row of await Model.findAll(h, { where: { id: wanted } })) {
+            if (typeof row.id !== 'string' || found[row.id]) continue;
+            found[row.id] = { title: subjectTitleOf(row, namePropertyFor(entity)), entity };
           }
         } catch {
-          // A type this space has never held reads as nothing to name.
+          // Not an answer: forget these were looked for, so the next change to the list — a run
+          // moving, the workflow reopened — asks again. Bounded by those changes, not by renders.
+          for (const id of wanted) if (searched.get(id) === looking) searched.delete(id);
         }
       }
-      setTitles((prev) => ({ ...prev, ...found }));
+      if (Object.keys(found).length) setSubjects((prev) => ({ ...prev, ...found }));
     })();
   });
 
@@ -466,6 +514,7 @@ export function WorkflowStoreProvider(props: ParentProps) {
 
   async function openWorkflow(name: string): Promise<void> {
     if (!name) return closeWorkflow();
+    searched.clear();
     setOpenName(name);
     setHistory({});
     setDefinitions(({ [name]: _stale, ...rest }) => rest);
@@ -491,7 +540,7 @@ export function WorkflowStoreProvider(props: ParentProps) {
     const labels = labelsFor(name);
     const view = editorView(definition, labels);
     const { model } = toLanes(definition);
-    const named = titles();
+    const named = subjects();
     return {
       ...view,
       label: workflowLabelOf(name),
@@ -500,7 +549,7 @@ export function WorkflowStoreProvider(props: ParentProps) {
       archived: summary?.archived ?? false,
       records: [...(items()[name] ?? [])]
         .sort((a, b) => (b.since ?? 0) - (a.since ?? 0))
-        .map((item) => recordView(definition, model, item, named[item.record] ?? '', me(), labels)),
+        .map((item) => recordView(definition, model, item, named[item.record] ?? NO_SUBJECT, me(), labels)),
       recordsLoaded: name in items(),
       history: history(),
     };
@@ -532,7 +581,7 @@ export function WorkflowStoreProvider(props: ParentProps) {
       const model = definition ? toLanes(definition).model : null;
       const labels = labelsFor(name);
       for (const item of all[name] ?? []) {
-        const view = definition && model ? recordView(definition, model, item, '', me(), labels) : null;
+        const view = definition && model ? recordView(definition, model, item, NO_SUBJECT, me(), labels) : null;
         (out[item.record] ??= []).push({
           workflow: name,
           label: workflowLabelOf(name),
