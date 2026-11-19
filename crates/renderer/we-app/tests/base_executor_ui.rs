@@ -322,7 +322,7 @@ fn stand_in(dir: &Path) -> PathBuf {
         format!(
             "#!/bin/sh\nif [ \"$1\" = --version ]; then echo 'ad4m 0.13.1-staging.13'; exit 0; fi\n\
              if [ \"$1\" = init ]; then exit 0; fi\necho $$ >> '{}'\n\
-             echo \"API server starting on http://127.0.0.1:$(cat '{}')/api/v1\" >&2\n\
+             echo \"[2026-11-19T00:00:00Z INFO  rust_executor::api] API server starting on http://127.0.0.1:$(cat '{}')/api/v1\" >&2\n\
              cat > /dev/null\n",
             dir.join("ran").display(),
             dir.join("port").display()

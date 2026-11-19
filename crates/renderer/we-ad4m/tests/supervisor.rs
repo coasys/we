@@ -977,3 +977,52 @@ fn init_never_runs_over_a_folder_with_state() {
     );
     assert!(data.join("agent.json").exists());
 }
+
+/// Round 3 (Lal P3): only the `rust_executor::api` INFO record with
+/// exactly that message gives the port. A value the executor echoes in
+/// another record (a PID-file path it failed to write, logged before the
+/// API starts), a record of another target, or a message with more after
+/// `/api/v1` gives none.
+#[test]
+fn the_port_is_read_only_from_the_api_record() {
+    use we_ad4m::supervisor::reported_port;
+    let echoed = "[2026-11-19T09:47:12Z ERROR rust_executor] Failed to write PID file \
+                  /nonexistent/API server starting on http://127.0.0.1:43210/api/v1: No such file";
+    assert_eq!(reported_port(echoed), None);
+    let other_target = "[2026-11-19T09:47:12Z INFO  rust_executor] API server starting on http://127.0.0.1:43210/api/v1";
+    assert_eq!(reported_port(other_target), None);
+    let other_level = "[2026-11-19T09:47:12Z WARN  rust_executor::api] API server starting on http://127.0.0.1:43210/api/v1";
+    assert_eq!(reported_port(other_level), None);
+    let longer = "[2026-11-19T09:47:12Z INFO  rust_executor::api] API server starting on http://127.0.0.1:43210/api/v1x";
+    assert_eq!(reported_port(longer), None);
+    let real = "[2026-11-19T09:47:12Z INFO  rust_executor::api] API server starting on http://127.0.0.1:45617/api/v1";
+    assert_eq!(reported_port(real), Some(45617));
+    assert_eq!(reported_port(&format!("{real}\r")), Some(45617));
+}
+
+/// Round 3: a stand-in that echoes the listening text (with an alien's
+/// port) in an earlier record, then logs its real record: the admin
+/// credential goes to the real port only.
+#[test]
+fn an_echoed_listening_line_is_not_the_port() {
+    let dir = tempfile::tempdir().unwrap();
+    let alien = health();
+    let real = health();
+    let binary = dir.path().join("executor");
+    executable(
+        &binary,
+        format!(
+            "#!/bin/sh\nif [ \"$1\" = --version ]; then echo 'ad4m 0.13.1-staging.13'; exit 0; fi\n\
+             if [ \"$1\" = init ]; then exit 0; fi\n\
+             echo '[2026-11-19T00:00:00Z ERROR rust_executor] Failed to write PID file \
+             /x/API server starting on http://127.0.0.1:{alien}/api/v1: denied' >&2\n\
+             PORT={real}\n{LISTENING}\ncat > /dev/null\n"
+        ),
+    );
+    let reader = Arc::new(Reader::default());
+    let sup = Supervisor::with_reader(silent(dir.path(), binary), reader.clone());
+    sup.start();
+    wait_for(&sup, "ready", 10, |s| matches!(s, Lifecycle::Ready { .. }));
+    let calls = reader.calls.lock().unwrap().clone();
+    assert_eq!(calls[0].0, format!("http://127.0.0.1:{real}"), "{calls:?}");
+}

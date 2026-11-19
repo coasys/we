@@ -946,17 +946,35 @@ struct Tail {
     closed: mpsc::Receiver<()>,
 }
 
-/// The line the executor logs once its API listener is bound
+/// The message the executor logs once its API listener is bound
 /// (`rust-executor/src/api/mod.rs`, `log::info!` under the target
 /// `rust_executor::api`; test harnesses read it as "ready" too).
 const LISTENING: &str = "API server starting on http://127.0.0.1:";
+const LISTENING_END: &str = "/api/v1";
+const API_TARGET: &str = "rust_executor::api";
 
-/// The port in the executor's "API server starting on" line, if `line` is
-/// that line for a loopback listener.
+/// The port in the executor's listening record, if `line` is exactly that
+/// record: env_logger's `[<time> INFO  rust_executor::api] ` header, then
+/// exactly `API server starting on http://127.0.0.1:<port>/api/v1`. Another
+/// target or level, text before or after the message, or the same words
+/// inside another record (a value the executor echoes, such as a PID-file
+/// path it could not write) give none.
+///
+/// This is where the address comes from, not a proof of who serves it:
+/// the line arrives on the child's own stderr, so it names the port that
+/// child says it bound (provenance), not an authenticated server.
 pub fn reported_port(line: &str) -> Option<u16> {
-    let rest = &line[line.find(LISTENING)? + LISTENING.len()..];
-    let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
-    if !rest[digits.len()..].starts_with('/') {
+    let line = line.trim_end_matches(['\r', '\n']);
+    let (header, message) = line.strip_prefix('[')?.split_once("] ")?;
+    let mut fields = header.split_whitespace();
+    let (_time, level, target) = (fields.next()?, fields.next()?, fields.next()?);
+    if level != "INFO" || target != API_TARGET || fields.next().is_some() {
+        return None;
+    }
+    let digits = message
+        .strip_prefix(LISTENING)?
+        .strip_suffix(LISTENING_END)?;
+    if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
         return None;
     }
     digits.parse().ok().filter(|port| *port != 0)
