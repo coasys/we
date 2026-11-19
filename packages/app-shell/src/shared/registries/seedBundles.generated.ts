@@ -1461,8 +1461,9 @@ export const seedBundles: Bundle[] = [
                                     $invoke: 'routeStore.navigate',
                                     args: [
                                       {
-                                        $: "(spaceStore.spacePath + '/workflows' + '?card=' + split(event.detail.value, '|')[2]) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/workflows' + '?card=' + split(event.detail.value, '|')[2], '?') ? '&' : '?') + 'view=canvas' : '')",
+                                        $: "(spaceStore.spacePath + '/workflows') + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/workflows', '?') ? '&' : '?') + 'view=canvas' : '')",
                                       },
+                                      { $: "{ query: { card: split(event.detail.value, '|')[2] } }" },
                                     ],
                                   },
                                 ],

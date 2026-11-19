@@ -607,13 +607,21 @@ const onSelect: SchemaProp = [
       ],
     },
   },
-  // A running record opens its flow on the flows page, with the record chosen there.
+  /*
+    A running record opens its flow on the flows page, with the record chosen there. The id goes in
+    `query`, never pasted after a `?`: an interpreted record's id carries its source already encoded
+    (`we://interpreted/ad4m%3A%2F%2Fobj…`), and pasted raw it was decoded on the way back, so the `card`
+    read back was not the record's id and neither its row here nor its card on the page was lit.
+  */
   {
     $if: {
       condition: { $: "startsWith(event.detail.value, 'run|')" },
       then: [
         { $invoke: 'workflowStore.openWorkflow', args: [{ $: RUN_WORKFLOW }] },
-        { $invoke: 'routeStore.navigate', args: [{ $: withView(`${FLOWS_PAGE} + '?card=' + ${RUN_RECORD}`) }] },
+        {
+          $invoke: 'routeStore.navigate',
+          args: [{ $: withView(FLOWS_PAGE) }, { $: `{ query: { card: ${RUN_RECORD} } }` }],
+        },
       ],
     },
   },

@@ -706,7 +706,9 @@ describe('the Coasys cartridge', () => {
         (findNode(treeSection, (n) => n.type === 'we-tree') as { props: { onSelect: unknown } }).props.onSelect,
       );
       expect(select).toContain("startsWith(event.detail.value, 'run|')");
-      expect(select).toContain("'?card=' + split(event.detail.value, '|')[2]");
+      // The id rides in `query`, so one carrying encoded characters reads back as itself.
+      expect(select).toContain("{ query: { card: split(event.detail.value, '|')[2] } }");
+      expect(select).not.toContain("'?card='");
       const lit = (params: Record<string, string>) =>
         at(['workflows'], params, { workflowStore: { open: { name: 'review' } } })({ $: SELECTED_EXPR });
       expect(lit({ card: 'r1' })).toBe('run|review|r1');
