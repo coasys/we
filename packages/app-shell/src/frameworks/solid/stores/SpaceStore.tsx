@@ -30,6 +30,7 @@ import {
   type SettingValue,
   writeSetting,
 } from '@shared/moduleSettings';
+import { pageOfPart } from '@shared/partPage';
 import { resolveRecordRef } from '@shared/recordNavigation';
 import { withDerivedIds } from '@shared/registries/derivedIds';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
@@ -1414,6 +1415,19 @@ export function SpaceStoreProvider(props: ParentProps) {
           spaceIdOf: sharedIdOf,
         });
         if (value) routeStore.setParam('call', value);
+      },
+      /*
+        A module's part, on the page of this space that draws it: the template as written, and the
+        sections this space's navigation lists — see `pageOfPart`. `routeStore.navigate`, the call the
+        space's own navigation makes, so the page comes back as the reader left it.
+      */
+      showPart: (part: string) => {
+        const base = spacePath();
+        if (!base) return false;
+        const page = pageOfPart(templateStore.currentTemplate, spaceViews(), part);
+        if (page === null) return false;
+        routeStore.navigate(page ? `${base}/${page}` : base);
+        return true;
       },
       datasets: {
         get: (uri: string) => {
