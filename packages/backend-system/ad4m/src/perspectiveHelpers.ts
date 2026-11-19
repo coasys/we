@@ -221,7 +221,7 @@ export function buildEntityClasses(shapes: ForeignShape[]): Record<string, Entit
  * injection into an AI system prompt as `externalEntities`.
  */
 export function buildEntityManifest(shapes: ForeignShape[]): EntityManifestEntry[] {
-  return shapes.map(({ name, shape }) => ({
+  const entries = shapes.map(({ name, shape }) => ({
     name,
     targetClass: shape.targetClass ?? '',
     ...(shape.interpretationHint !== undefined && { interpretationHint: shape.interpretationHint }),
@@ -235,11 +235,35 @@ export function buildEntityManifest(shapes: ForeignShape[]): EntityManifestEntry
         required: (p.minCount ?? 0) >= 1,
         writable: p.writable ?? true,
         ...(p.resolveLanguage !== undefined && { resolveLanguage: p.resolveLanguage }),
-        ...(p.class !== undefined && { relatedEntity: shaclClassToLocalName(p.class) }),
+        // The target class reaches us two ways, and decorator-generated classes write BOTH:
+        // `sh:class` is the target's *shape* URI (`…Shape`), `target_class_name` its class name.
+        // The name is the entity, so it wins; a shape declaring only `sh:class` still resolves.
+        ...((p.targetClassName ?? p.class) !== undefined && {
+          relatedEntity: shaclClassToLocalName((p.targetClassName ?? p.class)!),
+        }),
         // The shape says which end owns the link, so an entry read back from storage keeps it.
         ...(p.relationKind?.startsWith('belongsTo') && { reverse: true }),
         ...(p.interpretationHint !== undefined && { interpretationHint: p.interpretationHint }),
         ...(p.identity ? { identity: true } : {}),
       })),
   }));
+  /*
+    Name each reverse's forward. SHACL says which end owns a link (`belongsTo*`) but not which
+    property on the other entity is its forward half — it does not have to: the two share one
+    predicate, the same link read from opposite ends. That is enough to pair them here, and the
+    name is what every consumer of `reverseOf` — the graph's direction, a tree move's writable
+    side — reads rather than re-deriving.
+  */
+  for (const entry of entries) {
+    for (const p of entry.properties) {
+      if (!p.reverse || p.reverseOf || !p.relatedEntity) continue;
+      // Several forwards can share a predicate; the one that points back at this entity is the pair.
+      const candidates = entries
+        .find((e) => e.name === p.relatedEntity)
+        ?.properties.filter((q) => !q.reverse && q.predicate === p.predicate);
+      const forward = candidates?.find((q) => q.relatedEntity === entry.name) ?? candidates?.[0];
+      if (forward) p.reverseOf = forward.name;
+    }
+  }
+  return entries;
 }

@@ -4,25 +4,28 @@ The Coasys app as a cartridge: WE whitelabelled, with nothing of WE's own code c
 builds it in with `seeds/coasys.seed.json`; anybody can install `bundles/coasys.bundle.json` from a
 file in Settings.
 
-| File                                    | What it is                                                                                           |
-| --------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `index.ts`                              | The cartridge: what it brings, the modules it needs, how it shows spaces                             |
-| `brand.ts`                              | The name, the mark and the About page                                                                |
-| `assets/mark.svg`                       | The Coasys logo as the app draws it — the bundle reads it                                            |
-| `assets/icon.svg`                       | The desktop icon: the logo on Glow's indigo tile — the seed names it, `@we/brand` renders every size |
-| `boot.ts`                               | The sign-in screen: WE's sign-in form and accounts as parts, in Coasys's frame                       |
-| `themes.ts`                             | Coasys, Josh's theme, with a light and a dark side; Coasys Glow, Nico's, dark only                   |
-| `assets/BricolageGrotesque-latin.woff2` | Glow's typeface (SIL OFL 1.1), carried in its `fontFaces` as a `data:` URL                           |
-| `app.ts`                                | The chrome around every space: one rail, no module rail                                              |
-| `firstRun.ts`                           | "Welcome to Coasys": make your identity here, or start without one                                   |
-| `space/shell.ts`                        | A space as one tree and one view, on a home lane                                                     |
-| `space/tree.ts`                         | The tree: channels, calls, workflows, people, Social DNA                                             |
-| `space/views.ts`                        | The pages: the Feed, the workflows, and a call's own page                                            |
-| `space/canvas.ts`                       | Canvas mode: the space's canvas, dimmed to what the tree has chosen, and the vocabulary map          |
-| `space/bar.ts`                          | The bar over every view, with the Page / Canvas switch at its end                                    |
-| `space/lockup.ts`                       | The mark and name, where the rail and the sign-in screen both draw them                              |
-| `space/paths.ts`                        | The addresses the tree and the views share                                                           |
-| `space/marks.ts`                        | The live dot and the count pill the tree and the views share                                         |
+| File                                    | What it is                                                                                                  |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `index.ts`                              | The cartridge: what it brings, the modules it needs, how it shows spaces                                    |
+| `brand.ts`                              | The name, the mark and the About page                                                                       |
+| `assets/mark.svg`                       | The Coasys logo as the app draws it — the bundle reads it                                                   |
+| `assets/icon.svg`                       | The desktop icon: the logo on Glow's indigo tile — the seed names it, `@we/brand` renders every size        |
+| `boot.ts`                               | The sign-in screen: WE's sign-in form and accounts as parts, in Coasys's frame                              |
+| `themes.ts`                             | Coasys, Josh's theme, with a light and a dark side; Coasys Glow, Nico's, dark only                          |
+| `assets/BricolageGrotesque-latin.woff2` | Glow's typeface (SIL OFL 1.1), carried in its `fontFaces` as a `data:` URL                                  |
+| `app.ts`                                | The chrome around every space: one rail, no module rail                                                     |
+| `firstRun.ts`                           | "Welcome to Coasys": make your identity here, or start without one                                          |
+| `space/shell.ts`                        | A space as one tree and one view, on a home lane                                                            |
+| `space/tree.ts`                         | The tree: channels, calls, workflows, people, Social DNA                                                    |
+| `space/dna.ts`                          | Social DNA, named once: the classes in three groups (the space's, other apps', WE's), the focus, the crumbs |
+| `space/vocabulary.ts`                   | WE's vocabulary classes as Social DNA shows them — labels, glyphs, the store list two of them are read from |
+| `space/socialDna.ts`                    | The Social DNA page: the classes, a class's records, the policy                                             |
+| `space/views.ts`                        | The pages: the Feed, the workflows, and a call's own page                                                   |
+| `space/canvas.ts`                       | Canvas mode: the space's canvas, dimmed to what the tree has chosen, and the vocabulary map                 |
+| `space/bar.ts`                          | The bar over every view, with the Page / Canvas switch at its end                                           |
+| `space/lockup.ts`                       | The mark and name, where the rail and the sign-in screen both draw them                                     |
+| `space/paths.ts`                        | The addresses the tree and the views share                                                                  |
+| `space/marks.ts`                        | The live dot and the count pill the tree and the views share                                                |
 
 After any change, write the bundle again and check it in:
 
@@ -69,7 +72,7 @@ workshop.
 The identity pages in Settings (security, devices, bots, plan) are WE's own, drawn as "Coming soon"
 until a backend reports it can do them. Lit up so far: the key log (Security → Key log) and the
 device list, read from the executor's `identity.*` calls, and — on the desktop app, whose shell
-keeps the master key — Add a device and Revoke, which open the shell's identity window.
+keeps the master key — Link a device and Remove, which open the shell's identity window.
 
 Two screens come before a space. WE's sign-in form, which `boot.ts` places, gets a session. Then,
 once the session is ready, the first run (`firstRun.ts`) sits over the rail while

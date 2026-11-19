@@ -3,7 +3,7 @@ use tauri::State;
 
 #[tauri::command]
 pub fn get_port(state: State<'_, AppState>) -> u16 {
-    state.graphql_port
+    state.executor_port
 }
 
 #[tauri::command]

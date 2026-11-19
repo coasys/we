@@ -148,9 +148,14 @@ export interface ExecutorSettings {
 }
 
 export interface ExecutorHost {
-  getSettings(): Promise<ExecutorSettings>;
+  /**
+   * Settings the host keeps and passes to the backend at startup. Absent where the backend keeps
+   * them in its own config file, which the settings page reaches through
+   * `RuntimeAdminPort.executorConfig` instead (Electron).
+   */
+  getSettings?(): Promise<ExecutorSettings>;
   /** Written immediately; takes effect the next time the backend starts. */
-  setSettings(settings: Partial<ExecutorSettings>): Promise<ExecutorSettings>;
+  setSettings?(settings: Partial<ExecutorSettings>): Promise<ExecutorSettings>;
   /**
    * Start the backend over, so written settings take effect.
    *

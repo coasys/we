@@ -639,7 +639,7 @@ describe('the workshop template’s call selection', () => {
     /*
       Parked in slots a card fits, and pinned where it is drawn when kept.
 
-      Inside the layout expression now, because the canvas has a second reading — see `WorkshopTree`.
+      Inside the layout expression now, because the canvas has a second reading — see `canvasTree` in the kit.
       Asserted as the branch rather than as the whole prop: what matters is that the freeform side is
       still `manual` with a card-sized slot, which is what stopped new suggestions arriving overlapping.
     */
@@ -2161,7 +2161,15 @@ describe('the workshop’s tree', () => {
       switch, throwing away the selection, the camera and every card's identity — and with it the
       travel, which is what makes the switch read as one movement over one set of cards.
     */
-    expect(canvas).toContain("{ type: 'forest', options: { spine: { field: 'data.relationshipTypeId'");
+    expect(canvas).toContain("{ type: 'forest', options: { spine:");
+    /*
+      The spine is read once, by `treeSpine`, which knows its kinds — `rel:*`, `rel:Class.prop`, or a
+      bare connection kind, so a `?spine=<kindId>` link saved before relations existed still means the
+      same tree. No reader here decodes the spelling for itself.
+    */
+    expect(canvas).toContain("{ type: 'forest', options: { spine: treeSpine({ value: local.spine }).selector");
+    expect(canvas).not.toContain('startsWith(local.spine');
+    expect(canvas).not.toContain('split(local.spine');
     expect(canvas).toContain("{ type: 'manual', options: { size: { width: 180, height: 135 }");
     // One layout prop on the canvas's graph, so there is exactly one place the mode is read. (The
     // route also holds the vocabulary map, a different graph with a layout of its own.)
@@ -2232,7 +2240,7 @@ describe('the workshop’s tree', () => {
       community's vocabulary and this reader's choice, neither of which a store can know.
     */
     expect(canvas).toContain('"onNodeArrange":{"$invoke":"recordStore.arrangeOnTree"');
-    expect(canvas).toContain('{"$":"local.spine"}');
+    expect(canvas).toContain('{"$":"treeSpine({ value: local.spine })"}');
     expect(canvas).toContain('"onNodeDragEnd":{"$invoke":"recordStore.dragOnCanvas"');
   });
 
@@ -2270,7 +2278,7 @@ describe('the workshop’s tree', () => {
       still drawn, and a connection of another kind entirely is exactly what a reader following a
       decision pathway wants to notice. Faint rather than absent, or the shape is lost in the tangle.
     */
-    expect(canvas).toContain("{ 'data.relationshipTypeId': { not: local.spine } }");
+    expect(canvas).toContain('{ when: treeSpine({ value: local.spine }).offSpine,');
     expect(canvas).toContain('opacity: 0.25');
     /*
       And every child is met at its own top, from its parent's bottom.
@@ -2309,7 +2317,9 @@ describe('the workshop’s tree', () => {
     // select would render empty. Guarded globally as well, and stated here where the temptation was.
     expect(canvas).toContain('"placeholder":"Any connection"');
     expect(canvas).toContain('"$setLocal":"spine","value":""');
-    expect(canvas).toContain('local.relationshipKinds.map(k, { label: k.name, value: k.id, icon: k.icon })');
+    // The kinds still come from the RelationshipType query — `treeSpines` merges the model
+    // relations the installed classes declare into the same list.
+    expect(canvas).toContain('treeSpines({ kinds: local.relationshipKinds');
   });
 });
 

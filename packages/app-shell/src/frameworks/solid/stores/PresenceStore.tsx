@@ -25,7 +25,7 @@
  *
  * Presence for *every* joined space is a different proposition and remains refused. The traffic is
  * (spaces × members ÷ heartbeat) inbound signals per second, paid continuously whether or not
- * anything happens — each one crossing the executor's GraphQL boundary and landing in reactive state
+ * anything happens — each one crossing the executor's WebSocket RPC boundary and landing in reactive state
  * on the main thread. Anything that wants to know about a space you are *not* in, such as unread
  * counts, should ask the data rather than the beacon: that cost is paid only when something changes.
  * Keeping the set bounded by what is live is what keeps the two apart, and `MAX_LEASES` says so out
@@ -49,6 +49,7 @@
 import { MAX_LEASES, reconcileLeases, unionPeers, wantedUris } from '@shared/presenceScope';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { createTabCoordinator } from '@shared/tabCoordinator';
+import { firstScreen } from '@solid/firstScreen';
 import { useDatasetStore } from '@solid/stores/DatasetStore';
 import { useProfileStore } from '@solid/stores/ProfileStore';
 import { useRouteStore } from '@solid/stores/RouteStore';
@@ -59,6 +60,7 @@ import {
   applyFocusDepth,
   callRosters,
   createHeartbeatPresence,
+  isPresenceFarewell,
   peersInDataset,
   peerTone,
   sortByPresence,
@@ -228,19 +230,23 @@ export function PresenceStoreProvider(props: ParentProps) {
     if (!scope) return; // personal space — no neighbourhood, no presence
 
     // Only the focused tab publishes; every tab still subscribes, so each one's UI stays live.
-    // Gating here rather than inside the driver keeps the neutral core unaware of browser tabs —
-    // and a follower tab's suppressed heartbeat is harmless, because the leader is publishing the
-    // same agent's state.
+    // Gating here rather than inside the driver keeps the neutral core unaware of browser tabs.
     // coalesce: presence is last-write-wins, so a beat dropped because the previous send is still
     // in flight costs nothing — and on an unhealthy executor it is the difference between one
     // pending broadcast and six.
-    const raw = scope.channel('presence', { coalesce: true });
+    // ownClients: this agent's other tabs and devices are peers here like anyone else. A follower
+    // publishes nothing, so the only way it learns that the leader is in a call is to hear the
+    // leader; and a second device has no other way to learn about the first at all. Without it,
+    // both offered to start a call beside the one already running.
+    const raw = scope.channel('presence', { coalesce: true, ownClients: true });
     const coordinator = tabs();
     const channel = {
       publish: (payload: unknown, to?: { agentId?: string }) => {
         // No coordinator means no other tab can be holding this agent's leadership, so publishing is
         // unconditional — the same answer `soleLeader` gives a single-window host.
-        if (!coordinator || coordinator.isLeader()) {
+        // A farewell goes out whoever leads: it retracts only what this tab said, which nobody else
+        // can do for it.
+        if (!coordinator || coordinator.isLeader() || isPresenceFarewell(payload)) {
           raw.publish(payload, to);
           return;
         }
@@ -258,6 +264,7 @@ export function PresenceStoreProvider(props: ParentProps) {
       source: presence,
       stop: () => {
         unsubLeader?.();
+        unsubLost?.();
         presence.stop();
         scope.dispose();
       },
@@ -276,6 +283,13 @@ export function PresenceStoreProvider(props: ParentProps) {
      * closed gate, and nothing downstream could tell.
      */
     const unsubLeader = coordinator?.onBecomeLeader(() => presence.announce());
+    /**
+     * And the reverse: a tab that stops publishing takes back what it last said.
+     *
+     * Peers hold each tab's state apart, so a tab that simply went quiet would stay beside its
+     * successor until it decayed — still on the page it was on, still holding whatever it was doing.
+     */
+    const unsubLost = coordinator?.onLoseLeadership(() => presence.withdraw());
 
     /**
      * Untracked, because these are the source's *initial* values, not its dependencies.
@@ -322,7 +336,11 @@ export function PresenceStoreProvider(props: ParentProps) {
    */
   createEffect(() => {
     const did = myDid();
-    const want = did ? wanted() : [];
+    /*
+      No presence until the first screen is up (`shared/firstScreen.ts`): opening a source subscribes
+      and broadcasts, and the first page draws nobody's presence. Opened then for what is wanted then.
+    */
+    const want = did && firstScreen.open() ? wanted() : [];
     const refs = datasetStore.datasets();
     // The space on screen was read fresh when it was switched to, so its handle is the one most
     // likely to know it is shared. Preferred over the list's copy, which can lag behind a publish.
@@ -469,6 +487,10 @@ export function PresenceStoreProvider(props: ParentProps) {
         .map(([, entry]) => entry.uri),
     );
     setMyActivities((prev) => Object.fromEntries(Object.entries(prev).filter(([key]) => !matches(key))));
+    // Unpinned before the cleared state is published, not after by the effect below: a leader that
+    // stops holding a call while another tab of this agent still holds one hands publishing over in
+    // `setPinned`, and only then is its own state without the call kept from every peer.
+    tabs()?.setPinned(Object.keys(myActivities()).length > 0);
     for (const uri of uris) leases.get(uri)?.source.clearActivity(type, id);
   }
 

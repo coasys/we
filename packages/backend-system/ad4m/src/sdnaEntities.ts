@@ -138,14 +138,10 @@ function cachedSubjectClasses(p: PerspectiveProxy): Promise<Set<string>> {
 /**
  * Everything about a stored shape that a *reader* of it can act on.
  *
- * Read as one bundle, and compared as one bundle, because the alternative has now failed three
- * times. Staleness started as "does it have every predicate", which missed a hint being added;
- * then gained "does it have a hint", which missed a hint being *reworded*; then compared hint
- * values, which still missed `identity` being set on a property, because that changes no predicate
- * and no class hint. Each fix was correct and each was one aspect behind.
+ * Read as one bundle, and compared as one bundle: comparing one aspect at a time is always one
+ * aspect behind (a hint added, a hint reworded, `identity` set on a property).
  *
- * The rule that replaces the whack-a-mole: **this must carry whatever the executor reads off a
- * shape.** The executor resolves shapes from the perspective, not from the model classes, so
+ * The rule: **this must carry whatever the executor reads off a shape.** The executor resolves shapes from the perspective, not from the model classes, so
  * anything it consumes and this ignores is a change that silently never arrives — and the symptom
  * is always somewhere else entirely ("the model extracted nothing", "the model duplicated
  * everything"), never "your schema is out of date".
@@ -382,10 +378,9 @@ function decodeHint(value: string): string {
 /**
  * Whether a perspective's stored shape for a model is behind what the model now declares.
  *
- * Adding a property to an existing model used to be a silent one-way break: shapes were written only
- * for a class absent *entirely*, so every space created before the property existed kept the old
- * shape, and writes to the new field were dropped by a perspective that looked perfectly healthy.
- * `Space.enabledModules` shipped straight into that hole.
+ * A space made before a property existed holds the old shape, and a perspective with the old shape
+ * drops writes to the new field while looking perfectly healthy — so a shape behind its model is
+ * rewritten, not only a shape that is absent.
  *
  * The executor handles the write half: `add_sdna` purges the prior SHACL graph and rewrites it
  * whenever a SubjectClass is registered *with* a shape, so re-registering is a genuine refresh

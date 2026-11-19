@@ -8,11 +8,11 @@
  * inspection.
  */
 import { markAction, markState, storeSurface } from '@we/module-shared';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { DEFAULT_ICE_SERVERS } from './mesh';
 import { parseCallMessage } from './protocol';
-import { createCallStore, STAGE_GAP_PX, STAGE_PADDING_PX } from './store';
+import { createCallStore, STAGE_CONTROLS_PX, STAGE_GAP_PX, STAGE_PADDING_PX } from './store';
 
 /**
  * The reactivity a host lends a module, reduced to the smallest thing that satisfies it.
@@ -119,16 +119,22 @@ function fakeMicStream() {
 }
 
 describe('what the call still decides about its own video', () => {
-  it('separates whether the video shows from how much of the screen it has', () => {
-    // One button used to cycle visibility, placement and size together, so it could not have a clear
-    // icon and any given state took up to three clicks through states nobody wanted.
+  it('hides only the tiles, and never the panel that holds the controls', () => {
+    // The "Video" line used to toggle the whole stage — which took mute and Leave with it while the
+    // call kept running. The pictures are what is put away; the panel and its controls stay.
     const store = makeStore();
-    expect(store.stageOpen()).toBe(false);
+    store.openStage();
+    expect(store.stageOpen()).toBe(true);
+    expect(store.tilesHidden()).toBe(false);
 
     store.toggleStage();
+    expect(store.tilesHidden()).toBe(true);
+    // The stage, and so the bar inside it, never went anywhere.
     expect(store.stageOpen()).toBe(true);
+
     store.toggleStage();
-    expect(store.stageOpen()).toBe(false);
+    expect(store.tilesHidden()).toBe(false);
+    expect(store.stageOpen()).toBe(true);
   });
 
   it('asks for no room until it is opened', () => {
@@ -150,6 +156,47 @@ describe('what the call still decides about its own video', () => {
     expect(store.stageOpen()).toBe(true);
     store.closeStage();
     expect(store.stageOpen()).toBe(false);
+  });
+
+  it('opens and closes its settings through the store, so the menu can reach them too', () => {
+    /*
+      The gear folds into the More menu below `base` — and a menu line cannot write a `$localState`
+      declared in a sibling subtree, which is what `local.open` was. The flag lives here now, with
+      the same lifecycle as the rest of the bar's plumbing: `toggleCallSettings` flips it,
+      `closeCallSettings` lowers it, and a call that ends takes it down with it.
+    */
+    const store = makeStore();
+    expect(store.settingsOpen()).toBe(false);
+
+    store.toggleCallSettings();
+    expect(store.settingsOpen()).toBe(true);
+    store.toggleCallSettings();
+    expect(store.settingsOpen()).toBe(false);
+
+    store.toggleCallSettings();
+    store.closeCallSettings();
+    expect(store.settingsOpen()).toBe(false);
+  });
+
+  it('re-asks the host for the stage on every way back to it, even while already open', () => {
+    /*
+      `stageReveal` is the panel declaration's `reveal` key: a counter the host watches, because
+      "still open" is no change at all and cannot carry "bring it forward". Closing the panel's own
+      flag is the one way that does not ask — it is how you leave the stage, not how you reach it.
+    */
+    const store = makeStore();
+    const before = store.stageReveal() as number;
+
+    store.openStage();
+    expect(store.stageReveal()).toBeGreaterThan(before);
+
+    // Asked for again while open — a folded or out-of-sight stage is the case this exists for.
+    const opened = store.stageReveal() as number;
+    store.openStage();
+    expect(store.stageReveal()).toBeGreaterThan(opened);
+
+    store.closeStage();
+    expect(store.stageReveal() as number).toBe(store.stageReveal() as number);
   });
 
   it('always overlays, and leaves everything else about the panel to the host', () => {
@@ -243,10 +290,11 @@ describe('what a template may reach', () => {
     for (const name of [
       'stageBid',
       'stageOpen',
+      'stageReveal',
+      'tilesHidden',
       'openStage',
       'closeStage',
       'toggleStage',
-      'chromeReserve',
       'setStageBox',
       'stageTemplate',
       'stageRows',
@@ -256,6 +304,9 @@ describe('what a template may reach', () => {
       'stageOverflow',
       'tileFaces',
       'localAudio',
+      'settingsOpen',
+      'toggleCallSettings',
+      'closeCallSettings',
     ]) {
       expect(surface[name], name).toBeUndefined();
     }
@@ -297,7 +348,20 @@ describe('tile packing', () => {
 
     expect(aspect.ratio).toBeCloseTo(16 / 9);
     expect(aspect.insetX).toBe(STAGE_PADDING_PX * 2);
-    expect(aspect.insetY).toBe(STAGE_PADDING_PX * 2);
+    // The controls ride inside the panel now, under the tiles — "fit to content" has to cover them
+    // too, or the answer the host lands on squeezes the pictures by the bar's height.
+    expect(aspect.insetY).toBe(STAGE_PADDING_PX * 2 + STAGE_CONTROLS_PX);
+  });
+
+  it('reserves the status line and its gap in the height it asks for', () => {
+    /*
+      The controls column is two things, not one: the bar's 56px, and the `call-status` slot above
+      it, which opens a *second* `gap: '300'` the moment anything is contributed — the wheel
+      indicator, a problem line. A reserve that counted only the bar came out ~50px short exactly
+      then, and "fit to content" clipped the controls it was sizing for. The ~2px is the honest
+      remainder: text metrics the layout rounds up.
+    */
+    expect(STAGE_CONTROLS_PX).toBe(STAGE_GAP_PX + 56 + STAGE_GAP_PX + 36 + 2);
   });
 
   it('fits to the arrangement it is in, rather than solving a new one', () => {
@@ -309,7 +373,7 @@ describe('tile packing', () => {
 
     expect(aspect.ratio).toBeCloseTo((3 * 16) / (2 * 9));
     expect(aspect.insetX).toBe(STAGE_PADDING_PX * 2 + 2 * STAGE_GAP_PX);
-    expect(aspect.insetY).toBe(STAGE_PADDING_PX * 2 + 1 * STAGE_GAP_PX);
+    expect(aspect.insetY).toBe(STAGE_PADDING_PX * 2 + 1 * STAGE_GAP_PX + STAGE_CONTROLS_PX);
   });
 });
 
@@ -352,6 +416,8 @@ describe('transport and device lifetime', () => {
        * presence from one that did not.
        */
       reactive?: boolean;
+      /** What the machine answers when asked for devices; by default, a microphone every time. */
+      getUserMedia?: (constraints: MediaStreamConstraints) => Promise<MediaStream>;
     } = {},
   ) {
     const tracked = options.reactive ? trackingReactivity() : null;
@@ -400,6 +466,8 @@ describe('transport and device lifetime', () => {
     }[] = [];
     /** Every call activity this store published, in order. */
     const activities: Record<string, unknown>[] = [];
+    /** Every call activity this store took out of presence, as `[type, id]`. */
+    const cleared: unknown[][] = [];
 
     const disposers: Array<() => void> = [];
     let created = 0;
@@ -462,7 +530,7 @@ describe('transport and device lifetime', () => {
         presence: {
           peers: () => (rosterVersion(), roster),
           setActivity: (activity: Record<string, unknown>) => void activities.push(activity),
-          clearActivity: () => {},
+          clearActivity: (...args: unknown[]) => void cleared.push(args),
         },
         records: {
           create: async (...args: unknown[]) => {
@@ -501,7 +569,7 @@ describe('transport and device lifetime', () => {
           },
         },
         media: {
-          getUserMedia: async () => mic,
+          getUserMedia: options.getUserMedia ?? (async () => mic),
           getDisplayMedia: async () => {
             throw new Error('no screen here');
           },
@@ -542,6 +610,7 @@ describe('transport and device lifetime', () => {
       disposers,
       removeDataset: (uri: string) => notifyRemoved?.(uri),
       activities,
+      cleared,
       /** Somebody else joins the call this store is in, and the roster catches up. */
       joinedBy: (agentId: string) => {
         roster = [...roster, { agentId, activities: [{ type: 'call', id: store.callId() ?? '' }] }];
@@ -674,6 +743,130 @@ describe('transport and device lifetime', () => {
 
     store.leave();
     expect(published).toEqual([mic, null]);
+  });
+
+  /*
+    A phone whose app had no microphone permission joined with neither camera nor microphone, and
+    unmuting never brought audio back. The controller now keeps whichever device is granted and asks
+    again on unmute; what the store owes on top is saying so, because a missing microphone — unlike
+    a missing camera — is invisible to the person it belongs to.
+  */
+  describe('a microphone that is refused while the camera is granted', () => {
+    const cameraOnly = () => {
+      let allowAudio = false;
+      const camera = { kind: 'video', enabled: true, readyState: 'live', stop() {}, addEventListener() {} };
+      const microphone = { kind: 'audio', enabled: true, readyState: 'live', stop() {}, addEventListener() {} };
+      const harness = callable({
+        getUserMedia: async (constraints) => {
+          if (constraints.audio && !allowAudio) throw new Error('NotAllowedError');
+          return new MediaStream([(constraints.audio ? microphone : camera) as unknown as MediaStreamTrack]);
+        },
+      });
+      return { ...harness, grant: () => (allowAudio = true) };
+    };
+
+    it('joins with the camera, muted, and says the microphone could not be reached', async () => {
+      const { store } = cameraOnly();
+
+      await store.startCall();
+      await Promise.resolve();
+
+      expect(store.media()).toMatchObject({ audioEnabled: false, videoEnabled: true });
+      expect(store.problem()).toMatch(/microphone/);
+      expect(store.problem()).not.toMatch(/camera/);
+    });
+
+    it('says so again when unmuting is refused', async () => {
+      const { store } = cameraOnly();
+      await store.startCall();
+      await Promise.resolve();
+      store.dismissProblem();
+
+      await store.toggleAudio();
+
+      expect(store.media().audioEnabled).toBe(false);
+      expect(store.problem()).toMatch(/microphone/);
+    });
+
+    it('unmutes, and clears the message, once the permission has been granted', async () => {
+      const { store, grant, published } = cameraOnly();
+      await store.startCall();
+      await Promise.resolve();
+
+      grant();
+      await store.toggleAudio();
+
+      expect(store.media().audioEnabled).toBe(true);
+      expect(store.problem()).toBeNull();
+      // The stream with the microphone in it is what the transcriber is handed.
+      expect((published.at(-1) as MediaStream | null)?.getAudioTracks()).toHaveLength(1);
+    });
+
+    it('does not report an unmute of a call already left against the next call', async () => {
+      // The unmute in the first call waits on its permission prompt; the person leaves, joins a
+      // second call with a working microphone and mutes it. The first prompt then refuses.
+      let refuseFirstUnmute: (() => void) | undefined;
+      let microphoneIs: 'refused' | 'prompting' | 'granted' = 'refused';
+      const microphone = { kind: 'audio', enabled: true, readyState: 'live', stop() {}, addEventListener() {} };
+      const camera = { kind: 'video', enabled: true, readyState: 'live', stop() {}, addEventListener() {} };
+      const { store } = callable({
+        getUserMedia: async (constraints) => {
+          if (constraints.audio && microphoneIs === 'refused') throw new Error('NotAllowedError');
+          if (constraints.audio && microphoneIs === 'prompting') {
+            await new Promise<void>((resolve) => (refuseFirstUnmute = resolve));
+            throw new Error('NotAllowedError');
+          }
+          return new MediaStream([(constraints.audio ? microphone : camera) as unknown as MediaStreamTrack]);
+        },
+      });
+      await store.startCall();
+      await Promise.resolve();
+      microphoneIs = 'prompting';
+      const firstUnmute = store.toggleAudio();
+      await vi.waitFor(() => expect(refuseFirstUnmute).toBeDefined());
+
+      microphoneIs = 'granted';
+      store.leave();
+      await store.startCall();
+      await Promise.resolve();
+      await store.toggleAudio();
+      expect(store.media().audioEnabled).toBe(false);
+      expect(store.problem()).toBeNull();
+
+      refuseFirstUnmute?.();
+      await firstUnmute;
+
+      expect(store.problem()).toBeNull();
+    });
+
+    it('does not report a camera refused after its call was left', async () => {
+      // The camera-on waits on its permission prompt; the person leaves; the prompt then refuses.
+      let refuseCamera: (() => void) | undefined;
+      let cameraIs: 'refused' | 'prompting' = 'refused';
+      const microphone = { kind: 'audio', enabled: true, readyState: 'live', stop() {}, addEventListener() {} };
+      const { store } = callable({
+        getUserMedia: async (constraints) => {
+          if (constraints.video && cameraIs === 'refused') throw new Error('NotAllowedError');
+          if (constraints.video) {
+            await new Promise<void>((resolve) => (refuseCamera = resolve));
+            throw new Error('NotAllowedError');
+          }
+          return new MediaStream([microphone as unknown as MediaStreamTrack]);
+        },
+      });
+      await store.startCall();
+      await Promise.resolve();
+      cameraIs = 'prompting';
+      const cameraOn = store.toggleVideo();
+      await vi.waitFor(() => expect(refuseCamera).toBeDefined());
+
+      store.leave();
+      expect(store.problem()).toBeNull();
+      refuseCamera?.();
+      await cameraOn;
+
+      expect(store.problem()).toBeNull();
+    });
   });
 
   it('refuses to join on a host that lends no peer connections, and writes nothing', async () => {
@@ -820,6 +1013,28 @@ describe('transport and device lifetime', () => {
 
     expect(store.callId()).toBeNull();
     expect(scopeDisposals()).toBe(1);
+  });
+
+  it('starts the next call without the last call’s synthetic participants', async () => {
+    /*
+      The count used to persist — storage first, then a signal that outlived its call — so peers
+      summoned to look at one stage walked into the next call, in whatever space that call was in.
+      A fake participant is off unless asked, in an existing space and in a new one, which means the
+      count belongs to the call it was asked in and dies with it.
+    */
+    const { store } = callable();
+
+    await store.startCall();
+    await Promise.resolve();
+    // `addFakePeer` is absent rather than inert in a production build — see the conditional spread
+    // in the store — so the type is right to doubt it, and a test build has developer features.
+    store.addFakePeer!();
+    store.addFakePeer!();
+    expect(store.fakePeerCount!()).toBe(2);
+
+    store.leave();
+    await Promise.resolve();
+    expect(store.fakePeerCount!(), 'the count outlived its call').toBe(0);
   });
   describe('where a call looks for NAT traversal', () => {
     /**
@@ -1038,7 +1253,7 @@ describe('transport and device lifetime', () => {
       const handlers = new Map<string, ((...args: unknown[]) => void)[]>();
       const reconnected: string[] = [];
       const session = {
-        participants: [] as { agentDid: string; stream: MediaStream }[],
+        participants: [] as { participantId: string; agentDid: string; stream: MediaStream; hasVideo?: boolean }[],
         joinedWith: null as MediaStream | null,
         destroyed: false,
         join: async (stream: MediaStream) => void (session.joinedWith = stream),
@@ -1137,10 +1352,131 @@ describe('transport and device lifetime', () => {
         store.tiles().find((tile: { id: string }) => tile.id === 'did:someone')?.stream as MediaStream | null;
 
       const rebuilt = new MediaStream();
-      session.participants = [{ agentDid: 'did:someone', stream: rebuilt }];
+      session.participants = [{ participantId: 'did:someone', agentDid: 'did:someone', stream: rebuilt }];
       fire('participant-updated', { did: 'did:someone', stream: rebuilt });
 
       expect(streamOf()).toBe(rebuilt);
+    });
+
+    /*
+      An SFU call holds one session per device, so one agent can be in it from a laptop and a phone.
+      The session lists each as a participant of its own, with the same DID and different participant
+      ids. Keyed by DID, the second stream overwrote the first and one device was never shown.
+    */
+    describe('an agent in the call from more than one device', () => {
+      const remoteTiles = (store: { tiles: () => unknown }) =>
+        (store.tiles() as { id: string; did: string; stream: MediaStream | null; isSelf: boolean }[]).filter(
+          (tile) => !tile.isSelf,
+        );
+
+      it('shows each device as a tile of its own, under the same agent', async () => {
+        const { store, session, fire } = await inCallWith('did:someone');
+        const laptop = new MediaStream();
+        const phone = new MediaStream();
+        session.participants = [
+          { participantId: 'session-laptop', agentDid: 'did:someone', stream: laptop },
+          { participantId: 'session-phone', agentDid: 'did:someone', stream: phone },
+        ];
+        fire('participant-joined', { participantId: 'session-phone', did: 'did:someone' });
+
+        expect(remoteTiles(store).map((tile) => [tile.id, tile.did, tile.stream])).toEqual([
+          ['session-laptop', 'did:someone', laptop],
+          ['session-phone', 'did:someone', phone],
+        ]);
+      });
+
+      it('keeps the other device’s tile, unchanged, when one device leaves', async () => {
+        const { store, session, fire } = await inCallWith('did:someone');
+        const laptop = { participantId: 'session-laptop', agentDid: 'did:someone', stream: new MediaStream() };
+        const phone = { participantId: 'session-phone', agentDid: 'did:someone', stream: new MediaStream() };
+        session.participants = [laptop, phone];
+        fire('participant-joined', { participantId: 'session-phone', did: 'did:someone' });
+        const before = remoteTiles(store).find((tile) => tile.id === 'session-phone');
+
+        session.participants = [phone];
+        fire('participant-left', { participantId: 'session-laptop', did: 'did:someone' });
+
+        expect(remoteTiles(store).map((tile) => tile.id)).toEqual(['session-phone']);
+        expect(remoteTiles(store)[0], 'the same tile, so its video is not remounted').toBe(before);
+      });
+
+      it('shows this agent’s own other device, which presence never lists', async () => {
+        const { store, session, fire } = await inCallWith('did:someone');
+        const phone = new MediaStream();
+        session.participants = [
+          { participantId: 'session-own-phone', agentDid: 'did:test:me', stream: phone, hasVideo: false },
+        ];
+        fire('participant-joined', { participantId: 'session-own-phone', did: 'did:test:me' });
+
+        const own = remoteTiles(store).find((tile) => tile.id === 'session-own-phone');
+        expect(own).toMatchObject({ did: 'did:test:me', stream: phone, isSelf: false });
+        expect(
+          store.tiles().filter((tile: { isSelf: boolean }) => tile.isSelf),
+          'this tab is still the one tile marked as you',
+        ).toHaveLength(1);
+        const state = store.tileStates().find((tile: { id: string }) => tile.id === 'session-own-phone') as {
+          videoEnabled: boolean;
+        };
+        expect(state.videoEnabled, 'read off the session, since that device publishes no presence').toBe(false);
+      });
+    });
+
+    /*
+      The SFU holds one session per device, so joining the call from a second tab takes it over, and
+      the first tab's session says `replaced`. The call has ended in that tab: it has to let go of the
+      camera and the microphone, say why, and stay out — joining again is what takes the call back.
+    */
+    describe('when another tab of this device joins the call', () => {
+      const settle = async () => {
+        for (let i = 0; i < 6; i++) await Promise.resolve();
+      };
+
+      it('ends the call in this tab and says why', async () => {
+        const { store, session, fire, published, cleared } = await inCallWith('did:someone');
+        const id = store.callId();
+        expect(id).toBeTruthy();
+
+        fire('replaced', { participantId: 'session-this-tab' });
+        await settle();
+
+        expect(store.callId()).toBeNull();
+        expect(store.tiles()).toEqual([]);
+        expect(store.problem()).toMatch(/another tab/);
+        expect(session.destroyed, 'the session is let go like on a leave').toBe(true);
+        expect(published.at(-1), 'the camera and the microphone are released').toBeNull();
+        // This tab's own call activity. The other tab publishes its own, and the tab coordinator
+        // hands publishing to it — see `tabCoordinator.test.ts`.
+        expect(cleared).toEqual([['call', id]]);
+      });
+
+      it('does not join again, by itself or when the call goes on around it', async () => {
+        const { store, fire, sessions, backendArgs, publishesCall } = await inCallWith('did:someone');
+        const id = store.callId() as string;
+
+        fire('replaced', { participantId: 'session-this-tab' });
+        await settle();
+        // The call goes on: presence keeps saying who is in it, a switch included.
+        publishesCall('did:someone', id, { topology: { mode: 'mesh', at: Date.now() + 1, by: 'did:someone' } });
+        await settle();
+
+        expect(store.callId()).toBeNull();
+        expect(sessions, 'no session is built to rejoin').toHaveLength(1);
+        expect(backendArgs).toHaveLength(1);
+      });
+
+      it('joins again when the person asks', async () => {
+        const { store, fire, sessions } = await inCallWith('did:someone');
+        const id = store.callId() as string;
+        fire('replaced', { participantId: 'session-this-tab' });
+        await settle();
+
+        await store.joinCall(id);
+        await settle();
+
+        expect(store.callId()).toBe(id);
+        expect(sessions).toHaveLength(2);
+        expect(store.problem(), 'joining again clears the notice').toBeNull();
+      });
     });
 
     /*
@@ -1191,7 +1527,7 @@ describe('transport and device lifetime', () => {
         harness.publishesCall('did:someone', harness.store.callId() as string, {
           media: { audioEnabled: true, videoEnabled: true, screenShareEnabled: false },
         });
-        harness.session.participants = [{ agentDid: 'did:someone', stream }];
+        harness.session.participants = [{ participantId: 'did:someone', agentDid: 'did:someone', stream }];
         harness.fire('stream-added', stream);
         const tile = () => harness.store.tiles().find((t: { id: string }) => t.id === 'did:someone');
         const picture = () =>
@@ -1225,7 +1561,7 @@ describe('transport and device lifetime', () => {
         stream.removeTrack(stale.track as unknown as MediaStreamTrack);
         const fresh = remoteTrack('video', true);
         stream.addTrack(fresh.track as unknown as MediaStreamTrack);
-        session.participants = [{ agentDid: 'did:someone', stream }];
+        session.participants = [{ participantId: 'did:someone', agentDid: 'did:someone', stream }];
         fire('stream-added', stream, fresh.track);
         expect(picture(), 'the fresh track has not received anything yet').toBe(false);
 
@@ -1251,7 +1587,7 @@ describe('transport and device lifetime', () => {
         const before = tile();
 
         stream.addTrack(remoteTrack('video').track as unknown as MediaStreamTrack);
-        session.participants = [{ agentDid: 'did:someone', stream }];
+        session.participants = [{ participantId: 'did:someone', agentDid: 'did:someone', stream }];
         fire('participant-updated', { did: 'did:someone', stream });
 
         expect(picture()).toBe(true);
@@ -1699,7 +2035,7 @@ describe('a call and the space it happens in', () => {
  * launcher names a method as a string and the host calls whatever it finds.
  */
 describe('going to the call', () => {
-  function railable() {
+  function railable(peers: unknown[] = []) {
     const signal = <T>(initial: T): [() => T, (next: T) => void] => {
       let value = initial;
       return [() => value, (next: T) => (value = next)];
@@ -1733,7 +2069,7 @@ describe('going to the call', () => {
       kernels: {
         ephemeral: () => scope,
         presence: {
-          peers: () => [],
+          peers: () => peers,
           setActivity: (activity: Record<string, unknown>) => activities.push(activity),
           clearActivity: () => {},
         },
@@ -1904,6 +2240,61 @@ describe('going to the call', () => {
     expect(store.active()).toBe(true);
   });
 
+  it('re-asks for the stage every time, so a call already open but out of sight comes forward', async () => {
+    /*
+      "Go to the call" while the stage is folded, stowed or behind another tab used to be a no-op:
+      the flag it set was already true. The `reveal` key is how the re-ask reaches the host — a
+      counter, since the ask is an event rather than a state.
+    */
+    const { store } = railable();
+
+    store.goToCall();
+    await Promise.resolve();
+    const afterFirst = store.stageReveal() as number;
+
+    // Open-but-out-of-sight: the flag stays true while the ask is repeated.
+    store.goToCall();
+    expect(store.stageOpen()).toBe(true);
+    expect(store.stageReveal() as number).toBeGreaterThan(afterFirst);
+  });
+
+  it('leaves the tiles showing for the next call', async () => {
+    // A "Video" pressed in one call must not follow into the next: the pictures come back with the
+    // stage on `join`, and the flag dies with the call it was set in — like the fake peers.
+    const { store } = railable();
+
+    store.goToCall();
+    await Promise.resolve();
+    store.toggleStage();
+    expect(store.tilesHidden()).toBe(true);
+
+    await store.leave();
+    expect(store.tilesHidden()).toBe(false);
+  });
+
+  it('joins the call already running here rather than starting a second beside it', async () => {
+    /*
+      The "second call" bug, at the store: a button wired to `startCall` makes another call even
+      while presence shows one running. `goToCall` takes the live one instead — which is why the
+      header's Call button is allowed to be a Join, and why a second meeting never appears.
+    */
+    const { store, recordsCreated } = railable([
+      {
+        agentId: 'did:test:them',
+        liveness: 'live',
+        activities: [{ type: 'call', id: 'call-theirs', record: 'rec-theirs' }],
+      },
+    ]);
+
+    store.goToCall();
+    await Promise.resolve();
+
+    expect(store.active()).toBe(true);
+    expect(store.callId()).toBe('call-theirs');
+    // And nothing minted: joining a call writes no record of its own.
+    expect(recordsCreated()).toBe(0);
+  });
+
   it('takes you back to a call happening in another space, rather than starting a second one', async () => {
     /*
       The worst of the three old readings. Navigating out of a call's space and pressing the rail
@@ -2025,7 +2416,7 @@ describe('the spotlight', () => {
 
     expect(aspect.ratio).toBeCloseTo(16 / 9);
     expect(aspect.insetX).toBe(STAGE_PADDING_PX * 2 + wide.width * 0.25 + STAGE_GAP_PX);
-    expect(aspect.insetY).toBe(STAGE_PADDING_PX * 2);
+    expect(aspect.insetY).toBe(STAGE_PADDING_PX * 2 + STAGE_CONTROLS_PX);
   });
 
   it('gives the whole stage to solo, on the axis the strip was on', () => {

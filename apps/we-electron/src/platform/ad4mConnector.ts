@@ -1,4 +1,4 @@
-import type { Account, BackendConnector, ExecutorSettings, ScreenSource } from '@we/app-shell/shared';
+import type { Account, BackendConnector, ScreenSource } from '@we/app-shell/shared';
 import { type Ad4mCustodyHost, createLocalAd4mConnector } from '@we/backend-ad4m';
 import weSeed from '@we/seed-file';
 
@@ -22,8 +22,6 @@ declare global {
       selectAccount: (id: string) => Promise<void>;
       removeAccount: (id: string) => Promise<void>;
       applyAccountSelection: () => Promise<void>;
-      getExecutorSettings: () => Promise<ExecutorSettings>;
-      setExecutorSettings: (settings: Partial<ExecutorSettings>) => Promise<ExecutorSettings>;
       restartExecutor: () => Promise<void>;
       chooseFile: (options: { save: boolean; defaultName?: string }) => Promise<string | null>;
       saveFile: (file: { name: string; type: string; bytes: Uint8Array }) => Promise<boolean>;

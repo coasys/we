@@ -53,7 +53,7 @@ export const CANVAS_EXPANSION = { defaultDepth: 0, direction: 'out', expanders: 
  */
 export const FIELD_NODE_RULE = {
   when: { kind: 'property' },
-  // The size the canvas layout gives a field — `FIELD_BOX` in WorkshopTree — so they agree.
+  // The size the canvas layout gives a field — `FIELD_BOX` in the kit's `canvasTree` — so they agree.
   // `property` draws the name quietly and the value plainly — see `PropertyCard` in the host.
   style: { shape: 'card', width: 170, height: 44, content: 'property', color: 'surface-sunken', labelMinZoom: 0.3 },
 };

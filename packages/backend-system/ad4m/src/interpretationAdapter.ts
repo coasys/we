@@ -934,7 +934,9 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
             agent: event.agentDid,
             items: event.itemIds?.length ?? 0,
             bases: event.bases?.length ?? 0,
-            detail: event.detail,
+            // A failure's reason can quote the model's output, which is conversation text: only
+            // its length goes to the log. The other steps' detail is a DID or a class name.
+            ...(event.step === 'failed' ? { detailChars: event.detail?.length ?? 0 } : { detail: event.detail }),
           });
 
           /*
@@ -1344,7 +1346,7 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
 
       // Read the conversation's own lines, through the containment predicate the caller resolved.
       const sourceScopeQuery = transcriptScopeQuery(conversationOf(request)!, request.parent.predicate);
-      const interpretationClasses = targetClasses(perspective, request.classes);
+      const interpretationClasses = await targetClasses(perspective, request.classes);
       /*
         Both at debug, and the query included deliberately.
 
@@ -1722,13 +1724,22 @@ async function deleteProcessorConfig(perspective: PerspectiveProxy, watchId: str
  * with it. That was invisible while the target list was a constant naming two core classes; it is
  * the ordinary case the moment a space can add to it.
  */
-function targetClasses(perspective: PerspectiveProxy, names: readonly string[]): string[] {
-  return names.map((name) => {
-    const model = getEntityForDataset(name, perspective);
-    const targetClass = model ? getEntityTargetClass(model as never) : undefined;
-    if (!targetClass) throw new Error(`interpretation: no target class for "${name}" — is the model registered?`);
-    return targetClass;
-  });
+async function targetClasses(perspective: PerspectiveProxy, names: readonly string[]): Promise<string[]> {
+  return Promise.all(
+    names.map(async (name) => {
+      const model = getEntityForDataset(name, perspective);
+      /*
+        A class the space already had — registered by another app, or by hand — has no WE model
+        unless the foreign-schema read happened to register one for this dataset, so its target
+        class is read from its SHACL, the same place the executor resolves it from.
+      */
+      const targetClass = model
+        ? getEntityTargetClass(model as never)
+        : await perspective.getShaclTargetClass(name).catch(() => undefined);
+      if (!targetClass) throw new Error(`interpretation: no target class for "${name}" — is the model registered?`);
+      return targetClass;
+    }),
+  );
 }
 
 /**

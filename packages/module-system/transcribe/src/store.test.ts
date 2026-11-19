@@ -12,7 +12,7 @@
  */
 import type { Activity, Peer } from '@we/backend-shared';
 import { markAction, markState, type ModuleStoreDeps } from '@we/module-shared';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 
 import { createTranscribeStore, TRANSCRIBE_ACTIVITY } from './store';
 
@@ -977,9 +977,22 @@ describe('extraction', () => {
     const candidates = new Set(initialTargets);
     const defaults = [...initialTargets];
     const forCall = (collection: string) => targets.get(collection) ?? defaults.filter((e) => candidates.has(e));
+    /**
+     * Whether the host has finished reading what this space could extract. True unless a test holds
+     * it back: the class catalogue arrives in pieces — core vocabulary at once, a space's own and
+     * foreign classes a few round trips later.
+     */
+    let loaded = true;
+    /** The class list each registration was made with, in the same order as the registrations. */
+    const registered: string[][] = [];
     return {
       calls,
       watches,
+      registered,
+      /** Stand in for the catalogue still loading (`false`) and arriving (`true`). */
+      setLoaded: (next: boolean) => {
+        loaded = next;
+      },
       targetsSeen,
       reconciled,
       /** What the watch would currently be registered for — the module hands the host a collection. */
@@ -993,6 +1006,7 @@ describe('extraction', () => {
       },
       port: {
         available: () => available,
+        targetsLoaded: () => loaded,
         targets: (collection: string) => {
           const active = forCall(collection);
           return [...candidates].map((entity) => ({ entity, selected: active.includes(entity) }));
@@ -1011,6 +1025,7 @@ describe('extraction', () => {
         watchCollection: async (collectionId: string, target?: { dataset?: string }) => {
           watches.push(collectionId);
           targetsSeen.push(target?.dataset ?? '');
+          registered.push(forCall(collectionId));
         },
         unwatchCollection: async (collectionId: string, target?: { dataset?: string }) => {
           watches.push(`-${collectionId}`);
@@ -1162,6 +1177,30 @@ describe('extraction', () => {
 
       expect(i.watches).toEqual([RECORD, `-${RECORD}`]);
       expect(i.targetsSeen).toEqual(['space-a', 'space-a']);
+    });
+
+    it('asks the host about a call in another space rather than gating on the space on screen’s list', async () => {
+      /*
+        The reader is in a call in space-a while looking at space-b, whose list selects nothing.
+        `targets`, `autoEnabled` and `targetsLoaded` all answer for the space on screen — gated by
+        them, the call's watch was never attempted and the panel said "No models selected" about a
+        space the call is not in. For a call elsewhere the module asks the host, which resolves the
+        collection through its own dataset and answers with the call's own switch and list.
+      */
+      const i = interpreter(undefined, true, []);
+      const anchored = [peer(ME, { type: 'call', id: CALL, record: RECORD, anchor: { datasetUri: 'space-a' } })];
+      const h = harness(anchored, {
+        interpretation: i.port,
+        dataset: () => ({}),
+        datasetUri: () => 'space-b',
+      });
+      await h.say('first words from the wrong side of the rail');
+
+      // Registered against the call's own dataset — never gated on space-b's empty list, and no
+      // toast about a space the call is not in.
+      expect(i.watches).toEqual([RECORD]);
+      expect(i.targetsSeen).toEqual(['space-a']);
+      expect(h.notified.filter((n) => n.message.includes('extraction'))).toEqual([]);
     });
 
     it('stops the watch when the module is disposed with nobody else in the call', async () => {
@@ -1367,6 +1406,93 @@ describe('extraction', () => {
       // Removed first, then registered again — a plain re-register would union the old list back in.
       expect(i.watches).toEqual([collection, `-${collection}`, collection]);
       expect(i.watchTargetsOf(collection)).toEqual(['TaskBlock']);
+    });
+
+    /*
+      The list is not an answer until the host has read all of it.
+
+      Core vocabulary is known at once; a space's own models and the classes it already had arrive a
+      few round trips later. A watch keyed on the list as it stood then registered the part that had
+      arrived, then removed it and registered the whole once the rest did — four writes to the shared
+      graph from every member who opened the call, ending where they started, and a second in between
+      in which the watch did not look for what had not arrived.
+    */
+    it('registers once, with the whole list, when what the space can extract arrives late', async () => {
+      const i = interpreter(undefined, true, ['EventBlock', 'TaskBlock']);
+      i.setLoaded(false);
+      const h = harness(inCall, { interpretation: i.port });
+      await h.say('we should ship the docs on friday');
+
+      expect(i.watches).toEqual([]);
+      // Nothing selected is not what an unread list means, so nobody is told so.
+      expect(h.notified).toEqual([]);
+
+      i.setCandidates(['EventBlock', 'Sighting', 'TaskBlock']);
+      i.setLoaded(true);
+      await h.settle();
+
+      expect(i.watches).toEqual([RECORD]);
+      expect(i.registered).toEqual([['EventBlock', 'Sighting', 'TaskBlock']]);
+    });
+
+    it('registers once the list is read even when reading it changed nothing', async () => {
+      // The list the call opened with was already the whole of it — only the flag moves.
+      const i = interpreter(undefined, true, ['EventBlock', 'TaskBlock']);
+      i.setLoaded(false);
+      const h = harness(inCall, { interpretation: i.port });
+      await h.say('we should ship the docs on friday');
+
+      i.setLoaded(true);
+      await h.settle();
+
+      expect(i.watches).toEqual([RECORD]);
+    });
+
+    it('still stops the watch when automatic extraction is switched off while the list is reloading', async () => {
+      // Off needs no list: waiting for one would leave the watch spending a pass per batch meanwhile.
+      const i = interpreter(undefined, true, ['EventBlock', 'TaskBlock']);
+      let auto = true;
+      const h = harness(inCall, { interpretation: { ...i.port, autoEnabled: () => auto } });
+      await h.say('we should ship the docs on friday');
+
+      i.setLoaded(false);
+      auto = false;
+      await h.settle();
+
+      expect(i.watches).toEqual([RECORD, `-${RECORD}`]);
+    });
+
+    it('stops a watch the call already had when extraction is switched off before the list is read', async () => {
+      // The call's watch is one row in the shared graph, so it can be there from an earlier visit or
+      // another member while this agent waits for the list. Off must still remove it.
+      const i = interpreter(undefined, true, ['EventBlock', 'TaskBlock']);
+      i.setLoaded(false);
+      let auto = true;
+      const h = harness(inCall, { interpretation: { ...i.port, autoEnabled: () => auto } });
+      await h.say('we should ship the docs on friday');
+      expect(i.watches).toEqual([]);
+
+      auto = false;
+      await h.settle();
+      expect(i.watches).toEqual([`-${RECORD}`]);
+
+      // Once only, and the same call target a registration names.
+      await h.settle();
+      auto = true;
+      i.setLoaded(true);
+      await h.settle();
+      expect(i.watches).toEqual([`-${RECORD}`, RECORD]);
+      expect(i.targetsSeen[0]).toBe(i.targetsSeen[1]);
+    });
+
+    it('removes nothing for a call that was off before this agent waited on it', async () => {
+      const i = interpreter(undefined, true, ['EventBlock', 'TaskBlock']);
+      i.setLoaded(false);
+      const h = harness(inCall, { interpretation: { ...i.port, autoEnabled: () => false } });
+      await h.say('we should ship the docs on friday');
+      await h.settle();
+
+      expect(i.watches).toEqual([]);
     });
 
     it('does not re-register when the list has not actually changed', async () => {
@@ -2724,6 +2850,50 @@ describe('typing into a transcript', () => {
     // And in the space on screen, not in whichever space a live call happens to be running in.
     expect(block?.options?.dataset).toBeUndefined();
   });
+
+  it('does not put somebody who messages a call they are not in on its roster', async () => {
+    /*
+      The roster says who was present. A call's page offers its composer to anybody, live or ended,
+      so writing into a call is not being in it: the line is written and nothing else.
+    */
+    const h = harness(inCall);
+
+    await h.store.addMessage('past-call', 'watched this back');
+    await Promise.resolve();
+
+    expect(h.created.find((c) => c.entity === 'TextBlock')?.options?.parent).toMatchObject({ id: 'past-call' });
+    // The store can link — it put this agent on the roster of the call it is in — and did not for this one.
+    expect(h.linked).toEqual([{ entity: 'CollectionBlock', id: RECORD, relation: 'participants', value: ME }]);
+  });
+
+  it('does put somebody who messages the call they are in on its roster', async () => {
+    /*
+      The standing roster effect links this agent as soon as the store starts, so a link seen after
+      the message proves nothing about the message. Here that first link fails — which clears the
+      guard, as a lost write does — and the message is what has to put the agent on the roster.
+    */
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+    onTestFinished(() => quiet.mockRestore());
+    const linked: Linked[] = [];
+    let attempts = 0;
+    const h = harness(inCall, {
+      records: {
+        link: async (entity: string, id: string, relation: string, value: string) => {
+          attempts += 1;
+          if (attempts === 1) throw new Error('the executor dropped it');
+          linked.push({ entity, id, relation, value });
+        },
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(attempts).toBe(1);
+    expect(linked).toEqual([]);
+
+    await h.store.addMessage(RECORD, 'Sam is joining late');
+    await Promise.resolve();
+
+    expect(linked).toEqual([{ entity: 'CollectionBlock', id: RECORD, relation: 'participants', value: ME }]);
+  });
 });
 
 describe('mending a line somebody misheard', () => {
@@ -2787,12 +2957,11 @@ describe('mending a line somebody misheard', () => {
 });
 
 /**
- * Getting a model onto a node that has none, and waiting for one that is still arriving.
+ * Getting a model onto a node that has none, and waiting for one that cannot run yet.
  *
  * Both used to fail in ways that looked like something else. A node with no model gave up silently
- * when recording started on its own, so the panel never offered anything; and a model still
- * downloading was opened anyway, which on AD4M blocks inside the call and times out with an error
- * naming nothing.
+ * when recording started on its own, so the panel never offered anything; and a model that could not
+ * run was opened anyway, which accepts the stream and then produces nothing — silence, to a reader.
  */
 describe('models', () => {
   const IN_CALL = [peer(ME, { type: 'call', id: CALL, record: RECORD })];
@@ -2804,16 +2973,22 @@ describe('models', () => {
     ready: boolean;
     isDefault: boolean;
     progress?: number;
+    detail?: string;
   }
 
-  /** A transcription port whose model list a test can change, and which records what it was asked. */
-  function port(initial: FakeModel[], { offer = true, refuse = false } = {}) {
+  /**
+   * A transcription port whose model list a test can change, and which records what it was asked.
+   * `found` is the speech server its setup reports — empty for none.
+   */
+  function port(initial: FakeModel[], { found = 'Use the speech server at localhost:8000', refuse = false } = {}) {
     let models = initial;
     const opened: string[] = [];
-    let installs = 0;
+    let connects = 0;
+    let setups = 0;
     return {
       opened,
-      installs: () => installs,
+      connects: () => connects,
+      setups: () => setups,
       setModels: (next: FakeModel[]) => (models = next),
       transcription: {
         available: () => true,
@@ -2822,11 +2997,14 @@ describe('models', () => {
           opened.push(id);
           return { feed: async () => {}, close: async () => {} };
         },
-        offeredModel: () => (offer ? { name: 'Whisper small', downloadBytes: 967_000_000 } : null),
-        installOfferedModel: async () => {
-          installs += 1;
+        setup: async () => {
+          setups += 1;
+          return { found, installUrl: 'https://speech.example.test/install' };
+        },
+        connectFound: async () => {
+          connects += 1;
           if (refuse) throw new Error('not permitted');
-          models = [{ id: 'small', name: 'Whisper small', ready: false, isDefault: false, progress: 0 }];
+          models = [{ id: 'small', name: 'faster-whisper small', ready: false, isDefault: true, detail: 'Checking' }];
         },
       },
     };
@@ -2865,65 +3043,110 @@ describe('models', () => {
     expect(h.store.modelMissing()).toBe(false);
   });
 
-  it('names the offered model and its size on the button', () => {
+  it('names the speech server found on the button, once the panel has asked', async () => {
     const h = harness([], { transcription: port([]).transcription });
 
-    expect(h.store.canInstallModel()).toBe(true);
-    expect(h.store.installModelLabel()).toBe('Download Whisper small (970 MB)');
+    h.store.openPanel();
+    await h.settle();
+
+    expect(h.store.canConnectServer()).toBe(true);
+    expect(h.store.connectServerLabel()).toBe('Use the speech server at localhost:8000');
+    expect(h.store.serverInstallUrl()).toBe('https://speech.example.test/install');
   });
 
-  it('offers no install where the backend offers no model', () => {
-    // A guest on somebody else's node: the adapter withholds the offer, and the panel falls back to
-    // settings or a sentence rather than a button that would be refused.
-    const h = harness([], { transcription: port([], { offer: false }).transcription });
+  it('offers no connect where no server was found, and still says where to get one', async () => {
+    const h = harness([], { transcription: port([], { found: '' }).transcription });
 
-    expect(h.store.canInstallModel()).toBe(false);
-    expect(h.store.installModelLabel()).toBe('');
+    h.store.openPanel();
+    await h.settle();
+
+    expect(h.store.canConnectServer()).toBe(false);
+    expect(h.store.connectServerLabel()).toBe('');
+    expect(h.store.serverInstallUrl()).toBe('https://speech.example.test/install');
   });
 
-  it('installs, and reports the download that follows', async () => {
+  it('does not look for a server on every read while a panel waits', async () => {
+    // Looking probes ports on the node's machine; the model list is re-read every few seconds.
+    vi.useFakeTimers();
     const p = port([]);
     const h = harness([], { transcription: p.transcription });
 
-    await h.store.installModel();
+    h.store.openPanel();
+    h.setPeers([]);
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(9_000);
 
-    expect(p.installs()).toBe(1);
-    expect(h.store.modelMissing()).toBe(false);
-    expect(h.store.modelDownloading()).toBe(true);
-    expect(h.store.modelDownloadText()).toBe('Downloading the speech model — 0%');
+    expect(p.setups()).toBe(1);
+    // …and asks again once the interval has passed, so a server started meanwhile is found.
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(p.setups()).toBe(2);
   });
 
-  it('says why an install failed, rather than leaving the button to do nothing', async () => {
+  it('connects the server, and reports why the model that follows cannot run yet', async () => {
+    const p = port([]);
+    const h = harness([], { transcription: p.transcription });
+    h.store.openPanel();
+    await h.settle();
+
+    await h.store.connectServer();
+
+    expect(p.connects()).toBe(1);
+    expect(h.store.modelMissing()).toBe(false);
+    expect(h.store.modelUnready()).toBe(true);
+    expect(h.store.modelUnreadyText()).toBe('Checking');
+  });
+
+  it('says why a connect failed, rather than leaving the button to do nothing', async () => {
     const p = port([], { refuse: true });
     const h = harness([], { transcription: p.transcription });
+    h.store.openPanel();
+    await h.settle();
 
-    await h.store.installModel();
+    await h.store.connectServer();
 
-    expect(h.store.installError()).toBe('not permitted');
-    expect(h.store.installingModel()).toBe(false);
+    expect(h.store.connectError()).toBe('not permitted');
+    expect(h.store.connectingServer()).toBe(false);
   });
 
-  it('waits for a model that is still downloading instead of opening it', async () => {
-    const p = port([{ id: 'small', name: 'Whisper small', ready: false, isDefault: true, progress: 42 }]);
+  it('waits for a model that cannot run instead of opening it, and says why', async () => {
+    const p = port([
+      {
+        id: 'small',
+        name: 'faster-whisper small',
+        ready: false,
+        isDefault: true,
+        detail: 'The speech server is not answering',
+      },
+    ]);
     const h = harness([], { transcription: p.transcription });
 
     h.store.toggle();
     await h.settle();
 
-    expect(h.store.status()).toBe('downloading');
-    expect(h.store.modelDownloadText()).toBe('Downloading the speech model — 42%');
+    expect(h.store.status()).toBe('model-unready');
+    expect(h.store.modelUnreadyText()).toBe('The speech server is not answering');
     expect(p.opened).toEqual([]);
   });
 
-  it('starts recording on its own once the download finishes', async () => {
+  it('reports how far a download has got', async () => {
+    const p = port([{ id: 'small', name: 'faster-whisper small', ready: false, isDefault: true, progress: 42 }]);
+    const h = harness([], { transcription: p.transcription });
+
+    h.store.toggle();
+    await h.settle();
+
+    expect(h.store.modelUnreadyText()).toBe('Downloading the speech model — 42%');
+  });
+
+  it('starts recording on its own once the model can run', async () => {
     vi.useFakeTimers();
-    const p = port([{ id: 'small', name: 'Whisper small', ready: false, isDefault: true, progress: 10 }]);
+    const p = port([{ id: 'small', name: 'faster-whisper small', ready: false, isDefault: true }]);
     // In a call, in a space: recording that is waiting has to have somewhere it is waiting to write.
     const h = harness(IN_CALL, { dataset: () => ({}), transcription: p.transcription });
     await vi.advanceTimersByTimeAsync(0);
-    expect(h.store.status()).toBe('downloading');
+    expect(h.store.status()).toBe('model-unready');
 
-    p.setModels([{ id: 'small', name: 'Whisper small', ready: true, isDefault: true }]);
+    p.setModels([{ id: 'small', name: 'faster-whisper small', ready: true, isDefault: true }]);
     await vi.advanceTimersByTimeAsync(3_000);
 
     expect(p.opened).toEqual(['small']);
@@ -2931,7 +3154,7 @@ describe('models', () => {
 
   it('picks up a model added while `no-model` was showing, without another press', async () => {
     // "Once one is, transcription starts on its own" — true of a model added in settings as well as
-    // one installed from the panel.
+    // one connected from the panel.
     vi.useFakeTimers();
     const p = port([]);
     const h = harness(IN_CALL, { dataset: () => ({}), transcription: p.transcription });
@@ -2950,17 +3173,45 @@ describe('models', () => {
     expect(p.opened).toEqual(['base']);
   });
 
-  it('lets an auto-join that gave up for want of a model try again after an install', async () => {
+  it('stops asking about a model that cannot run once nobody is waiting on it, and asks again on open', async () => {
+    // A model the server never readies — not answering, or does not have it — was re-read every few
+    // seconds for as long as the app ran, with the panel shut and nothing recording.
+    vi.useFakeTimers();
+    const p = port([{ id: 'small', name: 'faster-whisper small', ready: false, isDefault: true }]);
+    let reads = 0;
+    const transcription = { ...p.transcription, models: () => ((reads += 1), p.transcription.models()) };
+    const h = harness([], { transcription });
+
+    h.store.openPanel();
+    h.setPeers([]);
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(h.store.modelUnready()).toBe(true);
+
+    h.store.closePanel();
+    await vi.advanceTimersByTimeAsync(3_000);
+    const shut = reads;
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(reads).toBe(shut);
+
+    // Opened again, the panel does not show what was true when it closed.
+    p.setModels([{ id: 'small', name: 'faster-whisper small', ready: true, isDefault: true }]);
+    h.store.openPanel();
+    h.setPeers([]);
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(h.store.modelUnready()).toBe(false);
+  });
+
+  it('lets an auto-join that gave up for want of a model try again after a connect', async () => {
     const p = port([]);
     const h = harness(IN_CALL, { dataset: () => ({}), transcription: p.transcription });
     await settle();
     expect(h.store.enabled()).toBe(false);
 
-    await h.store.installModel();
+    await h.store.connectServer();
     await h.settle();
 
     expect(h.store.enabled()).toBe(true);
-    expect(h.store.status()).toBe('downloading');
+    expect(h.store.status()).toBe('model-unready');
   });
 });
 
@@ -3388,5 +3639,101 @@ describe('replies', () => {
     onScreen = 'call-two';
     await h.settle();
     expect(h.store.replyingTo()).toBeNull();
+  });
+});
+
+/**
+ * Which call records somebody is in right now — what the transcript's `subscribe` tests its subject
+ * against.
+ *
+ * `callOnScreenLive` answers only for the call `?call=` names. The call page names its call with
+ * `?id=`, so on that page the live transcript was read once and never followed.
+ */
+describe('liveCallRecords', () => {
+  it('lists the record of every call somebody is in, whatever the address names', () => {
+    const h = harness(
+      [
+        peer(THEM, { type: 'call', id: CALL, record: RECORD }),
+        peer('did:key:other', { type: 'call', id: 'call:rec-2', record: 'rec-2' }),
+        // A call with no record yet names nothing to follow.
+        peer('did:key:third', { type: 'call', id: 'call:rec-3' }),
+      ],
+      { callOnScreen: () => null },
+    );
+
+    expect(h.store.liveCallRecords()).toEqual([RECORD, 'rec-2']);
+    // The address names no call, so the old member says nothing about the call page.
+    expect(h.store.callOnScreenLive()).toBe(false);
+  });
+
+  it('is empty when nobody is in a call', () => {
+    expect(harness([]).store.liveCallRecords()).toEqual([]);
+  });
+});
+
+/**
+ * Reading what is staged on one call, asked for by several callers at once.
+ *
+ * A pass settling, a collection being adopted and an extraction finishing all ask, and on opening a
+ * call they ask together. Each read is a SHACL dump and a class lookup on the backend, so three at
+ * once was three of each for one answer.
+ */
+describe('reading staged suggestions while a read is running', () => {
+  it('runs one read and one more after it, and answers every caller from a read made after it asked', async () => {
+    const answers: (() => void)[] = [];
+    let reads = 0;
+    const h = harness([], {
+      interpretation: {
+        available: () => true,
+        proposals: async () => {
+          reads += 1;
+          const label = `read ${reads}`;
+          await new Promise<void>((resolve) => answers.push(resolve));
+          return [{ id: 'p', kind: 'update', values: { title: label } }];
+        },
+        accept: async () => true,
+        reject: async () => true,
+      },
+    });
+    const byId = () => (h.store.proposalsFor() as { get: (key: string) => { summary: string }[] }).get('call-1');
+
+    const first = h.store.refreshProposals('call-1') as Promise<void>;
+    const second = h.store.refreshProposals('call-1') as Promise<void>;
+    const third = h.store.refreshProposals('call-1') as Promise<void>;
+    await Promise.resolve();
+    expect(reads).toBe(1);
+
+    let secondDone = false;
+    void second.then(() => (secondDone = true));
+    answers[0]();
+    await first;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // The second asked while the first read was running, so the first read cannot answer it.
+    expect(secondDone).toBe(false);
+    expect(reads).toBe(2);
+
+    answers[1]();
+    await Promise.all([second, third]);
+    expect(reads).toBe(2);
+    expect(byId()[0].summary).toBe('title: read 2');
+  });
+
+  it('reads two calls side by side — one call does not wait for another', async () => {
+    let reads = 0;
+    const h = harness([], {
+      interpretation: {
+        available: () => true,
+        proposals: async () => {
+          reads += 1;
+          return [];
+        },
+        accept: async () => true,
+        reject: async () => true,
+      },
+    });
+
+    await Promise.all([h.store.refreshProposals('call-1'), h.store.refreshProposals('call-2')]);
+
+    expect(reads).toBe(2);
   });
 });

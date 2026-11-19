@@ -191,7 +191,7 @@ export const createSpaceModal = {
       validate: [{ rule: 'required', message: 'Name is required' }],
     },
     description: { type: 'string', initial: '' },
-    access: { type: 'string', initial: 'personal' },
+    access: { type: 'string', initial: 'shared' },
     discovery: { type: 'string', initial: 'hidden' },
     avatar: { type: 'file', initial: null },
     coverImage: { type: 'file', initial: null },

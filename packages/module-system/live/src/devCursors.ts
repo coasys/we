@@ -68,8 +68,14 @@ const DEV_BUILD = (import.meta as { env?: { DEV?: boolean } }).env?.DEV === true
  */
 export const devCursorsAvailable = DEV_BUILD;
 
-/** Whether they should be showing right now — the switch, re-read rather than remembered. */
-function visible(): boolean {
+/**
+ * Whether they should be showing right now — the switch, re-read rather than remembered.
+ *
+ * Exported so `fakeMarks` can gate the marks themselves on it, not only the count that fed them:
+ * the switch muted mid-session used to take the controls and leave the cursors, which is the same
+ * class of trap as the persisted count this file refuses to keep.
+ */
+export function devCursorsVisible(): boolean {
   return devToolsEnabled(DEV_BUILD);
 }
 
@@ -77,7 +83,7 @@ function visible(): boolean {
 let count = 0;
 
 export function readDevCursorCount(): number {
-  return visible() ? count : 0;
+  return devCursorsVisible() ? count : 0;
 }
 
 /** Set the count, clamped. Returns what it became. */

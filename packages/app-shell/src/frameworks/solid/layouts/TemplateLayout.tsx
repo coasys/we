@@ -19,6 +19,8 @@
  * The shell overlay uses ShellRouteStoreProvider + <MemoryRouter> so shell schema
  * $routes outlets work with a real router context, without touching the browser URL.
  */
+import { datasetAddressedBy } from '@shared/datasetIdentity';
+import { firstScreenDrawn } from '@shared/firstScreen';
 import { activePanels as panelsFor } from '@shared/panelScope';
 import { appFrame } from '@shared/registries/appFrame';
 import { registerHostChromeReserve } from '@shared/registries/dockRegistry';
@@ -27,7 +29,8 @@ import { holdTemplatePanels, setTemplatePanels } from '@shared/registries/templa
 import { buildTemplateBag, CHROME_TIER } from '@shared/registries/templateSurface';
 import { isValidThemeKey } from '@shared/registries/themeRegistry';
 import { TemplateBoundary } from '@solid/components/TemplateBoundary';
-import { componentRegistry as registry } from '@solid/registries/componentRegistry';
+import { firstScreen } from '@solid/firstScreen';
+import { chromeComponentRegistry, componentRegistry as registry } from '@solid/registries/componentRegistry';
 import { ShellRouterRoot, ShellRouteStoreProvider, useShellRouteStore } from '@solid/stores/ShellRouteStore';
 import { THEME_SCOPE_ATTRIBUTE } from '@solid/stores/ThemeStore';
 import type { Stores } from '@solid/types';
@@ -194,7 +197,7 @@ function ShellOverlayInner(props: {
               <RenderSchema
                 node={schema}
                 stores={shellStores}
-                registry={registry}
+                registry={chromeComponentRegistry}
                 context={{ surface: overlaySurface.surface }}
                 children={props.children}
               />
@@ -203,7 +206,7 @@ function ShellOverlayInner(props: {
         </ShellRouterRoot>
       )}
     >
-      {buildRoutes(shellStores, schema.routes ?? [])}
+      {buildRoutes(shellStores, schema.routes ?? [], '', [], chromeComponentRegistry)}
       <Route path="*" component={() => null} />
     </MemoryRouter>
   );
@@ -246,6 +249,25 @@ export function TemplateLayout(
   createEffect(() => {
     registerHostChromeReserve('template', stores.templateStore.currentTemplate?.meta?.chromeReserve);
   });
+
+  /*
+    The first screen is drawn once a template is on it and the space the address names is on screen
+    with its collection known (`firstScreenDrawn`) — the moment the Feed, when it is the opening view,
+    has mounted and said it is reading. With nothing waiting, the work held since boot starts now;
+    see `shared/firstScreen.ts`.
+  */
+  createEffect(() => {
+    const space = stores.datasetStore.currentDataset();
+    const drawn = firstScreenDrawn({
+      templateId: stores.templateStore.currentTemplate?.id,
+      rootLoaded: stores.spaceStore.rootLoaded(),
+      // The router's own address: `routeStore` hears it from an effect below this one, so on the first
+      // run it still names no space — which read as "drawn" before any space was on screen.
+      segments: location.pathname.split('/').filter(Boolean),
+      addresses: (segment) => !!space && datasetAddressedBy(space, segment),
+    });
+    if (drawn) firstScreen.drawn();
+  });
   onCleanup(() => registerHostChromeReserve('template', undefined));
 
   /*
@@ -274,7 +296,11 @@ export function TemplateLayout(
     // are. Everything after that is `panelScope`'s, where it can be tested without a router.
     const view = stores.spaceStore.spaceViews().find((section) => segments.includes(section.segment))?.schema
       ?.meta?.panels;
-    return panelsFor(stores.templateStore.currentTemplate?.meta?.panels ?? [], view, segments);
+    const shell = stores.templateStore.currentTemplate?.meta?.panels ?? [];
+    // The app's own panels ride under the space's — `panelScope` owns the merge so the precedence
+    // is testable without a layout.
+    const app = stores.templateStore.appTemplate().meta?.panels ?? [];
+    return panelsFor(shell, view, segments, app);
   });
 
   createEffect(() => setTemplatePanels(activePanels(), stores.templateStore.currentTemplate?.id ?? ''));

@@ -1,6 +1,8 @@
 import type { SchemaProp } from '@we/schema-shared';
 import { openRecord } from '@we/template-kit';
 
+import { VOCABULARY_NAMES } from './vocabulary.ts';
+
 /**
  * Where a Coasys space's things live, named once.
  *
@@ -23,12 +25,34 @@ export const withView = (pathExpr: string): string =>
   `(${pathExpr}) + ((${IN_CANVAS}) ? (contains(${pathExpr}, '?') ? '&' : '?') + '${VIEW_PARAM}=canvas' : '')`;
 
 /**
- * The Social DNA in focus — `all`, a kind (`signal`), a definition (`signal|<id>`) or a rule of the
- * policy (`policy|<rule>`) — drawn as the vocabulary map: over the canvas in Canvas mode, as its own
+ * The Social DNA in focus — `all`, a class (`model|<name>`), one of its records (`model|<name>|<id>`),
+ * the policy (`policy`) or one rule of it (`policy|<rule>`) — drawn as the vocabulary map: over the canvas in Canvas mode, as its own
  * page (`/dna`) in Page mode. A definition is read in the inspector as well, which follows `card`.
  */
 export const DNA_PARAM = 'dna';
 export const DNA_FOCUS = `routeStore.params.${DNA_PARAM}`;
+
+/**
+ * What an address from before a class was a model meant: its kind, as the class it named. A bookmark
+ * keeps working — `signal|like` is `model|SignalType|like` — and `class|X` is `model|X`.
+ */
+const LEGACY_CLASSES: [string, string][] = [
+  ['signal', 'SignalType'],
+  ['connection', 'RelationshipType'],
+  ['relationship', 'RelationshipType'],
+  ['taskstate', 'TaskState'],
+  ['involvement', 'InvolvementType'],
+  ['topic', 'Topic'],
+];
+const LEGACY_AT = `{ ${LEGACY_CLASSES.map(([k, v]) => `${k}: '${v}'`).join(', ')} }`;
+
+/**
+ * The focus as the rest of Social DNA reads it: `all` where the address names none or one nobody knows,
+ * the focus as written where it is `all`, `policy` or `model|…`, and an old kind as the class it was.
+ * Written over one binding of the address's parts, since it stands inside every expression that reads
+ * the focus.
+ */
+export const DNA_AT = `(${DNA_FOCUS} ? [split(${DNA_FOCUS}, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? ${DNA_FOCUS} : [p[0] == 'class' ? p[1] : ${LEGACY_AT}[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all')`;
 
 /** The vocabulary map is being shown, in either mode. */
 export const ON_DNA_PAGE = "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna'";
@@ -52,21 +76,6 @@ export const dnaPage = (focus: string): SchemaProp => ({
   args: [{ $: "spaceStore.spacePath + '/dna'" }, { $: `{ query: { ${DNA_PARAM}: ${focus} } }` }],
 });
 
-/** The record type of each kind of definition the tree lists (a model is a Shape, which it opens elsewhere). */
-const DNA_ENTITIES: Record<string, string> = {
-  signal: 'SignalType',
-  connection: 'RelationshipType',
-  state: 'TaskState',
-  involvement: 'InvolvementType',
-  topic: 'Topic',
-};
-const table = (entries: [string, string][]) => `{ ${entries.map(([k, v]) => `${k}: '${v}'`).join(', ')} }`;
-/** A kind of definition's record type, as an expression over an expression naming the kind. */
-export const dnaEntityOf = (kind: string): string => `${table(Object.entries(DNA_ENTITIES))}[${kind}]`;
-/** The kind of definition a record type is, or nothing. */
-export const dnaKindOf = (entity: string): string =>
-  `${table(Object.entries(DNA_ENTITIES).map(([k, v]) => [v, k]))}[${entity}]`;
-
 /** The inspector's panel id, as the space declares it — see `shell.ts`. */
 export const INSPECTOR_PANEL = 'inspector';
 
@@ -79,8 +88,8 @@ export const inspect = (id: string, type: SchemaProp): SchemaProp[] => [
   { $invoke: 'shellStore.openTemplatePanel', args: [INSPECTOR_PANEL] },
 ];
 
-/** A definition in the inspector, as its tree row — so a definition read beside a page is lit. */
-const INSPECTED_DNA = dnaKindOf('routeStore.params.cardType');
+/** A definition read in the inspector beside a page lights its class's row. */
+const INSPECTED_DNA = `routeStore.params.cardType in ${VOCABULARY_NAMES}`;
 
 /** The channel on screen: the one the address names, or the space's own collection, its root channel. */
 export const CHANNEL_EXPR = 'routeStore.params.channel ? routeStore.params.channel : spaceStore.root';
@@ -88,6 +97,16 @@ export const CHANNEL = { $: CHANNEL_EXPR };
 
 /** Whether the channel on screen is the space's root — "General", which every space has. */
 export const IN_ROOT_EXPR = `(${CHANNEL_EXPR}) == spaceStore.root`;
+
+/**
+ * Whether `IN_ROOT_EXPR` can be answered yet: the space's root has been read.
+ *
+ * A channel's address names it (`?channel=<id>`), General's included, and `root` is '' until it has
+ * been read. So for that moment General's own address compared unequal to `root`, and the view drew
+ * General as a sub-channel — mounting the sub-channel chat, sending its reads — then tore it down and
+ * drew the Feed when `root` arrived. Choose between them only once this is true.
+ */
+export const ROOT_KNOWN_EXPR = 'spaceStore.rootLoaded';
 
 /**
  * A channel's address, General's included: always `?channel=<id>`.
@@ -126,9 +145,10 @@ export const groupPath = (page: GroupPage): string => withView(`spaceStore.space
  */
 export const SELECTED_EXPR = [
   // Social DNA in focus, on the canvas or its page.
-  `${DNA_SHOWN} ? (${DNA_FOCUS} == 'all' ? 'group|dna' : contains(${DNA_FOCUS}, '|') ? (startsWith(${DNA_FOCUS}, 'policy|') ? 'dnaprop|' : 'dna|') + ${DNA_FOCUS} : 'dnakind|' + ${DNA_FOCUS})`,
+  // A class lights its row, with one of its records chosen as well.
+  `${DNA_SHOWN} ? (${DNA_AT} == 'all' ? 'group|dna' : startsWith(${DNA_AT}, 'policy|') ? 'dnaprop|' + ${DNA_AT} : startsWith(${DNA_AT}, 'model|') ? 'dna|model|' + split(${DNA_AT}, '|')[1] : 'dnakind|' + ${DNA_AT})`,
   `:`,
-  `routeStore.params.card && ${INSPECTED_DNA} ? 'dna|' + ${INSPECTED_DNA} + '|' + routeStore.params.card`,
+  `routeStore.params.card && ${INSPECTED_DNA} ? 'dna|model|' + routeStore.params.cardType`,
   `: (${PAGE_EXPR}) == 'record' ? 'call|' + routeStore.params.id`,
   `: (${PAGE_EXPR}) == 'person' ? 'person|' + routeStore.params.did`,
   `: (${PAGE_EXPR}) == 'workflows' ? (workflowStore.open ? 'workflow|' + workflowStore.open.name : 'group|workflows')`,

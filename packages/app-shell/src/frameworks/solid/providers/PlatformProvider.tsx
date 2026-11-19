@@ -7,6 +7,7 @@ import { provideFileSaver } from '@we/design-utils';
 import { createContext, createEffect, createSignal, onCleanup, ParentComponent, untrack, useContext } from 'solid-js';
 
 import type { WeSeedFile } from '../../../types/seed';
+import { firstScreen } from '../firstScreen';
 import { registerModuleComponents } from '../registries/componentRegistry';
 import { moduleHostComponents } from '../registries/moduleComponents';
 
@@ -48,6 +49,8 @@ export const PlatformProvider: ParentComponent<{
     storeDeps: createModuleStoreDeps({
       signal: <T,>(initial: T) => createSignal(initial) as [() => T, (next: T) => void],
       effect: (fn) => createEffect(fn),
+      // So the Feed can say when its first page is up, and a call's policy waits until it is.
+      firstScreen,
     }),
     host: { backend: backend.id ?? 'ad4m', framework: 'solid' },
   });

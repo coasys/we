@@ -1782,8 +1782,8 @@ const bundleUpdatePrompt =
  */
 /**
  * The create-space modal on a deployment that can share a space both ways, listed as the AD4M
- * backend lists them: peer-to-peer first, then the server link language with AD4M's two link
- * servers. The sharing option and server `createSpace` was given are marked on the body.
+ * backend lists them: the server link language with AD4M's two link servers first, then
+ * peer-to-peer. The sharing option and server `createSpace` was given are marked on the body.
  */
 const createSpaceShared = (): Scenario => ({
   node: createSpaceModal as SchemaNode,
@@ -1791,15 +1791,15 @@ const createSpaceShared = (): Scenario => ({
   stores: {
     spaceStore: {
       sharingOptions: sharingPickerOptions([
-        { id: 'Qm-p2p', name: 'perspective-diff-sync', kind: 'peer-to-peer' },
         {
           id: 'Qm-server',
           name: 'server-link-language',
           kind: 'server',
           servers: ['https://link.ad4m.dev', 'https://link-staging.ad4m.dev'],
         },
+        { id: 'Qm-p2p', name: 'perspective-diff-sync', kind: 'peer-to-peer' },
       ]),
-      defaultSharing: 'Qm-p2p',
+      defaultSharing: 'Qm-server',
       starterChoices: [
         {
           id: 'coasys-default',
@@ -2185,7 +2185,10 @@ const coasysBar = (): Scenario => {
         viewBar(
           [
             { label: 'Social DNA', onClick: { $invoke: 'routeStore.navigate', args: ['/dna'] } },
-            { label: 'Signal types', onClick: { $invoke: 'routeStore.navigate', args: ['/dna?dna=signal'] } },
+            {
+              label: 'Signal types',
+              onClick: { $invoke: 'routeStore.navigate', args: ['/dna?dna=model%7CSignalType'] },
+            },
             { label: 'Like' },
           ],
           'dna',
@@ -2229,6 +2232,56 @@ const coasysCallBar = (): Scenario => {
       shellStore: { collapsedLanes: [] },
       modules: { call: { liveCalls: [{ recordId: 'call-1', count: 2 }] } },
       spaceStore: { exportCallTranscript: (id: string) => ((globalThis as { __exported?: string }).__exported = id) },
+    },
+  };
+};
+
+/**
+ * The Coasys Calls page, from the bundle itself, under Glow: three calls, the newest running. Each
+ * card opens its call and offers its transcript to take away, so the case can press both.
+ */
+const coasysCallsPage = (): Scenario => {
+  const glow = BUNDLE_LAB_THEMES.find((t) => t.label === 'coasys-glow')?.theme ?? {};
+  // The page is the space template's `/calls` route; found by its path, wherever the bundle holds it.
+  const find = (node: unknown): SchemaNode | undefined => {
+    if (!node || typeof node !== 'object') return undefined;
+    const n = node as Record<string, unknown>;
+    if (n.path === '/calls' && typeof n.type === 'string') return structuredClone(n) as SchemaNode;
+    for (const value of Object.values(n)) {
+      const found = Array.isArray(value) ? value.map(find).find(Boolean) : find(value);
+      if (found) return found;
+    }
+    return undefined;
+  };
+  const { path: _path, ...page } = find(coasysBundle) as SchemaNode & { path?: string };
+  return {
+    node: { type: 'Column', theme: glow, props: { width: '900px', height: '420px', bg: 'page' }, children: [page] },
+    tables: {
+      CollectionBlock: [
+        { id: 'call-3', kind: 'call', title: 'Design review', createdAt: '2026-11-11T09:00' },
+        { id: 'call-2', kind: 'call', title: 'Standup', createdAt: '2026-11-10T09:00' },
+        {
+          id: 'call-1',
+          kind: 'call',
+          title: 'Release planning for the next AD4M version',
+          createdAt: '2026-11-03T15:00',
+        },
+      ],
+    },
+    stores: {
+      routeStore: {
+        params: {},
+        templateSegments: [],
+        setParam: () => {},
+        navigate: (to: string) => ((globalThis as { __navigated?: string }).__navigated = to),
+      },
+      shellStore: { collapsedLanes: [] },
+      modules: { call: { liveCalls: [{ recordId: 'call-3', count: 2 }] } },
+      spaceStore: {
+        root: 'root',
+        spacePath: '/space/s1',
+        exportCallTranscript: (id: string) => ((globalThis as { __exported?: string }).__exported = id),
+      },
     },
   };
 };
@@ -2369,12 +2422,30 @@ const coasysTreeDna = (): Scenario => {
         },
       },
       shapeStore: { spaceShapes: [{ id: 'shape-hive', name: 'Hive', icon: 'hexagon' }] },
-      recordStore: {
-        // What the tree's Models lists, as the vocabulary map's Models does: every kind of record.
-        creatableEntities: [
-          { value: 'Hive', label: 'Hive', icon: 'hexagon', hue: 'yellow', group: '', description: '', via: 'form' },
+      // Another app's class, and WE's plumbing an older version wrote under another IRI, which is left out.
+      datasetStore: {
+        currentDatasetEntities: [
+          { name: 'Placement', targetClass: 'old://Placement', properties: [] },
+          { name: 'Question', targetClass: 'conv://Question', properties: [] },
         ],
+      },
+      recordStore: {
+        // The space's own model and one of WE's blocks: the This space group, and the built-in group's vocabulary and Blocks.
+        creatableEntities: [
+          {
+            value: 'Hive',
+            label: 'Hive',
+            icon: 'hexagon',
+            hue: 'yellow',
+            group: 'This space',
+            description: '',
+            via: 'form',
+          },
+          { value: 'TaskBlock', label: 'Task', icon: 'check-square', hue: 'green', group: 'Built in', via: 'form' },
+        ],
+        plumbingClasses: ['Placement', 'Space', 'SignalType', 'TaskState'],
         displays: {
+          Question: { label: 'Question', icon: 'cube', fields: [] },
           Hive: {
             fields: [
               { name: 'name', label: 'Name', kind: 'text' },
@@ -2455,6 +2526,7 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'feed:view': feedViewPage,
   'coasys:bar': coasysBar,
   'coasys:call-bar': coasysCallBar,
+  'coasys:calls-page': coasysCallsPage,
   'border:with-hover': borderWithHover,
   'coasys:lockup': coasysLockup,
   'signIn:coasys': coasysSignIn,

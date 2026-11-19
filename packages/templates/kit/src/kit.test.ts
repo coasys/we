@@ -27,6 +27,7 @@ import {
   formModal,
   gatePrompt,
   marketplaceList,
+  OTHER_APP_CLASS_NAMES,
   pageShell,
   peopleFilter,
   peopleRow,
@@ -40,6 +41,11 @@ import {
   signalDisplay,
   statChip,
   taskBoard,
+  TREE_LOCALS,
+  TREE_QUERIES,
+  treeStrip,
+  VOCABULARY_BUCKETS,
+  VOCABULARY_OPENS,
 } from './index.ts';
 
 /**
@@ -245,6 +251,7 @@ const weDomain: Record<string, SchemaNode> = {
     layout: 'list',
     card: { mode: 'compact' },
   }),
+  treeStrip: treeStrip(),
 };
 
 /** The offered types, as `signalTypes.ts` spells them — repeated here so a drift shows up as a test. */
@@ -358,6 +365,18 @@ const withAmbientScope = (node: SchemaNode): SchemaNode => ({
   children: [node],
 });
 
+/**
+ * The tree strip's half of its contract: the locals and queries `canvasTree` asks the canvas route to
+ * declare. Same shim, different contract — the strip reads the mode it switches and the vocabularies
+ * its pickers offer, all of which belong to the route, not to the strip.
+ */
+const withTreeScope = (node: SchemaNode): SchemaNode => ({
+  type: 'Column',
+  $queries: { ...TREE_QUERIES },
+  $localState: { ...TREE_LOCALS },
+  children: [node],
+});
+
 describe('every expansion is a valid schema fragment', () => {
   const needsAmbient = new Set([
     'cardShell',
@@ -373,9 +392,11 @@ describe('every expansion is a valid schema fragment', () => {
     'signalDisplay (compact)',
     'signalDisplay (total)',
   ]);
+  const ambientScopes: Record<string, (node: SchemaNode) => SchemaNode> = { treeStrip: withTreeScope };
   for (const [name, node] of Object.entries({ ...portable, ...weDomain })) {
     it(name, () => {
-      const result = validateSemantic(needsAmbient.has(name) ? withAmbientScope(node) : node, context);
+      const wrap = needsAmbient.has(name) ? withAmbientScope : (ambientScopes[name] ?? ((n) => n));
+      const result = validateSemantic(wrap(node), context);
       expect(result.errors.filter((e) => e.severity === 'error')).toEqual([]);
     });
   }
@@ -1458,5 +1479,54 @@ describe('Back through a discard guard', () => {
     });
     expect(nested(composer)).toBe(false);
     expect(nested(recordFormModal({ back }))).toBe(false);
+  });
+});
+
+/*
+  What a definition opens into on the vocabulary map is knowledge about one of WE's classes, so it is
+  a table by class name: a class from another app has no row, and the map shows it without uses.
+*/
+describe('the vocabulary map’s uses, by class', () => {
+  it('keys what a definition opens into by its class, and each bucket of that class reads it from there', () => {
+    expect(Object.keys(VOCABULARY_OPENS)).toEqual([
+      'SignalType',
+      'RelationshipType',
+      'TaskState',
+      'InvolvementType',
+      'Topic',
+    ]);
+    for (const [name, opens] of Object.entries(VOCABULARY_OPENS))
+      expect(VOCABULARY_BUCKETS).toContain(`entity: '${name}', opens: ${opens}`);
+    expect(VOCABULARY_OPENS.TaskState).toContain("entity: 'TaskBlock', field: 'status', key: 'slug'");
+  });
+});
+
+/*
+  Another app's classes are one expression, read by the vocabulary map's "From other apps" bucket and by
+  the tree alike — so a plumbing class WE's own older version wrote is on neither.
+*/
+describe('the vocabulary map’s classes from other apps', () => {
+  const roots = {
+    datasetStore: {
+      currentDatasetEntities: [
+        { name: 'Question', targetClass: 'conv://Question' },
+        { name: 'Space', targetClass: 'old://Space' },
+        { name: 'Sighting', targetClass: 'birds://Sighting' },
+        { name: 'Topic', targetClass: 'old://Topic' },
+        { name: 'Question', targetClass: 'conv://Question' },
+      ],
+    },
+    recordStore: {
+      creatableEntities: [{ value: 'Sighting', label: 'Sighting' }],
+      plumbingClasses: ['Space'],
+    },
+    workflowStore: { workflows: [] },
+    spaceStore: { policy: { sentences: [] } },
+  };
+
+  it('leaves plumbing, the space’s models and WE’s vocabulary out, and lists a name once', () => {
+    const buckets = evaluate(VOCABULARY_BUCKETS, roots) as { key: string; models?: { name: string }[] }[];
+    expect(buckets.find((b) => b.key === 'other')!.models).toEqual([{ name: 'Question' }]);
+    expect(evaluate(OTHER_APP_CLASS_NAMES, roots)).toEqual(['Question']);
   });
 });

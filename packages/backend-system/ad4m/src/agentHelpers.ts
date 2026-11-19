@@ -5,6 +5,8 @@ export { isProfileEmpty } from '@we/backend-shared';
 export type { AgentProfileSummary, PublishProfileFields } from '@we/backend-shared';
 import { FILE_STORAGE_LANGUAGE } from '@we/entities';
 
+import { sharedInFlight } from './inFlight';
+
 export const WE_PROFILE_SOURCE = 'we://profile';
 /**
  * How an agent says what kind of agent it is: `<its did> ad4m://agent_kind <kind>` in its public
@@ -445,7 +447,10 @@ export { FILE_STORAGE_LANGUAGE };
  */
 export async function ensureFileStorageLanguage(backendClient: unknown): Promise<void> {
   const client = backendClient as Ad4mClient;
-  await client.languages.byAddress(FILE_STORAGE_LANGUAGE);
+  // One install for callers in flight together: the deferred boot install and a first upload.
+  await sharedInFlight(client, 'languages.byAddress:file-storage', () =>
+    client.languages.byAddress(FILE_STORAGE_LANGUAGE),
+  );
 }
 
 /**
@@ -455,6 +460,8 @@ export async function ensureFileStorageLanguage(backendClient: unknown): Promise
 /** Store a file as a file-storage expression, in the shape that language reads. */
 export async function createFileExpression(backendClient: unknown, file: UploadFile): Promise<string> {
   const client = backendClient as Ad4mClient;
+  // The boot installs it only after the first screen, and `expression.create` does not install.
+  await ensureFileStorageLanguage(client);
   const payload = { data_base64: file.base64, name: file.name, file_type: file.mimeType };
   return client.expression.create(JSON.stringify(payload), FILE_STORAGE_LANGUAGE);
 }

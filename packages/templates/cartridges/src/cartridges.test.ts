@@ -25,19 +25,21 @@ import {
   chooseTemplate,
   chooseTheme,
   FOCUS_DIM,
+  OTHER_APP_CLASS_NAMES,
   SPACE_TEMPLATE_CHOICES,
   templateChoice,
   themeChoice,
-  VOCABULARY_BUCKETS,
+  VOCABULARY_OPENS,
 } from '@we/template-kit';
 import { describe, expect, it } from 'vitest';
 
 import { coasysFirstRun } from './coasys/firstRun.ts';
 import { canvasPane } from './coasys/space/canvas.ts';
-import { DNA_LISTS } from './coasys/space/dna.ts';
+import { CLASS_GROUPS, CLASS_ROWS, CLASS_ROWS_COUNT, DNA_AT, dnaCrumbs, OTHER_CLASSES } from './coasys/space/dna.ts';
 import { callPath, groupPath, personPath, SELECTED_EXPR } from './coasys/space/paths.ts';
 import { treeSection } from './coasys/space/tree.ts';
 import { callPage, spaceRoutes } from './coasys/space/views.ts';
+import { WE_VOCABULARY } from './coasys/space/vocabulary.ts';
 import { bundleFileName, type Cartridge, cartridgeBundles, coasys, fieldGuide, toolLibrary } from './index.ts';
 
 const contextData = JSON.parse(readFileSync(resolve(import.meta.dirname, '../../../ai-context/context.json'), 'utf-8'));
@@ -106,6 +108,22 @@ describe('the Coasys cartridge', () => {
   });
 
   /*
+    The AI chat sparkle sat in the rail's `header`, which `railShell` places without the `px` the
+    items and footer columns get — a railItem's own `railInset` is measured *against* that edge
+    padding, so without it the glyph sat one inset left of every row below. The header keeps its
+    place; the row inside it regains the edge it was counted against.
+  */
+  it('aligns the AI chat row with the rail rows below it', () => {
+    const path = pathTo(coasys.app!, (n) => (n.props as { label?: unknown } | undefined)?.label === 'AI chat')!;
+    expect(path.at(-1), 'no AI chat row in the rail').toBeDefined();
+    const edge = path
+      .slice(0, -1)
+      .reverse()
+      .find((n) => (n.props as { px?: unknown } | undefined)?.px !== undefined);
+    expect((edge?.props as { px?: unknown } | undefined)?.px, 'no ancestor restores the rail edge').toBe('200');
+  });
+
+  /*
     It defines no kinds of record of its own, so there is no gap to record: every template it brings
     must validate as it stands — the app around every space, the space template with its pages, and
     the pages of the app's own.
@@ -118,6 +136,85 @@ describe('the Coasys cartridge', () => {
         .map((e) => `${template.id}: ${e.path}: ${e.message}`),
     );
     expect(errors).toEqual([]);
+  });
+
+  /*
+    "Find or ask" scopes its chat to the member's *local* perspective id. `Space.uuid` is the
+    creator's own local uuid, synced verbatim into every member's copy — on a joined space it names
+    a perspective this device does not hold, so a chat pinned to it ran against nobody's graph (and
+    on the gate, hid itself for every member but the creator). Evaluated as the renderer does.
+  */
+  it('asks the space chat against the local perspective, never the synced Space.uuid', () => {
+    const input = findNode(
+      treeSection,
+      (n) => (n.props as { placeholder?: unknown } | undefined)?.placeholder === 'Find or ask',
+    )!;
+    const enter = (input.props as { onKeyDown: { $if: { then: { $invoke?: string; args?: { $: string }[] }[] } } })
+      .onKeyDown.$if.then[0];
+    expect(enter.$invoke).toBe('chatStore.openChat');
+    const source = enter.args![0].$;
+    expect(source).toContain('datasetStore.currentDataset.id');
+    expect(source).not.toContain('spaceStore.currentSpace.uuid');
+
+    const asked = evaluateExpression(parseExpression(source), {
+      root: (name) => ({
+        bound: true,
+        value: {
+          // A joined space: the local perspective id is not the uuid the creator's record synced in.
+          datasetStore: { currentDataset: { id: 'local-perspective-uuid', sharedId: 'we://shared-cid' } },
+          spaceStore: { currentSpace: { uuid: 'creator-uuid', name: 'Garden club' } },
+          local: { findQuery: 'what is growing?' },
+        }[name],
+      }),
+      call: (name, args) =>
+        listFunctions()
+          .find((f) => f.name === name)
+          ?.impl(args, { context: {}, stores: {} }),
+    });
+    expect(asked).toEqual({
+      perspectiveUuid: 'local-perspective-uuid',
+      spaceName: 'Garden club',
+      draft: 'what is growing?',
+    });
+  });
+
+  /*
+    A call's page is where somebody outside the call, or reading it after it ended, finds it. Its body
+    is the call's Feed — the space's Feed scoped to this call: everything said, typed and answered in
+    it, with the box to write into it — for everyone, and not behind the gate that offers a way in.
+  */
+  it('draws the call’s Feed as its body, pointed at the call the address names, to everyone', () => {
+    const parts = findAll(callPage, (n) => n.type === '$part').map(
+      (n) => (n.props as { id?: unknown } | undefined)?.id,
+    );
+    expect(parts).toContain('feed.callFeed');
+    // One stream, not a transcript beside a second list.
+    expect(parts).not.toContain('transcribe.transcriptFeed');
+    expect(parts).not.toContain('transcribe.callMessages');
+
+    const placement = findNode(
+      callPage,
+      (n) => n.type === '$part' && (n.props as { id?: unknown } | undefined)?.id === 'feed.callFeed',
+    );
+    expect((placement!.props as { subject?: unknown }).subject).toEqual({ $: 'routeStore.params.id' });
+
+    // Not inside any `$if`: nothing about the reader or the call's state hides it.
+    const gated = findNode(callPage, (n) => n.type === '$if' && JSON.stringify(n).includes('"feed.callFeed"'));
+    expect(gated).toBeUndefined();
+  });
+
+  it('keeps the call page’s bar, its way in, and no fixed-width column that a phone cannot hold', () => {
+    const json = JSON.stringify(callPage);
+    expect(json).toContain('"call.renameCallButton"');
+    expect(json).toContain('modules.call.continueCall');
+    expect(json).not.toContain('"22rem"');
+  });
+
+  it('puts the way in under its sentence on a phone, rather than squeezing the sentence to a word a line', () => {
+    const row = findNode(callPage, (n) => n.type === 'Row' && JSON.stringify(n).includes('modules.call.continueCall'));
+    expect((row!.props as { wrap?: unknown }).wrap).toBe(true);
+    const sentence = findNode(row!, (n) => n.type === 'we-text');
+    expect((sentence!.props as { minWidth?: unknown }).minWidth).toBe('240px');
   });
 
   it('brings its own name, mark, sign-in screen and theme', () => {
@@ -203,6 +300,42 @@ describe('the Coasys cartridge', () => {
     have it, so the two lists offer the same things; the tree's list is the ones somebody would switch
     between in this space, not every built-in the deployment carries.
   */
+  describe('a call running in the space', () => {
+    /** The tree's `$if` gated on a live call — the subtree that is the running-call entry. */
+    const running = () =>
+      findNode(
+        treeSection,
+        (n) =>
+          n.type === '$if' &&
+          JSON.stringify((n.props as { condition?: unknown } | undefined)?.condition) ===
+            JSON.stringify({ $: 'count(modules.call.liveCalls)' }),
+      )!;
+
+    it('is a single entry that joins or opens it — not a line beside a second affordance', () => {
+      const subtree = running();
+      const json = JSON.stringify(subtree);
+      /*
+        One way in, branching at press time like the row's label does: "Join" joins the call
+        running here through `goToCall`, and "Open" — shown to somebody already in it — navigates
+        to the call's own page, which is what it did before the row was unified and what the
+        review asked back. A second destination beside the text is still the repeat it refuses.
+      */
+      expect(json).toContain('modules.call.goToCall');
+      expect(json).toContain('routeStore.navigate');
+      expect(json).not.toContain('modules.call.joinCall');
+
+      // The Open branch goes to the call's record page — the address its own view answers.
+      expect(json).toContain('record/CollectionBlock?kind=call&id=');
+
+      // The line itself is the entry: "Call running · N in it" lives inside the one button, not
+      // next to it, so pressing anywhere on the row does the thing the row reports.
+      const buttons = findAll(subtree, (n) => n.type === 'we-button');
+      expect(buttons, 'the entry is more than one control').toHaveLength(1);
+      const text = findAll(buttons[0], (n) => n.type === 'we-text' && JSON.stringify(n).includes('Call running'));
+      expect(text, 'the call-running line is not inside the entry').toHaveLength(1);
+    });
+  });
+
   describe('templates and themes in the tree', () => {
     const evaluate = (source: string, roots: Record<string, unknown>) =>
       evaluateExpression(parseExpression(source), {
@@ -333,10 +466,10 @@ describe('the Coasys cartridge', () => {
           .filter((n) => (resolveStyle(n as never, rules as never) as { opacity?: number }).opacity === FOCUS_DIM)
           .map((n) => n.id);
       };
-      // A kind: the others dimmed, and nothing of its own.
-      expect(dimmed({ dna: 'signal' })).toEqual(['states', 'rule']);
-      // A definition: its siblings as well, while what it opened into stays whole.
-      expect(dimmed({ dna: 'signal|like' })).toEqual(['rating', 'states', 'rule']);
+      // A class: the others dimmed, and nothing of its own.
+      expect(dimmed({ dna: 'model|SignalType' })).toEqual(['states', 'rule']);
+      // One of its records: its siblings as well, while what it opened into stays whole.
+      expect(dimmed({ dna: 'model|SignalType|like' })).toEqual(['rating', 'states', 'rule']);
       // The policy is Social DNA too: one rule, by its words.
       expect(dimmed({ dna: 'policy|Members can make anything.' })).toEqual(['signals', 'like', 'rating', 'states']);
       // All of it, nothing dimmed.
@@ -345,17 +478,28 @@ describe('the Coasys cartridge', () => {
       // What the tree chose is centred: a definition, or a kind's bucket; all of it, nothing.
       const focus = (vocab.props as { focus: unknown; focusCentre: boolean }).focus;
       expect((vocab.props as { focusCentre: boolean }).focusCentre).toBe(true);
-      expect(at([], { view: 'canvas', dna: 'signal|like' })(focus)).toBe('like');
-      expect(at([], { view: 'canvas', dna: 'signal' })(focus)).toBe('we-graph://cluster/vocabulary/signals');
+      expect(at([], { view: 'canvas', dna: 'model|SignalType|like' })(focus)).toBe('like');
+      expect(at([], { view: 'canvas', dna: 'model|SignalType' })(focus)).toBe('we-graph://cluster/vocabulary/signals');
       expect(at([], { view: 'canvas', dna: 'policy|Members can make anything.' })(focus)).toBe(
         'policy:Members can make anything.',
       );
       expect(at([], { view: 'canvas', dna: 'all' })(focus)).toBe('');
 
-      // The chosen definition is opened into what it is, beside its kind.
-      expect(at([], { view: 'canvas', dna: 'signal|like' })(props.open)).toEqual([
+      // The chosen record is opened into what it is, beside its class's bucket.
+      expect(at([], { view: 'canvas', dna: 'model|SignalType|like' })(props.open)).toEqual([
         'we-graph://cluster/vocabulary/signals',
         'like',
+      ]);
+      // A class of the space's own or of another app is a model on the map: centred, and opened into its records.
+      const models = { recordStore: { creatableEntities: [{ value: 'Sighting', group: 'This space' }] } };
+      expect(at([], { view: 'canvas', dna: 'model|Sighting' }, models)(focus)).toBe('Sighting');
+      expect(at([], { view: 'canvas', dna: 'model|Sighting' }, models)(props.open)).toEqual([
+        'we-graph://cluster/vocabulary/models',
+        'Sighting',
+      ]);
+      expect(at([], { view: 'canvas', dna: 'model|Question' }, models)(props.open)).toEqual([
+        'we-graph://cluster/vocabulary/other',
+        'Question',
       ]);
     });
 
@@ -380,7 +524,7 @@ describe('the Coasys cartridge', () => {
       expect(pressed('Recipe', '$schema')).toBe(false);
 
       // Read beside a page, a definition lights its own row.
-      expect(at(['feed'], { card: 'like', cardType: 'SignalType' })({ $: SELECTED_EXPR })).toBe('dna|signal|like');
+      expect(at(['feed'], { card: 'like', cardType: 'SignalType' })({ $: SELECTED_EXPR })).toBe('dna|model|SignalType');
       expect(at(['feed'], { card: 't1', cardType: 'TaskBlock' })({ $: SELECTED_EXPR })).not.toContain('dna|');
       // The policy is still lit by its words on the canvas.
       expect(at([], { view: 'canvas', dna: 'policy|Members can make anything.' })({ $: SELECTED_EXPR })).toBe(
@@ -399,13 +543,20 @@ describe('the Coasys cartridge', () => {
       const press = (vocab.props as { onNodeClick: { $if: { condition: unknown; then: { args: unknown[] } } }[] })
         .onNodeClick[0].$if;
       const focusOf = (event: Record<string, unknown>) => {
-        const evaluate = at([], { view: 'canvas', dna: 'state' }, { event });
+        const evaluate = at([], { view: 'canvas', dna: 'model|TaskState' }, { event });
         return evaluate(press.condition) ? [press.then.args[0], evaluate(press.then.args[1])] : null;
       };
-      expect(focusOf({ type: 'vocabulary', kind: 'cluster', data: { bucket: 'signals' } })).toEqual(['dna', 'signal']);
+      expect(focusOf({ type: 'vocabulary', kind: 'cluster', data: { bucket: 'signals' } })).toEqual([
+        'dna',
+        'model|SignalType',
+      ]);
       expect(focusOf({ type: 'SignalType', recordId: 'like', data: { bucket: 'signals' } })).toEqual([
         'dna',
-        'signal|like',
+        'model|SignalType|like',
+      ]);
+      expect(focusOf({ type: '$schema', data: { bucket: 'other', entity: 'Question' } })).toEqual([
+        'dna',
+        'model|Question',
       ]);
       expect(focusOf({ type: '$schema', data: { bucket: 'models', entity: 'TaskBlock' } })).toEqual([
         'dna',
@@ -418,39 +569,140 @@ describe('the Coasys cartridge', () => {
       // What a definition is used for leaves the focus where it was.
       expect(focusOf({ type: 'TaskBlock', recordId: 't1', data: {} })).toBeNull();
 
-      // The tree opens Social DNA and the kind around a definition in focus, and nothing else.
+      // The tree opens Social DNA and the group around a class in focus, and nothing else.
       const row = (value: string) =>
         findNode(treeSection, (n) =>
           String(JSON.stringify((n.props as { open?: unknown } | undefined)?.open)).includes(
             `((${value}) in local.openRows)`,
           ),
         )!;
-      const open = (value: string, params: Record<string, string>) =>
-        at([], params, { local: { openRows: [] } })((row(value).props as { open: unknown }).open);
-      const onCanvas = { view: 'canvas', dna: 'signal|like' };
+      const open = (value: string, params: Record<string, string>, extra = {}) =>
+        at([], params, { local: { openRows: [] }, ...extra })((row(value).props as { open: unknown }).open);
+      const onCanvas = { view: 'canvas', dna: 'model|SignalType|like' };
+      const we = { group: { key: 'we', classes: [{ id: 'SignalType' }, { id: 'TaskBlock' }] } };
+      const other = { group: { key: 'other', classes: [{ id: 'Question' }] } };
       expect(open("'group|dna'", onCanvas)).toBe(true);
-      expect(open("'dnakind|signal'", onCanvas)).toBe(true);
-      expect(open("'dnakind|state'", onCanvas)).toBe(false);
-      expect(open("'dnakind|signal'", { view: 'canvas', dna: 'all' })).toBe(false);
+      expect(open("'dnagroup|' + group.key", onCanvas, we)).toBe(true);
+      expect(open("'dnagroup|' + group.key", onCanvas, other)).toBe(false);
+      expect(open("'dnagroup|' + group.key", { view: 'canvas', dna: 'all' }, we)).toBe(false);
     });
 
-    it('lists every model the map does under Models, by name', () => {
-      const models = DNA_LISTS.find((list) => list.kind === 'model')!;
+    /*
+      One tree of classes: the space's own models, other apps' classes and WE's — WE's vocabulary
+      first, in the settings' order and words, then its built-in blocks. There is no Models category
+      and no second reading to switch to.
+    */
+    it('lists Social DNA as classes in three groups, with no lens to switch', () => {
       const evaluate = at(
         [],
         {},
         {
           recordStore: {
-            creatableEntities: [{ value: 'TaskBlock', label: 'Task', icon: 'check', description: 'Work' }],
+            creatableEntities: [
+              { value: 'Sighting', label: 'Sighting', icon: 'binoculars', group: 'This space' },
+              { value: 'TaskBlock', label: 'Task', icon: 'check', group: 'Built in' },
+            ],
+            plumbingClasses: [],
+            displays: {},
           },
+          datasetStore: { currentDatasetEntities: [{ name: 'Question', targetClass: 'conv://Question' }] },
         },
       );
-      expect(evaluate({ $: models.items })).toEqual([
-        { id: 'TaskBlock', name: 'Task', icon: 'check', description: 'Work' },
+      type Cls = { id: string; label: string };
+      const groups = evaluate({ $: CLASS_GROUPS }) as {
+        key: string;
+        label: string;
+        classes: Cls[];
+        rows: Cls[];
+        sub: { key: string; label: string; classes: Cls[] }[];
+      }[];
+      expect(groups.map((g) => g.label)).toEqual(['This space', 'Other apps', 'Built in']);
+      expect(groups[2].classes.map((c) => [c.id, c.label])).toEqual([
+        ['SignalType', 'Signal types'],
+        ['RelationshipType', 'Connection types'],
+        ['TaskState', 'Task states'],
+        ['InvolvementType', 'Involvement'],
+        ['Topic', 'Topics'],
+        ['TaskBlock', 'Task'],
       ]);
-      expect(JSON.stringify(VOCABULARY_BUCKETS)).toContain(
-        "key: 'models', label: 'Models', models: recordStore.creatableEntities",
+      // The vocabulary is listed in the group itself; the blocks sit together in one nested group.
+      expect(groups[2].rows.map((c) => c.id)).toEqual([
+        'SignalType',
+        'RelationshipType',
+        'TaskState',
+        'InvolvementType',
+        'Topic',
+      ]);
+      expect(groups[2].sub.map((s) => [s.key, s.label, s.classes.map((c) => c.id)])).toEqual([
+        ['blocks', 'Blocks', ['TaskBlock']],
+      ]);
+      // The other groups list their classes directly and nest nothing.
+      expect(groups[0].rows.map((c) => c.id)).toEqual(['Sighting']);
+      expect(groups[0].sub).toEqual([]);
+      expect(groups[1].sub).toEqual([]);
+      const tree = JSON.stringify(treeSection);
+      expect(tree).not.toContain('dnaLens');
+      expect(tree).not.toContain('dnakind|signal');
+      expect(tree).toContain("'dna|model|' + cls.id");
+      expect(tree).toContain('group.sub');
+    });
+
+    it('nests no Blocks group in the built-in group when the space offers no blocks', () => {
+      const evaluate = at(
+        [],
+        {},
+        {
+          recordStore: { creatableEntities: [], plumbingClasses: [], displays: {} },
+          datasetStore: { currentDatasetEntities: [] },
+        },
       );
+      const groups = evaluate({ $: CLASS_GROUPS }) as { label: string; sub: unknown[] }[];
+      expect(groups.map((g) => g.label)).toEqual(['Built in']);
+      expect(groups[0].sub).toEqual([]);
+    });
+
+    it('lists a vocabulary class once, as a row, even if it were ever offered as built-in content', () => {
+      const evaluate = at(
+        [],
+        {},
+        {
+          recordStore: {
+            creatableEntities: [
+              { value: 'Topic', label: 'Topic', icon: 'hash', group: 'Built in' },
+              { value: 'TaskBlock', label: 'Task', icon: 'check', group: 'Built in' },
+            ],
+            plumbingClasses: [],
+            displays: {},
+          },
+          datasetStore: { currentDatasetEntities: [] },
+        },
+      );
+      type Cls = { id: string };
+      const [builtIn] = evaluate({ $: CLASS_GROUPS }) as { rows: Cls[]; sub: { classes: Cls[] }[] }[];
+      expect(builtIn.rows.map((c) => c.id)).toContain('Topic');
+      expect(builtIn.sub.map((s) => s.classes.map((c) => c.id))).toEqual([['TaskBlock']]);
+    });
+
+    it('keeps the Blocks row open while a block is in focus, and not for a vocabulary class', () => {
+      const row = (value: string) =>
+        findNode(treeSection, (n) =>
+          String(JSON.stringify((n.props as { open?: unknown } | undefined)?.open)).includes(
+            `((${value}) in local.openRows)`,
+          ),
+        )!;
+      const blocks = "'dnagroup|' + group.key + '.' + sub.key";
+      const open = (dna: string) =>
+        at(
+          [],
+          { view: 'canvas', dna },
+          {
+            local: { openRows: [] },
+            group: { key: 'we' },
+            sub: { key: 'blocks', classes: [{ id: 'TaskBlock' }] },
+          },
+        )((row(blocks).props as { open: unknown }).open);
+      expect(open('model|TaskBlock')).toBe(true);
+      expect(open('model|SignalType')).toBe(false);
     });
 
     /*
@@ -462,9 +714,33 @@ describe('the Coasys cartridge', () => {
       expect(JSON.stringify(treeSection)).not.toContain('"shellStore.openSpaceSettings","args":["vocabulary"');
       expect(spaceRoutes.map((route) => route.path)).toContain('/dna');
       expect(at(['dna'], { dna: 'all' })({ $: SELECTED_EXPR })).toBe('group|dna');
-      expect(at(['dna'], { dna: 'signal' })({ $: SELECTED_EXPR })).toBe('dnakind|signal');
+      expect(at(['dna'], { dna: 'model|SignalType' })({ $: SELECTED_EXPR })).toBe('dna|model|SignalType');
+      expect(at(['dna'], { dna: 'model|SignalType|like' })({ $: SELECTED_EXPR })).toBe('dna|model|SignalType');
+      expect(at(['dna'], { dna: 'policy' })({ $: SELECTED_EXPR })).toBe('dnakind|policy');
       // Anywhere else in Page mode, a leftover focus lights nothing.
-      expect(at(['people'], { dna: 'signal' })({ $: SELECTED_EXPR })).toBe('group|people');
+      expect(at(['people'], { dna: 'model|SignalType' })({ $: SELECTED_EXPR })).toBe('group|people');
+    });
+
+    /*
+      Bookmarks from before a class was a model: `signal`, `signal|like`, `class|Question`. Each lands
+      on the class it meant, a record id kept; a kind nobody knows lands on the whole.
+    */
+    it('lands an old ?dna= value on the class it meant, or on all', () => {
+      const focus = (dna: string) => at(['dna'], { dna })({ $: DNA_AT });
+      expect(focus('signal')).toBe('model|SignalType');
+      expect(focus('signal|like')).toBe('model|SignalType|like');
+      expect(focus('connection')).toBe('model|RelationshipType');
+      expect(focus('relationship')).toBe('model|RelationshipType');
+      expect(focus('taskstate|done')).toBe('model|TaskState|done');
+      expect(focus('involvement')).toBe('model|InvolvementType');
+      expect(focus('topic')).toBe('model|Topic');
+      expect(focus('class|Question')).toBe('model|Question');
+      expect(focus('class|Question|q1')).toBe('model|Question|q1');
+      expect(focus('nonsense|x')).toBe('all');
+      expect(focus('model|SignalType|like')).toBe('model|SignalType|like');
+      expect(focus('policy|Anyone may post')).toBe('policy|Anyone may post');
+      expect(at(['dna'], {})({ $: DNA_AT })).toBe('all');
+      expect(at(['dna'], { dna: 'signal' })({ $: SELECTED_EXPR })).toBe('dna|model|SignalType');
     });
 
     /*
@@ -475,28 +751,74 @@ describe('the Coasys cartridge', () => {
     it('lists Social DNA on its page, where the canvas draws the map', () => {
       const page = spaceRoutes.find((route) => route.path === '/dna')!;
       expect(findNode(page, (n) => n.type === 'GraphView')).toBeUndefined();
-      const sections = findAll(page, (n) => n.type === '$if' && JSON.stringify(n.props).includes("== 'all' && count("))
-        .map((n) => (n.props as { condition: unknown }).condition)
-        .filter((condition) => !JSON.stringify(condition).includes('== 0'));
+      // A class's page reads the store's list where one is named — Task states in the community's
+      // order, one a slug — and queries the class otherwise.
+      const query = (page.$queries as Record<string, { when: unknown }>).classRows;
       const data = {
-        local: { signalTypes: [{ id: 'like', name: 'Like' }], relationshipTypes: [], topics: [{ id: 'x', name: 'X' }] },
         spaceStore: {
           spacePath: '/space/s1',
-          taskStates: [],
-          involvementTypes: [],
-          policy: { sentences: ['A rule.'] },
+          taskStates: [
+            { id: 'b', name: 'Doing' },
+            { id: 'a', name: 'Done' },
+          ],
         },
+        local: { classRows: [{ id: 'q1', body: 'Why?' }] },
       };
-      const shown = (dna?: string) => sections.map((condition) => at(['dna'], dna ? { dna } : {}, data)(condition));
-      // Every kind with something in it; one kind alone, even an empty one; a definition, its kind.
-      expect(shown()).toEqual([true, false, false, false, true, false, true]);
-      expect(shown('state')).toEqual([false, false, true, false, false, false, false]);
-      expect(shown('signal|like')).toEqual([true, false, false, false, false, false, false]);
-      // The chosen card is outlined.
-      const card = findNode(page, (n) => n.type === 'Card' && JSON.stringify(n.props).includes("== 'signal'"))!;
+      expect(at(['dna'], { dna: 'model|TaskState' }, data)({ $: CLASS_ROWS })).toEqual(data.spaceStore.taskStates);
+      expect(at(['dna'], { dna: 'model|TaskState' }, data)(query.when)).toBe(false);
+      expect(at(['dna'], { dna: 'model|Question' }, data)({ $: CLASS_ROWS })).toEqual(data.local.classRows);
+      expect(at(['dna'], { dna: 'model|Question' }, data)(query.when)).toBe(true);
+      expect(at(['dna'], { dna: 'all' }, data)(query.when)).toBe(false);
+      // The record chosen is outlined.
+      const card = findNode(page, (n) => n.type === 'Card' && JSON.stringify(n.props).includes('row.id'))!;
       const border = (card.props as { border: unknown }).border;
-      expect(at(['dna'], { dna: 'signal|like' }, { def: { id: 'like' } })(border)).toBe('1px solid accent');
-      expect(at(['dna'], { dna: 'signal|like' }, { def: { id: 'love' } })(border)).toBe('1px solid transparent');
+      expect(at(['dna'], { dna: 'model|Question|q1' }, { row: { id: 'q1' } })(border)).toBe('1px solid accent');
+      expect(at(['dna'], { dna: 'model|Question|q1' }, { row: { id: 'q2' } })(border)).toBe('1px solid transparent');
+    });
+
+    /*
+      WE's own vocabulary (signal types, connection types, topics) is read whole, by name, as it was
+      before classes were models; any other class reads its newest hundred. A class page whose read is
+      limited says "100+" when the limit is hit, and a record beyond the first page still has its crumb.
+    */
+    it("reads WE's vocabulary by name with no limit, and any other class newest first, a hundred", () => {
+      const page = spaceRoutes.find((route) => route.path === '/dna')!;
+      const queries = page.$queries as Record<string, Record<string, unknown>>;
+      const data = { local: { vocabRows: [{ id: 'a' }], classRows: [{ id: 'q1' }] } };
+      for (const cls of ['SignalType', 'RelationshipType', 'Topic']) {
+        const evaluate = at(['dna'], { dna: `model|${cls}` }, data);
+        expect(evaluate(queries.vocabRows.when)).toBe(true);
+        expect(evaluate(queries.classRows.when)).toBe(false);
+        expect(evaluate({ $: CLASS_ROWS })).toEqual(data.local.vocabRows);
+      }
+      expect(queries.vocabRows.order).toEqual({ name: 'asc' });
+      expect(queries.vocabRows).not.toHaveProperty('limit');
+      expect(queries.classRows).toMatchObject({ order: { createdAt: 'desc' }, limit: 100 });
+      expect(at(['dna'], { dna: 'model|Question' }, data)(queries.vocabRows.when)).toBe(false);
+      expect(at(['dna'], { dna: 'model|TaskState' }, data)(queries.vocabRows.when)).toBe(false);
+    });
+
+    it('says 100+ in the heading when a limited read is full, and still names a record beyond it', () => {
+      const rows = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `q${i}`, name: `Q${i}` }));
+      const count = (n: number, dna = 'model|Question') =>
+        at(['dna'], { dna }, { local: { classRows: rows(n), vocabRows: rows(n) } })({ $: CLASS_ROWS_COUNT });
+      expect(count(100)).toBe('100+');
+      expect(count(40)).toBe(40);
+      expect(count(150, 'model|Topic')).toBe(150);
+
+      const crumb = dnaCrumbs()[2].label as { $: string };
+      const data = (record: unknown[]) => ({
+        recordStore: { displays: { Question: { title: 'name', label: 'Question' } } },
+        local: { classRows: rows(100), classRecord: record },
+      });
+      const at500 = { dna: 'model|Question|q500' };
+      expect(at(['dna'], at500, data([{ id: 'q500', name: 'Far' }]))(crumb)).toBe('Far');
+      expect(at(['dna'], at500, data([]))(crumb)).toBe('Record');
+      expect(at(['dna'], { dna: 'model|Question|q3' }, data([]))(crumb)).toBe('Q3');
+      const query = (spaceRoutes.find((route) => route.path === '/dna')!.$queries as Record<string, { when: unknown }>)
+        .classRecord;
+      expect(at(['dna'], at500, data([]))(query.when)).toBe(true);
+      expect(at(['dna'], { dna: 'model|Question' }, data([]))(query.when)).toBe(false);
     });
 
     /*
@@ -539,7 +861,8 @@ describe('the Coasys cartridge', () => {
         trail(bar(node), at(path, params, { shellStore: { collapsedLanes: [] }, ...extra }));
       const route = (path: string) => spaceRoutes.find((r) => r.path === path)! as SchemaNode;
       const dnaData = {
-        local: { signalTypes: [{ id: 'like', name: 'Like' }], relationshipTypes: [], topics: [] },
+        local: { vocabRows: [{ id: 'like', name: 'Like' }] },
+        recordStore: { displays: { SignalType: { label: 'Signal type', title: 'name' } } },
         spaceStore: { spacePath: '/space/s1', taskStates: [], involvementTypes: [], policy: { sentences: [] } },
       };
 
@@ -560,17 +883,22 @@ describe('the Coasys cartridge', () => {
         expect(trailAt(route('/calls'), ['calls'], {})).toEqual([{ label: 'Calls' }]);
       });
 
-      it('goes back up through Social DNA, a kind of it and a definition, on its page or the canvas', () => {
-        expect(trailAt(route('/dna'), ['dna'], { dna: 'signal|like' }, dnaData)).toEqual([
+      it('goes back up through Social DNA, a class and one of its records, on its page or the canvas', () => {
+        expect(trailAt(route('/dna'), ['dna'], { dna: 'model|SignalType|like' }, dnaData)).toEqual([
           { label: 'Social DNA', to: '/space/s1/dna?dna=all' },
-          { label: 'Signal types', to: '/space/s1/dna?dna=signal' },
+          { label: 'Signal types', to: '/space/s1/dna?dna=model%7CSignalType' },
           { label: 'Like' },
+        ]);
+        expect(trailAt(route('/dna'), ['dna'], { dna: 'policy|A rule.' }, dnaData)).toEqual([
+          { label: 'Social DNA', to: '/space/s1/dna?dna=all' },
+          { label: 'Policy', to: '/space/s1/dna?dna=policy' },
+          { label: 'A rule.' },
         ]);
         expect(trailAt(route('/dna'), ['dna'], { dna: 'all' }, dnaData)).toEqual([{ label: 'Social DNA' }]);
         // On the canvas the same steps, which stay on it.
-        expect(trailAt(canvasPane, [], { view: 'canvas', dna: 'signal|like' }, dnaData)).toEqual([
+        expect(trailAt(canvasPane, [], { view: 'canvas', dna: 'model|SignalType|like' }, dnaData)).toEqual([
           { label: 'Social DNA', to: '?dna=all' },
-          { label: 'Signal types', to: '?dna=signal' },
+          { label: 'Signal types', to: '?dna=model|SignalType' },
           { label: 'Like' },
         ]);
         expect(
@@ -606,6 +934,101 @@ describe('the Coasys cartridge', () => {
         ['settings', 'shell', 0, false],
       ]);
     });
+
+    /*
+      Reading the canvas as a tree — the workshop's second mode, shared through the kit. The same
+      failures worth guarding: a mode nothing on screen can turn off, an order the picker names and
+      the layout does not obey, a switch that remounts the graph and loses every placement.
+    */
+    describe('the canvas’s tree', () => {
+      const pane = JSON.stringify(canvasPane);
+      const graph = findNode(canvasPane, (n) => n.type === 'GraphView')!;
+      const graphJson = JSON.stringify(graph);
+
+      it('keeps the mode, the spine and the order in the address, so a link carries the reading', () => {
+        expect(pane).toContain('"treeMode":{"type":"boolean","initial":false,"syncParam":{"name":"tree","push":true}}');
+        expect(pane).toContain('"spine":{"type":"string","initial":"","syncParam":"spine"}');
+        expect(pane).toContain('"order":{"type":"string","initial":"manual","syncParam":"order"}');
+      });
+
+      it('puts the only way out of the mode on screen rather than in a panel', () => {
+        // A panel can be closed; a state the layout obeys has to be visible and reversible.
+        expect(pane).toContain('"$toggleLocal":"treeMode"');
+        expect(pane).toContain('"position":"absolute"');
+      });
+
+      it('swaps the layout rather than the graph, so a switch cannot cost a placement', () => {
+        /*
+          One `layout` prop holding both readings: two GraphViews would unmount one and mount the
+          other, throwing away the selection, the camera and every card's identity — and with them
+          the placements, which the freeform reading is the keeper of. The vocabulary map beside it
+          is a different graph with a layout of its own.
+        */
+        expect(graphJson.match(/"layout":/g)).toHaveLength(1);
+        // The spine is the Workshop's, read once by `treeSpine` — nothing here decodes its spelling.
+        expect(graphJson).toContain("{ type: 'forest', options: { spine: treeSpine({ value: local.spine }).selector");
+        expect(graphJson).not.toContain('startsWith(local.spine');
+        expect(graphJson).not.toContain('split(local.spine');
+        // Freeform as it was: manual, parked at the canvas's own card size. Nothing about the
+        // positions people arranged is read by the tree, so switching back finds every card.
+        expect(graphJson).toContain("{ type: 'manual', options: { size: { width: 200, height: 140 }");
+      });
+
+      it('swaps the gesture rather than listing both, and keeps writing coordinates only freeform', () => {
+        expect(graphJson).toContain("type: 'arrange-nodes'");
+        expect(graphJson).toContain("{ type: 'drag-node', options: { pin: true } }");
+        // `select` ahead of both: it does not claim the press, and needs to see it.
+        expect(graphJson).toContain("'select', { type: 'arrange-nodes'");
+        // A drag in the tree writes the structure the layout reads, not a position it then erases.
+        expect(graphJson).toContain('"onNodeArrange":{"$invoke":"recordStore.arrangeOnTree"');
+        expect(graphJson).toContain('{"$":"treeSpine({ value: local.spine })"}');
+        expect(graphJson).toContain('"onNodeDragEnd":{"$invoke":"recordStore.dragOnCanvas"');
+      });
+
+      it('gives every card one box in the tree, and its own on the canvas', () => {
+        expect(graphJson).toContain("local.treeMode ? ((local.cardSize == 'sm'");
+        expect(graphJson).toContain("{ from: 'data.canvasWidth' }");
+      });
+
+      it('draws the connections it is not following, faintly', () => {
+        expect(graphJson).toContain('{ when: treeSpine({ value: local.spine }).offSpine,');
+        expect(graphJson).toContain('opacity: 0.25');
+        expect(graphJson).toContain("sourceAnchor: 's', targetAnchor: 'n'");
+      });
+
+      it('follows the models’ own relations in the tree, as the spine picker offers them', () => {
+        /*
+          The picker lists `rel:Class.prop` spines and the layout reads `data.relation`, but those
+          edges exist only when the seed is asked for them. Without `relations` a model-relation
+          spine drew every card in the unconnected zone.
+        */
+        expect(graphJson).toContain(
+          '"relations":{"$":"local.treeMode && treeSpine({ value: local.spine }).relations ? { children: true } : false"}',
+        );
+      });
+
+      it('fetches the reactions whenever the tree is up, so ordering by one is a re-sort and not a reload', () => {
+        expect(graphJson).toContain('"weigh":{"$":"(local.treeMode || local.order == \'signal\') && (');
+      });
+
+      it('hides the strip while the Social DNA map covers the canvas', () => {
+        // The strip sits under the `$if` that reads "not on the map".
+        const notOnMap = findNode(canvasPane, (n) => {
+          const condition = (n.props as { condition?: { $?: unknown } } | undefined)?.condition?.$;
+          return n.type === '$if' && condition === "!((routeStore.params.view == 'canvas') && routeStore.params.dna)";
+        });
+        expect(JSON.stringify(notOnMap)).toContain('"$toggleLocal":"treeMode"');
+      });
+
+      it('offers the spine and the order in the strip', () => {
+        expect(pane).toContain('"placeholder":"Any connection"');
+        // The kinds plus the space's model relations, the same list the Workshop's strip offers.
+        expect(pane).toContain('treeSpines({ kinds: local.relationshipKinds, shapes: shapeStore.spaceShapes');
+        expect(pane).toContain('"value":"manual"');
+        expect(pane).toContain('"value":"date"');
+        expect(pane).toContain('"value":"newest"');
+      });
+    });
   });
 });
 
@@ -631,6 +1054,28 @@ function findNode(root: unknown, match: (node: { type?: string; props?: unknown 
   return walk(root);
 }
 
+/** The node `match` accepts plus every ancestor above it, root first — `findNode` with a lineage. */
+function pathTo(root: unknown, match: (node: { type?: string; props?: unknown }) => boolean) {
+  const walk = (node: unknown): { type?: string; props?: unknown }[] | undefined => {
+    if (!node || typeof node !== 'object') return undefined;
+    if (Array.isArray(node)) {
+      for (const child of node) {
+        const found = walk(child);
+        if (found) return found;
+      }
+      return undefined;
+    }
+    const n = node as { type?: string; props?: unknown };
+    if (match(n)) return [n];
+    for (const value of Object.values(node)) {
+      const found = walk(value);
+      if (found) return [n, ...found];
+    }
+    return undefined;
+  };
+  return walk(root);
+}
+
 /** Every node under `root` that `match` accepts, depth first, including those inside one that matched. */
 function findAll(root: unknown, match: (node: { type?: string; props?: unknown }) => boolean) {
   const found: { type?: string; props?: unknown }[] = [];
@@ -643,6 +1088,66 @@ function findAll(root: unknown, match: (node: { type?: string; props?: unknown }
   walk(root);
   return found;
 }
+
+/*
+  Another app's classes, as Social DNA lists them: one template expression over the classes the space
+  carries, rather than a store member grouping them — WE's plumbing is the one value it reads that a
+  template could not name for itself.
+*/
+describe("Social DNA's classes from other apps", () => {
+  const evaluate = (source: string) => {
+    const roots: Record<string, unknown> = {
+      datasetStore: {
+        // By name, as the store publishes them.
+        currentDatasetEntities: [
+          { name: 'Channel', targetClass: 'flux://Channel' },
+          { name: 'Nest', targetClass: 'birds://Nest' },
+          { name: 'Nest', targetClass: 'birds://Nest' },
+          { name: 'Question', targetClass: 'conv://Question' },
+          { name: 'Sighting', targetClass: 'birds://Sighting' },
+          { name: 'Space', targetClass: 'old://Space' },
+          { name: 'Topic', targetClass: 'old://Topic' },
+        ],
+      },
+      recordStore: {
+        creatableEntities: [
+          { value: 'Sighting', label: 'Sighting', icon: 'binoculars', group: 'This space' },
+          { value: 'TaskBlock', label: 'Task', icon: 'check-square', group: 'Built in' },
+        ],
+        plumbingClasses: ['Space', 'SignalType'],
+        displays: { Channel: { label: 'Channel' }, Question: { label: 'Question' } },
+      },
+    };
+    return evaluateExpression(parseExpression(source), {
+      root: (name) => ({ bound: name in roots, value: roots[name] }),
+      call: (name, args) =>
+        listFunctions()
+          .find((f) => f.name === name)
+          ?.impl(args, { context: {}, stores: {} }),
+    });
+  };
+
+  it('lists them flat, in the order the store gives them, each with its namespace as secondary text', () => {
+    expect(evaluate(OTHER_CLASSES)).toEqual([
+      { id: 'Channel', label: 'Channel', icon: 'cube', namespace: 'flux://' },
+      { id: 'Nest', label: 'Nest', icon: 'cube', namespace: 'birds://' },
+      { id: 'Question', label: 'Question', icon: 'cube', namespace: 'conv://' },
+    ]);
+  });
+
+  it("reads the same names as the vocabulary map's other bucket, and WE's vocabulary is the kit's", () => {
+    expect(WE_VOCABULARY.map((c) => c.name)).toEqual(Object.keys(VOCABULARY_OPENS));
+    expect(OTHER_CLASSES.startsWith(OTHER_APP_CLASS_NAMES)).toBe(true);
+  });
+
+  it("leaves WE's plumbing out, and lists a class once — not again where the space's or WE's has its name", () => {
+    const names = (evaluate(OTHER_CLASSES) as { id: string }[]).map((c) => c.id);
+    expect(names).not.toContain('Space');
+    expect(names).not.toContain('Topic');
+    expect(names).not.toContain('Sighting');
+    expect(names.filter((n) => n === 'Nest')).toHaveLength(1);
+  });
+});
 
 describe('the lookup that read every tool as available', () => {
   /*
@@ -689,5 +1194,140 @@ describe('the cartridges as bundles', () => {
     const shell = fieldGuideBundle.templates!.find((template) => template.id === 'shell')!;
     expect(shell.meta.requires?.modules).toContain('globe');
     expect(JSON.stringify(fieldGuideBundle)).not.toContain('Levels Naturalists');
+  });
+});
+
+describe('the Coasys space chat: one mount for the channel on screen', () => {
+  /*
+    A recorded cold open, at General's own address (`?channel=<root>`), sent the sub-channel chat's
+    reads — the channel record and the transcript's lines — then cancelled them 135 ms later and sent
+    the Feed's. `root` is '' until the space's collection has been read, so for that moment General's
+    address compared unequal to it and the view drew General as a sub-channel. The renderer is walked
+    here as it walks the route: an `$if` mounts the branch its condition picks, a query runs when its
+    `when` holds.
+  */
+  const FEED = 'ad4m://obj/feed';
+  const chatRoute = spaceRoutes.find((route) => route.path === '/')!;
+
+  const evaluate = (source: string, spaceStore: Record<string, unknown>) =>
+    evaluateExpression(parseExpression(source), {
+      root: (name) => ({
+        bound: true,
+        value: {
+          routeStore: { params: { channel: FEED }, templateSegments: [] },
+          spaceStore,
+          local: {},
+          modules: { transcribe: {}, call: {} },
+        }[name],
+      }),
+      call: (name, args) =>
+        listFunctions()
+          .find((f) => f.name === name)
+          ?.impl(args, { context: {}, stores: {} }),
+    });
+
+  /** The host parts the route mounts, and the queries it runs, for one state of the space store. */
+  function mounted(spaceStore: Record<string, unknown>) {
+    const parts: string[] = [];
+    const icons: unknown[] = [];
+    const texts: string[] = [];
+    const walk = (node: unknown): void => {
+      if (typeof node === 'string') return void texts.push(node);
+      if (!node || typeof node !== 'object') return;
+      if (Array.isArray(node)) return node.forEach(walk);
+      const n = node as { type?: string; props?: Record<string, unknown>; children?: unknown };
+      if (n.type === 'we-icon') {
+        const name = n.props?.name as string | { $: string } | undefined;
+        icons.push(typeof name === 'object' && name ? evaluate(name.$, spaceStore) : name);
+      }
+      if (n.type === '$if') {
+        const props = n.props as { condition: { $: string }; then?: unknown; else?: unknown };
+        return walk(evaluate(props.condition.$, spaceStore) ? props.then : props.else);
+      }
+      if (n.type === '$part') parts.push((n.props as { id: string }).id);
+      walk(n.children);
+    };
+    walk(chatRoute.children);
+    const queries = Object.entries(chatRoute.$queries ?? {})
+      .filter(([, q]) => {
+        const when = (q as { when?: { $: string } }).when;
+        return !when || Boolean(evaluate(when.$, spaceStore));
+      })
+      .map(([name]) => name);
+    return { parts, queries, icons, texts };
+  }
+
+  it('mounts nothing for the channel until the root is known, then the Feed alone', () => {
+    const before = mounted({ root: '', rootLoaded: false });
+    expect(before.parts).toEqual([]);
+    expect(before.queries).not.toContain('channelRecord');
+
+    const after = mounted({ root: FEED, rootLoaded: true });
+    expect(after.parts).toEqual(['feed.feedView']);
+    expect(after.queries).not.toContain('channelRecord');
+  });
+
+  it('draws the bar’s glyph and its way back to Channels only once the root is known', () => {
+    /*
+      The same moment as above, in the bar: General's address compared unequal to an unread root, so
+      the bar drew a channel's `hash` and a "Channels" crumb, then swapped both for the Feed's own.
+    */
+    const before = mounted({ root: '', rootLoaded: false });
+    expect(before.icons).not.toContain('hash');
+    expect(before.icons).not.toContain('chats-circle');
+    expect(before.texts).not.toContain('Channels');
+
+    const general = mounted({ root: FEED, rootLoaded: true });
+    expect(general.icons).toContain('chats-circle');
+    expect(general.texts).not.toContain('Channels');
+
+    const sub = mounted({ root: 'ad4m://obj/other-root', rootLoaded: true });
+    expect(sub.icons).toContain('hash');
+    expect(sub.texts).toContain('Channels');
+  });
+
+  it('still opens a real sub-channel as chat once the root is known', () => {
+    const sub = mounted({ root: 'ad4m://obj/other-root', rootLoaded: true });
+    expect(sub.parts).toEqual(['transcribe.transcriptFeed']);
+    expect(sub.queries).toContain('channelRecord');
+  });
+});
+
+describe('the Coasys space’s lists of calls', () => {
+  /*
+    A recorded cold open read the space's calls whole three times over — the sidebar's twelve, and
+    one more for the empty-space prompt — and a whole call carries the id of every line said in it.
+    The lists draw a call's id, title and time; the prompt only asks whether there is one.
+  */
+  const callQueries = (node: unknown, found: Record<string, unknown>[] = []): Record<string, unknown>[] => {
+    if (!node || typeof node !== 'object') return found;
+    if (Array.isArray(node)) {
+      for (const child of node) callQueries(child, found);
+      return found;
+    }
+    const n = node as Record<string, unknown>;
+    if (n.entity === 'CollectionBlock' && (n.where as { kind?: unknown } | undefined)?.kind === 'call') found.push(n);
+    for (const value of Object.values(n)) callQueries(value, found);
+    return found;
+  };
+
+  it('asks for only the fields a call row draws', () => {
+    const queries = callQueries([treeSection, spaceRoutes]);
+    expect(queries.length).toBeGreaterThanOrEqual(3);
+    for (const query of queries) expect(query.select).toEqual(['title', 'createdAt']);
+  });
+
+  it('asks the empty-space prompt’s question as the sidebar asks it, so the two are one subscription', () => {
+    const chatRoute = spaceRoutes.find((route) => route.path === '/')!;
+    // The renderer shares a subscription between nodes asking the same question, keyed by it as JSON.
+    expect(JSON.stringify(chatRoute.$queries?.anyCall)).toBe(JSON.stringify(treeSection.$queries?.calls));
+  });
+
+  it('reads the sidebar’s calls once the first screen is up, not beside the Feed’s first page', () => {
+    /*
+      The Feed reads its own calls for its window; the sidebar's list and the empty-space prompt are
+      not on its first page, and the executor answers one read at a time.
+    */
+    expect(treeSection.$queries?.calls).toMatchObject({ when: { $: 'spaceStore.firstScreenOpen' } });
   });
 });

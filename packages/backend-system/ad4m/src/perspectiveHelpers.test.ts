@@ -14,7 +14,7 @@ vi.mock('@we/entities', () => ({
   },
 }));
 
-import { getForeignShacl } from './perspectiveHelpers';
+import { buildEntityManifest, getForeignShacl } from './perspectiveHelpers';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -201,5 +201,173 @@ describe('getForeignShacl', () => {
 
     expect((await getForeignShacl(perspective)).map((s) => s.name)).toEqual(['Task']);
     expect(shapesRead(perspective)).toEqual(['Task']);
+  });
+});
+
+describe('buildEntityManifest', () => {
+  it('reads a relation target declared only as a target class name', () => {
+    // The SDK's SHACLShape lifts `sh:class` into `p.class` but a model's own
+    // `target_class_name` into `p.targetClassName` — a shape written by the model API, rather than
+    // by hand, declares the second and no `sh:class`. Read only the first and every extracted
+    // model relation pointed at nothing.
+    const shape = {
+      nodeShapeUri: 'TopicShape',
+      targetClass: 'discussion://Topic',
+      properties: [
+        {
+          name: 'about',
+          path: 'discussion://about',
+          nodeKind: 'IRI',
+          relationKind: 'hasOne',
+          targetClassName: 'DiscussionTopic',
+          minCount: 0,
+        },
+      ],
+      parentShapes: [],
+    } as unknown as SHACLShape;
+
+    const [entry] = buildEntityManifest([{ name: 'Position', shape }]);
+    expect(entry.properties[0]).toMatchObject({ name: 'about', type: 'uri', relatedEntity: 'DiscussionTopic' });
+  });
+
+  it('prefers target_class_name over sh:class when both are declared (decorator classes write both)', () => {
+    const shape = {
+      nodeShapeUri: 'TopicShape',
+      targetClass: 'discussion://Topic',
+      properties: [
+        {
+          name: 'about',
+          path: 'discussion://about',
+          nodeKind: 'IRI',
+          relationKind: 'hasOne',
+          class: 'discussion://DiscussionTopicShape',
+          targetClassName: 'DiscussionTopic',
+          minCount: 0,
+        },
+      ],
+      parentShapes: [],
+    } as unknown as SHACLShape;
+
+    const [entry] = buildEntityManifest([{ name: 'Position', shape }]);
+    // `sh:class` is the target's *shape* URI (`…Shape`); the class name is `targetClassName`.
+    expect(entry.properties[0].relatedEntity).toBe('DiscussionTopic');
+  });
+
+  it('names a reverse relation’s forward from the predicate they share', () => {
+    /*
+      SHACL says `belongsTo` — which end owns the link — but never *which property* is its
+      forward. It does not need to: the two read one predicate from opposite ends, so the
+      pairing is recoverable here, and `reverseOf` is what every consumer — the graph's
+      direction, a tree move's writable side — asks for.
+    */
+    const post = {
+      nodeShapeUri: 'PostShape',
+      targetClass: 'discuss://Post',
+      properties: [
+        {
+          name: 'comments',
+          path: 'discuss://comments',
+          nodeKind: 'IRI',
+          relationKind: 'hasMany',
+          targetClassName: 'Comment',
+        },
+      ],
+      parentShapes: [],
+    } as unknown as SHACLShape;
+    const comment = {
+      nodeShapeUri: 'CommentShape',
+      targetClass: 'discuss://Comment',
+      properties: [
+        {
+          name: 'post',
+          path: 'discuss://comments',
+          nodeKind: 'IRI',
+          relationKind: 'belongsToOne',
+          targetClassName: 'Post',
+        },
+      ],
+      parentShapes: [],
+    } as unknown as SHACLShape;
+
+    const entries = buildEntityManifest([
+      { name: 'Post', shape: post },
+      { name: 'Comment', shape: comment },
+    ]);
+
+    const backPointer = entries.find((e) => e.name === 'Comment')!.properties[0];
+    expect(backPointer).toMatchObject({ name: 'post', reverse: true, reverseOf: 'comments' });
+  });
+
+  it('pairs a reverse with the forward that points back at its class, among forwards over one predicate', () => {
+    // `pinned` is declared first and shares the predicate, but points at Pin; only `comments` points at Comment.
+    const board = {
+      nodeShapeUri: 'BoardShape',
+      targetClass: 'discuss://Board',
+      properties: [
+        {
+          name: 'pinned',
+          path: 'discuss://has_child',
+          nodeKind: 'IRI',
+          relationKind: 'hasMany',
+          targetClassName: 'Pin',
+        },
+        {
+          name: 'comments',
+          path: 'discuss://has_child',
+          nodeKind: 'IRI',
+          relationKind: 'hasMany',
+          targetClassName: 'Comment',
+        },
+      ],
+      parentShapes: [],
+    } as unknown as SHACLShape;
+    const comment = {
+      nodeShapeUri: 'CommentShape',
+      targetClass: 'discuss://Comment',
+      properties: [
+        {
+          name: 'board',
+          path: 'discuss://has_child',
+          nodeKind: 'IRI',
+          relationKind: 'belongsToOne',
+          targetClassName: 'Board',
+        },
+      ],
+      parentShapes: [],
+    } as unknown as SHACLShape;
+
+    const entries = buildEntityManifest([
+      { name: 'Board', shape: board },
+      { name: 'Comment', shape: comment },
+    ]);
+    expect(entries.find((e) => e.name === 'Comment')!.properties[0]).toMatchObject({ reverseOf: 'comments' });
+  });
+
+  it('falls back to the predicate when no forward names the reverse’s class', () => {
+    const board = {
+      nodeShapeUri: 'BoardShape',
+      targetClass: 'discuss://Board',
+      properties: [{ name: 'items', path: 'discuss://has_child', nodeKind: 'IRI', relationKind: 'hasMany' }],
+      parentShapes: [],
+    } as unknown as SHACLShape;
+    const comment = {
+      nodeShapeUri: 'CommentShape',
+      targetClass: 'discuss://Comment',
+      properties: [
+        {
+          name: 'board',
+          path: 'discuss://has_child',
+          nodeKind: 'IRI',
+          relationKind: 'belongsToOne',
+          targetClassName: 'Board',
+        },
+      ],
+      parentShapes: [],
+    } as unknown as SHACLShape;
+    const entries = buildEntityManifest([
+      { name: 'Board', shape: board },
+      { name: 'Comment', shape: comment },
+    ]);
+    expect(entries.find((e) => e.name === 'Comment')!.properties[0]).toMatchObject({ reverseOf: 'items' });
   });
 });

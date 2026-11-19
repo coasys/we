@@ -13,7 +13,12 @@ import { appSpaceTemplate, followedTemplateId } from '@shared/bundles/display';
 import { displaySourceOf, readInstalledBundles } from '@shared/bundles/installedBundles';
 import { bootScreenTemplate, placesCredentialField } from '@shared/bundles/judgeBundle';
 import { offeredInPickers } from '@shared/devOnlyOffers';
-import { appTemplateRegistry, DEFAULT_APP_ID, resolveAppTemplate } from '@shared/registries/appTemplates';
+import {
+  appChoiceToKeep,
+  appTemplateRegistry,
+  DEFAULT_APP_ID,
+  resolveAppTemplate,
+} from '@shared/registries/appTemplates';
 import { withDerivedIds } from '@shared/registries/derivedIds';
 import { reservedTemplateIds } from '@shared/registries/reservedTemplateIds';
 import { seedBundleAppId, seedBundlePages, seedBundlePieces } from '@shared/registries/seedBundles';
@@ -73,6 +78,7 @@ import {
   templateChanges,
 } from '../../../shared/templateSync';
 import { type AppDataset, canonicalSpaceId, useDatasetStore } from './DatasetStore';
+import { latestPerSpace } from './latestPerSpace';
 import { useRouteStore } from './RouteStore';
 import { useSessionStore } from './SessionStore';
 import { createSpaceRecordWait } from './spaceRecordWait';
@@ -575,17 +581,19 @@ export function TemplateStoreProvider(props: ParentProps) {
   /*
     The app this agent is in: the template WE's own chrome is drawn from.
 
-    Their own choice, else the deployment's (the seed's `host.ui.app`), else WE's. Only WE's apps and
+    Their own choice, else the deployment's (the seed's `host.ui.app`, else its first bundle's app),
+    else WE's. Only WE's apps and
     the agent's own copies are honoured — an app is drawn with the chrome tier, so one from a
     stranger waits for an install that asks first. Safe mode always draws WE's, so an app that hides
     every way out is never the only way in. While the app is being edited, its working copy is drawn.
   */
   const ownApps = () => allTemplates().filter((t) => isApp(t) && !t._fromSpace && !!t.id);
+  const deploymentAppId = () => getSeed().host?.ui?.app || seedBundleAppId;
   const appTemplate = createMemo<TemplateSchema>(() => {
     const found = resolveAppTemplate({
       safe: safe.on,
       chosen: settingOrRemembered('appTemplateId'),
-      seed: getSeed().host?.ui?.app || seedBundleAppId,
+      seed: deploymentAppId(),
       own: ownApps(),
     });
     return draftOf(found) ?? found;
@@ -614,7 +622,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     ]),
   );
   async function setAppTemplate(id: string): Promise<boolean> {
-    const saved = await datasetStore.updateAgentSettings({ appTemplateId: id === DEFAULT_APP_ID ? '' : id });
+    const saved = await datasetStore.updateAgentSettings({ appTemplateId: appChoiceToKeep(id, deploymentAppId()) });
     /*
       Entering an app adopts its look: the first theme it names becomes the agent's default, at the
       moment they chose the app. A choice they make afterwards wins, as any later choice does — this
@@ -906,11 +914,23 @@ export function TemplateStoreProvider(props: ParentProps) {
     setSpaceTemplateIdSet(read.ids);
   }
 
+  /**
+   * Which space's templates were last asked to be put in the lists. A read that was started for one
+   * space and answers after another's was asked for is cached but not placed — placed, it would
+   * replace the newer space's templates with its own, and a choice for the newer space naming an id
+   * both define would be applied from the wrong one. It is a turn count rather than "is the dataset
+   * current" because a preload puts a space's templates in place *before* the switch to it.
+   */
+  let spaceTemplateTurn = 0;
+
   /** Load templates from a space perspective, merge into allTemplates, and populate the cache */
   async function loadSpaceTemplates(dataset: AppDataset): Promise<void> {
+    const turn = ++spaceTemplateTurn;
     clearSpaceTemplates();
     try {
-      placeSpaceTemplates(dataset, await readSpaceTemplates(dataset));
+      const read = await readSpaceTemplates(dataset);
+      if (turn === spaceTemplateTurn) placeSpaceTemplates(dataset, read);
+      else spaceTemplateCache.set(dataset.id, read);
     } catch (error) {
       console.error('TemplateStore: loadSpaceTemplates error', error);
     }
@@ -943,6 +963,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     if (inFlight) return inFlight;
     const cached = spaceTemplateCache.get(dataset.id);
     if (cached) {
+      spaceTemplateTurn++;
       clearSpaceTemplates();
       if (cached.schemas.length > 0) {
         cached.models.forEach((model, id) => spaceTemplateMap.set(id, model));
@@ -1154,6 +1175,17 @@ export function TemplateStoreProvider(props: ParentProps) {
     await chooseSpaceTemplate(perspective, fallback, options);
   }
 
+  /*
+    Chooses overlap: a republish for a failed default save starts another choose while an earlier
+    one is still inside the preference read, and the earlier one's record — read before the
+    rollback landed — must not paint over the newer one's. `latest` makes the newest choose the
+    only one still current after the await, and the record is re-read after it, so even the newest
+    answers with what the record says now rather than what it said when the choose began. Kept per
+    space: a choose still reading for the space just left must not stale the one for the space the
+    user is in now.
+  */
+  const chooseLatestFor = latestPerSpace();
+
   /**
    * Which template this space shows, from what has already been read — its record, this agent's
    * override, the templates loaded. The half of `applySpaceTemplate` after the preload, so the
@@ -1164,8 +1196,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     fallback?: string,
     options: { shownEarly?: boolean } = {},
   ): Promise<void> {
-    // Use mySpaces cache for defaultTemplateId — avoids a redundant Space.findOne round-trip
-    const cachedSpace = resolveSpaceFromPerspective(perspective);
+    const still = chooseLatestFor(perspective.id).begin();
 
     // Read per-space preferences from we-root directly rather than through SpaceStore, which mounts
     // below this one — the same reason `provideSpaceLookup` exists.
@@ -1173,6 +1204,12 @@ export function TemplateStoreProvider(props: ParentProps) {
     const templateOverride = rootPerspective
       ? await migrateAndReadTemplateOverride(rootPerspective, perspective)
       : FOLLOW_SPACE;
+    if (!still()) return;
+
+    // Use mySpaces cache for defaultTemplateId — avoids a redundant Space.findOne round-trip. Read
+    // after the await: the record can have changed under the wait — a save rolled back republishes
+    // the stored id — and this paints what it says now.
+    const cachedSpace = resolveSpaceFromPerspective(perspective);
 
     // The override names *which* template this agent wants here, so it answers on its own —
     // including when the space set no default at all, which the community-default path cannot act
@@ -1425,9 +1462,10 @@ export function TemplateStoreProvider(props: ParentProps) {
     });
 
     // An app of the agent's own is deleted from the same library. If it was the app they are in, they
-    // are back in WE's: the chrome already falls back once the record is gone, and the choice is put
-    // back with it, so nothing goes on naming an app that no longer exists.
-    if (datasetStore.agentSettings()?.appTemplateId === templateId) await setAppTemplate(DEFAULT_APP_ID);
+    // are back in the deployment's: the choice is cleared with the record, so nothing goes on naming an
+    // app that no longer exists.
+    if (datasetStore.agentSettings()?.appTemplateId === templateId)
+      await setAppTemplate(deploymentAppId() || DEFAULT_APP_ID);
 
     // If we deleted the current template, switch to the default
     if (currentTemplate.id === templateId) {

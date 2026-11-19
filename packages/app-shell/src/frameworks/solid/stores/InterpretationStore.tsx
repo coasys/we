@@ -25,6 +25,7 @@
 import { watchPassRecord } from '@shared/interpretation/activityView';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { holdSubscription } from '@shared/utils';
+import { firstScreen } from '@solid/firstScreen';
 import { useDatasetStore } from '@solid/stores/DatasetStore';
 import { useProfileStore } from '@solid/stores/ProfileStore';
 import { useSessionStore } from '@solid/stores/SessionStore';
@@ -36,6 +37,7 @@ import {
   displayName,
   INTERPRETATION_ACTIVITY_CHANNEL,
   isSettled,
+  trace,
 } from '@we/backend-shared';
 import {
   type Accessor,
@@ -224,6 +226,8 @@ export function InterpretationStoreProvider(props: ParentProps) {
   const [proposalsRevision, setProposalsRevision] = createSignal(0);
 
   let relay: InterpretationRelay | null = null;
+  /** The space and connection the revision was last bumped for — see the effect below. */
+  let revisedFor: { handle: unknown; ports: unknown } | null = null;
 
   /*
     One relay and one subscription per space, torn down and rebuilt when the space changes.
@@ -245,9 +249,19 @@ export function InterpretationStoreProvider(props: ParentProps) {
     setCapable(true);
     // The suggestions on screen are a different set in a different space, so say so: a surface that
     // asked about the space on screen asks again rather than marking this one's cards from the last.
-    setProposalsRevision((n) => n + 1);
+    // Only for a new space or connection: this effect also re-runs when the first screen opens, and
+    // a bump then made the Feed read its whole window again for suggestions that had not moved.
+    if (revisedFor?.handle !== handle || revisedFor?.ports !== ports) {
+      revisedFor = { handle, ports };
+      setProposalsRevision((n) => n + 1);
+    }
 
-    if (!handle || !ports?.interpretation) return;
+    /*
+      Not before the first screen is up (`shared/firstScreen.ts`): the availability probe and the
+      staged-suggestion watch are the largest reads at boot, and nothing on the first page uses them.
+      Started later, this effect builds for the space on screen then, the same as after a switch.
+    */
+    if (!handle || !ports?.interpretation || !firstScreen.open()) return;
 
     /*
       Ask the executor what it can do, before anything offers it.
@@ -287,19 +301,17 @@ export function InterpretationStoreProvider(props: ParentProps) {
     const unwatch = local.onChange(sync);
 
     /*
-      Write down a watched pass as it settles, so the history holds both kinds.
+      Log a watched pass as it settles, through the `interpretation` trace scope.
 
-      What makes a row worth writing is `watchPassRecord`, next to the other rule about this feed
-      that was worth deciding away from a store. What is here is the two things only a store can do:
-      find the merged row, and make the write happen once.
+      A log line, not a record in the space: a standing watch runs on every batch of every watched
+      conversation, and a record per pass filled the space with links that every peer synced. The
+      scope is on by default in a development build and off in a production build (see
+      `installConsoleTrace`); on the desktop app the lines go into the executor log.
 
       The **merged** row, because the exchange and the outcome arrive on different events —
       `llmRequestSent` carries the prompt, `processed` carries the ids, and several steps separate
-      them. Reading the settling event alone stored every watched pass with an empty prompt and
-      response, which is the one thing this was added to keep. `mine` narrows the lookup because a
-      peer's row can carry the same pass id and is kept under its own key.
-
-      `written` is the guard that makes it once: a settled row goes on receiving updates.
+      them. `mine` narrows the lookup because a peer's row can carry the same pass id and is kept
+      under its own key. `written` makes it once: a settled row goes on receiving updates.
     */
     const written = new Set<string>();
     const record = (activity: InterpretationActivity) => {
@@ -308,10 +320,14 @@ export function InterpretationStoreProvider(props: ParentProps) {
       const fields = watchPassRecord({ ...merged, settled: isSettled(merged.phase) });
       if (!fields) return;
       written.add(activity.passId);
-      void datasetStore.recordWatchPass(fields).catch((error) => {
-        // The pass happened either way; a lost note about it is a gap in a list, not a failure
-        // worth interrupting anybody over. `recordPass` logs its own reason.
-        console.warn('[interpretation] could not write down a watched pass', error);
+      // Lengths, not text: the prompt is the conversation the pass read, the response and a
+      // failure's reason can quote it, and a log file is what gets attached to a bug report.
+      const { prompt, response, error, ...outcome } = fields;
+      trace('interpretation', 'pass', {
+        ...outcome,
+        promptChars: prompt?.length ?? 0,
+        responseChars: response?.length ?? 0,
+        ...(error === undefined ? {} : { errorChars: error.length }),
       });
     };
 
