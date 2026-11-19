@@ -13,17 +13,15 @@ import {
   treeRow,
 } from '@we/template-kit';
 
-import { DNA_LISTS, DNA_QUERIES, type DnaList, POLICY, POLICY_RULES } from './dna.ts';
+import { CLASS_COUNT, CLASS_GROUPS, MODEL, POLICY, POLICY_RULES } from './dna.ts';
 import { countPill, liveDot } from './marks.ts';
 import {
   callPath,
   channelPath,
-  DNA_FOCUS,
+  DNA_AT,
   DNA_PARAM,
   DNA_SHOWN,
-  dnaEntityOf,
   GROUP_PAGES,
-  inspect,
   personPath,
   ROW_ID,
   SELECTED_EXPR,
@@ -205,14 +203,14 @@ const people = group(
 );
 
 /*
-  Social DNA: everything the space has defined about itself, as the vocabulary settings list it, and
-  its policy. Four levels — the group, each kind of definition, each definition, and what it says —
-  so the tree is the space's own graph read as an outline, the same things the canvas draws.
+  Social DNA: the classes the space has, in three groups — its own models, other apps' classes, WE's —
+  and its policy. Four levels — the group, each group of classes, each class, and for the policy each
+  rule — so the tree is the space's own graph read as an outline, the same things the canvas draws.
 
-  Values are `dnakind|<kind>` for a kind, `dna|<kind>|<id>` for a definition and `dnaprop|policy|<rule>`
-  for one rule of the policy. A definition is a leaf: what it is goes in the inspector beside the view
-  (its fields), and what it is used for on the vocabulary map (its uses) — never as rows under it here,
-  which listed a hand-picked few of its fields and drifted from what the definition holds.
+  Values are `dnagroup|<group>` for a group of classes, `dna|model|<name>` for a class — any class,
+  whoever wrote it — and `dnaprop|policy|<rule>` for one rule of the policy. A class is a leaf: its
+  records are on its page (or on the vocabulary map, in Canvas mode), never rows under it here, since
+  a class can hold thousands.
 */
 
 /**
@@ -239,36 +237,76 @@ const revealing = (value: string, inside: string, up: string) => {
   };
 };
 
-/** One kind of definition: a row with its count, and a row for each definition, bound as `def`. */
-const dnaKind = (list: DnaList): SchemaNode => {
-  const kindValue = `'dnakind|${list.kind}'`;
-  return treeRow({
-    nested: true,
-    value: { $: kindValue },
-    label: list.label,
-    icon: list.icon,
-    ...revealing(kindValue, `startsWith(${DNA_FOCUS}, '${list.kind}|')`, `'${list.kind}'`),
-    expandable: { $: `count(${list.items}) > 0` },
-    badge: countPill(`count(${list.items})`),
-    children: [
-      {
-        type: '$each',
-        props: { items: { $: list.items }, as: 'def' },
-        children: [
-          treeRow({
-            nested: true,
-            value: { $: `'dna|${list.kind}|' + def.id` },
-            label: { $: 'def.name' },
-            icon: { $: list.itemIcon },
-          }),
-        ],
-      },
-    ],
-  });
+/** Another app's class says its namespace after its name, quietly — the first to carry that name; one name is one row. */
+const namespace: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'cls.namespace' },
+    then: {
+      type: 'we-text',
+      props: { variant: 'footnote', color: 'text-faint', truncate: true, maxWidth: '96px' },
+      children: [{ $: 'cls.namespace' }],
+    },
+  },
 };
 
-/** The space's own definitions, in the order the vocabulary settings show them. */
-const DNA_KINDS: SchemaNode[] = DNA_LISTS.map(dnaKind);
+/** A class: a leaf, opening its page. */
+const classRows = (items: string): SchemaNode => ({
+  type: '$each',
+  props: { items: { $: items }, as: 'cls' },
+  children: [
+    treeRow({
+      nested: true,
+      value: { $: `'dna|${MODEL}|' + cls.id` },
+      label: { $: 'cls.label' },
+      icon: { $: 'cls.icon' },
+      badge: namespace,
+    }),
+  ],
+});
+
+/** Some class in `classes` is in focus — what keeps a row around it open. */
+const holdsFocus = (classes: string) =>
+  `startsWith(${DNA_AT}, '${MODEL}|') && ${classes}.exists(c, c.id == split(${DNA_AT}, '|')[1])`;
+
+/**
+ * A group of classes, open while a class in it is in focus: its own classes a row each, then its
+ * nested groups (the built-in group's Blocks), each a row holding its classes.
+ */
+const classGroups: SchemaNode = {
+  type: '$each',
+  props: { items: { $: CLASS_GROUPS }, as: 'group' },
+  children: [
+    treeRow({
+      nested: true,
+      value: { $: "'dnagroup|' + group.key" },
+      label: { $: 'group.label' },
+      icon: { $: "group.key == 'we' ? 'cube' : group.key == 'space' ? 'users-three' : 'package'" },
+      ...revealing("'dnagroup|' + group.key", holdsFocus('group.classes'), "'all'"),
+      expandable: { $: 'count(group.classes) > 0' },
+      badge: countPill('count(group.classes)'),
+      children: [
+        classRows('group.rows'),
+        {
+          type: '$each',
+          props: { items: { $: 'group.sub' }, as: 'sub' },
+          children: [
+            treeRow({
+              nested: true,
+              value: { $: "'dnagroup|' + group.key + '.' + sub.key" },
+              label: { $: 'sub.label' },
+              icon: 'squares-four',
+              ...revealing("'dnagroup|' + group.key + '.' + sub.key", holdsFocus('sub.classes'), "'all'"),
+              expandable: { $: 'count(sub.classes) > 0' },
+              badge: countPill('count(sub.classes)'),
+              children: [classRows('sub.classes')],
+            }),
+          ],
+        },
+      ],
+    }),
+  ],
+};
 
 /** The space's policy: who may do what, one rule a row, as the people settings word them. */
 const policyKind: SchemaNode = treeRow({
@@ -276,7 +314,7 @@ const policyKind: SchemaNode = treeRow({
   value: { $: "'dnakind|policy'" },
   label: POLICY.label,
   icon: POLICY.icon,
-  ...revealing("'dnakind|policy'", `startsWith(${DNA_FOCUS}, 'policy|')`, "'policy'"),
+  ...revealing("'dnakind|policy'", `startsWith(${DNA_AT}, 'policy|')`, "'policy'"),
   expandable: { $: `count(${POLICY_RULES}) > 0` },
   badge: countPill(`count(${POLICY_RULES})`),
   children: [
@@ -289,14 +327,11 @@ const policyKind: SchemaNode = treeRow({
   ],
 });
 
-/** Every definition there is, across the kinds and the policy: the group's count. */
-const DNA_COUNT = [...DNA_LISTS.map((list) => list.items), POLICY_RULES].map((list) => `count(${list})`).join(' + ');
-
 /** Everything the space has defined about itself — see above. */
-const socialDna = group('dna', 'Social DNA', 'dna', [...DNA_KINDS, policyKind], {
-  count: DNA_COUNT,
+const socialDna = group('dna', 'Social DNA', 'dna', [classGroups, policyKind], {
+  count: CLASS_COUNT,
   // Open while anything in it is in focus; closing it then shows all of it.
-  openness: revealing("'group|dna'", `${DNA_FOCUS} != 'all'`, "'all'"),
+  openness: revealing("'group|dna'", `${DNA_AT} != 'all'`, "'all'"),
 });
 
 /*
@@ -369,7 +404,7 @@ const themesGroup = group(
   },
 );
 
-/** A definition row's kind and id — `dna|<kind>|<id>`. */
+/** A class row's kind and name — `dna|model|<name>`. */
 const DEF_KIND = "split(event.detail.value, '|')[1]";
 const DEF_ID = "split(event.detail.value, '|')[2]";
 
@@ -443,9 +478,8 @@ const onSelect: SchemaProp = [
     },
   },
   /*
-    A definition is lit on the vocabulary map, opened into its uses, and opens in the inspector beside
-    it — what it is. A model is a Shape, which the inspector does not read; the map's bar has the way
-    to where it is edited.
+    A class is lit on the vocabulary map in Canvas mode and is its page in Page mode, where its records
+    are. A group of classes opens as a group does.
   */
   {
     $if: {
@@ -455,8 +489,8 @@ const onSelect: SchemaProp = [
   },
   {
     $if: {
-      condition: { $: `startsWith(event.detail.value, 'dna|') && ${DEF_KIND} != 'model'` },
-      then: inspect(DEF_ID, { $: dnaEntityOf(DEF_KIND) }),
+      condition: { $: "startsWith(event.detail.value, 'dnagroup|')" },
+      then: { $toggleLocalIn: 'openRows', value: { $: 'event.detail.value' } },
     },
   },
   // A kind of definition opens as a group does, and is lit on the map with all it holds.
@@ -804,7 +838,7 @@ export const treeSection: SchemaNode = {
       persist: 'coasys.tree.open',
     },
   },
-  $queries: { calls: LATEST_CALLS, ...DNA_QUERIES },
+  $queries: { calls: LATEST_CALLS },
   children: [
     header,
     purpose,
