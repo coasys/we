@@ -481,3 +481,42 @@ fn exit_75_runs_it_again() {
         Some(&*format!("http://127.0.0.1:{port}"))
     );
 }
+
+/// `init` runs for a missing data folder only. A folder that has anything
+/// in it is the executor's own to migrate: `init` must not run over it.
+#[test]
+fn init_runs_only_for_an_empty_data_folder() {
+    use std::os::unix::fs::PermissionsExt;
+    for existing in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let marker = dir.path().join("init-ran");
+        let binary = dir.path().join("executor");
+        std::fs::write(
+            &binary,
+            format!(
+                "#!/bin/sh\nif [ \"$1\" = init ]; then touch '{}'; exit 0; fi\nexit 3\n",
+                marker.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o755)).unwrap();
+        if existing {
+            std::fs::create_dir(dir.path().join("data")).unwrap();
+            std::fs::write(dir.path().join("data").join("agent.json"), "{}").unwrap();
+        }
+        let sup = Supervisor::with_reader(
+            config(dir.path(), binary, closed_port()),
+            Arc::new(Reader::default()),
+        );
+        sup.start();
+        wait_for(&sup, "failed", 10, |s| {
+            matches!(s, Lifecycle::Failed { .. })
+        });
+        assert_eq!(
+            marker.exists(),
+            !existing,
+            "existing data folder: {existing}; init ran: {}",
+            marker.exists()
+        );
+    }
+}

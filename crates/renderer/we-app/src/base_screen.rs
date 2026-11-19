@@ -381,7 +381,7 @@ impl BaseScreen {
             else {
                 return;
             };
-            if live.url.is_none() || live.url != owned.url() {
+            if !dials_owned(live.url.as_deref(), owned.url().as_deref()) {
                 return;
             }
             (live.attempt, request_id)
@@ -460,6 +460,13 @@ impl BaseScreen {
             spawn_flow(&self.slot, &self.handle, dial, &self.ctx, job.attempt);
         }
     }
+}
+
+/// Whether the flow dials the executor this window runs: only then may the
+/// supervisor approve its capability request. Two unknown addresses are not
+/// the same address.
+fn dials_owned(flow: Option<&str>, owned: Option<&str>) -> bool {
+    flow.is_some() && flow == owned
 }
 
 /// What a flow's phase (other than Connected) does to the base store.

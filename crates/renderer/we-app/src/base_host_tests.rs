@@ -833,3 +833,17 @@ fn a_stalled_executor_is_offline_and_try_again_redials() {
     let retry = open.controller.apply(BaseCommand::Retry, generation);
     assert!(retry.is_some(), "Try again started nothing");
 }
+
+/// The supervisor approves a capability request only for a flow that dials
+/// the executor this window runs: not for another address, and not when
+/// either address is unknown.
+#[test]
+fn only_a_flow_to_the_owned_executor_is_approved() {
+    use super::dials_owned;
+    let owned = "http://127.0.0.1:12000";
+    assert!(dials_owned(Some(owned), Some(owned)));
+    assert!(!dials_owned(Some("http://127.0.0.1:4000"), Some(owned)));
+    assert!(!dials_owned(Some(owned), None));
+    assert!(!dials_owned(None, Some(owned)));
+    assert!(!dials_owned(None, None));
+}
