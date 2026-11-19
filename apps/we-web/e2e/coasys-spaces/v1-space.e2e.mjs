@@ -43,11 +43,16 @@ vertical('V1 space: create, invite, join', (v) => {
     for (const shape of ['TaskBlock', 'CollectionBlock', 'TextBlock', 'EventBlock']) {
       assert.ok(names.includes(shape), `${shape} is a shape of the space (has: ${names.join(', ')})`);
     }
+    // Social DNA lists the classes; a class's records are on its own page, opened from its tile.
     await alice.page.goto(`${(await world()).app.url}/space/${shared.replace('neighbourhood://', '')}/dna`);
+    await alice.page.getByRole('button', { name: 'Task TaskBlock' }).waitFor({ timeout: 60_000 });
+    await alice.page.getByRole('button', { name: 'Task states TaskState' }).click();
     for (const row of ['To do', 'Doing', 'Done']) {
-      await alice.page.getByRole('button', { name: row, exact: true }).first().waitFor({ timeout: 60_000 });
+      await alice.page
+        .getByRole('button', { name: new RegExp(`^${row}\\b`) })
+        .first()
+        .waitFor({ timeout: 60_000 });
     }
-    await alice.page.getByRole('button', { name: /^Task Something to do/ }).waitFor();
   });
 
   v.step('Space settings show the invite link', async () => {
