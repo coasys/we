@@ -73,6 +73,38 @@ const MAX_HELD_SAMPLES = 16_000 * 60;
 const REFUSALS_BEFORE_DROPPING = 2;
 
 /**
+ * How long to wait before sending again to a stream whose queue was full.
+ *
+ * A full queue is the executor saying the speech model is behind on this stream (ad4m#1805). The
+ * stream itself is fine and still transcribing what it took. Opening another stream would close this
+ * one, and the text of what it already took would then go nowhere. So the utterance waits and goes
+ * to the same stream again.
+ */
+const QUEUE_FULL_RETRY_MS = 2_000;
+
+/**
+ * How much speech may wait for a stream whose queue is full — 30 s, at the 16 kHz the worklet sends.
+ *
+ * Less than {@link MAX_HELD_SAMPLES}: the model is answering, only slowly, and every second kept here
+ * is a second later that everything after it lands. Past this the oldest is let go and counted, so
+ * the transcript catches up instead of staying behind for the rest of the call.
+ */
+const MAX_BACKLOG_SAMPLES = 16_000 * 30;
+
+/**
+ * Whether a feed was refused because the stream's utterance queue is full.
+ *
+ * The executor answers that with a 500 whose text names it, and the SDK passes the text on in its
+ * error.
+ */
+function isQueueFull(cause: unknown): boolean {
+  const message = cause instanceof Error ? cause.message : String(cause);
+  return /utterance queue[^.]*full/i.test(message);
+}
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
  * Characters of transcript held before writing a block.
  *
  * Flux's number, kept. One block per utterance would be truer to the source but writes a record
@@ -708,6 +740,13 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * working session that had stopped hearing anything.
    */
   const [reconnecting, setReconnecting] = signal(false);
+  /**
+   * Utterances let go in this session without being transcribed: the speech model stayed too far
+   * behind, the stream stayed away too long, or the far end kept refusing one.
+   *
+   * Counted so the panel can say it happened. Reset when a session starts.
+   */
+  const [skipped, setSkipped] = signal(0);
   let inFlightTimer: ReturnType<typeof setTimeout> | null = null;
   let inFlightDeadline = 0;
   let modelPoll: ReturnType<typeof setTimeout> | null = null;
@@ -1911,6 +1950,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     const isMine = sessions.begin();
     setStatus('starting');
     setError('');
+    setSkipped(0);
 
     let newStream: typeof stream = null;
     let newContext: AudioContext | null = null;
@@ -1992,6 +2032,13 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
         held: [] as { audio: Float32Array; refusals: number }[],
         /** The reconnection in progress, so every utterance that fails joins the same one. */
         reconnecting: null as Promise<void> | null,
+        /**
+         * Utterances waiting for this stream's full queue to have room, oldest first — see
+         * {@link MAX_BACKLOG_SAMPLES}.
+         */
+        backlog: [] as Float32Array[],
+        /** The backlog being sent, so every utterance said meanwhile joins the end of it. */
+        draining: null as Promise<void> | null,
       };
 
       /** Keep an utterance until there is a stream to send it to, dropping the oldest past the cap. */
@@ -2001,6 +2048,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
         // Never empties: the utterance just held is the one worth keeping if it alone is over the cap.
         while (total > MAX_HELD_SAMPLES && session.held.length > 1) {
           total -= (session.held.shift() as { audio: Float32Array }).audio.length;
+          setSkipped(skipped() + 1);
         }
       };
 
@@ -2051,6 +2099,12 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
                   await session.stream.feed(next.audio);
                   session.held.shift();
                 } catch (refused) {
+                  // Behind, not refusing: the stream took it and has no room yet. Not counted.
+                  if (isQueueFull(refused)) {
+                    await wait(QUEUE_FULL_RETRY_MS);
+                    if (!isMine()) return;
+                    continue;
+                  }
                   next.refusals += 1;
                   if (next.refusals < REFUSALS_BEFORE_DROPPING) throw refused;
                   /*
@@ -2063,6 +2117,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
                   */
                   console.warn('transcribe: this utterance was refused twice and has been dropped', refused);
                   session.held.shift();
+                  setSkipped(skipped() + 1);
                 }
               }
               setReconnecting(false);
@@ -2085,7 +2140,53 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
         });
       };
 
-      /** Feed one utterance, or hold it and start putting the stream back. */
+      /*
+        Send the backlog to the same stream, one utterance at a time, waiting whenever it is still full.
+
+        One at a time is the backpressure: the next one goes only once the stream has answered the
+        last, so this never adds to a queue that is already full. An utterance is taken out while it
+        is sent, so the cap below can only let go of ones still waiting.
+
+        If the stream fails for any other reason, the backlog joins the reconnection, in order.
+      */
+      const drainBacklog = (): void => {
+        if (session.draining) return;
+        session.draining = (async () => {
+          await wait(QUEUE_FULL_RETRY_MS);
+          while (session.backlog.length > 0) {
+            if (!isMine()) return;
+            const next = session.backlog.shift() as Float32Array;
+            try {
+              await session.stream.feed(next);
+            } catch (cause) {
+              if (!isMine()) return;
+              if (isQueueFull(cause)) {
+                session.backlog.unshift(next);
+                await wait(QUEUE_FULL_RETRY_MS);
+                continue;
+              }
+              for (const audio of [next, ...session.backlog.splice(0)]) hold(audio);
+              reconnect(cause);
+              return;
+            }
+          }
+        })().finally(() => {
+          session.draining = null;
+        });
+      };
+
+      /** Keep an utterance for the full stream, letting go of the oldest past the cap. */
+      const queueBehind = (audio: Float32Array): void => {
+        session.backlog.push(audio);
+        let total = session.backlog.reduce((sum, one) => sum + one.length, 0);
+        while (total > MAX_BACKLOG_SAMPLES && session.backlog.length > 1) {
+          total -= (session.backlog.shift() as Float32Array).length;
+          setSkipped(skipped() + 1);
+        }
+        drainBacklog();
+      };
+
+      /** Feed one utterance; keep it for a full stream, or hold it and start putting the stream back. */
       const feed = async (audio: Float32Array): Promise<void> => {
         noteFed(audio.length);
         // Held rather than raced: while a reconnection is running there is nothing to feed it to,
@@ -2094,11 +2195,22 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
           hold(audio);
           return;
         }
+        // Behind the backlog, so what is said keeps its order and a full queue gets no more at once.
+        if (session.draining) {
+          queueBehind(audio);
+          return;
+        }
         const tried = session.stream;
         try {
           await tried.feed(audio);
         } catch (cause) {
           if (!isMine()) return;
+          // The stream is fine and behind. Kept for it, rather than replacing it and losing the text
+          // of what it already took.
+          if (isQueueFull(cause) && tried === session.stream && !session.reconnecting) {
+            queueBehind(audio);
+            return;
+          }
           // Held too, so the sentence that discovered the problem is not the one lost.
           hold(audio);
           reconnect(cause);
@@ -2887,6 +2999,16 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     reconnecting: state(
       onScreen(reconnecting, false),
       'The link to the speech model dropped and is being re-established; what is said meanwhile is held.',
+    ),
+    /**
+     * How many utterances this session let go without transcribing them.
+     *
+     * A count rather than a flag so the panel can say how much is missing. It only grows while the
+     * session runs: a gap in the transcript stays a gap.
+     */
+    skipped: state(
+      onScreen(skipped, 0),
+      'Utterances let go in this session without a transcript: the speech model was too far behind or could not be reached.',
     ),
     /**
      * What has been heard and is not yet a row in the transcript — buffering, or being written.
