@@ -160,31 +160,13 @@ impl BaseScreen {
             (attempt, phase, taken)
         };
         let (attempt, phase, taken) = observed;
-        match phase {
-            ConnectPhase::Connected { url } => {
-                if let Some(conn) = taken {
-                    self.controller.note_connected(attempt);
-                    self.ready = Some((conn, url));
-                }
+        if let ConnectPhase::Connected { url } = &phase {
+            if let Some(conn) = taken {
+                self.controller.note_connected(attempt);
+                self.ready = Some((conn, url.clone()));
             }
-            ConnectPhase::Failed { reason } => match classify_failure(&reason) {
-                FailureClass::Unreachable => {
-                    self.controller.note_unreachable(attempt);
-                }
-                FailureClass::Refused { reason } => {
-                    if !self.controller.note_refused(attempt, &reason) {
-                        self.controller.note_adopted_refusal(&reason);
-                    }
-                }
-            },
-            ConnectPhase::Locked { url } => {
-                let sentence = format!(
-                    "The executor at {} is locked. Unlock it in the AD4M launcher, then retry.",
-                    we_ad4m::connect::redact_url(&url)
-                );
-                self.controller.note_locked(attempt, &sentence);
-            }
-            ConnectPhase::Searching | ConnectPhase::Checking | ConnectPhase::Asking { .. } => {}
+        } else {
+            apply_phase(&self.controller, attempt, phase);
         }
         self.sync_facts();
     }
@@ -246,6 +228,35 @@ impl BaseScreen {
         if let Some(dial) = endpoint(&self.controller, &self.settings, &job) {
             spawn_flow(&self.slot, &self.handle, dial, &self.ctx, job.attempt);
         }
+    }
+}
+
+/// What a flow's phase (other than Connected) does to the base store.
+/// `attempt` is the flow's attempt id: a phase of an attempt that is no
+/// longer the current one changes nothing.
+fn apply_phase(controller: &BaseController, attempt: u64, phase: ConnectPhase) {
+    match phase {
+        ConnectPhase::Failed { reason, .. } => match classify_failure(&reason) {
+            FailureClass::Unreachable => {
+                controller.note_unreachable(attempt);
+            }
+            FailureClass::Refused { reason } => {
+                if !controller.note_refused(attempt, &reason) {
+                    controller.note_adopted_refusal(attempt, &reason);
+                }
+            }
+        },
+        ConnectPhase::Locked { url } => {
+            let sentence = format!(
+                "The executor at {} is locked. Unlock it in the AD4M launcher, then retry.",
+                we_ad4m::connect::redact_url(&url)
+            );
+            controller.note_locked(attempt, &sentence);
+        }
+        ConnectPhase::Connected { .. }
+        | ConnectPhase::Searching
+        | ConnectPhase::Checking
+        | ConnectPhase::Asking { .. } => {}
     }
 }
 

@@ -66,8 +66,27 @@ pub enum ConnectPhase {
     Connected { url: String },
     /// The executor's wallet is locked: unlock it in the launcher, then retry.
     Locked { url: String },
-    /// The flow stopped. `reason` is the sentence to show.
-    Failed { reason: String },
+    /// The flow stopped. `kind` says why, as a type; `reason` is the
+    /// sentence to show and is never read to decide anything.
+    Failed { kind: FailureKind, reason: String },
+}
+
+/// Why a flow stopped. Decided from the error's type before it is turned
+/// into words, so a reason that quotes "connection refused" from an
+/// executor's refusal is still a refusal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FailureKind {
+    /// Nothing answered: no executor at the address, or the socket of an
+    /// open session went away and did not come back.
+    Unreachable,
+    /// Something answered at the address, but not as an AD4M executor.
+    NotAnExecutor,
+    /// The executor answered and refused this app: credentials not
+    /// accepted, or a grant removed while the session was open.
+    Refused,
+    /// Anything else (a transport the flow will not use, a token store it
+    /// cannot write).
+    Other,
 }
 
 /// Which grant this window asks for.
@@ -279,7 +298,8 @@ impl Shared {
             ConnectPhase::Locked { url } => ConnectPhase::Locked {
                 url: redact_url(&url),
             },
-            ConnectPhase::Failed { reason } => ConnectPhase::Failed {
+            ConnectPhase::Failed { kind, reason } => ConnectPhase::Failed {
+                kind,
                 reason: scrub(&reason),
             },
             other => other,
@@ -341,6 +361,7 @@ impl ConnectFlow {
             .lock()
             .map(|p| p.clone())
             .unwrap_or(ConnectPhase::Failed {
+                kind: FailureKind::Other,
                 reason: "connect state poisoned".into(),
             })
     }
@@ -495,10 +516,13 @@ async fn run(
         only: opts.url.as_deref().map(normalize_base_url),
     };
     let only = io.only.clone();
-    let reason = |e: &anyhow::Error| reason_for(e, only.as_deref());
+    let failed = |e: &anyhow::Error| ConnectPhase::Failed {
+        kind: failure_kind(e, false),
+        reason: reason_for(e, only.as_deref()),
+    };
     let mut session = match Ad4mConnect::with_io(opts, io) {
         Ok(s) => s,
-        Err(e) => return shared.set(ConnectPhase::Failed { reason: reason(&e) }),
+        Err(e) => return shared.set(failed(&e)),
     };
     let mut prompts = UiPrompts {
         shared: shared.clone(),
@@ -507,7 +531,7 @@ async fn run(
     };
     let mut state = match session.connect(&mut prompts).await {
         Ok(state) => state,
-        Err(e) => return shared.set(ConnectPhase::Failed { reason: reason(&e) }),
+        Err(e) => return shared.set(failed(&e)),
     };
     let mut url = session.url().unwrap_or_default().to_string();
     let app = app_info(&scope).name;
@@ -526,11 +550,11 @@ async fn run(
             grant_tag(&scope)
         );
         if let Err(e) = session.disconnect().await {
-            return shared.set(ConnectPhase::Failed { reason: reason(&e) });
+            return shared.set(failed(&e));
         }
         state = match session.connect(&mut prompts).await {
             Ok(state) => state,
-            Err(e) => return shared.set(ConnectPhase::Failed { reason: reason(&e) }),
+            Err(e) => return shared.set(failed(&e)),
         };
         url = session.url().unwrap_or_default().to_string();
     }
@@ -541,6 +565,7 @@ async fn run(
         AuthState::Authenticated => {
             let Some(ws) = session.rpc().cloned() else {
                 return shared.set(ConnectPhase::Failed {
+                    kind: FailureKind::Other,
                     reason: "connected without a socket".into(),
                 });
             };
@@ -555,6 +580,7 @@ async fn run(
             while watch.changed().await.is_ok() {
                 if *watch.borrow() == AuthState::Unauthenticated {
                     shared.set(ConnectPhase::Failed {
+                        kind: FailureKind::Other,
                         reason: "the executor refused this app's token — connect again".into(),
                     });
                     break;
@@ -564,9 +590,19 @@ async fn run(
         }
         AuthState::Locked => shared.set(ConnectPhase::Locked { url }),
         AuthState::Unauthenticated => shared.set(ConnectPhase::Failed {
+            kind: FailureKind::Other,
             reason: "the executor did not accept this app".into(),
         }),
     }
+}
+
+/// The kind of a failed connect, from the error's type. `answered` is
+/// whether something took a TCP connection at an address that failed the
+/// executor health check.
+///
+/// Slice 2 behaviour (stub for the failing tests): not computed.
+fn failure_kind(_e: &anyhow::Error, _answered: bool) -> FailureKind {
+    FailureKind::Other
 }
 
 /// The sentence for a failed connect; `only` is the explicit URL, if any.
@@ -639,5 +675,111 @@ mod grant_tests {
         let app = app_info(&GrantScope::Write { space: "u".into() });
         assert_eq!(app.name, "WE (Rust renderer, writes)");
         assert_ne!(app.name, app_info(&GrantScope::ReadOnly).name);
+    }
+}
+
+#[cfg(test)]
+mod failure_tests {
+    use super::*;
+
+    /// Acceptance (slice 3): failures are typed in the flow, not matched on
+    /// the words. Each reason below says the opposite of its type.
+    #[test]
+    fn the_kind_is_read_from_the_error_type_not_its_words() {
+        let refused = anyhow::Error::new(ConnectError::Refused {
+            message: "connection refused: no such account".into(),
+        });
+        assert_eq!(failure_kind(&refused, false), FailureKind::Refused);
+
+        let io = std::io::Error::new(
+            std::io::ErrorKind::ConnectionRefused,
+            "the executor did not accept this app",
+        );
+        let dropped = anyhow::Error::new(io).context("websocket handshake");
+        assert_eq!(failure_kind(&dropped, false), FailureKind::Unreachable);
+
+        let nothing = anyhow::Error::new(ConnectError::ExecutorNotFound {
+            tried: vec!["http://127.0.0.1:1".into()],
+        });
+        assert_eq!(failure_kind(&nothing, false), FailureKind::Unreachable);
+        assert_eq!(failure_kind(&nothing, true), FailureKind::NotAnExecutor);
+
+        let insecure = anyhow::Error::new(ConnectError::InsecureTransport {
+            url: "http://example.org".into(),
+        });
+        assert_eq!(failure_kind(&insecure, false), FailureKind::Other);
+        assert_eq!(
+            failure_kind(&anyhow::anyhow!("does not answer: timed out"), false),
+            FailureKind::Other,
+            "words alone decide nothing"
+        );
+    }
+
+    fn ended(flow: &ConnectFlow) -> (FailureKind, String) {
+        let start = std::time::Instant::now();
+        loop {
+            if let ConnectPhase::Failed { kind, reason } = flow.phase() {
+                return (kind, reason);
+            }
+            assert!(start.elapsed().as_secs() < 30, "the flow did not end");
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+    }
+
+    fn settings_for(url: String, dir: &std::path::Path) -> ConnectSettings {
+        ConnectSettings {
+            url: Some(url),
+            token_dir: Some(dir.to_path_buf()),
+            port_file: Some(dir.join("no-port-file")),
+            ..ConnectSettings::default()
+        }
+    }
+
+    /// Acceptance (slice 3): an executor that is not running is offline.
+    #[test]
+    fn a_closed_port_is_unreachable() {
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let dir = tempfile::tempdir().unwrap();
+        let rt = crate::Runtime::new().unwrap();
+        let flow = ConnectFlow::start(
+            &rt.handle(),
+            settings_for(format!("http://127.0.0.1:{port}"), dir.path()),
+            || {},
+        );
+        let (kind, reason) = ended(&flow);
+        assert_eq!(kind, FailureKind::Unreachable, "{reason}");
+    }
+
+    /// Something answers on the port, but not as an executor: that is not
+    /// "offline", and a retry will not change it.
+    #[test]
+    fn a_service_that_is_not_an_executor_is_not_unreachable() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { return };
+                let mut buf = [0u8; 2048];
+                let _ = stream.read(&mut buf);
+                let _ = stream.write_all(
+                    b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                );
+            }
+        });
+        let dir = tempfile::tempdir().unwrap();
+        let rt = crate::Runtime::new().unwrap();
+        let flow = ConnectFlow::start(
+            &rt.handle(),
+            settings_for(format!("http://127.0.0.1:{port}"), dir.path()),
+            || {},
+        );
+        let (kind, reason) = ended(&flow);
+        assert_eq!(kind, FailureKind::NotAnExecutor, "{reason}");
+        assert!(reason.contains(&port.to_string()), "{reason}");
     }
 }

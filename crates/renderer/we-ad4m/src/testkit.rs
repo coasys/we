@@ -39,16 +39,40 @@ fn free_port() -> u16 {
 }
 
 pub struct Executor {
-    child: Child,
+    child: Option<Child>,
     pub url: String,
     pub port: u16,
-    _data: tempfile::TempDir,
+    binary: PathBuf,
+    admin: Option<String>,
+    data: tempfile::TempDir,
 }
 
 impl Drop for Executor {
     fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        self.stop();
+    }
+}
+
+impl Executor {
+    /// Kill the process, as a crash or a quit from the tray would. The
+    /// data directory stays, so [`Executor::restart`] brings back the same
+    /// agent on the same port.
+    pub fn stop(&mut self) {
+        if let Some(mut child) = self.child.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+
+    /// Run the executor again on its port and data directory.
+    pub fn restart(&mut self) {
+        self.stop();
+        self.child = Some(run(
+            &self.binary,
+            self.admin.as_deref(),
+            self.data.path(),
+            self.port,
+        ));
     }
 }
 
@@ -80,16 +104,27 @@ fn start(admin: Option<&str>) -> Option<Executor> {
         .status()
         .expect("ad4m-executor init");
     assert!(init.success(), "ad4m-executor init failed");
+    let child = run(&binary, admin, data.path(), port);
+    Some(Executor {
+        child: Some(child),
+        url: format!("http://127.0.0.1:{port}"),
+        port,
+        binary,
+        admin: admin.map(str::to_string),
+        data,
+    })
+}
+
+fn run(binary: &std::path::Path, admin: Option<&str>, data: &std::path::Path, port: u16) -> Child {
     let log = std::env::var("WE_AD4M_EXECUTOR_LOG").ok();
-    let mut cmd = Command::new(&binary);
+    let mut cmd = Command::new(binary);
     cmd.arg("run");
     match admin {
         Some(c) => cmd.args(["--admin-credential", c]),
         None => cmd.arg("--insecure-no-admin-credential"),
     };
-    let child = cmd
-        .arg("--app-data-path")
-        .arg(data.path())
+    cmd.arg("--app-data-path")
+        .arg(data)
         .args(["--port", &port.to_string()])
         .args(["--run-holochain", "false"])
         .args(["--language-language-only", "true"])
@@ -101,13 +136,7 @@ fn start(admin: Option<&str>) -> Option<Executor> {
             None => Stdio::null(),
         })
         .spawn()
-        .expect("spawn ad4m-executor");
-    Some(Executor {
-        child,
-        url: format!("http://127.0.0.1:{port}"),
-        port,
-        _data: data,
-    })
+        .expect("spawn ad4m-executor")
 }
 
 /// Poll the socket until the executor takes it.

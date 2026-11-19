@@ -179,17 +179,20 @@ fn choose_this_computer(h: &mut H) {
     h.get_by_label_contains("This computer").click();
 }
 
-/// The executor goes away under an open space (Lal F5): the window says
-/// the connection is lost and offers to reconnect, instead of a green dot
-/// over rows that no longer update.
+/// Acceptance (slice 3): the executor stops under an open space. The base
+/// takes the window back to the offline stage ("Coasys isn't responding.",
+/// "Try again"); the space and its socket are dropped. "Try again" while it
+/// is still down stays offline. After a restart on the same port and data,
+/// "Try again" opens a session again and lists the space.
 #[test]
-fn a_dead_executor_is_shown() {
-    let Some(executor) = kit::start_executor() else {
+fn a_stopped_executor_goes_offline_and_a_restart_reopens() {
+    let Some(mut executor) = kit::start_executor() else {
         return;
     };
     let rt = we_ad4m::Runtime::new().unwrap();
     let writer = kit::connect(&rt, &executor.url);
     kit::seed_space(&rt, &writer, "e7-dies");
+    drop(writer);
     let tokens = tempfile::tempdir().unwrap();
     let mut h = app_for(&executor.url, tokens.path());
     choose_this_computer(&mut h);
@@ -200,16 +203,33 @@ fn a_dead_executor_is_shown() {
     step_until(&mut h, "the space", Duration::from_secs(10), |h| {
         stage(h) == "space"
     });
-    assert!(h.query_by_label_contains("Connection lost").is_none());
 
-    drop(executor);
-    step_until(
-        &mut h,
-        "the lost connection",
-        Duration::from_secs(30),
-        |h| h.query_by_label_contains("Connection lost").is_some(),
+    executor.stop();
+    step_until(&mut h, "the offline stage", Duration::from_secs(30), |h| {
+        stage(h) == "connect"
+            && h.query_by_label_contains("isn't responding").is_some()
+            && h.query_by_label("Try again").is_some()
+    });
+    assert!(
+        h.query_by_label_contains("Connection lost").is_none(),
+        "the space's banner is still drawn"
     );
-    assert!(h.query_by_label("Reconnect").is_some());
+
+    // Still down: Try again comes back to the offline stage.
+    h.get_by_label("Try again").click();
+    step_until(&mut h, "offline again", Duration::from_secs(30), |h| {
+        h.query_by_label_contains("Opening your spaces").is_none()
+            && h.query_by_label_contains("isn't responding").is_some()
+            && h.query_by_label("Try again").is_some()
+    });
+
+    executor.restart();
+    let back = kit::connect(&rt, &executor.url);
+    drop(back);
+    h.get_by_label("Try again").click();
+    step_until(&mut h, "the picker again", Duration::from_secs(60), |h| {
+        stage(h) == "pick" && h.query_by_label("e7-dies   (local)").is_some()
+    });
 }
 
 /// Approve the capability the overlay is showing and submit its code.

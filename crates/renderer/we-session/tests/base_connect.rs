@@ -265,14 +265,14 @@ fn a_refusal_after_the_session_returns_to_connect() {
     let attempt = open.jobs.borrow()[0].attempt;
     let reason = "the executor refused this app's token — connect again";
     // The attempt is still in flight. This is not an adopted session.
-    open.controller.note_adopted_refusal(reason);
+    open.controller.note_adopted_refusal(attempt, reason);
     assert_eq!(open.controller.public_json()["stage"], "handing-off");
     open.controller.note_connected(attempt);
     assert_eq!(open.controller.public_json()["stage"], "session");
     // The attempt id is spent. The same id cannot complete again.
     assert!(!open.controller.note_refused(attempt, reason));
     assert_eq!(open.controller.public_json()["stage"], "session");
-    open.controller.note_adopted_refusal(reason);
+    open.controller.note_adopted_refusal(attempt, reason);
     open.session.set_base_facts(Some(open.controller.facts()));
     let text = tree_text(&open.session.resolve());
     assert!(

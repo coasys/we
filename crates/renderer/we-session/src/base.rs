@@ -421,8 +421,10 @@ impl BaseController {
         self.finish(attempt, Stage::Session, "", "");
     }
 
-    pub fn note_unreachable(&self, attempt: u64) {
-        self.finish(attempt, Stage::Offline, "", UNREACHABLE);
+    /// `false` when `attempt` is not the one in flight (it was already
+    /// completed, or a newer one replaced it).
+    pub fn note_unreachable(&self, attempt: u64) -> bool {
+        self.finish(attempt, Stage::Offline, "", UNREACHABLE)
     }
 
     pub fn note_refused(&self, attempt: u64, reason: &str) -> bool {
@@ -437,7 +439,10 @@ impl BaseController {
     /// id is spent. A later refusal of that same session — the launcher
     /// removed the grant — still returns the screen to connect.
     /// A refusal while no session is open does nothing.
-    pub fn note_adopted_refusal(&self, reason: &str) {
+    ///
+    /// Slice 2 behaviour (stub for the failing tests): `attempt` is not read.
+    pub fn note_adopted_refusal(&self, attempt: u64, reason: &str) {
+        let _ = attempt;
         let mut inner = self.lock();
         if inner.stage != Stage::Session {
             return;
@@ -451,6 +456,22 @@ impl BaseController {
         inner.offline_reason.clear();
         inner.page.clear();
         self.publish(&inner);
+    }
+
+    /// The session that `attempt` opened lost its executor.
+    ///
+    /// Slice 2 behaviour (stub for the failing tests): nothing changes.
+    pub fn note_session_lost(&self, attempt: u64) -> bool {
+        let _ = attempt;
+        false
+    }
+
+    /// The host's probe says the network is back while the offline stage
+    /// is up: the place chosen again, as "Try again" would.
+    ///
+    /// Slice 2 behaviour (stub for the failing tests): never.
+    pub fn poll_network(&self) -> Option<HostJob> {
+        None
     }
 
     fn finish(&self, attempt: u64, stage: Stage, error: &str, offline: &str) -> bool {

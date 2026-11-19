@@ -582,7 +582,7 @@ mod tests {
         let flow = crate::connect::ConnectFlow::start(&rt.handle(), local, || {});
         let start = std::time::Instant::now();
         let reason = loop {
-            if let crate::connect::ConnectPhase::Failed { reason } = flow.phase() {
+            if let crate::connect::ConnectPhase::Failed { reason, .. } = flow.phase() {
                 break reason;
             }
             assert!(start.elapsed().as_secs() < 30, "the flow did not end");

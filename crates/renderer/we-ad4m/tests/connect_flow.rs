@@ -79,7 +79,7 @@ fn no_executor_is_a_failure_with_a_reason() {
     let tokens = tempfile::tempdir().unwrap();
     let (flow, wake) = flow(&rt, &format!("http://127.0.0.1:{port}"), tokens.path());
     let (reason, _) = wait(&flow, &wake, Duration::from_secs(30), |p| match p {
-        ConnectPhase::Failed { reason } => Some(reason.clone()),
+        ConnectPhase::Failed { reason, .. } => Some(reason.clone()),
         _ => None,
     });
     assert!(reason.contains("does not answer"), "{reason}");
@@ -104,7 +104,7 @@ fn capability_request_then_the_stored_token_needs_no_approval() {
             ask: Ask::CapabilityCode { request_id },
             ..
         } => Some(request_id.clone()),
-        ConnectPhase::Failed { reason } => panic!("connect failed: {reason}"),
+        ConnectPhase::Failed { reason, .. } => panic!("connect failed: {reason}"),
         _ => None,
     });
     // The launcher's consent screen: approving mints the code.
@@ -124,7 +124,7 @@ fn capability_request_then_the_stored_token_needs_no_approval() {
     first.answer(code);
     wait(&first, &wake, Duration::from_secs(60), |p| match p {
         ConnectPhase::Connected { .. } => Some(()),
-        ConnectPhase::Failed { reason } => panic!("connect failed: {reason}"),
+        ConnectPhase::Failed { reason, .. } => panic!("connect failed: {reason}"),
         _ => None,
     });
     let conn = first
@@ -196,7 +196,7 @@ fn capability_request_then_the_stored_token_needs_no_approval() {
     let (second, wake) = flow(&rt, &executor.url, tokens.path());
     let (_, seen) = wait(&second, &wake, Duration::from_secs(60), |p| match p {
         ConnectPhase::Connected { .. } => Some(()),
-        ConnectPhase::Failed { reason } => panic!("reconnect failed: {reason}"),
+        ConnectPhase::Failed { reason, .. } => panic!("reconnect failed: {reason}"),
         _ => None,
     });
     assert!(
@@ -245,7 +245,7 @@ fn a_cached_broad_grant_is_asked_for_again() {
             ..
         } => Some(true),
         ConnectPhase::Connected { .. } => Some(false),
-        ConnectPhase::Failed { reason } => panic!("connect failed: {reason}"),
+        ConnectPhase::Failed { reason, .. } => panic!("connect failed: {reason}"),
         _ => None,
     });
     assert!(
@@ -287,7 +287,7 @@ fn an_explicit_url_that_is_down_never_falls_back() {
         },
     );
     let (outcome, _) = wait(&flow, &wake, Duration::from_secs(60), |p| match p {
-        ConnectPhase::Failed { reason } => Some(Err(reason.clone())),
+        ConnectPhase::Failed { reason, .. } => Some(Err(reason.clone())),
         ConnectPhase::Connected { url } | ConnectPhase::Locked { url } => Some(Ok(url.clone())),
         ConnectPhase::Asking { .. } => Some(Ok("asked".into())),
         _ => None,
@@ -321,7 +321,7 @@ fn a_failed_url_is_shown_without_its_credentials() {
     let url = format!("http://alice:hunter2@127.0.0.1:{port}/?token=sekrit#frag");
     let (flow, wake) = flow(&rt, &url, tokens.path());
     let (reason, _) = wait(&flow, &wake, Duration::from_secs(30), |p| match p {
-        ConnectPhase::Failed { reason } => Some(reason.clone()),
+        ConnectPhase::Failed { reason, .. } => Some(reason.clone()),
         _ => None,
     });
     for secret in ["alice", "hunter2", "sekrit", "frag"] {
@@ -352,7 +352,7 @@ fn approve(
                 ..
             } if answered.as_ref() != Some(request_id) => Some(Some(request_id.clone())),
             ConnectPhase::Connected { .. } => Some(None),
-            ConnectPhase::Failed { reason } => panic!("connect failed: {reason}"),
+            ConnectPhase::Failed { reason, .. } => panic!("connect failed: {reason}"),
             _ => None,
         });
         seen.extend(phases);

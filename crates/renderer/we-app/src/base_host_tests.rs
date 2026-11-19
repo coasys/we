@@ -605,3 +605,118 @@ fn a_forged_unknown_id_starts_nothing() {
     assert_eq!(choice.open.controller.public_json()["chosen"], "");
     assert!(choice.open.session.runtime().gate().denial_count() >= 1);
 }
+
+// Slice 3: what a flow's typed failure does to the base store. The kind
+// decides; the words are only shown.
+
+fn failed(kind: we_ad4m::connect::FailureKind, reason: &str) -> we_ad4m::connect::ConnectPhase {
+    we_ad4m::connect::ConnectPhase::Failed {
+        kind,
+        reason: reason.into(),
+    }
+}
+
+fn attempt_in_flight(open: &mut Open) -> u64 {
+    click(open, "This computer");
+    open.session.set_base_facts(Some(open.controller.facts()));
+    open.jobs.lock().unwrap().last().unwrap().attempt
+}
+
+/// Acceptance: an auth refusal goes to the choice with its reason, even
+/// when its words read like a network error.
+#[test]
+fn a_typed_refusal_goes_to_the_choice_whatever_its_words() {
+    use we_ad4m::connect::FailureKind;
+    let mut open = open(base_button("This computer"));
+    let attempt = attempt_in_flight(&mut open);
+    let reason = "connection refused: this agent does not know the app";
+    super::apply_phase(
+        &open.controller,
+        attempt,
+        failed(FailureKind::Refused, reason),
+    );
+    let snap = open.controller.public_json();
+    assert_eq!(snap["stage"], "connect", "a refusal was shown as offline");
+    assert_eq!(snap["error"], reason);
+    assert_eq!(snap["offlineReason"], "");
+}
+
+/// Acceptance: no answer is the offline stage, even when the words say
+/// "refused".
+#[test]
+fn a_typed_unreachable_goes_offline_whatever_its_words() {
+    use we_ad4m::connect::FailureKind;
+    let mut open = open(base_button("This computer"));
+    let attempt = attempt_in_flight(&mut open);
+    super::apply_phase(
+        &open.controller,
+        attempt,
+        failed(FailureKind::Unreachable, "the executor refused the socket"),
+    );
+    let snap = open.controller.public_json();
+    assert_eq!(snap["stage"], "offline");
+    assert_eq!(snap["offlineReason"], we_session::UNREACHABLE);
+    assert_eq!(snap["error"], "");
+}
+
+/// Something that is not an executor answered: the choice, with the
+/// reason. Not offline: waiting for a network would not change it.
+#[test]
+fn not_an_executor_goes_to_the_choice() {
+    use we_ad4m::connect::FailureKind;
+    let mut open = open(base_button("This computer"));
+    let attempt = attempt_in_flight(&mut open);
+    let reason = "No AD4M executor found: something at 127.0.0.1:9 is not one.";
+    super::apply_phase(
+        &open.controller,
+        attempt,
+        failed(FailureKind::NotAnExecutor, reason),
+    );
+    let snap = open.controller.public_json();
+    assert_eq!(snap["stage"], "connect");
+    assert_eq!(snap["error"], reason);
+}
+
+/// Acceptance: the executor stops under an open session. The flow kept
+/// after the hand-off reports it, and the base takes the window back to the
+/// offline stage.
+#[test]
+fn a_session_that_loses_its_executor_goes_offline() {
+    use we_ad4m::connect::FailureKind;
+    let mut open = open(base_button("This computer"));
+    let attempt = attempt_in_flight(&mut open);
+    open.controller.note_connected(attempt);
+    super::apply_phase(
+        &open.controller,
+        attempt,
+        failed(FailureKind::Unreachable, "the executor went away"),
+    );
+    let snap = open.controller.public_json();
+    assert_eq!(snap["stage"], "offline");
+    assert_eq!(snap["offlineReason"], we_session::UNREACHABLE);
+}
+
+/// Acceptance: an old attempt's failure does not replace a newer attempt
+/// or its session. Passed before slice 3 for the attempt (attempt ids);
+/// the session half is new.
+#[test]
+fn an_old_attempt_failure_does_not_replace_a_newer_choice() {
+    use we_ad4m::connect::FailureKind;
+    let mut open = open(base_button("This computer"));
+    let old = attempt_in_flight(&mut open);
+    open.controller.note_connected(old);
+    let newer = open.controller.start_reconnect();
+    for kind in [FailureKind::Unreachable, FailureKind::Refused] {
+        super::apply_phase(&open.controller, old, failed(kind, "late"));
+        assert_eq!(open.controller.public_json()["stage"], "handing-off");
+    }
+    open.controller.note_connected(newer.attempt);
+    for kind in [FailureKind::Unreachable, FailureKind::Refused] {
+        super::apply_phase(&open.controller, old, failed(kind, "late"));
+        assert_eq!(
+            open.controller.public_json()["stage"],
+            "session",
+            "{kind:?} from the old session closed the new one"
+        );
+    }
+}
