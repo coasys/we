@@ -1179,6 +1179,30 @@ describe('extraction', () => {
       expect(i.targetsSeen).toEqual(['space-a', 'space-a']);
     });
 
+    it('asks the host about a call in another space rather than gating on the space on screen’s list', async () => {
+      /*
+        The reader is in a call in space-a while looking at space-b, whose list selects nothing.
+        `targets`, `autoEnabled` and `targetsLoaded` all answer for the space on screen — gated by
+        them, the call's watch was never attempted and the panel said "No models selected" about a
+        space the call is not in. For a call elsewhere the module asks the host, which resolves the
+        collection through its own dataset and answers with the call's own switch and list.
+      */
+      const i = interpreter(undefined, true, []);
+      const anchored = [peer(ME, { type: 'call', id: CALL, record: RECORD, anchor: { datasetUri: 'space-a' } })];
+      const h = harness(anchored, {
+        interpretation: i.port,
+        dataset: () => ({}),
+        datasetUri: () => 'space-b',
+      });
+      await h.say('first words from the wrong side of the rail');
+
+      // Registered against the call's own dataset — never gated on space-b's empty list, and no
+      // toast about a space the call is not in.
+      expect(i.watches).toEqual([RECORD]);
+      expect(i.targetsSeen).toEqual(['space-a']);
+      expect(h.notified.filter((n) => n.message.includes('extraction'))).toEqual([]);
+    });
+
     it('stops the watch when the module is disposed with nobody else in the call', async () => {
       const i = interpreter();
       const disposers: Array<() => void> = [];
