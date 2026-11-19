@@ -557,3 +557,29 @@ fn a_retry_permit_used_twice_does_not_skip_the_read() {
         "the loading stage takes calls"
     );
 }
+
+/// Round 2 (Lal P2): the agent changes while a read is still out (it will
+/// fail: it asked an executor with no agent). The change starts a new read;
+/// the old read's failure, coming after, is not taken.
+#[test]
+fn an_agent_change_during_a_read_reads_again() {
+    let mut open = owned(Arc::new(MemoryCell::default()));
+    open.controller
+        .note_executor(ExecutorState::Ready { agent: None });
+    let old = open.controller.identity_read_due().expect("a read");
+    open.controller
+        .note_executor(ExecutorState::Ready { agent: UNLOCKED });
+    let new = open
+        .controller
+        .identity_read_due()
+        .expect("the agent change reads again");
+    assert_ne!(old, new);
+    assert_eq!(
+        open.controller.note_identity(old, Err("no agent".into())),
+        None
+    );
+    assert_eq!(open.stage(), "loading", "the old failure was taken");
+    open.controller.note_identity(new, Ok(empty()));
+    assert_eq!(open.stage(), "first-run");
+    assert!(!open.text().contains("Couldn't read your identity"));
+}

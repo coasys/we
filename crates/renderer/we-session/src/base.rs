@@ -746,13 +746,15 @@ impl BaseController {
         }
         let ready = |s: &ExecutorState| matches!(s, ExecutorState::Ready { .. });
         if ready(&before) && ready(&state) {
-            // Except an identity read that failed, while the list shows: the
-            // agent changed (made, unlocked), so it is read again.
-            let job = if before != state
-                && inner.identity == IdentityRead::Failed
+            // Except an identity read that failed, while the list shows, or
+            // one still out: the agent changed (made, unlocked), so it is
+            // read again. A read still out gets a new token; its own answer
+            // is then not taken.
+            let failed = inner.identity == IdentityRead::Failed
                 && inner.stage == Stage::Connect
-                && !inner.busy
-            {
+                && !inner.busy;
+            let out = matches!(inner.identity, IdentityRead::Reading(_));
+            let job = if before != state && (failed || out) {
                 forget_identity(&mut inner);
                 evaluate(&mut inner)
             } else {
