@@ -527,3 +527,33 @@ fn a_failed_read_is_read_again_when_the_agent_changes() {
     assert_eq!(open.controller.identity_read_due(), None);
     assert_eq!(open.stage(), "first-run");
 }
+
+/// "Try again" clicked twice in one frame (one permit, used twice) after a
+/// failed read: one read, and nothing is dialed past it. The loading stage
+/// is busy and a new generation, as a connect attempt is.
+#[test]
+fn a_retry_permit_used_twice_does_not_skip_the_read() {
+    let mut open = owned(Arc::new(MemoryCell::holding("this-device")));
+    open.controller
+        .note_executor(ExecutorState::Ready { agent: UNLOCKED });
+    let read = open.controller.identity_read_due().unwrap();
+    // A failure goes on to the remembered place, which refuses: the list,
+    // with the reason, so "Try again" shows.
+    let job = open
+        .controller
+        .note_identity(read, Err("no answer".into()))
+        .expect("the remembered place");
+    assert!(open.controller.note_refused(job.attempt, "Not now."));
+    let root = open.root();
+    let again = find_button(&root, "Try again").expect("Try again");
+    open.session.dispatch(&again, "onClick", Value::Undefined);
+    open.session.dispatch(&again, "onClick", Value::Undefined);
+    assert_eq!(open.stage(), "loading");
+    assert_eq!(open.dials(), 0, "a dial went past the identity read");
+    assert_ne!(job.attempt, 0);
+    assert!(open.controller.identity_read_due().is_some());
+    assert!(
+        open.controller.facts().busy,
+        "the loading stage takes calls"
+    );
+}

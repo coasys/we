@@ -980,15 +980,22 @@ fn evaluate(inner: &mut Inner) -> Option<HostJob> {
     inner.busy = false;
     if inner.has_identity {
         match inner.identity {
+            // Loading takes no call (busy) and spends the permits of the
+            // screen before it (a new generation), as a connect does: a
+            // second copy of the permit that asked for this read can't
+            // reach a place past it.
             IdentityRead::Unread => {
                 inner.reads += 1;
                 inner.identity = IdentityRead::Reading(inner.reads);
                 inner.read_due = true;
                 inner.stage = Stage::Loading;
+                inner.busy = true;
+                inner.generation = inner.generation.saturating_add(1);
                 return None;
             }
             IdentityRead::Reading(_) => {
                 inner.stage = Stage::Loading;
+                inner.busy = true;
                 return None;
             }
             IdentityRead::Known(_) | IdentityRead::Failed => {}
