@@ -203,11 +203,30 @@ impl BaseFile {
         let dir = path.parent().unwrap_or_else(|| Path::new("."));
         std::fs::create_dir_all(dir)?;
         let text = serde_json::to_string_pretty(&file).map_err(std::io::Error::other)?;
+        // Each write gets its own temporary file, created new, so two app
+        // instances that write at the same time never share one.
+        static WRITES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let mut temp = path.as_os_str().to_owned();
-        temp.push(".tmp");
+        temp.push(format!(
+            ".{}.{}.tmp",
+            std::process::id(),
+            WRITES.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
         let temp = PathBuf::from(temp);
-        std::fs::write(&temp, text)?;
-        std::fs::rename(&temp, path)
+        let written = (|| {
+            use std::io::Write;
+            let mut out = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&temp)?;
+            out.write_all(text.as_bytes())?;
+            out.sync_all()?;
+            std::fs::rename(&temp, path)
+        })();
+        if written.is_err() {
+            let _ = std::fs::remove_file(&temp);
+        }
+        written
     }
 }
 
@@ -497,6 +516,37 @@ mod tests {
             BaseFile::load(&fresh).connection.as_deref(),
             Some("server:lab.example:12000")
         );
+    }
+
+    /// Each write uses its own temporary file: a stale fixed-name temp file
+    /// does not block a write, and writers at the same time leave one whole
+    /// file and no temporary files.
+    #[test]
+    fn base_file_writes_do_not_share_a_temporary_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("base.json");
+        std::fs::create_dir(dir.path().join("base.json.tmp")).unwrap();
+        BaseFile::remember(&path, "this-device").unwrap();
+
+        std::thread::scope(|scope| {
+            for writer in 0..8 {
+                let path = &path;
+                scope.spawn(move || {
+                    for round in 0..20 {
+                        BaseFile::remember(path, &format!("server:w{writer}-{round}:1")).unwrap();
+                    }
+                });
+            }
+        });
+        let text = std::fs::read_to_string(&path).unwrap();
+        let file: BaseFile = serde_json::from_str(&text).unwrap();
+        assert!(file.connection.unwrap().starts_with("server:w"));
+        let left: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .filter(|name| name != "base.json" && name != "base.json.tmp")
+            .collect();
+        assert!(left.is_empty(), "temporary files left: {left:?}");
     }
 
     /// Acceptance: an explicit choice escapes a stale remembered endpoint.
