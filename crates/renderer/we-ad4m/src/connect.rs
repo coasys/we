@@ -463,9 +463,40 @@ impl ConnectPrompts for UiPrompts {
 struct Io {
     inner: WsIo,
     only: Option<String>,
-    /// Set when an address failed the health check but took a TCP
-    /// connection: something is there, and it is not an executor.
+    /// Set when an address answered the health check with something that
+    /// is not an executor's answer: something is there, and it is not an
+    /// executor. A health check that timed out never sets it.
     answered: Arc<AtomicBool>,
+}
+
+/// A health check's result, from the error's type.
+#[derive(Debug, PartialEq, Eq)]
+enum Health {
+    Ok,
+    /// No answer in time: the executor may be there but is not answering.
+    Timeout,
+    /// An answer that is not an executor's: another status, a body that
+    /// is not its JSON, or JSON without `status: "ok"`.
+    Invalid,
+    /// No HTTP answer at all: nothing there, or the connection failed.
+    NoAnswer,
+}
+
+impl Health {
+    /// `WsIo::healthy` fails with a `reqwest::Error` for the request and
+    /// body read, and with its own error (no `reqwest::Error` inside) for a
+    /// response it read and rejected.
+    fn of(result: &anyhow::Result<()>) -> Self {
+        let Err(e) = result else {
+            return Self::Ok;
+        };
+        match e.downcast_ref::<reqwest::Error>() {
+            None => Self::Invalid,
+            Some(e) if e.is_timeout() => Self::Timeout,
+            Some(e) if e.is_decode() || e.is_status() => Self::Invalid,
+            Some(_) => Self::NoAnswer,
+        }
+    }
 }
 
 impl Io {
@@ -485,7 +516,13 @@ impl ExecutorIo for Io {
     async fn healthy<'a>(&'a self, base_url: &'a str) -> anyhow::Result<()> {
         self.allowed(base_url)?;
         let health = self.inner.healthy(base_url).await;
-        if health.is_err() && takes_connections(base_url).await {
+        let answered = match Health::of(&health) {
+            Health::Ok | Health::Timeout => false,
+            Health::Invalid => true,
+            // Took the connection but spoke no HTTP.
+            Health::NoAnswer => takes_connections(base_url).await,
+        };
+        if answered {
             self.answered.store(true, Ordering::SeqCst);
         }
         health
@@ -896,5 +933,59 @@ mod failure_tests {
         let (kind, reason) = ended(&flow);
         assert_eq!(kind, FailureKind::NotAnExecutor, "{reason}");
         assert!(reason.contains(&port.to_string()), "{reason}");
+    }
+
+    /// Lal (slice 3, finding 1): an executor that takes the connection and
+    /// never answers its health check gave no answer. That is offline, not
+    /// "not an AD4M executor".
+    #[test]
+    fn a_stalled_health_check_is_unreachable() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            let mut held = Vec::new();
+            for stream in listener.incoming() {
+                let Ok(stream) = stream else { return };
+                held.push(stream);
+            }
+        });
+        let dir = tempfile::tempdir().unwrap();
+        let rt = crate::Runtime::new().unwrap();
+        let flow = ConnectFlow::start(
+            &rt.handle(),
+            settings_for(format!("http://127.0.0.1:{port}"), dir.path()),
+            || {},
+        );
+        let (kind, reason) = ended(&flow);
+        assert_eq!(kind, FailureKind::Unreachable, "{reason}");
+        assert!(!reason.contains("not an AD4M executor"), "{reason}");
+    }
+
+    /// An answer that is not an executor's (200, but not its JSON) is
+    /// still "not an AD4M executor".
+    #[test]
+    fn an_invalid_health_answer_is_not_an_executor() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { return };
+                let mut buf = [0u8; 2048];
+                let _ = stream.read(&mut buf);
+                let _ = stream.write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\nhello",
+                );
+            }
+        });
+        let dir = tempfile::tempdir().unwrap();
+        let rt = crate::Runtime::new().unwrap();
+        let flow = ConnectFlow::start(
+            &rt.handle(),
+            settings_for(format!("http://127.0.0.1:{port}"), dir.path()),
+            || {},
+        );
+        let (kind, reason) = ended(&flow);
+        assert_eq!(kind, FailureKind::NotAnExecutor, "{reason}");
     }
 }

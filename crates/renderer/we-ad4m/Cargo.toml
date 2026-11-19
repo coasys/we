@@ -33,6 +33,10 @@ anyhow = "1"
 # reqwest re-exports it, and `ad4m-client` parses with it, so both read a
 # host the same way.
 url = "2"
+# The health check's error type (connect.rs `Health`): a timeout is not a
+# wrong service. Already in the lockfile, the version ad4m-client uses; no
+# features of its own.
+reqwest = { version = "0.11", default-features = false }
 tempfile = { version = "3", optional = true }
 
 [features]

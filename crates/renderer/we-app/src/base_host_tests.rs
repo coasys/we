@@ -783,3 +783,46 @@ fn a_choose_does_not_wait_for_the_base_file() {
     assert_eq!(kept, Ok(Some(LAB.to_string())));
     assert!(std::fs::metadata(&path).unwrap().is_file());
 }
+
+/// Lal (slice 3, finding 1): an executor that takes the connection and
+/// never answers its health check is offline, and "Try again" dials it
+/// again. The phase comes from a real flow against a listener that
+/// accepts and never answers.
+#[test]
+fn a_stalled_executor_is_offline_and_try_again_redials() {
+    use we_ad4m::connect::{ConnectFlow, ConnectPhase};
+    use we_session::BaseCommand;
+
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
+    std::thread::spawn(move || {
+        let mut held = Vec::new();
+        for stream in listener.incoming() {
+            let Ok(stream) = stream else { return };
+            held.push(stream);
+        }
+    });
+    let (_dir, settings) = isolated(Some(&url));
+    let rt = we_ad4m::Runtime::new().unwrap();
+    let flow = ConnectFlow::start(&rt.handle(), settings, || {});
+    let start = std::time::Instant::now();
+    let phase = loop {
+        let phase = flow.phase();
+        if matches!(phase, ConnectPhase::Failed { .. }) {
+            break phase;
+        }
+        assert!(start.elapsed().as_secs() < 30, "the flow did not end");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+
+    let mut open = open(base_button("This computer"));
+    let attempt = attempt_in_flight(&mut open);
+    super::apply_phase(&open.controller, attempt, phase);
+    let snap = open.controller.public_json();
+    assert_eq!(snap["stage"], "offline", "{snap}");
+    assert_eq!(snap["offlineReason"], we_session::UNREACHABLE, "{snap}");
+
+    let generation = open.controller.generation();
+    let retry = open.controller.apply(BaseCommand::Retry, generation);
+    assert!(retry.is_some(), "Try again started nothing");
+}
