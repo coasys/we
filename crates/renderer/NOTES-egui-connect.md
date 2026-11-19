@@ -88,3 +88,26 @@ Commands ran from `crates/renderer` unless a command names another directory. `C
 - No remote login. No UI to add or remove a server. Edit the base file to list one.
 - No OS network monitor.
 - The permit binds the mount name, not a mount incarnation (Lal P2 on slice 1). This slice does not change it.
+
+# egui Connect, slice 3: offline and hand-back
+
+## What this slice does
+
+- A failed connect has a kind as well as a sentence: `ConnectPhase::Failed { kind, reason }`. The flow sets the kind from the error's type, before it makes the sentence. The base store reads the kind only. The words are only shown.
+  - `Unreachable`: nothing answered at the address, or an open session's socket stayed down.
+  - `NotAnExecutor`: something took a TCP connection at the address, but it did not answer as an AD4M executor.
+  - `Refused`: the executor refused this app (`ConnectError::Refused`, an `Unauthenticated` answer, a grant removed during a session).
+  - `Other`: anything else, for example a transport that the flow does not use or a token file that it cannot write.
+- The string classifier (`we_ad4m::base::classify_failure`) is removed.
+- `Unreachable` is the offline stage: "Can't connect", "Coasys isn't responding.", "Try again", "Choose another". All other kinds show the list with the reason.
+- The flow that the window keeps after the hand-off watches the socket as well as the auth state. If the socket stays down for 2 seconds, the flow ends `Unreachable` and closes the socket, so it stops redialling. A shorter break keeps the session. The refusal watch did not change.
+- When the executor stops under an open space, the base takes the window back to the offline stage. The space, its queries and the connection are dropped. "Try again" dials the place chosen again (not a click). When the executor is back, the session opens again and the space list shows.
+- A hand-back names the session that it closes. A loss or a refusal from an older session does nothing to a newer attempt or to a newer session. A hand-back advances the generation, so a permit from before it does not match.
+- A refused session shows the list with the reason. "Try again" then shows the list. It does not dial the place that refused.
+- Network: `BaseController::poll_network` retries the place chosen once when the host's probe changes from offline to online while the offline stage shows. The desktop app sets no probe. **An omitted probe counts as online**: nothing retries by itself, and "Try again" is the way back. This computer is dialed whatever the probe says.
+
+## Not in this slice
+
+- No OS network monitor. See above.
+- No executor lifecycle (slice 4). A restarted executor's agent is locked until the launcher unlocks it. The window shows "The executor at … is locked. Unlock it in the AD4M launcher, then retry." on the list.
+- The permit binds the mount name, not a mount incarnation (Lal P2 on slice 1). This slice does not change it.
