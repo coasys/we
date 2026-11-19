@@ -29,6 +29,7 @@ fn harness_remembering(
         data: Default::default(),
         access: we_ad4m::Access::ReadOnly,
         remember,
+        executor: None,
     };
     let bundle = we_template::Bundle::parse(BUNDLE).unwrap();
     egui_kittest::Harness::builder()

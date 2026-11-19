@@ -12,14 +12,80 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use we_ad4m::base::{select, BaseFile};
 use we_ad4m::connect::{Ask, ConnectFlow, ConnectPhase, ConnectSettings, FailureKind};
+use we_ad4m::supervisor::{Agent, Lifecycle, Supervisor};
 use we_ad4m::Connection;
 use we_egui::Registry;
 use we_expr::Value;
 use we_screen::{ScreenSchema, ScreenState};
-use we_session::{BaseController, ChoiceMemory, ConnectionRow, HostJob, NoMemory};
+use we_session::{
+    AgentState, BaseController, ChoiceMemory, ConnectionRow, ExecutorState, HostJob, NoMemory,
+};
 use we_template::{Action, ActionRequest, Completer, Host, Invoked, RootSpec, StoreBag};
 
 use crate::RendererApp;
+
+/// This computer's executor, when the app runs it: what the base screen
+/// reads and asks of it. [`Supervisor`] is the real one; tests give a
+/// stand-in. A window attached to an executor someone else runs has none.
+pub trait OwnedExecutor: Send + Sync {
+    fn state(&self) -> ExecutorState;
+    /// Grows on every change [`OwnedExecutor::state`] reports.
+    fn changes(&self) -> u64;
+    /// Start it; `false` when one already runs or starts.
+    fn start(&self) -> bool;
+    /// Read its state again; an answer older than a change is dropped.
+    fn refresh(&self);
+    /// Where it listens, once it does.
+    fn url(&self) -> Option<String>;
+    /// Called on every change, from the supervisor's threads.
+    fn set_waker(&self, waker: Arc<dyn Fn() + Send + Sync>);
+    /// How many times a process was started.
+    fn starts(&self) -> u64;
+    fn pid(&self) -> Option<u32>;
+}
+
+impl OwnedExecutor for Supervisor {
+    fn state(&self) -> ExecutorState {
+        match Supervisor::state(self) {
+            Lifecycle::Starting => ExecutorState::Starting,
+            Lifecycle::Ready { agent } => ExecutorState::Ready {
+                agent: agent.map(|agent| match agent {
+                    Agent::Unlocked => AgentState::Unlocked,
+                    Agent::Locked => AgentState::Locked,
+                }),
+            },
+            Lifecycle::Failed { reason, stopped } => ExecutorState::Failed { reason, stopped },
+        }
+    }
+
+    fn changes(&self) -> u64 {
+        Supervisor::changes(self)
+    }
+
+    fn start(&self) -> bool {
+        Supervisor::start(self)
+    }
+
+    fn refresh(&self) {
+        Supervisor::refresh(self)
+    }
+
+    fn url(&self) -> Option<String> {
+        Supervisor::url(self)
+    }
+
+    fn set_waker(&self, waker: Arc<dyn Fn() + Send + Sync>) {
+        Supervisor::set_waker(self, waker)
+    }
+
+    fn starts(&self) -> u64 {
+        Supervisor::starts(self)
+    }
+
+    fn pid(&self) -> Option<u32> {
+        Supervisor::pid(self)
+    }
+}
 
 struct LiveFlow {
     flow: ConnectFlow,
@@ -52,12 +118,15 @@ pub struct BaseScreen {
 impl BaseScreen {
     /// `remember` is the base file: the place chosen last and the servers
     /// listed. `None` keeps nothing.
-    pub fn open(
+    /// `owned` is this computer's executor when the window runs it.
+    pub fn open_owned(
         ctx: egui::Context,
         bundle: &we_template::Bundle,
         settings: ConnectSettings,
         remember: Option<PathBuf>,
+        owned: Option<Arc<dyn OwnedExecutor>>,
     ) -> Self {
+        let _ = owned;
         let rt = we_ad4m::Runtime::new().expect("the adapter runtime starts");
         let handle = rt.handle();
         let servers = remember
@@ -182,6 +251,11 @@ impl BaseScreen {
             apply_phase(&self.controller, attempt, phase);
         }
         self.sync_facts();
+    }
+
+    /// The executor this window runs, if any.
+    pub fn owned(&self) -> Option<&Arc<dyn OwnedExecutor>> {
+        None
     }
 
     pub fn take_ready(&mut self) -> Option<(Connection, String)> {

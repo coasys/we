@@ -18,7 +18,7 @@ use we_ad4m::connect::{Ask, ConnectSettings, GrantScope};
 use we_ad4m::{Connection, Notices, SpaceRow, WriteHost};
 use we_data::writes::Confirm;
 
-use crate::base_screen::BaseScreen;
+use crate::base_screen::{BaseScreen, OwnedExecutor};
 
 use crate::live::{live_space_app, LiveSpace};
 
@@ -37,6 +37,10 @@ pub struct ConnectArgs {
     /// The base file: the connection chosen last and the servers listed
     /// ([`we_ad4m::base::BaseFile`]). `None` keeps nothing between starts.
     pub remember: Option<std::path::PathBuf>,
+    /// `--executor-binary`: run this computer's executor. Ignored with
+    /// `settings.url` (`--executor-url`): an executor someone else runs is
+    /// attached to, never run or stopped by this app.
+    pub executor: Option<we_ad4m::supervisor::SupervisorConfig>,
 }
 
 type Pending<T> = Arc<Mutex<Option<Result<T, String>>>>;
@@ -76,11 +80,22 @@ pub struct ConnectedApp {
 
 impl ConnectedApp {
     pub fn new(ctx: egui::Context, bundle: we_template::Bundle, args: ConnectArgs) -> Self {
-        let base = BaseScreen::open(
+        Self::with_executor(ctx, bundle, args, None)
+    }
+
+    /// [`ConnectedApp::new`] with `owned` as this computer's executor.
+    pub fn with_executor(
+        ctx: egui::Context,
+        bundle: we_template::Bundle,
+        args: ConnectArgs,
+        owned: Option<Arc<dyn OwnedExecutor>>,
+    ) -> Self {
+        let base = BaseScreen::open_owned(
             ctx.clone(),
             &bundle,
             args.settings.clone(),
             args.remember.clone(),
+            owned,
         );
         Self {
             bundle,
@@ -144,6 +159,11 @@ impl ConnectedApp {
             Stage::Pick { .. } => "pick",
             Stage::Space { .. } => "space",
         }
+    }
+
+    /// The executor this window runs, if any.
+    pub fn owned(&self) -> Option<&Arc<dyn OwnedExecutor>> {
+        self.base.owned()
     }
 
     /// The open space, once one is.

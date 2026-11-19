@@ -202,6 +202,43 @@ pub struct HostJob {
     pub connection: ConnectionRow,
 }
 
+/// How this computer's agent is, as the host's supervisor read it. Only
+/// what the executor said: a locked agent is `Locked`, never a guess at
+/// which password it waits on (that needs a keyring, slice 7).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AgentState {
+    Unlocked,
+    Locked,
+}
+
+/// The executor this host runs (TS `BaseExecutorState`). A host that
+/// attaches to an executor someone else runs has none: it never reports
+/// one of these.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ExecutorState {
+    Starting,
+    /// Up. `agent` is `None` when the executor has no agent yet, or the
+    /// supervisor could not read it.
+    Ready {
+        agent: Option<AgentState>,
+    },
+    /// Not running. `stopped`: it ran and then stopped (outside the app,
+    /// or it crashed), rather than failing to start.
+    Failed {
+        reason: String,
+        stopped: bool,
+    },
+}
+
+/// Work a permitted call or an executor change asks the host to do.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum BaseJob {
+    /// Reach a connection.
+    Dial(HostJob),
+    /// Start this computer's executor (the failed stage's button).
+    StartExecutor,
+}
+
 /// A permitted base-store call, after the gate has checked the arguments.
 #[derive(Clone, Debug)]
 pub enum BaseCommand {
@@ -411,6 +448,27 @@ impl BaseController {
         };
         self.publish(&inner);
         job
+    }
+
+    /// Apply a permitted call; the job may be a dial or an executor start.
+    pub fn apply_base(&self, command: BaseCommand, generation: u64) -> Option<BaseJob> {
+        self.apply(command, generation).map(BaseJob::Dial)
+    }
+
+    /// The host runs this computer's executor, which is now `state`.
+    pub fn own_executor(&self, state: ExecutorState) {
+        let _ = state;
+    }
+
+    /// The host's executor changed to `state`.
+    pub fn note_executor(&self, state: ExecutorState) -> Option<HostJob> {
+        let _ = state;
+        None
+    }
+
+    /// Whether a session holds the window.
+    pub fn in_session(&self) -> bool {
+        self.lock().stage == Stage::Session
     }
 
     /// The lost-connection banner asked to dial again. This is not a

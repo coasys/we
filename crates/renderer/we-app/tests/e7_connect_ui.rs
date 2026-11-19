@@ -56,6 +56,7 @@ fn connect_pick_and_render() {
         data: Default::default(),
         access: we_ad4m::Access::ReadOnly,
         remember: None,
+        executor: None,
     };
     let bundle = we_template::Bundle::parse(BUNDLE).unwrap();
     let mut h = egui_kittest::Harness::builder()
@@ -177,6 +178,7 @@ fn app_built(
         data: Default::default(),
         access: we_ad4m::Access::ReadOnly,
         remember,
+        executor: None,
     };
     let bundle = we_template::Bundle::parse(BUNDLE).unwrap();
     builder

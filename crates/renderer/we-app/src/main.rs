@@ -558,6 +558,7 @@ fn run_connected(args: Args) -> eframe::Result<()> {
         space: args.space.clone(),
         theme: args.theme.clone(),
         remember: Some(we_ad4m::base::default_base_file()),
+        executor: None,
         data: if args.demo_recorded {
             we_app::live::DataMode::DemoRecorded
         } else {

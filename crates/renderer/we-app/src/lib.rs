@@ -15,6 +15,8 @@
 #[cfg(not(target_arch = "wasm32"))]
 mod base_screen;
 #[cfg(not(target_arch = "wasm32"))]
+pub use base_screen::OwnedExecutor;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod connected;
 pub mod gallery;
 pub mod gallery_widgets;

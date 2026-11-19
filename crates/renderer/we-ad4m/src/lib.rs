@@ -13,6 +13,9 @@
 //!   [`list_spaces`] lists what the picker offers.
 //! - [`live::LiveMembers`] serves the store map's `modelRead` rows (M2)
 //!   from executor reads; members without a row stay on the snapshot.
+//! - [`supervisor::Supervisor`] runs this computer's executor when the app
+//!   owns one: start, ready, stopped or failed to start, stop (its own child
+//!   only).
 //! - [`translate`] lowers a compiled `$query` to `modelQuery`'s options, as
 //!   the TS adapter does.
 //!
@@ -36,6 +39,8 @@ pub mod relations;
 mod source;
 #[cfg(not(target_arch = "wasm32"))]
 mod spaces;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod supervisor;
 #[cfg(all(not(target_arch = "wasm32"), feature = "testkit"))]
 pub mod testkit;
 #[cfg(not(target_arch = "wasm32"))]
