@@ -174,6 +174,7 @@ fn the_last_used_tag_survives_a_restart() {
         h.query_by_label_contains("Last used").is_some(),
         "the tag did not survive the restart"
     );
+    save_shot(&mut h, "connect-last-used.png");
 }
 
 /// A kept server is listed, labelled as a server, and choosing it says why
@@ -204,4 +205,12 @@ fn a_kept_server_explains_the_refusal() {
     h.run_steps(5);
     assert!(h.query_by_label_contains("isn't responding").is_none());
     assert!(server.accept().is_err(), "the server address was dialed");
+    save_shot(&mut h, "connect-server-refused.png");
+}
+
+/// Render-and-export smoke only: no pixel or golden comparison.
+fn save_shot(h: &mut H, name: &str) {
+    let image = h.render().expect("wgpu render of the connect screen");
+    let shot = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
+    image.save(&shot).expect("write the connect screenshot");
 }
