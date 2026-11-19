@@ -1142,7 +1142,9 @@ export const seedBundles: Bundle[] = [
               node: {
                 type: 'Column',
                 props: { width: '100%', height: '100%' },
-                $localState: { openRows: { type: 'array', initial: ['group|calls'], persist: 'coasys.tree.open' } },
+                $localState: {
+                  openRows: { type: 'array', initial: ['group|calls', 'group|workflows'], persist: 'coasys.tree.open' },
+                },
                 $queries: {
                   calls: {
                     entity: 'CollectionBlock',
@@ -1307,13 +1309,13 @@ export const seedBundles: Bundle[] = [
                         props: {
                           label: 'This space',
                           selected: {
-                            $: "((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna ? ((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') == 'all' ? 'group|dna' : startsWith((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), 'policy|') ? 'dnaprop|' + (routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') : startsWith((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), 'model|') ? 'dna|model|' + split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] : 'dnakind|' + (routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all')) : routeStore.params.card && routeStore.params.cardType in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'] ? 'dna|model|' + routeStore.params.cardType : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' ? 'call|' + routeStore.params.id : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? 'person|' + routeStore.params.did : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' ? (workflowStore.open ? 'workflow|' + workflowStore.open.name : 'group|workflows') : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') in ['channels', 'calls', 'people'] ? 'group|' + (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') : 'channel|' + (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)",
+                            $: "((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna ? ((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') == 'all' ? 'group|dna' : startsWith((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), 'policy|') ? 'dnaprop|' + (routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') : startsWith((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), 'model|') ? 'dna|model|' + split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] : 'dnakind|' + (routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all')) : routeStore.params.card && routeStore.params.cardType in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'] ? 'dna|model|' + routeStore.params.cardType : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' ? 'call|' + routeStore.params.id : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? 'person|' + routeStore.params.did : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' ? (workflowStore.open ? (routeStore.params.card ? 'run|' + workflowStore.open.name + '|' + routeStore.params.card : 'workflow|' + workflowStore.open.name) : 'group|workflows') : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') in ['channels', 'calls', 'people'] ? 'group|' + (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') : 'channel|' + (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)",
                           },
                           onSelect: [
                             {
                               $if: {
                                 condition: {
-                                  $: "startsWith(event.detail.value, 'group|') && !(event.detail.value in ['group|dna', 'group|workflows'])",
+                                  $: "startsWith(event.detail.value, 'group|') && event.detail.value != 'group|dna'",
                                 },
                                 then: { $toggleLocalIn: 'openRows', value: { $: 'event.detail.value' } },
                               },
@@ -1355,15 +1357,11 @@ export const seedBundles: Bundle[] = [
                                 then: [
                                   {
                                     $if: {
-                                      condition: {
-                                        $: "['group|dna', 'group|templates', 'dnagroup|flows', 'group|workflows'].exists(k, k in local.openRows)",
-                                      },
+                                      condition: { $: "'group|dna' in local.openRows" },
                                       then: [
                                         {
                                           $setLocal: 'openRows',
-                                          value: {
-                                            $: "local.openRows.filter(k, !(k in ['group|dna', 'group|templates', 'dnagroup|flows', 'group|workflows']))",
-                                          },
+                                          value: { $: "local.openRows.filter(k, k != 'group|dna')" },
                                         },
                                         {
                                           $if: {
@@ -1453,6 +1451,26 @@ export const seedBundles: Bundle[] = [
                             },
                             {
                               $if: {
+                                condition: { $: "startsWith(event.detail.value, 'run|')" },
+                                then: [
+                                  {
+                                    $invoke: 'workflowStore.openWorkflow',
+                                    args: [{ $: "split(event.detail.value, '|')[1]" }],
+                                  },
+                                  {
+                                    $invoke: 'routeStore.navigate',
+                                    args: [
+                                      {
+                                        $: "(spaceStore.spacePath + '/workflows') + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/workflows', '?') ? '&' : '?') + 'view=canvas' : '')",
+                                      },
+                                      { $: "{ query: { card: split(event.detail.value, '|')[2] } }" },
+                                    ],
+                                  },
+                                ],
+                              },
+                            },
+                            {
+                              $if: {
                                 condition: { $: "startsWith(event.detail.value, 'person|')" },
                                 then: {
                                   $invoke: 'routeStore.navigate',
@@ -1505,15 +1523,11 @@ export const seedBundles: Bundle[] = [
                                 condition: { $: "event.detail.value == 'dnagroup|flows'" },
                                 then: {
                                   $if: {
-                                    condition: {
-                                      $: "['dnagroup|flows', 'group|workflows'].exists(k, k in local.openRows)",
-                                    },
+                                    condition: { $: "'dnagroup|flows' in local.openRows" },
                                     then: [
                                       {
                                         $setLocal: 'openRows',
-                                        value: {
-                                          $: "local.openRows.filter(k, !(k in ['dnagroup|flows', 'group|workflows']))",
-                                        },
+                                        value: { $: "local.openRows.filter(k, k != 'dnagroup|flows')" },
                                       },
                                       {
                                         $if: {
@@ -1795,7 +1809,7 @@ export const seedBundles: Bundle[] = [
                               value: 'group|workflows',
                               open: { $: "'group|workflows' in local.openRows" },
                               onOpenChange: { $toggleLocalIn: 'openRows', value: 'group|workflows' },
-                              expandable: false,
+                              expandable: { $: 'count(workflowStore.active) > 0' },
                             },
                             children: [
                               {
@@ -1806,7 +1820,7 @@ export const seedBundles: Bundle[] = [
                                   {
                                     type: 'we-text',
                                     props: { truncate: true, flex: '1', minWidth: '0' },
-                                    children: ['Flows'],
+                                    children: ['Active flows'],
                                   },
                                   {
                                     type: 'Row',
@@ -1815,19 +1829,57 @@ export const seedBundles: Bundle[] = [
                                       {
                                         type: '$if',
                                         props: {
-                                          condition: {
-                                            $: 'sum(workflowStore.workflows.filter(f, !f.archived).map(f, f.running))',
-                                          },
+                                          condition: { $: 'count(workflowStore.active)' },
                                           then: {
                                             type: 'we-badge',
                                             props: { variant: 'soft', size: 'xs' },
-                                            children: [
-                                              {
-                                                $: 'sum(workflowStore.workflows.filter(f, !f.archived).map(f, f.running))',
-                                              },
-                                            ],
+                                            children: [{ $: 'count(workflowStore.active)' }],
                                           },
                                         },
+                                      },
+                                    ],
+                                  },
+                                ],
+                              },
+                              {
+                                type: '$each',
+                                props: { items: { $: 'workflowStore.active' }, as: 'run' },
+                                children: [
+                                  {
+                                    type: 'we-tree-item',
+                                    slot: 'children',
+                                    props: { value: { $: "'run|' + run.workflow + '|' + run.record" } },
+                                    children: [
+                                      {
+                                        type: 'Row',
+                                        props: { gap: '200', ay: 'center', minWidth: '0', width: '100%' },
+                                        children: [
+                                          {
+                                            type: 'we-icon',
+                                            props: {
+                                              name: {
+                                                $: "run.stalled ? 'warning' : run.waiting ? 'hourglass-medium' : 'flow-arrow'",
+                                              },
+                                              size: 'sm',
+                                              color: 'text-faint',
+                                            },
+                                          },
+                                          {
+                                            type: 'we-text',
+                                            props: { truncate: true, flex: '1', minWidth: '0' },
+                                            children: [{ $: 'run.title' }],
+                                          },
+                                          {
+                                            type: 'we-text',
+                                            props: {
+                                              variant: 'footnote',
+                                              color: 'text-faint',
+                                              truncate: true,
+                                              maxWidth: '96px',
+                                            },
+                                            children: [{ $: 'run.stateLabel' }],
+                                          },
+                                        ],
                                       },
                                     ],
                                   },
@@ -1913,7 +1965,7 @@ export const seedBundles: Bundle[] = [
                             props: {
                               value: 'group|dna',
                               open: {
-                                $: "['group|dna', 'group|templates', 'dnagroup|flows', 'group|workflows'].exists(k, k in local.openRows) || ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') != 'all') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open)",
+                                $: "'group|dna' in local.openRows || ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') != 'all') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open)",
                               },
                               onOpenChange: {
                                 $if: {
@@ -1927,9 +1979,7 @@ export const seedBundles: Bundle[] = [
                                   else: [
                                     {
                                       $setLocal: 'openRows',
-                                      value: {
-                                        $: "local.openRows.filter(k, !(k in ['group|dna', 'group|templates', 'dnagroup|flows', 'group|workflows']))",
-                                      },
+                                      value: { $: "local.openRows.filter(k, k != 'group|dna')" },
                                     },
                                     {
                                       $if: {
@@ -2235,7 +2285,7 @@ export const seedBundles: Bundle[] = [
                                 props: {
                                   value: 'dnagroup|flows',
                                   open: {
-                                    $: "['dnagroup|flows', 'group|workflows'].exists(k, k in local.openRows) || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open)",
+                                    $: "'dnagroup|flows' in local.openRows || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open)",
                                   },
                                   onOpenChange: {
                                     $if: {
@@ -2249,9 +2299,7 @@ export const seedBundles: Bundle[] = [
                                       else: [
                                         {
                                           $setLocal: 'openRows',
-                                          value: {
-                                            $: "local.openRows.filter(k, !(k in ['dnagroup|flows', 'group|workflows']))",
-                                          },
+                                          value: { $: "local.openRows.filter(k, k != 'dnagroup|flows')" },
                                         },
                                         {
                                           $if: {
@@ -2345,17 +2393,6 @@ export const seedBundles: Bundle[] = [
                                                 type: 'we-text',
                                                 props: { truncate: true, flex: '1', minWidth: '0' },
                                                 children: [{ $: 'workflow.label' }],
-                                              },
-                                              {
-                                                type: '$if',
-                                                props: {
-                                                  condition: { $: 'workflow.records' },
-                                                  then: {
-                                                    type: 'we-badge',
-                                                    props: { variant: 'soft', size: 'xs' },
-                                                    children: [{ $: 'workflow.records' }],
-                                                  },
-                                                },
                                               },
                                             ],
                                           },
@@ -27285,8 +27322,12 @@ export const seedBundles: Bundle[] = [
                                                               gap: '200',
                                                               p: '300',
                                                               r: 'card',
-                                                              border: '1px solid border',
-                                                              bg: 'surface',
+                                                              border: {
+                                                                $: "(rec.record == routeStore.params.card) ? '1px solid accent' : '1px solid border'",
+                                                              },
+                                                              bg: {
+                                                                $: "(rec.record == routeStore.params.card) ? 'accent-soft' : 'surface'",
+                                                              },
                                                             },
                                                             children: [
                                                               {

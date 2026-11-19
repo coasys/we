@@ -43,7 +43,6 @@ import {
   DNA_AT,
   dnaCrumbs,
   OTHER_CLASSES,
-  RUNNING_FLOWS,
 } from './coasys/space/dna.ts';
 import { callPath, groupPath, personPath, SELECTED_EXPR } from './coasys/space/paths.ts';
 import { treeSection } from './coasys/space/tree.ts';
@@ -649,10 +648,10 @@ describe('the Coasys cartridge', () => {
 
     /*
       Social DNA holds Models, Flows and Templates, then the built-in classes and the policy. The top
-      level is what happens in the space: its Flows row is the flows running, counted, and Templates is
-      no longer a group of its own.
+      level is what happens in the space: Active flows lists the records still running, and Templates
+      is no longer a group of its own.
     */
-    it('holds Models, Flows, Templates, Built in and Policy, and leaves running flows at the top', () => {
+    it('holds Models, Flows, Templates, Built in and Policy, and lists the active flows at the top', () => {
       type Node = { type?: string; slot?: string; props?: Record<string, unknown>; children?: unknown[] };
       const label = (row: Node) =>
         ((row.children?.[0] as Node).children as Node[]).find((c) => c.type === 'we-text')?.children?.[0];
@@ -671,7 +670,7 @@ describe('the Coasys cartridge', () => {
         'group|dna',
         'group|themes',
       ]);
-      expect(top.map(label)).toEqual(['Feed', 'Calls', 'Flows', 'People', 'Social DNA', 'Themes']);
+      expect(top.map(label)).toEqual(['Feed', 'Calls', 'Active flows', 'People', 'Social DNA', 'Themes']);
 
       const dna = top.find((row) => row.props?.value === 'group|dna')!;
       const inside = (dna.children as Node[]).slice(1);
@@ -685,37 +684,49 @@ describe('the Coasys cartridge', () => {
       expect(flows.props?.value).toBe('dnagroup|flows');
       expect(JSON.stringify(flows)).toContain("'workflow|' + workflow.name");
       expect(JSON.stringify(flows)).toContain('"New flow"');
-      // Templates moved in unchanged: its rows, its + and its value, so an open tree stays open.
+      // A flow is a definition, counted no more than a model is: what is running is counted at the top.
+      expect(JSON.stringify(flows)).not.toContain('workflow.records');
+      // Templates moved in unchanged: its rows, its + and its value.
       expect(inside[2].props?.value).toBe('group|templates');
       expect(JSON.stringify(inside[2])).toContain('"New template"');
 
-      // The top level's Flows counts what is running, lists no rows and so has no caret.
-      const running = top[2];
-      expect(running.children).toHaveLength(1);
-      expect(running.props?.expandable).toBe(false);
-      // What is still running, not every record that went through: a finished one is in `records` only.
-      const workflows = [
-        { name: 'a', archived: false, records: 2, running: 1 },
-        { name: 'b', archived: false, records: 3, running: 0 },
-        { name: 'c', archived: true, records: 9, running: 9 },
-      ];
-      expect(at([], {}, { workflowStore: { workflows } })({ $: RUNNING_FLOWS })).toBe(1);
+      // Active flows lists a row for each record still running, and opens like any group with rows.
+      const active = top[2];
+      const runs = (active.children as Node[]).find((c) => c.type === '$each')!;
+      expect(runs.props?.items).toEqual({ $: 'workflowStore.active' });
+      expect((runs.children?.[0] as Node).props?.value).toEqual({ $: "'run|' + run.workflow + '|' + run.record" });
+      expect(active.props?.expandable).toEqual({ $: 'count(workflowStore.active) > 0' });
+      // Its count is its rows, so it adds up when opened.
+      expect(JSON.stringify(active)).toContain('count(workflowStore.active)');
+    });
+
+    // A record's row opens its flow on the flows page with the record chosen, and is lit there.
+    it('opens a running record in its flow, and lights its row while it is chosen there', () => {
+      const select = JSON.stringify(
+        (findNode(treeSection, (n) => n.type === 'we-tree') as { props: { onSelect: unknown } }).props.onSelect,
+      );
+      expect(select).toContain("startsWith(event.detail.value, 'run|')");
+      // The id rides in `query`, so one carrying encoded characters reads back as itself.
+      expect(select).toContain("{ query: { card: split(event.detail.value, '|')[2] } }");
+      expect(select).not.toContain("'?card='");
+      const lit = (params: Record<string, string>) =>
+        at(['workflows'], params, { workflowStore: { open: { name: 'review' } } })({ $: SELECTED_EXPR });
+      expect(lit({ card: 'r1' })).toBe('run|review|r1');
+      // No record chosen: the flow's own row.
+      expect(lit({})).toBe('workflow|review');
     });
 
     /*
-      Templates and the flows written moved inside Social DNA. A tree saved with them open has to
-      show them again, and a flow opened from the flows page has to be seen lit, not chosen inside
-      a closed row: an open row holds the rows above it open.
+      A flow opened from the flows page has to be seen lit, not chosen inside a closed row: a chosen
+      flow holds the rows above it open. Active flows open holds nothing else open — it is its own row.
     */
-    it('opens Social DNA around a row saved open or a flow chosen, under its new parent', () => {
+    it('opens Social DNA around a flow chosen, and only around that', () => {
       const rowOf = (value: string) => findNode(treeSection, (n) => (n.props as { value?: unknown })?.value === value)!;
       const open = (value: string, openRows: string[], path: string[] = [], extra = {}) =>
         at(path, {}, { local: { openRows }, ...extra })((rowOf(value).props as { open: unknown }).open);
-      // Saved before the move: Templates open, and the old Workflows group (now the flows written) open.
-      expect(open('group|dna', ['group|templates'])).toBe(true);
-      expect(open('group|dna', ['group|workflows'])).toBe(true);
-      expect(open('dnagroup|flows', ['group|workflows'])).toBe(true);
-      expect(open('group|templates', ['group|templates'])).toBe(true);
+      expect(open('group|dna', ['group|dna'])).toBe(true);
+      expect(open('group|dna', ['group|workflows'])).toBe(false);
+      expect(open('dnagroup|flows', ['group|workflows'])).toBe(false);
       // A flow chosen on the flows page lights its row, so the rows above it open.
       const chosen = { workflowStore: { open: { name: 'review' } } };
       expect(open('group|dna', [], ['workflows'], chosen)).toBe(true);
