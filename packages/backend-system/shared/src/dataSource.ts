@@ -211,6 +211,18 @@ export interface RendererDataBindings {
    * Must read reactively. Absent means nothing is ever pending, which is the old behaviour.
    */
   $modelsPending?: (dataset: unknown) => boolean;
+  /**
+   * How many times the host has written schema into a dataset behind a running session — a switch's
+   * background refresh installing module shapes or bringing stored shapes up to date.
+   *
+   * Read inside the querying effect: a subscription that failed with "No SHACL shape stored for
+   * class X" — asked before the refresh wrote the shape — is re-asked when the count moves, rather
+   * than staying failed until the view remounts. The count moves only when the refresh actually
+   * wrote something; a switch that changed nothing must not re-ask every open query.
+   *
+   * Must read reactively. Absent means no recovery, which is the old behaviour.
+   */
+  $schemaRevision?: (dataset: unknown) => number;
 }
 
 /**
@@ -233,6 +245,7 @@ export const RENDERER_BINDING_NAMES = [
   '$ephemeral',
   '$sources',
   '$modelsPending',
+  '$schemaRevision',
 ] as const satisfies readonly (keyof RendererDataBindings)[];
 
 /**

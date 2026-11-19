@@ -436,7 +436,7 @@ export function shapeIsStale(model: typeof Ad4mModel, stored: ReadonlyMap<string
  * A model already present is re-registered when its stored shape is out of date — see
  * {@link shapeIsStale}. Without that, adding a property to a model reaches new spaces only.
  */
-async function ensureEntitiesRegistered(p: PerspectiveProxy, models: readonly (typeof Ad4mModel)[]): Promise<void> {
+async function ensureEntitiesRegistered(p: PerspectiveProxy, models: readonly (typeof Ad4mModel)[]): Promise<string[]> {
   const [present, stored] = await Promise.all([
     bulkHasSubjectClassLink(
       p,
@@ -449,7 +449,7 @@ async function ensureEntitiesRegistered(p: PerspectiveProxy, models: readonly (t
   const missing = models.filter((_, i) => !present[i]);
   const stale = models.filter((m, i) => present[i] && shapeIsStale(m, stored));
   warnAboutOrphanedPredicates(stale, stored);
-  await registerEntities(p, missing, stale);
+  return registerEntities(p, missing, stale);
 }
 
 /**
@@ -777,8 +777,12 @@ export async function installSpaceSdna(p: PerspectiveProxy, moduleEntities: read
  * package's dependency direction — everything else here is imported *by* the shell, not from it.
  * The caller already holds the registry, so passing `moduleRegistry.models()` costs nothing.
  */
-export async function installModuleSdna(p: PerspectiveProxy, moduleEntities: readonly unknown[] = []): Promise<void> {
-  if (moduleEntities.length) await ensureEntitiesRegistered(p, moduleEntities as (typeof Ad4mModel)[]);
+export async function installModuleSdna(
+  p: PerspectiveProxy,
+  moduleEntities: readonly unknown[] = [],
+): Promise<string[]> {
+  if (!moduleEntities.length) return [];
+  return ensureEntitiesRegistered(p, moduleEntities as (typeof Ad4mModel)[]);
 }
 
 /**

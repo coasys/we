@@ -4165,6 +4165,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     space: governedSpace,
   });
   registerEntityWriteCheck(async (write) => {
+    // A switch shows a known space before its schema upkeep has run, so a read may be ahead of the
+    // shapes. A write waits for them here, the one place every write passes; reads never do.
+    await datasetStore.schemaReady(write.dataset);
     try {
       await policyCheck(write);
     } catch (error) {
@@ -5730,6 +5733,9 @@ export function SpaceStoreProvider(props: ParentProps) {
       setCurrentSpace(null);
       return;
     }
+    // Read for the dependency alone: this read can fail on a shape the switch's upkeep installs
+    // afterwards, and the bump is what asks it again.
+    datasetStore.schemaRevision(ds.handle);
     // `taskStates` too: the order of the space's states rides on the same record — see the effect
     // beside `loadTaskStateOrder`.
     const builder: LiveRows<Space> = Space.query(ds.handle, {

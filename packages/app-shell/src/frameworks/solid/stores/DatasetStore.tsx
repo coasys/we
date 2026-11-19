@@ -26,6 +26,7 @@ import { datasetKey, type DatasetRef, type EntityManifestEntry, trace } from '@w
 import { toastService } from '@we/components/solid';
 import { AgentSettings, type DatasetProxy } from '@we/entities';
 import { latest } from '@we/module-shared';
+import { clearLastAnswersFor } from '@we/schema-solid';
 import {
   Accessor,
   batch,
@@ -188,6 +189,18 @@ export interface DatasetStore {
   loadDatasets: (known?: AppDataset[] | null) => Promise<void>;
   subscribeToChanges: () => void;
   getDatasetOrder: () => string[];
+  /**
+   * How many times a switch's background schema refresh wrote shapes into the dataset a handle
+   * belongs to. The renderer's `$schemaRevision` binding reads it inside the querying effect, so
+   * the bump re-asks a query that failed on a shape the refresh went on to install. Reads 0 for a
+   * dataset nothing has been written into.
+   */
+  schemaRevision: (dataset: unknown) => number;
+  /**
+   * Settles when the schema upkeep a switch started for a dataset has — at once when none is in
+   * flight. Writes wait on it; reads do not, so a known space still opens at once.
+   */
+  schemaReady: (dataset: unknown) => Promise<void>;
 }
 
 const DatasetContext = createContext<DatasetStore>();
@@ -230,13 +243,78 @@ export function DatasetStoreProvider(props: ParentProps) {
   const [personalDataset, setPersonalDataset] = createSignal<AppDataset | null>(null);
   const [whenPersonalDataset, setWhenPersonalDataset] = createSignal<Promise<AppDataset | null> | null>(null);
   /*
+    Per-session answers a switch would otherwise ask the backend again on the click-to-render path.
+
+    `weSpaceAnswers` holds the datasets `hasCoreSchema` answered true for. A switch publishes from
+    that without asking again: WE's core schema, once installed, is not taken out of a space. Only
+    the yes is kept: a no may be a schema still syncing in, or
+    `initializeAsWeSpace` about to install one, and it decides the foreign-space gate, so a switch
+    with no yes in hand always waits for the answer.
+
+    `spaceSchemaRefreshed` is the spaces whose schema upkeep (`installModules` + `refreshSpace`)
+    has started this session. The pair re-checks every shape the space declares — a read in the common
+    case — and runs after the switch is shown, at most once per space: a later switch finds it done
+    rather than paying the check again. A failure is unmarked, so the next switch tries again rather
+    than believing a refresh that never landed.
+  */
+  const weSpaceAnswers = new Set<string>();
+  const spaceSchemaRefreshed = new Set<string>();
+  /**
+   * How many times a refresh actually wrote shapes into a dataset, by its id.
+   *
+   * `$schemaRevision` reads it inside the querying effect, so a bump re-asks the queries that were
+   * open while the shapes were missing — the "No SHACL shape stored for class X" failures this is
+   * the recovery for. A refresh that wrote nothing moves nothing: re-asking every open query on
+   * every switch is the whole cost this avoids.
+   */
+  // One signal per dataset, made when first read: a bump in one space re-runs only that space's queries.
+  const schemaRevisions = new Map<string, ReturnType<typeof createSignal<number>>>();
+  const revisionSignal = (uuid: string) => {
+    let signal = schemaRevisions.get(uuid);
+    if (!signal) schemaRevisions.set(uuid, (signal = createSignal(0)));
+    return signal;
+  };
+  const datasetIdOfHandle = (dataset: unknown): string | null => {
+    const key =
+      (dataset as { uuid?: unknown } | null | undefined)?.uuid ?? (dataset as { id?: unknown } | null | undefined)?.id;
+    return typeof key === 'string' ? key : null;
+  };
+  const schemaRevision = (dataset: unknown): number => {
+    const uuid = datasetIdOfHandle(dataset);
+    return uuid === null ? 0 : revisionSignal(uuid)[0]();
+  };
+  const bumpSchemaRevision = (uuid: string) => revisionSignal(uuid)[1]((n) => n + 1);
+  /**
+   * Upkeep in flight, by dataset id, as a promise that settles — never rejects — when it has. A write
+   * waits on it (`schemaReady`) so it meets the shapes a read may run ahead of; a failed upkeep
+   * releases the write all the same, as writing without the shapes is no worse than not writing.
+   */
+  const upkeepInFlight = new Map<string, Promise<void>>();
+  const schemaReady = (dataset: unknown): Promise<void> => {
+    const uuid = datasetIdOfHandle(dataset);
+    return (uuid !== null && upkeepInFlight.get(uuid)) || Promise.resolve();
+  };
+  /** What a gone dataset can never answer again — a re-added one is asked fresh. */
+  const forgetSpaceAnswers = (uuid: string) => {
+    weSpaceAnswers.delete(uuid);
+    spaceSchemaRefreshed.delete(uuid);
+    clearLastAnswersFor(uuid);
+  };
+  /*
     Counted up each time the agent locks. The personal space's install runs after the app appears,
     so it can still be out when somebody locks and signs in again; what it finds belongs to the
     session that started it, and the count is how it knows that session has ended.
   */
   let sessionsEnded = 0;
   createEffect(() => {
-    if (session.bootState() === 'login') sessionsEnded++;
+    if (session.bootState() !== 'login') return;
+    sessionsEnded++;
+    // Every answer cached above belongs to the session that asked it — another agent's spaces
+    // answer differently, and another session's refreshes have not run.
+    weSpaceAnswers.clear();
+    spaceSchemaRefreshed.clear();
+    upkeepInFlight.clear();
+    for (const [, set] of schemaRevisions.values()) set(0);
   });
   const [testDataset, setTestDataset] = createSignal<AppDataset | null>(null);
   const [agentSettings, setAgentSettings] = createSignal<AgentSettings | null>(null, { equals: false });
@@ -446,6 +524,7 @@ export function DatasetStoreProvider(props: ParentProps) {
 
       // Removal fires for deletions from any client
       onRemoved: (uuid) => {
+        forgetSpaceAnswers(uuid);
         setDatasets((prev) => prev.filter((d) => d.id !== uuid));
         removedListeners.emit(uuid);
         reorderDatasets(getDatasetOrder().filter((id) => id !== uuid)).catch(console.error);
@@ -751,6 +830,7 @@ export function DatasetStoreProvider(props: ParentProps) {
 
     try {
       await lifecycle.remove(uuid);
+      forgetSpaceAnswers(uuid);
       setDatasets((prev) => prev.filter((d) => d.id !== uuid));
       removedListeners.emit(uuid);
     } catch (error) {
@@ -775,6 +855,9 @@ export function DatasetStoreProvider(props: ParentProps) {
     const lifecycle = session.lifecycle();
     if (!lifecycle) return;
     requestedDataset = uuid;
+    // The session it was asked in: a round trip below can outlive the agent's lock, and what it
+    // finds then is another session's to ignore.
+    const sessionAtStart = sessionsEnded;
     const started = performance.now();
     let step = started;
     const lap = () => {
@@ -810,8 +893,12 @@ export function DatasetStoreProvider(props: ParentProps) {
       // just-joined dataset holds no SDNA whatever app made it, so a Flux community would
       // look empty too.
       const schemas = session.backendPorts()!.schemas;
-      let weSpace = await schemas.hasCoreSchema(handle);
-      trace('dataset', 'switch:core', { dataset: uuid, weSpace, ms: lap() });
+      const knownWeSpace = weSpaceAnswers.has(uuid);
+      let weSpace = knownWeSpace || (await schemas.hasCoreSchema(handle));
+      trace('dataset', 'switch:core', { dataset: uuid, weSpace, known: knownWeSpace, ms: lap() });
+      // Whether the space was a WE space before this switch could install anything: only those
+      // get the upkeep below.
+      const existingWeSpace = weSpace;
       if (!weSpace) {
         if (!(await schemas.hasAnySchema(handle))) {
           await lifecycle.whenSynced?.(uuid);
@@ -821,34 +908,11 @@ export function DatasetStoreProvider(props: ParentProps) {
           }
           weSpace = await schemas.hasCoreSchema(handle);
         }
-      } else {
-        // An existing WE space skips the install above by design, so a module enabled after the
-        // space was created would find its shapes missing — a query failing with "No SHACL shape
-        // stored for class X" in a dataset that otherwise looks healthy. Module shapes therefore
-        // install on every switch; the port diffs before writing, so this is a read in the
-        // common case.
-        //
-        // The same skip has a second cost, in two forms: a *property* added to one of WE's own
-        // models, and a *model* added outright, both reach newly created spaces only — the first
-        // silently dropping writes, the second failing every query against the new entity with "No
-        // SHACL shape stored for class X". Refresh covers both; it diffs before writing.
-        //
-        // Together rather than in turn: they register disjoint classes (a module's, WE's own) from
-        // the same reads, which the port shares — so both cost the one round trip.
-        const [, written] = await Promise.all([
-          schemas.installModules(handle, moduleRegistry.moduleSchemas(schemas)),
-          schemas.refreshSpace(handle).catch((err) => {
-            console.error('DatasetStore: space schema refresh failed', err);
-            return [] as string[];
-          }),
-        ]);
-        if (written.length) console.info(`DatasetStore: brought space schemas up to date — ${written.join(', ')}`);
-        trace('dataset', 'switch:refresh', { dataset: uuid, written: written.length, ms: lap() });
       }
 
       // Everything above is a round trip, and the reader may have asked for somewhere else while
       // they ran. Publishing now would overwrite a newer switch with an older answer.
-      if (requestedDataset !== uuid) return;
+      if (requestedDataset !== uuid || sessionAtStart !== sessionsEnded) return;
       /*
         The other way a switch goes stale: not superseded by a later switch, but by a later
         *navigation*. `requestedDataset` only knows about switches, so a switch the address bar asked
@@ -864,6 +928,15 @@ export function DatasetStoreProvider(props: ParentProps) {
       // for the visible switch at all — it's only consumed below, in the background.
       // A new read starts below, so whatever was read before — even for this same space — is not it.
       const readIsLatest = entitiesRead.begin();
+      const upkeepNeeded = existingWeSpace && !spaceSchemaRefreshed.has(uuid);
+      // Pending before the publish: an observer of the new current dataset runs inside it, and a
+      // write it starts must meet the upkeep that is about to begin, not slip in ahead of it.
+      let upkeepSettled!: () => void;
+      const ready = new Promise<void>((resolve) => (upkeepSettled = resolve));
+      if (upkeepNeeded) {
+        spaceSchemaRefreshed.add(uuid);
+        upkeepInFlight.set(uuid, ready);
+      }
       batch(() => {
         setIsWeSpace(weSpace);
         setCurrentDataset(app);
@@ -874,6 +947,53 @@ export function DatasetStoreProvider(props: ParentProps) {
         totalMs: Math.round(performance.now() - started),
         sincePageStartMs: Math.round(performance.now()),
       });
+      if (weSpace) weSpaceAnswers.add(uuid);
+
+      // Background: the schema upkeep the switch no longer waits for.
+      if (upkeepNeeded) {
+        const upkeep = (async () => {
+          let failed = false;
+          const failure = (err: unknown) => {
+            console.error('DatasetStore: space schema refresh failed', err);
+            failed = true;
+            return [] as string[];
+          };
+          // An existing WE space skips the install above by design, so a module enabled after the
+          // space was created would find its shapes missing — a query failing with "No SHACL shape
+          // stored for class X" in a dataset that otherwise looks healthy. Module shapes therefore
+          // install once per session per space; the port diffs before writing, so this is a read
+          // in the common case.
+          //
+          // The same skip has a second cost, in two forms: a *property* added to one of WE's own
+          // models, and a *model* added outright, both reach newly created spaces only — the first
+          // silently dropping writes, the second failing every query against the new entity with
+          // "No SHACL shape stored for class X". Refresh covers both; it diffs before writing.
+          //
+          // Together rather than in turn: they register disjoint classes (a module's, WE's own)
+          // from the same reads, which the port shares — so both cost the one round trip.
+          const lists = await Promise.all([
+            schemas.installModules(handle, moduleRegistry.moduleSchemas(schemas)).catch(failure),
+            schemas.refreshSpace(handle).catch(failure),
+          ]);
+          const written = lists.flat();
+          if (sessionAtStart !== sessionsEnded) return;
+          // A failure is not a refresh: the next switch to this space tries again.
+          if (failed) spaceSchemaRefreshed.delete(uuid);
+          if (written.length) {
+            console.info(`DatasetStore: brought space schemas up to date — ${written.join(', ')}`);
+            // Queries asked before the shapes existed failed on them; this is what re-asks them.
+            bumpSchemaRevision(uuid);
+          }
+          trace('dataset', 'switch:refresh', { dataset: uuid, written: written.length, failed });
+        })();
+        void upkeep
+          .catch((err) => console.error('DatasetStore: space schema refresh failed', err))
+          .then(() => {
+            // Only its own entry: a later session's upkeep for the same space may be in the map by now.
+            if (upkeepInFlight.get(uuid) === ready) upkeepInFlight.delete(uuid);
+            upkeepSettled();
+          });
+      }
 
       // Background: discover schemas foreign to the host (another app's entities synced into
       // this dataset) and publish their manifest — the port registers them for name-based query
@@ -936,6 +1056,8 @@ export function DatasetStoreProvider(props: ParentProps) {
   }
 
   const store: DatasetStore = {
+    schemaRevision,
+    schemaReady,
     datasets,
     orderedDatasets,
     currentDataset,

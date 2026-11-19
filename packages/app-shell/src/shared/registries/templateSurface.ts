@@ -502,6 +502,10 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     loadDatasets: WIRING,
     subscribeToChanges: WIRING,
     getDatasetOrder: WIRING,
+    // The query-retry dependency behind the renderer's `$schemaRevision`. Host plumbing.
+    schemaRevision: WIRING,
+    // What a write waits on while a switch's schema upkeep runs. Host plumbing.
+    schemaReady: WIRING,
   },
 
   profileStore: {

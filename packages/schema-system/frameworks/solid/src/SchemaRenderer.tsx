@@ -332,6 +332,8 @@ function runQuery(request: {
   union: boolean;
   dataset: unknown;
   options: Record<string, unknown>;
+  /** The host's schema revision when asked — a subscription opened under an older one is not joined. */
+  schemaRevision?: number;
   subscribe: boolean | undefined;
   stores: RendererStores;
   onRows: (rows: Record<string, unknown>[]) => void;
@@ -440,6 +442,7 @@ function runQuery(request: {
         (results) => take(entity, results),
         (err) => fail(entity, err),
         entity,
+        request.schemaRevision,
       );
       onCleanup(release);
     }
@@ -517,6 +520,12 @@ function createQuerySignal(
       return;
     }
 
+    // The schema revision, for the dependency alone: a switch's background schema refresh writes
+    // shapes a mounted query may have failed on ("No SHACL shape stored for class X"), and the
+    // bump re-asks it here rather than leaving it failed until remount. It only moves when the
+    // refresh wrote something.
+    const schemaRevision = stores.$schemaRevision?.(p) ?? 0;
+
     // Read inside the effect, so a name that comes from an expression re-runs the query when it
     // changes — and so a name that is not there yet is a frame to wait through, not a failure.
     const entities = resolveEntityNames(descriptor.entity, stores, context);
@@ -569,6 +578,7 @@ function createQuerySignal(
       ...entities,
       dataset: p,
       options: rawOptions,
+      schemaRevision,
       // Read inside the effect, so a surface can stop following its subject the moment the subject
       // stops changing — see `QueryToken.subscribe`. A change re-runs this effect, which disposes
       // the old subscription on cleanup, so going live-to-static actually releases it.
@@ -1151,6 +1161,8 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
             options: rawOptions,
             subscribe: resolveSubscribe(descriptor.subscribe, stores, context),
             stores,
+            // Read in this effect, as the list path does, so a bump re-asks it.
+            schemaRevision: stores.$schemaRevision?.(p) ?? 0,
             onRows: (rows) => {
               if (rows.length === 0) {
                 setHasItem(false);
