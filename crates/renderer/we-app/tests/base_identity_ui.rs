@@ -245,3 +245,116 @@ fn an_attached_executor_has_no_first_run() {
     });
     assert!(!shows(&h, "Set up Coasys"));
 }
+
+/// A ready executor whose first identity read waits until the test lets it
+/// go, and which can be started again between two frames.
+struct Gated {
+    calls: AtomicU64,
+    run: AtomicU64,
+    changes: AtomicU64,
+    first: Mutex<Option<std::sync::mpsc::Receiver<()>>>,
+    returned: AtomicU64,
+    waker: Mutex<Option<Waker>>,
+}
+
+impl OwnedExecutor for Gated {
+    fn state(&self) -> ExecutorState {
+        ExecutorState::Ready {
+            agent: Some(AgentState::Unlocked),
+        }
+    }
+    fn changes(&self) -> u64 {
+        self.changes.load(Ordering::SeqCst)
+    }
+    fn start(&self) -> bool {
+        false
+    }
+    fn refresh(&self) {}
+    fn url(&self) -> Option<String> {
+        None
+    }
+    fn set_waker(&self, waker: Waker) {
+        *self.waker.lock().unwrap() = Some(waker);
+    }
+    fn starts(&self) -> u64 {
+        self.run.load(Ordering::SeqCst)
+    }
+    fn pid(&self) -> Option<u32> {
+        None
+    }
+    fn approve(&self, _request_id: &str, _scope: &GrantScope) -> Result<String, String> {
+        Err("a stand-in approves nothing".into())
+    }
+    fn incarnation(&self) -> u64 {
+        self.run.load(Ordering::SeqCst)
+    }
+    fn identity(&self) -> Result<Identity, String> {
+        let call = self.calls.fetch_add(1, Ordering::SeqCst);
+        let gate = if call == 0 {
+            self.first.lock().unwrap().take()
+        } else {
+            None
+        };
+        if let Some(gate) = gate {
+            let _ = gate.recv_timeout(Duration::from_secs(30));
+            // The old process's answer: an identity (it would keep the
+            // window off the first run if it were taken).
+            self.returned.fetch_add(1, Ordering::SeqCst);
+            return Ok(Identity {
+                did: Some("did:scid:coasys:1:QmOldRunOldRunOldRunOldRun".into()),
+                store_trusted: true,
+                devices: vec![],
+            });
+        }
+        self.returned.fetch_add(1, Ordering::SeqCst);
+        Ok(empty())
+    }
+}
+
+/// Round 2 (Lal P2): read 1 is still out when the executor starts again;
+/// read 2 answers first, then read 1. The window takes read 2's answer (the
+/// first run), not "Loading…" forever.
+#[test]
+fn a_late_answer_of_an_old_read_does_not_lose_the_new_one() {
+    let tokens = tempfile::tempdir().unwrap();
+    let (release, gate) = std::sync::mpsc::channel();
+    let gated = Arc::new(Gated {
+        calls: AtomicU64::new(0),
+        run: AtomicU64::new(1),
+        changes: AtomicU64::new(1),
+        first: Mutex::new(Some(gate)),
+        returned: AtomicU64::new(0),
+        waker: Mutex::new(None),
+    });
+    let mut h = harness(args(tokens.path(), None), Some(gated.clone()));
+    step_until(&mut h, "read 1 out", Duration::from_secs(10), |_| {
+        gated.calls.load(Ordering::SeqCst) == 1
+    });
+    // A new process, ready, between two frames: one frame spends read 1
+    // and sends read 2.
+    gated.run.fetch_add(1, Ordering::SeqCst);
+    gated.changes.fetch_add(1, Ordering::SeqCst);
+    h.step();
+    let start = Instant::now();
+    while gated.returned.load(Ordering::SeqCst) < 1 {
+        assert!(
+            start.elapsed() < Duration::from_secs(10),
+            "read 2 never ran"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    std::thread::sleep(Duration::from_millis(100));
+    // Read 1 answers last, with no frame between the two answers.
+    release.send(()).unwrap();
+    while gated.returned.load(Ordering::SeqCst) < 2 {
+        assert!(
+            start.elapsed() < Duration::from_secs(10),
+            "read 1 never answered"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    std::thread::sleep(Duration::from_millis(100));
+    step_until(&mut h, "read 2's answer", Duration::from_secs(5), |h| {
+        shows(h, "Set up Coasys")
+    });
+}

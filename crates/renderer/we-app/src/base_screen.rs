@@ -188,9 +188,11 @@ pub struct BaseScreen {
     /// its changes the controller has seen.
     owned: Option<Arc<dyn OwnedExecutor>>,
     owned_seen: u64,
-    /// The answer to the identity read that is out, by its token, once it
-    /// came (read off the UI thread, applied in [`BaseScreen::poll`]).
-    identity_answer: Arc<Mutex<Option<IdentityAnswer>>>,
+    /// Answers to identity reads, by token, as they come (read off the UI
+    /// thread, drained in [`BaseScreen::poll`]). Every answer is kept: an
+    /// old read's late answer can't take the place of a newer one's.
+    identity_tx: std::sync::mpsc::Sender<IdentityAnswer>,
+    identity_rx: std::sync::mpsc::Receiver<IdentityAnswer>,
     /// The capability request of the window's own flow that the owned
     /// executor's operator is approving (`false`) or failed to (`true`).
     approving: Arc<Mutex<Option<(String, bool)>>>,
@@ -291,6 +293,7 @@ impl BaseScreen {
         if let Some(theme) = crate::gallery::load_theme_set().get("glow").cloned() {
             app.theme = theme;
         }
+        let (identity_tx, identity_rx) = std::sync::mpsc::channel();
         let mut this = Self {
             app,
             controller,
@@ -301,7 +304,8 @@ impl BaseScreen {
             ready: None,
             owned,
             owned_seen,
-            identity_answer: Arc::default(),
+            identity_tx,
+            identity_rx,
             approving: Arc::default(),
             rt,
         };
@@ -396,12 +400,9 @@ impl BaseScreen {
     /// executor stopped or started again) stops asking, and its answer
     /// changes nothing ([`BaseController::note_identity`]).
     fn read_identity(&mut self, owned: Arc<dyn OwnedExecutor>) {
-        let answer = self
-            .identity_answer
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .take();
-        if let Some((read, answer)) = answer {
+        // In the order they came; the controller takes only the read it
+        // waits for.
+        while let Ok((read, answer)) = self.identity_rx.try_recv() {
             if let Some(job) = self.controller.note_identity(read, answer) {
                 self.spawn(job);
             }
@@ -411,7 +412,7 @@ impl BaseScreen {
             return;
         };
         let controller = self.controller.clone();
-        let slot = self.identity_answer.clone();
+        let answers = self.identity_tx.clone();
         let ctx = self.ctx.clone();
         let spawned = std::thread::Builder::new()
             .name("we-identity-read".into())
@@ -429,7 +430,7 @@ impl BaseScreen {
                         std::thread::sleep(IDENTITY_RETRY);
                     }
                 }
-                *slot.lock().unwrap_or_else(|p| p.into_inner()) = Some((read, answer));
+                let _ = answers.send((read, answer));
                 ctx.request_repaint();
             });
         if let Err(e) = spawned {
