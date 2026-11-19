@@ -181,3 +181,31 @@ fn an_outside_executor_on_the_data_folder_is_not_ours() {
     let _ = outside.kill();
     let _ = outside.wait();
 }
+
+/// Slice 5, real executor: the identity read. With no agent yet it fails
+/// (unknown, not empty). Once the agent is made, the executor answers that
+/// it speaks for no identity: a known empty identity, with this computer's
+/// store trust and no devices. Nothing of a key is kept.
+#[test]
+fn the_identity_read_of_the_owned_executor() {
+    let Some(binary) = kit::require_binary() else {
+        return;
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let rt = we_ad4m::Runtime::new().unwrap();
+    let sup = Supervisor::new(config(binary, &dir.path().join("data")), rt.handle());
+    sup.start();
+    wait_for(&sup, "ready", 120, |s| matches!(s, Lifecycle::Ready { .. }));
+    let before = sup.identity();
+    assert!(before.is_err(), "read with no agent: {before:?}");
+    let admin = kit::connect_as(&rt, &sup.url().unwrap(), ADMIN);
+    kit::new_space(&rt, &admin, "s5-identity");
+    drop(admin);
+    let identity = sup.identity().expect("the agent's identity");
+    assert_eq!(identity.did, None, "a fresh agent speaks for an identity");
+    assert!(identity.devices.is_empty());
+    eprintln!("identity read: {identity:?}; with no agent: {before:?}");
+    let pid = sup.pid().unwrap();
+    drop(sup);
+    assert!(!alive(pid), "the executor outlived its supervisor");
+}
