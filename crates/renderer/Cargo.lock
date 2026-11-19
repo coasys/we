@@ -6339,6 +6339,7 @@ dependencies = [
  "ad4m-client",
  "anyhow",
  "async-trait",
+ "getrandom 0.2.17",
  "indexmap",
  "log",
  "reqwest",

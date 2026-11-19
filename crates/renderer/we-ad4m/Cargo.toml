@@ -37,6 +37,9 @@ url = "2"
 # wrong service. Already in the lockfile, the version ad4m-client uses; no
 # features of its own.
 reqwest = { version = "0.11", default-features = false }
+# The owned executor's admin credential (supervisor.rs). Already in the
+# lockfile, the version reqwest's stack uses.
+getrandom = "0.2"
 tempfile = { version = "3", optional = true }
 
 [features]

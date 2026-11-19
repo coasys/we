@@ -79,10 +79,13 @@ fn waits_on_stdin(dir: &Path) -> PathBuf {
     )
 }
 
+/// One queued answer: an optional gate to wait on, then the answer.
+type Answer = (Option<mpsc::Receiver<()>>, Result<Option<Agent>, String>);
+
 /// Answers each read from a queue; a gated answer waits for its release.
 #[derive(Default)]
 struct Reader {
-    answers: Mutex<VecDeque<(Option<mpsc::Receiver<()>>, Result<Option<Agent>, String>)>>,
+    answers: Mutex<VecDeque<Answer>>,
     calls: Mutex<Vec<(String, String)>>,
 }
 
