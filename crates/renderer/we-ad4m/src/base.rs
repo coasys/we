@@ -226,7 +226,13 @@ impl BaseFile {
                 .open(&temp)?;
             out.write_all(text.as_bytes())?;
             out.sync_all()?;
-            std::fs::rename(&temp, path)
+            std::fs::rename(&temp, path)?;
+            // The rename is durable once the directory is: best effort.
+            #[cfg(unix)]
+            if let Ok(dir) = std::fs::File::open(dir) {
+                let _ = dir.sync_all();
+            }
+            Ok(())
         })();
         if written.is_err() {
             let _ = std::fs::remove_file(&temp);

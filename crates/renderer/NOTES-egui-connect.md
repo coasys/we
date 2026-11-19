@@ -72,6 +72,7 @@ Commands ran from `crates/renderer` unless a command names another directory. `C
 
 - The list shows This computer, then each server in the base file. A server row has the id `server:<address>`, the label from its name (or its address) and the `hard-drives` icon.
 - The base file is `{config}/we-renderer/base.json` (`$XDG_CONFIG_HOME`, else `~/.config`). It keeps the id chosen last and the server list. It does not keep an address of this computer or a token.
+- A choice is written off the click: one writer thread per process, the newest waiting id per file, in the order asked. Each write is a whole file (a new temporary file, `sync_all`, rename, then a best-effort fsync of the directory on unix). Between two app instances the last rename wins. A choice made just before the process exits can be lost.
 - A start with a remembered id that the list still has goes to that place without a click. The host gets `chosen = false`. A click gives `chosen = true`.
 - A remembered id that the list does not have leaves the list on screen. There is no error.
 - "Choose another" shows the list. After it, "Try again" does not go back to the remembered place. A refused session does the same.

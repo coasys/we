@@ -720,3 +720,66 @@ fn an_old_attempt_failure_does_not_replace_a_newer_choice() {
         );
     }
 }
+
+/// Lal (slice 2, finding 1): a choose does not wait on the base file. The
+/// file is a FIFO nobody writes, so reading it blocks: the choose still
+/// returns and the controller still answers. Once the file can be read,
+/// the choices land in the order they were made: the newest is kept.
+#[cfg(unix)]
+#[test]
+fn a_choose_does_not_wait_for_the_base_file() {
+    use std::io::Write;
+    use std::time::Duration;
+    use we_session::{BaseCommand, ChoiceMemory};
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("base.json");
+    let memory = Arc::new(super::FileMemory(path.clone()));
+    let controller = BaseController::with_memory(
+        BUILTIN_BUNDLE,
+        vec![
+            ConnectionRow::this_computer(),
+            ConnectionRow::server("lab.example:12000", Some("Lab box")),
+        ],
+        memory.clone(),
+    );
+    let made = std::process::Command::new("mkfifo")
+        .arg(&path)
+        .status()
+        .unwrap();
+    assert!(made.success());
+
+    let (done, returned) = std::sync::mpsc::channel();
+    let clicked = controller.clone();
+    let generation = controller.generation();
+    std::thread::spawn(move || {
+        let job = clicked.apply(BaseCommand::Choose("this-device".into()), generation);
+        let _ = done.send(job.is_some());
+    });
+    let returned = returned.recv_timeout(Duration::from_secs(2));
+    let chosen = returned
+        .is_ok()
+        .then(|| controller.public_json()["chosen"].clone());
+    // Read-write never waits for a partner. A read stalled on the FIFO
+    // gets "{}", then its end of file.
+    let mut fifo = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(&path)
+        .unwrap();
+    fifo.write_all(b"{}").unwrap();
+    drop(fifo);
+
+    assert_eq!(returned, Ok(true), "the choose waited for the base file");
+    assert_eq!(chosen, Some(serde_json::json!("this-device")));
+    memory.remember(LAB);
+    // A second start reads after this process's writes have landed.
+    let (read, kept) = std::sync::mpsc::channel();
+    let again = path.clone();
+    std::thread::spawn(move || {
+        let _ = read.send(super::FileMemory(again).remembered());
+    });
+    let kept = kept.recv_timeout(Duration::from_secs(10));
+    assert_eq!(kept, Ok(Some(LAB.to_string())));
+    assert!(std::fs::metadata(&path).unwrap().is_file());
+}

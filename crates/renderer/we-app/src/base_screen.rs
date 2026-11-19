@@ -302,17 +302,117 @@ fn endpoint(
 }
 
 /// The base file as the controller's memory. The file keeps the id only.
+///
+/// The controller calls `remember` while it holds its lock, so the write
+/// goes to [`BaseWrites`] and a click never waits on the disk.
 struct FileMemory(PathBuf);
 
 impl ChoiceMemory for FileMemory {
     fn remembered(&self) -> Option<String> {
+        BaseWrites::get().settle(&self.0);
         BaseFile::load(&self.0).connection
     }
 
     fn remember(&self, id: &str) {
-        if let Err(error) = BaseFile::remember(&self.0, id) {
-            log::warn!("we-app: could not keep the connection chosen: {error}");
+        BaseWrites::get().ask(&self.0, id);
+    }
+}
+
+/// This process's base-file writes, made one at a time on one thread.
+///
+/// A path has at most one id waiting, the newest, so the last choice asked
+/// for is the last one written. Each write is still one whole document
+/// ([`BaseFile::remember`]); between processes the last rename wins.
+#[derive(Default)]
+struct BaseWrites {
+    state: Mutex<WriteState>,
+    changed: std::sync::Condvar,
+}
+
+#[derive(Default)]
+struct WriteState {
+    waiting: Vec<(PathBuf, String)>,
+    writing: Option<PathBuf>,
+    /// No writer thread: `ask` writes in place.
+    inline: bool,
+}
+
+impl BaseWrites {
+    fn get() -> &'static Self {
+        static WRITES: std::sync::OnceLock<BaseWrites> = std::sync::OnceLock::new();
+        WRITES.get_or_init(|| {
+            let writes = Self::default();
+            let spawned = std::thread::Builder::new()
+                .name("we-base-file".into())
+                .spawn(|| Self::get().run());
+            if let Err(error) = spawned {
+                log::warn!("we-app: no base-file thread, writing in place: {error}");
+                writes.lock().inline = true;
+            }
+            writes
+        })
+    }
+
+    fn lock(&self) -> MutexGuard<'_, WriteState> {
+        self.state
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+    }
+
+    fn ask(&self, path: &std::path::Path, id: &str) {
+        let mut state = self.lock();
+        if state.inline {
+            drop(state);
+            return write_choice(path, id);
         }
+        match state
+            .waiting
+            .iter_mut()
+            .find(|(waiting, _)| waiting == path)
+        {
+            Some((_, newest)) => *newest = id.to_string(),
+            None => state.waiting.push((path.to_path_buf(), id.to_string())),
+        }
+        self.changed.notify_all();
+    }
+
+    /// Wait until this process's writes to `path` have landed.
+    fn settle(&self, path: &std::path::Path) {
+        let mut state = self.lock();
+        while state.writing.as_deref() == Some(path)
+            || state.waiting.iter().any(|(waiting, _)| waiting == path)
+        {
+            state = self
+                .changed
+                .wait(state)
+                .unwrap_or_else(|poison| poison.into_inner());
+        }
+    }
+
+    fn run(&self) {
+        let mut state = self.lock();
+        loop {
+            if state.waiting.is_empty() {
+                state = self
+                    .changed
+                    .wait(state)
+                    .unwrap_or_else(|poison| poison.into_inner());
+                continue;
+            }
+            let (path, id) = state.waiting.remove(0);
+            state.writing = Some(path.clone());
+            drop(state);
+            write_choice(&path, &id);
+            state = self.lock();
+            state.writing = None;
+            self.changed.notify_all();
+        }
+    }
+}
+
+fn write_choice(path: &std::path::Path, id: &str) {
+    if let Err(error) = BaseFile::remember(path, id) {
+        log::warn!("we-app: could not keep the connection chosen: {error}");
     }
 }
 
