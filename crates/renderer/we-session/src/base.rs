@@ -147,6 +147,8 @@ fn mark_url() -> String {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Stage {
+    Starting,
+    Failed,
     Connect,
     HandingOff,
     Offline,
@@ -156,6 +158,8 @@ enum Stage {
 impl Stage {
     fn as_str(self) -> &'static str {
         match self {
+            Stage::Starting => "starting",
+            Stage::Failed => "failed",
             Stage::Connect => "connect",
             Stage::HandingOff => "handing-off",
             Stage::Offline => "offline",
@@ -188,6 +192,10 @@ struct Inner {
     /// The attempt whose connection the window holds now, `0` for none.
     /// A hand-back names it; one from an older session does nothing.
     session: u64,
+    /// The executor this host runs, as last reported. `None`: the host
+    /// runs none (it attaches to one someone else runs), and executor
+    /// changes do nothing.
+    executor: Option<ExecutorState>,
 }
 
 /// A connect attempt the host should start. `attempt` is the id a later
@@ -320,6 +328,7 @@ impl BaseController {
                 online: None,
                 was_online: true,
                 session: 0,
+                executor: None,
             }),
             memory,
             model: Arc::new(BaseModel::new()),
@@ -342,6 +351,15 @@ impl BaseController {
     pub fn resume(&self) -> Option<HostJob> {
         let mut inner = self.lock();
         if std::mem::replace(&mut inner.resumed, true) || !inner.auto || inner.busy {
+            return None;
+        }
+        // The host's own executor is not up yet: its ready resumes instead
+        // ([`BaseController::note_executor`]).
+        if inner
+            .executor
+            .as_ref()
+            .is_some_and(|state| !matches!(state, ExecutorState::Ready { .. }))
+        {
             return None;
         }
         let row = chosen_row(&inner)?;
@@ -388,7 +406,23 @@ impl BaseController {
     /// generation. A connect call then advances the generation, so a second
     /// permit copied from the same dispatch no longer matches.
     /// A completion for an older attempt does not change this state.
+    ///
+    /// For a host that runs no executor: a call that asks for an executor
+    /// start ([`BaseJob::StartExecutor`]) gives `None` here. A host that
+    /// runs one uses [`BaseController::apply_base`].
     pub fn apply(&self, command: BaseCommand, generation: u64) -> Option<HostJob> {
+        match self.apply_base(command, generation)? {
+            BaseJob::Dial(job) => Some(job),
+            BaseJob::StartExecutor => None,
+        }
+    }
+
+    /// [`BaseController::apply`], for a host that may run its own executor:
+    /// "Try again" / "Start Coasys" on the failed stage asks the host to
+    /// start it, once. The stage turns to starting and the generation
+    /// advances, so the same permit, or a retry while it starts, asks for
+    /// nothing more.
+    pub fn apply_base(&self, command: BaseCommand, generation: u64) -> Option<BaseJob> {
         let mut inner = self.lock();
         if inner.generation != generation {
             return None;
@@ -399,6 +433,18 @@ impl BaseController {
         );
         if inner.busy && !exempt {
             return None;
+        }
+        if matches!(command, BaseCommand::Retry) {
+            match inner.executor {
+                Some(ExecutorState::Failed { .. }) => {
+                    inner.executor = Some(ExecutorState::Starting);
+                    starting(&mut inner);
+                    self.publish(&inner);
+                    return Some(BaseJob::StartExecutor);
+                }
+                Some(ExecutorState::Starting) => return None,
+                _ => {}
+            }
         }
         let job = match command {
             BaseCommand::Choose(id) => {
@@ -447,23 +493,77 @@ impl BaseController {
             BaseCommand::ClearPasswordWrong | BaseCommand::Nop => None,
         };
         self.publish(&inner);
-        job
+        job.map(BaseJob::Dial)
     }
 
-    /// Apply a permitted call; the job may be a dial or an executor start.
-    pub fn apply_base(&self, command: BaseCommand, generation: u64) -> Option<BaseJob> {
-        self.apply(command, generation).map(BaseJob::Dial)
-    }
-
-    /// The host runs this computer's executor, which is now `state`.
+    /// The host runs this computer's executor, which is now `state`. Call
+    /// once, before [`BaseController::resume`]: until it is ready, the
+    /// starting or failed stage shows and nothing is dialed.
     pub fn own_executor(&self, state: ExecutorState) {
-        let _ = state;
+        let mut inner = self.lock();
+        inner.executor = Some(state);
+        match inner.executor {
+            Some(ExecutorState::Starting) => starting(&mut inner),
+            Some(ExecutorState::Failed { .. }) => failed(&mut inner),
+            _ => {}
+        }
+        self.publish(&inner);
     }
 
-    /// The host's executor changed to `state`.
+    /// The host's executor changed to `state` (TS `executor.subscribe`).
+    /// Ignored when the host runs none.
+    ///
+    /// - Under an open session, only a failure matters: the executor
+    ///   stopped, so the base takes the window back on the failed stage,
+    ///   with the button that starts it again. The session is closed and
+    ///   the generation advances, as a hand-back does.
+    /// - Ready twice is nothing new.
+    /// - Otherwise the stage is worked out again: starting or failed, or,
+    ///   once ready, the place chosen (not a click) or the list. A connect
+    ///   in flight when the executor stopped or started again is spent: its
+    ///   completion changes nothing.
     pub fn note_executor(&self, state: ExecutorState) -> Option<HostJob> {
-        let _ = state;
-        None
+        let mut inner = self.lock();
+        let before = inner.executor.clone()?;
+        inner.executor = Some(state.clone());
+        if inner.stage == Stage::Session {
+            if matches!(state, ExecutorState::Failed { .. }) {
+                let session = inner.session;
+                hand_back(&mut inner, session);
+                inner.stage = Stage::Failed;
+                inner.error.clear();
+                inner.offline_reason.clear();
+            }
+            self.publish(&inner);
+            return None;
+        }
+        let ready = |s: &ExecutorState| matches!(s, ExecutorState::Ready { .. });
+        if ready(&before) && ready(&state) {
+            self.publish(&inner);
+            return None;
+        }
+        let job = match state {
+            ExecutorState::Starting => {
+                starting(&mut inner);
+                None
+            }
+            ExecutorState::Failed { .. } => {
+                failed(&mut inner);
+                None
+            }
+            ExecutorState::Ready { .. } => {
+                inner.busy = false;
+                match chosen_row(&inner) {
+                    Some(row) if inner.auto => reach(&mut inner, row, false),
+                    _ => {
+                        inner.stage = Stage::Connect;
+                        None
+                    }
+                }
+            }
+        };
+        self.publish(&inner);
+        job
     }
 
     /// Whether a session holds the window.
@@ -604,6 +704,30 @@ fn hand_back(inner: &mut Inner, attempt: u64) -> bool {
     true
 }
 
+/// The executor starts: the starting stage, busy, and any connect in
+/// flight spent (a new generation, no attempt).
+fn starting(inner: &mut Inner) {
+    spend_attempt(inner);
+    inner.busy = true;
+    inner.stage = Stage::Starting;
+}
+
+/// The executor is not running: the failed stage, with its button.
+fn failed(inner: &mut Inner) {
+    spend_attempt(inner);
+    inner.busy = false;
+    inner.stage = Stage::Failed;
+}
+
+fn spend_attempt(inner: &mut Inner) {
+    inner.attempt = 0;
+    inner.session = 0;
+    inner.page.clear();
+    inner.error.clear();
+    inner.offline_reason.clear();
+    inner.generation = inner.generation.saturating_add(1);
+}
+
 fn chosen_row(inner: &Inner) -> Option<ConnectionRow> {
     inner
         .rows
@@ -677,9 +801,20 @@ fn snap_json(inner: &Inner, mark: &str) -> serde_json::Value {
         "blocked": "",
         "doors": { "link": door(), "make": door(), "words": door() },
         "devices": [],
-        "executorPhase": "",
-        "executorReason": "",
-        "executorStopped": false,
+        "executorPhase": match &inner.executor {
+            None => "",
+            Some(ExecutorState::Starting) => "starting",
+            Some(ExecutorState::Ready { .. }) => "ready",
+            Some(ExecutorState::Failed { .. }) => "failed",
+        },
+        "executorReason": match &inner.executor {
+            Some(ExecutorState::Failed { reason, .. }) => reason.as_str(),
+            _ => "",
+        },
+        "executorStopped": matches!(
+            inner.executor,
+            Some(ExecutorState::Failed { stopped: true, .. })
+        ),
         "connections": connections,
         "chosen": inner.chosen_id,
         "busy": inner.busy,
