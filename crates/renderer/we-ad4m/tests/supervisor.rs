@@ -731,3 +731,100 @@ fn an_init_past_its_deadline_is_ended() {
     );
     assert!(!alive(pid), "the init outlived its deadline");
 }
+
+/// A stand-in whose `init` does what the executor's does in order: makes
+/// the folder and `last-seen-version`, then copies the seed (and fails
+/// when the seed is missing). Each init appends a line to `<dir>/inits`.
+/// `run` says its port and waits on stdin.
+fn seeding_init(dir: &Path, delay: &str) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let path = dir.join("executor");
+    std::fs::write(
+        &path,
+        format!(
+            "#!/bin/sh\nif [ \"$1\" = --version ]; then echo 'ad4m 0.13.1-staging.13'; exit 0; fi\n\
+             if [ \"$1\" = init ]; then echo x >> '{inits}'; sleep {delay}; mkdir -p \"$3\"; \
+             echo 0.13.1 > \"$3/last-seen-version\"; [ -f \"$5\" ] || exit 1; \
+             cp \"$5\" \"$3/mainnet_seed.seed\"; exit 0; fi\n\
+             PORT=$(cat \"$(dirname \"$0\")/port\")\n{LISTENING}\ncat > /dev/null\n",
+            inits = dir.join("inits").display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    path
+}
+
+fn inits(dir: &Path) -> usize {
+    std::fs::read_to_string(dir.join("inits"))
+        .map(|text| text.lines().count())
+        .unwrap_or(0)
+}
+
+/// Round 2 (Lal: a failed first init is skipped forever): the first init
+/// fails on a missing seed after it made the folder. Once the seed is
+/// there, the next start runs init again and the seed is installed.
+#[test]
+fn a_failed_first_init_runs_again() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = config(dir.path(), seeding_init(dir.path(), "0"), health());
+    let seed = dir.path().join("seed.json");
+    config.seed = Some(seed.clone());
+    let sup = Supervisor::with_reader(config, Arc::new(Reader::default()));
+    sup.start();
+    wait_for(&sup, "failed", 10, |s| {
+        matches!(s, Lifecycle::Failed { .. })
+    });
+    assert!(dir.path().join("data/last-seen-version").exists());
+    std::fs::write(&seed, "{}").unwrap();
+    assert!(sup.start());
+    wait_for(&sup, "ready", 10, |s| matches!(s, Lifecycle::Ready { .. }));
+    assert_eq!(inits(dir.path()), 2, "init did not run again");
+    assert!(
+        dir.path().join("data/mainnet_seed.seed").exists(),
+        "the executor runs without its seed"
+    );
+}
+
+/// Round 2 (Lal: read_dir errors counted as empty): a data folder path
+/// that cannot be read as a folder is an error, not a fresh folder.
+#[test]
+fn a_data_folder_that_cannot_be_read_is_an_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = config(dir.path(), seeding_init(dir.path(), "0"), health());
+    std::fs::write(dir.path().join("data"), "not a folder").unwrap();
+    let sup = Supervisor::with_reader(config, Arc::new(Reader::default()));
+    sup.start();
+    wait_for(&sup, "failed", 10, |s| {
+        matches!(s, Lifecycle::Failed { .. })
+    });
+    let Lifecycle::Failed { reason, .. } = sup.state() else {
+        unreachable!()
+    };
+    assert!(reason.contains("Couldn't read its data folder"), "{reason}");
+    assert_eq!(
+        inits(dir.path()),
+        0,
+        "init ran over a path it could not read"
+    );
+}
+
+/// Round 2 (Lal: two windows can init at once): two supervisors on one
+/// fresh data folder; init runs once.
+#[test]
+fn two_windows_init_a_fresh_folder_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let seed = dir.path().join("seed.json");
+    std::fs::write(&seed, "{}").unwrap();
+    let binary = seeding_init(dir.path(), "1");
+    let mut first = config(dir.path(), binary.clone(), health());
+    first.seed = Some(seed.clone());
+    let second = first.clone();
+    let a = Supervisor::with_reader(first, Arc::new(Reader::default()));
+    let b = Supervisor::with_reader(second, Arc::new(Reader::default()));
+    a.start();
+    b.start();
+    wait_for(&a, "a ready", 15, |s| matches!(s, Lifecycle::Ready { .. }));
+    wait_for(&b, "b ready", 15, |s| matches!(s, Lifecycle::Ready { .. }));
+    assert_eq!(inits(dir.path()), 1, "both windows ran init");
+}

@@ -736,24 +736,104 @@ enum Prep {
     Failed(String),
 }
 
-/// `init` a data folder that is missing or empty. One that has anything in
-/// it is left as it is: the executor migrates its own. The init runs as a
-/// child the supervisor holds ([`bounded`]): the stop ends it, and so does
-/// [`SupervisorConfig::init_timeout`].
+/// `init` the data folder when this app has not finished preparing it.
+///
+/// Beside the folder (`.<name>.we-init-*` in its parent):
+/// - `lock`: held (an OS file lock) while one window decides and runs
+///   init; another window waits for it, up to
+///   [`SupervisorConfig::init_timeout`]. The OS lets it go if the app dies.
+/// - `started`: written before init runs, removed once it finished.
+/// - `complete`: written last, after init succeeded.
+///
+/// Init runs for a folder that is missing or empty, or that this app's
+/// init left half done (`started`, no `complete`): the executor's init only
+/// writes its version file and the seed, so running it again is safe. A
+/// folder with data and no markers is someone's existing executor folder,
+/// left as it is (the executor migrates its own). A folder that cannot be
+/// read is an error, not an empty folder. The init itself runs as a child
+/// the supervisor holds ([`bounded`]): the stop ends it, and so does the
+/// deadline.
 fn init(shared: &Shared) -> Result<(), Prep> {
     let config = &shared.config;
-    let empty = std::fs::read_dir(&config.data_dir)
-        .map(|mut entries| entries.next().is_none())
-        .unwrap_or(true);
-    if !empty {
+    let dir = &config.data_dir;
+    let failed = |what: String| Err(Prep::Failed(what));
+    let parent = dir
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or(std::path::Path::new("."));
+    let name = dir
+        .file_name()
+        .map_or_else(|| "executor".into(), |name| name.to_string_lossy());
+    let mark = |what: &str| parent.join(format!(".{name}.we-init-{what}"));
+    if let Err(e) = std::fs::create_dir_all(parent) {
+        return failed(format!("Couldn't create {}: {e}", parent.display()));
+    }
+    let lock = match std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(mark("lock"))
+    {
+        Ok(lock) => lock,
+        Err(e) => return failed(format!("Couldn't open {}: {e}", mark("lock").display())),
+    };
+    let deadline = Instant::now() + config.init_timeout;
+    loop {
+        match lock.try_lock() {
+            Ok(()) => break,
+            Err(std::fs::TryLockError::WouldBlock) => {
+                if shared.lock().stopping {
+                    return Err(Prep::Stopped);
+                }
+                if Instant::now() >= deadline {
+                    return failed(format!(
+                        "Another Coasys window is preparing this data folder, and it did not \
+                         finish within {} seconds.",
+                        config.init_timeout.as_secs()
+                    ));
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            Err(std::fs::TryLockError::Error(e)) => {
+                return failed(format!("Couldn't lock {}: {e}", mark("lock").display()))
+            }
+        }
+    }
+    let (started, complete) = (mark("started"), mark("complete"));
+    let need = match std::fs::read_dir(dir) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => true,
+        Err(e) => {
+            return failed(format!(
+                "Couldn't read its data folder {}: {e}",
+                dir.display()
+            ))
+        }
+        Ok(mut entries) => entries.next().is_none() || (started.exists() && !complete.exists()),
+    };
+    if !need {
         return Ok(());
+    }
+    let _ = std::fs::remove_file(&complete);
+    if let Err(e) = std::fs::write(&started, b"") {
+        return failed(format!("Couldn't write {}: {e}", started.display()));
     }
     let mut cmd = Command::new(&config.binary);
     cmd.arg("init").arg("--data-path").arg(&config.data_dir);
     if let Some(seed) = &config.seed {
         cmd.arg("--network-bootstrap-seed").arg(seed);
     }
-    match bounded(shared, &mut cmd, config.init_timeout) {
+    let ran = bounded(shared, &mut cmd, config.init_timeout);
+    if matches!(ran, Bounded::Done(exit, _) if exit.success()) {
+        let partial = complete.with_extension("tmp");
+        let marked = std::fs::write(&partial, b"")
+            .and_then(|()| std::fs::rename(&partial, &complete))
+            .and_then(|()| std::fs::remove_file(&started));
+        if let Err(e) = marked {
+            return failed(format!("Couldn't write {}: {e}", complete.display()));
+        }
+    }
+    drop(lock);
+    match ran {
         Bounded::Done(exit, _) if exit.success() => Ok(()),
         Bounded::Done(exit, _) => Err(Prep::Failed(format!(
             "Couldn't prepare its data folder ({}).",
