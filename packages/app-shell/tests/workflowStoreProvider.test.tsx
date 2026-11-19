@@ -20,6 +20,8 @@ const [adoptedShapes, setAdoptedShapes] = createSignal<unknown[]>([]);
 /** A space's own models, which exist for its dataset only once registered. */
 const OWN_MODELS = new Set(['Proposal', 'Sighting', 'Pitch', 'Memo']);
 const registered = new Set<string>();
+/** How many more `findAll` calls on a model throw, as a dropped connection would. */
+const failing = new Map<string, number>();
 /** The records each model finds, by entity — what a `findAll` by id answers with. */
 const stored: Record<string, Record<string, unknown>[]> = {};
 const workflowPort = createInMemoryWorkflowPort(() => 'did:test:me');
@@ -43,8 +45,14 @@ vi.mock('@we/entities', async (importOriginal) => ({
     OWN_MODELS.has(entity) && !registered.has(entity)
       ? undefined
       : {
-          findAll: async (_d: unknown, q: { where: { id: string[] } }) =>
-            (stored[entity] ?? []).filter((row) => q.where.id.includes(row.id as string)),
+          findAll: async (_d: unknown, q: { where: { id: string[] } }) => {
+            const left = failing.get(entity) ?? 0;
+            if (left > 0) {
+              failing.set(entity, left - 1);
+              throw new Error('connection dropped');
+            }
+            return (stored[entity] ?? []).filter((row) => q.where.id.includes(row.id as string));
+          },
         },
 }));
 
@@ -227,5 +235,20 @@ describe('a record going through the open workflow', () => {
     const store = await openOn('pitches', 'p1');
     await vi.waitFor(() => expect(store.open()?.records[0]).toMatchObject({ kind: 'Pitch' }));
     expect(store.open()?.records[0]?.title).toBe('Fix the roof');
+  });
+
+  // A failed read is not an answer: the record is looked for again rather than kept as a miss.
+  it('is looked for again after a read that failed', async () => {
+    stored.Memo = [{ id: 'm1', title: 'Rent is due' }];
+    registered.add('Memo');
+    // Opening reads the definition again, which runs the lookup twice: both fail.
+    failing.set('Memo', 2);
+    const store = await openOn('memos', 'm1', ['Memo']);
+    await vi.waitFor(() => expect(failing.get('Memo')).toBe(0));
+    expect(store.open()?.records[0]?.title).toBe('Record m1');
+
+    // The run moving is the next time the list changes; the record is looked for again then.
+    await store.moveRecord('memos', 'm1', 'published');
+    await vi.waitFor(() => expect(store.open()?.records[0]?.title).toBe('Rent is due'));
   });
 });

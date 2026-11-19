@@ -418,7 +418,10 @@ export function WorkflowStoreProvider(props: ParentProps) {
    * for — is looked for again when the space's models arrive, rather than read as nameless for good.
    */
   const [subjects, setSubjects] = createSignal<Record<string, SubjectName>>({});
-  /** Which models each record was already looked for in and not found, so a run moving does not ask again. */
+  /**
+   * Which models each record was already looked for in and not found, so a run moving does not ask
+   * again. A read that failed is not kept, and opening a workflow forgets them all.
+   */
   const searched = new Map<string, string>();
 
   /**
@@ -483,7 +486,9 @@ export function WorkflowStoreProvider(props: ParentProps) {
             found[row.id] = { title: subjectTitleOf(row, namePropertyFor(entity)), entity };
           }
         } catch {
-          // A type this space has never held reads as nothing to name.
+          // Not an answer: forget these were looked for, so the next change to the list — a run
+          // moving, the workflow reopened — asks again. Bounded by those changes, not by renders.
+          for (const id of wanted) if (searched.get(id) === looking) searched.delete(id);
         }
       }
       if (Object.keys(found).length) setSubjects((prev) => ({ ...prev, ...found }));
@@ -496,6 +501,7 @@ export function WorkflowStoreProvider(props: ParentProps) {
 
   async function openWorkflow(name: string): Promise<void> {
     if (!name) return closeWorkflow();
+    searched.clear();
     setOpenName(name);
     setHistory({});
     setDefinitions(({ [name]: _stale, ...rest }) => rest);
