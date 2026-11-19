@@ -84,6 +84,12 @@ export interface WorkflowSummaryView {
   editable: boolean;
   /** How many records are going through it. */
   records: number;
+  /**
+   * How many of them are still running: not at a final step (one with no move out of it). From the
+   * watched records, so it follows a run started or moved here or by anybody else; 0 for a workflow
+   * that is not watched (an archived one, the task-state one) or whose definition is not read yet.
+   */
+  running: number;
   /** What writes it, when something other than this editor does. Empty otherwise. */
   managedBy: '' | 'task-states';
   archived: boolean;
@@ -328,9 +334,13 @@ export function WorkflowStoreProvider(props: ParentProps) {
     setDefinitions({});
   });
 
+  // Declared before `workflows` for the same reason: what each watched workflow holds, by its name.
+  const [items, setItems] = createSignal<Record<string, WorkflowItem[]>>({});
+
   const workflows = createMemo<WorkflowSummaryView[]>(() => {
     const archived = new Set(spaceStore.archivedWorkflows());
     const defs = definitions();
+    const watched = items();
     return summaries()
       .map((s) => {
         const managedBy = s.name === TASK_WORKFLOW ? ('task-states' as const) : ('' as const);
@@ -342,6 +352,11 @@ export function WorkflowStoreProvider(props: ParentProps) {
           label: workflowLabelOf(s.name),
           editable: s.editable && !managedBy,
           records: s.records,
+          // A step nothing leaves is where a record has finished; until the definition is read, which
+          // steps those are is not known, and nothing is counted rather than everything.
+          running: definition
+            ? (watched[s.name] ?? []).filter((item) => !item.state || leaving.has(item.state)).length
+            : 0,
           managedBy,
           archived: archived.has(s.name),
           steps: (definition?.states ?? []).map((state) => ({
@@ -374,8 +389,6 @@ export function WorkflowStoreProvider(props: ParentProps) {
   });
 
   // ─── Watching ────────────────────────────────────────────────────────────────
-
-  const [items, setItems] = createSignal<Record<string, WorkflowItem[]>>({});
 
   /** Watch these workflows, and only these, for as long as the space is on screen. */
   function watchWorkflows(names: () => string[]) {

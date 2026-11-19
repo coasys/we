@@ -129,3 +129,33 @@ describe('a requirement the form adds', () => {
     expect(done?.evidence).toEqual([expect.objectContaining({ entity: 'CollectionBlock', via: 'responses' })]);
   });
 });
+
+describe('the records running through a flow', () => {
+  const COUNTED: WorkflowDefinition = { ...REVIEW, name: 'counted' };
+
+  // A record at a final step has finished: Flows in the space tree counts what is running, not every
+  // record that ever went through.
+  it('leaves out records at a final step', async () => {
+    await workflowPort.install(dataset, COUNTED);
+    await workflowPort.start(dataset, 'counted', 'c1');
+    await workflowPort.start(dataset, 'counted', 'c2');
+    await workflowPort.move(dataset, 'counted', 'c2', 'published');
+    const store = mount();
+    await vi.waitFor(() => expect(store.workflows().find((f) => f.name === 'counted')?.running).toBe(1));
+  });
+
+  // The list is read once, so a count copied from it never moved: a run started here, or by
+  // somebody else, has to show from the watched records.
+  it('follows a run started here and one started by somebody else, with no refresh', async () => {
+    const LIVE: WorkflowDefinition = { ...REVIEW, name: 'live' };
+    await workflowPort.install(dataset, LIVE);
+    const store = mount();
+    await vi.waitFor(() => expect(store.workflows().find((f) => f.name === 'live')?.running).toBe(0));
+    await store.startWorkflow('live', 'l1');
+    await vi.waitFor(() => expect(store.workflows().find((f) => f.name === 'live')?.running).toBe(1));
+    await workflowPort.start(dataset, 'live', 'l2');
+    await vi.waitFor(() => expect(store.workflows().find((f) => f.name === 'live')?.running).toBe(2));
+    await store.moveRecord('live', 'l1', 'published');
+    await vi.waitFor(() => expect(store.workflows().find((f) => f.name === 'live')?.running).toBe(1));
+  });
+});
