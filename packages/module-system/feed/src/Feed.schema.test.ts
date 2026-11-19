@@ -5,11 +5,12 @@ import type { SchemaNode } from '@we/schema-shared';
 import { evaluateExpression, listFunctions, parseExpression } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
-import { feedPanel, feedView } from './Feed.schema';
+import { callFeedView, feedPanel, feedView } from './Feed.schema';
 import { feedModule } from './index';
 
 const panel = JSON.stringify(feedPanel);
 const view = JSON.stringify(feedView);
+const callView = JSON.stringify(callFeedView);
 
 /** The first node under `root`, depth first, that `match` accepts. */
 function findNode(root: unknown, match: (node: SchemaNode) => boolean): SchemaNode | undefined {
@@ -43,16 +44,24 @@ function findAll(root: unknown, match: (node: SchemaNode) => boolean): SchemaNod
 }
 
 /** The rows the `$each` draws, evaluated as the renderer would — a stubbed store in, ids out. */
-function feedRowIds(options: { showCallTranscripts: boolean; feedShow?: string; feedRows?: unknown[] }): string[] {
+function feedRowIds(options: {
+  showCallTranscripts: boolean;
+  feedShow?: string;
+  feedRows?: unknown[];
+  /** Read the call's Feed rather than the space's. */
+  of?: SchemaNode;
+}): string[] {
   const each = findNode(
-    feedPanel,
+    options.of ?? feedPanel,
     (n) => n.type === '$each' && (n.props as { as?: unknown } | undefined)?.as === 'row',
   )!;
   const source = (each.props as { items: { $: string } }).items.$;
   const roots: Record<string, unknown> = {
     modules: {
       feed: {
-        feedRows: options.feedRows ?? [],
+        feedRows: options.of ? [] : (options.feedRows ?? []),
+        callFeedRows: options.of ? (options.feedRows ?? []) : [],
+        callFeedFromStart: false,
         showCallTranscripts: options.showCallTranscripts,
         feedFromStart: false,
         timelineOrientation: 'newestBottom',
@@ -86,9 +95,10 @@ describe('one line, the Feed’s own actions', () => {
 
   it('keeps its reply to itself, and asks nothing of transcription', () => {
     expect(panel).toContain('"$invoke":"modules.feed.startReply"');
-    expect(panel).toContain(`"condition":{"$":"modules.feed.replyingTo"}`);
+    expect(panel).toContain(`"condition":{"$":"modules.feed.replyingTo.surface == 'feed'"}`);
     expect(panel).not.toContain('modules.transcribe');
     expect(view).not.toContain('modules.transcribe');
+    expect(callView).not.toContain('modules.transcribe');
   });
 });
 
@@ -165,5 +175,61 @@ describe('call transcripts in the Feed', () => {
       args: ['feed', 'showCallTranscripts', { $: 'event.detail' }],
     });
     for (const json of [panel, view]) expect(json).toContain('Show call transcripts');
+  });
+});
+
+describe('the Feed of one call', () => {
+  /*
+    The same stream, scoped to one call: the same line, the same three choices and the same box, read
+    from and written to the call's collection rather than the space's.
+  */
+  const CALL_ROWS = [
+    ...FEED_ROWS,
+    { kind: 'line', id: 'mended', source: 'corrected', author: 'did:ann', text: 'heard, then mended' },
+  ];
+
+  it('is a part a page places, pointed at a call, and kept live while it is drawn', () => {
+    expect(feedModule.contributes?.parts?.callFeed).toMatchObject({
+      subject: 'routeStore.params.call',
+      whileShown: { show: 'watchCallFeed', hide: 'unwatchCallFeed' },
+    });
+    // The subject is a whole token in the part, so a placement pointing it elsewhere reaches it.
+    expect(callView).toContain('{"$":"routeStore.params.call"}');
+  });
+
+  it('draws everything said and written in the call under Everything, whatever the space’s transcript choice', () => {
+    expect(feedRowIds({ of: callFeedView, showCallTranscripts: false, feedRows: CALL_ROWS })).toEqual([
+      'act-1',
+      'bot-1',
+      'mended',
+      'spoken-1',
+      'typed-1',
+    ]);
+  });
+
+  it('draws only what people typed under Messages', () => {
+    expect(
+      feedRowIds({ of: callFeedView, showCallTranscripts: true, feedShow: 'messages', feedRows: CALL_ROWS }),
+    ).toEqual(['typed-1']);
+  });
+
+  it('draws only bots under Bots', () => {
+    expect(feedRowIds({ of: callFeedView, showCallTranscripts: true, feedShow: 'bots', feedRows: CALL_ROWS })).toEqual([
+      'bot-1',
+    ]);
+  });
+
+  it('has the same three choices and no transcripts switch, which is about the space', () => {
+    for (const label of ['"Everything"', '"Messages"', '"Bots"']) expect(callView).toContain(label);
+    expect(callView).not.toContain('Show call transcripts');
+    expect(callView).not.toContain('modules.feed.feedRows');
+  });
+
+  it('writes into the call, and answers only a reply started in it', () => {
+    expect(callView).toContain('"$invoke":"modules.feed.sendToCallFeed"');
+    expect(callView).not.toContain('"$invoke":"modules.feed.sendToFeed"');
+    expect(callView).toContain(`"condition":{"$":"modules.feed.replyingTo.surface == 'callFeed'"}`);
+    expect(callView).toContain("surface: 'callFeed'");
+    expect(callView).toContain('"$invoke":"modules.feed.showMoreCallFeed"');
   });
 });

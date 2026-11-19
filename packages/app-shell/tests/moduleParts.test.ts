@@ -30,6 +30,7 @@ const definition: ModuleDefinition = {
   contributes: {
     parts: {
       feed: { node: feed, subject: 'modules.demo.collectionId' },
+      watched: { node: feed, subject: 'modules.demo.collectionId', whileShown: { show: 'watch', hide: 'unwatch' } },
       plain: { type: 'we-badge' },
       labelled: {
         node: { type: 'we-button', children: [{ $: 'label' }] },
@@ -138,6 +139,28 @@ describe('placing a module part', () => {
       const resolved = resolveParts(place({ id: 'demo.feed' }));
 
       expect(JSON.stringify(resolved)).toContain('modules.demo.collectionId');
+    });
+  });
+
+  /*
+    A part kept live by its store (`whileShown`) is told what the drawing is about: the frame carries
+    the placement's subject, resolved where the part is placed, and the frame passes it on.
+  */
+  it('puts the subject a part is shown for on its frame, when its store is told it is shown', () => {
+    withModule(() => {
+      const frameOf = (props: Record<string, SchemaProp>) =>
+        ((resolveParts(place(props)) as SchemaNode).children as SchemaNode[])[0];
+
+      expect(frameOf({ id: 'demo.watched', subject: { $: 'routeStore.params.id' } }).props).toEqual({
+        part: 'demo.watched',
+        subject: { $: 'routeStore.params.id' },
+      });
+      expect(frameOf({ id: 'demo.watched' }).props).toEqual({
+        part: 'demo.watched',
+        subject: { $: 'modules.demo.collectionId' },
+      });
+      // A part nobody needs to tell keeps the frame it always had.
+      expect(frameOf({ id: 'demo.feed', subject: { $: 'routeStore.params.id' } }).props).toEqual({ part: 'demo.feed' });
     });
   });
 

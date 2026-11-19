@@ -101,6 +101,7 @@
     "@we/brand": "workspace:*",
     "@we/cli": "workspace:*",
     "@we/csp": "workspace:*",
+    "@we/e2e": "workspace:*",
     "esbuild": "^0.28.2",
     "esbuild-plugin-solid": "^0.6.0",
     "jsdom": "~30.0.1",

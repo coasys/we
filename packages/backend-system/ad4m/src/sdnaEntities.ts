@@ -138,14 +138,10 @@ function cachedSubjectClasses(p: PerspectiveProxy): Promise<Set<string>> {
 /**
  * Everything about a stored shape that a *reader* of it can act on.
  *
- * Read as one bundle, and compared as one bundle, because the alternative has now failed three
- * times. Staleness started as "does it have every predicate", which missed a hint being added;
- * then gained "does it have a hint", which missed a hint being *reworded*; then compared hint
- * values, which still missed `identity` being set on a property, because that changes no predicate
- * and no class hint. Each fix was correct and each was one aspect behind.
+ * Read as one bundle, and compared as one bundle: comparing one aspect at a time is always one
+ * aspect behind (a hint added, a hint reworded, `identity` set on a property).
  *
- * The rule that replaces the whack-a-mole: **this must carry whatever the executor reads off a
- * shape.** The executor resolves shapes from the perspective, not from the model classes, so
+ * The rule: **this must carry whatever the executor reads off a shape.** The executor resolves shapes from the perspective, not from the model classes, so
  * anything it consumes and this ignores is a change that silently never arrives — and the symptom
  * is always somewhere else entirely ("the model extracted nothing", "the model duplicated
  * everything"), never "your schema is out of date".
@@ -167,6 +163,15 @@ export interface StoredShape {
   classHint?: string;
   /** `sh://path` of the property marked `ad4m://identity`, if any. */
   identityPath?: string;
+  /**
+   * `sh://path` of every relation the stored shape marks `ad4m://polymorphic`.
+   *
+   * The executor applies a relation's declared polymorphism as the include default at every depth,
+   * and it reads that declaration off the stored shape. A shape stored before the SDK wrote the flag
+   * has none, so `include: { node: { include: { extractedFrom: true } } }` fails there with "the
+   * relation declares no target class" — and no path, count or hint differs to say so.
+   */
+  polymorphicPaths: Set<string>;
   /** Property-level interpretation hints, decoded, keyed by `sh://path`. */
   propHints: Map<string, string>;
   /**
@@ -193,7 +198,12 @@ async function storedShapes(p: PerspectiveProxy): Promise<Map<string, StoredShap
   const entry = (targetClass: string): StoredShape => {
     const existing = shapes.get(targetClass);
     if (existing) return existing;
-    const created: StoredShape = { paths: new Set(), pathCounts: new Map(), propHints: new Map() };
+    const created: StoredShape = {
+      paths: new Set(),
+      pathCounts: new Map(),
+      polymorphicPaths: new Set(),
+      propHints: new Map(),
+    };
     shapes.set(targetClass, created);
     return created;
   };
@@ -207,9 +217,9 @@ async function storedShapes(p: PerspectiveProxy): Promise<Map<string, StoredShap
       ?shapeUri <sh://property> ?prop .
       ?prop <sh://path> ?path .`;
 
-  // Run all five queries concurrently — same queries, same processing, but
-  // saves four sequential round trips (~1.2 s on a 300 ms RTT connection).
-  const [pathRows, hintRows, identityRows, propHintRows, customizedRows] = await Promise.all([
+  // Run all six queries concurrently — same queries, same processing, but
+  // saves five sequential round trips (~1.2 s on a 300 ms RTT connection).
+  const [pathRows, hintRows, identityRows, propHintRows, customizedRows, polymorphicRows] = await Promise.all([
     select(`SELECT ?targetClass ?path WHERE { ${CHAIN} }`),
     select(
       `SELECT ?targetClass ?hint WHERE {
@@ -227,6 +237,7 @@ async function storedShapes(p: PerspectiveProxy): Promise<Map<string, StoredShap
         ?shapeUri <we://interpretation_customized> ?flag .
       }`,
     ),
+    select(`SELECT ?targetClass ?path WHERE { ${CHAIN} ?prop <ad4m://polymorphic> ?flag . }`),
   ]);
 
   for (const row of pathRows) {
@@ -245,6 +256,9 @@ async function storedShapes(p: PerspectiveProxy): Promise<Map<string, StoredShap
     if (row.targetClass && row.path && row.hint !== undefined) {
       entry(row.targetClass).propHints.set(row.path, decodeHint(row.hint));
     }
+  }
+  for (const row of polymorphicRows) {
+    if (row.targetClass && row.path) entry(row.targetClass).polymorphicPaths.add(row.path);
   }
   for (const row of customizedRows) {
     if (row.targetClass) entry(row.targetClass).hintsCustomized = true;
@@ -341,6 +355,7 @@ export function declaredShape(model: EntityClass): StoredShape {
   const out: StoredShape = {
     paths: new Set(getEntityPredicates(model)),
     pathCounts: new Map(),
+    polymorphicPaths: new Set(),
     propHints: new Map(),
   };
   const generate = (
@@ -348,7 +363,7 @@ export function declaredShape(model: EntityClass): StoredShape {
       generateSHACL?: () => {
         shape?: {
           interpretationHint?: string;
-          properties?: { path?: string; identity?: boolean; interpretationHint?: string }[];
+          properties?: { path?: string; identity?: boolean; polymorphic?: boolean; interpretationHint?: string }[];
         };
       };
     }
@@ -361,6 +376,7 @@ export function declaredShape(model: EntityClass): StoredShape {
       if (!property.path) continue;
       out.pathCounts.set(property.path, (out.pathCounts.get(property.path) ?? 0) + 1);
       if (property.identity) out.identityPath = property.path;
+      if (property.polymorphic) out.polymorphicPaths.add(property.path);
       if (property.interpretationHint) out.propHints.set(property.path, property.interpretationHint);
     }
   } catch {
@@ -382,10 +398,9 @@ function decodeHint(value: string): string {
 /**
  * Whether a perspective's stored shape for a model is behind what the model now declares.
  *
- * Adding a property to an existing model used to be a silent one-way break: shapes were written only
- * for a class absent *entirely*, so every space created before the property existed kept the old
- * shape, and writes to the new field were dropped by a perspective that looked perfectly healthy.
- * `Space.enabledModules` shipped straight into that hole.
+ * A space made before a property existed holds the old shape, and a perspective with the old shape
+ * drops writes to the new field while looking perfectly healthy — so a shape behind its model is
+ * rewritten, not only a shape that is absent.
  *
  * The executor handles the write half: `add_sdna` purges the prior SHACL graph and rewrites it
  * whenever a SubjectClass is registered *with* a shape, so re-registering is a genuine refresh
@@ -417,6 +432,12 @@ export function shapeIsStale(model: typeof Ad4mModel, stored: ReadonlyMap<string
     }
   }
   if (declared.identityPath !== current.identityPath) return true;
+  // A relation the model declares polymorphic whose stored property lacks the flag: the executor
+  // reads the include default off the stored shape, so an old shape fails a nested include of it.
+  // Structural like identity, so it is compared even once hints are space-owned.
+  for (const path of declared.polymorphicPaths) {
+    if (!current.polymorphicPaths?.has(path)) return true;
+  }
   // Hints are space-owned once customized (see StoredShape.hintsCustomized): a stored hint that
   // differs from the declaration is then the community's tuning, not staleness, and rewriting it
   // would silently revert their work on every space switch.
@@ -881,9 +902,11 @@ export async function deduplicateSpaceSdna(p: PerspectiveProxy): Promise<{ remov
   record(nameRemoved);
 
   // Each shape's triples are independent of every other shape's — dedupe them
-  // concurrently rather than one shape at a time. This walk is structurally identical
-  // to getAllShacl()/getShacl() (one RPC round trip per triple), which over a remote
-  // connection turns a linear-looking loop into the dominant cost of the whole operation;
+  // concurrently rather than one shape at a time. This walk follows the same link graph
+  // getAllShacl() reads, but link by link (one RPC round trip per triple) because it has to
+  // see every duplicate copy — getAllShacl() reads every named shape in one call and skips one
+  // it cannot decode, so it cannot be used to find what to remove. Over a remote connection
+  // those round trips turn a linear-looking loop into the dominant cost of the whole operation;
   // see the doc comment on hasSubjectClassLink above for the same round-trip-count issue.
   await Promise.all(
     nameLinks.map(async (nameLink) => {

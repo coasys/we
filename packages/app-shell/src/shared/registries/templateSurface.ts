@@ -472,6 +472,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       panels, which render at the chrome tier, have it.
     */
     personalDataset: state('agent'),
+    // The personal space's schema install, for the agent-data kernel to wait on. Not for templates.
+    whenPersonalDataset: WIRING,
     testDataset: WIRING,
     /*
       The global discovery space and the marketplace — shared neighbourhoods holding nothing of this
@@ -493,11 +495,6 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     updateAgentSettings: WIRING,
     clearCurrentDataset: WIRING,
     trackDataset: WIRING,
-    provideAutoInterpretGate: WIRING,
-    watchConversation: WIRING,
-    unwatchConversation: WIRING,
-    provideExtractionCandidates: WIRING,
-    provideCollectionExtraction: WIRING,
     onDatasetRemoved: WIRING,
     readDatasets: WIRING,
     initSystemDatasets: WIRING,
@@ -829,6 +826,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     */
     extractionCandidates: state('content'),
     extractionCandidatesLoaded: state('content'),
+    // Answers for a dataset that is not on screen — host plumbing, not a template's to aim.
+    extractionCandidatesFor: WIRING,
     provideExtractionEnroller: WIRING,
     extractionNeedsIdentity: state('space-settings'),
     relationshipTargets: state('space-settings'),
@@ -882,6 +881,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // in the tier every template can reach, beside `spaceStore.createPost`.
     creatableEntities: state('content'),
     kinds: state('content'),
+    plumbingClasses: state('content'),
     displays: state('content'),
     // SpaceStore fills this on the way past, with the lists a community owns — see `vocabulary` on
     // a property declaration. Wiring between two stores, never something a template names.
@@ -1555,6 +1555,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     open: state('content'),
     draft: state('view-state'),
     recordWorkflows: state('content'),
+    active: state('content'),
     refreshWorkflows: ambient('content'),
     openWorkflow: ambient('view-state'),
     closeWorkflow: ambient('view-state'),

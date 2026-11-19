@@ -44,10 +44,15 @@ on:
       - '.github/workflows/ad4m-live.yaml'
       - '.github/actions/ad4m-executor/**'
       - 'scripts/ad4m-executor*'
-      # And what the calls job exercises: the call module, presence in the shell, the web app.
-      - 'packages/module-system/call/**'
+      # And what the journeys exercise: the modules, the shell, the web app and the Coasys app's
+      # seed and bundle, through the helpers they share and the runner.
+      - 'packages/module-system/**'
       - 'packages/app-shell/**'
       - 'apps/we-web/**'
+      - 'packages/e2e/**'
+      - 'scripts/e2e*'
+      - 'seeds/coasys.seed.json'
+      - 'bundles/**'
   # The same paths on `dev`, so a merged bump caches its executor where every PR can read it.
   push:
     branches: [dev]
@@ -58,10 +63,15 @@ on:
       - '.github/workflows/ad4m-live.yaml'
       - '.github/actions/ad4m-executor/**'
       - 'scripts/ad4m-executor*'
-      # And what the calls job exercises: the call module, presence in the shell, the web app.
-      - 'packages/module-system/call/**'
+      # And what the journeys exercise: the modules, the shell, the web app and the Coasys app's
+      # seed and bundle, through the helpers they share and the runner.
+      - 'packages/module-system/**'
       - 'packages/app-shell/**'
       - 'apps/we-web/**'
+      - 'packages/e2e/**'
+      - 'scripts/e2e*'
+      - 'seeds/coasys.seed.json'
+      - 'bundles/**'
   # The ad4m bump workflow starts this on its branch, as it does CI — a PR it opens with
   # GITHUB_TOKEN starts nothing. And by hand, from the Actions tab.
   workflow_dispatch:
@@ -176,7 +186,7 @@ jobs:
           pnpm verify:ad4m
 
   # One account calling from two tabs and two devices, in the built web app against the same
-  # executor in multi-user mode, on the SFU and on the mesh (`apps/we-web/tests/live/calls.live.mjs`).
+  # executor in multi-user mode, on the SFU and on the mesh (`apps/we-web/e2e/calls.e2e.mjs`).
   # Its own job, so a call failing says so by name and does not hide the backend suite's result.
   calls:
     name: Calls across tabs and devices
@@ -201,10 +211,68 @@ jobs:
       - name: Build the web app
         run: pnpm build:web
 
-      # Chrome is on the runner image (`/usr/bin/google-chrome`), which the harness looks for.
+      # Chrome is on the runner image (`/usr/bin/google-chrome`), which `chromePath()` in `@we/e2e`
+      # finds. A failing step leaves a screenshot, the page's aria snapshot and the executor log.
       - name: Calls
         env:
           AD4M_EXECUTOR: ${{ steps.executor.outputs.path }}
+          WE_E2E_ARTIFACTS: ${{ runner.temp }}/calls-artifacts
         run: |
           chmod +x "$AD4M_EXECUTOR"
           pnpm --filter @we/app-web test:live
+
+      - name: Keep what the failing step saw
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: calls-artifacts
+          path: ${{ runner.temp }}/calls-artifacts
+          if-no-files-found: ignore
+
+  # The Coasys app, vertical by vertical, in the stub tier: a scripted model and typed call lines,
+  # so its results are exact and a red run is a product break rather than model variance
+  # (`apps/we-web/e2e/coasys-spaces/README.md`). The real tier, with a model and a recorded call,
+  # runs in ad4m's nightly against ad4m `dev` (`scripts/coasys-spaces.sh` there), not here.
+  spaces:
+    name: Coasys spaces (stub tier)
+    needs: [resolve, build]
+    if: ${{ !cancelled() && needs.resolve.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
+    runs-on: ubuntu-24.04
+    # Many accounts and spaces, each waiting on sync between them: long, and a hang says so at the
+    # suite's own per-wait timeouts well before this one.
+    timeout-minutes: 120
+    concurrency:
+      group: ad4m-live-spaces-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+
+      - name: Restore the executor
+        id: executor
+        uses: ./.github/actions/ad4m-executor
+        with:
+          ref: ${{ needs.resolve.outputs.commit }}
+          mode: restore
+
+      - name: Build the Coasys app
+        env:
+          WE_SEED: seeds/coasys.seed.json
+        run: pnpm build:web
+
+      - name: Coasys spaces
+        env:
+          AD4M_EXECUTOR: ${{ steps.executor.outputs.path }}
+          COASYS_SPACES_TIER: stub
+          COASYS_SPACES_ARTIFACTS: ${{ runner.temp }}/spaces-artifacts
+        run: |
+          chmod +x "$AD4M_EXECUTOR"
+          pnpm --filter @we/app-web test:spaces
+
+      - name: Keep what the failing step saw
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: spaces-artifacts
+          path: ${{ runner.temp }}/spaces-artifacts
+          if-no-files-found: ignore

@@ -10,14 +10,28 @@
  * suite can read data back the way the app does — and a store that writes the wrong field, or
  * writes nothing at all, fails here rather than in a browser.
  */
-import { render } from '@solidjs/testing-library';
+import { cleanup, render } from '@solidjs/testing-library';
 import { createInMemoryBackendPorts, type InMemoryAgentOptions, type InMemoryLifecycle } from '@we/backend-inmemory';
+import type { EntityManifest } from '@we/backend-shared';
 import { createBlocks, registerCoreBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
-import { AgentSettings, CollectionBlock, getEntity, Policy, Space, SpaceLandmark } from '@we/entities';
+import { provideFileSaver } from '@we/design-utils';
+import {
+  AgentSettings,
+  CollectionBlock,
+  getEntity,
+  getEntityForDataset,
+  ModelRun,
+  Policy,
+  Space,
+  SpaceLandmark,
+  unregisterEntity,
+} from '@we/entities';
 import { type FeedFind, readFeedWindow } from '@we/module-feed';
+import { notesModule } from '@we/module-notes';
+import { pocketModule } from '@we/module-pocket';
 import { createEffect, createRoot, createSignal } from 'solid-js';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
 // The platform provider supplies the in-memory backend; the template/theme/route stores (not
@@ -40,13 +54,63 @@ let executorHost:
   | { getSettings: () => Promise<unknown>; setSettings: () => Promise<unknown>; restart: () => Promise<void> }
   | undefined;
 
+/**
+ * Set by a test that boots twice against one backend: a reload, with what the first boot wrote still
+ * there. Absent, every boot gets a backend of its own.
+ */
+let keepBackend = false;
+let keptPorts: ReturnType<typeof createInMemoryBackendPorts> | undefined;
+
+/**
+ * The first-screen gate, made new for each test rather than once for the file.
+ *
+ * The real one is a module singleton that holds once per app, so in this file the first test to boot
+ * held it and every test after ran beneath a gate nothing opened but the eight-second ceiling — the
+ * harness mounts no Feed and no layout to say the screen is up. Here it holds only when a test sets
+ * `gate.holds` before mounting, and that test opens it with `gate.current.answered()`, as the Feed's
+ * first page does. Every other test boots with it open.
+ */
+const gate = vi.hoisted(() => ({
+  holds: false,
+  current: undefined as unknown as import('../src/shared/firstScreen').FirstScreen,
+  reset: () => {},
+}));
+vi.mock('../src/frameworks/solid/firstScreen', async () => {
+  const { createFirstScreen } = await import('../src/shared/firstScreen');
+  const { createSignal } = await import('solid-js');
+  gate.reset = () => {
+    gate.current = createFirstScreen({
+      signal: <T,>(initial: T): [() => T, (next: T) => void] => {
+        const [read, write] = createSignal(initial);
+        return [read, (next: T) => void write(() => next)];
+      },
+    });
+  };
+  gate.reset();
+  return {
+    firstScreen: {
+      open: () => gate.current.open(),
+      whenOpen: () => gate.current.whenOpen(),
+      hold: () => {
+        if (gate.holds) gate.current.hold();
+      },
+      waiting: () => gate.current.waiting(),
+      answered: () => gate.current.answered(),
+      drawn: () => gate.current.drawn(),
+    },
+  };
+});
+
 vi.mock('../src/frameworks/solid/providers/PlatformProvider', () => ({
   usePlatform: () => ({ isDesktop: false, isDevelopment: true, executor: executorHost }),
   useBackend: () => ({
     // The real in-memory bundle — the same thing a backend-less host would supply.
     initialize: async (ctx: { selfId(): string | undefined }) => {
       if (connectFailure) throw new Error(connectFailure);
-      const ports = createInMemoryBackendPorts(ctx, { agent: agentOptions, datasets: seededDatasets });
+      const ports =
+        (keepBackend && keptPorts) ||
+        createInMemoryBackendPorts(ctx, { agent: agentOptions, datasets: seededDatasets });
+      keptPorts = ports;
       onPorts?.(ports);
       lifecycle = ports.lifecycle;
       return { client: {}, ports, ...(disconnect ? { disconnect } : {}) };
@@ -82,22 +146,99 @@ vi.mock('../src/frameworks/solid/stores/RouteStore', async () => {
 // the file at once rather than the one that cares.
 /** The app in use, as the stub hands it out: WE's own unless a test puts the agent in another. */
 type AppInUse = { id: string; source?: { bundle: string } };
-const app = vi.hoisted(() => ({ use: (_app: AppInUse) => {} }));
+const app = vi.hoisted(() => ({
+  use: (_app: AppInUse) => {},
+  /*
+    The template registry and the template on screen, so a test can put one up and watch what a
+    save swaps in and rolls back. `put`/`shown` are rebound to each mounted provider — the mock
+    owns the signal — and `list` is cleared in `beforeEach`.
+  */
+  templates: {
+    list: [] as { id: string; _fromSpace?: boolean }[],
+    put: (_t: unknown) => {},
+    shown: (): Record<string, unknown> => ({}),
+    /** Every id painted, in order — whether a repaint happened is as testable as what it painted. */
+    repaints: [] as string[],
+  },
+}));
 
 vi.mock('../src/frameworks/solid/stores/TemplateStore', async () => {
-  const { createSignal } = await import('solid-js');
+  const { createSignal, createEffect } = await import('solid-js');
+  const { useDatasetStore } = await import('../src/frameworks/solid/stores/DatasetStore');
+  const { SpacePreference, AGENT_DEFAULT, FOLLOW_SPACE } = await import('@we/entities');
+  const { latestPerSpace } = await import('../src/frameworks/solid/stores/latestPerSpace');
   const [inUse, setInUse] = createSignal<AppInUse>({ id: 'we-app' });
   app.use = setInUse;
   return {
-    useTemplateStore: () => ({
-      appTemplate: inUse,
-      provideSpaceLookup: () => {},
-      preloadSpaceTemplates: async () => {},
-      allTemplates: () => [],
-      currentTemplate: () => undefined,
-      defaultTemplateId: () => 'default',
-      replaceTemplate: () => {},
-    }),
+    useTemplateStore: () => {
+      /*
+        A signal behind the property, so a template put up and one repainted both read — the
+        real store is a Solid store for the same reason.
+      */
+      const [current, setCurrentRaw] = createSignal<Record<string, unknown>>({});
+      const setCurrent = (t: never) => {
+        app.templates.repaints.push((t as { id?: string }).id ?? '');
+        setCurrentRaw(t);
+      };
+      app.templates.put = (t) => setCurrent(t as never);
+      app.templates.shown = current;
+      const datasets = useDatasetStore();
+
+      /*
+        The real store's space-template follow, modelled rather than stubbed: when the record the
+        space lookup serves names a different `defaultTemplateId` for the dataset on screen, its
+        template is chosen again — through this agent's `SpacePreference` where one is written,
+        because a named choice or `AGENT_DEFAULT` outranks the record. `setSpaceDefaultTemplate`
+        paints only through this path now, so a double that could not follow would hide the
+        publish-to-repaint contract from every test below.
+      */
+      let spaceLookup: () => { uuid?: string; url?: string; defaultTemplateId?: string }[] = () => [];
+      let followed: { id: string; named: string | undefined } | null = null;
+      // The real choose sequences overlapping follows, through the same per-space tracker, and
+      // re-reads the record after the preference read — a stale choose must not paint an older
+      // record over a newer follow's answer.
+      const chooseLatestFor = latestPerSpace();
+      const namedNow = (ds: { id: string; sharedId?: string | null }) =>
+        spaceLookup().find((s) => (ds.sharedId ? s.url === ds.sharedId : s.uuid === ds.id))?.defaultTemplateId;
+      createEffect(() => {
+        const ds = datasets.currentDataset() as { id: string; sharedId?: string | null } | undefined;
+        const named = ds ? namedNow(ds) : undefined;
+        const previous = followed;
+        followed = ds ? { id: ds.id, named } : null;
+        if (!ds || previous?.id !== ds.id || previous.named === named) return;
+        void (async () => {
+          const still = chooseLatestFor(ds.id).begin();
+          const root = datasets.rootDataset()?.handle;
+          const [preference] = (
+            root ? await SpacePreference.findAll(root, { where: { spaceUuid: ds.id } }).catch(() => []) : []
+          ) as { templateId?: string }[];
+          if (!still()) return;
+          const override = preference?.templateId;
+          // `AGENT_DEFAULT` leaves the agent's own choice on screen, as the real choose does; a
+          // named override paints it, and with no override the space's default does — re-read off
+          // the record after the await, the way the real choose does.
+          const wants =
+            override === AGENT_DEFAULT ? undefined : override && override !== FOLLOW_SPACE ? override : namedNow(ds);
+          const template = wants ? app.templates.list.find((t) => t.id === wants) : undefined;
+          // Still the space on screen — the real store guards the same way before replacing.
+          if (template && datasets.currentDataset()?.id === ds.id) setCurrent(template as never);
+        })();
+      });
+
+      return {
+        appTemplate: inUse,
+        provideSpaceLookup: (lookup: never) => {
+          spaceLookup = lookup;
+        },
+        preloadSpaceTemplates: async () => {},
+        allTemplates: () => app.templates.list,
+        get currentTemplate() {
+          return current();
+        },
+        defaultTemplateId: () => 'default',
+        replaceTemplate: (t: never) => setCurrent(t),
+      };
+    },
   };
 });
 
@@ -130,9 +271,10 @@ import { type SessionStore, SessionStoreProvider, useSessionStore } from '../src
 import { type ShapeStore, ShapeStoreProvider, useShapeStore } from '../src/frameworks/solid/stores/ShapeStore';
 import { ShellStoreProvider } from '../src/frameworks/solid/stores/ShellStore';
 import { type SpaceStore, SpaceStoreProvider, useSpaceStore } from '../src/frameworks/solid/stores/SpaceStore';
+import { agentDataKernel } from '../src/shared/agentData';
 import { NO_STARTER } from '../src/shared/bundles/bundleStarter';
-import { createModuleStoreDeps } from '../src/shared/registries/moduleHostServices';
-import { moduleRegistry } from '../src/shared/registries/moduleRegistry';
+import { createModuleStoreDeps, provideModuleHostServices } from '../src/shared/registries/moduleHostServices';
+import { moduleRegistry, moduleStores } from '../src/shared/registries/moduleRegistry';
 import { provideSeed } from '../src/shared/seedRegistry';
 import { writeSpaceLandmark } from '../src/shared/spaceLandmarks';
 import { COMMUNITY_POLICY } from '../src/shared/spacePolicy';
@@ -210,9 +352,61 @@ beforeEach(() => {
   seededDatasets = [];
   connectFailure = null;
   disconnect = undefined;
+  keepBackend = false;
+  keptPorts = undefined;
+  gate.holds = false;
+  gate.reset();
   navigate.mockClear();
+  app.templates.list = [];
+  app.templates.repaints = [];
   route.go('/');
 });
+
+/**
+ * An agent who already has these spaces: boot, make them, and take the shell down, leaving the
+ * backend as a reload finds it. Answers each space's dataset id by its name.
+ */
+async function agentWithSpaces(names: string[]): Promise<Record<string, string>> {
+  keepBackend = true;
+  const stores = mountShell();
+  await ready(stores);
+  for (const name of names) await stores.spaces.createSpace(name, 'x', 'personal', 'hidden');
+  const made = (await lifecycle.list()).filter((d) => names.includes(d.name));
+  cleanup();
+  navigate.mockClear();
+  return Object.fromEntries(made.map((d) => [d.name, d.id]));
+}
+
+type SpaceFindOne = (handle: unknown, options?: { where?: { uuid?: string; url?: string } }) => Promise<unknown>;
+
+/**
+ * Hand every read of a space record whose dataset is in `others` to `answer` instead; the rest read
+ * as they do. Spied when boot lists the datasets — see the root's settings test for why then.
+ */
+function divertSpaceReads(
+  others: () => string[],
+  answer: (read: () => Promise<unknown>) => Promise<unknown>,
+): { spy?: ReturnType<typeof vi.spyOn>; asked: string[] } {
+  const out: { spy?: ReturnType<typeof vi.spyOn>; asked: string[] } = { asked: [] };
+  onPorts = (ports) => {
+    const list = ports.lifecycle.list.bind(ports.lifecycle);
+    ports.lifecycle.list = async (options) => {
+      if (!out.spy) {
+        const Entity = getEntity('Space') as unknown as { findOne: SpaceFindOne };
+        const findOne = Entity.findOne.bind(Entity);
+        out.spy = vi.spyOn(Entity, 'findOne').mockImplementation((handle, options) => {
+          const which = options?.where?.uuid ?? options?.where?.url;
+          if (which) out.asked.push(which);
+          return which && others().includes(which)
+            ? (answer(() => findOne(handle, options)) as never)
+            : (findOne(handle, options) as never);
+        });
+      }
+      return list(options);
+    };
+  };
+  return out;
+}
 
 // ── The suite ─────────────────────────────────────────────────────────────────
 
@@ -255,30 +449,167 @@ describe('boot', () => {
   });
 
   /*
-    The root and the personal space share nothing but the list, and each is several round trips to
-    a remote backend. One after the other they were most of the wait before a space could open.
+    The personal space's schema is several round trips to a remote backend, and the space on screen
+    reads nothing from it. It used to be on the way to ready; now the app is ready without it, and
+    the personal space comes up after — made on a first run before ready, so it is in the list.
   */
-  it('brings the root and the personal space up side by side', async () => {
-    let releaseRoot!: () => void;
-    const rootHeld = new Promise<void>((resolve) => (releaseRoot = resolve));
-    const started: string[] = [];
+  it('is ready before the personal space’s schema is up, and brings it up after', async () => {
+    let releasePersonal!: () => void;
+    const personalHeld = new Promise<void>((resolve) => (releasePersonal = resolve));
     onPorts = (ports) => {
-      const { installRoot, installSpace } = ports.schemas;
-      ports.schemas.installRoot = async (dataset) => {
-        started.push('root');
-        await rootHeld;
-        return installRoot(dataset);
-      };
+      const { installSpace } = ports.schemas;
       ports.schemas.installSpace = async (dataset, modules) => {
-        started.push('personal');
+        if ((dataset as { name?: string }).name === 'we-personal') await personalHeld;
         return installSpace(dataset, modules);
       };
     };
     const stores = mountShell();
-
-    await vi.waitFor(() => expect(started).toEqual(expect.arrayContaining(['root', 'personal'])));
-    releaseRoot();
     await ready(stores);
+
+    expect(stores.datasets.personalDataset()).toBeNull();
+    expect(stores.datasets.datasets().map((d) => d.name)).toContain('we-personal');
+
+    releasePersonal();
+    await vi.waitFor(() => expect(stores.datasets.personalDataset()?.name).toBe('we-personal'));
+  });
+
+  it('is ready, and logs, when the personal space’s schema fails', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    onPorts = (ports) => {
+      const { installSpace } = ports.schemas;
+      ports.schemas.installSpace = async (dataset, modules) => {
+        if ((dataset as { name?: string }).name === 'we-personal') throw new Error('schema refused');
+        return installSpace(dataset, modules);
+      };
+    };
+    try {
+      const stores = mountShell();
+      await ready(stores);
+
+      await vi.waitFor(() =>
+        expect(error).toHaveBeenCalledWith('DatasetStore: personal dataset error', expect.any(Error)),
+      );
+      expect(stores.datasets.personalDataset()).toBeNull();
+      expect(stores.datasets.rootDataset()?.name).toBe('we-root');
+    } finally {
+      error.mockRestore();
+    }
+  });
+
+  /*
+    The app is ready before the personal space's schema is in, so a gather or a note can be asked for
+    in between. The kernel said it was not ready and every write returned nothing: a drag into the
+    Pocket in the first seconds did nothing, with no error. A write in that window waits for the
+    schema and lands; if the schema fails, the write says so.
+  */
+  describe('a write to the personal space before its schema is up', () => {
+    const host = { backend: 'inmemory', framework: 'solid' };
+    type Model = {
+      create(d: unknown, f: Record<string, unknown>, o?: Record<string, unknown>): Promise<{ id?: string }>;
+      findAll(d: unknown, q?: unknown): Promise<Record<string, unknown>[]>;
+      update(d: unknown, id: string, f: Record<string, unknown>): Promise<unknown>;
+      delete(d: unknown, id: string): Promise<void>;
+    };
+    const model = (entity: string) => getEntity(entity) as unknown as Model;
+    let unbind: (() => void) | undefined;
+
+    /** The personal space's schema install, held until `release`, and refused with `fail`. */
+    function holdPersonalSchema(options: { fail?: boolean } = {}): () => void {
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => (release = resolve));
+      onPorts = (ports) => {
+        const { installSpace } = ports.schemas;
+        ports.schemas.installSpace = async (dataset, modules) => {
+          if ((dataset as { name?: string }).name === 'we-personal') {
+            await held;
+            if (options.fail) throw new Error('schema refused');
+          }
+          return installSpace(dataset, modules);
+        };
+      };
+      return release;
+    }
+
+    /** The module stores, over the agent-data kernel the host builds from the dataset store. */
+    function modulesOver(stores: Stores) {
+      unbind = provideModuleHostServices({
+        agentData: agentDataKernel(stores.datasets, {
+          create: (handle, entity, fields, options) =>
+            model(entity).create(handle, fields, Object.keys(options).length ? options : undefined),
+          find: (handle, entity, query) => model(entity).findAll(handle, query),
+          update: (handle, entity, id, fields) => model(entity).update(handle, id, fields),
+          remove: (handle, entity, id) => model(entity).delete(handle, id),
+        }),
+      });
+      return {
+        pocket: moduleStores.pocket as unknown as {
+          gather: (input: { entity: string; id: string; ref: string; label: string }) => Promise<void>;
+          lastError: () => string;
+        },
+        notes: moduleStores.notes as unknown as {
+          create: (document: unknown) => Promise<string>;
+          lastError: () => string;
+        },
+      };
+    }
+
+    const gathered = { entity: 'Post', id: 'p1', ref: 'we:n:somewhere/Post/p1', label: 'A post' };
+
+    beforeEach(() => {
+      const deps = createModuleStoreDeps({ signal: createSignal, effect: createEffect });
+      moduleRegistry.register(pocketModule, host, deps);
+      moduleRegistry.register(notesModule, host, deps);
+      registerCoreBlocks();
+    });
+
+    afterEach(() => {
+      unbind?.();
+      unbind = undefined;
+      moduleRegistry.unregister('pocket');
+      moduleRegistry.unregister('notes');
+    });
+
+    it('holds a gather and a note until the schema is in, then writes both', async () => {
+      const release = holdPersonalSchema();
+      const stores = mountShell();
+      await ready(stores);
+      const { pocket, notes } = modulesOver(stores);
+      expect(stores.datasets.personalDataset()).toBeNull();
+
+      const gathering = pocket.gather(gathered);
+      const noting = notes.create({ _type: 'document', blocks: [{ _type: 'block', text: 'kept early' }] });
+      release();
+      await gathering;
+      const noteId = await noting;
+
+      await vi.waitFor(() => expect(stores.datasets.personalDataset()?.name).toBe('we-personal'));
+      const personal = stores.datasets.personalDataset()!;
+      const items = await model('PocketItem').findAll(personal.handle);
+      expect(items.map((item) => item.ref)).toEqual([gathered.ref]);
+      expect(noteId).not.toBe('');
+      const kept = await CollectionBlock.findAll(personal.handle as never, { where: { kind: 'post' } });
+      expect(kept.map((note) => note.id)).toEqual([noteId]);
+      expect(pocket.lastError()).toBe('');
+      expect(notes.lastError()).toBe('');
+    }, 15000);
+
+    it('reports a gather, rather than dropping it, when the schema fails', async () => {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        const release = holdPersonalSchema({ fail: true });
+        const stores = mountShell();
+        await ready(stores);
+        const { pocket } = modulesOver(stores);
+
+        const gathering = pocket.gather(gathered);
+        release();
+        await gathering;
+
+        expect(pocket.lastError()).toMatch(/personal space/i);
+      } finally {
+        error.mockRestore();
+      }
+    }, 15000);
   });
 
   /*
@@ -314,38 +645,329 @@ describe('boot', () => {
 
   /*
     A reload on a space's address waited for the whole boot before that space began to load, then
-    read its templates, then its schema, one after another. Its templates and schema reads now start
-    as soon as the list names it, and the agent's spaces are read beside the system datasets.
+    read its templates, then its schema, one after another. Its templates, schema reads and its own
+    record now start as soon as the list names it, beside the root.
   */
-  it('starts the addressed space, and reads spaces, while the system datasets come up', async () => {
-    seededDatasets = [{ id: 'garden-1', name: 'Garden' }];
-    window.history.replaceState({}, '', '/space/garden-1/canvas');
+  it('starts the addressed space, and reads its record, while the system datasets come up', async () => {
+    const ids = await agentWithSpaces(['Garden']);
+    window.history.replaceState({}, '', `/space/${ids.Garden}/canvas`);
     let releaseRoot!: () => void;
     const rootHeld = new Promise<void>((resolve) => (releaseRoot = resolve));
     const prepared: unknown[] = [];
+    const reads = divertSpaceReads(
+      () => [],
+      (read) => read(),
+    );
+    const wrap = onPorts!;
     onPorts = (ports) => {
+      wrap(ports);
       const { installRoot } = ports.schemas;
       ports.schemas.installRoot = async (dataset) => {
         await rootHeld;
         return installRoot(dataset);
       };
-      ports.schemas.prepare = (dataset) => prepared.push(dataset);
+      const prepare = ports.schemas.prepare?.bind(ports.schemas);
+      ports.schemas.prepare = (dataset) => {
+        prepared.push(dataset);
+        return prepare?.(dataset);
+      };
     };
     try {
       const stores = mountShell();
-      const loadSpaces = vi.spyOn(stores.spaces, 'loadSpaces');
 
       await vi.waitFor(() => expect(prepared).toHaveLength(1));
-      await vi.waitFor(() =>
-        expect(loadSpaces).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ id: 'garden-1' })])),
-      );
+      await vi.waitFor(() => expect(reads.asked).toContain(ids.Garden));
       expect(stores.session.bootState()).not.toBe('ready');
 
       releaseRoot();
       await ready(stores);
+      expect(stores.spaces.mySpaces().map((s) => s.name)).toContain('Garden');
     } finally {
+      reads.spy?.mockRestore();
       window.history.replaceState({}, '', '/');
     }
+  });
+
+  /*
+    The longest step of a reload was the agent's other spaces: one record read per space, each going
+    to the same backend as the Feed's first page, all of them before the app was ready. The space on
+    screen needs none of them. It is ready, and its collection known, with those reads still out; the
+    rows they are for show the dataset's name and say they are loading until they land.
+  */
+  describe('the space on screen, before the agent’s other spaces', () => {
+    it('is ready, with its own record and collection, while the other spaces are still being read', async () => {
+      const ids = await agentWithSpaces(['Garden', 'Kitchen', 'Library']);
+      const others = [ids.Kitchen, ids.Library];
+      window.history.replaceState({}, '', `/space/${ids.Garden}`);
+      route.go(`/space/${ids.Garden}`);
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => (release = resolve));
+      const reads = divertSpaceReads(
+        () => others,
+        async (read) => {
+          await held;
+          return read();
+        },
+      );
+      try {
+        const stores = mountShell();
+        await ready(stores);
+
+        expect(stores.spaces.mySpaces().map((s) => s.name)).toEqual(['Garden']);
+        // What the Feed reads first: the space's collection.
+        await vi.waitFor(() => expect(stores.spaces.root()).not.toBe(''));
+        await vi.waitFor(() => expect(reads.asked).toEqual(expect.arrayContaining(others)));
+        const row = (name: string) => stores.spaces.spaceList().find((r) => r.name === name);
+        expect(row('Kitchen')).toMatchObject({ loading: true });
+        expect(row('Garden')).toMatchObject({ loading: false, isWeSpace: true });
+
+        release();
+        await vi.waitFor(() =>
+          expect(
+            stores.spaces
+              .mySpaces()
+              .map((s) => s.name)
+              .sort(),
+          ).toEqual(['Garden', 'Kitchen', 'Library']),
+        );
+        expect(row('Kitchen')).toMatchObject({ loading: false, isWeSpace: true });
+        // The open space is not read a second time.
+        expect(reads.asked.filter((id) => id === ids.Garden)).toHaveLength(1);
+      } finally {
+        reads.spy?.mockRestore();
+        window.history.replaceState({}, '', '/');
+      }
+    }, 15000);
+
+    it('reads the other spaces, and the personal space’s schema, only once the first screen is up', async () => {
+      const ids = await agentWithSpaces(['Garden', 'Kitchen']);
+      window.history.replaceState({}, '', `/space/${ids.Garden}`);
+      route.go(`/space/${ids.Garden}`);
+      gate.holds = true;
+      gate.reset();
+      const reads = divertSpaceReads(
+        () => [ids.Kitchen],
+        (read) => read(),
+      );
+      try {
+        const stores = mountShell();
+        await ready(stores);
+        await vi.waitFor(() => expect(stores.spaces.root()).not.toBe(''));
+
+        expect(reads.asked).not.toContain(ids.Kitchen);
+        expect(stores.datasets.personalDataset()).toBeNull();
+        expect(stores.spaces.mySpaces().map((s) => s.name)).toEqual(['Garden']);
+
+        // The Feed's first page has landed.
+        gate.current.answered();
+        await vi.waitFor(() =>
+          expect(
+            stores.spaces
+              .mySpaces()
+              .map((s) => s.name)
+              .sort(),
+          ).toEqual(['Garden', 'Kitchen']),
+        );
+        await vi.waitFor(() => expect(stores.datasets.personalDataset()?.name).toBe('we-personal'));
+      } finally {
+        reads.spy?.mockRestore();
+        window.history.replaceState({}, '', '/');
+      }
+    }, 15000);
+
+    it('is ready, and stays up, when the other spaces cannot be read', async () => {
+      const ids = await agentWithSpaces(['Garden', 'Kitchen']);
+      window.history.replaceState({}, '', `/space/${ids.Garden}`);
+      route.go(`/space/${ids.Garden}`);
+      const reads = divertSpaceReads(
+        () => [ids.Kitchen],
+        () => Promise.reject(new Error('backend gone')),
+      );
+      try {
+        const stores = mountShell();
+        await ready(stores);
+        await vi.waitFor(() => expect(reads.asked).toContain(ids.Kitchen));
+
+        const row = (name: string) => stores.spaces.spaceList().find((r) => r.name === name);
+        // Not loading for ever: the read is over, and the row says what it knows.
+        await vi.waitFor(() => expect(row('Kitchen')).toMatchObject({ loading: false }));
+        expect(stores.spaces.mySpaces().map((s) => s.name)).toEqual(['Garden']);
+        expect(stores.session.bootState()).toBe('ready');
+      } finally {
+        reads.spy?.mockRestore();
+        window.history.replaceState({}, '', '/');
+      }
+    }, 15000);
+
+    it('opens home without reading any space before ready, then lists them all', async () => {
+      const ids = await agentWithSpaces(['Garden', 'Kitchen']);
+      const reads = divertSpaceReads(
+        () => [],
+        (read) => read(),
+      );
+      let readyAfter = -1;
+      try {
+        const stores = mountShell();
+        createRoot(() =>
+          createEffect(() => {
+            if (stores.session.bootState() === 'ready' && readyAfter < 0) readyAfter = reads.asked.length;
+          }),
+        );
+        await ready(stores);
+
+        expect(readyAfter).toBe(0);
+        expect(navigate).toHaveBeenCalledWith('/');
+        await vi.waitFor(() =>
+          expect(
+            stores.spaces
+              .mySpaces()
+              .map((s) => s.name)
+              .sort(),
+          ).toEqual(['Garden', 'Kitchen']),
+        );
+        expect(reads.asked.sort()).toEqual([ids.Garden, ids.Kitchen].sort());
+      } finally {
+        reads.spy?.mockRestore();
+      }
+    }, 15000);
+
+    /*
+      The other spaces are read once the first screen is up, which can be seconds after the list was
+      read. A space that arrived in between is in the list then, and is read with the rest.
+    */
+    it('reads a space that arrived before the first screen was up', async () => {
+      const ids = await agentWithSpaces(['Garden']);
+      gate.holds = true;
+      gate.reset();
+      const reads = divertSpaceReads(
+        () => [],
+        (read) => read(),
+      );
+      try {
+        const stores = mountShell();
+        await ready(stores);
+
+        const orchard = await lifecycle.create('Orchard');
+        await Space.create(orchard.handle as never, { name: 'Orchard', uuid: orchard.id } as never);
+        await vi.waitFor(() => expect(stores.datasets.datasets().map((d) => d.name)).toContain('Orchard'));
+
+        gate.current.answered();
+        await vi.waitFor(() =>
+          expect(
+            stores.spaces
+              .mySpaces()
+              .map((s) => s.name)
+              .sort(),
+          ).toEqual(['Garden', 'Orchard']),
+        );
+        expect(reads.asked.filter((id) => id === ids.Garden)).toHaveLength(1);
+      } finally {
+        reads.spy?.mockRestore();
+      }
+    }, 15000);
+
+    /*
+      A read that throws before it answers is not caught per space, so the whole list read fails.
+      The rows must still stop saying they are loading.
+    */
+    it('stops loading the rows when the list read throws', async () => {
+      const ids = await agentWithSpaces(['Garden', 'Kitchen']);
+      window.history.replaceState({}, '', `/space/${ids.Garden}`);
+      route.go(`/space/${ids.Garden}`);
+      const reads = divertSpaceReads(
+        () => [ids.Kitchen],
+        () => {
+          throw new Error('backend gone');
+        },
+      );
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        const stores = mountShell();
+        await ready(stores);
+        await vi.waitFor(() => expect(reads.asked).toContain(ids.Kitchen));
+
+        const row = (name: string) => stores.spaces.spaceList().find((r) => r.name === name);
+        await vi.waitFor(() => expect(row('Kitchen')).toMatchObject({ loading: false }));
+        expect(error).toHaveBeenCalledWith('SpaceStore: loadSpaces error', expect.any(Error));
+      } finally {
+        error.mockRestore();
+        reads.spy?.mockRestore();
+        window.history.replaceState({}, '', '/');
+      }
+    }, 15000);
+
+    /*
+      The share picker's options are one backend call, and nothing about them depends on the spaces.
+      They are asked for beside the space reads, not after the slowest one.
+    */
+    it('reads the sharing options while the other spaces are still being read', async () => {
+      const ids = await agentWithSpaces(['Garden', 'Kitchen']);
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => (release = resolve));
+      const reads = divertSpaceReads(
+        () => [ids.Kitchen],
+        async (read) => {
+          await held;
+          return read();
+        },
+      );
+      const divert = onPorts!;
+      onPorts = (ports) => {
+        divert(ports);
+        ports.lifecycle.sharingOptions = async () => [{ id: 'p2p', name: 'p2p', kind: 'peer-to-peer' }];
+      };
+      try {
+        const stores = mountShell();
+        await ready(stores);
+        await vi.waitFor(() => expect(reads.asked).toContain(ids.Kitchen));
+
+        await vi.waitFor(() => expect(stores.spaces.sharingOptions().map((o) => o.value)).toEqual(['p2p']));
+        expect(stores.spaces.mySpaces().map((s) => s.name)).not.toContain('Kitchen');
+        release();
+      } finally {
+        release();
+        reads.spy?.mockRestore();
+      }
+    }, 15000);
+
+    /*
+      A guest's invite names a space the agent has not joined, so there is no record to read first.
+      The join happens after ready, and the other spaces' read — landing after it — must not take the
+      joined space away again.
+    */
+    it('joins a guest’s space after ready, and keeps it when the other spaces land', async () => {
+      const ids = await agentWithSpaces(['Garden']);
+      const { writeGuestBootTarget } = await import('../src/shared/guestLink');
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => (release = resolve));
+      const reads = divertSpaceReads(
+        () => [ids.Garden],
+        async (read) => {
+          await held;
+          return read();
+        },
+      );
+      const divert = onPorts!;
+      onPorts = (ports) => {
+        divert(ports);
+        ports.lifecycle.seedShared({ id: 'peer-ds', name: 'Peer Space', sharedUri: 'inmemory://peer-ds' });
+      };
+      writeGuestBootTarget({ spaceId: 'inmemory://peer-ds', autoJoin: true });
+      try {
+        const stores = mountShell();
+        await ready(stores);
+
+        await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith('/space/inmemory://peer-ds', { replace: true }));
+        expect((await lifecycle.list()).some((d) => d.id === 'peer-ds')).toBe(true);
+        await vi.waitFor(() => expect(stores.datasets.currentDataset()?.name).toBe('Peer Space'));
+
+        release();
+        await vi.waitFor(() => expect(stores.spaces.mySpaces().map((s) => s.name)).toContain('Garden'));
+        expect(stores.datasets.datasets().some((d) => d.id === 'peer-ds')).toBe(true);
+      } finally {
+        reads.spy?.mockRestore();
+      }
+    }, 15000);
   });
 
   it('walks the lock → login flow, including a failed password', async () => {
@@ -361,6 +983,93 @@ describe('boot', () => {
 
     await stores.session.login('secret');
     await ready(stores);
+  });
+
+  /*
+    The other spaces and the personal space's schema are read after the app appears, so either can
+    still be out when the agent locks and signs in again. What a read started by the session before
+    finds must not land in the session after.
+  */
+  describe('a read still out when the agent locks and signs in again', () => {
+    async function signedIn(): Promise<Stores> {
+      agentOptions = { unlocked: false, password: 'secret' };
+      const stores = mountShell();
+      await vi.waitFor(() => expect(stores.session.bootState()).toBe('login'));
+      await stores.session.login('secret');
+      await ready(stores);
+      return stores;
+    }
+
+    async function signInAgain(stores: Stores): Promise<void> {
+      await stores.session.logout();
+      expect(stores.session.bootState()).toBe('login');
+      await stores.session.login('secret');
+      await ready(stores);
+    }
+
+    it('drops the spaces the last session read', async () => {
+      let kitchen = '';
+      let answered = 0;
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => (release = resolve));
+      const reads = divertSpaceReads(
+        () => [kitchen],
+        async (read) => {
+          // The first session's read waits; the next session's fails, so only the first can find it.
+          if (answered++ === 0) {
+            await held;
+            return read();
+          }
+          throw new Error('backend gone');
+        },
+      );
+      try {
+        const stores = await signedIn();
+        await stores.spaces.createSpace('Kitchen', 'x', 'personal', 'hidden');
+        kitchen = stores.datasets.datasets().find((d) => d.name === 'Kitchen')!.id;
+
+        await signInAgain(stores);
+        await vi.waitFor(() => expect(answered).toBe(1));
+        await signInAgain(stores);
+        await vi.waitFor(() => expect(answered).toBe(2));
+        const row = () => stores.spaces.spaceList().find((r) => r.name === 'Kitchen');
+        await vi.waitFor(() => expect(row()).toMatchObject({ loading: false, isWeSpace: false }));
+
+        release();
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        expect(stores.spaces.mySpaces().map((s) => s.name)).not.toContain('Kitchen');
+      } finally {
+        release();
+        reads.spy?.mockRestore();
+      }
+    }, 15000);
+
+    it('drops the personal space the last session brought up', async () => {
+      let installs = 0;
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => (release = resolve));
+      const stores = await signedIn();
+      // Its schema is in from the first sign-in, so each later one brings its modules up to date.
+      const { installModules } = keptPorts!.schemas;
+      keptPorts!.schemas.installModules = async (dataset, modules) => {
+        // The first session's install lands after the next session's.
+        if ((dataset as { name?: string }).name === 'we-personal' && installs++ === 0) await held;
+        return installModules(dataset, modules);
+      };
+
+      await signInAgain(stores);
+      await vi.waitFor(() => expect(installs).toBe(1));
+      await signInAgain(stores);
+      await vi.waitFor(() => expect(installs).toBe(2));
+      await vi.waitFor(() => expect(stores.datasets.personalDataset()?.name).toBe('we-personal'));
+      const current = stores.datasets.datasets().find((d) => d.name === 'we-personal');
+      expect(stores.datasets.personalDataset()).toBe(current);
+
+      release();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(stores.datasets.personalDataset()).toBe(current);
+      expect(await stores.datasets.whenPersonalDataset()).toBe(current);
+    }, 15000);
   });
 
   it('does not blame the password for a failure that happened after it was accepted', async () => {
@@ -734,6 +1443,766 @@ describe('dataset lifecycle through the real stores', () => {
 
     expect(rowOf()?.defaultThemeId).toBe('retro');
     expect(rowOf()).toBe(before);
+  }, 10000);
+
+  it('shows a space default set here before it is stored, read off the space on screen', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    await stores.spaces.createSpace('Default Space', '', 'personal', 'hidden');
+    const uuid = (await lifecycle.list()).find((d) => d.name === 'Default Space')!.id;
+    await stores.datasets.switchDataset(uuid);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(uuid));
+
+    const writing = stores.spaces.setSpaceDefaultTheme('retro', uuid);
+    // Before the write has been stored: what is on screen already says so.
+    expect(stores.spaces.spaceDefaultThemeId()).toBe('retro');
+    expect(stores.spaces.currentSpace()?.defaultThemeId).toBe('retro');
+    await writing;
+
+    const templating = stores.spaces.setSpaceDefaultTemplate('some-template', uuid);
+    expect(stores.spaces.spaceDefaultTemplateId()).toBe('some-template');
+    await templating;
+    expect(stores.spaces.mySpaces().find((s) => s.uuid === uuid)?.defaultTemplateId).toBe('some-template');
+  }, 10000);
+
+  it('stores a space default for a space whose row is not held yet', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    // A space whose record is stored but was never read into the list, as one that synced in after boot.
+    const ref = await lifecycle.create('Unheld Space');
+    await Space.create(ref.handle as never, { name: 'Unheld Space', uuid: ref.id } as never);
+    await vi.waitFor(() => expect(stores.datasets.datasets().map((d) => d.id)).toContain(ref.id));
+    expect(stores.spaces.mySpaces().some((s) => s.uuid === ref.id)).toBe(false);
+
+    await stores.spaces.setSpaceDefaultTheme('retro', ref.id);
+    await stores.spaces.setSpaceDefaultTemplate('some-template', ref.id);
+
+    const [stored] = await Space.findAll(ref.handle as never);
+    expect(stored?.defaultThemeId).toBe('retro');
+    expect(stored?.defaultTemplateId).toBe('some-template');
+  }, 10000);
+
+  /*
+    A space whose record is not held is read before it is written. Two saves each starting that read
+    would write in the order the reads happened to answer, so the older choice could be stored last.
+  */
+  it('stores the newer of two default saves last when the older one’s record read answers last', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    const ref = await lifecycle.create('Unheld Order');
+    await Space.create(ref.handle as never, { name: 'Unheld Order', uuid: ref.id } as never);
+    await vi.waitFor(() => expect(stores.datasets.datasets().map((d) => d.id)).toContain(ref.id));
+    expect(stores.spaces.mySpaces().some((s) => s.uuid === ref.id)).toBe(false);
+
+    const Entity = getEntity('Space') as unknown as { findAll: (...a: unknown[]) => Promise<unknown> };
+    const findAll = Entity.findAll.bind(Entity);
+    const reads: (() => void)[] = [];
+    const spy = vi.spyOn(Entity, 'findAll').mockImplementation(async (...args: unknown[]) => {
+      await new Promise<void>((resolve) => reads.push(resolve));
+      return findAll(...args);
+    });
+    let outcome: { error?: unknown } | undefined;
+    const saving = Promise.all([
+      stores.spaces.setSpaceDefaultTheme('neon', ref.id),
+      stores.spaces.setSpaceDefaultTheme('moss', ref.id),
+    ]).then(
+      () => ({}),
+      (error: unknown) => ({ error }),
+    );
+    void saving.then((result) => (outcome = result));
+    try {
+      // Reads are answered newest first: whatever is out is let finish in reverse order of asking.
+      for (let attempt = 0; attempt < 200 && !outcome; attempt++) {
+        reads
+          .splice(0)
+          .reverse()
+          .forEach((release) => release());
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+    } finally {
+      reads.splice(0).forEach((release) => release());
+      spy.mockRestore();
+    }
+    expect(outcome).toEqual({});
+    const [stored] = await Space.findAll(ref.handle as never);
+    expect(stored?.defaultThemeId).toBe('moss');
+  }, 10000);
+
+  /*
+    A publish for the space on screen keys on the dataset, but the record on screen lags the
+    switch: for a moment the dataset is already the new space's while the record is still the old
+    one's. A default set for the space being switched to must wait for its own record — written
+    onto the one still there, it repaints the old space with the new space's choice.
+  */
+  it('does not land a default for the space being switched to on the record still on screen', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    await stores.spaces.createSpace('From', '', 'personal', 'hidden');
+    await stores.spaces.createSpace('To', '', 'personal', 'hidden');
+    const refs = await lifecycle.list();
+    const from = refs.find((d) => d.name === 'From')!.id;
+    const to = refs.find((d) => d.name === 'To')!.id;
+    await stores.datasets.switchDataset(from);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(from));
+    await vi.waitFor(() => expect(stores.spaces.mySpaces().map((s) => s.uuid)).toContain(to));
+
+    // Hold To's record read — the live query that sets `currentSpace`, not the findOne
+    // `divertSpaceReads` wraps — so the dataset moves while the record on screen stays From's.
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let toRead = false;
+    const Entity = getEntity('Space') as unknown as {
+      query: (
+        handle: unknown,
+        q?: { where?: { uuid?: string; url?: string } },
+      ) => {
+        subscribe: (cb: (rows: unknown[]) => void) => Promise<unknown[]>;
+        dispose: () => void;
+      };
+    };
+    const query = Entity.query.bind(Entity);
+    const spy = vi.spyOn(Entity, 'query').mockImplementation((handle, q) => {
+      const which = q?.where?.uuid ?? q?.where?.url;
+      const builder = query(handle, q);
+      if (which !== to) return builder;
+      return {
+        subscribe: async (cb) => {
+          toRead = true;
+          await held;
+          return builder.subscribe(cb);
+        },
+        dispose: () => builder.dispose(),
+      };
+    });
+    try {
+      await stores.datasets.switchDataset(to);
+      expect(stores.datasets.currentDataset()?.id).toBe(to);
+      await vi.waitFor(() => expect(toRead).toBe(true));
+      expect(stores.spaces.currentSpace()?.uuid).toBe(from);
+
+      await stores.spaces.setSpaceDefaultTheme('retro', to);
+
+      // To's own row carries it; the record still on screen — From's — must not.
+      expect(stores.spaces.mySpaces().find((s) => s.uuid === to)?.defaultThemeId).toBe('retro');
+      expect(stores.spaces.currentSpace()?.defaultThemeId).not.toBe('retro');
+      expect(stores.spaces.spaceDefaultThemeId()).not.toBe('retro');
+
+      release();
+      await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(to));
+      expect(stores.spaces.currentSpace()?.defaultThemeId).toBe('retro');
+      expect(stores.spaces.spaceDefaultThemeId()).toBe('retro');
+    } finally {
+      spy.mockRestore();
+    }
+  }, 10000);
+
+  /*
+    The template on screen belongs to the record on screen, so a default-template save touches no
+    template itself: it publishes the id, and the space-template follow repaints from the record.
+    A rollback is the same shape — the record's last confirmed id is published back — which is the
+    safety: a template the record itself brought in mid-save is never rolled back over, where a
+    snapshot taken while the other space's record was still up would have replayed *that* into the
+    new space. The pre-load reads the fresh id off the cache, so a template can land before the
+    record does: the record read stays held below, which is exactly the window.
+  */
+  it('does not roll the space still on screen’s template into the space switched to', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    await stores.spaces.createSpace('From', '', 'personal', 'hidden');
+    await stores.spaces.createSpace('To', '', 'personal', 'hidden');
+    const refs = await lifecycle.list();
+    const from = refs.find((d) => d.name === 'From')!.id;
+    const to = refs.find((d) => d.name === 'To')!.id;
+    await stores.datasets.switchDataset(from);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(from));
+    await vi.waitFor(() => expect(stores.spaces.mySpaces().map((s) => s.uuid)).toContain(to));
+
+    // From's template is up; the registry knows the template the save for To will name. To's own
+    // default is stored first, so the rollback has an exact value to go back to.
+    app.templates.list = [{ id: 'from-tpl' }, { id: 'to-default' }, { id: 'to-new' }];
+    await stores.spaces.setSpaceDefaultTemplate('to-default', to);
+    app.templates.put({ id: 'from-tpl' });
+
+    // Hold To's record read, as the theme case above does — the dataset moves while the record
+    // and template on screen stay From's.
+    let release!: () => void;
+    const heldRead = new Promise<void>((resolve) => (release = resolve));
+    let toRead = false;
+    const Entity = getEntity('Space') as unknown as {
+      query: (
+        handle: unknown,
+        q?: { where?: { uuid?: string; url?: string } },
+      ) => {
+        subscribe: (cb: (rows: unknown[]) => void) => Promise<unknown[]>;
+        dispose: () => void;
+      };
+      update: (...a: unknown[]) => Promise<unknown>;
+    };
+    const query = Entity.query.bind(Entity);
+    const querySpy = vi.spyOn(Entity, 'query').mockImplementation((handle, q) => {
+      const which = q?.where?.uuid ?? q?.where?.url;
+      const builder = query(handle, q);
+      if (which !== to) return builder;
+      return {
+        subscribe: async (cb) => {
+          toRead = true;
+          await heldRead;
+          return builder.subscribe(cb);
+        },
+        dispose: () => builder.dispose(),
+      };
+    });
+    // The save is held at the store write, so it is still out when To's own template arrives.
+    let fail!: () => void;
+    const heldWrite = new Promise<void>((_resolve, reject) => (fail = () => reject(new Error('disk full'))));
+    const updateSpy = vi.spyOn(Entity, 'update').mockImplementationOnce(() => heldWrite);
+    try {
+      await stores.datasets.switchDataset(to);
+      await vi.waitFor(() => expect(toRead).toBe(true));
+      expect(stores.spaces.currentSpace()?.uuid).toBe(from);
+
+      const saving = stores.spaces.setSpaceDefaultTemplate('to-new', to);
+      await vi.waitFor(() =>
+        expect(stores.spaces.mySpaces().find((s) => s.uuid === to)?.defaultTemplateId).toBe('to-new'),
+      );
+      // The publish alone put the named template up — the save paints nothing directly.
+      await vi.waitFor(() => expect(app.templates.shown().id).toBe('to-new'));
+      // To's own template lands in the window — the record read is still held, and the pre-load
+      // had the fresh id off the cache. Then the save fails.
+      app.templates.put({ id: 'to-default' });
+      fail();
+      await expect(saving).rejects.toThrow('disk full');
+
+      // To's own template stayed up — From's was not replayed into it — and To's cached row is
+      // back to what it stored, not the choice that failed to save.
+      expect(app.templates.shown().id).toBe('to-default');
+      expect(stores.spaces.mySpaces().find((s) => s.uuid === to)?.defaultTemplateId).toBe('to-default');
+    } finally {
+      release();
+      querySpy.mockRestore();
+      updateSpy.mockRestore();
+    }
+
+    const [stored] = await Space.findAll(refs.find((d) => d.name === 'To')!.handle as never);
+    expect(stored?.defaultTemplateId).toBe('to-default');
+  }, 10000);
+
+  it('stores a space setting, and shows it on the cached space and the space on screen', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    await stores.spaces.createSpace('Setting Space', '', 'personal', 'hidden');
+    const ref = (await lifecycle.list()).find((d) => d.name === 'Setting Space')!;
+    const uuid = ref.id;
+    await stores.datasets.switchDataset(uuid);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(uuid));
+    const shownBefore = stores.spaces.currentSpace();
+
+    await stores.spaces.setThreadMode('flat', uuid);
+
+    const held = stores.spaces.mySpaces().find((s) => s.uuid === uuid);
+    expect(held?.threadMode).toBe('flat');
+    // A new object, so everything reading the space on screen hears the change.
+    expect(stores.spaces.currentSpace()).not.toBe(shownBefore);
+    expect(stores.spaces.currentSpace()?.threadMode).toBe('flat');
+    const [stored] = await Space.findAll(ref.handle as never);
+    expect(stored?.threadMode).toBe('flat');
+  }, 10000);
+
+  it('says so, and changes nothing on screen, when a space setting cannot be stored', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    await stores.spaces.createSpace('Failing Space', '', 'personal', 'hidden');
+    const uuid = (await lifecycle.list()).find((d) => d.name === 'Failing Space')!.id;
+    await vi.waitFor(() => expect(stores.spaces.mySpaces().some((s) => s.uuid === uuid)).toBe(true));
+    const refused = vi.spyOn(toastService, 'error');
+    const update = vi
+      .spyOn(getEntity('Space') as unknown as { update: (...a: unknown[]) => Promise<unknown> }, 'update')
+      .mockRejectedValueOnce(new Error('disk full'));
+    try {
+      await expect(stores.spaces.setThreadMode('flat', uuid)).rejects.toThrow('disk full');
+      expect(refused).toHaveBeenCalledWith('Could not save this change for the space.');
+      expect(stores.spaces.mySpaces().find((s) => s.uuid === uuid)?.threadMode).not.toBe('flat');
+    } finally {
+      update.mockRestore();
+      refused.mockRestore();
+    }
+  }, 10000);
+
+  /*
+    The default setters show the choice before it is stored. A write that fails has to take its own
+    optimism back — a default that reads as saved while the record kept the old one is the setting
+    that lies until the next visit.
+  */
+  it('restores the previous space default, and says so, when its save fails', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    await stores.spaces.createSpace('Defaults', '', 'personal', 'hidden');
+    const ref = (await lifecycle.list()).find((d) => d.name === 'Defaults')!;
+    const uuid = ref.id;
+    await stores.datasets.switchDataset(uuid);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(uuid));
+    await stores.spaces.setSpaceDefaultTheme('retro', uuid);
+    await stores.spaces.setSpaceDefaultTemplate('first', uuid);
+
+    const refused = vi.spyOn(toastService, 'error');
+    const update = vi
+      .spyOn(getEntity('Space') as unknown as { update: (...a: unknown[]) => Promise<unknown> }, 'update')
+      .mockRejectedValue(new Error('disk full'));
+    try {
+      await expect(stores.spaces.setSpaceDefaultTheme('neon', uuid)).rejects.toThrow('disk full');
+      await expect(stores.spaces.setSpaceDefaultTemplate('second', uuid)).rejects.toThrow('disk full');
+      // Reported the way every other field's failed write is.
+      expect(refused).toHaveBeenCalledWith('Could not save this change for the space.');
+    } finally {
+      update.mockRestore();
+      refused.mockRestore();
+    }
+
+    // The shown default is what stands, on the record and in the row the picker reads.
+    expect(stores.spaces.spaceDefaultThemeId()).toBe('retro');
+    expect(stores.spaces.spaceDefaultTemplateId()).toBe('first');
+    expect(stores.spaces.mySpaces().find((s) => s.uuid === uuid)?.defaultThemeId).toBe('retro');
+    const [stored] = await Space.findAll(ref.handle as never);
+    expect(stored?.defaultThemeId).toBe('retro');
+    expect(stored?.defaultTemplateId).toBe('first');
+  }, 10000);
+
+  /*
+    A personal template choice is not a default save's to take back. Chosen while the save is
+    still out, it is written as this agent's `SpacePreference` — and when the save fails and
+    publishes the record's confirmed default back, the follow chooses through that preference:
+    the override stays up, where a rollback that restored what the save had painted would put
+    the record's template back over a choice that was never the save's.
+  */
+  it('keeps a personal template override chosen while its space default’s save fails', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    await stores.spaces.createSpace('Defaults', '', 'personal', 'hidden');
+    const ref = (await lifecycle.list()).find((d) => d.name === 'Defaults')!;
+    const uuid = ref.id;
+    await stores.datasets.switchDataset(uuid);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(uuid));
+    app.templates.list = [{ id: 'first' }, { id: 'second' }, { id: 'mine' }];
+    await stores.spaces.setSpaceDefaultTemplate('first', uuid);
+    await vi.waitFor(() => expect(app.templates.shown().id).toBe('first'));
+
+    // The second save is held at the store write, so the choice below lands while it is out.
+    let fail!: () => void;
+    const held = new Promise<void>((_resolve, reject) => (fail = () => reject(new Error('disk full'))));
+    const update = vi
+      .spyOn(getEntity('Space') as unknown as { update: (...a: unknown[]) => Promise<unknown> }, 'update')
+      .mockImplementationOnce(() => held);
+    try {
+      const saving = stores.spaces.setSpaceDefaultTemplate('second', uuid);
+      await vi.waitFor(() => expect(app.templates.shown().id).toBe('second'));
+
+      await stores.spaces.setSpaceTemplateOverride('mine', uuid);
+      expect(app.templates.shown().id).toBe('mine');
+      const repaints = app.templates.repaints.length;
+
+      fail();
+      await expect(saving).rejects.toThrow('disk full');
+      // The republish re-chooses through the preference — 'mine' again — rather than the record's
+      // 'first' or the save's 'second'.
+      await vi.waitFor(() => expect(app.templates.repaints.length).toBeGreaterThan(repaints));
+      expect(app.templates.repaints.at(-1)).toBe('mine');
+      expect(app.templates.shown().id).toBe('mine');
+    } finally {
+      update.mockRestore();
+    }
+
+    const [stored] = await Space.findAll(ref.handle as never);
+    expect(stored?.defaultTemplateId).toBe('first');
+  }, 10000);
+
+  /*
+    A save's publish starts the space-template follow, and its rollback's republish starts
+    another. The first can still be inside its preference read when the second paints the stored
+    default — and its record was read before the rollback landed, so left to run it would paint
+    the failed save's template back over what the record last took. The choose is sequenced so
+    only the newest paints, and the record is re-read after the wait.
+  */
+  it('does not let a follow still reading paint the failed save’s template over the rollback', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    await stores.spaces.createSpace('Defaults', '', 'personal', 'hidden');
+    const ref = (await lifecycle.list()).find((d) => d.name === 'Defaults')!;
+    const uuid = ref.id;
+    await stores.datasets.switchDataset(uuid);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(uuid));
+    app.templates.list = [{ id: 'first' }, { id: 'second' }];
+    await stores.spaces.setSpaceDefaultTemplate('first', uuid);
+    await vi.waitFor(() => expect(app.templates.shown().id).toBe('first'));
+
+    // The first follow's preference read is held — the follow the save's publish started.
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let holding = true;
+    const Preference = getEntity('SpacePreference') as unknown as {
+      findAll: (...a: unknown[]) => Promise<unknown[]>;
+    };
+    const findAll = Preference.findAll.bind(Preference);
+    const preference = vi.spyOn(Preference, 'findAll').mockImplementation(async (...args: unknown[]) => {
+      if (holding) {
+        holding = false;
+        await held;
+      }
+      return findAll(...args);
+    });
+    // And the save is failed at the store write.
+    const update = vi
+      .spyOn(getEntity('Space') as unknown as { update: (...a: unknown[]) => Promise<unknown> }, 'update')
+      .mockImplementationOnce(() => Promise.reject(new Error('disk full')));
+    const paintsBefore = app.templates.repaints.length;
+    try {
+      const saving = stores.spaces.setSpaceDefaultTemplate('second', uuid);
+      // The publish named 'second' — the held follow is carrying it.
+      await vi.waitFor(() =>
+        expect(stores.spaces.mySpaces().find((s) => s.uuid === uuid)?.defaultTemplateId).toBe('second'),
+      );
+      await vi.waitFor(() => expect(preference).toHaveBeenCalled());
+      await expect(saving).rejects.toThrow('disk full');
+      // The rollback republished 'first', and its follow is free to paint it.
+      await vi.waitFor(() =>
+        expect(stores.spaces.mySpaces().find((s) => s.uuid === uuid)?.defaultTemplateId).toBe('first'),
+      );
+      // The rollback's own repaint has happened before the older read is let go.
+      await vi.waitFor(() => expect(app.templates.repaints.length).toBeGreaterThan(paintsBefore));
+      expect(app.templates.repaints.at(-1)).toBe('first');
+
+      release();
+      // The held follow's answer must not land: the screen keeps the stored default.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(app.templates.shown().id).toBe('first');
+      expect(app.templates.repaints.at(-1)).toBe('first');
+    } finally {
+      preference.mockRestore();
+      update.mockRestore();
+    }
+  }, 10000);
+
+  /*
+    Two default saves for one field are one choice, the newer. The older landing while the newer is
+    still out must not show its value, and the store must take the newer write last whatever order
+    the backend would have finished them in.
+  */
+  describe('two default saves for one field', () => {
+    async function twoSaves(store = true) {
+      const stores = mountShell();
+      await ready(stores);
+      await stores.spaces.createSpace('Defaults', '', 'personal', 'hidden');
+      const ref = (await lifecycle.list()).find((d) => d.name === 'Defaults')!;
+      const uuid = ref.id;
+      await stores.datasets.switchDataset(uuid);
+      await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(uuid));
+      await stores.spaces.setSpaceDefaultTheme('retro', uuid);
+      // Each store write is held until released, so the test decides how they finish.
+      const writes: { value: unknown; released: boolean; release: () => void }[] = [];
+      const Entity = getEntity('Space') as unknown as { update: (...a: unknown[]) => Promise<unknown> };
+      const update = Entity.update.bind(Entity);
+      const spy = vi.spyOn(Entity, 'update').mockImplementation(async (...args: unknown[]) => {
+        await new Promise<void>((resolve) => {
+          const write = {
+            value: args[2],
+            released: false,
+            release: () => {
+              write.released = true;
+              resolve();
+            },
+          };
+          writes.push(write);
+        });
+        // Not stored where only the screen is under test: the live record would show a landed write too.
+        return store ? update(...args) : undefined;
+      });
+      return { stores, ref, uuid, writes, spy };
+    }
+
+    it('does not show the older save’s value while the newer is pending', async () => {
+      const { stores, uuid, writes, spy } = await twoSaves(false);
+      try {
+        const first = stores.spaces.setSpaceDefaultTheme('neon', uuid);
+        const second = stores.spaces.setSpaceDefaultTheme('moss', uuid);
+        await vi.waitFor(() => expect(writes.length).toBeGreaterThan(0));
+        writes[0].release();
+        await first;
+        expect(stores.spaces.mySpaces().find((s) => s.uuid === uuid)?.defaultThemeId).toBe('moss');
+        expect(stores.spaces.spaceDefaultThemeId()).toBe('moss');
+        await vi.waitFor(() => expect(writes).toHaveLength(2));
+        writes[1].release();
+        await second;
+        expect(stores.spaces.spaceDefaultThemeId()).toBe('moss');
+      } finally {
+        writes.forEach((w) => w.release());
+        spy.mockRestore();
+      }
+    }, 10000);
+
+    it('keeps the newer pending choice shown when the live record delivers the older one that landed', async () => {
+      const { stores, ref, uuid, writes, spy } = await twoSaves();
+      try {
+        const first = stores.spaces.setSpaceDefaultTheme('neon', uuid);
+        const second = stores.spaces.setSpaceDefaultTheme('moss', uuid);
+        await vi.waitFor(() => expect(writes).toHaveLength(1));
+        writes[0].release();
+        await first;
+        // The older choice is really stored now, and the live read is free to deliver it.
+        await vi.waitFor(async () =>
+          expect((await Space.findAll(ref.handle as never))[0]?.defaultThemeId).toBe('neon'),
+        );
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        expect(stores.spaces.currentSpace()?.defaultThemeId).toBe('moss');
+        expect(stores.spaces.mySpaces().find((s) => s.uuid === uuid)?.defaultThemeId).toBe('moss');
+        await vi.waitFor(() => expect(writes).toHaveLength(2));
+        writes[1].release();
+        await second;
+        await vi.waitFor(() => expect(stores.spaces.currentSpace()?.defaultThemeId).toBe('moss'));
+      } finally {
+        writes.forEach((w) => w.release());
+        spy.mockRestore();
+      }
+    }, 10000);
+
+    it('stores the newer choice last even when the backend would finish the older one last', async () => {
+      const { stores, ref, uuid, writes, spy } = await twoSaves();
+      // Fulfilment and rejection are both watched from here, so a failed write is reported as that.
+      let outcome: { error?: unknown } | undefined;
+      try {
+        const saving = Promise.all([
+          stores.spaces.setSpaceDefaultTheme('neon', uuid),
+          stores.spaces.setSpaceDefaultTheme('moss', uuid),
+        ]).then(
+          () => ({}),
+          (error: unknown) => ({ error }),
+        );
+        void saving.then((result) => (outcome = result));
+        // Released newest first: whatever is out is let finish in reverse order of asking.
+        await vi.waitFor(() => expect(writes.length).toBeGreaterThan(0));
+        for (let attempt = 0; attempt < 200 && !outcome; attempt++) {
+          writes
+            .filter((w) => !w.released)
+            .at(-1)
+            ?.release();
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+      } finally {
+        writes.forEach((w) => w.release());
+        spy.mockRestore();
+      }
+      expect(outcome).toEqual({});
+      const [stored] = await Space.findAll(ref.handle as never);
+      expect(stored?.defaultThemeId).toBe('moss');
+    }, 10000);
+  });
+
+  it('does not take back a later choice that landed when an earlier save fails', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    await stores.spaces.createSpace('Defaults', '', 'personal', 'hidden');
+    const ref = (await lifecycle.list()).find((d) => d.name === 'Defaults')!;
+    const uuid = ref.id;
+    await stores.datasets.switchDataset(uuid);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(uuid));
+    await stores.spaces.setSpaceDefaultTheme('retro', uuid);
+
+    // The first save is held at the store write; the second's write goes out after it and lands.
+    let fail!: () => void;
+    const held = new Promise<void>((_resolve, reject) => (fail = () => reject(new Error('disk full'))));
+    const Entity = getEntity('Space') as unknown as {
+      update: (handle: unknown, id: string, fields: unknown) => Promise<unknown>;
+    };
+    const update = vi.spyOn(Entity, 'update').mockImplementationOnce(async () => {
+      await held;
+    });
+    try {
+      const earlier = stores.spaces.setSpaceDefaultTheme('neon', uuid);
+      await vi.waitFor(() => expect(stores.spaces.spaceDefaultThemeId()).toBe('neon'));
+      const later = stores.spaces.setSpaceDefaultTheme('jade', uuid);
+      fail();
+      await expect(earlier).rejects.toThrow('disk full');
+      await later;
+    } finally {
+      update.mockRestore();
+    }
+
+    // 'neon' never persisted: what stands is the choice that did — not 'retro', and not 'neon'.
+    expect(stores.spaces.spaceDefaultThemeId()).toBe('jade');
+    expect(stores.spaces.mySpaces().find((s) => s.uuid === uuid)?.defaultThemeId).toBe('jade');
+    const [stored] = await Space.findAll(ref.handle as never);
+    expect(stored?.defaultThemeId).toBe('jade');
+  }, 10000);
+
+  /*
+    What a failed save puts back is what the record last took, not what the screen happened to
+    show: two saves out at once paint two optimistic values, and the earlier one's "previous" is
+    the later one's paint — a value nothing ever stored.
+  */
+  it('restores the last stored default, not an earlier save’s paint, when overlapping saves fail', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    await stores.spaces.createSpace('Overlapping', '', 'personal', 'hidden');
+    const ref = (await lifecycle.list()).find((d) => d.name === 'Overlapping')!;
+    const uuid = ref.id;
+    await stores.datasets.switchDataset(uuid);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(uuid));
+    await stores.spaces.setSpaceDefaultTheme('retro', uuid);
+
+    // Saves held at the store write, one at a time: 'neon' first, then 'jade' over it.
+    const releases: { resolve: () => void; reject: (e: Error) => void }[] = [];
+    const update = vi
+      .spyOn(getEntity('Space') as unknown as { update: (...a: unknown[]) => Promise<unknown> }, 'update')
+      .mockImplementation(() => new Promise<void>((resolve, reject) => releases.push({ resolve, reject })));
+    try {
+      const neon = stores.spaces.setSpaceDefaultTheme('neon', uuid);
+      const jade = stores.spaces.setSpaceDefaultTheme('jade', uuid);
+      await vi.waitFor(() => expect(releases).toHaveLength(1));
+
+      // The older save failing while the newer is out leaves the newer's choice alone.
+      releases[0].reject(new Error('disk full'));
+      await expect(neon).rejects.toThrow('disk full');
+      expect(stores.spaces.spaceDefaultThemeId()).toBe('jade');
+
+      // The newer one failing — its write goes out once the older has finished — puts back what
+      // the record last took: 'retro' — never 'neon'.
+      await vi.waitFor(() => expect(releases).toHaveLength(2));
+      releases[1].reject(new Error('disk full'));
+      await expect(jade).rejects.toThrow('disk full');
+    } finally {
+      update.mockRestore();
+    }
+
+    expect(stores.spaces.spaceDefaultThemeId()).toBe('retro');
+    expect(stores.spaces.mySpaces().find((s) => s.uuid === uuid)?.defaultThemeId).toBe('retro');
+    const [stored] = await Space.findAll(ref.handle as never);
+    expect(stored?.defaultThemeId).toBe('retro');
+  }, 10000);
+
+  /*
+    Two saves of the same value cannot be told apart by what the screen shows — an earlier one
+    failing must not take back the later one that stored it.
+  */
+  it('leaves the same value standing when an earlier save of it fails after a later one landed', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    await stores.spaces.createSpace('Same Value', '', 'personal', 'hidden');
+    const ref = (await lifecycle.list()).find((d) => d.name === 'Same Value')!;
+    const uuid = ref.id;
+    await stores.datasets.switchDataset(uuid);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(uuid));
+    await stores.spaces.setSpaceDefaultTheme('retro', uuid);
+
+    let fail!: () => void;
+    const held = new Promise<void>((_resolve, reject) => (fail = () => reject(new Error('disk full'))));
+    const update = vi
+      .spyOn(getEntity('Space') as unknown as { update: (...a: unknown[]) => Promise<unknown> }, 'update')
+      .mockImplementationOnce(async () => {
+        await held;
+      });
+    try {
+      const earlier = stores.spaces.setSpaceDefaultTheme('neon', uuid);
+      await vi.waitFor(() => expect(stores.spaces.spaceDefaultThemeId()).toBe('neon'));
+      // The same choice, saved again — its write goes out once the first has finished.
+      const later = stores.spaces.setSpaceDefaultTheme('neon', uuid);
+      fail();
+      await expect(earlier).rejects.toThrow('disk full');
+      await later;
+    } finally {
+      update.mockRestore();
+    }
+
+    expect(stores.spaces.spaceDefaultThemeId()).toBe('neon');
+    const [stored] = await Space.findAll(ref.handle as never);
+    expect(stored?.defaultThemeId).toBe('neon');
+  }, 10000);
+
+  it('does not touch the screen when a save fails while a newer save of the same value is out', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    await stores.spaces.createSpace('Still Out', '', 'personal', 'hidden');
+    const ref = (await lifecycle.list()).find((d) => d.name === 'Still Out')!;
+    const uuid = ref.id;
+    await stores.datasets.switchDataset(uuid);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(uuid));
+    await stores.spaces.setSpaceDefaultTheme('retro', uuid);
+
+    const releases: { resolve: () => void; reject: (e: Error) => void }[] = [];
+    const Entity = getEntity('Space') as unknown as { update: (...a: unknown[]) => Promise<unknown> };
+    const realUpdate = Entity.update.bind(Entity);
+    const update = vi.spyOn(Entity, 'update').mockImplementation(
+      (...args) =>
+        new Promise<void>((resolve, reject) =>
+          // Resolving writes for real — what a save that lands does — so the end state is the
+          // stored value too, not only the paint.
+          releases.push({ resolve: () => void realUpdate(...args).then(() => resolve(), reject), reject }),
+        ),
+    );
+    try {
+      const earlier = stores.spaces.setSpaceDefaultTheme('neon', uuid);
+      const later = stores.spaces.setSpaceDefaultTheme('neon', uuid);
+      await vi.waitFor(() => expect(releases).toHaveLength(1));
+
+      // 'neon' is what the screen was asked for and what the pending save will store: the earlier
+      // save's failure has nothing to take back. The pending save's write goes out after it.
+      releases[0].reject(new Error('disk full'));
+      await expect(earlier).rejects.toThrow('disk full');
+      expect(stores.spaces.spaceDefaultThemeId()).toBe('neon');
+
+      await vi.waitFor(() => expect(releases).toHaveLength(2));
+      releases[1].resolve();
+      await later;
+    } finally {
+      update.mockRestore();
+    }
+
+    expect(stores.spaces.spaceDefaultThemeId()).toBe('neon');
+    const [stored] = await Space.findAll(ref.handle as never);
+    expect(stored?.defaultThemeId).toBe('neon');
+  }, 10000);
+
+  /*
+    The write is not the only thing that can fail after the publish: the row read before it can
+    reject, and there can be no row at all. Both were silent successes — the painted choice simply
+    stayed, with nothing said.
+  */
+  it('says so, and takes the publish back, when the record for a default save cannot be read', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    // An unheld space, as one that synced in after boot: the save's row read goes to the store.
+    const ref = await lifecycle.create('Unread Space');
+    await Space.create(ref.handle as never, { name: 'Unread Space', uuid: ref.id, defaultThemeId: 'retro' } as never);
+    await vi.waitFor(() => expect(stores.datasets.datasets().map((d) => d.id)).toContain(ref.id));
+    expect(stores.spaces.mySpaces().some((s) => s.uuid === ref.id)).toBe(false);
+
+    const refused = vi.spyOn(toastService, 'error');
+    const read = vi
+      .spyOn(getEntity('Space') as unknown as { findAll: (...a: unknown[]) => Promise<unknown[]> }, 'findAll')
+      .mockRejectedValue(new Error('read gone'));
+    try {
+      await expect(stores.spaces.setSpaceDefaultTheme('neon', ref.id)).rejects.toThrow('read gone');
+      // Reported the way a failed write is — the publish had already painted the choice.
+      expect(refused).toHaveBeenCalledWith('Could not save this change for the space.');
+    } finally {
+      read.mockRestore();
+      refused.mockRestore();
+    }
+
+    const [stored] = await Space.findAll(ref.handle as never);
+    expect(stored?.defaultThemeId).toBe('retro');
+  }, 10000);
+
+  it('rejects rather than reporting a save on a space that has no record', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    const ref = await lifecycle.create('No Record');
+    await vi.waitFor(() => expect(stores.datasets.datasets().map((d) => d.id)).toContain(ref.id));
+
+    const refused = vi.spyOn(toastService, 'error');
+    try {
+      await expect(stores.spaces.setSpaceDefaultTheme('neon', ref.id)).rejects.toThrow('no space record');
+      expect(refused).toHaveBeenCalledWith('Could not save this change for the space.');
+    } finally {
+      refused.mockRestore();
+    }
   }, 10000);
 
   /*
@@ -2140,18 +3609,20 @@ describe('what a collection extracts', () => {
   function watchPort() {
     const watched: string[] = [];
     const removed: string[] = [];
+    const registrations: { dataset: unknown; watchId: string; classes: string[] }[] = [];
 
     onPorts = (ports) => {
       (ports as unknown as { interpretation: unknown }).interpretation = {
-        watch: async (_dataset: unknown, args: { watchId: string; classes: string[] }) => {
+        watch: async (dataset: unknown, args: { watchId: string; classes: string[] }) => {
           watched.push(args.watchId);
+          registrations.push({ dataset, watchId: args.watchId, classes: [...args.classes] });
         },
         unwatch: async (_dataset: unknown, watchId: string) => {
           removed.push(watchId);
         },
       };
     };
-    return { watched, removed };
+    return { watched, removed, registrations };
   }
   /** Installed after boot: the backend registers its classes afresh each time it starts. */
   function standInContainmentShape() {
@@ -2314,6 +3785,30 @@ describe('what a collection extracts', () => {
     const whole = interpretation.targets(root).map((t) => t.entity);
     expect(whole).toContain('Sighting');
     for (const entity of partial) expect(whole).toContain(entity);
+  }, 15000);
+
+  /*
+    What a list of the space's DNA reads to list another app's classes, as a template expression: the
+    classes by name, so a flat list of them is in order, and WE's plumbing, the one thing a template
+    cannot name for itself. Each of those classes is drawn by the generic display; the plumbing is not.
+  */
+  it("publishes another app's classes by name, and WE's plumbing for a list of the space's DNA to leave out", async () => {
+    onPorts = (ports) => {
+      ports.schemas.foreignSchemas = async () => [
+        { name: 'Question', targetClass: 'conv://Question', properties: [] },
+        { name: 'Space', targetClass: 'old://Space', properties: [] },
+        { name: 'Channel', targetClass: 'flux://Channel', properties: [] },
+      ];
+    };
+    const stores = mountShell();
+    await ready(stores);
+    await enterSpace(stores, 'Classes');
+    await vi.waitFor(() => expect(stores.datasets.currentDatasetEntitiesLoaded()).toBe(true));
+
+    expect(stores.datasets.currentDatasetEntities().map((e) => e.name)).toEqual(['Channel', 'Question', 'Space']);
+    expect(stores.records.plumbingClasses()).toEqual(expect.arrayContaining(['Space', 'SignalType', 'Placement']));
+    expect(stores.records.displays().Question).toMatchObject({ label: 'Question', icon: 'cube' });
+    expect(stores.records.displays().Space).toBeUndefined();
   }, 15000);
 
   it('removes the space collection’s watch when extraction is switched off before this visit registers it', async () => {
@@ -2549,6 +4044,1028 @@ describe('what a collection extracts', () => {
     expect(port.watched).toContain(watchId(b.id));
     expect(port.watched).not.toContain(watchId(a.id));
     expect(stores.spaces.autoExtractFor(b.id)).toBe(true);
+  }, 15000);
+
+  /*
+    A watch for a call in a space nobody is looking at is decided by that call's own collection —
+    its switch and its class list live in its own dataset. The live reads answer for the space on
+    screen: left to them, a call in another space is either refused on a switch that is not its
+    own, or registered carrying the other space's classes.
+  */
+  it('registers a call in another space on that call’s own switch and class list', async () => {
+    const port = watchPort();
+    const stores = mountShell();
+    await ready(stores);
+    const handleA = await enterSpace(stores, 'Here');
+    const a = stores.datasets.currentDataset()!.id;
+    // The call's own answers: watched as it grows, looking for tasks only.
+    const call = await CollectionBlock.create(handleA, {
+      kind: 'call',
+      mode: 'feed',
+      autoExtract: true,
+      extractionTargets: '["TaskBlock"]',
+    } as never);
+
+    // Elsewhere's answers differ on both counts — off for the space, events for the list.
+    await enterSpace(stores, 'Elsewhere');
+    await stores.spaces.setAutoInterpret(false);
+    await stores.spaces.setExtractionTarget('TaskBlock', false);
+    provideModuleHostServices({
+      datasetByUri: (uri) => stores.datasets.datasets().find((d) => d.id === uri || d.sharedUri === uri)?.handle,
+    });
+
+    await kernel().watchCollection(call.id, { dataset: a });
+
+    // Registered on Here's dataset, with Here's call's own list — not Elsewhere's.
+    const registered = port.registrations.find((r) => r.watchId === watchId(call.id));
+    expect(registered?.dataset).toBe(handleA);
+    expect(registered?.classes).toEqual(['TaskBlock']);
+  }, 15000);
+
+  it('refuses a call whose own switch is off, though the space on screen’s is on', async () => {
+    const port = watchPort();
+    const stores = mountShell();
+    await ready(stores);
+    const handleA = await enterSpace(stores, 'Here');
+    const a = stores.datasets.currentDataset()!.id;
+    const call = await CollectionBlock.create(handleA, {
+      kind: 'call',
+      mode: 'feed',
+      autoExtract: false,
+      extractionTargets: '["TaskBlock"]',
+    } as never);
+
+    await enterSpace(stores, 'Elsewhere');
+    provideModuleHostServices({
+      datasetByUri: (uri) => stores.datasets.datasets().find((d) => d.id === uri || d.sharedUri === uri)?.handle,
+    });
+    /*
+      Waited on so the ask about this collection has been read — against the space on screen, which
+      is the bug. From then on the live gate answers for Elsewhere: on, where Here's call is off.
+      A gate that reads the live answers registers this watch instead of refusing it.
+    */
+    await vi.waitFor(() => expect(stores.spaces.autoExtractFor(call.id)).toBe(true));
+
+    await expect(kernel().watchCollection(call.id, { dataset: a })).rejects.toThrow('automatic extraction is off');
+    expect(port.registrations.some((r) => r.watchId === watchId(call.id))).toBe(false);
+  }, 15000);
+
+  /*
+    A call whose record cannot be read has said nothing about automatic extraction, which is not the
+    same as saying nothing *yet to override*: the space's default must not start a watch the call's
+    own stored switch may turn out to forbid, and nothing re-registers it when the record arrives.
+  */
+  it('refuses a call whose record cannot be read, though the space default is on', async () => {
+    const port = watchPort();
+    const stores = mountShell();
+    await ready(stores);
+    await enterSpace(stores, 'Here');
+    const a = stores.datasets.currentDataset()!.id;
+    await stores.spaces.setAutoInterpret(true);
+
+    await enterSpace(stores, 'Elsewhere');
+    provideModuleHostServices({
+      datasetByUri: (uri) => stores.datasets.datasets().find((d) => d.id === uri || d.sharedUri === uri)?.handle,
+    });
+
+    await expect(kernel().watchCollection('call-not-yet-synced', { dataset: a })).rejects.toThrow(
+      'automatic extraction is off',
+    );
+    expect(port.registrations.some((r) => r.watchId === watchId('call-not-yet-synced'))).toBe(false);
+  }, 15000);
+
+  /*
+    Leaving a call does not wait on the reads a start makes first, so a stop can land while its
+    start is still resolving. Serialised per (dataset, watch id), the stop runs *after* the start
+    it supersedes: the start registers and the stop removes it, where a stop that raced past left
+    a processor registered with nothing ever coming back for it.
+  */
+  it('leaves nothing registered when a call’s watch is stopped while its start is still resolving', async () => {
+    const events: string[] = [];
+    onPorts = (ports) => {
+      (ports as unknown as { interpretation: unknown }).interpretation = {
+        watch: async (_dataset: unknown, args: { watchId: string }) => {
+          events.push(`watch:${args.watchId}`);
+        },
+        unwatch: async (_dataset: unknown, id: string) => {
+          events.push(`unwatch:${id}`);
+        },
+      };
+    };
+    const stores = mountShell();
+    await ready(stores);
+    const handleA = await enterSpace(stores, 'Here');
+    const a = stores.datasets.currentDataset()!.id;
+    const call = await CollectionBlock.create(handleA, {
+      kind: 'call',
+      mode: 'feed',
+      autoExtract: true,
+      extractionTargets: '["TaskBlock"]',
+    } as never);
+    const other = await CollectionBlock.create(handleA, {
+      kind: 'call',
+      mode: 'feed',
+      autoExtract: true,
+      extractionTargets: '["TaskBlock"]',
+    } as never);
+
+    await enterSpace(stores, 'Elsewhere');
+    provideModuleHostServices({
+      datasetByUri: (uri) => stores.datasets.datasets().find((d) => d.id === uri || d.sharedUri === uri)?.handle,
+    });
+
+    // Hold the read a start makes of the call's own settings — the await a stop lands inside.
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let holding = false;
+    let answersHeld = false;
+    const Collection = getEntity('CollectionBlock') as unknown as {
+      findAll: (
+        handle: unknown,
+        q?: { where?: { id?: string[] }; properties?: readonly string[] },
+      ) => Promise<unknown[]>;
+    };
+    const findAll = Collection.findAll.bind(Collection);
+    const spy = vi.spyOn(Collection, 'findAll').mockImplementation(async (handle, q) => {
+      if (holding && handle === handleA && q?.properties && q.where?.id?.includes(call.id)) {
+        answersHeld = true;
+        await held;
+      }
+      return findAll(handle, q as never);
+    });
+    const interpretation = kernel();
+    try {
+      holding = true;
+      const starting = interpretation.watchCollection(call.id, { dataset: a });
+      await vi.waitFor(() => expect(answersHeld).toBe(true));
+      // Another collection's start is a different key: it registers without waiting on this one's.
+      await interpretation.watchCollection(other.id, { dataset: a });
+
+      // The stop, issued while the start is still resolving — what leaving the call does.
+      const stopping = interpretation.unwatchCollection(call.id, { dataset: a });
+      release();
+      await starting;
+      await stopping;
+    } finally {
+      spy.mockRestore();
+    }
+
+    // Started, then removed — in that order, which is the whole point: the reverse is the leak.
+    // Each entered space's own loose-message watch registers on the same port, so only the events
+    // naming one of these two calls are the trace.
+    const these = events.filter((e) => e.endsWith(watchId(call.id)) || e.endsWith(watchId(other.id)));
+    expect(these).toEqual([`watch:${watchId(other.id)}`, `watch:${watchId(call.id)}`, `unwatch:${watchId(call.id)}`]);
+  }, 15000);
+
+  /*
+    A refused start is still an op on the watch's key, and its entry must not outlive it: the
+    queue forgets a failed op the way it forgets a finished one, or a call whose start was once
+    refused would carry a dead chain head for the rest of the session. What shows is that the key
+    still works — the stop and the retry behind it run, in order.
+  */
+  it('runs a call’s stop and retry in order after its start was refused', async () => {
+    const events: string[] = [];
+    let callId = '';
+    let refusing = true;
+    onPorts = (ports) => {
+      (ports as unknown as { interpretation: unknown }).interpretation = {
+        watch: async (_dataset: unknown, args: { watchId: string }) => {
+          if (refusing && args.watchId === watchId(callId)) throw new Error('the processor refused');
+          events.push(`watch:${args.watchId}`);
+        },
+        unwatch: async (_dataset: unknown, id: string) => {
+          events.push(`unwatch:${id}`);
+        },
+      };
+    };
+    const stores = mountShell();
+    await ready(stores);
+    const handleA = await enterSpace(stores, 'Here');
+    const call = await CollectionBlock.create(handleA, {
+      kind: 'call',
+      mode: 'feed',
+      autoExtract: true,
+      extractionTargets: '["TaskBlock"]',
+    } as never);
+    callId = call.id;
+    const interpretation = kernel();
+
+    await expect(interpretation.watchCollection(call.id)).rejects.toThrow('the processor refused');
+    refusing = false;
+    await interpretation.unwatchCollection(call.id);
+    await interpretation.watchCollection(call.id);
+
+    const these = events.filter((e) => e.endsWith(watchId(call.id)));
+    expect(these).toEqual([`unwatch:${watchId(call.id)}`, `watch:${watchId(call.id)}`]);
+  }, 15000);
+
+  /*
+    The sidebar cache follows the space on screen: for a dataset nobody is looking at it says what
+    the record said when this client last visited. A peer switching automatic extraction off after
+    that leaves the cache saying on while the stored record says off — and a watch decided by the
+    cache registers on a community that already turned it off. The space's answer is read off its
+    own record through the call's dataset, not the cache.
+  */
+  it('does not register an off-screen call when the stored record says extraction is off but the cache says on', async () => {
+    const port = watchPort();
+    const stores = mountShell();
+    await ready(stores);
+    const handleA = await enterSpace(stores, 'Here');
+    const a = stores.datasets.currentDataset()!.id;
+    // No switch of its own — made before the convention of copying the space's answers in, so the
+    // call defers to the space's record.
+    const call = await CollectionBlock.create(handleA, {
+      kind: 'call',
+      mode: 'feed',
+      extractionTargets: '["TaskBlock"]',
+    } as never);
+
+    await enterSpace(stores, 'Elsewhere');
+    // A peer's write lands on the stored record while nobody here is looking: the cache keeps
+    // what it said when this client left.
+    const [record] = await Space.findAll(handleA, { where: { uuid: a } });
+    await Space.update(handleA, record.id, { autoInterpret: false });
+    // The stored record says off; the sidebar cache still says what it said when this client left.
+    expect(stores.spaces.mySpaces().find((s) => s.uuid === a)?.autoInterpret).toBe(true);
+    provideModuleHostServices({
+      datasetByUri: (uri) => stores.datasets.datasets().find((d) => d.id === uri || d.sharedUri === uri)?.handle,
+    });
+
+    await expect(kernel().watchCollection(call.id, { dataset: a })).rejects.toThrow('automatic extraction is off');
+    expect(port.registrations.some((r) => r.watchId === watchId(call.id))).toBe(false);
+  }, 15000);
+
+  /*
+    The live list stands in for a collection whose settings have not been read yet — answering
+    with the space's default, not the call's own — so a pass that asked it would extract the wrong
+    classes into a call whose own list was already stored. `interpretCollection` reads the classes
+    off the call's own row, before the gather.
+  */
+  it('runs a pass on the call’s own stored classes while its settings are not yet loaded live', async () => {
+    const requests: { classes: string[] }[] = [];
+    onPorts = (ports) => {
+      (ports as unknown as { interpretation: unknown }).interpretation = {
+        interpret: async (_dataset: unknown, _turns: unknown, request: { classes: string[] }) => {
+          requests.push({ classes: [...request.classes] });
+          return { turns: 0, ids: [], proposed: [] };
+        },
+      };
+    };
+    const stores = mountShell();
+    await ready(stores);
+    const handleA = await enterSpace(stores, 'Here');
+    // Events only, where the space's default is the wider list — and nobody has asked about this
+    // call live, so the live list would answer with the space's.
+    const call = await CollectionBlock.create(handleA, {
+      kind: 'call',
+      mode: 'feed',
+      autoExtract: true,
+      extractionTargets: '["EventBlock"]',
+    } as never);
+
+    await kernel().runOnCollection(call.id);
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0].classes).toEqual(['EventBlock']);
+  }, 15000);
+
+  /*
+    A pass that cannot read its settings never reaches the model, and is still an attempt: without
+    a failed run on the call, the log cannot tell it from a call nobody processed. No classes are
+    guessed for it — it names none.
+  */
+  it('records a manual pass whose settings cannot be read as a failed run', async () => {
+    const requests: unknown[] = [];
+    onPorts = (ports) => {
+      (ports as unknown as { interpretation: unknown }).interpretation = {
+        interpret: async (...args: unknown[]) => {
+          requests.push(args);
+          return { turns: 0, ids: [], proposed: [] };
+        },
+      };
+    };
+    const stores = mountShell();
+    await ready(stores);
+    const handleA = await enterSpace(stores, 'Here');
+    const call = await CollectionBlock.create(handleA, {
+      kind: 'call',
+      mode: 'feed',
+      autoExtract: true,
+      extractionTargets: '["EventBlock"]',
+    } as never);
+    const Entity = getEntity('CollectionBlock') as unknown as {
+      findAll: (handle: unknown, q?: { properties?: readonly string[] }) => Promise<unknown[]>;
+    };
+    const findAll = Entity.findAll.bind(Entity);
+    const spy = vi.spyOn(Entity, 'findAll').mockImplementation(async (handle, q) => {
+      if (q?.properties) throw new Error('settings unreadable');
+      return findAll(handle, q as never);
+    });
+    try {
+      await expect(kernel().runOnCollection(call.id)).rejects.toThrow('settings unreadable');
+    } finally {
+      spy.mockRestore();
+    }
+    expect(requests).toHaveLength(0);
+    const [row] = (await CollectionBlock.findAll(handleA, {
+      where: { id: [call.id] },
+      include: { runs: { where: { kind: 'extraction' } } },
+    } as never)) as unknown as { runs?: { outcome?: string; error?: string; detail?: string }[] }[];
+    expect(row.runs).toHaveLength(1);
+    expect(row.runs![0]).toMatchObject({ outcome: 'failed', error: 'settings unreadable' });
+    expect(JSON.parse(row.runs![0].detail ?? '{}').targets).toEqual([]);
+  }, 15000);
+
+  it('asks for the call’s own classes when the space moves on mid-gather', async () => {
+    const requests: { dataset: unknown; classes: string[] }[] = [];
+    onPorts = (ports) => {
+      (ports as unknown as { interpretation: unknown }).interpretation = {
+        interpret: async (dataset: unknown, _turns: unknown, request: { classes: string[] }) => {
+          requests.push({ dataset, classes: [...request.classes] });
+          return { turns: 0, ids: [], proposed: [] };
+        },
+      };
+    };
+    const stores = mountShell();
+    await ready(stores);
+    const handleA = await enterSpace(stores, 'Here');
+    const a = stores.datasets.currentDataset()!.id;
+    const call = await CollectionBlock.create(handleA, {
+      kind: 'call',
+      mode: 'feed',
+      autoExtract: true,
+      extractionTargets: '["TaskBlock"]',
+    } as never);
+    // The call's own list — tasks only — is what a caller's open picker would already have read.
+    const interpretation = kernel();
+    await vi.waitFor(() => expect(looksFor(interpretation, call.id, 'EventBlock')).toBe(false));
+    expect(looksFor(interpretation, call.id, 'TaskBlock')).toBe(true);
+
+    // Elsewhere starts calls on events; the pass that follows must still ask for Here's tasks.
+    await enterSpace(stores, 'Elsewhere');
+    await stores.spaces.setExtractionTarget('TaskBlock', false);
+    const b = stores.datasets.currentDataset()!.id;
+    await stores.spaces.navigateToSpace(a);
+    await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(a));
+    // The switch reset what is loaded: the call's own list again, as the picker shows it.
+    await vi.waitFor(() => expect(looksFor(interpretation, call.id, 'EventBlock')).toBe(false));
+
+    // The gather is held while the screen moves to Elsewhere — the window the class list raced.
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const Text = getEntity('TextBlock') as unknown as {
+      findAll: (handle: unknown, options?: unknown) => Promise<unknown[]>;
+    };
+    const findAll = Text.findAll.bind(Text);
+    const spy = vi.spyOn(Text, 'findAll').mockImplementation(async (handle, options) => {
+      await held;
+      return findAll(handle, options);
+    });
+    try {
+      const pass = interpretation.runOnCollection(call.id);
+      await vi.waitFor(() => expect(spy).toHaveBeenCalled());
+      await stores.spaces.navigateToSpace(b);
+      await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(b));
+      release();
+      await pass;
+    } finally {
+      spy.mockRestore();
+    }
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0].dataset).toBe(handleA);
+    expect(requests[0].classes).toEqual(['TaskBlock']);
+  }, 15000);
+
+  /*
+    An export laid out after the save can outlast the space it was started in: what names the file —
+    the space's name, what the call looks for, the space's defaults — is the exporting space's, read
+    for the call's own dataset rather than whatever is on screen when the content lands.
+  */
+  it('labels an export with the space it was started in, not the space on screen when it lands', async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let proposalsAsked = false;
+    onPorts = (ports) => {
+      (ports as unknown as { interpretation: unknown }).interpretation = {
+        proposals: async () => {
+          proposalsAsked = true;
+          await held;
+          return [];
+        },
+      };
+    };
+    const saved: { name: string; text: string }[] = [];
+    const unbindSaver = provideFileSaver(async ({ name, bytes }) => {
+      saved.push({ name, text: new TextDecoder().decode(bytes) });
+      return true;
+    });
+    try {
+      const stores = mountShell();
+      await ready(stores);
+      const handleA = await enterSpace(stores, 'Made in');
+      const a = stores.datasets.currentDataset()!.id;
+      const call = await CollectionBlock.create(handleA, {
+        kind: 'call',
+        mode: 'feed',
+        title: 'the call',
+        autoExtract: true,
+        extractionTargets: '["TaskBlock"]',
+      } as never);
+      // A pass, or the log is empty and nothing is written.
+      await ModelRun.create(
+        handleA,
+        {
+          kind: 'extraction',
+          outcome: 'done',
+          recordCount: 0,
+          detail: '{"targets":["TaskBlock"]}',
+          error: '',
+          trigger: 'auto',
+          prompt: 'p',
+          output: 'o',
+        } as never,
+        { parent: { id: call.id, relation: 'runs', entity: 'CollectionBlock' } } as never,
+      );
+
+      // Elsewhere answers every one of the exported fields differently.
+      await enterSpace(stores, 'Moved to');
+      await stores.spaces.setAutoInterpret(false);
+      await stores.spaces.setExtractionTarget('TaskBlock', false);
+      const b = stores.datasets.currentDataset()!.id;
+      await stores.spaces.navigateToSpace(a);
+      await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(a));
+
+      // Started in Here; held in the gather while the screen moves to Elsewhere.
+      const exporting = stores.spaces.exportExtractionLog(call.id);
+      await vi.waitFor(() => expect(proposalsAsked).toBe(true));
+      await stores.spaces.navigateToSpace(b);
+      await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(b));
+      release();
+      await exporting;
+    } finally {
+      unbindSaver();
+    }
+
+    expect(saved).toHaveLength(1);
+    const log = saved[0].text;
+    expect(log).toContain('- Space: Made in');
+    expect(log).toContain('- Looking for, on this call: TaskBlock\n');
+    // Candidate order, the way the picker's list reads — the export resolves by the same rule.
+    expect(log).toContain('- Space default: EventBlock, TaskBlock');
+    expect(log).toContain('- Extracts automatically as the call happens: yes');
+  }, 15000);
+
+  /*
+    A browser opens the save dialog only while it is still handling the click that asked for it, so
+    the picker cannot wait on the export's settings read — only on the title that names the file.
+    The settings are read inside the content callback instead, still through the call's own
+    dataset: the picker is already open, the space can change underneath, and the log is still
+    labelled by the space it was started in.
+  */
+  it('opens the save picker before the export’s settings resolve, still naming the space it started in', async () => {
+    // Held at the collection-settings read the export's settings start with — opened below, moved,
+    // released. The collection's own row is the one read it always makes: the space record and the
+    // candidates come from the live signals while its space is on screen.
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let holding = false;
+    let metaRead = false;
+    let heldHandle: unknown;
+    let heldCall = '';
+    let settingsReads: ReturnType<typeof vi.spyOn> | undefined;
+    const pickerCalls: string[] = [];
+    let written = '';
+    (globalThis as { showSaveFilePicker?: unknown }).showSaveFilePicker = async (options: {
+      suggestedName?: string;
+    }) => {
+      pickerCalls.push(options.suggestedName ?? '');
+      return {
+        createWritable: async () => ({
+          write: async (data: Blob) => {
+            written = await data.text();
+          },
+          close: async () => {},
+        }),
+      };
+    };
+    try {
+      const stores = mountShell();
+      await ready(stores);
+      const handleA = await enterSpace(stores, 'Made in');
+      heldHandle = handleA;
+      const a = stores.datasets.currentDataset()!.id;
+      const call = await CollectionBlock.create(handleA, {
+        kind: 'call',
+        mode: 'feed',
+        title: 'the call',
+        autoExtract: true,
+        extractionTargets: '["TaskBlock"]',
+      } as never);
+      heldCall = call.id;
+      const Entity = getEntity('CollectionBlock') as unknown as {
+        findAll: (
+          handle: unknown,
+          q?: { where?: { id?: string[] }; properties?: readonly string[] },
+        ) => Promise<unknown[]>;
+      };
+      const findAll = Entity.findAll.bind(Entity);
+      settingsReads = vi.spyOn(Entity, 'findAll').mockImplementation(async (handle, q) => {
+        if (holding && handle === heldHandle && q?.properties && q.where?.id?.includes(heldCall)) {
+          metaRead = true;
+          await held;
+        }
+        return findAll(handle, q as never);
+      });
+      await ModelRun.create(
+        handleA,
+        {
+          kind: 'extraction',
+          outcome: 'done',
+          recordCount: 0,
+          detail: '{"targets":["TaskBlock"]}',
+          error: '',
+          trigger: 'auto',
+          prompt: 'p',
+          output: 'o',
+        } as never,
+        { parent: { id: call.id, relation: 'runs', entity: 'CollectionBlock' } } as never,
+      );
+
+      await enterSpace(stores, 'Moved to');
+      const b = stores.datasets.currentDataset()!.id;
+      await stores.spaces.navigateToSpace(a);
+      await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(a));
+
+      holding = true;
+      const exporting = stores.spaces.exportExtractionLog(call.id);
+      // The settings read is still out — and the picker is already open, inside the click's window.
+      await vi.waitFor(() => expect(metaRead).toBe(true));
+      expect(pickerCalls).toHaveLength(1);
+      expect(pickerCalls[0]).toContain('the-call');
+
+      await stores.spaces.navigateToSpace(b);
+      await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(b));
+      release();
+      await exporting;
+    } finally {
+      holding = false;
+      settingsReads?.mockRestore();
+      delete (globalThis as { showSaveFilePicker?: unknown }).showSaveFilePicker;
+    }
+
+    expect(written).toContain('- Space: Made in');
+  }, 15000);
+
+  /*
+    The settings head the log and are not its substance, so a call with no passes says so without
+    waiting on them.
+  */
+  it('says no extraction has run without waiting on the export’s settings', async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let metaRead = false;
+    let spy: ReturnType<typeof vi.spyOn> | undefined;
+    const warned = vi.spyOn(toastService, 'warning');
+    (globalThis as { showSaveFilePicker?: unknown }).showSaveFilePicker = async () => ({
+      createWritable: async () => ({ write: async () => {}, close: async () => {} }),
+    });
+    try {
+      const stores = mountShell();
+      await ready(stores);
+      const handleA = await enterSpace(stores, 'Quiet');
+      const call = await CollectionBlock.create(handleA, { kind: 'call', mode: 'feed', title: 'quiet' } as never);
+      const Entity = getEntity('CollectionBlock') as unknown as {
+        findAll: (handle: unknown, q?: { properties?: readonly string[] }) => Promise<unknown[]>;
+      };
+      const findAll = Entity.findAll.bind(Entity);
+      spy = vi.spyOn(Entity, 'findAll').mockImplementation(async (handle, q) => {
+        if (q?.properties) {
+          metaRead = true;
+          await held;
+        }
+        return findAll(handle, q as never);
+      });
+
+      await stores.spaces.exportExtractionLog(call.id);
+      // The settings read is still out, and the answer is already given.
+      expect(metaRead).toBe(true);
+      expect(warned).toHaveBeenCalledWith('No extraction has run on this call yet.');
+      release();
+    } finally {
+      release();
+      spy?.mockRestore();
+      warned.mockRestore();
+      delete (globalThis as { showSaveFilePicker?: unknown }).showSaveFilePicker;
+    }
+  }, 15000);
+
+  /*
+    Back on a space, the shape list still held is the one for the space just left until this
+    space's own load publishes. A call asked about in that window narrows by this space's own
+    candidates, not the stale list — which lacks the models only this space adopted.
+  */
+  it('narrows an on-screen call by its own space’s candidates while that space’s shapes still load', async () => {
+    const port = watchPort();
+    const stores = mountShell();
+    await ready(stores);
+    const handleA = await enterSpace(stores, 'Here');
+    const a = stores.datasets.currentDataset()!.id;
+    const manifest: EntityManifest = {
+      version: '1',
+      entities: {
+        Sighting: { extractable: true, properties: { note: { type: 'string' } }, relations: {} },
+      },
+    };
+    expect(await stores.shapes.addRecordTypes('test', [{ name: 'Sighting', manifest }])).toEqual([]);
+    await vi.waitFor(() => expect(stores.shapes.extractionCandidates()).toContain('Sighting'));
+    const call = await CollectionBlock.create(handleA, {
+      kind: 'call',
+      mode: 'feed',
+      autoExtract: true,
+      extractionTargets: '["Sighting"]',
+    } as never);
+    await enterSpace(stores, 'Elsewhere');
+    expect(stores.shapes.extractionCandidates()).not.toContain('Sighting');
+    provideModuleHostServices({
+      datasetByUri: (uri) => stores.datasets.datasets().find((d) => d.id === uri || d.sharedUri === uri)?.handle,
+    });
+
+    // Here's own shape load is held, so what is published is still Elsewhere's list.
+    const shapes = stores.session.backendPorts()!.schemas.shapes!;
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let holdNext = true;
+    const list = shapes.list.bind(shapes);
+    const spy = vi.spyOn(shapes, 'list').mockImplementation(async (handle) => {
+      if (holdNext && handle === handleA) {
+        holdNext = false;
+        await held;
+      }
+      return list(handle);
+    });
+    try {
+      await stores.spaces.navigateToSpace(a);
+      await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(a));
+      await vi.waitFor(() => expect(holdNext).toBe(false));
+      expect(stores.shapes.extractionCandidatesLoaded()).toBe(false);
+
+      await kernel().watchCollection(call.id, { dataset: a });
+      expect(port.registrations.find((r) => r.watchId === watchId(call.id))?.classes).toEqual(['Sighting']);
+    } finally {
+      release();
+      spy.mockRestore();
+    }
+  }, 15000);
+
+  /*
+    A class the dataset already had is installed whether or not this session has registered it —
+    only the switch registers, and an off-screen ask must not. A call extracting into one is
+    resolved by the executor from the class's own shape, so the read must keep it.
+  */
+  it('keeps an installed foreign class a call extracts into when its space is off screen', async () => {
+    const port = watchPort();
+    const withWatch = onPorts!;
+    onPorts = (ports) => {
+      withWatch(ports);
+      ports.schemas.foreignEntries = async () => [
+        { name: 'Heron', targetClass: 'test://Heron', properties: [], interpretationHint: 'something seen' },
+      ];
+    };
+    const stores = mountShell();
+    await ready(stores);
+    const handleA = await enterSpace(stores, 'Here');
+    const a = stores.datasets.currentDataset()!.id;
+    expect(getEntityForDataset('Heron', handleA)).toBeUndefined();
+    const call = await CollectionBlock.create(handleA, {
+      kind: 'call',
+      mode: 'feed',
+      autoExtract: true,
+      extractionTargets: '["Heron"]',
+    } as never);
+    await enterSpace(stores, 'Elsewhere');
+    provideModuleHostServices({
+      datasetByUri: (uri) => stores.datasets.datasets().find((d) => d.id === uri || d.sharedUri === uri)?.handle,
+    });
+
+    await kernel().watchCollection(call.id, { dataset: a });
+    expect(port.registrations.find((r) => r.watchId === watchId(call.id))?.classes).toEqual(['Heron']);
+  }, 15000);
+
+  /*
+    The settings are a header on the log, not its substance: a read of them that fails must not
+    take the history with it when the passes themselves are readable.
+  */
+  it('still exports the extraction history when the settings cannot be read', async () => {
+    let written = '';
+    (globalThis as { showSaveFilePicker?: unknown }).showSaveFilePicker = async () => ({
+      createWritable: async () => ({
+        write: async (data: Blob) => {
+          written = await data.text();
+        },
+        close: async () => {},
+      }),
+    });
+    let settingsReads: ReturnType<typeof vi.spyOn> | undefined;
+    try {
+      const stores = mountShell();
+      await ready(stores);
+      const handleA = await enterSpace(stores, 'Made in');
+      const call = await CollectionBlock.create(handleA, {
+        kind: 'call',
+        mode: 'feed',
+        title: 'the call',
+        autoExtract: true,
+        extractionTargets: '["TaskBlock"]',
+      } as never);
+      await ModelRun.create(
+        handleA,
+        {
+          kind: 'extraction',
+          outcome: 'done',
+          recordCount: 0,
+          detail: '{"targets":["TaskBlock"]}',
+          error: '',
+          trigger: 'auto',
+          prompt: 'the prompt',
+          output: 'o',
+        } as never,
+        { parent: { id: call.id, relation: 'runs', entity: 'CollectionBlock' } } as never,
+      );
+      const Entity = getEntity('CollectionBlock') as unknown as {
+        findAll: (handle: unknown, q?: { properties?: readonly string[] }) => Promise<unknown[]>;
+      };
+      const findAll = Entity.findAll.bind(Entity);
+      settingsReads = vi.spyOn(Entity, 'findAll').mockImplementation(async (handle, q) => {
+        if (q?.properties) throw new Error('settings unreadable');
+        return findAll(handle, q as never);
+      });
+      await stores.spaces.exportExtractionLog(call.id);
+    } finally {
+      settingsReads?.mockRestore();
+      delete (globalThis as { showSaveFilePicker?: unknown }).showSaveFilePicker;
+    }
+    expect(written).toContain('the prompt');
+    expect(written).toContain('Looking for, on this call: (unavailable)');
+  }, 15000);
+
+  /*
+    Resolvable is not extractable: an adopted model whose manifest does not say it may be extracted
+    into still registers a class in the dataset, so a check that only asks "does the name resolve"
+    keeps it — where the live list, which intersects the candidates, does not. A call that kept such
+    a class in its stored list registers it when its space is off screen, and extracts noise into a
+    model its author never offered.
+  */
+  it('does not register a call’s non-candidate class when the call’s space is off screen', async () => {
+    const port = watchPort();
+    const stores = mountShell();
+    await ready(stores);
+    const handleA = await enterSpace(stores, 'Here');
+    const a = stores.datasets.currentDataset()!.id;
+    const interpretation = kernel();
+
+    // A model this space carries that nothing may extract into — adopted, so the name resolves.
+    const manifest: EntityManifest = {
+      version: '1',
+      entities: {
+        Ledger: {
+          properties: { entry: { type: 'string' } },
+          relations: {},
+        },
+      },
+    };
+    expect(await stores.shapes.addRecordTypes('test', [{ name: 'Ledger', manifest }])).toEqual([]);
+    await vi.waitFor(() => expect(stores.shapes.spaceShapes().map((s) => s.name)).toContain('Ledger'));
+    // Not a candidate on screen either — the call's stored list is the thing out of step.
+    expect(stores.shapes.extractionCandidates()).not.toContain('Ledger');
+    const call = await CollectionBlock.create(handleA, {
+      kind: 'call',
+      mode: 'feed',
+      autoExtract: true,
+      extractionTargets: '["Ledger"]',
+    } as never);
+    await vi.waitFor(() => expect(looksFor(interpretation, call.id, 'Ledger')).not.toBe(true));
+
+    await enterSpace(stores, 'Elsewhere');
+    provideModuleHostServices({
+      datasetByUri: (uri) => stores.datasets.datasets().find((d) => d.id === uri || d.sharedUri === uri)?.handle,
+    });
+
+    // The off-screen read narrows by the same rule the live one does: no candidates left, so the
+    // watch is refused rather than registered carrying a name the registry happens to resolve.
+    await expect(interpretation.watchCollection(call.id, { dataset: a })).rejects.toThrow(
+      'nothing in this space is marked',
+    );
+    expect(port.registrations.some((r) => r.watchId === watchId(call.id))).toBe(false);
+  }, 15000);
+
+  /*
+    Asking what an off-screen space can extract is a read, not an adoption: the answer comes off
+    the dataset's shape records and a read of the classes it already had — not the registering
+    read the switch uses, which on AD4M replaces the dataset's synthesised-class registry
+    wholesale, adopted shapes' compiled classes included. A watch or an export asking the question
+    would otherwise leave the dataset's own models rebuilt from SHACL, short of the compiled
+    behaviour their classes carried.
+  */
+  it('asks an off-screen space’s classes without re-registering the dataset’s own', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    const handleA = await enterSpace(stores, 'Here');
+    const manifest: EntityManifest = {
+      version: '1',
+      entities: {
+        Sighting: { extractable: true, properties: { note: { type: 'string' } }, relations: {} },
+      },
+    };
+    expect(await stores.shapes.addRecordTypes('test', [{ name: 'Sighting', manifest }])).toEqual([]);
+    await vi.waitFor(() => expect(stores.shapes.spaceShapes().map((s) => s.name)).toContain('Sighting'));
+    const compiled = getEntityForDataset('Sighting', handleA);
+    expect(compiled).toBeDefined();
+
+    await enterSpace(stores, 'Elsewhere');
+
+    const schemas = stores.session.backendPorts()!.schemas;
+    const registering = vi.spyOn(schemas, 'foreignSchemas');
+    const reading = vi.spyOn(schemas, 'foreignEntries');
+
+    const { candidates } = await stores.shapes.extractionCandidatesFor(handleA);
+    expect(candidates).toContain('Sighting');
+    // The read answered, and nothing was registered for it: the dataset's registry still holds
+    // the class its shape compiled to.
+    expect(reading).toHaveBeenCalledWith(handleA);
+    expect(registering).not.toHaveBeenCalled();
+    expect(getEntityForDataset('Sighting', handleA)).toBe(compiled);
+  }, 15000);
+
+  /*
+    The live list publishes no adopted shapes for a dataset that is not a WE space, so the same
+    dataset asked about from elsewhere must not offer a stored shape document either.
+  */
+  it('offers no stored shapes for an off-screen dataset that is not a WE space', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    const handleA = await enterSpace(stores, 'Here');
+    const manifest: EntityManifest = {
+      version: '1',
+      entities: {
+        Sighting: { extractable: true, properties: { note: { type: 'string' } }, relations: {} },
+      },
+    };
+    expect(await stores.shapes.addRecordTypes('test', [{ name: 'Sighting', manifest }])).toEqual([]);
+    await vi.waitFor(() => expect(stores.shapes.spaceShapes().map((s) => s.name)).toContain('Sighting'));
+    await enterSpace(stores, 'Elsewhere');
+
+    const schemas = stores.session.backendPorts()!.schemas;
+    expect((await stores.shapes.extractionCandidatesFor(handleA)).candidates).toContain('Sighting');
+    const core = vi.spyOn(schemas, 'hasCoreSchema').mockResolvedValue(false);
+    try {
+      expect((await stores.shapes.extractionCandidatesFor(handleA)).candidates).not.toContain('Sighting');
+    } finally {
+      core.mockRestore();
+    }
+  }, 15000);
+
+  /*
+    The foreign read answers every SHACL class that is not registered in the session — a WE-authored
+    model whose shape document is stored included. Where there is no core schema that class is no
+    candidate, though a genuinely foreign one still is.
+  */
+  it('keeps a stored WE model out of the foreign candidates of a dataset that is not a WE space', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    const handleA = await enterSpace(stores, 'Here');
+    const manifest: EntityManifest = {
+      version: '1',
+      entities: {
+        Sighting: { extractable: true, properties: { note: { type: 'string' } }, relations: {} },
+      },
+    };
+    expect(await stores.shapes.addRecordTypes('test', [{ name: 'Sighting', manifest }])).toEqual([]);
+    await vi.waitFor(() => expect(stores.shapes.spaceShapes().map((s) => s.name)).toContain('Sighting'));
+    // The class WE registered for it is gone, as it is for a model the session never compiled.
+    unregisterEntity('Sighting');
+    await enterSpace(stores, 'Elsewhere');
+
+    const schemas = stores.session.backendPorts()!.schemas;
+    const core = vi.spyOn(schemas, 'hasCoreSchema').mockResolvedValue(false);
+    const reading = vi.spyOn(schemas, 'foreignEntries').mockResolvedValue([
+      { name: 'Sighting', manifest },
+      { name: 'Heron', manifest },
+    ] as never);
+    try {
+      const { candidates } = await stores.shapes.extractionCandidatesFor(handleA);
+      expect(candidates).not.toContain('Sighting');
+      expect(candidates).toContain('Heron');
+    } finally {
+      reading.mockRestore();
+      core.mockRestore();
+    }
+  }, 15000);
+
+  /*
+    An on-screen collection's answers come from the live reads — the freshest — but the space's
+    own record is still read through the handle when the record on screen cannot answer for it,
+    and that read can outlive the space on screen. A switch landing inside it leaves the live
+    signals answering for the space that replaced this one — another space's candidates narrowing
+    this one's class list to nothing. The live answers are taken before the read begins, so the
+    space being left's own answers survive it.
+  */
+  it('answers a call in the space just left from that space’s own answers, not the one now showing', async () => {
+    const port = watchPort();
+    const stores = mountShell();
+    await ready(stores);
+    const handleA = await enterSpace(stores, 'Here');
+    const a = stores.datasets.currentDataset()!.id;
+    // Here's own extractable model — a candidate here and in no other space's list.
+    const manifest: EntityManifest = {
+      version: '1',
+      entities: {
+        Sighting: { extractable: true, properties: { note: { type: 'string' } }, relations: {} },
+      },
+    };
+    expect(await stores.shapes.addRecordTypes('test', [{ name: 'Sighting', manifest }])).toEqual([]);
+    await vi.waitFor(() => expect(stores.shapes.extractionCandidates()).toContain('Sighting'));
+    const call = await CollectionBlock.create(handleA, {
+      kind: 'call',
+      mode: 'feed',
+      autoExtract: true,
+      extractionTargets: '["Sighting"]',
+    } as never);
+
+    // From is on screen, so switching to Here leaves its record up: Here's own record read is
+    // held, and the record on screen stays From's — which is what sends the collection's space
+    // question to the stored-record read the watch's answer then outlives.
+    await enterSpace(stores, 'From');
+    const Entity = getEntity('Space') as unknown as {
+      query: (
+        handle: unknown,
+        q?: { where?: { uuid?: string; url?: string } },
+      ) => {
+        subscribe: (cb: (rows: unknown[]) => void) => Promise<unknown[]>;
+        dispose: () => void;
+      };
+      findAll: (handle: unknown, q?: { where?: { uuid?: string; url?: string } }) => Promise<Space[]>;
+    };
+    let releaseRecord!: () => void;
+    const heldRecord = new Promise<void>((resolve) => (releaseRecord = resolve));
+    const query = Entity.query.bind(Entity);
+    const querySpy = vi.spyOn(Entity, 'query').mockImplementation((handle, q) => {
+      const which = q?.where?.uuid ?? q?.where?.url;
+      const builder = query(handle, q);
+      if (which !== a) return builder;
+      return {
+        subscribe: async (cb) => {
+          await heldRecord;
+          return builder.subscribe(cb);
+        },
+        dispose: () => builder.dispose(),
+      };
+    });
+    // The stored space read inside the collection's answers, held so the switch lands inside it.
+    let releaseSpace!: () => void;
+    const heldSpace = new Promise<void>((resolve) => (releaseSpace = resolve));
+    let holding = false;
+    let spaceReadHeld = false;
+    const findAll = Entity.findAll.bind(Entity);
+    const spaceSpy = vi.spyOn(Entity, 'findAll').mockImplementation(async (handle, q) => {
+      if (holding && handle === handleA && q?.where?.uuid === a) {
+        spaceReadHeld = true;
+        await heldSpace;
+      }
+      return findAll(handle, q);
+    });
+    try {
+      await stores.datasets.switchDataset(a);
+      await vi.waitFor(() => expect(stores.shapes.extractionCandidatesLoaded()).toBe(true));
+      expect(stores.spaces.currentSpace()?.uuid).not.toBe(a);
+      provideModuleHostServices({
+        datasetByUri: (uri) => stores.datasets.datasets().find((d) => d.id === uri || d.sharedUri === uri)?.handle,
+      });
+
+      holding = true;
+      const starting = kernel().watchCollection(call.id, { dataset: a });
+      await vi.waitFor(() => expect(spaceReadHeld).toBe(true));
+
+      // The switch lands inside the space read: From's live answers now, with Here's row and
+      // handle still in hand.
+      const from = stores.datasets
+        .datasets()
+        .find((d) => d.id !== a && !stores.datasets.systemDatasetUuids().includes(d.id))!;
+      await stores.datasets.switchDataset(from.id);
+      await vi.waitFor(() => expect(stores.shapes.extractionCandidatesLoaded()).toBe(true));
+      expect(stores.shapes.extractionCandidates()).not.toContain('Sighting');
+
+      releaseSpace();
+      await starting;
+    } finally {
+      releaseRecord();
+      spaceSpy.mockRestore();
+      querySpy.mockRestore();
+    }
+
+    const registered = port.registrations.find((r) => r.watchId === watchId(call.id));
+    expect(registered?.dataset).toBe(handleA);
+    expect(registered?.classes).toEqual(['Sighting']);
   }, 15000);
 });
 

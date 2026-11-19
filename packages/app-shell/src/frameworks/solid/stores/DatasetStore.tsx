@@ -17,27 +17,20 @@
  */
 import { createCallKernel } from '@shared/callKernel';
 import { sameDataset } from '@shared/datasetIdentity';
-import { hostListeners, hostSlot } from '@shared/hostSlot';
-import { gatherTranscriptTurns, type TurnRecord } from '@shared/interpretation/transcriptTurns';
+import { hostListeners } from '@shared/hostSlot';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import { getSeed } from '@shared/seedRegistry';
-import { readSpaceRoot } from '@shared/spaceLandmarks';
 import { isSystemDataset, SYSTEM_DATASET_NAMES, SYSTEM_DATASETS } from '@shared/systemDatasets';
-import {
-  type DatasetHandle,
-  datasetKey,
-  type DatasetRef,
-  type EntityManifestEntry,
-  type ParentRef,
-  trace,
-} from '@we/backend-shared';
+import { datasetKey, type DatasetRef, type EntityManifestEntry, trace } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
-import { AgentSettings, type DatasetProxy, getEntityForDataset, ModelRun } from '@we/entities';
+import { AgentSettings, type DatasetProxy } from '@we/entities';
+import { latest } from '@we/module-shared';
 import {
   Accessor,
   batch,
   createContext,
+  createEffect,
   createMemo,
   createSignal,
   onCleanup,
@@ -46,35 +39,8 @@ import {
   useContext,
 } from 'solid-js';
 
+import { firstScreen } from '../firstScreen';
 import { useSessionStore } from './SessionStore';
-
-/*
-  Where a pass files what it read, by the relations of `CollectionBlock` that hold each — named, not
-  stored: how a relation is stored is the backend's business.
-
-  - `runs` — a `ModelRun` for each pass, `kind: 'extraction'`, hung off the collection it read.
-  - `extracted` — a record a model proposed from reading the collection. Written beside containment
-    rather than instead of it: `children` is ownership, and the call's board gathers through it, so a
-    record that stopped being a child would vanish from the board it exists to appear on. This is the
-    other fact about the same record: a model proposed it from the conversation, rather than somebody
-    typing it there.
-  - `recognised` — a record a pass matched rather than made, so the conversation's own view can say
-    "already in the space" rather than claiming it as made here.
-
-  Named here because they are WE's vocabulary. The interpretation port takes them as arguments for the
-  same reason it takes `parent` as one — a backend that hard-coded them would be deciding what a
-  relation in somebody else's graph is called.
-*/
-const extractedFrom = (collectionId: string) => ({
-  id: collectionId,
-  relation: 'extracted',
-  entity: 'CollectionBlock',
-});
-const recognisedBy = (collectionId: string) => ({
-  id: collectionId,
-  relation: 'recognised',
-  entity: 'CollectionBlock',
-});
 
 export type { EntityManifestEntry, EntityManifestProperty } from '@we/backend-shared';
 
@@ -140,6 +106,13 @@ export interface DatasetStore {
    * their per-machine settings. `null` until its schema is installed. See `systemDatasets.ts`.
    */
   personalDataset: Accessor<AppDataset | null>;
+  /**
+   * The personal space's schema install, from the moment the boot has found the dataset: resolves
+   * with it once `personalDataset` is set, or with `null` if the install failed. `null` before the
+   * boot has found it. A write to the personal space awaits this, so a write made after the app
+   * appears and before the install is held rather than dropped.
+   */
+  whenPersonalDataset: Accessor<Promise<AppDataset | null> | null>;
   testDataset: Accessor<AppDataset | null>;
   globalDataset: Accessor<AppDataset | null>;
   marketplaceDataset: Accessor<AppDataset | null>;
@@ -198,7 +171,9 @@ export interface DatasetStore {
   readDatasets: () => Promise<AppDataset[] | null>;
   /**
    * Bring up the system datasets. Given the list `readDatasets` just read, works from that rather
-   * than reading it again. Resolves with every dataset it saw or made, for `loadDatasets`.
+   * than reading it again. Resolves with every dataset it saw or made, for `loadDatasets`, once the
+   * root is up; the personal space's schema is brought up after the first screen, and
+   * `personalDataset` is set when it is.
    */
   initSystemDatasets: (known?: AppDataset[] | null) => Promise<AppDataset[] | null>;
   /**
@@ -213,43 +188,6 @@ export interface DatasetStore {
   loadDatasets: (known?: AppDataset[] | null) => Promise<void>;
   subscribeToChanges: () => void;
   getDatasetOrder: () => string[];
-  /** SpaceStore supplies "does this space want calls interpreted automatically". Unset reads off. */
-  provideAutoInterpretGate: (gate: () => boolean) => () => void;
-  /**
-   * Keep a standing extraction watch on one conversation, filing what it finds into the space
-   * collection. What a module's `watchCollection` reaches; also the space's own, for its loose
-   * messages. Rejects where the watch cannot be registered, with the reason.
-   */
-  watchConversation: (collectionId: string, dataset?: DatasetHandle) => Promise<void>;
-  /** Stop it. Safe when none was registered. */
-  unwatchConversation: (collectionId: string, dataset?: DatasetHandle) => Promise<void>;
-  /**
-   * ShapeStore supplies "which entities *could* be extracted here" — core vocabulary that declares
-   * itself extractable, plus this space's adopted shapes — and whether that list is whole yet. The
-   * list is lent as it arrives, so a picker shows the core classes at once; only what writes from it
-   * waits for `loaded`. Unset reads as none, and as not loaded.
-   */
-  provideExtractionCandidates: (candidates: () => string[], loaded: () => boolean) => () => void;
-  /**
-   * SpaceStore supplies what one collection extracts, and how to change it.
-   *
-   * Every member takes a collection id, because the answer is the collection's own — copied from
-   * the space's defaults when it was made. Injected for the reason `provideAutoInterpretGate` is:
-   * the answer lives on records this store does not read, and SpaceStore mounts below this one.
-   *
-   * Unset, `targetsFor` reads as the candidates — which keeps a host that has not wired this yet
-   * behaving as it did rather than silently extracting nothing.
-   */
-  provideCollectionExtraction: (access: CollectionExtractionAccess) => () => void;
-}
-
-/** What SpaceStore lends this store about one collection's extraction settings. */
-export interface CollectionExtractionAccess {
-  targetsFor: (collectionId: string) => string[];
-  setTargetFor: (collectionId: string, entity: string, on: boolean) => Promise<void>;
-  /** Whether this collection is extracted as it grows — its own answer. */
-  autoFor: (collectionId: string) => boolean;
-  setAutoFor: (collectionId: string, on: boolean) => Promise<void>;
 }
 
 const DatasetContext = createContext<DatasetStore>();
@@ -282,7 +220,7 @@ export function DatasetStoreProvider(props: ParentProps) {
    * Which publish the read in flight belongs to. Opening a space again starts a new read, and an
    * older read of the same space finishing must not say the newer one is done.
    */
-  let entitiesRead = 0;
+  const entitiesRead = latest();
   const currentDatasetEntitiesLoaded = (): boolean => {
     const id = currentDataset()?.id;
     return Boolean(id) && entitiesReadFor() === id;
@@ -290,6 +228,16 @@ export function DatasetStoreProvider(props: ParentProps) {
   const [isWeSpace, setIsWeSpace] = createSignal<boolean>(false);
   const [rootDataset, setRootDataset] = createSignal<AppDataset | null>(null);
   const [personalDataset, setPersonalDataset] = createSignal<AppDataset | null>(null);
+  const [whenPersonalDataset, setWhenPersonalDataset] = createSignal<Promise<AppDataset | null> | null>(null);
+  /*
+    Counted up each time the agent locks. The personal space's install runs after the app appears,
+    so it can still be out when somebody locks and signs in again; what it finds belongs to the
+    session that started it, and the count is how it knows that session has ended.
+  */
+  let sessionsEnded = 0;
+  createEffect(() => {
+    if (session.bootState() === 'login') sessionsEnded++;
+  });
   const [testDataset, setTestDataset] = createSignal<AppDataset | null>(null);
   const [agentSettings, setAgentSettings] = createSignal<AgentSettings | null>(null, { equals: false });
 
@@ -302,136 +250,6 @@ export function DatasetStoreProvider(props: ParentProps) {
     must not stop the others hearing about it.
   */
   const removedListeners = hostListeners<(uuid: string) => void>('DatasetStore.onDatasetRemoved');
-
-  /*
-    Whether the current space wants its calls interpreted as they happen.
-
-    Injected rather than read, for the same reason `TemplateStore.provideSpaceLookup` exists: the
-    setting lives on a `Space`, SpaceStore layers on top of this store, and the dependency only
-    points one way. Unset means off.
-  */
-  const autoInterpretGate = hostSlot<() => boolean>();
-
-  /*
-    What an extraction pass may write here — the same arrangement, one layer along.
-
-    A space's own models are compiled and registered for its dataset by ShapeStore, which also sits
-    above this one, so the list it computes has to arrive the same way the auto-extract setting
-    does. Unset reads as *none* rather than as the two core classes: this replaced a constant, and a
-    silent fallback to that constant would make a wiring failure look exactly like a space whose
-    community had turned everything off.
-  */
-  const extractionCandidatesGate = hostSlot<() => string[]>();
-
-  /*
-    Whether that list is whole yet, lent beside it. Readers do not wait for it — a picker showing the
-    core classes while the space's own are read is true as far as it goes. A watch registered from
-    the part that had arrived was removed and written again when the rest came, so registrars wait.
-    Unset reads as *not* loaded: with nothing lent the list is empty, and an empty list read as
-    whole would register a watch for nothing.
-  */
-  const extractionCandidatesLoadedGate = hostSlot<() => boolean>();
-
-  const provideExtractionCandidates = (candidates: () => string[], loaded: () => boolean): (() => void) => {
-    const releaseCandidates = extractionCandidatesGate.provide(candidates);
-    const releaseLoaded = extractionCandidatesLoadedGate.provide(loaded);
-    return () => {
-      releaseCandidates();
-      releaseLoaded();
-    };
-  };
-
-  /*
-    What one collection extracts, and how to change it — the layer below candidacy.
-
-    Injected from SpaceStore, which reads the collections' own settings and mounts below this
-    store. Unset, `targetsFor` falls back to the candidates rather than to nothing: a host that has
-    not wired this in should behave as it did before the layer existed.
-  */
-  const collectionExtraction = hostSlot<CollectionExtractionAccess>();
-
-  /**
-   * The class list one pass over this collection should ask for.
-   *
-   * Always intersected with the candidates, and that is not tidiness: a name the perspective has no
-   * shape for fails `assertShapesInstalled` and takes the whole pass down, so a space default naming
-   * a model since deleted, or a call list naming one whose `extractable` was withdrawn, has to
-   * narrow the request rather than break it.
-   */
-  /** What a pass is written down with — see {@link recordPass}. */
-  type PassRecord = {
-    outcome: string;
-    recordCount: number;
-    targets: string[];
-    error?: string;
-    /** What started it. Defaults to a press, which is what the only writer used to be. */
-    trigger?: 'manual' | 'auto';
-    prompt?: string;
-    response?: string;
-  };
-
-  const passFields = (pass: PassRecord) => ({
-    kind: 'extraction',
-    outcome: pass.outcome,
-    recordCount: pass.recordCount,
-    detail: JSON.stringify({ targets: pass.targets }),
-    error: pass.error ?? '',
-    trigger: pass.trigger ?? 'manual',
-    prompt: pass.prompt ?? '',
-    output: pass.response ?? '',
-  });
-
-  /**
-   * Write down that a pass happened, as a `ModelRun` of kind `extraction` — see {@link ModelRun}.
-   *
-   * Best effort, and deliberately so: the pass is the thing that mattered and it has already run,
-   * so a failed *note* about it must not turn a successful extraction into a rejected one. Logged
-   * rather than swallowed, because a note that never lands is a history that quietly stays empty.
-   *
-   * Written by the host rather than by the module for the same reason `interpretCollection` is: where
-   * a pass is filed is the host's to say, and a module names a collection and nothing else.
-   *
-   * With `run`, the pass's run already exists — {@link openPass} made it so the pass could mark what
-   * it wrote — and this completes it rather than writing a second.
-   */
-  async function recordPass(handle: DatasetProxy, collectionId: string, pass: PassRecord, run?: string): Promise<void> {
-    try {
-      if (run) await ModelRun.update(handle, run, passFields(pass));
-      else
-        await ModelRun.create(handle, passFields(pass), {
-          parent: { id: collectionId, relation: 'runs', entity: 'CollectionBlock' },
-        });
-    } catch (error) {
-      console.warn('[interpretation] could not record that a pass ran', error);
-    }
-  }
-
-  /**
-   * The run a pass is about to be, written before it starts so the pass can mark what it makes with
-   * it — `generatedBy`, in the same writes that make them. `running` until {@link recordPass}
-   * completes it, which is also what a pass that never returns is left saying.
-   *
-   * `undefined` where the write fails: the pass still runs, unmarked, and is written down afterwards
-   * as before. A history entry is not worth an extraction.
-   */
-  async function openPass(handle: DatasetProxy, collectionId: string, targets: string[]): Promise<string | undefined> {
-    try {
-      const run = await ModelRun.create(handle, passFields({ outcome: 'running', recordCount: 0, targets }), {
-        parent: { id: collectionId, relation: 'runs', entity: 'CollectionBlock' },
-      });
-      return run.id;
-    } catch (error) {
-      console.warn('[interpretation] could not open a run for this pass', error);
-      return undefined;
-    }
-  }
-
-  const targetsForCollection = (collectionId: string): string[] => {
-    const candidates = extractionCandidatesGate.get()?.() ?? [];
-    const chosen = collectionExtraction.get()?.targetsFor(collectionId);
-    if (!chosen) return candidates;
-    return candidates.filter((entity) => chosen.includes(entity));
-  };
 
   // Lend feature modules the neutral ports the host owns. Published rather than imported so a
   // module never reaches into host stores — what it receives is `EphemeralPort` and dataset
@@ -509,270 +327,8 @@ export function DatasetStoreProvider(props: ParentProps) {
         connections: async (dataset, id) =>
           (await session.backendPorts()?.interpretation?.connections?.(dataset, id)) ?? { ends: [], connections: [] },
       },
-
-      /*
-        What this collection extracts, and what else it could — for a module that offers the choice.
-
-        One list of `{ entity, selected }` rather than two arrays, because the surface that renders it
-        is a row of toggles and a schema cannot join two lists to decide which are ticked. The module
-        never sees the resolution: candidacy, the space's default and the collection's own list are
-        questions it has no business knowing about, and it is handed the answer.
-      */
-      extractionTargets: (collectionId: string) => {
-        const active = targetsForCollection(collectionId);
-        return (extractionCandidatesGate.get()?.() ?? []).map((entity) => ({
-          entity,
-          selected: active.includes(entity),
-        }));
-      },
-      /*
-        Whether that list is the whole of it yet. A space's own models and the classes it already had
-        are read a few round trips after its core vocabulary is known, and a watch registered from the
-        part that had arrived was removed and registered again when the rest did. The list above does
-        not wait for this; what registers from it does.
-      */
-      extractionTargetsLoaded: () => extractionCandidatesLoadedGate.get()?.() ?? false,
-      setAutoInterpret: async (collectionId: string, on: boolean) => {
-        const extraction = collectionExtraction.get();
-        if (!extraction) throw new Error('interpretation: this host cannot record a collection’s extraction settings');
-        await extraction.setAutoFor(collectionId, on);
-      },
-      setExtractionTarget: async (collectionId: string, entity: string, on: boolean) => {
-        const extraction = collectionExtraction.get();
-        if (!extraction) throw new Error('interpretation: this host cannot record a collection’s extraction targets');
-        await extraction.setTargetFor(collectionId, entity, on);
-      },
-
-      // Gathering the turns is the host's half of the job: the port takes turns, and a module has no
-      // read with which to produce them. Parenting what comes back onto the same collection is not
-      // optional dressing — an unparented TaskBlock is a real record that no route lists, so an
-      // extraction that skipped it would look exactly like one that found nothing.
-      interpretCollection: async (collectionId) => {
-        const port = session.backendPorts()?.interpretation;
-        if (!port) throw new Error('interpretation: this backend cannot interpret');
-        // The dataset this pass was asked for: a space switched mid-pass must not redirect its writes.
-        const dataset = untrack(currentDataset);
-        if (!dataset) throw new Error('interpretation: no dataset to interpret into');
-
-        const modelFor = (entity: string) => getEntityForDataset(entity, dataset.handle);
-        const turns = await gatherTranscriptTurns(
-          { modelFor: (entity) => modelFor(entity) as TurnRecord | undefined, handle: dataset.handle },
-          collectionId,
-        );
-
-        // The host resolves the class list, because the three layers that decide it — candidacy, the
-        // space's default, this call's own — are all host state. A module names a collection and
-        // nothing else, exactly as it does for the watch id and where a pass is filed.
-        const classes = targetsForCollection(collectionId);
-        const run = await openPass(dataset.handle, collectionId, classes);
-        try {
-          const result = await port.interpret(dataset.handle, turns, {
-            classes,
-            parent: await filedUnder(dataset.handle, collectionId),
-            provenance: extractedFrom(collectionId),
-            recognised: recognisedBy(collectionId),
-            ...(run ? { run } : {}),
-          });
-          await recordPass(
-            dataset.handle,
-            collectionId,
-            {
-              // Nothing to look for is not a failure and not a quiet meeting — it is a call whose
-              // targets are all switched off, which reads as "0 records" and blames the conversation
-              // unless it is said.
-              outcome: classes.length === 0 ? 'skipped' : 'done',
-              recordCount: result.ids.length,
-              targets: classes,
-              // Handed back by the run rather than found on the progress feed afterwards, so one
-              // write holds the whole pass — see `prompt` on the result.
-              prompt: result.prompt,
-              response: result.response,
-            },
-            run,
-          );
-          return result;
-        } catch (error) {
-          /*
-            Written before rethrowing, because a failure is the pass most worth having a record of.
-
-            Live, a failure is reported by the readout and then lost with it: reload, and a call that
-            could not be read is indistinguishable from one that was read and found nothing. That is
-            the pair somebody reviewing a meeting most needs told apart, and it is the one the live
-            feed cannot keep.
-          */
-          await recordPass(
-            dataset.handle,
-            collectionId,
-            {
-              outcome: 'failed',
-              recordCount: 0,
-              targets: classes,
-              error: error instanceof Error ? error.message : String(error),
-            },
-            run,
-          );
-          throw error;
-        }
-      },
-
-      /*
-        The staged suggestions belonging to one call, rather than to the whole space.
-
-        Here rather than on the port wrapper above for the same reason `interpretCollection` is: where
-        a call's passes were filed is the host's to say, and a module must never have to.
-
-        A proposal outlives the pass that made it, so an unresolved one from this morning's call is
-        still staged this afternoon. Unscoped, it arrived in the next call's review list looking like
-        something that call had just found — and accepting it committed a record parented to the
-        earlier call, which is real, correct, and invisible on the board of the call the reviewer is
-        actually sitting in.
-
-        The dataset is the *caller's*, not `currentDataset()`: a call outlives the space on screen,
-        and answering about wherever the reader wandered to is the bug `targeted` exists to prevent.
-      */
-      proposalsForCollection: async (dataset, collectionId) => {
-        const port = session.backendPorts()?.interpretation;
-        if (!port) return [];
-        return port.proposals(dataset, {
-          parent: await filedUnder(dataset, collectionId),
-          // The conversation, which is what narrows once every call files into one collection.
-          provenance: extractedFrom(collectionId),
-        });
-      },
-
-      /*
-        The standing version of the same thing, and the reason it lives here rather than on the module
-        surface.
-
-        A module names a collection worth watching; everything else is the host's — the watch id, the
-        dataset, where the pass is filed, and the lifetime. That split is what keeps this from being
-        "a module holding a watch", which the module contract refuses: a watch is a *dataset-level*
-        registration shared with every peer, and a module store whose lifetime is a panel being open
-        would leave one behind every time somebody closed it.
-
-        Keyed on the collection id, so registering twice for one call is the same registration rather
-        than two. The engine reads its processors out of the perspective graph, so this is idempotent
-        in the place it matters: whichever peer registers first wins and the rest write the same row.
-      */
-      watchCollection: watchConversation,
-
-      /*
-        Repair anything a standing pass minted without an edge.
-
-        Runs when a call is opened rather than on a timer, because that is the moment somebody is
-        about to look: the records exist either way, and what is missing is only their place in the
-        call. Returns the count so a caller can say nothing when there was nothing to do.
-      */
-      reconcileCollection: async (collectionId) => {
-        const port = session.backendPorts()?.interpretation;
-        const dataset = currentDataset();
-        if (!port?.reconcile || !dataset) return 0;
-
-        return port.reconcile(dataset.handle, {
-          classes: targetsForCollection(collectionId),
-          parent: await filedUnder(dataset.handle, collectionId),
-          provenance: extractedFrom(collectionId),
-          recognised: recognisedBy(collectionId),
-        });
-      },
-
-      unwatchCollection: unwatchConversation,
     }),
   );
-
-  /*
-    A standing watch over one conversation — a call, or the space collection's loose messages.
-
-    Named functions rather than members of the module services above, because the space itself
-    registers one too: the watch over its loose messages belongs to the space, not to any module.
-  */
-  async function watchConversation(collectionId: string, target?: DatasetHandle): Promise<void> {
-    const port = session.backendPorts()?.interpretation;
-    if (!port?.watch) throw new Error('interpretation: this backend cannot run a standing watch');
-    // The community's decision, read through a gate SpaceStore supplies — this store sits below
-    // it and cannot reach a Space. Absent (no gate provided yet, or no space) reads as off, which
-    // is the right way round for something that spends somebody's LLM budget.
-    /*
-      Asked about *this collection*, not about the space.
-
-      A collection holds its own answer, and one that has been turned off has to stay off — a gate
-      that could only see the space would re-register the watch on the next tick. Falls back to the
-      space's default where the collection layer has not been wired, which keeps a host that
-      predates it behaving as it did.
-    */
-    const auto = collectionExtraction.get()?.autoFor(collectionId) ?? autoInterpretGate.get()?.();
-    if (!auto) throw new Error('interpretation: automatic extraction is off for this collection');
-    /*
-      The caller's dataset, not `currentDataset()`: a call outlives the space on screen, and a watch
-      registered wherever the reader had wandered to interprets the call into a perspective that
-      does not hold it — and is then removed from the wrong one too, so it never stops.
-    */
-    const handle = target ?? currentDataset()?.handle;
-    if (!handle) throw new Error('interpretation: no dataset to interpret into');
-
-    const classes = targetsForCollection(collectionId);
-    // Refused rather than registered empty: the executor rejects a processor with no classes, and
-    // "this space has marked nothing for extraction" is a sentence worth saying in its own words.
-    if (!classes.length) throw new Error('interpretation: nothing in this space is marked for AI extraction');
-
-    await port.watch(handle, {
-      watchId: watchIdFor(collectionId),
-      classes,
-      parent: await filedUnder(handle, collectionId),
-      provenance: extractedFrom(collectionId),
-      recognised: recognisedBy(collectionId),
-    });
-  }
-
-  async function unwatchConversation(collectionId: string, target?: DatasetHandle): Promise<void> {
-    const port = session.backendPorts()?.interpretation;
-    // The caller's dataset, for the reason `watchCollection` gives.
-    const handle = target ?? currentDataset()?.handle;
-    // Silent rather than thrown: this runs while tearing a call down, and a host that never
-    // registered anything is not a failure worth interrupting that with.
-    if (!port?.unwatch || !handle) return;
-    await port.unwatch(handle, watchIdFor(collectionId));
-  }
-
-  /*
-    Where a pass files what it finds: the space collection, whatever conversation it read.
-
-    Extracted items are the space's top-level content, so they live where everything top-level does
-    — in the collection the space's feed, canvas and boards all read — and a call is only where they
-    came from (the provenance link, written beside this one). Filed under the call, every
-    space-wide view would have had to gather from every call; filed here, deleting a call leaves
-    what it found in place.
-
-    A dataset with no space collection — one made before spaces had one — files under the
-    conversation itself, which is what every pass did before. Read once per dataset and kept, by
-    `readSpaceRoot`: the collection is written at creation and never changes.
-  */
-  async function filedUnder(handle: unknown, conversation: string): Promise<ParentRef> {
-    let root = '';
-    try {
-      root = (await readSpaceRoot(handle))?.root ?? '';
-    } catch {
-      // Filed under the conversation, and asked again next pass.
-    }
-    return { id: root || conversation, relation: 'children', entity: 'CollectionBlock' };
-  }
-
-  /*
-  One collection, one watch.
-
-  Derived rather than stored so that any peer computing it lands on the same string: the engine
-  keys its processors by this id inside the shared perspective, so two members starting the same
-  call must agree on it or they register two watches over one transcript and every utterance is
-  interpreted twice.
-
-  Reduced to letters, digits and dashes because the id becomes part of a URI — the engine mints its
-  processor node at `ad4m://autoprocessor/<id>`, and a record id is itself a URL. It was written
-  against ids of the form `literal:string:…`, which nested a second `literal:` inside the processor
-  URI on a layer that decides literal-from-URI by exactly that prefix. AD4M now mints `ad4m://obj/…`
-  instead, so that particular collision is gone — but the reduction stays, because what an id looks
-  like is AD4M's business and has changed once already.
-*/
-  const watchIdFor = (collectionId: string) => `we-call-${collectionId.replace(/[^a-zA-Z0-9]+/g, '-')}`;
 
   // Converts null → undefined so that when JSON-serialised into an ORM WHERE clause,
   // personal datasets (no shared uri) produce {} rather than {"url":null}.
@@ -960,11 +516,22 @@ export function DatasetStoreProvider(props: ParentProps) {
     if (!refs) return null;
 
     // Side by side: the three share nothing but the list, and each is several round trips to the
-    // backend — one after another they were most of the wait before a space could open.
+    // backend — one after another they were most of the wait before a space could open. Only what
+    // the app needs to appear is waited for: the root, which holds the agent's settings, templates
+    // and per-space choices, and the datasets a first run has to make, so the list published holds them.
     const made: AppDataset[] = [];
+    const started = sessionsEnded;
     await Promise.all([
       initRootDataset(refs, made).catch((error) => console.error('DatasetStore: root dataset error', error)),
-      initPersonalDataset(refs, made).catch((error) => console.error('DatasetStore: personal dataset error', error)),
+      findPersonalDataset(refs, made).then(
+        (personal) => {
+          if (started !== sessionsEnded) return;
+          // Held, not awaited: the boot does not wait for it. `initPersonalDataset` catches its own errors.
+          const install = initPersonalDataset(personal, made.includes(personal));
+          void setWhenPersonalDataset(() => install);
+        },
+        (error) => console.error('DatasetStore: personal dataset error', error),
+      ),
       (async () => {
         const existingTest = refs.find((d) => d.name === SYSTEM_DATASET_NAMES.test);
         const test = existingTest ?? toApp(await lifecycle.create(SYSTEM_DATASET_NAMES.test));
@@ -1032,33 +599,54 @@ export function DatasetStoreProvider(props: ParentProps) {
    * models. Every module's entities install here too, the space-scoped ones included: a note can
    * hold any block a post can, and a block a module contributes is one of those.
    *
-   * Published only once its schema is in, since the first thing a reader does is query it — the
-   * Pocket's effect fires the moment `personalDataset` is set, and a query ahead of the install
-   * fails with "No SHACL shape" rather than returning nothing.
+   * Published only once its schema is in, since the first thing a reader does is query it — a
+   * template's `$query` on `personalDataset` runs the moment it is set, and a query ahead of the
+   * install fails with "No SHACL shape" rather than returning nothing.
+   *
+   * After the first screen (`shared/firstScreen.ts`), and not waited for by the boot: the space on
+   * screen reads nothing here, and these schema reads go to the same backend as its Feed's first
+   * page. What writes to it — the Pocket, notes, agent-scoped modules — awaits what this resolves
+   * with (`whenPersonalDataset`). A failure is logged, leaves `personalDataset` unset, as it always
+   * did, and resolves `null`. So does a session that ended while the install was out: what it set
+   * would be the last session's dataset in the next.
    *
    * No `Space` record. Nothing yet navigates into this dataset, and a record would put it in every
    * list that reads `Space` — which is exactly the listing a system dataset stays out of.
    */
-  async function initPersonalDataset(refs: AppDataset[], made: AppDataset[]): Promise<void> {
-    const lifecycle = session.lifecycle()!;
-    const schemas = session.backendPorts()!.schemas;
-    const existing = refs.find((d) => d.name === SYSTEM_DATASET_NAMES.personal);
-    const personal = existing ?? toApp(await lifecycle.create(SYSTEM_DATASET_NAMES.personal));
-    if (!existing) made.push(personal);
-    const moduleSchemas = [...moduleRegistry.moduleSchemas(schemas), ...moduleRegistry.agentSchemas(schemas)];
+  async function initPersonalDataset(personal: AppDataset, created: boolean): Promise<AppDataset | null> {
+    const started = sessionsEnded;
+    try {
+      await firstScreen.whenOpen();
+      const schemas = session.backendPorts()!.schemas;
+      const moduleSchemas = [...moduleRegistry.moduleSchemas(schemas), ...moduleRegistry.agentSchemas(schemas)];
 
-    if (!existing || !(await schemas.hasCoreSchema(personal.handle))) {
-      await schemas.installSpace(personal.handle, moduleSchemas);
-    } else {
-      // The same two catches a space gets on every switch, run together — see `switchDataset`.
-      await Promise.all([
-        schemas.installModules(personal.handle, moduleSchemas),
-        schemas.refreshSpace(personal.handle).catch((err) => {
-          console.error('DatasetStore: personal space schema refresh failed', err);
-        }),
-      ]);
+      if (created || !(await schemas.hasCoreSchema(personal.handle))) {
+        await schemas.installSpace(personal.handle, moduleSchemas);
+      } else {
+        // The same two catches a space gets on every switch, run together — see `switchDataset`.
+        await Promise.all([
+          schemas.installModules(personal.handle, moduleSchemas),
+          schemas.refreshSpace(personal.handle).catch((err) => {
+            console.error('DatasetStore: personal space schema refresh failed', err);
+          }),
+        ]);
+      }
+      if (started !== sessionsEnded) return null;
+      setPersonalDataset(personal);
+      return personal;
+    } catch (error) {
+      console.error('DatasetStore: personal dataset error', error);
+      return null;
     }
-    setPersonalDataset(personal);
+  }
+
+  /** The personal space, made if this agent has none yet — a first run — and then listed in `made`. */
+  async function findPersonalDataset(refs: AppDataset[], made: AppDataset[]): Promise<AppDataset> {
+    const existing = refs.find((d) => d.name === SYSTEM_DATASET_NAMES.personal);
+    if (existing) return existing;
+    const personal = toApp(await session.lifecycle()!.create(SYSTEM_DATASET_NAMES.personal));
+    made.push(personal);
+    return personal;
   }
 
   /**
@@ -1068,11 +656,9 @@ export function DatasetStoreProvider(props: ParentProps) {
    *
    * Nearly every persisted preference in the app goes through here — the default template and
    * theme, both sides of the Follow-system pair, the Claude API key, the dataset order, which
-   * modules are installed. Most callers are `void`-ed, so nothing awaited the write and nothing
-   * could have noticed it failing. `Object.assign` had already mutated the in-memory model by then,
-   * so a failed save left the app showing the new value, the perspective holding the old one, and
-   * the two disagreeing until a reload — which is the worst of the three possible outcomes, because
-   * it is the one nobody investigates.
+   * modules are installed. Most callers are `void`-ed, so nothing awaits the write. Without a
+   * rollback, a failed save would leave the app showing the new value and the perspective holding
+   * the old one until a reload.
    *
    * So: snapshot the fields being changed, apply, save, and put the snapshot back if the save
    * throws. The toast is the only channel left, given the callers return `void` — but it is the
@@ -1177,9 +763,8 @@ export function DatasetStoreProvider(props: ParentProps) {
    *
    * A switch is several round trips long (`hasCoreSchema`, `installModules`, `refreshSpace`), so two
    * of them overlap routinely: clicking a space runs one, and the route change that follows runs
-   * another. They finish in whatever order the network decides, and the last to finish used to be
-   * the one on screen — so a switch nobody wanted any more could land on top of the one they did,
-   * leaving the sidebar and the URL naming one space and every query reading another.
+   * another. They finish in whatever order the network decides, and a switch nobody wants any more
+   * must not land on top of the one they do.
    *
    * Requested rather than started, because that is the question with an answer: "is this still what
    * the reader asked for". Whichever ask is latest wins, however long it takes to arrive.
@@ -1278,7 +863,7 @@ export function DatasetStoreProvider(props: ParentProps) {
       // are pre-registered at module load; foreign (non-WE) model resolution isn't needed
       // for the visible switch at all — it's only consumed below, in the background.
       // A new read starts below, so whatever was read before — even for this same space — is not it.
-      const read = ++entitiesRead;
+      const readIsLatest = entitiesRead.begin();
       batch(() => {
         setIsWeSpace(weSpace);
         setCurrentDataset(app);
@@ -1297,15 +882,16 @@ export function DatasetStoreProvider(props: ParentProps) {
       void (async () => {
         try {
           const manifest = await schemas.foreignSchemas(handle);
-          if (read === entitiesRead && currentDataset()?.id === uuid)
+          if (readIsLatest() && currentDataset()?.id === uuid)
             batch(() => {
-              setCurrentDatasetEntities(manifest);
+              // By name, so a list of them — another app's classes in Social DNA — is in order with no sort of its own.
+              setCurrentDatasetEntities([...manifest].sort((a, b) => a.name.localeCompare(b.name)));
               setEntitiesReadFor(uuid);
             });
         } catch (err) {
           console.warn('DatasetStore: foreignSchemas failed', err);
           // Read, and answered with nothing: a failed read must not hold back everything that waits on it.
-          if (read === entitiesRead && currentDataset()?.id === uuid)
+          if (readIsLatest() && currentDataset()?.id === uuid)
             batch(() => {
               setCurrentDatasetEntities([]);
               setEntitiesReadFor(uuid);
@@ -1363,6 +949,7 @@ export function DatasetStoreProvider(props: ParentProps) {
     systemDatasetUuids,
     rootDataset,
     personalDataset,
+    whenPersonalDataset,
     testDataset,
     globalDataset,
     marketplaceDataset,
@@ -1395,11 +982,6 @@ export function DatasetStoreProvider(props: ParentProps) {
     loadDatasets,
     subscribeToChanges,
     getDatasetOrder,
-    provideAutoInterpretGate: autoInterpretGate.provide,
-    watchConversation,
-    unwatchConversation,
-    provideExtractionCandidates,
-    provideCollectionExtraction: collectionExtraction.provide,
   };
 
   return <DatasetContext.Provider value={store}>{props.children}</DatasetContext.Provider>;
