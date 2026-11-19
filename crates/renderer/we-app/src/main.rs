@@ -57,6 +57,11 @@ struct Args {
     connect: bool,
     /// `--executor-url`, `--space`, `--email` — what `--connect` uses.
     executor_url: Option<String>,
+    /// `--executor-binary`, `--executor-data`, `--executor-seed`: run this
+    /// computer's executor (ignored with `--executor-url`).
+    executor_binary: Option<std::path::PathBuf>,
+    executor_data: Option<std::path::PathBuf>,
+    executor_seed: Option<std::path::PathBuf>,
     space: Option<String>,
     email: Option<String>,
     /// `--demo-recorded` — the recording under a live space.
@@ -121,6 +126,9 @@ fn parse_args_from(argv: impl IntoIterator<Item = String>) -> Result<Args, Strin
         viewport: 1440.0,
         connect: false,
         executor_url: None,
+        executor_binary: None,
+        executor_data: None,
+        executor_seed: None,
         space: None,
         email: None,
         demo_recorded: false,
@@ -184,6 +192,24 @@ fn parse_args_from(argv: impl IntoIterator<Item = String>) -> Result<Args, Strin
                         .unwrap_or_else(|| panic!("--executor-url needs a URL")),
                 );
             }
+            "--executor-binary" => {
+                args.executor_binary = Some(std::path::PathBuf::from(
+                    rest.next()
+                        .unwrap_or_else(|| panic!("--executor-binary needs a path")),
+                ));
+            }
+            "--executor-data" => {
+                args.executor_data = Some(std::path::PathBuf::from(
+                    rest.next()
+                        .unwrap_or_else(|| panic!("--executor-data needs a folder")),
+                ));
+            }
+            "--executor-seed" => {
+                args.executor_seed = Some(std::path::PathBuf::from(
+                    rest.next()
+                        .unwrap_or_else(|| panic!("--executor-seed needs a file")),
+                ));
+            }
             "--space" => {
                 args.space = Some(
                     rest.next()
@@ -199,7 +225,7 @@ fn parse_args_from(argv: impl IntoIterator<Item = String>) -> Result<Args, Strin
             "--help" | "-h" => {
                 eprintln!(
                     "usage: we-app [dump] [--bundle <path>] [--snapshot <path>] [--route <href>] [--offline] [--theme <name>] [--coasys <route>] [--gallery style|widgets|inputs]\n       \
-                     we-app --connect [--executor-url <url>] [--space <uuid|name>] [--write] [--email <address>] [--theme <name>] [--demo-recorded]\n\n\
+                     we-app --connect [--executor-url <url> | --executor-binary <path> [--executor-data <dir>] [--executor-seed <file>]] [--space <uuid|name>] [--write] [--email <address>] [--theme <name>] [--demo-recorded]\n\n\
                      dump               resolve the app root once, print the normal-form tree, exit\n\
                      --bundle <path>    bundle to render (default: the repo's bundles/coasys.bundle.json)\n\
                      --snapshot <path>  offline data: stores/queries/invokes as JSON\n\
@@ -208,6 +234,10 @@ fn parse_args_from(argv: impl IntoIterator<Item = String>) -> Result<Args, Strin
                      --connect          read a live AD4M executor: find it, ask for access once\n\
                                         (approve in the AD4M launcher), pick a space, render it\n\
                      --executor-url <u> the executor to use instead of looking (http://127.0.0.1:12000)\n\
+                     --executor-binary <p> run this ad4m-executor as this computer's executor\n\
+                                        (stopped with the window; not with --executor-url)\n\
+                     --executor-data <d> its data folder (default ~/.local/share/we-renderer/executor)\n\
+                     --executor-seed <f> the network seed its first init uses\n\
                      --space <id>       open this perspective (uuid or name) without the picker\n\
                      --write            with --connect --space <uuid>: allow changes in that space\n\
                                         (asks for a write grant once)\n\
@@ -558,7 +588,15 @@ fn run_connected(args: Args) -> eframe::Result<()> {
         space: args.space.clone(),
         theme: args.theme.clone(),
         remember: Some(we_ad4m::base::default_base_file()),
-        executor: None,
+        executor: args.executor_binary.clone().map(|binary| {
+            let data = args
+                .executor_data
+                .clone()
+                .unwrap_or_else(we_ad4m::supervisor::default_data_dir);
+            let mut config = we_ad4m::supervisor::SupervisorConfig::new(binary, data);
+            config.seed = args.executor_seed.clone();
+            config
+        }),
         data: if args.demo_recorded {
             we_app::live::DataMode::DemoRecorded
         } else {

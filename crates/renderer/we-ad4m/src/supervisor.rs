@@ -126,6 +126,26 @@ impl SupervisorConfig {
     }
 }
 
+/// Where the desktop app keeps the executor it runs:
+/// `{data}/we-renderer/executor` (`$XDG_DATA_HOME`, else
+/// `~/.local/share`).
+pub fn default_data_dir() -> PathBuf {
+    let mut dir = std::env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .filter(|dir| dir.is_absolute())
+        .unwrap_or_else(|| {
+            let mut home = std::env::var_os("HOME")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from("."));
+            home.push(".local");
+            home.push("share");
+            home
+        });
+    dir.push("we-renderer");
+    dir.push("executor");
+    dir
+}
+
 /// The supervisor's calls with the admin credential.
 pub trait AgentReader: Send + Sync {
     /// The agent's state. `Ok(None)`: the executor has no agent yet.
