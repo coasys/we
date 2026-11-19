@@ -191,9 +191,13 @@ describe('a standing watch', () => {
     // The class by its target-class IRI — two apps' classes can share the name "TextBlock".
     expect(p.value('sourceClass')).toBe(targetOf('TextBlock'));
     expect(p.value('sourceText')).toBe('text');
-    // The conversation's own children: `parent` in the request resolves `children` to `has_child`.
+    // The conversation's own children (`parent` in the request resolves `children` to `has_child`)
+    // and their thread replies, only the lines a person wrote.
     expect(p.value('sourceQuery')).toBe(
-      JSON.stringify({ parent: { id: 'we://collection/root', predicate: 'ad4m://has_child' } }),
+      JSON.stringify({
+        parent: { ids: 'we://collection/root', path: ['ad4m://has_child', 'we://thread'] },
+        where: { source: ['spoken', 'typed', 'corrected'] },
+      }),
     );
   });
 
@@ -226,7 +230,10 @@ describe('a standing watch', () => {
     expect(p.hasLink(LEGACY_SCOPE_PREDICATE)).toBe(false);
     expect(p.value('sourceClass')).toBe(targetOf('TextBlock'));
     expect(p.value('sourceQuery')).toBe(
-      JSON.stringify({ parent: { id: 'we://collection/root', predicate: 'ad4m://has_child' } }),
+      JSON.stringify({
+        parent: { ids: 'we://collection/root', path: ['ad4m://has_child', 'we://thread'] },
+        where: { source: ['spoken', 'typed', 'corrected'] },
+      }),
     );
   });
 

@@ -1345,9 +1345,13 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
       });
       attachListener(perspective);
 
-      // Read the conversation's own lines, through the containment predicate the caller resolved.
+      // Read the conversation's own lines through the containment predicate the caller resolved,
+      // and the thread replies under them, one `we://thread` hop further. Only lines a person
+      // wrote: `TextBlock.source` is 'spoken', 'typed' or 'corrected' for those, and absent for a
+      // bot's or the system's.
       const sourceQuery = JSON.stringify({
-        parent: { id: conversationOf(request)!, predicate: request.parent.predicate },
+        parent: { ids: conversationOf(request)!, path: [request.parent.predicate, 'we://thread'] },
+        where: { source: ['spoken', 'typed', 'corrected'] },
       });
       const interpretationClasses = await targetClasses(perspective, request.classes);
       // The source class by its target-class IRI too, not its name — `sourceClass` resolves the way
