@@ -2545,15 +2545,23 @@ export function SpaceStoreProvider(props: ParentProps) {
     toastService.error('Could not save this change for the space.');
   };
 
-  /** Persist fields on a space's own record, then publish them. */
-  async function writeSpaceFields(ds: AppDataset, space: Space, fields: Partial<Space>): Promise<void> {
+  /**
+   * Persist fields on a space's own record, then publish them — unless `shouldPublish` says a newer
+   * save has since taken over what is shown.
+   */
+  async function writeSpaceFields(
+    ds: AppDataset,
+    space: Space,
+    fields: Partial<Space>,
+    shouldPublish: () => boolean = () => true,
+  ): Promise<void> {
     try {
       await Space.update(ds.handle, space.id, fields);
     } catch (error) {
       reportSpaceSave(Object.keys(fields).join(', '), error);
       throw error;
     }
-    publishSpaceFields(ds, fields);
+    if (shouldPublish()) publishSpaceFields(ds, fields);
   }
 
   async function updateSpaceImage(field: 'avatar' | 'coverImage', imageFile: File, spaceUuid?: string): Promise<void> {
@@ -4632,7 +4640,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     const shownSpace = onScreen && shown && ds && isSpaceSelf(shown, ds) ? shown : undefined;
     const liveSettings =
       onScreen && loadedCollections().has(collectionId) ? collectionSettings()[collectionId] : undefined;
-    const liveCandidates = onScreen ? shapeStore.extractionCandidates() : undefined;
+    // Only once this dataset's own list has published: until then the signal still holds the space just left's.
+    const liveCandidates =
+      onScreen && shapeStore.extractionCandidatesLoaded() ? shapeStore.extractionCandidates() : undefined;
     const space = shownSpace ?? (ds ? (await Space.findAll(handle, { where: spaceSelfWhere(ds) }))[0] : undefined);
     const own = liveSettings ?? { autoExtract: row?.autoExtract, extractionTargets: row?.extractionTargets };
     /*
@@ -4642,12 +4652,17 @@ export function SpaceStoreProvider(props: ParentProps) {
       resolvable check stays: a candidate whose class is not installed in this dataset yet has no
       shape there and would take the whole pass down.
 
-      The candidates split the same way the records do: the live list for the dataset on screen —
-      re-reading what the switch already read would only wait on it again — and the asking
-      dataset's own read for one nobody is looking at.
+      The candidates split the same way the records do: the live list for the dataset on screen
+      once it has loaded — re-reading what the switch already read would only wait on it again —
+      and the asking dataset's own read for one nobody is looking at or whose list is still arriving.
     */
-    const candidates = liveCandidates ?? (await shapeStore.extractionCandidatesFor(handle));
-    const resolvable = (entity: string) => getEntityForDataset(entity, handle) !== undefined;
+    const { candidates, installed } = liveCandidates
+      ? { candidates: liveCandidates, installed: [] }
+      : await shapeStore.extractionCandidatesFor(handle);
+    // A class the dataset already had is installed though this session never registered it — only
+    // a switch does — and the executor resolves it from its own shape, so it stays.
+    const resolvable = (entity: string) =>
+      installed.includes(entity) || getEntityForDataset(entity, handle) !== undefined;
     return {
       spaceName: space?.name,
       spaceTargets: resolveSpaceExtractionTargets(candidates, space?.extractionTargets).filter(resolvable),
@@ -5839,11 +5854,16 @@ export function SpaceStoreProvider(props: ParentProps) {
     the other save's paint, not anything the record took. `confirmed` is the last value the record
     took: seeded while nothing is pending (the value shown is then the value stored) and moved on
     each save that lands. `ops` says whether a save is still the newest for its field — an earlier
-    one failing must not take back a later one's paint, or its landed value, with it. The record
-    is dropped when nothing is pending, so the next save seeds its baseline from what the cache
-    says then, which the live read may have moved on.
+    one failing or landing must not take back or overwrite a later one's paint with it. `tail` is
+    the store writes in the order they were asked, so the backend cannot finish an older choice
+    after a newer one and leave it stored. The record is dropped when nothing is pending, so the
+    next save seeds its baseline from what the cache says then, which the live read may have
+    moved on.
   */
-  const defaultSaves = new Map<string, { key: string; confirmed: string | undefined; ops: Latest; pending: number }>();
+  const defaultSaves = new Map<
+    string,
+    { key: string; confirmed: string | undefined; ops: Latest; pending: number; tail: Promise<unknown> }
+  >();
 
   const defaultSaveFor = (ds: AppDataset, field: 'defaultTemplateId' | 'defaultThemeId') => {
     const key = `${ds.id}:${field}`;
@@ -5857,10 +5877,18 @@ export function SpaceStoreProvider(props: ParentProps) {
         confirmed: heldSpace(ds)?.[field] ?? (shown && isSpaceSelf(shown, ds) ? shown[field] : undefined),
         ops: latest(),
         pending: 0,
+        tail: Promise.resolve(),
       };
       defaultSaves.set(key, save);
     }
     return save;
+  };
+
+  /** Run a default's store write after the ones already asked for the same field, whether they landed or not. */
+  const queueDefaultWrite = (save: { tail: Promise<unknown> }, write: () => Promise<void>): Promise<void> => {
+    const run = save.tail.catch(() => {}).then(write);
+    save.tail = run;
+    return run;
   };
 
   /*
@@ -5897,7 +5925,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       */
       publishSpaceFields(ds, { defaultTemplateId: templateId });
       const space = await spaceRowForSave(ds);
-      await writeSpaceFields(ds, space, { defaultTemplateId: templateId });
+      await queueDefaultWrite(save, () => writeSpaceFields(ds, space, { defaultTemplateId: templateId }, isNewest));
       save.confirmed = templateId;
     } catch (error) {
       // Only the newest save takes the paint back — an earlier one failing leaves the later one's.
@@ -5919,7 +5947,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       publishSpaceFields(ds, { defaultThemeId: themeId });
       if (isCurrent(ds)) explainHiddenSpaceTheme();
       const space = await spaceRowForSave(ds);
-      await writeSpaceFields(ds, space, { defaultThemeId: themeId });
+      await queueDefaultWrite(save, () => writeSpaceFields(ds, space, { defaultThemeId: themeId }, isNewest));
       save.confirmed = themeId;
     } catch (error) {
       // Only the newest save takes the paint back — an earlier one failing leaves the later one's.

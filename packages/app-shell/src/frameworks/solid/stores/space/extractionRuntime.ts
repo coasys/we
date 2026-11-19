@@ -314,7 +314,19 @@ export function createExtractionRuntime(deps: ExtractionRuntimeDeps): Extraction
         and read live afterwards it would answer for whichever space is on screen by then, pairing
         one space's classes with another's transcript.
       */
-      const { classes } = await deps.collectionAnswers(handle, collectionId);
+      let classes: string[];
+      try {
+        ({ classes } = await deps.collectionAnswers(handle, collectionId));
+      } catch (error) {
+        // An attempt all the same, with no classes guessed for it: the log must tell it from a call never processed.
+        await recordPass(handle, collectionId, {
+          outcome: 'failed',
+          recordCount: 0,
+          targets: [],
+          error: error instanceof Error ? error.message : String(error),
+        });
+        throw error;
+      }
 
       const modelFor = (entity: string) => getEntityForDataset(entity, handle);
       const turns = await gatherTranscriptTurns(

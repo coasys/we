@@ -45,7 +45,6 @@ import {
   SpaceTemplatePreference,
   Template,
 } from '@we/entities';
-import { latest } from '@we/module-shared';
 import type { SchemaNode, TemplateMeta, TemplateSchema } from '@we/schema-shared';
 import { ensureNodeIds, hasViewsMarker, templateThemeIds } from '@we/schema-shared';
 import { updateSchema } from '@we/schema-solid';
@@ -79,6 +78,7 @@ import {
   templateChanges,
 } from '../../../shared/templateSync';
 import { type AppDataset, canonicalSpaceId, useDatasetStore } from './DatasetStore';
+import { latestPerSpace } from './latestPerSpace';
 import { useRouteStore } from './RouteStore';
 import { useSessionStore } from './SessionStore';
 import { createSpaceRecordWait } from './spaceRecordWait';
@@ -1167,9 +1167,11 @@ export function TemplateStoreProvider(props: ParentProps) {
     one is still inside the preference read, and the earlier one's record — read before the
     rollback landed — must not paint over the newer one's. `latest` makes the newest choose the
     only one still current after the await, and the record is re-read after it, so even the newest
-    answers with what the record says now rather than what it said when the choose began.
+    answers with what the record says now rather than what it said when the choose began. Kept per
+    space: a choose still reading for the space just left must not stale the one for the space the
+    user is in now.
   */
-  const chooseLatest = latest();
+  const chooseLatestFor = latestPerSpace();
 
   /**
    * Which template this space shows, from what has already been read — its record, this agent's
@@ -1181,7 +1183,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     fallback?: string,
     options: { shownEarly?: boolean } = {},
   ): Promise<void> {
-    const still = chooseLatest.begin();
+    const still = chooseLatestFor(perspective.id).begin();
 
     // Read per-space preferences from we-root directly rather than through SpaceStore, which mounts
     // below this one — the same reason `provideSpaceLookup` exists.

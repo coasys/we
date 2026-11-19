@@ -206,8 +206,11 @@ export interface ShapeStore {
    * The same candidacy, answered for a dataset that may not be the one on screen: its shapes and
    * its foreign classes read through the handle, so a call asking about its own space while
    * another is up narrows by the rule the live list does. Async — both are a read.
+   *
+   * `installed` names the foreign classes the dataset holds: present whether or not this session
+   * has registered them, which the read deliberately does not.
    */
-  extractionCandidatesFor(dataset: DatasetHandle): Promise<string[]>;
+  extractionCandidatesFor(dataset: DatasetHandle): Promise<{ candidates: string[]; installed: string[] }>;
   /** Options for the relationship target picker — `{ label, value }`, grouped and labelled. */
   relationshipTargets: Accessor<RelationshipTargetOption[]>;
   /**
@@ -542,9 +545,14 @@ export function ShapeStoreProvider(props: ParentProps) {
     included — and an ask about a dataset nobody is adopting into must not take its classes
     apart as the price of asking.
   */
-  async function extractionCandidatesFor(dataset: DatasetHandle): Promise<string[]> {
+  async function extractionCandidatesFor(
+    dataset: DatasetHandle,
+  ): Promise<{ candidates: string[]; installed: string[] }> {
+    // `loadShapes` publishes no adopted shapes for a dataset that is not a WE space, so neither
+    // does this: a stored shape document there is no candidate on screen and none off it.
+    const weSpace = (await schemas()?.hasCoreSchema(dataset)) === true;
     const [records, foreign] = await Promise.all([
-      storage().list(dataset),
+      weSpace ? storage().list(dataset) : Promise.resolve([]),
       schemas()?.foreignEntries(dataset) ?? Promise.resolve([]),
     ]);
     const shapes = records.map((record) => {
@@ -558,7 +566,7 @@ export function ShapeStoreProvider(props: ParentProps) {
       });
       return { name: record.name, manifest: gate.valid ? gate.manifest : null };
     });
-    return extractionCandidatesOf(shapes, foreign).candidates;
+    return { candidates: extractionCandidatesOf(shapes, foreign).candidates, installed: foreign.map((m) => m.name) };
   }
 
   /*

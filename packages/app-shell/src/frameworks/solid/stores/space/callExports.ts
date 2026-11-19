@@ -151,7 +151,11 @@ export function createCallExports(deps: CallExportDeps) {
                 amendments: true,
               },
             } as never),
-            deps.exportMeta(p, callId),
+            // The settings head the log and are not its substance: unreadable, the history still goes.
+            deps.exportMeta(p, callId).catch((error) => {
+              console.error('SpaceStore: exportExtractionLog could not read the settings', error);
+              return undefined;
+            }),
           ]);
           const row = call as unknown as {
             title?: string;
@@ -185,11 +189,11 @@ export function createCallExports(deps: CallExportDeps) {
           return formatExtractionLog({
             callId,
             callTitle: row?.title,
-            spaceName: meta.spaceName,
+            spaceName: meta?.spaceName,
             exportedAt,
-            callTargets: meta.classes,
-            spaceTargets: meta.spaceTargets,
-            autoInterpret: meta.auto,
+            callTargets: meta?.classes,
+            spaceTargets: meta?.spaceTargets,
+            autoInterpret: meta?.auto,
             transcript: turns,
             passes,
             records,
