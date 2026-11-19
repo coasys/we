@@ -200,14 +200,21 @@ const watchesIn = async (perspective) =>
  */
 function watchFeedQueries(page, root) {
   const seen = [];
-  // Calls asked and not yet answered, over every socket: what a stuck load is still waiting on.
-  const pending = new Map();
-  seen.unanswered = () => [...pending.values()];
+  // The load a call belongs to: a reply can arrive in a later load's window than the one that sent
+  // it (the old socket takes a moment to close), and must not land in that load's numbers.
+  // `next()` marks the start of a load; `seen.load` is its generation.
+  seen.load = 0;
+  seen.next = () => ++seen.load;
+  // Calls asked and not yet answered, by socket: what a stuck load is still waiting on. One map per
+  // socket, not one keyed by URL — the SDK can abandon a socket and reconnect to the same URL while
+  // the old one is still closing, and the old one's close must not drop the replacement's calls.
+  const pendingBySocket = new Map();
+  seen.unanswered = () => [...pendingBySocket.values()].flatMap((pending) => [...pending.values()]);
   page.on('websocket', (ws) => {
     // A reload closes the socket; what it never answered is no longer anything the page waits on.
-    ws.on('close', () => {
-      for (const key of pending.keys()) if (key.startsWith(`${ws.url()} `)) pending.delete(key);
-    });
+    const pending = new Map();
+    pendingBySocket.set(ws, pending);
+    ws.on('close', () => pendingBySocket.delete(ws));
     ws.on('framesent', ({ payload }) => {
       let message;
       try {
@@ -222,6 +229,7 @@ function watchFeedQueries(page, root) {
         limit: null,
         feed: false,
         query: null,
+        load: seen.load,
         sent: performance.now(),
       };
       if (message.type === 'perspective.modelQuery') {
@@ -236,7 +244,7 @@ function watchFeedQueries(page, root) {
           // A query this cannot read is still a call the page waited for.
         }
       }
-      pending.set(`${ws.url()} ${message.id}`, asked);
+      pending.set(message.id, asked);
     });
     ws.on('framereceived', ({ payload }) => {
       let message;
@@ -245,10 +253,9 @@ function watchFeedQueries(page, root) {
       } catch {
         return;
       }
-      const key = `${ws.url()} ${message.id}`;
-      const asked = pending.get(key);
+      const asked = pending.get(message.id);
       if (!asked) return;
-      pending.delete(key);
+      pending.delete(message.id);
       let rows = null;
       try {
         const result = typeof message.result === 'string' ? JSON.parse(message.result) : message.result;
@@ -262,6 +269,7 @@ function watchFeedQueries(page, root) {
         className: asked.className,
         limit: asked.limit,
         query: asked.query,
+        load: asked.load,
         sent: asked.sent,
         ms: performance.now() - asked.sent,
         rows,
@@ -331,12 +339,20 @@ const errText = (e) => (typeof e === 'string' ? e : (e?.message ?? JSON.stringif
  * its SPARQL eval deadline (`query_deadline_secs`) kills a query it cannot answer in time, so the
  * page has nothing to draw and the refusal, not a missing row, is what the run measured — or the
  * page closed. `kind` is `timeout` when the wait ran out with neither.
+ *
+ * Only this load generation's calls are watched (`load`), and a refusal counts only when it is of
+ * the window being waited on (`limit`): the Feed asks for the 150-row window itself just after the
+ * first draw, so its call can be refused while the newest window is still being waited on — that is
+ * the older window's failure, not the newest's.
  */
-async function waitForRow(page, queries, from, { shown, timeout, pollMs = 250 }) {
+async function waitForRow(page, queries, load, { shown, timeout, pollMs = 250, limit }) {
   const deadline = performance.now() + timeout;
   for (;;) {
     if (page.isClosed()) return { drawn: false, kind: 'page-closed' };
-    const refused = queries.slice(from).find((q) => q.feed && q.className === 'TextBlock' && q.error);
+    const refused = queries.find(
+      (q) =>
+        q.load === load && q.feed && q.className === 'TextBlock' && q.error && (q.limit === null || q.limit === limit),
+    );
     if (refused) return { drawn: false, kind: 'feed-call-refused', error: errText(refused.error) };
     if (await shown().catch(() => false)) return { drawn: true };
     if (performance.now() >= deadline) return { drawn: false, kind: 'timeout' };
@@ -434,12 +450,14 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
       workers: WORKERS,
       onProgress: (written, count) => log(`generated links for ${written}/${count}`),
     });
-    // Nothing should have registered one meanwhile (no page was open); if one did, this rate is not
-    // the seeding's own.
+    // Nothing should have registered one meanwhile (no page was open). If one did, the seed timings
+    // are not the seeding's own and the idle read below is not a watch-off one: neither is published
+    // as the metric it would mislabel — a partial run never sets a baseline it did not earn.
     detail.watch.afterSeed = await watchesIn(perspective);
-    if (detail.watch.afterSeed.length)
-      log(`warning: auto-processor(s) registered during the seeding: ${detail.watch.afterSeed}`);
-    run.seed = { generateSeconds: seeded.generateSeconds, importSeconds: seeded.importSeconds, links: seeded.links };
+    const seedRanWatchFree = detail.watch.afterSeed.length === 0;
+    if (!seedRanWatchFree) log(`warning: auto-processor(s) registered during the seeding: ${detail.watch.afterSeed}`);
+    if (seedRanWatchFree)
+      run.seed = { generateSeconds: seeded.generateSeconds, importSeconds: seeded.importSeconds, links: seeded.links };
     detail.seed = { ...seeded, authors: seeded.authors.length };
     const afterSeed = rssOf(executor.pid);
     run.rss.afterSeed = afterSeed.rss;
@@ -507,8 +525,12 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
       );
     }
 
-    run.cpu.idleAfterSeed = await idleCpuPercent(executor.pid, IDLE_SECONDS);
-    log(`executor idle after the seeding: ${run.cpu.idleAfterSeed?.toFixed(1)}% of a core over ${IDLE_SECONDS} s`);
+    if (seedRanWatchFree) {
+      run.cpu.idleAfterSeed = await idleCpuPercent(executor.pid, IDLE_SECONDS);
+      log(`executor idle after the seeding: ${run.cpu.idleAfterSeed?.toFixed(1)}% of a core over ${IDLE_SECONDS} s`);
+    } else {
+      log('executor idle after the seeding not measured: an auto-processor is registered');
+    }
 
     // 4. The loads.
     // The run under way, so a failure can say what it asked and what it never heard back.
@@ -561,33 +583,58 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
         // load outcome, not the end of the suite.
         const replacement = page.isClosed();
         if (replacement) await openReaderPage();
-        const from = queries.length;
+        // A new load generation: a call still unanswered when the last load gave up answers into
+        // the old generation, and never lands in this load's numbers.
+        const load = queries.next();
         const t0 = performance.now();
         const t0Epoch = Date.now();
-        current = { run: k + 1, kind, from, t0 };
+        current = { run: k + 1, kind, load, t0 };
         run.attempted = k + 1;
-        // A page that closes under the navigation is a load outcome, as it is during the wait below;
-        // any other navigation error ends the suite.
+        // Navigation and the newest-page wait share the page's budget: a document whose load event
+        // stalls until the budget is spent is the run's `timeout` outcome. A page that closes under
+        // the navigation is a load outcome, as it is during the wait below; any other navigation
+        // error ends the suite.
         let drew = null;
         try {
-          if (k === 0 || replacement) await page.goto(spacePage);
-          else await page.reload();
+          if (k === 0 || replacement) await page.goto(spacePage, { timeout: PAGE_TIMEOUT });
+          else await page.reload({ timeout: PAGE_TIMEOUT });
         } catch (e) {
-          if (!page.isClosed()) throw e;
-          drew = { drawn: false, kind: 'page-closed', error: e.message };
+          if (page.isClosed()) drew = { drawn: false, kind: 'page-closed', error: e.message };
+          else if (e.name === 'TimeoutError') drew = { drawn: false, kind: 'timeout', error: e.message };
+          else throw e;
         }
         // The newest page: the newest seeded message on screen, and the 49th of the window in the
-        // DOM. A run that never gets there is recorded with why (a refused feed call, or the
+        // DOM — and the page's own marks for both, which are what the newest time is calculated
+        // from. A run that never gets there is recorded with why (a refused feed call, or the
         // timeout) instead of ending the suite: a slow or refused load is a result.
-        drew ??= await waitForRow(page, queries, from, {
-          timeout: PAGE_TIMEOUT,
+        drew ??= await waitForRow(page, queries, load, {
+          timeout: Math.max(0, t0 + PAGE_TIMEOUT - performance.now()),
+          limit: FIRST_PAGE,
           shown: async () =>
-            (await row(page, MESSAGES - 1).isVisible()) && (await row(page, MESSAGES - (FIRST_PAGE - 1)).count()) > 0,
+            (await row(page, MESSAGES - 1).isVisible()) &&
+            (await row(page, MESSAGES - (FIRST_PAGE - 1)).count()) > 0 &&
+            (await page.evaluate(
+              () =>
+                window.__feedScaleMarks?.newestVisible !== undefined &&
+                window.__feedScaleMarks?.lastAttached !== undefined,
+            )),
         });
         // When the suite saw it (or gave up), which trails the page by up to the polling interval.
         const noticed = performance.now() - t0;
         // `sentAfterMs`: how far into the load the page asked; the time before it is the app starting.
-        const calls = () => queries.slice(from).map(({ sent, ...q }) => ({ ...q, sentAfterMs: sent - t0 }));
+        const calls = () =>
+          queries.filter((q) => q.load === load).map(({ sent, ...q }) => ({ ...q, sentAfterMs: sent - t0 }));
+        // The marks the newest time is read from live in the page: a tab that closed between the
+        // wait and here leaves the load its outcome — page-closed.
+        let marked = null;
+        if (drew.drawn) {
+          try {
+            marked = await page.evaluate(() => ({ ...window.__feedScaleMarks }));
+          } catch (e) {
+            if (!page.isClosed()) throw e;
+            drew = { drawn: false, kind: 'page-closed', error: e.message };
+          }
+        }
         if (!drew.drawn) {
           const mine = calls().filter((q) => q.feed);
           tally(mine);
@@ -602,7 +649,10 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
             olderMs: null,
             queries: mine,
             calls: calls().length,
-            unanswered: queries.unanswered().map((q) => ({ ...q, sent: undefined, sentAfterMs: q.sent - t0 })),
+            unanswered: queries
+              .unanswered()
+              .filter((q) => q.load === load)
+              .map((q) => ({ ...q, sent: undefined, sentAfterMs: q.sent - t0 })),
           });
           log(
             `run ${k + 1} (${kind}) did not draw the newest page in ${(noticed / 1_000).toFixed(1)} s: ` +
@@ -612,7 +662,6 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
           continue;
         }
         // When the page did it, by its own marks (`feedMarks`): the newest page's time.
-        const marked = await page.evaluate(() => ({ ...window.__feedScaleMarks }));
         const since = (epoch) => (typeof epoch === 'number' ? epoch - t0Epoch : null);
         const marks = {
           domContentLoaded: since(marked.domContentLoaded),
@@ -628,29 +677,45 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
         const newest = Math.max(marks.newestVisible, marks.lastAttached);
 
         const t1Epoch = Date.now();
-        await scrollToOlderEdge(row(page, MESSAGES - (FIRST_PAGE - 1)));
-        run.olderAttempted = (run.olderAttempted ?? 0) + 1;
-        // The whole run's calls: the Feed may already have asked for this window before the scroll.
-        const olderDrew = await waitForRow(page, queries, from, {
-          timeout: PAGE_TIMEOUT,
-          shown: async () => (await row(page, MESSAGES - (SECOND_WINDOW - 1)).count()) > 0,
-        });
         let olderAt;
         let older = null;
         let olderOutcome = 'drawn';
-        if (!olderDrew.drawn) {
-          // The mark is read only on a drawn page: after a close there is no page to read it from.
-          olderOutcome = olderDrew.kind;
-          run.olderFailures = [...(run.olderFailures ?? []), olderDrew.kind];
+        let olderError = null;
+        try {
+          run.olderAttempted = (run.olderAttempted ?? 0) + 1;
+          await scrollToOlderEdge(row(page, MESSAGES - (FIRST_PAGE - 1)));
+          // The whole run's calls: the Feed may already have asked for this window before the
+          // scroll. A refusal of it is this window's failure, and only its (`limit`).
+          const olderDrew = await waitForRow(page, queries, load, {
+            timeout: PAGE_TIMEOUT,
+            limit: SECOND_WINDOW,
+            shown: async () =>
+              (await row(page, MESSAGES - (SECOND_WINDOW - 1)).count()) > 0 &&
+              (await page.evaluate(() => typeof window.__feedScaleMarks?.olderAttached === 'number')),
+          });
+          if (!olderDrew.drawn) {
+            // The mark is read only on a drawn page: after a close there is no page to read it from.
+            olderOutcome = olderDrew.kind;
+            olderError = olderDrew.error;
+          } else {
+            olderAt = await page.evaluate(() => window.__feedScaleMarks.olderAttached);
+            assert.equal(typeof olderAt, 'number', 'the page did not mark the older window');
+            // The Feed may ask for the older window by itself before the scroll (README): then it is 0.
+            older = Math.max(0, olderAt - t1Epoch);
+            marks.olderAttached = since(olderAt);
+          }
+        } catch (e) {
+          // The newest time is already known: a tab closed under the older phase keeps it and
+          // records the older phase as page-closed; anything else ends the suite.
+          if (!page.isClosed()) throw e;
+          olderOutcome = 'page-closed';
+          olderError = e.message;
+        }
+        if (olderOutcome !== 'drawn') {
+          run.olderFailures = [...(run.olderFailures ?? []), olderOutcome];
           log(
-            `run ${k + 1} (${kind}): the older page did not arrive: ${olderDrew.kind}${olderDrew.error ? ` (${olderDrew.error})` : ''}`,
+            `run ${k + 1} (${kind}): the older page did not arrive: ${olderOutcome}${olderError ? ` (${olderError})` : ''}`,
           );
-        } else {
-          olderAt = await page.evaluate(() => window.__feedScaleMarks.olderAttached);
-          assert.equal(typeof olderAt, 'number', 'the page did not mark the older window');
-          // The Feed may ask for the older window by itself before the scroll (README): then it is 0.
-          older = Math.max(0, olderAt - t1Epoch);
-          marks.olderAttached = since(olderAt);
         }
 
         const mine = calls().filter((q) => q.feed);
@@ -707,8 +772,8 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
         detail.failedRun = {
           run: current.run,
           kind: current.kind,
-          answered: (queries ?? []).slice(current.from).map(since),
-          unanswered: (queries?.unanswered?.() ?? []).map(since),
+          answered: (queries ?? []).filter((q) => q.load === current.load).map(since),
+          unanswered: (queries?.unanswered?.() ?? []).filter((q) => q.load === current.load).map(since),
         };
         const said = (q) =>
           `${q.className ?? q.type}${q.limit === null ? '' : `:${q.limit}`}@${q.sentAfterMs.toFixed(0)}` +
@@ -724,17 +789,23 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
       throw error;
     }
     const cpuAfter = cpuOf(executor.pid);
-    if (cpuBefore !== null && cpuAfter !== null) run.cpu.uiPhase = cpuAfter - cpuBefore;
     await closing(reader, false);
     const afterUi = rssOf(executor.pid);
     run.rss.afterUi = afterUi.rss;
     run.rss.peak = peakOf(afterUi);
     // The app's watch, registered again when the space opened: what the executor now runs.
     detail.watch.afterUi = await watchesIn(perspective);
-    run.cpu.idleAfterUi = await idleCpuPercent(executor.pid, IDLE_SECONDS);
+    // The CPU numbers are the watch-on ones: published only when the app really did register its
+    // watch again — a load that completed with no watch running must not set them.
+    const watchOn = detail.watch.afterUi.length > 0;
+    if (watchOn) {
+      if (cpuBefore !== null && cpuAfter !== null) run.cpu.uiPhase = cpuAfter - cpuBefore;
+      run.cpu.idleAfterUi = await idleCpuPercent(executor.pid, IDLE_SECONDS);
+    }
     log(
-      `executor CPU: ${run.cpu.uiPhase?.toFixed(1)} s over the loads; idle after them ` +
-        `${run.cpu.idleAfterUi?.toFixed(1)}% of a core, with auto-processor(s) ${detail.watch.afterUi.join(', ') || 'none'}`,
+      `executor CPU: ${run.cpu.uiPhase?.toFixed(1) ?? 'not counted'} s over the loads; idle after them ` +
+        `${run.cpu.idleAfterUi?.toFixed(1) ?? 'not measured'}% of a core, ` +
+        `with auto-processor(s) ${detail.watch.afterUi.join(', ') || 'none'}`,
     );
 
     // The executor's answer to the same query from outside the page, for comparing with it.

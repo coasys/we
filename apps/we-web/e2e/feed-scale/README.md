@@ -11,9 +11,12 @@ WE_SEED=seeds/coasys.seed.json pnpm build:web
 FEED_SCALE_MESSAGES=10000 AD4M_EXECUTOR=/path/to/ad4m-executor pnpm --filter @we/app-web test:feed-scale
 ```
 
-(`pnpm e2e feed-scale` does the build and the executor fetch itself.) The executor binary is found
-as it is for the other e2e suites (`@we/e2e`, `docs/testing/e2e.md`). The environment table is at
-the top of `feed-scale.e2e.mjs`.
+(`pnpm e2e feed-scale` does the build itself.) The executor must include ad4m
+[#1780](https://github.com/coasys/ad4m/pull/1780)'s `runtime.importData`. The pinned executor
+predates it, so set `AD4M_EXECUTOR` until the pin moves: with the pinned one the suite stops at
+the import, before it measures the Feed. The binary is found as it is for the other e2e suites
+(`@we/e2e`, `docs/testing/e2e.md`).
+The environment table is at the top of `feed-scale.e2e.mjs`.
 
 ## What it measures
 
@@ -91,11 +94,15 @@ The suite treats the watch in two ways:
   O(messages) per tick and would run while the import fills the perspective. The suite removes
   every auto-processor of the space before it seeds, with `perspective.removeAutoProcessor`, and
   records which ones in `detail.watch.removedBeforeSeed`. No page is open during the seeding, so
-  nothing registers it again. The suite checks this after the seeding (`detail.watch.afterSeed`).
+  nothing registers it again. The suite checks this after the seeding (`detail.watch.afterSeed`):
+  if something did register one, the `seed.*` timings and `idle_cpu_percent.after_seed` are left
+  out of the metrics — a contaminated number would not be what it says.
 - **During the loads, the suite keeps it.** The app registers the watch again when it opens the
   space, as it does for every user. The page times and the executor's CPU include its cost.
   `executor.cpu_seconds.ui_phase` and `executor.idle_cpu_percent.after_ui` are the numbers that
-  move when the watch's cost changes. `idle_cpu_percent.after_seed` is the same executor and store
+  move when the watch's cost changes — and they are published only when the space's watch is
+  actually registered afterwards (`detail.watch.afterUi`); a load that ran with no watch must not
+  set them. `idle_cpu_percent.after_seed` is the same executor and store
   with no watch, for comparison.
 
 ## How the space is filled

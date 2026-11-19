@@ -155,7 +155,8 @@ export function loadPhases(calls, marks = {}) {
   // Only the profiles asked before the page drew: what it could have been waiting on.
   const before = drawn.length ? Math.max(...drawn) : Infinity;
   const profiles = calls.filter((q) => q.type === 'agent.byDid' && q.sentAfterMs < before);
-  const watch = calls.filter((q) => q.type === 'perspective.addAutoProcessor');
+  // Only a call the executor accepted registers the watch: one answered with an error did not.
+  const watch = calls.filter((q) => q.type === 'perspective.addAutoProcessor' && !q.error);
   return {
     firstCall: first(calls, (q) => q.sentAfterMs),
     spaceAnswered: first(space, done),

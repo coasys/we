@@ -42,11 +42,12 @@
  * disk instead of building one large string in memory.
  */
 import { createHash } from 'node:crypto';
-import { once } from 'node:events';
 import { createReadStream, createWriteStream, mkdirSync, mkdtempSync } from 'node:fs';
 import { stat, unlink } from 'node:fs/promises';
 import { availableParallelism, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
 
@@ -74,7 +75,10 @@ export function messageShape(links, id, root) {
   const own = links.filter((l) => l.data.source === id);
   const placed = links.filter((l) => l.data.target === id && l.data.source === root);
   const has = (p, t) => own.some((l) => l.data.predicate === p && (t === undefined || l.data.target === t));
-  if (!has(FLAG.predicate, FLAG.target)) throw new Error(`message ${id} has no ${FLAG.target} flag`);
+  // Exactly one flag: `messageLinks` writes one, so a second matching flag would make the generated
+  // link count wrong — as a second collection placement would, refused below.
+  const flags = own.filter((l) => l.data.predicate === FLAG.predicate && l.data.target === FLAG.target);
+  if (flags.length !== 1) throw new Error(`message ${id} has ${flags.length} ${FLAG.target} flags, needs exactly one`);
   if (!has(TEXT)) throw new Error(`message ${id} has no ${TEXT}`);
   if (placed.length !== 1 || placed[0].data.predicate !== HAS_CHILD) {
     throw new Error(`message ${id} is not in the space collection ${root} by ${HAS_CHILD}: ${JSON.stringify(placed)}`);
@@ -109,7 +113,9 @@ export function processorIds(links) {
 
 /** A small, fast, seeded generator, so a run's messages are the same each time it is asked for. */
 export function random(seed) {
-  let s = seed >>> 0 || 1;
+  // xorshift has no state 0. Key 0 (a `seed: 0` run's message 0) takes the last state, not key 1's,
+  // which that run's message 1 uses: the two messages would share an id, text and author.
+  let s = seed >>> 0 || 0xffffffff;
   return () => {
     s ^= s << 13;
     s ^= s >>> 17;
@@ -211,26 +217,15 @@ function described(m) {
 // for an asset reference and rewrite it into a URL that is no longer a file path.
 const WORKER_FILE = join(dirname(fileURLToPath(import.meta.url)), 'seed-worker.mjs');
 
-/** Runs one `seed-worker.mjs` worker; `onDone` receives its running message count. */
-function runWorker(workerData, onDone) {
+/** Runs one `seed-worker.mjs` worker to its exit; `onDone` receives its running message count. */
+function runWorker(worker, onDone) {
   return new Promise((resolve, reject) => {
-    const worker = new Worker(WORKER_FILE, { workerData });
     worker.on('message', (m) => {
       if (typeof m?.progress === 'number') onDone(m.progress);
     });
     worker.on('error', reject);
     worker.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`a seed worker exited with code ${code}`))));
   });
-}
-
-/** Writes `s` to `out`, waiting for the buffer to drain when it is full. */
-async function writeChunk(out, s) {
-  if (!out.write(s)) await once(out, 'drain');
-}
-
-/** Streams `src` into `out` chunk by chunk, honouring backpressure. */
-async function copyInto(out, src) {
-  for await (const chunk of createReadStream(src)) await writeChunk(out, chunk);
 }
 
 /**
@@ -269,6 +264,7 @@ export async function generateSeedFile({
   };
   const slice = Math.ceil(count / workers);
   let failed = false;
+  const spawned = [];
   try {
     for (let k = 0; k < workers; k++) {
       const from = k * slice;
@@ -278,8 +274,10 @@ export async function generateSeedFile({
       partFiles.push(partFile);
       written.push(0);
       const index = written.length - 1;
+      const worker = new Worker(WORKER_FILE, { workerData: { partFile, shape, count, from, to, endMs, seed } });
+      spawned.push(worker);
       tasks.push(
-        runWorker({ partFile, shape, count, from, to, endMs, seed }, (n) => {
+        runWorker(worker, (n) => {
           written[index] = n;
           tick();
         }),
@@ -288,23 +286,27 @@ export async function generateSeedFile({
     await Promise.all(tasks);
 
     // Parts join in slice order, so the file is the links of messages 0..count-1 — byte-identical
-    // to what a single worker writing the whole range would produce.
-    const out = createWriteStream(filePath);
-    try {
-      await writeChunk(out, '{"links":[');
+    // to what a single worker writing the whole range would produce. One pipeline over the header,
+    // the parts and the footer: an error reading a part or writing the file (a full disk) rejects
+    // the merge and the cleanup below runs — an 'error' nothing awaited would abort the run with
+    // the parts still on disk.
+    const rows = async function* () {
+      yield '{"links":[';
       let needComma = false;
       for (const part of partFiles) {
         if ((await stat(part)).size === 0) continue;
-        if (needComma) await writeChunk(out, ',');
-        await copyInto(out, part);
+        if (needComma) yield ',';
+        yield* createReadStream(part);
         needComma = true;
       }
-      await writeChunk(out, ']}');
-    } finally {
-      await new Promise((resolve, reject) => out.end((e) => (e ? reject(e) : resolve())));
-    }
+      yield ']}';
+    };
+    await pipeline(Readable.from(rows()), createWriteStream(filePath));
   } catch (error) {
     failed = true;
+    // Whatever the surviving workers are still doing must end before cleanup removes their files:
+    // a part created after its unlink would be left behind.
+    await Promise.all(spawned.map((worker) => worker.terminate())).catch(() => {});
     throw error;
   } finally {
     // A half-written file is never a valid input for the import: drop it with the parts.
@@ -350,17 +352,29 @@ export async function seedMessages({
 
   let result = null;
   const importStart = Date.now();
-  const writer = await openWriter(url, token);
+  // The connection is inside the cleanup scope: if it cannot be made, the generated file is still
+  // deleted — and the file goes even if closing the writer fails.
+  let writer = null;
   try {
+    writer = await openWriter(url, token);
     result = await writer.importPerspective(uuid, generated.filePath);
   } finally {
-    writer.close();
-    await unlink(generated.filePath).catch(() => {});
+    try {
+      writer?.close();
+    } finally {
+      await unlink(generated.filePath).catch(() => {});
+    }
   }
   const importSeconds = (Date.now() - importStart) / 1_000;
-  // An executor before ad4m #1780 answers the call with the file echoed back and stores nothing.
-  if (typeof result?.imported !== 'number') {
-    throw new Error('runtime.importData did not import (needs an executor with ad4m #1780)');
+  // An executor before ad4m #1780 answers the call with the file echoed back and stores nothing;
+  // one that stores only part of it is no baseline either — `imported` must be the file's count.
+  if (result?.imported !== generated.links) {
+    const counts = result
+      ? `imported ${result.imported ?? 'none'}, covered ${result.covered ?? 'none'}, skipped ${result.skipped ?? 'none'}`
+      : 'no result';
+    throw new Error(
+      `runtime.importData stored ${counts} of ${generated.links} links (needs an executor with ad4m #1780)`,
+    );
   }
 
   return {

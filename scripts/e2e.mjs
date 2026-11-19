@@ -50,7 +50,15 @@ export const SUITES = {
     about: 'The Feed of a space holding up to a million messages, timed in the built app (apps/we-web/e2e/feed-scale).',
     executor: true,
     build: [{ command: 'pnpm', args: ['build:web'], env: { WE_SEED: 'seeds/coasys.seed.json' } }],
-    run: [{ command: 'pnpm', args: ['--filter', '@we/app-web', 'test:feed-scale'] }],
+    // The run's seed is also the build's: `serveDist` serves the CSP of the seed `WE_SEED` names,
+    // and a Coasys build served under `we-seed.json`'s policy can have its requests blocked.
+    run: [
+      {
+        command: 'pnpm',
+        args: ['--filter', '@we/app-web', 'test:feed-scale'],
+        env: { WE_SEED: 'seeds/coasys.seed.json' },
+      },
+    ],
   },
   'backend-live': {
     kind: 'contract',

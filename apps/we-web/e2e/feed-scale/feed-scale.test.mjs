@@ -10,7 +10,17 @@ import { join } from 'node:path';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 
 import { JOB, cpuSeconds, loadPhases, max, median, memory, metrics, summaryLine } from './results.mjs';
-import { AUTHORS, SPAN_MS, generateSeedFile, messageShape, messages, processorIds, random, words } from './seed.mjs';
+import {
+  AUTHORS,
+  SPAN_MS,
+  generateSeedFile,
+  messageShape,
+  messages,
+  processorIds,
+  random,
+  seedMessages,
+  words,
+} from './seed.mjs';
 import { base58, makeAgent } from './signer.mjs';
 import { openWriter } from './writer.mjs';
 
@@ -111,6 +121,8 @@ describe('seed', () => {
 
   it('refuses a message the Feed would not read as one', () => {
     expect(() => messageShape(written.slice(1), id, root)).toThrow(/flag/);
+    // Two flags pass `some`, but the seeder writes one — the link count would be wrong.
+    expect(() => messageShape([...written, link(id, 'we://flag', 'we://text_block')], id, root)).toThrow(/flags/);
     const untexted = written.filter((l) => l.data.predicate !== 'we://text');
     expect(() => messageShape(untexted, id, root)).toThrow(/we:\/\/text/);
     expect(() => messageShape(written.slice(0, 3), id, root)).toThrow(/collection/);
@@ -130,6 +142,14 @@ describe('seed', () => {
     expect(new Set(a.map((m) => m.id)).size).toBe(a.length);
     expect(new Set(a.map((m) => m.author.did)).size).toBe(3);
     expect(a[42].text).toMatch(/ #42$/);
+  });
+
+  it('gives every message its own id, including at seed 0', () => {
+    // `random` has no state 0: key 0 (seed 0, message 0) must not take message 1's state.
+    const authors = Array.from({ length: 3 }, (_, i) => ({ did: `did:test:${i}` }));
+    const a = [...messages({ count: 500, endMs: Date.UTC(2026, 0, 1), seed: 0, authors })];
+    expect(a[0].id).not.toBe(a[1].id);
+    expect(new Set(a.map((m) => m.id)).size).toBe(a.length);
   });
 
   it('writes a sentence of 3 to 30 words, numbered', () => {
@@ -265,6 +285,21 @@ describe('import call', () => {
       vi.unstubAllGlobals();
     }
   });
+
+  it('fails the seeding when the import stores fewer links than the file holds', async () => {
+    // The fake answers `imported: 0` for a file of real links — as an executor without ad4m #1780
+    // does (it echoes the file) or a partial import would. Neither may publish seed metrics.
+    FakeSocket.sent = [];
+    vi.stubGlobal('WebSocket', FakeSocket);
+    try {
+      const shape = { root: 'ad4m://obj/root', properties: [{ predicate: 'we://text', target: null }], links: 3 };
+      await expect(
+        seedMessages({ url: 'http://127.0.0.1:40000', token: 't', uuid: 'u', shape, count: 3, workers: 1 }),
+      ).rejects.toThrow(/imported 0.*of 9 links.*#1780/);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  }, 60_000);
 });
 
 describe('results', () => {
@@ -445,6 +480,23 @@ describe('results', () => {
       lastAttached: 4050,
     });
     expect(loadPhases([])).toMatchObject({ firstCall: null, feedAsked: null, profiles: 0, newestVisible: null });
+  });
+
+  it('counts only a watch registration the executor accepted', () => {
+    const calls = [
+      {
+        type: 'perspective.addAutoProcessor',
+        className: null,
+        feed: false,
+        sentAfterMs: 100,
+        ms: 50,
+        error: 'refused',
+      },
+      { type: 'perspective.addAutoProcessor', className: null, feed: false, sentAfterMs: 200, ms: 60, error: null },
+    ];
+    // The errored call is not a registration: the good one's answer is what counts.
+    expect(loadPhases(calls).watchRegistered).toBe(260);
+    expect(loadPhases(calls.slice(0, 1)).watchRegistered).toBe(null);
   });
 
   it('reads memory off /proc/<pid>/status', () => {
