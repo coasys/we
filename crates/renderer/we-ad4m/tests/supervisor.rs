@@ -843,6 +843,27 @@ fn two_windows_init_a_fresh_folder_once() {
     assert_eq!(inits(dir.path()), 1, "both windows ran init");
 }
 
+/// An empty data folder (made by someone, holding nothing) is prepared
+/// like a missing one: init runs, and its result takes the folder's place.
+#[test]
+fn an_empty_data_folder_is_initialised() {
+    let dir = tempfile::tempdir().unwrap();
+    let seed = dir.path().join("seed.json");
+    std::fs::write(&seed, "{}").unwrap();
+    std::fs::create_dir(dir.path().join("data")).unwrap();
+    let mut config = config(dir.path(), seeding_init(dir.path(), "0"), health());
+    config.seed = Some(seed);
+    let sup = Supervisor::with_reader(config, Arc::new(Reader::default()));
+    sup.start();
+    wait_for(&sup, "ready", 10, |s| matches!(s, Lifecycle::Ready { .. }));
+    assert_eq!(inits(dir.path()), 1, "init did not run for an empty folder");
+    assert!(
+        dir.path().join("data").join("mainnet_seed.seed").is_file(),
+        "the prepared folder did not take the empty one's place"
+    );
+    sup.stop();
+}
+
 /// Round 2 (Lal: exit 75 keeps Ready): the executor asks to be started
 /// again. From its exit until the new child is ready, the state is
 /// Starting (not the old run's Ready), and a refresh asked of the old run
