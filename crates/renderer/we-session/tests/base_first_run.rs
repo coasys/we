@@ -517,6 +517,9 @@ fn a_failed_read_is_read_again_when_the_agent_changes() {
     let read = open.controller.identity_read_due().expect("read again");
     open.controller.note_identity(read, Ok(empty()));
     assert_eq!(open.stage(), "first-run");
+    // The old failure is not said over the answer.
+    assert_eq!(open.controller.public_json()["error"], "");
+    assert!(!open.text().contains("Couldn't read your identity"));
     // A known identity is not read again on an agent change.
     open.controller.note_executor(ExecutorState::Ready {
         agent: Some(AgentState::Locked),

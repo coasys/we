@@ -817,7 +817,13 @@ impl BaseController {
         }
         inner.read_due = false;
         match answer {
-            Ok(facts) => inner.identity = IdentityRead::Known(facts),
+            Ok(facts) => {
+                inner.identity = IdentityRead::Known(facts);
+                // An earlier read's failure is not said over this answer.
+                if inner.error.starts_with(IDENTITY_UNREAD) {
+                    inner.error.clear();
+                }
+            }
             Err(reason) => {
                 inner.identity = IdentityRead::Failed;
                 inner.error = format!("{IDENTITY_UNREAD} {reason}");
