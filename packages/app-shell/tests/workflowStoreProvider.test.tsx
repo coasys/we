@@ -215,4 +215,17 @@ describe('a record going through the open workflow', () => {
     setAdoptedShapes([...adoptedShapes(), shape('Sighting', { title: { type: 'string' } })]);
     await vi.waitFor(() => expect(store.open()?.records[0]).toMatchObject({ title: 'Saw a fox', kind: 'Sighting' }));
   });
+
+  // `buildEntityManifest` names no property, so a declared title has to come from the adopted shape.
+  it('is named by the field its model declares as its title, not the one called title', async () => {
+    stored.Pitch = [{ id: 'p1', title: 'internal ref', headline: 'Fix the roof' }];
+    registered.add('Pitch');
+    setAdoptedShapes([
+      ...adoptedShapes(),
+      shape('Pitch', { title: { type: 'string' }, headline: { type: 'string' } }, { title: 'headline' }),
+    ]);
+    const store = await openOn('pitches', 'p1');
+    await vi.waitFor(() => expect(store.open()?.records[0]).toMatchObject({ kind: 'Pitch' }));
+    expect(store.open()?.records[0]?.title).toBe('Fix the roof');
+  });
 });

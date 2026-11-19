@@ -421,11 +421,21 @@ export function WorkflowStoreProvider(props: ParentProps) {
   /** Which models each record was already looked for in and not found, so a run moving does not ask again. */
   const searched = new Map<string, string>();
 
-  /** The property that names a record of each entity, as the space's models and WE's own declare it. */
+  /**
+   * The property that names a record of each of the space's models. A model the space adopted is named
+   * as it declares (`namePropertyOf` reads `display.title` first), and wins over the foreign snapshot,
+   * which carries no declaration and so only ever gives the guess — the same precedence as
+   * `RecordStore.schemaFor`.
+   */
   const nameProperties = createMemo(() => {
     const out = new Map<string, string>();
     for (const entry of datasetStore.currentDatasetEntities()) {
-      out.set(entry.name, entry.nameProperty ?? nameFromProperties(entry.properties.filter((p) => !p.isCollection)));
+      out.set(entry.name, nameFromProperties(entry.properties.filter((p) => !p.isCollection)));
+    }
+    for (const shape of shapeStore.spaceShapes()) {
+      const schema = shape.manifest?.entities[shape.name];
+      if (schema) out.set(shape.name, namePropertyOf(schema));
+      else if (!out.has(shape.name)) out.set(shape.name, '');
     }
     return out;
   });
@@ -447,7 +457,7 @@ export function WorkflowStoreProvider(props: ParentProps) {
     const definition = definitions()[name];
     // Tracked so a record whose model was not registered yet is looked for again once it is. The
     // foreign snapshot is read on navigation; a model adopted since is only in the shape store's list.
-    const spaceModels = [...nameProperties().keys(), ...shapeStore.spaceShapes().map((s) => s.name)];
+    const spaceModels = [...nameProperties().keys()];
     if (!h || !list.length) return;
     const candidates = definition?.entities.length
       ? definition.entities
