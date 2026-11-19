@@ -1300,66 +1300,6 @@ export const seedBundles: Bundle[] = [
                     ],
                   },
                   {
-                    type: '$if',
-                    props: {
-                      condition: { $: 'count(modules.call.liveCalls)' },
-                      then: {
-                        type: 'Column',
-                        props: { px: '300', pb: '300' },
-                        children: [
-                          {
-                            type: 'we-button',
-                            props: {
-                              variant: 'ghost',
-                              width: '100%',
-                              ax: 'start',
-                              gap: '200',
-                              onClick: [
-                                {
-                                  $if: {
-                                    condition: { $: 'modules.call.active && !modules.call.elsewhere' },
-                                    then: [
-                                      {
-                                        $invoke: 'routeStore.navigate',
-                                        args: [
-                                          {
-                                            $: "(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (modules.call.callRecordId)) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (modules.call.callRecordId), '?') ? '&' : '?') + 'view=canvas' : '')",
-                                          },
-                                        ],
-                                      },
-                                      { $invoke: 'modules.call.goToCall' },
-                                    ],
-                                    else: { $invoke: 'modules.call.goToCall' },
-                                  },
-                                },
-                              ],
-                            },
-                            children: [
-                              { type: 'we-animated-icon', props: { name: 'live', color: 'success', size: 'xs' } },
-                              {
-                                type: 'we-text',
-                                props: {
-                                  variant: 'footnote',
-                                  color: 'text-muted',
-                                  flex: '1',
-                                  minWidth: '0',
-                                  truncate: true,
-                                  ta: 'left',
-                                },
-                                children: [{ $: '`Call running · ${first(modules.call.liveCalls).count} in it`' }],
-                              },
-                              {
-                                type: 'we-text',
-                                props: { variant: 'footnote', color: 'accent' },
-                                children: [{ $: "modules.call.active && !modules.call.elsewhere ? 'Open' : 'Join'" }],
-                              },
-                            ],
-                          },
-                        ],
-                      },
-                    },
-                  },
-                  {
                     type: 'Column',
                     props: { flex: '1', minHeight: '0', overflowY: 'auto', px: '200' },
                     children: [
@@ -1680,14 +1620,78 @@ export const seedBundles: Bundle[] = [
                                             props: {
                                               condition: { $: 'find(modules.call.liveCalls, { recordId: call.id })' },
                                               then: {
-                                                type: 'we-badge',
-                                                props: { tone: 'success', size: 'xs' },
+                                                type: 'Row',
+                                                props: { gap: '100', ay: 'center' },
                                                 children: [
                                                   {
-                                                    type: 'we-animated-icon',
-                                                    props: { name: 'live', color: 'success' },
+                                                    type: 'we-tooltip',
+                                                    props: { placement: 'right' },
+                                                    children: [
+                                                      {
+                                                        type: 'div',
+                                                        slot: 'content',
+                                                        children: [
+                                                          {
+                                                            type: 'Column',
+                                                            props: { gap: '200', textAlign: 'left' },
+                                                            children: [
+                                                              {
+                                                                type: '$each',
+                                                                props: {
+                                                                  items: {
+                                                                    $: 'find(modules.call.liveCalls, { recordId: call.id }).faces',
+                                                                  },
+                                                                  as: 'person',
+                                                                },
+                                                                children: [
+                                                                  {
+                                                                    type: 'Row',
+                                                                    props: { ay: 'center', gap: '200' },
+                                                                    children: [
+                                                                      {
+                                                                        type: 'we-avatar',
+                                                                        props: {
+                                                                          size: 'xs',
+                                                                          image: { $: 'person.image' },
+                                                                          hash: { $: 'person.hash' },
+                                                                        },
+                                                                      },
+                                                                      {
+                                                                        type: 'we-text',
+                                                                        props: { fontSize: '200' },
+                                                                        children: [{ $: 'person.initials' }],
+                                                                      },
+                                                                    ],
+                                                                  },
+                                                                ],
+                                                              },
+                                                            ],
+                                                          },
+                                                        ],
+                                                      },
+                                                      {
+                                                        type: 'AvatarStack',
+                                                        props: {
+                                                          avatars: {
+                                                            $: 'find(modules.call.liveCalls, { recordId: call.id }).faces.map(f, { image: f.image, hash: f.hash })',
+                                                          },
+                                                          max: 3,
+                                                          size: 'xs',
+                                                        },
+                                                      },
+                                                    ],
                                                   },
-                                                  'Live',
+                                                  {
+                                                    type: 'we-badge',
+                                                    props: { tone: 'success', size: 'xs' },
+                                                    children: [
+                                                      {
+                                                        type: 'we-animated-icon',
+                                                        props: { name: 'live', color: 'success' },
+                                                      },
+                                                      'Live',
+                                                    ],
+                                                  },
                                                 ],
                                               },
                                               else: {
