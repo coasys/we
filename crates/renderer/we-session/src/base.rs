@@ -583,10 +583,25 @@ impl BaseController {
         job
     }
 
-    pub fn note_connected(&self, attempt: u64) {
+    /// `attempt` connected. `true` when it is the attempt in flight, which
+    /// now holds the window as a session; `false` when it was spent (an
+    /// executor change, a newer attempt): the host must drop that
+    /// connection, not adopt it.
+    pub fn note_connected(&self, attempt: u64) -> bool {
         if self.finish(attempt, Stage::Session, "", "") {
             self.lock().session = attempt;
+            return true;
         }
+        false
+    }
+
+    /// Whether `attempt` is still the one in flight or the open session.
+    /// A flow for any other attempt is obsolete.
+    pub fn is_current(&self, attempt: u64) -> bool {
+        let inner = self.lock();
+        attempt != 0
+            && (inner.attempt == attempt
+                || (inner.stage == Stage::Session && inner.session == attempt))
     }
 
     /// `false` when `attempt` is not the one in flight (it was already

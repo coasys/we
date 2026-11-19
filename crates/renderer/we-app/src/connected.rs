@@ -186,6 +186,11 @@ impl ConnectedApp {
         }
     }
 
+    /// The phase of the connect flow the window keeps, unapplied.
+    pub fn flow_phase(&self) -> Option<we_ad4m::connect::ConnectPhase> {
+        self.base.flow_phase()
+    }
+
     /// The executor this window runs, if any.
     pub fn owned(&self) -> Option<&Arc<dyn OwnedExecutor>> {
         self.base.owned()

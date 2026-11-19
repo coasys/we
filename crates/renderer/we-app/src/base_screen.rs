@@ -267,7 +267,9 @@ impl BaseScreen {
             let changes = owned.changes();
             if changes != self.owned_seen {
                 self.owned_seen = changes;
-                if let Some(job) = self.controller.note_executor(owned.state()) {
+                let job = self.controller.note_executor(owned.state());
+                self.drop_obsolete_flow();
+                if let Some(job) = job {
                     self.spawn(job);
                 }
                 self.sync_facts();
@@ -305,14 +307,45 @@ impl BaseScreen {
         };
         let (attempt, phase, taken) = observed;
         if let ConnectPhase::Connected { url } = &phase {
+            // Adopted only when the controller accepts the attempt: a flow
+            // that connected after its attempt was spent (the executor
+            // stopped first) is dropped with its connection.
             if let Some(conn) = taken {
-                self.controller.note_connected(attempt);
-                self.ready = Some((conn, url.clone()));
+                if self.controller.note_connected(attempt) {
+                    self.ready = Some((conn, url.clone()));
+                }
             }
         } else {
             apply_phase(&self.controller, attempt, phase, self.owned.as_ref());
         }
         self.sync_facts();
+    }
+
+    /// After an executor change: a flow whose attempt the controller spent
+    /// is cancelled (dropped with its transport and any prompt), and a
+    /// connection not yet taken by the window is let go.
+    fn drop_obsolete_flow(&mut self) {
+        let mut slot = lock_slot(&self.slot);
+        if slot
+            .live
+            .as_ref()
+            .is_some_and(|live| !self.controller.is_current(live.attempt))
+        {
+            slot.live = None;
+            slot.seen = None;
+        }
+        if !self.controller.in_session() {
+            self.ready = None;
+        }
+    }
+
+    /// The phase of the flow the window keeps, as it says it now. Reading
+    /// it changes nothing (the phase is applied in [`BaseScreen::poll`]).
+    pub fn flow_phase(&self) -> Option<ConnectPhase> {
+        lock_slot(&self.slot)
+            .live
+            .as_ref()
+            .map(|live| live.flow.phase())
     }
 
     /// The executor this window runs, if any.

@@ -361,3 +361,52 @@ fn with_a_binary_and_no_url_the_window_runs_it() {
         .success();
     assert!(!alive, "the executor outlived the window");
 }
+
+/// Round 2 (Lal P2): a flow that connected just before the executor this
+/// window runs stopped is not adopted. The flow is Connected but not yet
+/// applied when the stop arrives; the next frame applies the stop first.
+/// The window must stay on the stopped screen: no space list, no
+/// `list_spaces`. Live (`EXECUTOR_PATH`): the flow needs a real executor.
+#[test]
+fn a_connected_flow_queued_before_a_stop_is_not_adopted() {
+    let Some(executor) = we_ad4m::testkit::start_executor() else {
+        return;
+    };
+    let rt = we_ad4m::Runtime::new().unwrap();
+    let writer = we_ad4m::testkit::connect(&rt, &executor.url);
+    we_ad4m::testkit::seed_space(&rt, &writer, "s4-late");
+    drop(writer);
+    let tokens = tempfile::tempdir().unwrap();
+    let stand = Stand::new(ExecutorState::Ready {
+        agent: Some(AgentState::Unlocked),
+    });
+    *stand.url.lock().unwrap() = Some(executor.url.clone());
+    let mut h = harness(args(tokens.path(), None, None), Some(stand.clone()));
+    step_until(&mut h, "the list", Duration::from_secs(10), |h| {
+        h.query_by_label_contains("This computer").is_some()
+    });
+    h.get_by_label_contains("This computer").click();
+    h.step();
+    // No frames: the flow runs on its own threads until it says Connected.
+    let start = Instant::now();
+    while !matches!(
+        h.state().as_ref().unwrap().flow_phase(),
+        Some(we_ad4m::connect::ConnectPhase::Connected { .. })
+    ) {
+        assert!(start.elapsed() < Duration::from_secs(60), "never connected");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    stand.set(ExecutorState::Failed {
+        reason: "Another program stopped it.".into(),
+        stopped: true,
+    });
+    h.step();
+    assert_eq!(
+        h.state().as_ref().unwrap().stage(),
+        "connect",
+        "the late connection was adopted"
+    );
+    h.run_steps(3);
+    assert_eq!(h.state().as_ref().unwrap().stage(), "connect");
+    assert!(h.query_by_label_contains("Coasys stopped").is_some());
+}
