@@ -189,6 +189,18 @@ fn find_node<'a>(
     })
 }
 
+/// The innermost node in `node` for which `done` holds.
+fn deepest<'a>(
+    node: &'a ResolvedNode,
+    done: &dyn Fn(&ResolvedNode) -> bool,
+) -> Option<&'a ResolvedNode> {
+    let inner = node.children.iter().find_map(|child| match child {
+        ResolvedChild::Node(next) => deepest(next, done),
+        ResolvedChild::Text(_) => None,
+    });
+    inner.or_else(|| done(node).then_some(node))
+}
+
 fn find_button(node: &ResolvedNode, needle: &str) -> Option<NodeId> {
     find_node(node, &|n| {
         n.ty.as_ref() == "we-button"
@@ -196,6 +208,12 @@ fn find_button(node: &ResolvedNode, needle: &str) -> Option<NodeId> {
             && text_of(n).contains(needle)
     })
     .map(|n| n.id.clone())
+}
+
+/// A page B draws over the stage (fixed, the whole window) titled `title`.
+fn overlay(node: &ResolvedNode, title: &str) -> bool {
+    matches!(node.props.get("position"), Some(Value::Str(p)) if p.as_ref() == "fixed")
+        && text_of(node).contains(title)
 }
 
 /// Every node in `node` with a handler, by type and text.
@@ -345,7 +363,7 @@ fn devices_and_security_are_read_only() {
     open.click("Devices");
     assert_eq!(open.controller.public_json()["page"], "devices");
     let root = open.root();
-    let page = find_node(&root, &|n| n.id.as_str().contains("base__devices"))
+    let page = deepest(&root, &|n| overlay(n, "Your devices"))
         .expect("the devices page")
         .clone();
     let text = tree_text(&page);
@@ -358,7 +376,7 @@ fn devices_and_security_are_read_only() {
     open.click("Back");
     open.click("Security");
     let root = open.root();
-    let page = find_node(&root, &|n| n.id.as_str().contains("base__security"))
+    let page = deepest(&root, &|n| overlay(n, "To make changes"))
         .expect("the security page")
         .clone();
     let text = tree_text(&page);

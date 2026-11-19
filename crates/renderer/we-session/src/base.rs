@@ -27,6 +27,37 @@ pub const NO_NETWORK: &str = "This computer is offline.";
 
 const DOOR_NOTE: &str = "Not available on this computer.";
 
+/// A door while the executor is not up (TS desktop `WORDS_EXECUTOR_NOT_UP`).
+pub const DOOR_NOT_UP: &str = "Available once Coasys has started.";
+
+/// What the list and the doors say when the agent of the executor this
+/// host runs is locked. This app cannot unlock it yet (slice 7).
+pub const OWNED_LOCKED: &str = "Coasys on this computer is locked. This app can't unlock it yet.";
+
+/// A door while the executor this host runs has no agent.
+pub const DOOR_NO_AGENT: &str = "Coasys on this computer has no agent yet.";
+
+/// A door the host could open, but this app has no identity window for
+/// yet (slice 6).
+pub const DOOR_LATER: &str = "Not available in this app yet.";
+
+/// Why no identity change can be made here: the executor has no identity
+/// store, or none it trusts a key for. The custody service's own words
+/// (`crates/custody`, `NO_STORE`).
+pub const NO_STORE: &str =
+    "This network has no identity store, or a store URL without its key, so \
+     this computer cannot make or change an identity. Nothing was changed.";
+
+/// Security's master-key line: where the key is kept is the custody
+/// service's to say, and this app does not reach it yet.
+pub const KEEPS_UNKNOWN: &str = "This app can't read where your master key is kept yet.";
+
+/// The first words of the reason a failed identity read gives.
+pub const IDENTITY_UNREAD: &str = "Couldn't read your identity:";
+
+const THIS_COMPUTER: &str = "This computer";
+const UNNAMED_DEVICE: &str = "Unnamed device";
+
 /// Where the id of the connection chosen last is kept between starts.
 ///
 /// The store keeps the id only. It never keeps an address or a credential:
@@ -168,6 +199,8 @@ fn mark_url() -> String {
 enum Stage {
     Starting,
     Failed,
+    Loading,
+    FirstRun,
     Connect,
     HandingOff,
     Offline,
@@ -179,6 +212,8 @@ impl Stage {
         match self {
             Stage::Starting => "starting",
             Stage::Failed => "failed",
+            Stage::Loading => "loading",
+            Stage::FirstRun => "first-run",
             Stage::Connect => "connect",
             Stage::HandingOff => "handing-off",
             Stage::Offline => "offline",
@@ -217,6 +252,29 @@ struct Inner {
     executor: Option<ExecutorState>,
     /// Which executor process the state is about ([`BaseController::note_executor_run`]).
     executor_run: u64,
+    /// The host reads this computer's identity ([`BaseController::keep_identity`]).
+    has_identity: bool,
+    identity: IdentityRead,
+    /// The current read waits for the host to take it.
+    read_due: bool,
+    reads: u64,
+    /// "Skip for now", at this start or kept from an earlier one.
+    skipped: bool,
+    /// How the last door ended: empty, or `failed`.
+    last_outcome: &'static str,
+}
+
+/// What is known of the identity.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum IdentityRead {
+    /// Nothing asked yet (or the executor process changed since).
+    Unread,
+    /// Read `n` is out.
+    Reading(u64),
+    /// The source answered.
+    Known(IdentityFacts),
+    /// The source did not answer: unknown, not empty.
+    Failed,
 }
 
 /// A connect attempt the host should start. `attempt` is the id a later
@@ -336,9 +394,11 @@ pub fn command_for(target: &str, args: &[Value]) -> Option<BaseCommand> {
         }
         "closePage" => BaseCommand::ClosePage,
         "clearPasswordWrong" => BaseCommand::ClearPasswordWrong,
-        "submitPassword" | "makeIdentity" | "linkIdentity" | "useWords" | "startNow" => {
-            BaseCommand::Nop
-        }
+        "makeIdentity" => BaseCommand::OpenDoor(Door::Make),
+        "linkIdentity" => BaseCommand::OpenDoor(Door::Link),
+        "useWords" => BaseCommand::OpenDoor(Door::Words),
+        "startNow" => BaseCommand::StartNow,
+        "submitPassword" => BaseCommand::Nop,
         _ => return None,
     })
 }
@@ -384,6 +444,12 @@ impl BaseController {
                 session: 0,
                 executor: None,
                 executor_run: 0,
+                has_identity: false,
+                identity: IdentityRead::Unread,
+                read_due: false,
+                reads: 0,
+                skipped: memory.skipped(),
+                last_outcome: "",
             }),
             memory,
             model: Arc::new(BaseModel::new()),
@@ -414,6 +480,15 @@ impl BaseController {
             .executor
             .as_ref()
             .is_some_and(|state| !matches!(state, ExecutorState::Ready { .. }))
+        {
+            return None;
+        }
+        // The identity is read first; its answer goes on to the place.
+        if inner.has_identity
+            && !matches!(
+                inner.identity,
+                IdentityRead::Known(_) | IdentityRead::Failed
+            )
         {
             return None;
         }
@@ -515,6 +590,17 @@ impl BaseController {
                 self.memory.remember(&id);
                 reach(&mut inner, row, true)
             }
+            // With an identity source and no answer from it: read it
+            // again, then what a start does (TS `evaluate`).
+            BaseCommand::Retry
+                if inner.has_identity
+                    && inner.stage != Stage::Offline
+                    && inner.identity == IdentityRead::Failed =>
+            {
+                inner.identity = IdentityRead::Unread;
+                inner.error.clear();
+                evaluate(&mut inner)
+            }
             // Offline: the place chosen again. Otherwise what a start does:
             // the place chosen while the list is not asked for, else the list.
             BaseCommand::Retry => match chosen_row(&inner) {
@@ -545,10 +631,25 @@ impl BaseController {
                 inner.page.clear();
                 None
             }
-            BaseCommand::ClearPasswordWrong
-            | BaseCommand::StartNow
-            | BaseCommand::OpenDoor(_)
-            | BaseCommand::Nop => None,
+            // Kept, then the first run is left for what a start does next.
+            BaseCommand::StartNow => {
+                self.memory.remember_skip();
+                inner.skipped = true;
+                if inner.stage == Stage::FirstRun {
+                    evaluate(&mut inner)
+                } else {
+                    None
+                }
+            }
+            // No door opens in this app yet: it says why, and runs nothing
+            // (TS `open` with no step).
+            BaseCommand::OpenDoor(which) => {
+                let (_, note) = door_view(&inner, which);
+                inner.last_outcome = "failed";
+                inner.error = note.to_string();
+                None
+            }
+            BaseCommand::ClearPasswordWrong | BaseCommand::Nop => None,
         };
         self.publish(&inner);
         job.map(BaseJob::Dial)
@@ -563,6 +664,10 @@ impl BaseController {
         match inner.executor {
             Some(ExecutorState::Starting) => starting(&mut inner),
             Some(ExecutorState::Failed { .. }) => failed(&mut inner),
+            // Ready at once: the identity is read before anything else.
+            _ if inner.has_identity => {
+                let _ = evaluate(&mut inner);
+            }
             _ => {}
         }
         self.publish(&inner);
@@ -610,6 +715,15 @@ impl BaseController {
         let mut inner = self.lock();
         let before = inner.executor.clone()?;
         inner.executor = Some(state.clone());
+        // A new process is read again; a read out to a process that ended
+        // is spent.
+        match state {
+            ExecutorState::Starting => forget_identity(&mut inner),
+            ExecutorState::Failed { .. } if matches!(inner.identity, IdentityRead::Reading(_)) => {
+                forget_identity(&mut inner)
+            }
+            _ => {}
+        }
         if inner.stage == Stage::Session {
             // The session's executor is gone: it stopped, or it is being
             // started again (it asked to be restarted, a new process on a
@@ -644,16 +758,7 @@ impl BaseController {
                 failed(&mut inner);
                 None
             }
-            ExecutorState::Ready { .. } => {
-                inner.busy = false;
-                match chosen_row(&inner) {
-                    Some(row) if inner.auto => reach(&mut inner, row, false),
-                    _ => {
-                        inner.stage = Stage::Connect;
-                        None
-                    }
-                }
-            }
+            ExecutorState::Ready { .. } => evaluate(&mut inner),
         };
         self.publish(&inner);
         job
@@ -661,21 +766,49 @@ impl BaseController {
 
     /// This host keeps an identity source (it runs this computer's
     /// executor and reads its identity). Call before the executor's state.
-    pub fn keep_identity(&self) {}
+    ///
+    /// Then a ready executor first asks for an identity read (the loading
+    /// stage). Its answer decides: a known empty identity, with no "Skip
+    /// for now" kept, is the first run; anything else goes on as before.
+    pub fn keep_identity(&self) {
+        let mut inner = self.lock();
+        inner.has_identity = true;
+        self.publish(&inner);
+    }
 
     /// The identity read the host should run now, by its token, once.
     pub fn identity_read_due(&self) -> Option<u64> {
-        None
+        let mut inner = self.lock();
+        match (std::mem::take(&mut inner.read_due), &inner.identity) {
+            (true, IdentityRead::Reading(read)) => Some(*read),
+            _ => None,
+        }
     }
 
-    /// The read `read` answered.
+    /// Read `read` answered. A read that is not the one out (a newer one
+    /// was asked, or the executor stopped or started again since) changes
+    /// nothing. A failure leaves the identity unknown, never empty: no
+    /// first run, and the list says why.
     pub fn note_identity(
         &self,
         read: u64,
         answer: Result<IdentityFacts, String>,
     ) -> Option<HostJob> {
-        let _ = (read, answer);
-        None
+        let mut inner = self.lock();
+        if inner.identity != IdentityRead::Reading(read) {
+            return None;
+        }
+        inner.read_due = false;
+        match answer {
+            Ok(facts) => inner.identity = IdentityRead::Known(facts),
+            Err(reason) => {
+                inner.identity = IdentityRead::Failed;
+                inner.error = format!("{IDENTITY_UNREAD} {reason}");
+            }
+        }
+        let job = evaluate(&mut inner);
+        self.publish(&inner);
+        job
     }
 
     /// Whether a session holds the window.
@@ -816,6 +949,97 @@ impl BaseController {
     }
 }
 
+/// What a ready executor leads to (TS `evaluate`): with an identity source
+/// and nothing known yet, the loading stage and a read; a known empty
+/// identity with no skip kept, the first run; else the place chosen (not a
+/// click) while the list is not asked for, or the list.
+fn evaluate(inner: &mut Inner) -> Option<HostJob> {
+    inner.busy = false;
+    if inner.has_identity {
+        match inner.identity {
+            IdentityRead::Unread => {
+                inner.reads += 1;
+                inner.identity = IdentityRead::Reading(inner.reads);
+                inner.read_due = true;
+                inner.stage = Stage::Loading;
+                return None;
+            }
+            IdentityRead::Reading(_) => {
+                inner.stage = Stage::Loading;
+                return None;
+            }
+            IdentityRead::Known(_) | IdentityRead::Failed => {}
+        }
+    }
+    if first_run_due(inner) {
+        inner.stage = Stage::FirstRun;
+        return None;
+    }
+    match chosen_row(inner) {
+        Some(row) if inner.auto => reach(inner, row, false),
+        _ => {
+            inner.stage = Stage::Connect;
+            None
+        }
+    }
+}
+
+/// TS `firstRunDue`: an identity source that answered, an agent that
+/// speaks for no identity, and no "Skip for now". (The pinned custody
+/// service reports a master key held here only for a DID, so no DID is
+/// also no master key.)
+fn first_run_due(inner: &Inner) -> bool {
+    inner.has_identity
+        && !inner.skipped
+        && matches!(&inner.identity, IdentityRead::Known(facts) if facts.did.is_none())
+}
+
+fn forget_identity(inner: &mut Inner) {
+    inner.identity = IdentityRead::Unread;
+    inner.read_due = false;
+}
+
+/// Whether `which` opens here, and why not where it does not. The first
+/// reason that holds: no identity source; the executor is not up; its
+/// agent is locked or missing; the network can't publish (Create only);
+/// this app has no identity window yet. No door opens in this slice.
+fn door_view(inner: &Inner, which: Door) -> (bool, &'static str) {
+    if !inner.has_identity {
+        return (false, DOOR_NOTE);
+    }
+    match &inner.executor {
+        Some(ExecutorState::Ready { agent }) => match agent {
+            Some(AgentState::Locked) => return (false, OWNED_LOCKED),
+            None => return (false, DOOR_NO_AGENT),
+            Some(AgentState::Unlocked) => {}
+        },
+        _ => return (false, DOOR_NOT_UP),
+    }
+    if which == Door::Make && blocked(inner) {
+        return (false, NO_STORE);
+    }
+    (false, DOOR_LATER)
+}
+
+fn blocked(inner: &Inner) -> bool {
+    matches!(&inner.identity, IdentityRead::Known(facts) if !facts.store_trusted)
+}
+
+/// TS `shortDid`: "did:scid:coasys:1:QmZkabc…xyz7rWd" → "…:QmZk…7rWd".
+fn short_did(did: &str) -> String {
+    let Some(at) = did.rfind(':') else {
+        return did.to_string();
+    };
+    let (head, tail) = did.split_at(at + 1);
+    let chars: Vec<char> = tail.chars().collect();
+    if chars.len() <= 12 {
+        return did.to_string();
+    }
+    let start: String = chars[..4].iter().collect();
+    let end: String = chars[chars.len() - 4..].iter().collect();
+    format!("{head}{start}…{end}")
+}
+
 /// Close the open session `attempt`, if it is the one open: no session,
 /// not busy, no page, and a new generation, so a permit from before the
 /// hand-back no longer matches.
@@ -911,23 +1135,51 @@ fn snap_json(inner: &Inner, mark: &str) -> serde_json::Value {
             })
         })
         .collect();
-    let door = || serde_json::json!({ "open": false, "note": DOOR_NOTE });
+    let door = |which| {
+        let (open, note) = door_view(inner, which);
+        serde_json::json!({ "open": open, "note": note })
+    };
+    let known = match &inner.identity {
+        IdentityRead::Known(facts) => Some(facts),
+        _ => None,
+    };
+    let did = known.and_then(|facts| facts.did.as_deref()).unwrap_or("");
+    // Rows of the key log: this computer, or a device the log does not
+    // name. Never a key id.
+    let devices: Vec<_> = known
+        .map(|facts| facts.devices.as_slice())
+        .unwrap_or_default()
+        .iter()
+        .map(|device| {
+            serde_json::json!({
+                "label": if device.this_device { THIS_COMPUTER } else { UNNAMED_DEVICE },
+                "subtitle": "",
+                "icon": if device.this_device { "laptop" } else { "key" },
+                "thisDevice": device.this_device,
+                "master": "",
+            })
+        })
+        .collect();
     serde_json::json!({
         "stage": inner.stage.as_str(),
         "page": inner.page,
         "hostKind": "computer",
         "deviceNoun": "computer",
         "brand": { "mark": mark, "name": "Coasys" },
-        "identityKnown": false,
-        "did": "",
-        "didShort": "",
+        "identityKnown": known.is_some(),
+        "did": did,
+        "didShort": short_did(did),
         "unpublished": "",
-        "hasIdentity": false,
+        "hasIdentity": inner.has_identity,
         "holdsMaster": false,
-        "keepsLine": false,
-        "blocked": "",
-        "doors": { "link": door(), "make": door(), "words": door() },
-        "devices": [],
+        "keepsLine": if inner.has_identity { KEEPS_UNKNOWN } else { "Not on this computer" },
+        "blocked": if blocked(inner) { NO_STORE } else { "" },
+        "doors": {
+            "link": door(Door::Link),
+            "make": door(Door::Make),
+            "words": door(Door::Words),
+        },
+        "devices": devices,
         "executorPhase": match &inner.executor {
             None => "",
             Some(ExecutorState::Starting) => "starting",
@@ -945,7 +1197,7 @@ fn snap_json(inner: &Inner, mark: &str) -> serde_json::Value {
         "connections": connections,
         "chosen": inner.chosen_id,
         "busy": inner.busy,
-        "lastOutcome": "",
+        "lastOutcome": inner.last_outcome,
         "error": inner.error,
         "offlineReason": inner.offline_reason,
         "passwordIsNew": false,

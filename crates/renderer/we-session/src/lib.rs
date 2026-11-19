@@ -34,7 +34,8 @@ mod base;
 pub use base::{
     base_template_for, coasys_base_template, command_for, AgentState, BaseCommand, BaseController,
     BaseJob, ChoiceMemory, ConnectionRow, Door, ExecutorState, HostJob, IdentityDevice,
-    IdentityFacts, MemoryCell, NoMemory, OnlineProbe, BUILTIN_BUNDLE, NOT_LISTED, NO_NETWORK,
+    IdentityFacts, MemoryCell, NoMemory, OnlineProbe, BUILTIN_BUNDLE, DOOR_LATER, DOOR_NOT_UP,
+    DOOR_NO_AGENT, IDENTITY_UNREAD, KEEPS_UNKNOWN, NOT_LISTED, NO_NETWORK, NO_STORE, OWNED_LOCKED,
     UNREACHABLE,
 };
 
