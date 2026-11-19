@@ -112,3 +112,35 @@ Commands ran from `crates/renderer` unless a command names another directory. `C
 - No OS network monitor. See above.
 - No executor lifecycle (slice 4). A restarted executor's agent is locked until the launcher unlocks it. The window shows "The executor at … is locked. Unlock it in the AD4M launcher, then retry." on the list.
 - The permit binds the mount name, not a mount incarnation (Lal P2 on slice 1). This slice does not change it.
+
+# egui Connect, slice 4: owned executor lifecycle
+
+## What this slice does
+
+- `we-app --connect --executor-binary <path>` runs this computer's executor in the window. `--executor-data <dir>` is its data folder (default `{XDG_DATA_HOME or ~/.local/share}/we-renderer/executor`). `--executor-seed <file>` is the seed for its first `init`. The window stops the executor when it closes.
+- With `--executor-url`, the window attaches to that executor. It runs nothing, even if a binary is also given. An executor that someone else runs is never shown as starting or stopped by this app, and the app never stops it.
+- There is no launcher or supervisor in the We repo that the Rust app can call. The Electron supervisor is JavaScript (`apps/we-electron/electron/executorProcess.js`). Tauri runs the executor in its own process. The Rust supervisor (`we_ad4m::supervisor`) follows the Electron contract:
+  - It runs `ad4m-executor run` with `--watch-stdin true` and `--exit-with-parent true`.
+  - The admin credential is new for each window. It goes in the environment (`AD4M_ADMIN_CREDENTIAL`), not on the command line.
+  - The executor is ready when `GET /health` answers 200 `{"status":"ok"}`.
+  - It reads the agent with `agent.status`. A locked agent is `locked`. An executor with no agent yet has no agent state. It never guesses that the agent wants a password.
+  - Stopped is not the same as failed to start. Stopped: the executor was ready and then exited. Failed to start: it exited before it was ready, it did not answer within 60 s (the child is then ended), it refused its settings (78), or another executor holds the data folder (79).
+  - Exit 75 runs it again on the same port. Exit 80 tries another free port, twice.
+  - A stop closes stdin, waits up to 10 s, then kills the child. The supervisor ends only the child that it started.
+- B's screens show:
+  - "Starting Coasys…" while the executor starts.
+  - "Coasys couldn't start" with the reason and "Try again" when it failed to start.
+  - "Coasys stopped" with "Start it to open your spaces." and "Start Coasys" when it stopped.
+  - The list (or the place chosen, not a click) when it is ready.
+- "Start Coasys" and "Try again" go through the slice-1 permit path (`baseStore.retry`; no new invoke target). One click starts the executor once. The stage changes to starting (busy) and the generation advances, so a second copy of the permit starts nothing.
+- If the executor stops under an open space, the base takes the window back on the stopped screen at once. The space, its queries and the connection are dropped. It does not wait for the slice-3 socket grace.
+- A connect in flight when the executor stops or starts again is spent. Its completion changes nothing. A refresh of the agent state is dropped if the supervisor reported anything newer after the refresh was asked.
+- This computer dials the owned executor at the address where it listens now. There is no launcher to approve the window's capability request. The supervisor, as the operator, approves that one request: the request id from the window's own flow, for the grant that flow asked for. The code prompt shows only if this approval fails. `--auto-permit-cap-requests` is not used. It would grant every app's request, and the executor prints its code only with `AD4M_LOG_SECRETS=1`.
+- A restarted executor's agent is locked. The list says "Coasys on this computer is locked. This app can't unlock it yet." This is not a password screen.
+
+## Not in this slice
+
+- No automatic restart after a crash. The Electron shell restarts with a backoff. Here "Start Coasys" is the way back.
+- No password entry (slice 7). No identity or first-run work (slices 5 and 6). The agent is made outside the window (the live test uses the admin credential).
+- The stop sends no SIGTERM between closing stdin and the kill (the crate has `forbid(unsafe_code)`, and std has no SIGTERM). With `--watch-stdin` the executor stops cleanly when stdin closes.
+- The permit binds the mount name, not a mount incarnation (Lal P2 on slice 1). This slice does not change it.
