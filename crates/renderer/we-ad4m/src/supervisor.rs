@@ -785,23 +785,28 @@ enum Prep {
     Failed(String),
 }
 
-/// `init` the data folder when this app has not finished preparing it.
+/// `init` the data folder the first time, and only then.
 ///
-/// Beside the folder (`.<name>.we-init-*` in its parent):
-/// - `lock`: held (an OS file lock) while one window decides and runs
-///   init; another window waits for it, up to
-///   [`SupervisorConfig::init_timeout`]. The OS lets it go if the app dies.
-/// - `started`: written before init runs, removed once it finished.
-/// - `complete`: written last, after init succeeded.
+/// The executor's `init` is not harmless over an existing folder: when the
+/// version it finds recorded there is outside the range it supports, it
+/// deletes the folder's state (`clean_ad4m_data`). So `init` never runs on
+/// the data folder itself:
 ///
-/// Init runs for a folder that is missing or empty, or that this app's
-/// init left half done (`started`, no `complete`): the executor's init only
-/// writes its version file and the seed, so running it again is safe. A
-/// folder with data and no markers is someone's existing executor folder,
-/// left as it is (the executor migrates its own). A folder that cannot be
-/// read is an error, not an empty folder. The init itself runs as a child
-/// the supervisor holds ([`bounded`]): the stop ends it, and so does the
-/// deadline.
+/// - A folder with anything in it is left as it is, whatever it holds or
+///   whoever made it (the executor migrates its own when it runs).
+/// - A missing (or empty) folder is made by running `init` into a new
+///   sibling folder (`.<name>.we-init-<pid>-<n>`) and renaming that into
+///   place only after `init` succeeded. A failed, stopped or timed-out
+///   `init` leaves no data folder behind (its staging folder is removed),
+///   so the next start runs `init` again from nothing. The rename does not
+///   replace a folder that has content.
+/// - A folder that cannot be read is an error, not an empty folder.
+///
+/// An OS file lock beside the folder (`.<name>.we-init-lock`) is held while
+/// one window decides and runs this; another window waits for it, up to
+/// [`SupervisorConfig::init_timeout`], then finds the folder made. The OS
+/// lets it go if the app dies. The `init` runs as a child the supervisor
+/// holds ([`bounded`]): the stop ends it, and so does the deadline.
 fn init(shared: &Shared) -> Result<(), Prep> {
     let config = &shared.config;
     let dir = &config.data_dir;
@@ -813,7 +818,7 @@ fn init(shared: &Shared) -> Result<(), Prep> {
     let name = dir
         .file_name()
         .map_or_else(|| "executor".into(), |name| name.to_string_lossy());
-    let mark = |what: &str| parent.join(format!(".{name}.we-init-{what}"));
+    let lock_path = parent.join(format!(".{name}.we-init-lock"));
     if let Err(e) = std::fs::create_dir_all(parent) {
         return failed(format!("Couldn't create {}: {e}", parent.display()));
     }
@@ -821,10 +826,10 @@ fn init(shared: &Shared) -> Result<(), Prep> {
         .create(true)
         .truncate(false)
         .write(true)
-        .open(mark("lock"))
+        .open(&lock_path)
     {
         Ok(lock) => lock,
-        Err(e) => return failed(format!("Couldn't open {}: {e}", mark("lock").display())),
+        Err(e) => return failed(format!("Couldn't open {}: {e}", lock_path.display())),
     };
     let deadline = Instant::now() + config.init_timeout;
     loop {
@@ -844,56 +849,92 @@ fn init(shared: &Shared) -> Result<(), Prep> {
                 std::thread::sleep(Duration::from_millis(100));
             }
             Err(std::fs::TryLockError::Error(e)) => {
-                return failed(format!("Couldn't lock {}: {e}", mark("lock").display()))
+                return failed(format!("Couldn't lock {}: {e}", lock_path.display()))
             }
         }
     }
-    let (started, complete) = (mark("started"), mark("complete"));
-    let need = match std::fs::read_dir(dir) {
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => true,
+    match folder_content(dir) {
+        Ok(Folder::HasContent) => return Ok(()),
+        Ok(Folder::Missing) => {}
+        Ok(Folder::Empty) => {
+            // Empty: made by someone, holds nothing. Removed so the staged
+            // folder can take its place (a rename onto a folder is not
+            // portable).
+            if let Err(e) = std::fs::remove_dir(dir) {
+                return failed(format!("Couldn't replace the empty {}: {e}", dir.display()));
+            }
+        }
         Err(e) => {
             return failed(format!(
                 "Couldn't read its data folder {}: {e}",
                 dir.display()
             ))
         }
-        Ok(mut entries) => entries.next().is_none() || (started.exists() && !complete.exists()),
-    };
-    if !need {
-        return Ok(());
     }
-    let _ = std::fs::remove_file(&complete);
-    if let Err(e) = std::fs::write(&started, b"") {
-        return failed(format!("Couldn't write {}: {e}", started.display()));
-    }
+    static STAGINGS: AtomicU64 = AtomicU64::new(0);
+    let staging = parent.join(format!(
+        ".{name}.we-init-{}-{}",
+        std::process::id(),
+        STAGINGS.fetch_add(1, Ordering::SeqCst)
+    ));
+    let _ = std::fs::remove_dir_all(&staging);
     let mut cmd = Command::new(&config.binary);
-    cmd.arg("init").arg("--data-path").arg(&config.data_dir);
+    cmd.arg("init").arg("--data-path").arg(&staging);
     if let Some(seed) = &config.seed {
         cmd.arg("--network-bootstrap-seed").arg(seed);
     }
     let ran = bounded(shared, &mut cmd, config.init_timeout);
-    if matches!(ran, Bounded::Done(exit, _) if exit.success()) {
-        let partial = complete.with_extension("tmp");
-        let marked = std::fs::write(&partial, b"")
-            .and_then(|()| std::fs::rename(&partial, &complete))
-            .and_then(|()| std::fs::remove_file(&started));
-        if let Err(e) = marked {
-            return failed(format!("Couldn't write {}: {e}", complete.display()));
-        }
-    }
-    drop(lock);
-    match ran {
-        Bounded::Done(exit, _) if exit.success() => Ok(()),
-        Bounded::Done(exit, _) => Err(Prep::Failed(format!(
+    let outcome = match ran {
+        Bounded::Done(exit, _) if exit.success() => match std::fs::create_dir_all(&staging)
+            // An init that succeeded and made nothing gives an empty folder.
+            .and_then(|()| std::fs::rename(&staging, dir))
+        {
+            Ok(()) => Ok(()),
+            Err(e) => match folder_content(dir) {
+                // Made meanwhile by something that does not take our lock
+                // (an executor started by hand): theirs is kept.
+                Ok(Folder::HasContent) => Ok(()),
+                _ => failed(format!(
+                    "Couldn't move the prepared data folder into place at {}: {e}",
+                    dir.display()
+                )),
+            },
+        },
+        Bounded::Done(exit, _) => failed(format!(
             "Couldn't prepare its data folder ({}).",
             describe(&exit)
-        ))),
+        )),
         Bounded::Stopped => Err(Prep::Stopped),
-        Bounded::Timeout => Err(Prep::Failed(format!(
+        Bounded::Timeout => failed(format!(
             "Preparing its data folder didn't finish within {} seconds.",
             config.init_timeout.as_secs()
-        ))),
-        Bounded::NotRun(reason) => Err(Prep::Failed(reason)),
+        )),
+        Bounded::NotRun(reason) => failed(reason),
+    };
+    // Gone after a rename; what a failed init left is removed.
+    let _ = std::fs::remove_dir_all(&staging);
+    drop(lock);
+    outcome
+}
+
+/// What the data folder holds.
+enum Folder {
+    Missing,
+    Empty,
+    HasContent,
+}
+
+/// The data folder's state. An error reading it, or an entry of it, is an
+/// error: nothing is assumed about a folder that cannot be read.
+fn folder_content(dir: &std::path::Path) -> std::io::Result<Folder> {
+    let mut entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Folder::Missing),
+        Err(e) => return Err(e),
+    };
+    match entries.next() {
+        None => Ok(Folder::Empty),
+        Some(entry) => entry.map(|_| Folder::HasContent),
     }
 }
 

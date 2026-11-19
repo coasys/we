@@ -780,7 +780,16 @@ fn a_failed_first_init_runs_again() {
     wait_for(&sup, "failed", 10, |s| {
         matches!(s, Lifecycle::Failed { .. })
     });
-    assert!(dir.path().join("data/last-seen-version").exists());
+    // Round 3: init runs into a staging folder; a failed init leaves no
+    // data folder behind (and no staging folder).
+    assert!(!dir.path().join("data").exists(), "a half-made data folder");
+    let left: Vec<_> = std::fs::read_dir(dir.path())
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|name| name.contains("we-init-") && !name.ends_with("-lock"))
+        .collect();
+    assert!(left.is_empty(), "staging left behind: {left:?}");
     std::fs::write(&seed, "{}").unwrap();
     assert!(sup.start());
     wait_for(&sup, "ready", 10, |s| matches!(s, Lifecycle::Ready { .. }));
@@ -939,4 +948,32 @@ fn repeated_exit_75_has_a_budget() {
     assert!(stopped, "{reason}");
     assert!(reason.contains("restarted"), "{reason}");
     assert_eq!(sup.starts(), 4, "one start and three restarts");
+}
+
+/// Round 3 (Lal P2: a pending-marker rerun is destructive): the executor's
+/// init cleans a folder whose recorded version it does not support. A
+/// folder with real state (here: an agent and a version from elsewhere),
+/// beside a stale `started` marker from an old failed init, must not be
+/// initialized again; its content stays as it was.
+#[test]
+fn init_never_runs_over_a_folder_with_state() {
+    let dir = tempfile::tempdir().unwrap();
+    let seed = dir.path().join("seed.json");
+    std::fs::write(&seed, "{}").unwrap();
+    let mut config = config(dir.path(), seeding_init(dir.path(), "0"), health());
+    config.seed = Some(seed);
+    let data = dir.path().join("data");
+    std::fs::create_dir(&data).unwrap();
+    std::fs::write(data.join("last-seen-version"), "0.99.0").unwrap();
+    std::fs::write(data.join("agent.json"), "{\"did\":\"keep\"}").unwrap();
+    std::fs::write(dir.path().join(".data.we-init-started"), "").unwrap();
+    let sup = Supervisor::with_reader(config, Arc::new(Reader::default()));
+    sup.start();
+    wait_for(&sup, "ready", 10, |s| matches!(s, Lifecycle::Ready { .. }));
+    assert_eq!(inits(dir.path()), 0, "init ran over a folder with state");
+    assert_eq!(
+        std::fs::read_to_string(data.join("last-seen-version")).unwrap(),
+        "0.99.0"
+    );
+    assert!(data.join("agent.json").exists());
 }
