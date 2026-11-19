@@ -115,6 +115,8 @@ struct Reader {
     answers: Mutex<VecDeque<Answer>>,
     calls: Mutex<Vec<(String, String)>>,
     identities: Mutex<Vec<(String, String)>>,
+    /// When set, the next identity read answers only once this receives.
+    identity_gate: Mutex<Option<mpsc::Receiver<()>>>,
 }
 
 impl Reader {
@@ -157,6 +159,10 @@ impl AgentReader for Reader {
             .lock()
             .unwrap()
             .push((url.to_string(), admin.to_string()));
+        let gate = self.identity_gate.lock().unwrap().take();
+        if let Some(gate) = gate {
+            let _ = gate.recv_timeout(Duration::from_secs(30));
+        }
         Ok(Identity {
             did: None,
             store_trusted: true,
@@ -1223,6 +1229,47 @@ fn a_malformed_build_suffix_is_refused() {
 /// Slice 5: the identity is read as the operator, from the run that is
 /// ready, at the port its child said; never while it starts or after it
 /// stopped.
+/// An identity answer that arrives after the executor was started again
+/// belongs to the old process: it is refused, not shown as the new one's.
+#[test]
+fn an_identity_answer_from_a_replaced_run_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let reader = Arc::new(Reader::default());
+    let (release, gate) = mpsc::channel::<()>();
+    *reader.identity_gate.lock().unwrap() = Some(gate);
+    let sup = Arc::new(Supervisor::with_reader(
+        config(dir.path(), waits_on_stdin(dir.path()), health()),
+        reader.clone(),
+    ));
+    sup.start();
+    wait_for(&sup, "ready", 10, |s| matches!(s, Lifecycle::Ready { .. }));
+    let asking = sup.clone();
+    let answer = std::thread::spawn(move || asking.identity());
+    let start = Instant::now();
+    while reader.identities.lock().unwrap().is_empty() {
+        assert!(
+            start.elapsed() < Duration::from_secs(10),
+            "no identity read"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    kill_9(sup.pid().unwrap());
+    wait_for(&sup, "stopped", 10, |s| {
+        matches!(s, Lifecycle::Failed { .. })
+    });
+    assert!(sup.start());
+    wait_for(&sup, "ready again", 10, |s| {
+        matches!(s, Lifecycle::Ready { .. })
+    });
+    release.send(()).unwrap();
+    let answered = answer.join().unwrap();
+    assert!(
+        answered.is_err(),
+        "the old run's identity was taken as the new one's: {answered:?}"
+    );
+    sup.stop();
+}
+
 #[test]
 fn the_identity_is_read_only_from_the_ready_run() {
     let dir = tempfile::tempdir().unwrap();
