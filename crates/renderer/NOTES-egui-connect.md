@@ -78,7 +78,7 @@ Commands ran from `crates/renderer` unless a command names another directory. `C
 - On the offline screen, "Try again" goes to the place chosen.
 - A choose with an id that is not in the list does nothing. The gate gives no permit. The controller also shows "That option isn't available anymore."
 - A server cannot be opened from this app yet. The choice shows "Can't open <label> from this app yet. Choose This computer." Nothing is dialed. This is the same as the TS desktop host.
-- This computer dials loopback only (`127.0.0.0/8`, `localhost`, `::1`). An `--executor-url` that is not loopback becomes a server row. It is not dialed under the This computer label.
+- This computer dials loopback only (`127.0.0.0/8`, `localhost` with or without a terminal dot, `::1` in any spelling), parsed with the `url` crate. An `--executor-url` that is not loopback becomes a server row named `host:port` (IPv6 in brackets). It is not dialed under the This computer label. A URL with userinfo is always a server row, and its row shows no credential. `0.0.0.0`, `::`, `::ffff:127.0.0.1` and a bracketed name (`[localhost]`) are not this computer.
 - This computer does not need a network. If the host says that it is offline, a server choice shows "This computer is offline." The desktop app does not give a network probe yet, so the app counts as online.
 - The Coming soon section for hosted places does not change.
 - `we-tag` with only text children painted "…". Now it paints its text. The widget-gallery goldens showed the "…" and are new.

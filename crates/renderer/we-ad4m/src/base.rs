@@ -10,6 +10,8 @@
 
 use std::path::{Path, PathBuf};
 
+use url::{Host, Url};
+
 use crate::connect::ConnectSettings;
 
 /// This computer, as the base template's connection row names it.
@@ -87,15 +89,9 @@ pub fn catalog(settings: &ConnectSettings, servers: &[SavedServer]) -> Vec<Offer
     for server in servers {
         add(&server.address, &server.name);
     }
-    if let Some(url) = settings.url.as_deref().map(str::trim) {
-        if !url.is_empty() && !is_loopback(url) {
-            if let Some((host, port)) = authority(url) {
-                let address = match port {
-                    Some(port) => format!("{host}:{port}"),
-                    None => host,
-                };
-                add(&address, "");
-            }
+    if let Some(url) = settings.url.as_deref().and_then(parse) {
+        if !names_this_computer(&url) {
+            add(&server_address(&url), "");
         }
     }
     rows
@@ -126,54 +122,63 @@ pub fn select(
     Ok(local)
 }
 
-/// Whether `url` names this computer: `127.0.0.0/8`, `localhost` or `::1`.
+/// Whether `url` names this computer: an `http`, `https`, `ws` or `wss`
+/// URL without userinfo whose host is `localhost` (any case, a terminal
+/// dot allowed), in `127.0.0.0/8`, or the IPv6 loopback address in any
+/// spelling. The IPv4-mapped `::ffff:127.0.0.1` and the wildcards `0.0.0.0`
+/// and `::` are not.
 pub fn is_loopback(url: &str) -> bool {
-    match authority(url) {
-        Some((host, _)) => {
-            host == "localhost"
-                || host == "::1"
-                || host
-                    .parse::<std::net::Ipv4Addr>()
-                    .is_ok_and(|ip| ip.is_loopback())
-        }
-        None => false,
+    parse(url).is_some_and(|url| names_this_computer(&url))
+}
+
+/// `url` parsed as an `http`, `https`, `ws` or `wss` URL with a host.
+/// `None` for anything else, including a bracketed host that is not an
+/// IPv6 address (`[localhost]`).
+fn parse(url: &str) -> Option<Url> {
+    let url = Url::parse(url.trim()).ok()?;
+    let web = matches!(url.scheme(), "http" | "https" | "ws" | "wss");
+    (web && url.host().is_some()).then_some(url)
+}
+
+/// A URL with userinfo is never this computer: its host is not what a
+/// reader sees first.
+fn names_this_computer(url: &Url) -> bool {
+    let userinfo = !url.username().is_empty() || url.password().is_some();
+    !userinfo && url.host().is_some_and(|host| loopback_host(&host))
+}
+
+fn loopback_host(host: &Host<&str>) -> bool {
+    match host {
+        Host::Domain(name) => name.strip_suffix('.').unwrap_or(name) == "localhost",
+        Host::Ipv4(ip) => ip.is_loopback(),
+        Host::Ipv6(ip) => ip.is_loopback(),
     }
 }
 
-/// The lower-case host (no brackets) and the port of an `http`, `https`,
-/// `ws` or `wss` URL. `None` for anything else, or for a URL with
-/// userinfo: its host is not what a reader sees first.
-fn authority(url: &str) -> Option<(String, Option<u16>)> {
-    let (scheme, rest) = url.trim().split_once("://")?;
-    if !matches!(
-        scheme.to_ascii_lowercase().as_str(),
-        "http" | "https" | "ws" | "wss"
-    ) {
-        return None;
+/// `host:port` (IPv6 in brackets), as a server row names it. Never the
+/// userinfo, the path, the query or the fragment.
+fn server_address(url: &Url) -> String {
+    let host = url.host_str().unwrap_or_default();
+    match url.port() {
+        Some(port) => format!("{host}:{port}"),
+        None => host.to_string(),
     }
-    let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
-    let authority = &rest[..end];
-    if authority.contains('@') {
-        return None;
+}
+
+/// A loopback URL with its host spelled the way `ad4m-client` accepts:
+/// `localhost` without a terminal dot, IPv6 compressed (`[::1]`).
+fn canonical_local(url: &Url) -> String {
+    let mut url = url.clone();
+    if matches!(url.host(), Some(Host::Domain(_))) {
+        let _ = url.set_host(Some("localhost"));
     }
-    let (host, port) = if let Some(bracketed) = authority.strip_prefix('[') {
-        let (host, after) = bracketed.split_once(']')?;
-        let port = match after {
-            "" => None,
-            after => Some(after.strip_prefix(':')?),
-        };
-        (host, port)
-    } else {
-        match authority.split_once(':') {
-            Some((host, port)) => (host, Some(port)),
-            None => (authority, None),
+    let text = url.to_string();
+    match text.strip_suffix('/') {
+        Some(bare) if url.path() == "/" && url.query().is_none() && url.fragment().is_none() => {
+            bare.to_string()
         }
-    };
-    let port = port.map(str::parse::<u16>).transpose().ok()?;
-    if host.is_empty() {
-        return None;
+        _ => text,
     }
-    Some((host.to_ascii_lowercase(), port))
 }
 
 /// What the base file keeps: the id chosen last and the servers listed.
@@ -251,8 +256,9 @@ pub fn default_base_file() -> PathBuf {
 
 /// The URL a click on This computer dials.
 ///
-/// A loopback `--executor-url` wins. One that is not loopback is not this
-/// computer: [`catalog`] lists it as a server, and it is ignored here.
+/// A loopback `--executor-url` wins, under its canonical host. One that is
+/// not loopback, or that carries userinfo, is not this computer:
+/// [`catalog`] lists it as a server, and it is ignored here.
 /// Otherwise a port file that is a port number or a loopback `http` URL
 /// becomes `http://127.0.0.1:{port}`. Anything else, including a
 /// non-loopback URL in the port file, is `http://127.0.0.1:12000`. The
@@ -263,10 +269,10 @@ pub fn explicit_local_url(settings: &ConnectSettings) -> String {
     if let Some(url) = settings
         .url
         .as_deref()
-        .map(str::trim)
-        .filter(|url| is_loopback(url))
+        .and_then(parse)
+        .filter(names_this_computer)
     {
-        return url.to_string();
+        return canonical_local(&url);
     }
     let path = settings.port_file.clone().unwrap_or_else(default_port_file);
     if let Some(port) = read_local_port(&path) {
@@ -434,7 +440,11 @@ mod tests {
             "http://127.1.2.3:1",
             "http://localhost:4000/",
             "http://LOCALHOST:4000",
+            "http://localhost.:4000",
+            "http://LocalHost.:4000",
             "http://[::1]:12000",
+            "http://[0:0:0:0:0:0:0:1]:4100",
+            "http://[0000::1]:4100",
             "ws://127.0.0.1:12000/graphql",
         ] {
             assert!(is_loopback(url), "{url}");
@@ -443,15 +453,125 @@ mod tests {
             "https://remote.example",
             "http://127.0.0.1.example:1",
             "http://localhost.example:1",
+            "http://localhost.evil.com:1",
+            "http://localhost..:1",
             "http://user@remote.example:1",
             "http://127.0.0.1@remote.example:1",
+            "http://localhost@remote.example:1",
+            "http://user@localhost:1",
+            "http://user:pw@127.0.0.1:1",
             "http://[::2]:1",
+            "http://[::]:1",
+            "http://[::ffff:127.0.0.1]:1",
             "http://0.0.0.0:12000",
+            "http://[localhost]:4100",
+            "http://[127.0.0.1]:4100",
+            "http://localhost:99999",
+            "ftp://127.0.0.1:1",
             "file:///tmp/x",
             "127.0.0.1:12000",
             "",
         ] {
             assert!(!is_loopback(url), "{url}");
+        }
+    }
+
+    /// A loopback `--executor-url` is dialed under its canonical host:
+    /// `ad4m-client` treats `localhost.` and an expanded `::1` as remote.
+    #[test]
+    fn this_computer_dials_a_canonical_loopback_host() {
+        for (given, dialed) in [
+            ("http://localhost:4100", "http://localhost:4100"),
+            ("http://LOCALHOST.:4100/", "http://localhost:4100"),
+            ("http://[0:0:0:0:0:0:0:1]:4100", "http://[::1]:4100"),
+            (
+                "ws://127.0.0.1:12000/graphql",
+                "ws://127.0.0.1:12000/graphql",
+            ),
+        ] {
+            let (_dir, settings) = isolated(Some(given));
+            let local = select("this-device", "This computer", &settings).unwrap();
+            assert_eq!(local.url.as_deref(), Some(dialed), "{given}");
+        }
+    }
+
+    /// A URL with userinfo is listed, as a server named by host and port
+    /// only, and This computer never dials it. A URL that does not parse
+    /// (a bracketed name) is not this computer and lists nothing.
+    #[test]
+    fn a_url_with_userinfo_is_a_server_without_its_credentials() {
+        for (url, id) in [
+            (
+                "https://alice:s3cret@remote.example:9443/path",
+                "server:remote.example:9443",
+            ),
+            (
+                "http://alice:s3cret@localhost:4100",
+                "server:localhost:4100",
+            ),
+            (
+                "http://localhost@remote.example:1",
+                "server:remote.example:1",
+            ),
+            ("http://alice@[::1]:4100", "server:[::1]:4100"),
+        ] {
+            let (_dir, settings) = isolated(Some(url));
+            let rows = catalog(&settings, &[]);
+            assert_eq!(rows.len(), 2, "{url} was not listed: {rows:?}");
+            let row = &rows[1];
+            assert_eq!(row.id, id, "{url}");
+            assert_eq!(row.kind, "server");
+            assert_eq!(format!("server:{}", row.label), id);
+            for shown in [&row.id, &row.label, &row.detail] {
+                assert!(
+                    !shown.contains("alice") && !shown.contains("s3cret") && !shown.contains('@'),
+                    "{url} shows a credential: {shown}"
+                );
+            }
+            let local = select("this-device", "This computer", &settings).unwrap();
+            assert_eq!(
+                local.url.as_deref(),
+                Some("http://127.0.0.1:12000"),
+                "{url}"
+            );
+        }
+        for url in ["http://[localhost]:4100", "http://[127.0.0.1]:4100"] {
+            let (_dir, settings) = isolated(Some(url));
+            assert_eq!(catalog(&settings, &[]).len(), 1, "{url}");
+            let local = select("this-device", "This computer", &settings).unwrap();
+            assert_eq!(
+                local.url.as_deref(),
+                Some("http://127.0.0.1:12000"),
+                "{url}"
+            );
+        }
+    }
+
+    /// IPv6 servers keep their brackets, so the port reads apart from the
+    /// address; wildcard and mapped addresses are servers, not this computer.
+    #[test]
+    fn an_ipv6_server_keeps_its_brackets() {
+        for (url, id) in [
+            ("http://[::2]:4100", "server:[::2]:4100"),
+            ("http://[0:0:0:0:0:0:0:2]:4100", "server:[::2]:4100"),
+            ("http://[::]:4100", "server:[::]:4100"),
+            (
+                "http://[::ffff:127.0.0.1]:4100",
+                "server:[::ffff:7f00:1]:4100",
+            ),
+            ("http://0.0.0.0:4100", "server:0.0.0.0:4100"),
+        ] {
+            let (_dir, settings) = isolated(Some(url));
+            let rows = catalog(&settings, &[]);
+            assert_eq!(
+                rows.iter().map(|row| row.id.as_str()).collect::<Vec<_>>(),
+                ["this-device", id],
+                "{url}"
+            );
+        }
+        for url in ["http://[0:0:0:0:0:0:0:1]:4100", "http://localhost.:4100"] {
+            let (_dir, settings) = isolated(Some(url));
+            assert_eq!(catalog(&settings, &[]).len(), 1, "{url} is this computer");
         }
     }
 
