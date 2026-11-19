@@ -27321,8 +27321,12 @@ export const seedBundles: Bundle[] = [
                                                               gap: '200',
                                                               p: '300',
                                                               r: 'card',
-                                                              border: '1px solid border',
-                                                              bg: 'surface',
+                                                              border: {
+                                                                $: "(rec.record == routeStore.params.card) ? '1px solid accent' : '1px solid border'",
+                                                              },
+                                                              bg: {
+                                                                $: "(rec.record == routeStore.params.card) ? 'accent-soft' : 'surface'",
+                                                              },
                                                             },
                                                             children: [
                                                               {

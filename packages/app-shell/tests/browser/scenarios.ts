@@ -2237,6 +2237,75 @@ const coasysCallBar = (): Scenario => {
 };
 
 /**
+ * The Coasys flows page, from the bundle itself, under Glow: one flow open with three records going
+ * through it, the second chosen (`?card=`) as a row under Active flows chooses it.
+ */
+const coasysFlowsPage = (): Scenario => {
+  const glow = BUNDLE_LAB_THEMES.find((t) => t.label === 'coasys-glow')?.theme ?? {};
+  const find = (node: unknown): SchemaNode | undefined => {
+    if (!node || typeof node !== 'object') return undefined;
+    const n = node as Record<string, unknown>;
+    if (n.path === '/workflows' && typeof n.type === 'string') return structuredClone(n) as SchemaNode;
+    for (const value of Object.values(n)) {
+      const found = Array.isArray(value) ? value.map(find).find(Boolean) : find(value);
+      if (found) return found;
+    }
+    return undefined;
+  };
+  const { path: _path, ...page } = find(coasysBundle) as SchemaNode & { path?: string };
+  const record = (id: string, title: string, stateLabel: string) => ({
+    id,
+    record: id,
+    title,
+    kind: 'Task',
+    startedAt: '2026-11-18T10:00:00.000Z',
+    state: stateLabel.toLowerCase(),
+    stateLabel,
+    stalled: false,
+    waiting: [],
+    walk: [],
+    next: [],
+  });
+  const review = { name: 'review', label: 'Review', archived: false, records: 3, running: 3, editable: true };
+  return {
+    node: { type: 'Column', theme: glow, props: { width: '900px', height: '640px', bg: 'page' }, children: [page] },
+    tables: {},
+    stores: {
+      routeStore: {
+        params: { card: 'r2' },
+        templateSegments: ['workflows'],
+        setParam: () => {},
+        navigate: () => {},
+      },
+      shellStore: { collapsedLanes: [] },
+      spaceStore: { root: 'root', spacePath: '/space/s1' },
+      workflowStore: {
+        available: true,
+        workflowsLoaded: true,
+        workflows: [review],
+        startable: [{ name: 'review', label: 'Review', entities: [] }],
+        open: {
+          ...review,
+          hint: '',
+          entities: [],
+          lanes: [],
+          steps: [],
+          exceptions: [],
+          managedBy: '',
+          recordsLoaded: true,
+          history: {},
+          records: [
+            record('r1', 'Fix the roof', 'Checking'),
+            record('r2', 'Paint the gate', 'Draft'),
+            record('r3', 'Order the tiles', 'Draft'),
+          ],
+        },
+      },
+    },
+  };
+};
+
+/**
  * The Coasys Calls page, from the bundle itself, under Glow: three calls, the newest running. Each
  * card opens its call and offers its transcript to take away, so the case can press both.
  */
@@ -2570,6 +2639,7 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'coasys:bar': coasysBar,
   'coasys:call-bar': coasysCallBar,
   'coasys:calls-page': coasysCallsPage,
+  'coasys:flows-page': coasysFlowsPage,
   'border:with-hover': borderWithHover,
   'coasys:lockup': coasysLockup,
   'signIn:coasys': coasysSignIn,
