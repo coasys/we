@@ -127,6 +127,8 @@ pub struct SupervisorConfig {
     pub extra_args: Vec<String>,
     /// How long a start waits for `/health`.
     pub ready_timeout: Duration,
+    /// How long `init` may take before it is ended and the start fails.
+    pub init_timeout: Duration,
 }
 
 impl SupervisorConfig {
@@ -138,6 +140,7 @@ impl SupervisorConfig {
             admin_credential: None,
             extra_args: Vec::new(),
             ready_timeout: Duration::from_secs(60),
+            init_timeout: Duration::from_secs(120),
         }
     }
 }
@@ -571,8 +574,10 @@ fn run_child(shared: &Shared) -> Lifecycle {
         }
         Bounded::NotRun(reason) => return failed(reason),
     }
-    if let Err(reason) = init(config) {
-        return failed(reason);
+    match init(shared) {
+        Ok(()) => {}
+        Err(Prep::Stopped) => return stopped_by_us(),
+        Err(Prep::Failed(reason)) => return failed(reason),
     }
     loop {
         let (mut child, tail) = match spawn(shared) {
@@ -725,9 +730,18 @@ fn stopped_by_us() -> Lifecycle {
     }
 }
 
+/// Why preparing the data folder did not finish.
+enum Prep {
+    Stopped,
+    Failed(String),
+}
+
 /// `init` a data folder that is missing or empty. One that has anything in
-/// it is left as it is: the executor migrates its own.
-fn init(config: &SupervisorConfig) -> Result<(), String> {
+/// it is left as it is: the executor migrates its own. The init runs as a
+/// child the supervisor holds ([`bounded`]): the stop ends it, and so does
+/// [`SupervisorConfig::init_timeout`].
+fn init(shared: &Shared) -> Result<(), Prep> {
+    let config = &shared.config;
     let empty = std::fs::read_dir(&config.data_dir)
         .map(|mut entries| entries.next().is_none())
         .unwrap_or(true);
@@ -739,19 +753,18 @@ fn init(config: &SupervisorConfig) -> Result<(), String> {
     if let Some(seed) = &config.seed {
         cmd.arg("--network-bootstrap-seed").arg(seed);
     }
-    let status = cmd
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map_err(|e| format!("Couldn't run {}: {e}", config.binary.display()))?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(format!(
+    match bounded(shared, &mut cmd, config.init_timeout) {
+        Bounded::Done(exit, _) if exit.success() => Ok(()),
+        Bounded::Done(exit, _) => Err(Prep::Failed(format!(
             "Couldn't prepare its data folder ({}).",
-            describe(&status)
-        ))
+            describe(&exit)
+        ))),
+        Bounded::Stopped => Err(Prep::Stopped),
+        Bounded::Timeout => Err(Prep::Failed(format!(
+            "Preparing its data folder didn't finish within {} seconds.",
+            config.init_timeout.as_secs()
+        ))),
+        Bounded::NotRun(reason) => Err(Prep::Failed(reason)),
     }
 }
 

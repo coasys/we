@@ -649,3 +649,85 @@ fn the_minimum_executor_version() {
         assert!(said.contains("0.13.1-staging.12 or newer"), "{old}: {said}");
     }
 }
+
+/// A stand-in whose `init` writes its pid to `<dir>/init-pid` and then
+/// blocks (as a seed path naming a FIFO does).
+fn blocking_init(dir: &Path) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let path = dir.join("executor");
+    std::fs::write(
+        &path,
+        format!(
+            "#!/bin/sh\nif [ \"$1\" = --version ]; then echo 'ad4m 0.13.1-staging.13'; exit 0; fi\n\
+             if [ \"$1\" = init ]; then echo $$ > '{}'; exec sleep 60; fi\ncat > /dev/null\n",
+            dir.join("init-pid").display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    path
+}
+
+fn init_pid(dir: &Path) -> u32 {
+    let start = Instant::now();
+    loop {
+        if let Some(pid) = std::fs::read_to_string(dir.join("init-pid"))
+            .ok()
+            .and_then(|text| text.trim().parse().ok())
+        {
+            return pid;
+        }
+        assert!(start.elapsed() < Duration::from_secs(10), "init never ran");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// Round 2 (Lal: init is unsupervised): a stop while `init` runs ends that
+/// init at once and returns; nothing of it is left running.
+#[test]
+fn a_stop_during_init_ends_the_init() {
+    let dir = tempfile::tempdir().unwrap();
+    let sup = Supervisor::with_reader(
+        config(dir.path(), blocking_init(dir.path()), health()),
+        Arc::new(Reader::default()),
+    );
+    sup.start();
+    let pid = init_pid(dir.path());
+    let asked = Instant::now();
+    sup.stop();
+    assert!(
+        asked.elapsed() < Duration::from_secs(5),
+        "the stop waited {:?} for an init it could not reach",
+        asked.elapsed()
+    );
+    assert!(!alive(pid), "the init outlived the stop");
+    assert!(
+        matches!(sup.state(), Lifecycle::Failed { stopped: true, .. }),
+        "{:?}",
+        sup.state()
+    );
+}
+
+/// Round 2: an `init` past `init_timeout` is ended, and the start fails
+/// to start (not stopped) with that reason.
+#[test]
+fn an_init_past_its_deadline_is_ended() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = config(dir.path(), blocking_init(dir.path()), health());
+    config.init_timeout = Duration::from_secs(1);
+    let sup = Supervisor::with_reader(config, Arc::new(Reader::default()));
+    sup.start();
+    let pid = init_pid(dir.path());
+    wait_for(&sup, "failed", 10, |s| {
+        matches!(s, Lifecycle::Failed { .. })
+    });
+    let Lifecycle::Failed { reason, stopped } = sup.state() else {
+        unreachable!()
+    };
+    assert!(!stopped);
+    assert!(
+        reason.contains("didn't finish within 1 seconds"),
+        "{reason}"
+    );
+    assert!(!alive(pid), "the init outlived its deadline");
+}
