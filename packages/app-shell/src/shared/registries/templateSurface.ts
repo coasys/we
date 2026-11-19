@@ -1399,6 +1399,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     collapsedLanes: state('view-state'),
     toggleLane: ambient('view-state'),
     setLaneCollapsed: ambient('view-state'),
+    focusInLane: ambient('view-state'),
     laneWidth: WIRING,
     setLaneWidth: WIRING,
     customisingLayout: state('host-layout'),

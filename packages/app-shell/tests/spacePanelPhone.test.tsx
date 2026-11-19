@@ -27,8 +27,21 @@ const HOST = 'host-settings';
 
 const text = (words: string) => ({ type: 'span', children: [words] });
 
+/*
+  The sidebar's own controls: an action first, and the row the tree was showing marked selected —
+  which a way back into the lane prefers (`focusInLane`).
+*/
+const treeNode = {
+  type: 'div',
+  children: [
+    { type: 'button', children: ['Search'] },
+    { type: 'button', props: { 'aria-selected': 'true' }, children: ['Chosen'] },
+  ],
+};
+
 const initialWidth = window.innerWidth;
 const initialMatchMedia = window.matchMedia;
+const realRects = HTMLElement.prototype.getClientRects;
 let release: (() => void)[] = [];
 
 /** The window at a width, as both the shell's `narrowWindow` and a lane's media query see it. */
@@ -49,6 +62,10 @@ function resize(width: number) {
 beforeEach(() => {
   localStorage.clear();
   window.history.replaceState({}, '', '/space/test');
+  // jsdom lays nothing out, so nothing would count as drawn; every element is, here.
+  HTMLElement.prototype.getClientRects = function () {
+    return [{}] as unknown as DOMRectList;
+  };
   setSettingsOpen(false);
   registerHostDockStore(HOST, {
     edge: () => (settingsOpen() ? 'right' : null),
@@ -59,7 +76,7 @@ beforeEach(() => {
   // As the Coasys space declares them: the tree at home on the left, the settings on the right.
   setTemplatePanels(
     [
-      { id: 'tree', node: text('Tree'), home: 'tree', grow: 1, fixed: true },
+      { id: 'tree', node: treeNode, home: 'tree', grow: 1, fixed: true },
       { id: 'settings', module: HOST, home: 'inspector', title: 'Space settings', grow: 1, fixed: true, open: false },
     ],
     'coasys-space',
@@ -72,30 +89,33 @@ afterEach(() => {
   dockRegistry.remove(`${HOST}:panel`);
   unregisterHostDockStore(HOST);
   release.forEach((done) => done());
+  HTMLElement.prototype.getClientRects = realRects;
   Object.defineProperty(window, 'innerWidth', { configurable: true, value: initialWidth });
   window.matchMedia = initialMatchMedia;
 });
 
 /** The space's row, with its lanes as the Coasys space lays them out. */
 function mountSpace() {
+  let store: ReturnType<typeof useShellStore>;
   const Grab = () => {
-    const store = useShellStore();
+    store = useShellStore();
     release.push(provideChromeBag(buildTemplateBag({ shellStore: store } as never, { grants: CHROME_TIER }) as never));
     return null;
   };
+  let view!: HTMLElement;
   const { container } = render(() => (
     <ShellStoreProvider>
       <Grab />
       <div style={{ display: 'flex', width: '100%' }}>
         <PanelLane lane="tree" width="280px" minWidth="220px" resize="end" />
-        <div style={{ flex: '1', 'min-width': '0' }} />
+        <div ref={(el: HTMLElement) => (view = el)} style={{ flex: '1', 'min-width': '0' }} />
         <PanelLane lane="inspector" width="340px" minWidth="280px" resize="start" foldEmpty />
       </div>
       <PanelHost />
     </ShellStoreProvider>
   ));
   const lanes = [...container.querySelectorAll<HTMLElement>('[data-we-panel-lane]')];
-  return { tree: lanes[0], panel: lanes[1] };
+  return { tree: lanes[0], panel: lanes[1], view, store: store! };
 }
 
 describe("a space's own panel at phone width", () => {
@@ -141,12 +161,58 @@ describe("a space's own panel at phone width", () => {
 
   it('leaves a desktop window as it was: the panel beside the tree, at its own width', async () => {
     resize(1280);
-    const { tree, panel } = mountSpace();
+    const { tree, panel, view } = mountSpace();
     setSettingsOpen(true);
     await vi.waitFor(() => expect(panel.textContent).toContain('Settings'));
     expect(panel.style.width).toBe('340px');
     expect(panel.style.flex).toBe('0 0 auto');
     expect(tree.style.width).toBe('280px');
     expect(tree.style.flex).toBe('0 0 auto');
+    // Side by side, nothing squeezed: the view stays in the tab order.
+    expect(view.inert).not.toBe(true);
+  });
+
+  /*
+    On a phone an open lane fills the row — the tree's `narrow` rule takes its whole width — so the
+    view beside it is squeezed to nothing. Squeezed to nothing, it stayed in the tab order and the
+    accessibility tree anyway: a composer reachable off screen. Inert while a lane fills, as the
+    folded lane itself is.
+  */
+  it('puts the view out of the tab order while a lane fills the row, and hands it back', async () => {
+    resize(390);
+    const { view, store } = mountSpace();
+    // The tree open fills the row: the view beside it is inert.
+    expect(view.inert).toBe(true);
+
+    // The settings opening over it changes nothing for the view.
+    setSettingsOpen(true);
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Settings'));
+    expect(view.inert).toBe(true);
+    setSettingsOpen(false);
+
+    // The tree folded gives the view the row back — and its place in the tab order with it.
+    store.setLaneCollapsed('tree', true);
+    await vi.waitFor(() => expect(view.inert).toBe(false));
+  });
+
+  /*
+    Back from a covering thread: the press had focus inside the cover, which letting go would leave
+    nowhere — so the way back puts focus where the reader was, on the lane's selected row rather
+    than its first control.
+  */
+  it('lands focus on the lane’s selected row as the lane comes back', async () => {
+    resize(390);
+    const { view, store } = mountSpace();
+    // The thread covered the window for the tree's fold; Back opens the lane again.
+    store.setLaneCollapsed('tree', true);
+    await vi.waitFor(() => expect(view.inert).toBe(false));
+
+    store.setLaneCollapsed('tree', false);
+    store.focusInLane('tree');
+    await vi.waitFor(() => {
+      const active = document.activeElement as HTMLElement | null;
+      expect(active?.getAttribute('aria-selected')).toBe('true');
+      expect(active?.textContent).toBe('Chosen');
+    });
   });
 });

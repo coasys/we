@@ -38,7 +38,8 @@ const showTree: SchemaNode = {
 /**
  * Back to the sidebar, in a thread that covers the window — where `showTree` cannot be, for there is
  * no app bar to put it under. Same job, worded as the phone's own way back: opening the lane is what
- * uncovers the window, the bar and all.
+ * uncovers the window, the bar and all. And focus goes into it (`focusInLane`) — the press had
+ * focus inside the thread, which the cover letting go would leave nowhere.
  */
 const backToTree: SchemaNode = {
   type: 'we-tooltip',
@@ -51,7 +52,10 @@ const backToTree: SchemaNode = {
         size: 'md',
         square: true,
         label: 'Back',
-        onClick: { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', false] },
+        onClick: [
+          { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', false] },
+          { $invoke: 'shellStore.focusInLane', args: ['tree'] },
+        ],
       },
       children: [{ type: 'we-icon', props: { name: 'arrow-left' } }],
     },

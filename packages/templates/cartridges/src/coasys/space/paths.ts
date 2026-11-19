@@ -124,7 +124,12 @@ export const PAGE_EXPR = "routeStore.templateSegments[0] ? routeStore.templateSe
  * a phone: on a desktop a folded lane and the view sit side by side, as they always have.
  *
  * The phone is the surface at `base` — under `sm`, the same breakpoint `shellStore.narrowWindow`
- * answers to. A template answers to its own surface, never to the window: `narrowWindow` is chrome's.
+ * answers to. A template answers to its own surface, never to the window: `narrowWindow` is
+ * chrome's. It is the host, not this mark, that says when the ask holds — a `"window"` mark is
+ * granted only while the window is narrow (`windowCover.ts`), so a wider window keeps its chrome and
+ * its bands whatever this answers. Which is exactly what lets the mark read the surface's tier: the
+ * frame it could empty only under a narrow window never moves on a wider one, so the mark cannot
+ * chase the tier that writes it.
  */
 export const CHAT_COVERS = "surface.tier == 'base' && ('tree' in shellStore.collapsedLanes)";
 

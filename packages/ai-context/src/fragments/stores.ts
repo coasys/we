@@ -714,6 +714,7 @@ export const storeEntries: StoreEntry[] = [
       'scrollToId',
       'toggleLane',
       'setLaneCollapsed',
+      'focusInLane',
       'toggleCustomiseLayout',
     ],
   },
@@ -2266,6 +2267,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         "(lane: string): folds a home lane (a `$panels` outlet) away, or brings it back — what a sidebar's collapse button calls. Its sections stay mounted and hidden, so a feed keeps its place. Kept per agent and per template, and undone by resetTemplateLayout",
       setLaneCollapsed:
         '(lane: string, collapsed: boolean): folds a lane away or brings it back, as said rather than flipped',
+      focusInLane:
+        '(lane: string): moves focus into a lane just brought back — its selected row, else its first focusable control. What a full-window thread\u2019s Back calls beside setLaneCollapsed, so the keyboard is left somewhere that is on screen',
       toggleCustomiseLayout:
         "(): shows every section's grip at once, or goes back to showing a grip only where the pointer or the keyboard is — the way to see what on a page can be moved",
       resetTemplateLayout:

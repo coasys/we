@@ -1008,7 +1008,7 @@ export default function TemplateProvider() {
     the app is inert behind it and Tab stays inside it. See `windowCover.ts`.
   */
   onMount(() => {
-    if (appLayer) onCleanup(installWindowCover(appLayer));
+    if (appLayer) onCleanup(installWindowCover(appLayer, shellStore.narrowWindow));
   });
   createEffect(() => {
     if (!asking() || !promptLayer) return;

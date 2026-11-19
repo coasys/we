@@ -1178,10 +1178,10 @@ describe('the Coasys space on a phone', () => {
     const button = findNode(back, (n) => n.type === 'we-button')!;
     expect((button.props as { label?: string }).label).toBe('Back');
     expect((findNode(back, (n) => n.type === 'we-icon')!.props as { name?: string }).name).toBe('arrow-left');
-    expect((button.props as { onClick?: unknown }).onClick).toEqual({
-      $invoke: 'shellStore.setLaneCollapsed',
-      args: ['tree', false],
-    });
+    expect((button.props as { onClick?: unknown }).onClick).toEqual([
+      { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', false] },
+      { $invoke: 'shellStore.focusInLane', args: ['tree'] },
+    ]);
   });
 
   it('keeps the sidebar button where the window is not covered', () => {

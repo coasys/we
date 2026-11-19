@@ -31,6 +31,11 @@ import { createSignal } from 'solid-js';
  * the containing block and a stacking context, so nothing it holds reaches the bar that holds it.
  * The app answers by taking its furniture away while such a cover is in front (see `chromeCovered`),
  * so the cover fills the window from where it already stands — the top layer is never touched.
+ *
+ * The ask is a phone's, and it is granted only there: on a window that is not narrow a `"window"`
+ * mark is not a cover at all. The thread the mark was written for is then an ordinary page beside
+ * the chrome — which stays drawn and live, its bands keeping the surface the mark's own condition
+ * reads, so the mark can never move the frame that moves its tier.
  */
 export const COVER_ATTR = 'data-we-covers-window';
 
@@ -49,7 +54,9 @@ const syncCovered = () => setCovered(wholeWindow.size > 0);
 /**
  * True while the cover in front asks for the whole window, chrome and all — what the app takes its
  * own furniture away on: the frame's bands go to nothing (`declareAppFrame`) and a compact rail's
- * bar is not drawn. Read as `shellStore.chromeCovered` in chrome-tier templates.
+ * bar is not drawn. Reached only on a narrow window — a `"window"` mark grants nothing on a wider
+ * one, so this stays false and the chrome is never made inert behind a cover it can see. Read as
+ * `shellStore.chromeCovered` in chrome-tier templates.
  */
 export const chromeCovered = covered;
 
@@ -128,8 +135,13 @@ function inertAround(cover: Element, layer: Element): HTMLElement[] {
  * outer one's controls are as covered as the page, and the older of two side by side is covered by
  * the newer. Each remembers what had focus as it opened, so closing one gives focus back to its own
  * opener, inside the cover that is in front again.
+ *
+ * `narrow` is the window's own measure — `shellStore.narrowWindow`, under `sm` — and it is the only
+ * thing a `"window"` mark waits on: while it does not hold, the mark is not a cover at all (see
+ * `COVER_ATTR`). Re-asked on every resize, so a window dragged across the breakpoint takes the mark
+ * up or puts it down where it stands.
  */
-export function installWindowCover(layer: HTMLElement): () => void {
+export function installWindowCover(layer: HTMLElement, narrow: () => boolean): () => void {
   /** Every element covering the window, in the order they opened, with what had focus as each did. */
   const opened = new Map<Element, HTMLElement | null>();
   /** The one in front, which the rest is held inert around. */
@@ -204,8 +216,16 @@ export function installWindowCover(layer: HTMLElement): () => void {
   };
 
   const update = () => {
-    // Gone from the layer counts as closed, mark or no mark: a cover unmounted while open is not open.
-    const marked = new Set(layer.querySelectorAll(`[${COVER_ATTR}="true"], [${COVER_ATTR}="window"]`));
+    /*
+      Gone from the layer counts as closed, mark or no mark: a cover unmounted while open is not
+      open. A `"window"` mark counts only while the window is narrow — wider, it is no cover at all,
+      so it is found here or it is found nowhere.
+    */
+    const marked = new Set(
+      [...layer.querySelectorAll(`[${COVER_ATTR}="true"], [${COVER_ATTR}="window"]`)].filter(
+        (el) => el.getAttribute(COVER_ATTR) !== 'window' || narrow(),
+      ),
+    );
     let back: HTMLElement | null = null;
     for (const [el, opener] of opened) {
       if (marked.has(el)) continue;
@@ -244,9 +264,17 @@ export function installWindowCover(layer: HTMLElement): () => void {
   */
   const observer = new MutationObserver(update);
   observer.observe(layer, { subtree: true, childList: true, attributes: true, attributeFilter: [COVER_ATTR] });
+  /*
+    The ask's answer can change without the mark moving — a window dragged across `sm` — and resize
+    is the only thing that moves it. Asked again a turn late, once the window's own listeners have
+    had theirs: `narrow` is theirs to update.
+  */
+  const onResize = () => queueMicrotask(update);
+  window.addEventListener('resize', onResize);
   update();
   return () => {
     observer.disconnect();
+    window.removeEventListener('resize', onResize);
     if (cover) release(opened.get(cover) ?? null);
     opened.clear();
   };

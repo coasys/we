@@ -26,6 +26,9 @@ export const appFrame = frame;
  * `covered` is whether a cover has asked for the *whole* window (`shellStore.chromeCovered` — a
  * phone's thread, marked `data-we-covers-window="window"`). Then the app holds no bands at all, so
  * the surface the cover stands in reaches every edge and the cover has the window it asked for.
+ * Reached only on a narrow window: a `"window"` mark is not a cover on a wider one
+ * (`windowCover.ts`), so the bands a wide window keeps are never the mark's to take — and the
+ * surface measuring its tier never has it moved from under it.
  */
 export function declareAppFrame(
   declared: (Partial<AppFrame> & { narrow?: Partial<AppFrame> }) | undefined,

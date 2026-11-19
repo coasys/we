@@ -25172,7 +25172,10 @@ export const seedBundles: Bundle[] = [
                               size: 'md',
                               square: true,
                               label: 'Back',
-                              onClick: { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', false] },
+                              onClick: [
+                                { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', false] },
+                                { $invoke: 'shellStore.focusInLane', args: ['tree'] },
+                              ],
                             },
                             children: [{ type: 'we-icon', props: { name: 'arrow-left' } }],
                           },
