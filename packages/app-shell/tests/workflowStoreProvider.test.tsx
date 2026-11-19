@@ -9,16 +9,35 @@
 import { render } from '@solidjs/testing-library';
 import { createInMemoryWorkflowPort } from '@we/backend-inmemory';
 import type { WorkflowDefinition } from '@we/backend-shared';
+import { createSignal } from 'solid-js';
 import { describe, expect, it, vi } from 'vitest';
 
 const dataset = { id: 'space-1' };
+const [spaceModels, setSpaceModels] = createSignal<unknown[]>([]);
+/** The records each model finds, by entity — what a `findAll` by id answers with. */
+const stored: Record<string, Record<string, unknown>[]> = {};
 const workflowPort = createInMemoryWorkflowPort(() => 'did:test:me');
 
 vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
   useSessionStore: () => ({ me: () => ({ did: 'did:test:me' }), backendPorts: () => ({ workflows: workflowPort }) }),
 }));
 vi.mock('../src/frameworks/solid/stores/DatasetStore', () => ({
-  useDatasetStore: () => ({ isWeSpace: () => true, currentDataset: () => ({ id: dataset.id, handle: dataset }) }),
+  useDatasetStore: () => ({
+    isWeSpace: () => true,
+    currentDataset: () => ({ id: dataset.id, handle: dataset }),
+    currentDatasetEntities: spaceModels,
+  }),
+}));
+// A space's own model is registered for its dataset only once the space's models have been read.
+vi.mock('@we/entities', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  getEntityForDataset: (entity: string) =>
+    entity === 'Proposal' && !spaceModels().length
+      ? undefined
+      : {
+          findAll: async (_d: unknown, q: { where: { id: string[] } }) =>
+            (stored[entity] ?? []).filter((row) => q.where.id.includes(row.id as string)),
+        },
 }));
 vi.mock('../src/frameworks/solid/stores/SpaceStore', () => ({
   useSpaceStore: () => ({
@@ -127,5 +146,40 @@ describe('a requirement the form adds', () => {
     expect(done?.requires).toContain('at least 1 comment in response to it');
     // The key alone would read the same in words; what matters is the record it asks for.
     expect(done?.evidence).toEqual([expect.objectContaining({ entity: 'CollectionBlock', via: 'responses' })]);
+  });
+});
+
+describe('a record going through the open workflow', () => {
+  // Every row read "Untitled": a record of the space's own model was looked for before that model was
+  // registered, the miss was kept for good, and its naming field was not one the store knew.
+  it("is named by its model's naming field once the space's models are read", async () => {
+    stored.Proposal = [{ id: 'r9', headline: 'Fix the roof' }];
+    await workflowPort.install(dataset, { ...REVIEW, name: 'proposals' });
+    const store = mount();
+    await vi.waitFor(() => expect(store.startable().map((f) => f.name)).toContain('proposals'));
+    await store.startWorkflow('proposals', 'r9');
+    await store.openWorkflow('proposals');
+    await vi.waitFor(() => expect(store.open()?.records.map((r) => r.title)).toEqual(['Record r9']));
+
+    setSpaceModels([
+      {
+        name: 'Proposal',
+        targetClass: 'Proposal',
+        nameProperty: 'headline',
+        properties: [
+          {
+            name: 'headline',
+            predicate: 'x://headline',
+            type: 'string',
+            isCollection: false,
+            required: true,
+            writable: true,
+          },
+        ],
+      },
+    ]);
+    await vi.waitFor(() =>
+      expect(store.open()?.records[0]).toMatchObject({ title: 'Fix the roof', kind: 'Proposal', stateLabel: 'Draft' }),
+    );
   });
 });
