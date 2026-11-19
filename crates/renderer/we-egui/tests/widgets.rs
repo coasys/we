@@ -522,3 +522,20 @@ fn grid_columns_land() {
     assert!(a.max.x <= 101.0, "a {a:?}");
     assert!(b.min.x >= 99.0, "b {b:?}");
 }
+
+/// A tag whose label is its text child (the base template's "Last used"
+/// and "Coming soon") is as wide as that text, in a row as on its own.
+/// A content part with no nodes in it measured zero and painted "…".
+#[test]
+fn a_text_child_tag_is_as_wide_as_its_text() {
+    let mut tag = node("we-tag", "tag", &[]);
+    tag.children = vec![ResolvedChild::Text("Last used".into())];
+    let mut row = node("Row", "row", &[]);
+    row.children = vec![ResolvedChild::Node(Box::new(tag.clone()))];
+    for root in [tag, row] {
+        let (mut h, _) = render(root);
+        h.run();
+        let width = h.get_by_label("Last used").rect().width();
+        assert!(width > 40.0, "the tag is {width}px wide");
+    }
+}

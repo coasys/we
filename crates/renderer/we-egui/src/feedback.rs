@@ -196,7 +196,9 @@ impl Widget for Tag {
     /// `dismissible` adds its × as a fixed trailing part — the same shape
     /// the shadow DOM's `<slot>` + dismiss button take.
     fn parts_spec(&self, node: &ResolvedNode) -> Option<PartsSpec> {
-        if node.children.is_empty() {
+        // Text-only children are the galley `measure` sizes: a content
+        // group of no nodes would measure zero and clip the label to "…".
+        if node.children.is_empty() || !props::has_node_children(node) {
             return None;
         }
         let mut parts = vec![PartSpec::group("content", Pick::Default, Direction::Row)];
