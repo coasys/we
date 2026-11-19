@@ -139,7 +139,20 @@ impl BaseScreen {
     }
 
     /// Apply a phase change. A quiet poll does not touch the snapshot.
+    ///
+    /// Also asks the host's network probe, if there is one, while the
+    /// offline stage is up. The desktop app sets none: an omitted probe
+    /// counts as online, so nothing retries by itself and "Try again" is
+    /// the way back.
     pub fn poll(&mut self) {
+        if let Some(job) = self.controller.poll_network() {
+            self.spawn(job);
+            self.sync_facts();
+        }
+        if self.controller.watches_network() {
+            self.ctx
+                .request_repaint_after(std::time::Duration::from_secs(1));
+        }
         let observed = {
             let mut slot = lock_slot(&self.slot);
             let Some(live) = slot.live.as_ref() else {

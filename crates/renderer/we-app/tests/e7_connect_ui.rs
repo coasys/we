@@ -215,16 +215,24 @@ fn a_stopped_executor_goes_offline_and_a_restart_reopens() {
         "the space's banner is still drawn"
     );
 
-    // Still down: Try again comes back to the offline stage.
+    // Still down: Try again comes back to the offline stage. (A closed
+    // port fails at once; the wait is long enough that this is the new
+    // attempt's answer, not the frame from before the click.)
     h.get_by_label("Try again").click();
+    let clicked = Instant::now();
     step_until(&mut h, "offline again", Duration::from_secs(30), |h| {
-        h.query_by_label_contains("Opening your spaces").is_none()
+        clicked.elapsed() > Duration::from_millis(1500)
+            && stage(h) == "connect"
             && h.query_by_label_contains("isn't responding").is_some()
             && h.query_by_label("Try again").is_some()
     });
 
+    // Back: a restarted executor's agent is locked until the launcher
+    // unlocks it, as it does at start.
     executor.restart();
     let back = kit::connect(&rt, &executor.url);
+    rt.block_on(back.client().agent.unlock("passphrase".into(), false))
+        .unwrap();
     drop(back);
     h.get_by_label("Try again").click();
     step_until(&mut h, "the picker again", Duration::from_secs(60), |h| {

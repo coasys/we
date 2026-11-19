@@ -164,8 +164,10 @@ impl ConnectedApp {
                 self.go(Next::Connected(conn, url));
             }
         } else if self.base.is_failed() {
-            // The session ended under an open screen — a token refused, a
-            // grant removed: back to the connect screen, which says why.
+            // The session ended under an open screen: a token refused or a
+            // grant removed (the list, with the reason), or the executor
+            // stopped (the offline stage, with Try again). Dropping the
+            // stage drops the space, its queries and the connection.
             self.stage = Stage::Connect;
             self.prompt.clear();
         } else {
