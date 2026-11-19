@@ -689,12 +689,13 @@ describe('the Coasys cartridge', () => {
       const running = top[2];
       expect(running.children).toHaveLength(1);
       expect(running.props?.expandable).toBe(false);
+      // What is still running, not every record that went through: a finished one is in `records` only.
       const workflows = [
-        { name: 'a', archived: false, records: 2 },
-        { name: 'b', archived: false, records: 3 },
-        { name: 'c', archived: true, records: 9 },
+        { name: 'a', archived: false, records: 2, running: 1 },
+        { name: 'b', archived: false, records: 3, running: 0 },
+        { name: 'c', archived: true, records: 9, running: 9 },
       ];
-      expect(at([], {}, { workflowStore: { workflows } })({ $: RUNNING_FLOWS })).toBe(5);
+      expect(at([], {}, { workflowStore: { workflows } })({ $: RUNNING_FLOWS })).toBe(1);
     });
 
     it('reads the Social DNA page in the order the tree lists it', () => {

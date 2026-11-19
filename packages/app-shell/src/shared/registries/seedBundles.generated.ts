@@ -1741,14 +1741,14 @@ export const seedBundles: Bundle[] = [
                                         type: '$if',
                                         props: {
                                           condition: {
-                                            $: 'sum(workflowStore.workflows.filter(f, !f.archived).map(f, f.records))',
+                                            $: 'sum(workflowStore.workflows.filter(f, !f.archived).map(f, f.running))',
                                           },
                                           then: {
                                             type: 'we-badge',
                                             props: { variant: 'soft', size: 'xs' },
                                             children: [
                                               {
-                                                $: 'sum(workflowStore.workflows.filter(f, !f.archived).map(f, f.records))',
+                                                $: 'sum(workflowStore.workflows.filter(f, !f.archived).map(f, f.running))',
                                               },
                                             ],
                                           },

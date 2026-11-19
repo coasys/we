@@ -71,7 +71,7 @@ export async function check({ evaluate, screenshot }) {
   );
   if (order.some((i, n) => i < 0 || (n > 0 && i < order[n - 1])))
     problems.push(`Social DNA's rows are out of order: ${order.join(', ')}`);
-  // Two Flows rows: the running ones at the top (two records in Review) and the flows written, inside.
+  // Two Flows rows: the running ones at the top (two of Review's three records) and the flows written, inside.
   const flows = shown.filter((row) => /^Flows\d*$/.test(row));
   if (flows.length !== 2) problems.push(`${flows.length} Flows rows, not two`);
   if (!flows.includes('Flows2')) problems.push(`the top Flows row does not count the two running: ${flows.join(', ')}`);

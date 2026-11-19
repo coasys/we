@@ -94,11 +94,11 @@ export const classGroup = (key: 'models' | 'we'): string => `${CLASS_GROUPS}.fil
 export const FLOW_DEFINITIONS = 'workflowStore.workflows.filter(f, !f.archived)';
 
 /**
- * The flows running: how many records are going through the space's flows, as the store counts them
- * for each. Counted rather than listed, since the store keeps no list of runs across flows; the flows
- * page lists them a flow at a time.
+ * The flows running: how many records are still going through the space's flows — not at a final
+ * step — as the store counts them, live, for each. Counted rather than listed, since the store keeps
+ * no list of runs across flows; the flows page lists them a flow at a time.
  */
-export const RUNNING_FLOWS = `sum(${FLOW_DEFINITIONS}.map(f, f.records))`;
+export const RUNNING_FLOWS = `sum(${FLOW_DEFINITIONS}.map(f, f.running))`;
 
 /** How many classes there are. */
 export const CLASS_COUNT = `sum(${CLASS_GROUPS}.map(g, count(g.classes)))`;
