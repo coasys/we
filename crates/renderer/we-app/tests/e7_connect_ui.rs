@@ -2,6 +2,9 @@
 //! without it): the connect screen reaches a local executor, the picker
 //! lists the agent's perspectives, a click opens one as the Coasys app, and
 //! a call created elsewhere shows up in it.
+#[path = "support/gpu.rs"]
+mod gpu;
+
 use std::time::{Duration, Instant};
 
 use egui_kittest::kittest::{NodeT, Queryable};
@@ -136,6 +139,32 @@ fn app_remembering(
     tokens: &std::path::Path,
     remember: Option<std::path::PathBuf>,
 ) -> H<'static> {
+    app_built(url, tokens, remember, egui_kittest::Harness::builder())
+}
+
+/// [`app_for`] with a wgpu renderer, for a test that exports a screenshot.
+fn app_drawn(url: &str, tokens: &std::path::Path) -> H<'static> {
+    app_built(
+        url,
+        tokens,
+        None,
+        egui_kittest::Harness::builder().renderer(gpu::serial()),
+    )
+}
+
+/// Render-and-export smoke only: no pixel or golden comparison.
+fn save_shot(h: &mut H, name: &str) {
+    let image = h.render().expect("wgpu render of the window");
+    let shot = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
+    image.save(&shot).expect("write the screenshot");
+}
+
+fn app_built(
+    url: &str,
+    tokens: &std::path::Path,
+    remember: Option<std::path::PathBuf>,
+    builder: egui_kittest::HarnessBuilder<Option<ConnectedApp>>,
+) -> H<'static> {
     let args = ConnectArgs {
         settings: ConnectSettings {
             url: Some(url.to_string()),
@@ -150,7 +179,7 @@ fn app_remembering(
         remember,
     };
     let bundle = we_template::Bundle::parse(BUNDLE).unwrap();
-    egui_kittest::Harness::builder()
+    builder
         .with_size(egui::vec2(1280.0, 800.0))
         .with_accessibility_check(false)
         .build_ui_state(
@@ -194,7 +223,7 @@ fn a_stopped_executor_goes_offline_and_a_restart_reopens() {
     kit::seed_space(&rt, &writer, "e7-dies");
     drop(writer);
     let tokens = tempfile::tempdir().unwrap();
-    let mut h = app_for(&executor.url, tokens.path());
+    let mut h = app_drawn(&executor.url, tokens.path());
     choose_this_computer(&mut h);
     step_until(&mut h, "the picker", Duration::from_secs(60), |h| {
         stage(h) == "pick" && h.query_by_label("e7-dies   (local)").is_some()
@@ -214,6 +243,7 @@ fn a_stopped_executor_goes_offline_and_a_restart_reopens() {
         h.query_by_label_contains("Connection lost").is_none(),
         "the space's banner is still drawn"
     );
+    save_shot(&mut h, "connect-session-lost.png");
 
     // Still down: Try again comes back to the offline stage. (A closed
     // port fails at once; the wait is long enough that this is the new
@@ -238,6 +268,7 @@ fn a_stopped_executor_goes_offline_and_a_restart_reopens() {
     step_until(&mut h, "the picker again", Duration::from_secs(60), |h| {
         stage(h) == "pick" && h.query_by_label("e7-dies   (local)").is_some()
     });
+    save_shot(&mut h, "connect-reopened.png");
 }
 
 /// Approve the capability the overlay is showing and submit its code.
