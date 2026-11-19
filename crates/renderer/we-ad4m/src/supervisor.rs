@@ -20,9 +20,12 @@
 //! supervisor and reaches the child in its environment
 //! (`AD4M_ADMIN_CREDENTIAL`), never on its command line, where `ps` shows it
 //! to every user. Only the supervisor uses it, to read the agent's state.
-//! The app's own connection asks for its capability as with any executor;
-//! the child runs with `--auto-permit-cap-requests true`, as the Electron
-//! shell's first config does, so that request is granted without a code.
+//! The app's own connection asks for its capability as with any executor.
+//! There is no launcher to approve it, so the supervisor, as the operator,
+//! approves that one request ([`Supervisor::approve`]): the request id the
+//! window's own flow was answered, for the grant that flow asked for, and
+//! nothing else. `--auto-permit-cap-requests` is not used: it would grant
+//! every app's request, and its code is only printed to the log.
 //!
 //! ## States
 //!
@@ -52,6 +55,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
+use crate::connect::{app_info, GrantScope};
 use crate::Connection;
 
 /// The executor's exit codes: its run contract with a supervisor (ad4m
@@ -122,10 +126,17 @@ impl SupervisorConfig {
     }
 }
 
-/// Reads the agent's state with the admin credential. `Ok(None)`: the
-/// executor has no agent yet.
+/// The supervisor's calls with the admin credential.
 pub trait AgentReader: Send + Sync {
+    /// The agent's state. `Ok(None)`: the executor has no agent yet.
     fn read(&self, url: &str, admin: &str) -> Result<Option<Agent>, String>;
+
+    /// `agent.permitCapability` for `auth` (`{"requestId", "auth"}`):
+    /// the code that redeems the request.
+    fn permit(&self, url: &str, admin: &str, auth: &str) -> Result<String, String> {
+        let _ = (url, admin, auth);
+        Err("this reader approves nothing".into())
+    }
 }
 
 /// The agent's state from `agent.status`'s two flags. An agent that does
@@ -157,6 +168,27 @@ impl AgentReader for Ad4mReader {
         self.handle
             .block_on(async { tokio::time::timeout(READ_TIMEOUT, read).await })
             .map_err(|_| "the agent did not answer in time".to_string())?
+            .map_err(|e| format!("{e:#}"))
+    }
+
+    fn permit(&self, url: &str, admin: &str, auth: &str) -> Result<String, String> {
+        let handle = self.handle.clone();
+        let (url, admin, auth) = (url.to_string(), admin.to_string(), auth.to_string());
+        let permit = async move {
+            let conn = Connection::open(handle, &url, &admin).await?;
+            let code = conn
+                .ws()
+                .call::<String>(
+                    "agent.permitCapability",
+                    serde_json::json!({ "auth": auth }),
+                )
+                .await;
+            conn.ws().close().await;
+            anyhow::Ok(code?)
+        };
+        self.handle
+            .block_on(async { tokio::time::timeout(READ_TIMEOUT, permit).await })
+            .map_err(|_| "the executor did not answer in time".to_string())?
             .map_err(|e| format!("{e:#}"))
     }
 }
@@ -303,6 +335,33 @@ impl Supervisor {
         while self.shared.lock().running && Instant::now() < deadline {
             std::thread::sleep(EXIT_POLL);
         }
+    }
+
+    /// Approve capability request `request_id` for `scope`, as the
+    /// operator, and answer its code. Blocks; call it off the UI thread.
+    ///
+    /// Only for the request the window's own flow made to this executor:
+    /// the caller passes the id that flow was answered and the scope it
+    /// asked for. Refused while the executor is not ready.
+    pub fn approve(&self, request_id: &str, scope: &GrantScope) -> Result<String, String> {
+        let url = {
+            let status = self.shared.lock();
+            match (&status.lifecycle, &status.url) {
+                (Lifecycle::Ready { .. }, Some(url)) => url.clone(),
+                _ => return Err("the executor is not running".into()),
+            }
+        };
+        let app = app_info(scope);
+        let auth = serde_json::json!({
+            "requestId": request_id,
+            "auth": {
+                "appName": app.name,
+                "appDesc": app.description,
+                "capabilities": app.capabilities,
+            },
+        })
+        .to_string();
+        self.shared.reader.permit(&url, &self.shared.admin, &auth)
     }
 
     /// Read the agent again (TS `executor.refresh`), off this thread. The
@@ -521,7 +580,6 @@ fn spawn(shared: &Shared, port: u16) -> Result<(Child, Tail), String> {
         .args(["--watch-stdin", "true"])
         .args(["--exit-with-parent", "true"])
         .args(["--run-dapp-server", "false"])
-        .args(["--auto-permit-cap-requests", "true"])
         .args(&config.extra_args)
         .env("AD4M_ADMIN_CREDENTIAL", &shared.admin)
         .env_remove("AD4M_INSECURE_NO_ADMIN_CREDENTIAL")
