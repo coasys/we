@@ -51,13 +51,23 @@ fn closed_port() -> u16 {
         .port()
 }
 
-/// A stand-in executor: `init` succeeds, `run` runs `body`.
+/// The executor's line once its API listener is bound, as the stand-ins
+/// print it on stderr for the port in `<dir>/port` (if that file exists).
+const LISTENING: &str =
+    "echo \"[2026-11-19T00:00:00Z INFO  rust_executor::api] API server starting on http://127.0.0.1:$PORT/api/v1\" >&2";
+
+/// A stand-in executor: `init` succeeds; `run` says it listens on the port
+/// in `<dir>/port` (when there is one), then runs `body`.
 fn script(dir: &Path, name: &str, body: &str) -> PathBuf {
     use std::os::unix::fs::PermissionsExt;
     let path = dir.join(name);
     std::fs::write(
         &path,
-        format!("#!/bin/sh\nif [ \"$1\" = init ]; then exit 0; fi\n{body}\n"),
+        format!(
+            "#!/bin/sh\nif [ \"$1\" = init ]; then exit 0; fi\n\
+             PORT=$(cat \"$(dirname \"$0\")/port\" 2>/dev/null)\n\
+             if [ -n \"$PORT\" ]; then {LISTENING}; fi\n{body}\n"
+        ),
     )
     .unwrap();
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
@@ -125,9 +135,15 @@ impl AgentReader for Reader {
     }
 }
 
+/// The stand-in in `dir` will say it listens on `port`.
 fn config(dir: &Path, binary: PathBuf, port: u16) -> SupervisorConfig {
+    std::fs::write(dir.join("port"), port.to_string()).unwrap();
+    silent(dir, binary)
+}
+
+/// A stand-in that never says where it listens.
+fn silent(dir: &Path, binary: PathBuf) -> SupervisorConfig {
     let mut config = SupervisorConfig::new(binary, dir.join("data"));
-    config.port = Some(port);
     config.admin_credential = Some(ADMIN.to_string());
     config.ready_timeout = Duration::from_secs(10);
     config
@@ -205,7 +221,10 @@ fn ready_after_health_with_the_agent_read() {
         "the credential is on the command line: {args}"
     );
     assert!(args.contains("--watch-stdin true"), "{args}");
-    assert!(args.contains(&format!("--port {port}")), "{args}");
+    assert!(
+        args.contains("--port 0"),
+        "the child chose no port of its own: {args}"
+    );
     let env = std::fs::read_to_string(dir.path().join("env")).unwrap();
     assert_eq!(env.trim(), ADMIN);
 }
@@ -475,6 +494,12 @@ fn exit_75_runs_it_again() {
         assert!(start.elapsed() < Duration::from_secs(10), "not run again");
         std::thread::sleep(Duration::from_millis(10));
     }
+    // The second run's URL, from its own listening line.
+    let start = Instant::now();
+    while sup.url().is_none() {
+        assert!(start.elapsed() < Duration::from_secs(10), "no URL");
+        std::thread::sleep(Duration::from_millis(10));
+    }
     wait_for(&sup, "ready", 10, |s| matches!(s, Lifecycle::Ready { .. }));
     assert_eq!(
         sup.url().as_deref(),
@@ -519,4 +544,51 @@ fn init_runs_only_for_an_empty_data_folder() {
             marker.exists()
         );
     }
+}
+
+/// Round 2 (Lal: port ownership): the URL comes only from the child's own
+/// stderr. A child that never says where it listens is never Ready, even
+/// with something answering `/health` on a loopback port, and the admin
+/// credential goes nowhere. The child is asked to bind port 0.
+#[test]
+fn an_alien_on_a_port_gets_no_token() {
+    let dir = tempfile::tempdir().unwrap();
+    let alien = health();
+    let reader = Arc::new(Reader::default());
+    let mut config = silent(dir.path(), waits_on_stdin(dir.path()));
+    config.ready_timeout = Duration::from_secs(2);
+    let sup = Supervisor::with_reader(config, reader.clone());
+    sup.start();
+    wait_for(&sup, "failed", 10, |s| {
+        matches!(s, Lifecycle::Failed { .. })
+    });
+    let calls = reader.calls.lock().unwrap().clone();
+    assert!(calls.is_empty(), "the admin credential went to {calls:?}");
+    assert_ne!(sup.url(), Some(format!("http://127.0.0.1:{alien}")));
+    let args = std::fs::read_to_string(dir.path().join("args")).unwrap();
+    assert!(args.contains("--port 0"), "{args}");
+}
+
+/// The executor's listening line, and only it, gives the port.
+#[test]
+fn the_port_is_read_from_the_listening_line() {
+    use we_ad4m::supervisor::reported_port;
+    let line = "[2026-11-19T09:47:12Z INFO  rust_executor::api] API server starting on http://127.0.0.1:45617/api/v1";
+    assert_eq!(reported_port(line), Some(45617));
+    assert_eq!(
+        reported_port("API server starting on http://0.0.0.0:45617/api/v1"),
+        None
+    );
+    assert_eq!(
+        reported_port("API server starting on http://127.0.0.1:0/api/v1"),
+        None
+    );
+    assert_eq!(
+        reported_port("API server starting on http://127.0.0.1:456178/api/v1"),
+        None
+    );
+    assert_eq!(
+        reported_port("SFU event loop started on 127.0.0.1:46113"),
+        None
+    );
 }

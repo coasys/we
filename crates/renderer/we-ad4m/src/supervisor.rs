@@ -29,8 +29,21 @@
 //!
 //! ## States
 //!
-//! - **Starting** from a start until `GET /health` answers 200
-//!   `{"status":"ok"}` on its port.
+//! - **Starting** from a start until the child has said which port it
+//!   bound and `GET /health` answers 200 `{"status":"ok"}` there.
+//!
+//! ## The port is the child's
+//!
+//! The child runs with `--port 0`: the OS gives it a free port that only it
+//! holds. It logs `API server starting on http://127.0.0.1:<port>/api/v1`
+//! once that listener is bound, on its stderr, which is a pipe only this
+//! supervisor reads. That line is the only source of the address: no port
+//! is guessed (a free port released before the child binds it can be taken
+//! by another process), and no `/health` probe or admin call goes anywhere
+//! before it. Admin calls (`agent.status`, `agent.permitCapability`) are
+//! made only for the current run and only while its child has not exited.
+//! A narrow window remains: the child can die between that check and the
+//! socket open, and its port be taken in that instant.
 //! - **Ready**, with the agent from `agent.status`: `Locked` when it exists
 //!   and is locked, `Unlocked`, or none (no agent yet, or no answer). It is
 //!   never guessed to want a password.
@@ -39,8 +52,8 @@
 //! - **Failed**, `stopped: true`: it was ready and then exited (stopped
 //!   outside the app, crashed, or stopped by this supervisor).
 //!
-//! Exit 75 (the executor asked to be started again) runs it again at once on
-//! the same port; exit 80 (port taken) tries another free port, twice. There
+//! Exit 75 (the executor asked to be started again) runs it again at once.
+//! There
 //! is no automatic restart after a crash (the Electron shell has one, with
 //! a backoff): B's "Start Coasys" starts it again.
 //!
@@ -63,7 +76,6 @@ use crate::Connection;
 const EXIT_RESTART: i32 = 75;
 const EXIT_CONFIG_REFUSED: i32 = 78;
 const EXIT_DATA_FOLDER_BUSY: i32 = 79;
-const EXIT_PORT_TAKEN: i32 = 80;
 
 /// How long one `/health` probe may take, and how far apart they are.
 const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
@@ -102,8 +114,6 @@ pub struct SupervisorConfig {
     pub data_dir: PathBuf,
     /// `init --network-bootstrap-seed`.
     pub seed: Option<PathBuf>,
-    /// A fixed port; `None` takes a free loopback port at each start.
-    pub port: Option<u16>,
     /// The admin credential; `None` makes a fresh random one.
     pub admin_credential: Option<String>,
     /// More `run` arguments (tests: `--run-holochain false`).
@@ -118,7 +128,6 @@ impl SupervisorConfig {
             binary,
             data_dir,
             seed: None,
-            port: None,
             admin_credential: None,
             extra_args: Vec::new(),
             ready_timeout: Duration::from_secs(60),
@@ -226,7 +235,12 @@ struct Status {
     stopping: bool,
     child: Option<Child>,
     stdin: Option<ChildStdin>,
+    /// Where the current run's child said it listens. Set only from that
+    /// child's own stderr, so it is that child's port.
     url: Option<String>,
+    /// Grows with every child started. Admin calls name the run they are
+    /// for and are refused for any other.
+    run: u64,
 }
 
 struct Shared {
@@ -287,6 +301,7 @@ impl Supervisor {
                     child: None,
                     stdin: None,
                     url: None,
+                    run: 0,
                 }),
                 waker: Mutex::new(None),
                 starts: AtomicU64::new(0),
@@ -365,11 +380,12 @@ impl Supervisor {
     /// asked for. Refused while the executor is not ready.
     pub fn approve(&self, request_id: &str, scope: &GrantScope) -> Result<String, String> {
         let url = {
-            let status = self.shared.lock();
-            match (&status.lifecycle, &status.url) {
-                (Lifecycle::Ready { .. }, Some(url)) => url.clone(),
-                _ => return Err("the executor is not running".into()),
+            let mut status = self.shared.lock();
+            let run = status.run;
+            if !matches!(status.lifecycle, Lifecycle::Ready { .. }) {
+                return Err("the executor is not running".into());
             }
+            admin_url(&mut status, run).ok_or("the executor is not running")?
         };
         let app = app_info(scope);
         let auth = serde_json::json!({
@@ -388,12 +404,16 @@ impl Supervisor {
     /// answer is dropped when anything was published since the refresh was
     /// asked, and a refresh that cannot answer leaves the state as it was.
     pub fn refresh(&self) {
-        let (url, asked) = {
-            let status = self.shared.lock();
-            let (Lifecycle::Ready { .. }, Some(url)) = (&status.lifecycle, &status.url) else {
+        let (url, asked, run) = {
+            let mut status = self.shared.lock();
+            if !matches!(status.lifecycle, Lifecycle::Ready { .. }) {
+                return;
+            }
+            let run = status.run;
+            let Some(url) = admin_url(&mut status, run) else {
                 return;
             };
-            (url.clone(), status.changes)
+            (url, status.changes, run)
         };
         let shared = self.shared.clone();
         let _ = std::thread::Builder::new()
@@ -404,7 +424,7 @@ impl Supervisor {
                 };
                 let status = shared.lock();
                 let same = status.lifecycle == Lifecycle::Ready { agent };
-                if status.changes != asked || same {
+                if status.changes != asked || status.run != run || same {
                     return;
                 }
                 shared.publish(status, Lifecycle::Ready { agent });
@@ -475,22 +495,13 @@ fn run_child(shared: &Shared) -> Lifecycle {
     if let Err(reason) = init(config) {
         return failed(reason);
     }
-    let mut port = None;
-    let mut port_tries = 0;
     loop {
-        let port_now = match port.or(config.port) {
-            Some(port) => port,
-            None => match free_port() {
-                Ok(port) => port,
-                Err(e) => return failed(format!("Couldn't find a free port: {e}")),
-            },
-        };
-        let (mut child, tail) = match spawn(shared, port_now) {
+        let (mut child, tail) = match spawn(shared) {
             Ok(spawned) => spawned,
             Err(reason) => return failed(reason),
         };
         shared.starts.fetch_add(1, Ordering::SeqCst);
-        {
+        let run = {
             let mut status = shared.lock();
             if status.stopping {
                 // Stopped while it was being spawned: end it here.
@@ -498,11 +509,13 @@ fn run_child(shared: &Shared) -> Lifecycle {
                 let _ = child.wait();
                 return stopped_by_us();
             }
+            status.run += 1;
             status.stdin = child.stdin.take();
             status.child = Some(child);
-            status.url = Some(format!("http://127.0.0.1:{port_now}"));
-        }
-        let ended = watch(shared, port_now, &tail);
+            status.url = None;
+            status.run
+        };
+        let ended = watch(shared, run, &tail);
         let code = |status: &ExitStatus| status.code();
         match ended {
             Ended::Stopped => return stopped_by_us(),
@@ -512,14 +525,8 @@ fn run_child(shared: &Shared) -> Lifecycle {
                     config.ready_timeout.as_secs()
                 ))
             }
-            Ended::Early(exit) | Ended::Late(exit) if code(&exit) == Some(EXIT_RESTART) => {
-                port = Some(port_now);
-            }
+            Ended::Early(exit) | Ended::Late(exit) if code(&exit) == Some(EXIT_RESTART) => {}
             Ended::Early(exit) => match code(&exit) {
-                Some(EXIT_PORT_TAKEN) if config.port.is_none() && port_tries < 2 => {
-                    port_tries += 1;
-                    port = None;
-                }
                 Some(EXIT_DATA_FOLDER_BUSY) => {
                     return failed(
                         "Another executor is using this computer's Coasys data folder. \
@@ -588,30 +595,76 @@ fn init(config: &SupervisorConfig) -> Result<(), String> {
     }
 }
 
-type Tail = (Arc<Mutex<VecDeque<String>>>, mpsc::Receiver<()>);
+/// A child's stderr, as read: its last lines, the port it said it bound,
+/// and a signal when the pipe closed.
+struct Tail {
+    lines: Arc<Mutex<VecDeque<String>>>,
+    reported: Arc<Mutex<Option<u16>>>,
+    closed: mpsc::Receiver<()>,
+}
 
-fn spawn(shared: &Shared, port: u16) -> Result<(Child, Tail), String> {
+/// The line the executor logs once its API listener is bound
+/// (`rust-executor/src/api/mod.rs`, `log::info!` under the target
+/// `rust_executor::api`; test harnesses read it as "ready" too).
+const LISTENING: &str = "API server starting on http://127.0.0.1:";
+
+/// The port in the executor's "API server starting on" line, if `line` is
+/// that line for a loopback listener.
+pub fn reported_port(line: &str) -> Option<u16> {
+    let rest = &line[line.find(LISTENING)? + LISTENING.len()..];
+    let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+    if !rest[digits.len()..].starts_with('/') {
+        return None;
+    }
+    digits.parse().ok().filter(|port| *port != 0)
+}
+
+/// `RUST_LOG` for the child: the environment's, or the executor's own
+/// defaults, with `rust_executor::api=info` added so the listening line
+/// is logged whatever else is set.
+fn child_rust_log() -> String {
+    match std::env::var("RUST_LOG") {
+        Ok(set) if !set.trim().is_empty() => format!("{set},rust_executor::api=info"),
+        _ => "holochain=warn,wasmer_compiler_cranelift=warn,rust_executor=info,warp::server=info"
+            .into(),
+    }
+}
+
+/// Run the child on port 0: the OS gives it a free port, which only it
+/// holds, and it says which on its own stderr ([`reported_port`]). Nothing
+/// is sent to a port before that (no free-port guess that another process
+/// could take in between).
+fn spawn(shared: &Shared) -> Result<(Child, Tail), String> {
     let config = &shared.config;
     let mut child = Command::new(&config.binary)
         .arg("run")
         .arg("--app-data-path")
         .arg(&config.data_dir)
-        .args(["--port", &port.to_string()])
+        .args(["--port", "0"])
         .args(["--watch-stdin", "true"])
         .args(["--exit-with-parent", "true"])
         .args(["--run-dapp-server", "false"])
         .args(&config.extra_args)
         .env("AD4M_ADMIN_CREDENTIAL", &shared.admin)
+        .env("RUST_LOG", child_rust_log())
+        // Inherited settings that would change who holds operator
+        // authority or which port it listens on: not this app's executor.
         .env_remove("AD4M_INSECURE_NO_ADMIN_CREDENTIAL")
+        .env_remove("AD4M_ADMIN_CREDENTIAL_FILE")
+        .env_remove("AD4M_AUTO_PERMIT_CAP_REQUESTS")
+        .env_remove("AD4M_LOG_SECRETS")
+        .env_remove("AD4M_PORT")
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| format!("Couldn't run {}: {e}", config.binary.display()))?;
     let lines = Arc::new(Mutex::new(VecDeque::new()));
+    let reported = Arc::new(Mutex::new(None));
     let (closed_tx, closed_rx) = mpsc::channel();
     if let Some(stderr) = child.stderr.take() {
         let kept = lines.clone();
+        let port = reported.clone();
         let _ = std::thread::Builder::new()
             .name("we-executor-log".into())
             .spawn(move || {
@@ -619,6 +672,11 @@ fn spawn(shared: &Shared, port: u16) -> Result<(Child, Tail), String> {
                     let Ok(line) = line else { break };
                     if line.trim().is_empty() {
                         continue;
+                    }
+                    if let Some(said) = reported_port(&line) {
+                        port.lock()
+                            .unwrap_or_else(|p| p.into_inner())
+                            .get_or_insert(said);
                     }
                     let mut kept = kept.lock().unwrap_or_else(|p| p.into_inner());
                     kept.push_back(line);
@@ -629,11 +687,20 @@ fn spawn(shared: &Shared, port: u16) -> Result<(Child, Tail), String> {
                 let _ = closed_tx.send(());
             });
     }
-    Ok((child, (lines, closed_rx)))
+    Ok((
+        child,
+        Tail {
+            lines,
+            reported,
+            closed: closed_rx,
+        },
+    ))
 }
 
-/// Wait for the child to be ready, then for it to end.
-fn watch(shared: &Shared, port: u16, tail: &Tail) -> Ended {
+/// Wait for the child to say its port and answer `/health` there, then
+/// for it to end. The admin credential goes only to the port this run's
+/// child reported, and only while that child runs ([`admin_url`]).
+fn watch(shared: &Shared, run: u64, tail: &Tail) -> Ended {
     let deadline = Instant::now() + shared.config.ready_timeout;
     let mut ready = false;
     loop {
@@ -641,17 +708,20 @@ fn watch(shared: &Shared, port: u16, tail: &Tail) -> Ended {
             return ended;
         }
         if !ready {
-            if healthy(port) {
-                // Asked again after the answer: another executor on the
-                // port answers while this one exits (80, the port taken).
-                if let Some(ended) = exited(shared, false, tail) {
-                    return ended;
+            let port = *tail.reported.lock().unwrap_or_else(|p| p.into_inner());
+            if let Some(port) = port {
+                let mut status = shared.lock();
+                if status.run == run && status.url.is_none() {
+                    status.url = Some(format!("http://127.0.0.1:{port}"));
                 }
+            }
+            if port.is_some_and(healthy) {
                 ready = true;
-                let url = format!("http://127.0.0.1:{port}");
-                let agent = shared.reader.read(&url, &shared.admin).ok().flatten();
+                let url = admin_url(&mut shared.lock(), run);
+                let agent =
+                    url.and_then(|url| shared.reader.read(&url, &shared.admin).ok().flatten());
                 let status = shared.lock();
-                if !status.stopping {
+                if !status.stopping && status.run == run {
                     shared.publish(status, Lifecycle::Ready { agent });
                 }
                 continue;
@@ -667,6 +737,17 @@ fn watch(shared: &Shared, port: u16, tail: &Tail) -> Ended {
     }
 }
 
+/// The admin endpoint of run `run`: the port its child reported, while
+/// that run is the current one and its child has not exited. `None`
+/// otherwise; nothing with the admin credential is sent then.
+fn admin_url(status: &mut Status, run: u64) -> Option<String> {
+    if status.run != run || status.stopping {
+        return None;
+    }
+    let alive = matches!(status.child.as_mut()?.try_wait(), Ok(None));
+    alive.then(|| status.url.clone()).flatten()
+}
+
 /// How the child ended, if it did. Reaps it.
 fn exited(shared: &Shared, ready: bool, tail: &Tail) -> Option<Ended> {
     let mut status = shared.lock();
@@ -677,7 +758,7 @@ fn exited(shared: &Shared, ready: bool, tail: &Tail) -> Option<Ended> {
     drop(status);
     // Its last words may still be in the pipe: wait for it to close, a
     // little (a process it started may hold the pipe open).
-    let _ = tail.1.recv_timeout(Duration::from_secs(1));
+    let _ = tail.closed.recv_timeout(Duration::from_secs(1));
     Some(match (stopping, ready) {
         (true, _) => Ended::Stopped,
         (false, true) => Ended::Late(exit),
@@ -700,7 +781,7 @@ fn end_child(shared: &Shared) {
 
 /// The reason, and the child's last line on stderr when it said one.
 fn with_last(reason: String, tail: &Tail) -> String {
-    let lines = tail.0.lock().unwrap_or_else(|p| p.into_inner());
+    let lines = tail.lines.lock().unwrap_or_else(|p| p.into_inner());
     match lines.back() {
         Some(line) => {
             // `[2026-11-19T08:33:18Z ERROR rust_executor] Refusing …`
@@ -757,12 +838,6 @@ fn healthy(port: u16) -> bool {
     ok_status
         && serde_json::from_str::<serde_json::Value>(json)
             .is_ok_and(|value| value["status"] == "ok")
-}
-
-fn free_port() -> std::io::Result<u16> {
-    Ok(std::net::TcpListener::bind("127.0.0.1:0")?
-        .local_addr()?
-        .port())
 }
 
 /// 32 random bytes as hex.

@@ -303,8 +303,11 @@ fn stand_in(dir: &Path) -> PathBuf {
     std::fs::write(
         &path,
         format!(
-            "#!/bin/sh\nif [ \"$1\" = init ]; then exit 0; fi\necho $$ >> '{}'\ncat > /dev/null\n",
-            dir.join("ran").display()
+            "#!/bin/sh\nif [ \"$1\" = init ]; then exit 0; fi\necho $$ >> '{}'\n\
+             echo \"API server starting on http://127.0.0.1:$(cat '{}')/api/v1\" >&2\n\
+             cat > /dev/null\n",
+            dir.join("ran").display(),
+            dir.join("port").display()
         ),
     )
     .unwrap();
@@ -319,8 +322,8 @@ fn stand_in(dir: &Path) -> PathBuf {
 #[test]
 fn with_an_executor_url_the_window_runs_nothing() {
     let dir = tempfile::tempdir().unwrap();
-    let mut config = SupervisorConfig::new(stand_in(dir.path()), dir.path().join("data"));
-    config.port = Some(health());
+    let config = SupervisorConfig::new(stand_in(dir.path()), dir.path().join("data"));
+    std::fs::write(dir.path().join("port"), health().to_string()).unwrap();
     let url = format!("http://127.0.0.1:{}", closed_port());
     let mut h = harness(args(dir.path(), Some(url), Some(config)), None);
     step_until(&mut h, "the list", Duration::from_secs(10), |h| {
@@ -339,8 +342,8 @@ fn with_an_executor_url_the_window_runs_nothing() {
 #[test]
 fn with_a_binary_and_no_url_the_window_runs_it() {
     let dir = tempfile::tempdir().unwrap();
-    let mut config = SupervisorConfig::new(stand_in(dir.path()), dir.path().join("data"));
-    config.port = Some(health());
+    let config = SupervisorConfig::new(stand_in(dir.path()), dir.path().join("data"));
+    std::fs::write(dir.path().join("port"), health().to_string()).unwrap();
     let mut h = harness(args(dir.path(), None, Some(config)), None);
     step_until(&mut h, "the list", Duration::from_secs(20), |h| {
         h.query_by_label_contains("This computer").is_some()
