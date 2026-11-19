@@ -77,10 +77,10 @@ impl BaseScreen {
         );
         let host = Box::new(BaseHost {
             controller: controller.clone(),
+            settings: settings.clone(),
             jobs: Jobs::Dial {
                 slot: slot.clone(),
                 handle: handle.clone(),
-                settings: settings.clone(),
                 ctx: ctx.clone(),
             },
         });
@@ -257,47 +257,62 @@ fn spawn_flow(
     slot.seen = None;
 }
 
-/// Where a permitted connect job goes. The window dials. A test counts.
+/// Where a permitted connect job goes. The window dials. A test counts
+/// the jobs and keeps the settings each dial would use.
 enum Jobs {
     Dial {
         slot: Arc<Mutex<SlotState>>,
         handle: tokio::runtime::Handle,
-        settings: ConnectSettings,
         ctx: egui::Context,
     },
     #[cfg(test)]
-    Count(Arc<Mutex<Vec<HostJob>>>),
+    Count {
+        jobs: Arc<Mutex<Vec<HostJob>>>,
+        dials: Arc<Mutex<Vec<ConnectSettings>>>,
+    },
 }
 
 struct BaseHost {
     controller: Arc<BaseController>,
+    settings: ConnectSettings,
     jobs: Jobs,
 }
 
 impl BaseHost {
     #[cfg(test)]
     fn counting(controller: Arc<BaseController>, jobs: Arc<Mutex<Vec<HostJob>>>) -> Self {
+        Self::counting_dials(controller, jobs, Arc::default(), ConnectSettings::default())
+    }
+
+    #[cfg(test)]
+    fn counting_dials(
+        controller: Arc<BaseController>,
+        jobs: Arc<Mutex<Vec<HostJob>>>,
+        dials: Arc<Mutex<Vec<ConnectSettings>>>,
+        settings: ConnectSettings,
+    ) -> Self {
         Self {
             controller,
-            jobs: Jobs::Count(jobs),
+            settings,
+            jobs: Jobs::Count { jobs, dials },
         }
     }
 
     fn start(&self, job: HostJob) {
+        let dial = local_settings(&self.settings);
         match &self.jobs {
-            Jobs::Dial {
-                slot,
-                handle,
-                settings,
-                ctx,
-            } => {
-                spawn_flow(slot, handle, local_settings(settings), ctx, job.attempt);
+            Jobs::Dial { slot, handle, ctx } => {
+                spawn_flow(slot, handle, dial, ctx, job.attempt);
             }
             #[cfg(test)]
-            Jobs::Count(jobs) => {
+            Jobs::Count { jobs, dials } => {
                 jobs.lock()
                     .unwrap_or_else(|poison| poison.into_inner())
                     .push(job);
+                dials
+                    .lock()
+                    .unwrap_or_else(|poison| poison.into_inner())
+                    .push(dial);
             }
         }
     }

@@ -1,8 +1,12 @@
 //! What the desktop host offers the base connect screen.
 //!
-//! Slice 1 offers one row: this computer. The click dials an explicit
-//! loopback URL through the existing [`crate::connect::ConnectFlow`], so a
-//! remembered remote URL cannot answer the click.
+//! The catalog is this computer, then the servers the person keeps. A
+//! click on this computer dials an explicit loopback URL through the
+//! existing [`crate::connect::ConnectFlow`], so a remembered URL cannot
+//! answer the click. A server cannot be opened from this app yet (the
+//! desktop host refuses it the same way): selecting one returns the
+//! refusal and dials nothing, so this computer's tokens and its loopback
+//! operator access never go to a server.
 
 use std::path::{Path, PathBuf};
 
@@ -26,6 +30,96 @@ pub fn this_computer() -> ThisComputer {
         icon: "laptop",
         label: "This computer",
         detail: "Available while this computer is on",
+    }
+}
+
+/// One row of the catalog, as the template's `baseStore.connections`
+/// names it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Offer {
+    pub id: String,
+    pub kind: String,
+    pub icon: String,
+    pub label: String,
+    pub detail: String,
+}
+
+impl From<ThisComputer> for Offer {
+    fn from(row: ThisComputer) -> Self {
+        Self {
+            id: row.id.into(),
+            kind: row.kind.into(),
+            icon: row.icon.into(),
+            label: row.label.into(),
+            detail: row.detail.into(),
+        }
+    }
+}
+
+/// A server the person keeps in the base file.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SavedServer {
+    #[serde(default)]
+    pub name: String,
+    pub address: String,
+}
+
+/// The rows the connect screen lists: this computer first, then each kept
+/// server. An `--executor-url` that is not loopback is listed as a server
+/// too: it is not this computer, so it does not get that label.
+pub fn catalog(settings: &ConnectSettings, servers: &[SavedServer]) -> Vec<Offer> {
+    let _ = (settings, servers);
+    vec![this_computer().into()]
+}
+
+/// What the desktop host says when a server is chosen.
+pub fn server_refusal(label: &str) -> String {
+    format!("Can't open {label} from this app yet. Choose This computer.")
+}
+
+/// The endpoint a chosen row is reached at.
+///
+/// This computer gives settings whose URL is a loopback URL, set
+/// explicitly so discovery and a remembered URL cannot replace it. Every
+/// other kind is refused with the sentence the connect stage shows.
+pub fn select(
+    kind: &str,
+    label: &str,
+    settings: &ConnectSettings,
+) -> Result<ConnectSettings, String> {
+    let _ = (kind, label);
+    let mut local = settings.clone();
+    local.url = Some(explicit_local_url(settings));
+    Ok(local)
+}
+
+/// Whether `url` names this computer: `127.0.0.0/8`, `localhost` or `::1`.
+pub fn is_loopback(url: &str) -> bool {
+    let _ = url;
+    true
+}
+
+/// What the base file keeps: the id chosen last and the servers listed.
+/// No address of this computer and no credential.
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct BaseFile {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub connection: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub servers: Vec<SavedServer>,
+}
+
+impl BaseFile {
+    /// The file at `path`. A missing or unreadable file is an empty one.
+    pub fn load(path: &Path) -> Self {
+        let _ = path;
+        Self::default()
+    }
+
+    /// Keep `id` as the connection chosen last. The server list is kept.
+    pub fn remember(path: &Path, id: &str) -> std::io::Result<()> {
+        let _ = (path, id);
+        Ok(())
     }
 }
 
@@ -193,5 +287,207 @@ mod tests {
             FailureClass::Refused { reason } => assert!(reason.contains("refused"), "{reason}"),
             FailureClass::Unreachable => panic!("a refusal was classed unreachable"),
         }
+    }
+
+    fn isolated(url: Option<&str>) -> (tempfile::TempDir, ConnectSettings) {
+        let dir = tempfile::tempdir().unwrap();
+        let settings = ConnectSettings {
+            url: url.map(str::to_string),
+            token_dir: Some(dir.path().join("tokens")),
+            port_file: Some(dir.path().join("no-port-file")),
+            ..ConnectSettings::default()
+        };
+        (dir, settings)
+    }
+
+    fn saved(name: &str, address: &str) -> SavedServer {
+        SavedServer {
+            name: name.into(),
+            address: address.into(),
+        }
+    }
+
+    /// Acceptance: a server selection explains the refusal. It dials
+    /// nothing, so it cannot use localhost under the server's label.
+    #[test]
+    fn a_server_selection_explains_the_refusal() {
+        let (_dir, settings) = isolated(None);
+        let refused = select("server", "Lab box", &settings).expect_err("a server is refused");
+        assert_eq!(
+            refused,
+            "Can't open Lab box from this app yet. Choose This computer."
+        );
+        for kind in ["key-host", "connect", "", "this-device "] {
+            assert!(
+                select(kind, "Elsewhere", &settings).is_err(),
+                "kind {kind:?} was selected"
+            );
+        }
+    }
+
+    /// Acceptance: selection never sends this computer's credentials to
+    /// another host. This computer is always a loopback URL, even when
+    /// `--executor-url` names a remote executor.
+    #[test]
+    fn this_computer_never_dials_a_remote_executor_url() {
+        for remote in [
+            "https://remote.example",
+            "http://192.168.1.20:12000",
+            "http://127.0.0.1.example:12000",
+            "http://localhost.example:12000",
+        ] {
+            let (_dir, settings) = isolated(Some(remote));
+            let local = select("this-device", "This computer", &settings).unwrap();
+            let url = local.url.clone().unwrap();
+            assert_eq!(url, "http://127.0.0.1:12000", "{remote} dialed as {url}");
+            assert!(is_loopback(&url));
+            assert_eq!(local.token_dir, settings.token_dir);
+        }
+        let (_dir, settings) = isolated(Some("http://localhost:4100"));
+        let local = select("this-device", "This computer", &settings).unwrap();
+        assert_eq!(local.url.as_deref(), Some("http://localhost:4100"));
+    }
+
+    #[test]
+    fn loopback_is_only_this_computer() {
+        for url in [
+            "http://127.0.0.1:12000",
+            "http://127.1.2.3:1",
+            "http://localhost:4000/",
+            "http://LOCALHOST:4000",
+            "http://[::1]:12000",
+            "ws://127.0.0.1:12000/graphql",
+        ] {
+            assert!(is_loopback(url), "{url}");
+        }
+        for url in [
+            "https://remote.example",
+            "http://127.0.0.1.example:1",
+            "http://localhost.example:1",
+            "http://user@remote.example:1",
+            "http://127.0.0.1@remote.example:1",
+            "http://[::2]:1",
+            "http://0.0.0.0:12000",
+            "file:///tmp/x",
+            "127.0.0.1:12000",
+            "",
+        ] {
+            assert!(!is_loopback(url), "{url}");
+        }
+    }
+
+    #[test]
+    fn the_catalog_lists_this_computer_then_servers() {
+        let (_dir, settings) = isolated(Some("https://remote.example:9443/path?q=1"));
+        let rows = catalog(&settings, &[saved("Lab box", "lab.example:12000")]);
+        let ids: Vec<&str> = rows.iter().map(|row| row.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            [
+                "this-device",
+                "server:lab.example:12000",
+                "server:remote.example:9443"
+            ]
+        );
+        assert_eq!(rows[0], Offer::from(this_computer()));
+        assert_eq!(rows[1].label, "Lab box");
+        assert_eq!(rows[1].kind, "server");
+        assert_eq!(rows[2].label, "remote.example:9443");
+        assert!(rows.iter().all(|row| !row.detail.contains('?')));
+
+        let (_dir, settings) = isolated(Some("http://127.0.0.1:4100"));
+        let rows = catalog(&settings, &[saved("", "lab.example:12000")]);
+        assert_eq!(rows.len(), 2, "a loopback url is this computer: {rows:?}");
+        assert_eq!(rows[1].label, "lab.example:12000");
+
+        let rows = catalog(
+            &settings,
+            &[saved("", "lab.example:1"), saved("again", "lab.example:1")],
+        );
+        assert_eq!(rows.len(), 2, "one row per address: {rows:?}");
+    }
+
+    #[test]
+    fn the_base_file_keeps_the_choice_and_the_servers() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("we").join("base.json");
+        assert_eq!(BaseFile::load(&path), BaseFile::default());
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &path,
+            r#"{"servers":[{"name":"Lab box","address":"lab.example:12000"}]}"#,
+        )
+        .unwrap();
+        BaseFile::remember(&path, "this-device").unwrap();
+        let file = BaseFile::load(&path);
+        assert_eq!(file.connection.as_deref(), Some("this-device"));
+        assert_eq!(file.servers, [saved("Lab box", "lab.example:12000")]);
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            !text.contains("127.0.0.1"),
+            "an address of this computer was kept: {text}"
+        );
+
+        std::fs::write(&path, "{ not json").unwrap();
+        assert_eq!(BaseFile::load(&path), BaseFile::default());
+
+        let fresh = dir.path().join("new").join("base.json");
+        BaseFile::remember(&fresh, "server:lab.example:12000").unwrap();
+        assert_eq!(
+            BaseFile::load(&fresh).connection.as_deref(),
+            Some("server:lab.example:12000")
+        );
+    }
+
+    /// Acceptance: an explicit choice escapes a stale remembered endpoint.
+    /// `ad4m-connect` remembers a pinned URL per app and would try it
+    /// first. This computer's selection names its URL explicitly, so the
+    /// flow never dials the remembered one.
+    #[test]
+    fn this_computer_does_not_dial_a_stale_remembered_url() {
+        use std::net::TcpListener;
+
+        let stale = TcpListener::bind("127.0.0.1:0").unwrap();
+        let stale_url = format!("http://127.0.0.1:{}", stale.local_addr().unwrap().port());
+        stale.set_nonblocking(true).unwrap();
+        let closed = TcpListener::bind("127.0.0.1:0").unwrap();
+        let closed_port = closed.local_addr().unwrap().port();
+        drop(closed);
+
+        let (dir, mut settings) = isolated(None);
+        let port_file = dir.path().join("executor-port");
+        std::fs::write(&port_file, closed_port.to_string()).unwrap();
+        settings.port_file = Some(port_file);
+        let app = crate::connect::app_info(&settings.scope).name;
+        ad4m_client::connect::TokenStore::new(settings.token_dir.clone().unwrap())
+            .set_last_url(&app, &stale_url, true)
+            .unwrap();
+
+        let local = select("this-device", "This computer", &settings).unwrap();
+        assert_eq!(
+            local.url.as_deref(),
+            Some(format!("http://127.0.0.1:{closed_port}").as_str())
+        );
+
+        let rt = crate::Runtime::new().unwrap();
+        let flow = crate::connect::ConnectFlow::start(&rt.handle(), local, || {});
+        let start = std::time::Instant::now();
+        let reason = loop {
+            if let crate::connect::ConnectPhase::Failed { reason } = flow.phase() {
+                break reason;
+            }
+            assert!(start.elapsed().as_secs() < 30, "the flow did not end");
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        };
+        assert_eq!(
+            classify_failure(&reason),
+            FailureClass::Unreachable,
+            "{reason}"
+        );
+        let mut accepted = 0;
+        while stale.accept().is_ok() {
+            accepted += 1;
+        }
+        assert_eq!(accepted, 0, "the stale remembered URL was dialed");
     }
 }

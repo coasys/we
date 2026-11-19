@@ -34,6 +34,9 @@ pub struct ConnectArgs {
     /// `--write`: whether the open space may be changed (E11). The grant
     /// asked for is `settings.scope`.
     pub access: we_ad4m::Access,
+    /// The base file: the connection chosen last and the servers listed
+    /// ([`we_ad4m::base::BaseFile`]). `None` keeps nothing between starts.
+    pub remember: Option<std::path::PathBuf>,
 }
 
 type Pending<T> = Arc<Mutex<Option<Result<T, String>>>>;

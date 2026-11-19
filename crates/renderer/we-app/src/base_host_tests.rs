@@ -4,9 +4,10 @@
 
 use std::sync::{Arc, Mutex};
 
+use we_ad4m::connect::ConnectSettings;
 use we_expr::{BundleSlot, Provenance, Tier, Value};
 use we_screen::{ScreenSchema, ScreenState};
-use we_session::{BaseController, HostJob, Session, BUILTIN_BUNDLE};
+use we_session::{BaseController, ConnectionRow, HostJob, Session, BUILTIN_BUNDLE};
 use we_template::{
     Action, ActionRequest, AppSpec, BundleTemplate, Completer, Declared, Host, Invoked, LocalState,
     NodeId, PartDef, PartSource, ResolvedChild, ResolvedNode, RootSpec, Runtime, SchemaNode,
@@ -493,4 +494,114 @@ fn an_unmounted_callback_starts_nothing() {
     );
     finish_pending(&mut open);
     assert_idle(&open);
+}
+
+/// The base screen with this computer and one kept server, and a host that
+/// records what each dial would use.
+struct Choice {
+    open: Open,
+    dials: Arc<Mutex<Vec<ConnectSettings>>>,
+}
+
+const LAB: &str = "server:lab.example:12000";
+
+fn open_choice(spec: RootSpec, settings: ConnectSettings) -> Choice {
+    let controller = BaseController::new(
+        BUILTIN_BUNDLE,
+        vec![
+            ConnectionRow::this_computer(),
+            ConnectionRow::server("lab.example:12000", Some("Lab box")),
+        ],
+    );
+    let jobs = Arc::new(Mutex::new(Vec::new()));
+    let dials = Arc::new(Mutex::new(Vec::new()));
+    let host =
+        super::BaseHost::counting_dials(controller.clone(), jobs.clone(), dials.clone(), settings);
+    let mut session = Session::new(
+        spec,
+        Arc::new(StoreBag::new()),
+        screen_at("/"),
+        Box::new(host),
+    );
+    session.set_bindings(controller.bindings());
+    session.set_base_facts(Some(controller.facts()));
+    Choice {
+        open: Open {
+            session,
+            controller,
+            jobs,
+        },
+        dials,
+    }
+}
+
+fn dials_of(choice: &Choice) -> Vec<ConnectSettings> {
+    choice
+        .dials
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner())
+        .clone()
+}
+
+fn isolated(url: Option<&str>) -> (tempfile::TempDir, ConnectSettings) {
+    let dir = tempfile::tempdir().unwrap();
+    let settings = ConnectSettings {
+        url: url.map(str::to_string),
+        token_dir: Some(dir.path().join("tokens")),
+        port_file: Some(dir.path().join("no-port-file")),
+        ..ConnectSettings::default()
+    };
+    (dir, settings)
+}
+
+/// Acceptance: a server selection that is unsupported explains the
+/// refusal, and nothing is dialed — not localhost under the server label,
+/// and not the server with this computer's tokens.
+#[test]
+fn a_server_choice_refuses_and_dials_nothing() {
+    let (_dir, settings) = isolated(None);
+    let spec = RootSpec::base(button("Lab box", choose_of(LAB)), BUILTIN_BUNDLE);
+    let mut choice = open_choice(spec, settings);
+    click(&mut choice.open, "Lab box");
+    assert!(dials_of(&choice).is_empty(), "a server choice dialed");
+    let snap = choice.open.controller.public_json();
+    assert_eq!(snap["stage"], "connect", "{snap}");
+    assert_eq!(snap["busy"], false);
+    assert_eq!(snap["chosen"], LAB);
+    assert_eq!(
+        snap["error"],
+        "Can't open Lab box from this app yet. Choose This computer."
+    );
+}
+
+/// Acceptance: selection never sends this computer's credentials to
+/// another host. With a remote `--executor-url`, a click on This computer
+/// still dials loopback.
+#[test]
+fn this_computer_dials_loopback_with_a_remote_url() {
+    let (_dir, settings) = isolated(Some("https://remote.example:9443"));
+    let mut choice = open_choice(base_button("This computer"), settings.clone());
+    click(&mut choice.open, "This computer");
+    let dials = dials_of(&choice);
+    assert_eq!(dials.len(), 1);
+    let url = dials[0].url.as_deref().unwrap_or_default();
+    assert_eq!(url, "http://127.0.0.1:12000", "This computer dialed {url}");
+    assert_eq!(dials[0].token_dir, settings.token_dir);
+}
+
+/// Acceptance: an unknown id is rejected at the production host. The gate
+/// issues no permit for an id the catalog does not list.
+#[test]
+fn a_forged_unknown_id_starts_nothing() {
+    let (_dir, settings) = isolated(None);
+    let spec = RootSpec::base(
+        button("Evil", choose_of("server:evil.example:1")),
+        BUILTIN_BUNDLE,
+    );
+    let mut choice = open_choice(spec, settings);
+    click(&mut choice.open, "Evil");
+    assert_idle(&choice.open);
+    assert!(dials_of(&choice).is_empty());
+    assert_eq!(choice.open.controller.public_json()["chosen"], "");
+    assert!(choice.open.session.runtime().gate().denial_count() >= 1);
 }

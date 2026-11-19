@@ -15,12 +15,20 @@ const BUNDLE: &str = include_str!("../../../../bundles/coasys.bundle.json");
 type H<'a> = egui_kittest::Harness<'a, Option<ConnectedApp>>;
 
 fn harness(settings: ConnectSettings) -> H<'static> {
+    harness_remembering(settings, None)
+}
+
+fn harness_remembering(
+    settings: ConnectSettings,
+    remember: Option<std::path::PathBuf>,
+) -> H<'static> {
     let args = ConnectArgs {
         settings,
         space: None,
         theme: "dark".into(),
         data: Default::default(),
         access: we_ad4m::Access::ReadOnly,
+        remember,
     };
     let bundle = we_template::Bundle::parse(BUNDLE).unwrap();
     egui_kittest::Harness::builder()
@@ -118,4 +126,82 @@ fn a_closed_localhost_shows_the_reason() {
         .state()
         .as_ref()
         .is_some_and(|app| app.stage() == "connect"));
+}
+
+fn closed_port() -> u16 {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    drop(listener);
+    port
+}
+
+/// Acceptance: the last-used tag survives a restart. The second start goes
+/// to the remembered place without a click; "Choose another" shows the
+/// list with that place tagged.
+#[test]
+fn the_last_used_tag_survives_a_restart() {
+    let port = closed_port();
+    let (tokens, settings) = isolated(Some(format!("http://127.0.0.1:{port}")));
+    let file = tokens.path().join("we").join("base.json");
+    {
+        let mut h = harness_remembering(settings.clone(), Some(file.clone()));
+        step_until(&mut h, "the connect screen", Duration::from_secs(10), |h| {
+            h.query_by_label_contains("This computer").is_some()
+        });
+        assert!(h.query_by_label_contains("Last used").is_none());
+        h.get_by_label_contains("This computer").click();
+        step_until(&mut h, "the offline reason", Duration::from_secs(60), |h| {
+            h.query_by_label_contains("isn't responding").is_some()
+        });
+    }
+    let kept = std::fs::read_to_string(&file).expect("the choice is kept");
+    assert!(kept.contains("this-device"), "{kept}");
+    assert!(!kept.contains("127.0.0.1"), "an address was kept: {kept}");
+
+    let mut h = harness_remembering(settings, Some(file));
+    step_until(
+        &mut h,
+        "the resumed place's reason",
+        Duration::from_secs(60),
+        |h| h.query_by_label_contains("isn't responding").is_some(),
+    );
+    h.get_by_label_contains("Choose another").click();
+    step_until(&mut h, "the list", Duration::from_secs(10), |h| {
+        h.query_by_label_contains("Where to keep your spaces")
+            .is_some()
+    });
+    assert!(
+        h.query_by_label_contains("Last used").is_some(),
+        "the tag did not survive the restart"
+    );
+}
+
+/// A kept server is listed, labelled as a server, and choosing it says why
+/// it cannot be opened. Nothing is dialed: a listener at its address sees
+/// no connection.
+#[test]
+fn a_kept_server_explains_the_refusal() {
+    let server = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    server.set_nonblocking(true).unwrap();
+    let address = format!("127.0.0.1:{}", server.local_addr().unwrap().port());
+    let (tokens, settings) = isolated(Some(format!("http://127.0.0.1:{}", closed_port())));
+    let file = tokens.path().join("base.json");
+    std::fs::write(
+        &file,
+        serde_json::json!({ "servers": [{ "name": "Lab box", "address": address }] }).to_string(),
+    )
+    .unwrap();
+    let mut h = harness_remembering(settings, Some(file));
+    step_until(&mut h, "the server row", Duration::from_secs(10), |h| {
+        h.query_by_label_contains("Lab box").is_some()
+    });
+    assert!(h.query_by_label_contains("Coming soon").is_some());
+    h.get_by_label_contains("Lab box").click();
+    step_until(&mut h, "the refusal", Duration::from_secs(10), |h| {
+        h.query_by_label_contains("Can't open Lab box from this app yet")
+            .is_some()
+    });
+    h.run_steps(5);
+    assert!(h.query_by_label_contains("isn't responding").is_none());
+    assert!(server.accept().is_err(), "the server address was dialed");
 }

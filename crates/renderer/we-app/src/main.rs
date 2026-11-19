@@ -557,6 +557,7 @@ fn run_connected(args: Args) -> eframe::Result<()> {
         access,
         space: args.space.clone(),
         theme: args.theme.clone(),
+        remember: None,
         data: if args.demo_recorded {
             we_app::live::DataMode::DemoRecorded
         } else {

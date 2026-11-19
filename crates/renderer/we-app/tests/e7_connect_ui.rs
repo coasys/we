@@ -52,6 +52,7 @@ fn connect_pick_and_render() {
         theme: "dark".into(),
         data: Default::default(),
         access: we_ad4m::Access::ReadOnly,
+        remember: None,
     };
     let bundle = we_template::Bundle::parse(BUNDLE).unwrap();
     let mut h = egui_kittest::Harness::builder()
@@ -127,6 +128,14 @@ fn connect_pick_and_render() {
 }
 
 fn app_for(url: &str, tokens: &std::path::Path) -> H<'static> {
+    app_remembering(url, tokens, None)
+}
+
+fn app_remembering(
+    url: &str,
+    tokens: &std::path::Path,
+    remember: Option<std::path::PathBuf>,
+) -> H<'static> {
     let args = ConnectArgs {
         settings: ConnectSettings {
             url: Some(url.to_string()),
@@ -138,6 +147,7 @@ fn app_for(url: &str, tokens: &std::path::Path) -> H<'static> {
         theme: "dark".into(),
         data: Default::default(),
         access: we_ad4m::Access::ReadOnly,
+        remember,
     };
     let bundle = we_template::Bundle::parse(BUNDLE).unwrap();
     egui_kittest::Harness::builder()
@@ -351,5 +361,33 @@ fn the_page_lays_out_beside_the_data_panel() {
         "the page's right edge {} is under the data panel, which starts at {} (it was {before} without it)",
         canvas.right(),
         panel.left()
+    );
+}
+
+/// A second start with the same base file goes back to This computer
+/// without a click and reaches the picker; nothing asks again.
+#[test]
+fn a_remembered_choice_reconnects_at_the_next_start() {
+    let Some(executor) = kit::start_executor() else {
+        return;
+    };
+    let rt = we_ad4m::Runtime::new().unwrap();
+    let writer = kit::connect(&rt, &executor.url);
+    kit::seed_space(&rt, &writer, "e7-resume");
+    let tokens = tempfile::tempdir().unwrap();
+    let file = tokens.path().join("base.json");
+    {
+        let mut h = app_remembering(&executor.url, tokens.path(), Some(file.clone()));
+        choose_this_computer(&mut h);
+        step_until(&mut h, "the picker", Duration::from_secs(60), |h| {
+            stage(h) == "pick" && h.query_by_label("e7-resume   (local)").is_some()
+        });
+    }
+    let mut h = app_remembering(&executor.url, tokens.path(), Some(file));
+    step_until(
+        &mut h,
+        "the picker without a click",
+        Duration::from_secs(60),
+        |h| stage(h) == "pick" && h.query_by_label("e7-resume   (local)").is_some(),
     );
 }

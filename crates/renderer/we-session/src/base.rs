@@ -18,10 +18,65 @@ pub const BUILTIN_BUNDLE: &str = "coasys";
 /// What the offline screen says when this computer does not answer.
 pub const UNREACHABLE: &str = "Coasys isn't responding.";
 
+/// What the connect stage says when a choose names no row of the list.
+pub const NOT_LISTED: &str = "That option isn't available anymore.";
+
+/// What the offline stage says when a place off this computer is chosen
+/// while the host reports no network.
+pub const NO_NETWORK: &str = "This computer is offline.";
+
 const DOOR_NOTE: &str = "Not available on this computer.";
 
+/// Where the id of the connection chosen last is kept between starts.
+///
+/// The store keeps the id only. It never keeps an address or a credential:
+/// the host's catalog maps the id to a place each time.
+pub trait ChoiceMemory: Send + Sync {
+    /// The id kept from the last start, if any.
+    fn remembered(&self) -> Option<String>;
+    /// Keep `id` for the next start.
+    fn remember(&self, id: &str);
+}
+
+/// A [`ChoiceMemory`] that keeps nothing.
+#[derive(Debug, Default)]
+pub struct NoMemory;
+
+impl ChoiceMemory for NoMemory {
+    fn remembered(&self) -> Option<String> {
+        None
+    }
+
+    fn remember(&self, _id: &str) {}
+}
+
+/// A [`ChoiceMemory`] in this process. Two controllers that share one
+/// cell behave as two starts of the app.
+#[derive(Debug, Default)]
+pub struct MemoryCell(Mutex<Option<String>>);
+
+impl MemoryCell {
+    pub fn holding(id: &str) -> Self {
+        Self(Mutex::new(Some(id.to_string())))
+    }
+}
+
+impl ChoiceMemory for MemoryCell {
+    fn remembered(&self) -> Option<String> {
+        self.0.lock().unwrap_or_else(|p| p.into_inner()).clone()
+    }
+
+    fn remember(&self, id: &str) {
+        *self.0.lock().unwrap_or_else(|p| p.into_inner()) = Some(id.to_string());
+    }
+}
+
+/// Whether the host has a network. `None` from the host means unknown,
+/// which counts as online.
+pub type OnlineProbe = Arc<dyn Fn() -> bool + Send + Sync>;
+
 /// One row of `baseStore.connections`.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ConnectionRow {
     pub id: Arc<str>,
     pub kind: Arc<str>,
@@ -39,6 +94,19 @@ impl ConnectionRow {
             icon: "laptop".into(),
             label: "This computer".into(),
             detail: "Available while this computer is on".into(),
+        }
+    }
+
+    /// A server the person keeps, as the desktop host lists it:
+    /// `server:<address>`, labelled with its name or else its address.
+    pub fn server(address: &str, name: Option<&str>) -> Self {
+        let label = name.map(str::trim).filter(|name| !name.is_empty());
+        Self {
+            id: format!("server:{address}").into(),
+            kind: "server".into(),
+            icon: "hard-drives".into(),
+            label: label.unwrap_or(address).into(),
+            detail: address.into(),
         }
     }
 }
@@ -112,11 +180,14 @@ struct Inner {
 
 /// A connect attempt the host should start. `attempt` is the id a later
 /// completion must quote. `chosen` is `true` for a click on a row and
-/// `false` for retry.
+/// `false` for a resume or a retry. `connection` is the catalog row to
+/// reach: the host selects the endpoint from it, never from a remembered
+/// address.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HostJob {
     pub attempt: u64,
     pub chosen: bool,
+    pub connection: ConnectionRow,
 }
 
 /// A permitted base-store call, after the gate has checked the arguments.
@@ -191,6 +262,28 @@ impl BaseController {
         this
     }
 
+    /// A controller that starts with the id `memory` kept and keeps each
+    /// new choice there.
+    pub fn with_memory(
+        builtin: impl Into<Arc<str>>,
+        rows: Vec<ConnectionRow>,
+        memory: Arc<dyn ChoiceMemory>,
+    ) -> Arc<Self> {
+        let _ = memory;
+        Self::new(builtin, rows)
+    }
+
+    /// The host's network probe. Without one the network counts as up.
+    pub fn set_online(&self, online: Option<OnlineProbe>) {
+        let _ = online;
+    }
+
+    /// At start: go straight to the remembered connection when it is still
+    /// listed. The job is not a click (`chosen` is `false`).
+    pub fn resume(&self) -> Option<HostJob> {
+        None
+    }
+
     /// This computer, mounted as [`BUILTIN_BUNDLE`].
     pub fn with_this_computer() -> Arc<Self> {
         Self::new(BUILTIN_BUNDLE, vec![ConnectionRow::this_computer()])
@@ -246,10 +339,18 @@ impl BaseController {
                 if !inner.rows.iter().any(|row| row.id.as_ref() == id) {
                     return None;
                 }
+                let row = inner
+                    .rows
+                    .iter()
+                    .find(|row| row.id.as_ref() == id)
+                    .cloned()?;
                 inner.chosen_id.clone_from(&id);
-                begin_attempt(&mut inner, true)
+                begin_attempt(&mut inner, true, row)
             }
-            BaseCommand::Retry => begin_attempt(&mut inner, false),
+            BaseCommand::Retry => {
+                let row = inner.rows.first().cloned()?;
+                begin_attempt(&mut inner, false, row)
+            }
             BaseCommand::ShowConnections => {
                 inner.stage = Stage::Connect;
                 inner.busy = false;
@@ -276,7 +377,12 @@ impl BaseController {
     /// template click. `chosen` on the job is `false`.
     pub fn start_reconnect(&self) -> HostJob {
         let mut inner = self.lock();
-        let job = begin_attempt(&mut inner, false).expect("generation advances");
+        let row = inner
+            .rows
+            .first()
+            .cloned()
+            .expect("the catalog lists this computer");
+        let job = begin_attempt(&mut inner, false, row).expect("generation advances");
         self.publish(&inner);
         job
     }
@@ -342,7 +448,7 @@ impl BaseController {
     }
 }
 
-fn begin_attempt(inner: &mut Inner, chosen: bool) -> Option<HostJob> {
+fn begin_attempt(inner: &mut Inner, chosen: bool, connection: ConnectionRow) -> Option<HostJob> {
     let next = inner.generation.checked_add(1)?;
     inner.generation = next;
     inner.attempt = next;
@@ -354,6 +460,7 @@ fn begin_attempt(inner: &mut Inner, chosen: bool) -> Option<HostJob> {
     Some(HostJob {
         attempt: next,
         chosen,
+        connection,
     })
 }
 
