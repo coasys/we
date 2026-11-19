@@ -530,7 +530,26 @@ impl ExecutorIo for Io {
 
     async fn rpc<'a>(&'a self, base_url: &'a str, token: &'a str) -> anyhow::Result<Self::Rpc> {
         self.allowed(base_url)?;
-        self.inner.rpc(base_url, token).await
+        // `ad4m-client` gives a failed TCP connect or WebSocket handshake
+        // as words only (transport/native.rs). Where it failed is known
+        // here: the socket did not open. The executor refuses a token
+        // after the upgrade (close 1008), never in it, so this is the
+        // network, not a refusal.
+        self.inner
+            .rpc(base_url, token)
+            .await
+            .map_err(|e| e.context(SocketDidNotOpen))
+    }
+}
+
+/// The executor's socket did not open: the context `Io::rpc` puts on the
+/// transport's error.
+#[derive(Debug)]
+struct SocketDidNotOpen;
+
+impl std::fmt::Display for SocketDidNotOpen {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("the executor's socket did not open")
     }
 }
 
@@ -723,6 +742,7 @@ fn failure_kind(e: &anyhow::Error, answered: bool) -> FailureKind {
         Some(ConnectError::ExecutorNotFound { .. }) => FailureKind::Unreachable,
         Some(ConnectError::Refused { .. }) => FailureKind::Refused,
         Some(ConnectError::InsecureTransport { .. }) => FailureKind::Other,
+        None if e.downcast_ref::<SocketDidNotOpen>().is_some() => FailureKind::Unreachable,
         None if e.chain().any(is_network_error) => FailureKind::Unreachable,
         None => FailureKind::Other,
     }
@@ -959,6 +979,39 @@ mod failure_tests {
         let (kind, reason) = ended(&flow);
         assert_eq!(kind, FailureKind::Unreachable, "{reason}");
         assert!(!reason.contains("not an AD4M executor"), "{reason}");
+    }
+
+    /// Lal (slice 3, finding 2): the health check passes, then the
+    /// executor drops the socket before it opens. `ad4m-client` gives that
+    /// error as words only; the flow still says offline, from where the
+    /// error came (opening the socket), not from its words.
+    #[test]
+    fn a_socket_that_does_not_open_after_health_is_unreachable() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { return };
+                let mut buf = [0u8; 4096];
+                let n = stream.read(&mut buf).unwrap_or(0);
+                if buf[..n].starts_with(b"GET /health") {
+                    let _ = stream.write_all(
+                        b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 15\r\nConnection: close\r\n\r\n{\"status\":\"ok\"}",
+                    );
+                }
+                // Anything else (the WebSocket upgrade) is dropped unanswered.
+            }
+        });
+        let dir = tempfile::tempdir().unwrap();
+        let rt = crate::Runtime::new().unwrap();
+        let flow = ConnectFlow::start(
+            &rt.handle(),
+            settings_for(format!("http://127.0.0.1:{port}"), dir.path()),
+            || {},
+        );
+        let (kind, reason) = ended(&flow);
+        assert_eq!(kind, FailureKind::Unreachable, "{reason}");
     }
 
     /// An answer that is not an executor's (200, but not its JSON) is

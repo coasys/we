@@ -95,7 +95,7 @@ Commands ran from `crates/renderer` unless a command names another directory. `C
 ## What this slice does
 
 - A failed connect has a kind as well as a sentence: `ConnectPhase::Failed { kind, reason }`. The flow sets the kind from the error's type, before it makes the sentence. The base store reads the kind only. The words are only shown.
-  - `Unreachable`: nothing answered at the address, or an open session's socket stayed down.
+  - `Unreachable`: nothing answered at the address, an open session's socket stayed down, or the health check passed and the socket then did not open. `ad4m-client` gives that last error as words only (its native transport stringifies the TCP and handshake errors). The flow marks it where it fails (`Io::rpc`), with a type, and does not read the words. The executor refuses a token after the upgrade (close 1008), never in it, so a socket that does not open is the network.
   - `NotAnExecutor`: something answered the health check, but not as an AD4M executor (another HTTP status, a body that is not its JSON, or something that took the TCP connection and spoke no HTTP). A health check that times out is no answer: `Unreachable`, so offline, even when the port takes the TCP connection. The result is read from the error's type (`reqwest::Error::is_timeout`), not its words.
   - `Refused`: the executor refused this app (`ConnectError::Refused`, an `Unauthenticated` answer, a grant removed during a session).
   - `Other`: anything else, for example a transport that the flow does not use or a token file that it cannot write.
