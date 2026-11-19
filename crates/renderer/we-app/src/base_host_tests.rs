@@ -634,6 +634,7 @@ fn a_typed_refusal_goes_to_the_choice_whatever_its_words() {
         &open.controller,
         attempt,
         failed(FailureKind::Refused, reason),
+        None,
     );
     let snap = open.controller.public_json();
     assert_eq!(snap["stage"], "connect", "a refusal was shown as offline");
@@ -652,6 +653,7 @@ fn a_typed_unreachable_goes_offline_whatever_its_words() {
         &open.controller,
         attempt,
         failed(FailureKind::Unreachable, "the executor refused the socket"),
+        None,
     );
     let snap = open.controller.public_json();
     assert_eq!(snap["stage"], "offline");
@@ -671,6 +673,7 @@ fn not_an_executor_goes_to_the_choice() {
         &open.controller,
         attempt,
         failed(FailureKind::NotAnExecutor, reason),
+        None,
     );
     let snap = open.controller.public_json();
     assert_eq!(snap["stage"], "connect");
@@ -690,6 +693,7 @@ fn a_session_that_loses_its_executor_goes_offline() {
         &open.controller,
         attempt,
         failed(FailureKind::Unreachable, "the executor went away"),
+        None,
     );
     let snap = open.controller.public_json();
     assert_eq!(snap["stage"], "offline");
@@ -707,12 +711,12 @@ fn an_old_attempt_failure_does_not_replace_a_newer_choice() {
     open.controller.note_connected(old);
     let newer = open.controller.start_reconnect();
     for kind in [FailureKind::Unreachable, FailureKind::Refused] {
-        super::apply_phase(&open.controller, old, failed(kind, "late"));
+        super::apply_phase(&open.controller, old, failed(kind, "late"), None);
         assert_eq!(open.controller.public_json()["stage"], "handing-off");
     }
     open.controller.note_connected(newer.attempt);
     for kind in [FailureKind::Unreachable, FailureKind::Refused] {
-        super::apply_phase(&open.controller, old, failed(kind, "late"));
+        super::apply_phase(&open.controller, old, failed(kind, "late"), None);
         assert_eq!(
             open.controller.public_json()["stage"],
             "session",
@@ -820,7 +824,7 @@ fn a_stalled_executor_is_offline_and_try_again_redials() {
 
     let mut open = open(base_button("This computer"));
     let attempt = attempt_in_flight(&mut open);
-    super::apply_phase(&open.controller, attempt, phase);
+    super::apply_phase(&open.controller, attempt, phase, None);
     let snap = open.controller.public_json();
     assert_eq!(snap["stage"], "offline", "{snap}");
     assert_eq!(snap["offlineReason"], we_session::UNREACHABLE, "{snap}");

@@ -18,7 +18,7 @@ use we_ad4m::connect::{Ask, ConnectSettings, GrantScope};
 use we_ad4m::{Connection, Notices, SpaceRow, WriteHost};
 use we_data::writes::Confirm;
 
-use crate::base_screen::{BaseScreen, OwnedExecutor};
+use crate::base_screen::{BaseScreen, Owned, OwnedExecutor};
 
 use crate::live::{live_space_app, LiveSpace};
 
@@ -79,8 +79,24 @@ pub struct ConnectedApp {
 }
 
 impl ConnectedApp {
+    ///
+    /// With `args.executor` and no `--executor-url`, the window runs this
+    /// computer's executor. With `--executor-url` it attaches to that one
+    /// and runs nothing: an executor someone else runs is never this
+    /// window's to start or stop.
     pub fn new(ctx: egui::Context, bundle: we_template::Bundle, args: ConnectArgs) -> Self {
-        Self::with_executor(ctx, bundle, args, None)
+        let owned = match (&args.executor, &args.settings.url) {
+            (Some(config), None) => Some(Owned::Run(config.clone())),
+            (Some(_), Some(url)) => {
+                eprintln!(
+                    "--executor-url {} is used; the executor binary is not run",
+                    we_ad4m::connect::redact_url(url)
+                );
+                None
+            }
+            (None, _) => None,
+        };
+        Self::open(ctx, bundle, args, owned)
     }
 
     /// [`ConnectedApp::new`] with `owned` as this computer's executor.
@@ -89,6 +105,15 @@ impl ConnectedApp {
         bundle: we_template::Bundle,
         args: ConnectArgs,
         owned: Option<Arc<dyn OwnedExecutor>>,
+    ) -> Self {
+        Self::open(ctx, bundle, args, owned.map(Owned::Given))
+    }
+
+    fn open(
+        ctx: egui::Context,
+        bundle: we_template::Bundle,
+        args: ConnectArgs,
+        owned: Option<Owned>,
     ) -> Self {
         let base = BaseScreen::open_owned(
             ctx.clone(),
@@ -183,11 +208,13 @@ impl ConnectedApp {
             if let Some((conn, url)) = self.base.take_ready() {
                 self.go(Next::Connected(conn, url));
             }
-        } else if self.base.is_failed() {
+        } else if self.base.is_failed() || !self.base.holds_session() {
             // The session ended under an open screen: a token refused or a
-            // grant removed (the list, with the reason), or the executor
-            // stopped (the offline stage, with Try again). Dropping the
-            // stage drops the space, its queries and the connection.
+            // grant removed (the list, with the reason), the executor
+            // stopped (the offline stage, with Try again), or the executor
+            // this window runs stopped (its stopped screen, with Start
+            // Coasys). Dropping the stage drops the space, its queries and
+            // the connection.
             self.stage = Stage::Connect;
             self.prompt.clear();
         } else {

@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use egui_kittest::kittest::Queryable;
-use we_ad4m::connect::ConnectSettings;
+use we_ad4m::connect::{ConnectSettings, GrantScope};
 use we_ad4m::supervisor::SupervisorConfig;
 use we_app::connected::{ConnectArgs, ConnectedApp};
 use we_app::OwnedExecutor;
@@ -91,6 +91,10 @@ impl OwnedExecutor for Stand {
 
     fn pid(&self) -> Option<u32> {
         None
+    }
+
+    fn approve(&self, _request_id: &str, _scope: &GrantScope) -> Result<String, String> {
+        Err("a stand-in approves nothing".into())
     }
 }
 

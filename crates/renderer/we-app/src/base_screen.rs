@@ -11,14 +11,15 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use we_ad4m::base::{select, BaseFile};
-use we_ad4m::connect::{Ask, ConnectFlow, ConnectPhase, ConnectSettings, FailureKind};
-use we_ad4m::supervisor::{Agent, Lifecycle, Supervisor};
+use we_ad4m::connect::{Ask, ConnectFlow, ConnectPhase, ConnectSettings, FailureKind, GrantScope};
+use we_ad4m::supervisor::{Agent, Lifecycle, Supervisor, SupervisorConfig};
 use we_ad4m::Connection;
 use we_egui::Registry;
 use we_expr::Value;
 use we_screen::{ScreenSchema, ScreenState};
 use we_session::{
-    AgentState, BaseController, ChoiceMemory, ConnectionRow, ExecutorState, HostJob, NoMemory,
+    AgentState, BaseController, BaseJob, ChoiceMemory, ConnectionRow, ExecutorState, HostJob,
+    NoMemory,
 };
 use we_template::{Action, ActionRequest, Completer, Host, Invoked, RootSpec, StoreBag};
 
@@ -42,6 +43,9 @@ pub trait OwnedExecutor: Send + Sync {
     /// How many times a process was started.
     fn starts(&self) -> u64;
     fn pid(&self) -> Option<u32>;
+    /// Approve the window's own capability request `request_id` for
+    /// `scope`, as the operator; the code that redeems it. Blocks.
+    fn approve(&self, request_id: &str, scope: &GrantScope) -> Result<String, String>;
 }
 
 impl OwnedExecutor for Supervisor {
@@ -85,11 +89,25 @@ impl OwnedExecutor for Supervisor {
     fn pid(&self) -> Option<u32> {
         Supervisor::pid(self)
     }
+
+    fn approve(&self, request_id: &str, scope: &GrantScope) -> Result<String, String> {
+        Supervisor::approve(self, request_id, scope)
+    }
+}
+
+/// Where this window's executor comes from.
+pub enum Owned {
+    /// Run one: the window starts it at once and stops it on close.
+    Run(SupervisorConfig),
+    /// One someone gave the window (tests).
+    Given(Arc<dyn OwnedExecutor>),
 }
 
 struct LiveFlow {
     flow: ConnectFlow,
     attempt: u64,
+    /// The address the flow dials (`--executor-url` or the owned one).
+    url: Option<String>,
 }
 
 struct SlotState {
@@ -109,6 +127,13 @@ pub struct BaseScreen {
     settings: ConnectSettings,
     ctx: egui::Context,
     ready: Option<(Connection, String)>,
+    /// This computer's executor, when the window runs it, and how many of
+    /// its changes the controller has seen.
+    owned: Option<Arc<dyn OwnedExecutor>>,
+    owned_seen: u64,
+    /// The capability request of the window's own flow that the owned
+    /// executor's operator is approving (`false`) or failed to (`true`).
+    approving: Arc<Mutex<Option<(String, bool)>>>,
     /// Kept last so the runtime outlives the session that holds its handle.
     /// Nothing reads the field. Drop is the use.
     #[allow(dead_code)]
@@ -118,17 +143,27 @@ pub struct BaseScreen {
 impl BaseScreen {
     /// `remember` is the base file: the place chosen last and the servers
     /// listed. `None` keeps nothing.
-    /// `owned` is this computer's executor when the window runs it.
+    /// `owned` is this computer's executor when the window runs it: the
+    /// starting and failed screens show until it is ready, This computer
+    /// dials it where it listens, and "Start Coasys" starts it again.
     pub fn open_owned(
         ctx: egui::Context,
         bundle: &we_template::Bundle,
         settings: ConnectSettings,
         remember: Option<PathBuf>,
-        owned: Option<Arc<dyn OwnedExecutor>>,
+        owned: Option<Owned>,
     ) -> Self {
-        let _ = owned;
         let rt = we_ad4m::Runtime::new().expect("the adapter runtime starts");
         let handle = rt.handle();
+        let owned: Option<Arc<dyn OwnedExecutor>> = match owned {
+            Some(Owned::Run(config)) => {
+                let supervisor = Arc::new(Supervisor::new(config, handle.clone()));
+                supervisor.start();
+                Some(supervisor)
+            }
+            Some(Owned::Given(owned)) => Some(owned),
+            None => None,
+        };
         let servers = remember
             .as_deref()
             .map(BaseFile::load)
@@ -149,6 +184,14 @@ impl BaseScreen {
             None => Arc::new(NoMemory),
         };
         let controller = BaseController::with_memory(we_session::BUILTIN_BUNDLE, rows, memory);
+        // Changes first, then the state: a change between the two is seen
+        // again at the next poll.
+        let owned_seen = owned.as_ref().map_or(0, |owned| owned.changes());
+        if let Some(owned) = &owned {
+            let ctx_wake = ctx.clone();
+            owned.set_waker(Arc::new(move || ctx_wake.request_repaint()));
+            controller.own_executor(owned.state());
+        }
         let slot = Arc::new(Mutex::new(SlotState {
             live: None,
             seen: None,
@@ -162,6 +205,7 @@ impl BaseScreen {
         let host = Box::new(BaseHost {
             controller: controller.clone(),
             settings: settings.clone(),
+            owned: owned.clone(),
             jobs: Jobs::Dial {
                 slot: slot.clone(),
                 handle: handle.clone(),
@@ -191,6 +235,9 @@ impl BaseScreen {
             settings,
             ctx,
             ready: None,
+            owned,
+            owned_seen,
+            approving: Arc::default(),
             rt,
         };
         if let Some(job) = this.controller.resume() {
@@ -214,6 +261,21 @@ impl BaseScreen {
     /// counts as online, so nothing retries by itself and "Try again" is
     /// the way back.
     pub fn poll(&mut self) {
+        // The executor this window runs: each change it reports, newest
+        // only (TS `executor.subscribe`).
+        if let Some(owned) = self.owned.clone() {
+            let changes = owned.changes();
+            if changes != self.owned_seen {
+                self.owned_seen = changes;
+                if let Some(job) = self.controller.note_executor(owned.state()) {
+                    self.spawn(job);
+                }
+                self.sync_facts();
+            }
+        }
+        if let Some(owned) = self.owned.clone() {
+            self.approve_own_request(owned);
+        }
         if let Some(job) = self.controller.poll_network() {
             self.spawn(job);
             self.sync_facts();
@@ -248,14 +310,20 @@ impl BaseScreen {
                 self.ready = Some((conn, url.clone()));
             }
         } else {
-            apply_phase(&self.controller, attempt, phase);
+            apply_phase(&self.controller, attempt, phase, self.owned.as_ref());
         }
         self.sync_facts();
     }
 
     /// The executor this window runs, if any.
     pub fn owned(&self) -> Option<&Arc<dyn OwnedExecutor>> {
-        None
+        self.owned.as_ref()
+    }
+
+    /// Whether a session holds the window. `false` once the base took it
+    /// back (the executor this window runs stopped under it).
+    pub fn holds_session(&self) -> bool {
+        self.controller.in_session()
     }
 
     pub fn take_ready(&mut self) -> Option<(Connection, String)> {
@@ -272,14 +340,90 @@ impl BaseScreen {
         )
     }
 
+    /// What the flow asks the person, if anything. Not the owned
+    /// executor's code while its operator approves the request: the prompt
+    /// shows only if that approval failed.
     pub fn ask(&self) -> Option<(Ask, Option<String>)> {
-        match lock_slot(&self.slot)
+        let phase = lock_slot(&self.slot)
             .live
             .as_ref()
-            .map(|live| live.flow.phase())
-        {
-            Some(ConnectPhase::Asking { ask, note }) => Some((ask, note)),
+            .map(|live| live.flow.phase());
+        match phase {
+            Some(ConnectPhase::Asking { ask, note }) => {
+                if let Ask::CapabilityCode { request_id } = &ask {
+                    let approving = self.approving.lock().unwrap_or_else(|p| p.into_inner());
+                    if matches!(&*approving, Some((id, false)) if id == request_id) {
+                        return None;
+                    }
+                }
+                Some((ask, note))
+            }
             _ => None,
+        }
+    }
+
+    /// The window's own flow asks the executor this window runs for a
+    /// capability: there is no launcher to approve it, so the operator
+    /// (the supervisor, with the admin credential) approves that request,
+    /// once, for the grant the flow asked for, and answers its code. Only a
+    /// flow that dials the owned executor's address; never a request the
+    /// flow did not make. If the approval fails, the code prompt shows.
+    fn approve_own_request(&self, owned: Arc<dyn OwnedExecutor>) {
+        let (attempt, request_id) = {
+            let slot = lock_slot(&self.slot);
+            let Some(live) = slot.live.as_ref() else {
+                return;
+            };
+            let ConnectPhase::Asking {
+                ask: Ask::CapabilityCode { request_id },
+                ..
+            } = live.flow.phase()
+            else {
+                return;
+            };
+            if live.url.is_none() || live.url != owned.url() {
+                return;
+            }
+            (live.attempt, request_id)
+        };
+        {
+            let mut approving = self.approving.lock().unwrap_or_else(|p| p.into_inner());
+            if approving.as_ref().is_some_and(|(id, _)| *id == request_id) {
+                return;
+            }
+            *approving = Some((request_id.clone(), false));
+        }
+        let scope = self.settings.scope.clone();
+        let slot = self.slot.clone();
+        let approving = self.approving.clone();
+        let ctx = self.ctx.clone();
+        let spawned = std::thread::Builder::new()
+            .name("we-executor-approve".into())
+            .spawn(move || {
+                match owned.approve(&request_id, &scope) {
+                    Ok(code) => {
+                        let slot = lock_slot(&slot);
+                        if let Some(live) = slot.live.as_ref().filter(|l| l.attempt == attempt) {
+                            live.flow.answer(code);
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!("the executor's operator could not approve this app: {e}");
+                        *approving.lock().unwrap_or_else(|p| p.into_inner()) =
+                            Some((request_id, true));
+                    }
+                }
+                ctx.request_repaint();
+            });
+        if spawned.is_err() {
+            if let Some((_, failed)) = self
+                .approving
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .as_mut()
+            {
+                *failed = true;
+            }
         }
     }
 
@@ -312,7 +456,7 @@ impl BaseScreen {
     }
 
     fn spawn(&mut self, job: HostJob) {
-        if let Some(dial) = endpoint(&self.controller, &self.settings, &job) {
+        if let Some(dial) = endpoint(&self.controller, &self.settings, self.owned.as_ref(), &job) {
             spawn_flow(&self.slot, &self.handle, dial, &self.ctx, job.attempt);
         }
     }
@@ -328,14 +472,26 @@ impl BaseScreen {
 /// (the executor stopped under it). Anything else (a refusal, something
 /// that is not an executor) is the list with the reason; a refused
 /// session does not jump back to the place that refused it.
-fn apply_phase(controller: &BaseController, attempt: u64, phase: ConnectPhase) {
+///
+/// With an executor this window runs (`owned`), a locked agent is said as
+/// that executor's ("Coasys on this computer is locked"), not as a
+/// launcher's, and its state is read again; so is it after a lost session
+/// (TS `lookAgain`).
+fn apply_phase(
+    controller: &BaseController,
+    attempt: u64,
+    phase: ConnectPhase,
+    owned: Option<&Arc<dyn OwnedExecutor>>,
+) {
     match phase {
         ConnectPhase::Failed {
             kind: FailureKind::Unreachable,
             ..
         } => {
-            if !controller.note_unreachable(attempt) {
-                controller.note_session_lost(attempt);
+            if !controller.note_unreachable(attempt) && controller.note_session_lost(attempt) {
+                if let Some(owned) = owned {
+                    owned.refresh();
+                }
             }
         }
         ConnectPhase::Failed { reason, .. } => {
@@ -344,10 +500,16 @@ fn apply_phase(controller: &BaseController, attempt: u64, phase: ConnectPhase) {
             }
         }
         ConnectPhase::Locked { url } => {
-            let sentence = format!(
-                "The executor at {} is locked. Unlock it in the AD4M launcher, then retry.",
-                we_ad4m::connect::redact_url(&url)
-            );
+            let sentence = match owned {
+                Some(owned) => {
+                    owned.refresh();
+                    OWNED_LOCKED.to_string()
+                }
+                None => format!(
+                    "The executor at {} is locked. Unlock it in the AD4M launcher, then retry.",
+                    we_ad4m::connect::redact_url(&url)
+                ),
+            };
             controller.note_locked(attempt, &sentence);
         }
         ConnectPhase::Connected { .. }
@@ -357,16 +519,29 @@ fn apply_phase(controller: &BaseController, attempt: u64, phase: ConnectPhase) {
     }
 }
 
+/// What the list says when the agent of the executor this window runs is
+/// locked. This app cannot unlock it yet (slice 7: the password).
+pub(crate) const OWNED_LOCKED: &str =
+    "Coasys on this computer is locked. This app can't unlock it yet.";
+
 /// The settings `job` dials, or `None` when its row is refused. A refusal
 /// is the connect stage's reason; nothing is dialed, so this computer's
 /// tokens never go to the place refused.
+///
+/// With an executor this window runs, This computer is that executor, at
+/// the address it listens on now (its port may change between starts).
 fn endpoint(
     controller: &BaseController,
     settings: &ConnectSettings,
+    owned: Option<&Arc<dyn OwnedExecutor>>,
     job: &HostJob,
 ) -> Option<ConnectSettings> {
     let row = &job.connection;
-    match select(&row.kind, &row.label, settings) {
+    let mut settings = settings.clone();
+    if let Some(url) = owned.and_then(|owned| owned.url()) {
+        settings.url = Some(url);
+    }
+    match select(&row.kind, &row.label, &settings) {
         Ok(dial) => Some(dial),
         Err(reason) => {
             controller.note_refused(job.attempt, &reason);
@@ -502,9 +677,10 @@ fn spawn_flow(
     attempt: u64,
 ) {
     let ctx = ctx.clone();
+    let url = settings.url.clone();
     let flow = ConnectFlow::start(handle, settings, move || ctx.request_repaint());
     let mut slot = lock_slot(slot);
-    slot.live = Some(LiveFlow { flow, attempt });
+    slot.live = Some(LiveFlow { flow, attempt, url });
     slot.seen = None;
 }
 
@@ -526,6 +702,7 @@ enum Jobs {
 struct BaseHost {
     controller: Arc<BaseController>,
     settings: ConnectSettings,
+    owned: Option<Arc<dyn OwnedExecutor>>,
     jobs: Jobs,
 }
 
@@ -545,12 +722,14 @@ impl BaseHost {
         Self {
             controller,
             settings,
+            owned: None,
             jobs: Jobs::Count { jobs, dials },
         }
     }
 
     fn start(&self, job: HostJob) {
-        let Some(dial) = endpoint(&self.controller, &self.settings, &job) else {
+        let Some(dial) = endpoint(&self.controller, &self.settings, self.owned.as_ref(), &job)
+        else {
             return;
         };
         match &self.jobs {
@@ -586,8 +765,15 @@ impl Host for BaseHost {
         let Some(command) = we_session::command_for(target, args) else {
             return Invoked::Done(Ok(Value::Undefined));
         };
-        if let Some(job) = self.controller.apply(command, permit.generation()) {
-            self.start(job);
+        match self.controller.apply_base(command, permit.generation()) {
+            Some(BaseJob::Dial(job)) => self.start(job),
+            // Only a controller told of an executor asks for this.
+            Some(BaseJob::StartExecutor) => {
+                if let Some(owned) = &self.owned {
+                    owned.start();
+                }
+            }
+            None => {}
         }
         Invoked::Done(Ok(Value::Undefined))
     }

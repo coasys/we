@@ -8,7 +8,7 @@ mod gpu;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use egui_kittest::kittest::Queryable;
+use egui_kittest::kittest::{NodeT, Queryable};
 use we_ad4m::connect::ConnectSettings;
 use we_ad4m::supervisor::SupervisorConfig;
 use we_ad4m::testkit as kit;
@@ -26,8 +26,26 @@ fn step_until(h: &mut H, what: &str, limit: Duration, mut done: impl FnMut(&mut 
         if done(h) {
             return;
         }
-        assert!(start.elapsed() < limit, "timed out waiting for {what}");
+        if start.elapsed() >= limit {
+            let mut labels = Vec::new();
+            collect_labels(h.root(), &mut labels);
+            panic!(
+                "timed out waiting for {what}; stage {}; labels: {labels:?}",
+                stage(h)
+            );
+        }
         std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+fn collect_labels(node: egui_kittest::Node<'_>, out: &mut Vec<String>) {
+    if let Some(label) = node.accesskit_node().label() {
+        if !label.trim().is_empty() {
+            out.push(label);
+        }
+    }
+    for child in node.children() {
+        collect_labels(child, out);
     }
 }
 
@@ -138,8 +156,7 @@ fn the_window_runs_its_executor_and_takes_back_a_stop() {
     let rt = we_ad4m::Runtime::new().unwrap();
     let url = owned_url(&h);
     let admin = kit::connect_as(&rt, &url, ADMIN);
-    rt.block_on(admin.client().agent.generate("passphrase".into()))
-        .unwrap();
+    // Makes the agent (passphrase "passphrase"), then the space.
     kit::seed_space(&rt, &admin, "e7-owned");
 
     h.get_by_label_contains("This computer").click();
