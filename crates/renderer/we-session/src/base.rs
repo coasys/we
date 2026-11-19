@@ -746,8 +746,20 @@ impl BaseController {
         }
         let ready = |s: &ExecutorState| matches!(s, ExecutorState::Ready { .. });
         if ready(&before) && ready(&state) {
+            // Except an identity read that failed, while the list shows: the
+            // agent changed (made, unlocked), so it is read again.
+            let job = if before != state
+                && inner.identity == IdentityRead::Failed
+                && inner.stage == Stage::Connect
+                && !inner.busy
+            {
+                forget_identity(&mut inner);
+                evaluate(&mut inner)
+            } else {
+                None
+            };
             self.publish(&inner);
-            return None;
+            return job;
         }
         let job = match state {
             ExecutorState::Starting => {

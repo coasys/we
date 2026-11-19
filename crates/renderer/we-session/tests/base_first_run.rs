@@ -495,3 +495,32 @@ fn no_identifier_is_drawn() {
         assert!(!text.contains(&tail[..4]), "a short DID is drawn:\n{text}");
     }
 }
+
+/// A read that failed (the executor had no agent yet) is read again when
+/// the agent's state changes while the list shows; the same state twice
+/// reads nothing.
+#[test]
+fn a_failed_read_is_read_again_when_the_agent_changes() {
+    let mut open = owned(Arc::new(MemoryCell::default()));
+    open.ready_with(None, Err("no agent".into()));
+    assert_eq!(open.stage(), "connect");
+    open.controller
+        .note_executor(ExecutorState::Ready { agent: None });
+    assert_eq!(
+        open.controller.identity_read_due(),
+        None,
+        "the same state read again"
+    );
+    open.controller
+        .note_executor(ExecutorState::Ready { agent: UNLOCKED });
+    assert_eq!(open.stage(), "loading");
+    let read = open.controller.identity_read_due().expect("read again");
+    open.controller.note_identity(read, Ok(empty()));
+    assert_eq!(open.stage(), "first-run");
+    // A known identity is not read again on an agent change.
+    open.controller.note_executor(ExecutorState::Ready {
+        agent: Some(AgentState::Locked),
+    });
+    assert_eq!(open.controller.identity_read_due(), None);
+    assert_eq!(open.stage(), "first-run");
+}
