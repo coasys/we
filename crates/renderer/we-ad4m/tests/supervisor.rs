@@ -906,9 +906,9 @@ fn an_exit_75_restart_is_a_new_start() {
     );
 }
 
-/// Exit 75 after a run longer than the restart window is not "in a row":
-/// the count starts again, so an executor that asks for a restart now and
-/// then is never stopped for it.
+/// Exit-75 restarts farther apart than the restart window never fill it,
+/// so an executor that asks for a restart now and then is never stopped
+/// for it.
 #[test]
 fn exit_75_after_a_long_run_starts_the_count_again() {
     let dir = tempfile::tempdir().unwrap();
@@ -928,8 +928,8 @@ fn exit_75_after_a_long_run_starts_the_count_again() {
     sup.stop();
 }
 
-/// Round 2: exit 75 again and again is not restarted forever: past three
-/// restarts in a row, the executor is stopped, with that reason.
+/// Round 2: exit 75 again and again is not restarted forever: a fourth
+/// restart within the window (60 s) stops the executor, with that reason.
 #[test]
 fn repeated_exit_75_has_a_budget() {
     let dir = tempfile::tempdir().unwrap();
@@ -1025,4 +1025,28 @@ fn an_echoed_listening_line_is_not_the_port() {
     wait_for(&sup, "ready", 10, |s| matches!(s, Lifecycle::Ready { .. }));
     let calls = reader.calls.lock().unwrap().clone();
     assert_eq!(calls[0].0, format!("http://127.0.0.1:{real}"), "{calls:?}");
+}
+
+/// Round 3 (Lal P3: the budget's name): the restart budget is a rolling
+/// window, "at most 3 exit-75 restarts within restart_window". Runs of
+/// 0.3 s with a 0.6 s window never put 4 restarts in one window, so the
+/// executor keeps being restarted, although every run is shorter than
+/// the window (which the old "3 short runs in a row" rule refused).
+#[test]
+fn the_restart_budget_is_a_rolling_window() {
+    let dir = tempfile::tempdir().unwrap();
+    let binary = script(dir.path(), "executor", "sleep 0.3\nexit 75");
+    let mut config = config(dir.path(), binary, health());
+    config.restart_window = Duration::from_millis(600);
+    let sup = Supervisor::with_reader(config, Arc::new(Reader::default()));
+    sup.start();
+    let start = Instant::now();
+    while sup.starts() < 7 {
+        if let Lifecycle::Failed { reason, .. } = sup.state() {
+            panic!("stopped after {} starts: {reason}", sup.starts());
+        }
+        assert!(start.elapsed() < Duration::from_secs(20), "not run again");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    sup.stop();
 }

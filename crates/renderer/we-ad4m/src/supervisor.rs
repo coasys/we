@@ -84,10 +84,11 @@ pub const MIN_EXECUTOR_VERSION: &str = "0.13.1-staging.12";
 /// How long `ad4m-executor --version` may take.
 const VERSION_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Exit 75 restarts in a row allowed (a restart counts in a row when the
-/// run before it lasted less than [`SupervisorConfig::restart_window`]);
-/// past that, the executor is not started again.
-const MAX_RESTARTS: u32 = 3;
+/// At most this many exit-75 restarts within any
+/// [`SupervisorConfig::restart_window`] (a rolling window over the restart
+/// times); one more inside the window and the executor is not started
+/// again.
+const MAX_RESTARTS_PER_WINDOW: usize = 3;
 
 /// How long one `/health` probe may take, and how far apart they are.
 const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
@@ -134,8 +135,8 @@ pub struct SupervisorConfig {
     pub ready_timeout: Duration,
     /// How long `init` may take before it is ended and the start fails.
     pub init_timeout: Duration,
-    /// An exit-75 restart counts in a row when the run before it lasted
-    /// less than this; a longer run starts the count again.
+    /// The rolling window of the exit-75 restart budget: at most three
+    /// restarts within any window this long.
     pub restart_window: Duration,
 }
 
@@ -600,9 +601,8 @@ fn run_child(shared: &Shared) -> Lifecycle {
         Err(Prep::Stopped) => return stopped_by_us(),
         Err(Prep::Failed(reason)) => return failed(reason),
     }
-    let mut restarts = 0;
+    let mut restarts: VecDeque<Instant> = VecDeque::new();
     loop {
-        let run_started = Instant::now();
         let (mut child, tail) = match spawn(shared) {
             Ok(spawned) => spawned,
             Err(reason) => return failed(reason),
@@ -637,17 +637,21 @@ fn run_child(shared: &Shared) -> Lifecycle {
             // a new run number), so nothing answered for the old run is
             // published or sent to as the new one's.
             Ended::Early(exit) | Ended::Late(exit) if code(&exit) == Some(EXIT_RESTART) => {
-                restarts = if run_started.elapsed() >= config.restart_window {
-                    1
-                } else {
-                    restarts + 1
-                };
-                if restarts > MAX_RESTARTS {
+                let now = Instant::now();
+                restarts.push_back(now);
+                while restarts
+                    .front()
+                    .is_some_and(|at| now.duration_since(*at) > config.restart_window)
+                {
+                    restarts.pop_front();
+                }
+                if restarts.len() > MAX_RESTARTS_PER_WINDOW {
                     return Lifecycle::Failed {
                         reason: format!(
-                            "It asked to be restarted {} times in a row; it was not started \
-                             again.",
-                            restarts
+                            "It asked to be restarted {} times within {} seconds; it was not \
+                             started again.",
+                            restarts.len(),
+                            config.restart_window.as_secs()
                         ),
                         stopped: true,
                     };
