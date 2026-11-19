@@ -110,10 +110,8 @@ fn the_connect_screen_shows_where_to_keep_your_spaces() {
 /// A closed loopback port. The click must not read `~/.ad4m`.
 #[test]
 fn a_closed_localhost_shows_the_reason() {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let port = listener.local_addr().unwrap().port();
-    drop(listener);
-    let (_tokens, settings) = isolated(Some(format!("http://127.0.0.1:{port}")));
+    let port = closed_port();
+    let (_tokens, settings) = isolated(Some(format!("http://127.0.0.1:{}", *port)));
     let mut h = harness(settings);
     step_until(&mut h, "the connect screen", Duration::from_secs(10), |h| {
         h.query_by_label_contains("This computer").is_some()
@@ -129,11 +127,37 @@ fn a_closed_localhost_shows_the_reason() {
         .is_some_and(|app| app.stage() == "connect"));
 }
 
-fn closed_port() -> u16 {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let port = listener.local_addr().unwrap().port();
-    drop(listener);
-    port
+/// A loopback port that refuses connections and that no other socket can
+/// take while the returned guard lives: bound, never listening. (A port
+/// bound and then let go can be taken by another test or process before
+/// the dial.)
+struct ClosedPort {
+    port: u16,
+    _socket: socket2::Socket,
+}
+
+impl std::ops::Deref for ClosedPort {
+    type Target = u16;
+    fn deref(&self) -> &u16 {
+        &self.port
+    }
+}
+
+fn closed_port() -> ClosedPort {
+    use socket2::{Domain, Socket, Type};
+    let socket = Socket::new(Domain::IPV4, Type::STREAM, None).unwrap();
+    let any: std::net::SocketAddr = "127.0.0.1:0".parse().unwrap();
+    socket.bind(&any.into()).unwrap();
+    let port = socket
+        .local_addr()
+        .unwrap()
+        .as_socket()
+        .expect("an IP address")
+        .port();
+    ClosedPort {
+        port,
+        _socket: socket,
+    }
 }
 
 /// Acceptance: the last-used tag survives a restart. The second start goes
@@ -142,7 +166,7 @@ fn closed_port() -> u16 {
 #[test]
 fn the_last_used_tag_survives_a_restart() {
     let port = closed_port();
-    let (tokens, settings) = isolated(Some(format!("http://127.0.0.1:{port}")));
+    let (tokens, settings) = isolated(Some(format!("http://127.0.0.1:{}", *port)));
     let file = tokens.path().join("we").join("base.json");
     {
         let mut h = harness_remembering(settings.clone(), Some(file.clone()));
@@ -186,7 +210,8 @@ fn a_kept_server_explains_the_refusal() {
     let server = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     server.set_nonblocking(true).unwrap();
     let address = format!("127.0.0.1:{}", server.local_addr().unwrap().port());
-    let (tokens, settings) = isolated(Some(format!("http://127.0.0.1:{}", closed_port())));
+    let port = closed_port();
+    let (tokens, settings) = isolated(Some(format!("http://127.0.0.1:{}", *port)));
     let file = tokens.path().join("base.json");
     std::fs::write(
         &file,
@@ -242,7 +267,8 @@ fn painted_text(h: &H) -> String {
 /// text child) is painted whole. It was painted "Choose …".
 #[test]
 fn choose_another_is_painted_whole() {
-    let (_tokens, settings) = isolated(Some(format!("http://127.0.0.1:{}", closed_port())));
+    let port = closed_port();
+    let (_tokens, settings) = isolated(Some(format!("http://127.0.0.1:{}", *port)));
     let mut h = harness(settings);
     step_until(&mut h, "the connect screen", Duration::from_secs(10), |h| {
         h.query_by_label_contains("This computer").is_some()
@@ -257,5 +283,20 @@ fn choose_another_is_painted_whole() {
     assert!(
         painted.lines().any(|line| line == "Choose another"),
         "the button was painted as: {painted}"
+    );
+}
+
+/// Round 2 (Lal P3): the closed port a test dials stays closed and stays
+/// this test's: nothing answers on it (refused, not a listener that never
+/// answers), and no other socket can take it while the test runs.
+#[test]
+fn the_closed_port_stays_closed_and_reserved() {
+    let port = closed_port();
+    let address = format!("127.0.0.1:{}", *port);
+    let refused = std::net::TcpStream::connect(&address).unwrap_err();
+    assert_eq!(refused.kind(), std::io::ErrorKind::ConnectionRefused);
+    assert!(
+        std::net::TcpListener::bind(&address).is_err(),
+        "another socket took the test's closed port"
     );
 }

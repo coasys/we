@@ -45,3 +45,6 @@ sha2 = "0.10"
 # A real executor for the connected app's test (EXECUTOR_PATH).
 we-ad4m = { workspace = true, features = ["testkit"] }
 tempfile = "3"
+# A bound, non-listening TCP socket: a closed port a test keeps for its
+# whole run (base_connect_ui). Already in the lockfile through tokio.
+socket2 = "0.5"
