@@ -566,8 +566,9 @@ impl Drop for Supervisor {
 enum Ended {
     /// Before `/health` answered, with its exit status.
     Early(ExitStatus),
-    /// No answer within the ready timeout; the child was ended.
-    Timeout,
+    /// No answer within the ready timeout; the child was ended. `heard`:
+    /// it logged where it listens ([`reported_port`]).
+    Timeout { heard: bool },
     /// The stop was asked.
     Stopped,
     /// After it was ready.
@@ -649,11 +650,15 @@ fn run_child(shared: &Shared) -> Lifecycle {
         let code = |status: &ExitStatus| status.code();
         match ended {
             Ended::Stopped => return stopped_by_us(),
-            Ended::Timeout => {
-                return failed(format!(
+            Ended::Timeout { heard } => {
+                let mut reason = format!(
                     "It didn't respond within {} seconds.",
                     config.ready_timeout.as_secs()
-                ))
+                );
+                if !heard {
+                    reason.push_str(NEVER_SAID_ITS_PORT);
+                }
+                return failed(reason);
             }
             // The executor asked to be started again: a new run. The old
             // run's state and address go first (Starting, a new change and
@@ -1007,6 +1012,11 @@ pub fn reported_port(line: &str) -> Option<u16> {
     digits.parse().ok().filter(|port| *port != 0)
 }
 
+/// Added to the ready-timeout reason when the child never logged where it
+/// listens: the settings that hide that record from the supervisor.
+const NEVER_SAID_ITS_PORT: &str = " It never said where it listens. Check AD4M_LOG_DIR (its log \
+     goes to files), a RUST_LOG filter that drops rust_executor::api, and AD4M_LOCALHOST=false.";
+
 /// `RUST_LOG` for the child: the environment's, or the executor's own
 /// defaults, with `rust_executor::api=info` added so the listening line
 /// is logged whatever else is set.
@@ -1035,6 +1045,8 @@ fn spawn(shared: &Shared) -> Result<(Child, Tail), String> {
         .args(&config.extra_args)
         .env("AD4M_ADMIN_CREDENTIAL", &shared.admin)
         .env("RUST_LOG", child_rust_log())
+        // Plain headers: colour codes would hide the listening record.
+        .env("RUST_LOG_STYLE", "never")
         // Inherited settings that would change who holds operator
         // authority or which port it listens on: not this app's executor.
         .env_remove("AD4M_INSECURE_NO_ADMIN_CREDENTIAL")
@@ -1116,7 +1128,9 @@ fn watch(shared: &Shared, run: u64, tail: &Tail) -> Ended {
             }
             if Instant::now() >= deadline {
                 end_child(shared);
-                return Ended::Timeout;
+                return Ended::Timeout {
+                    heard: port.is_some(),
+                };
             }
             std::thread::sleep(PROBE_INTERVAL);
         } else {

@@ -1107,3 +1107,67 @@ fn the_minimum_executor_version_is_read_strictly() {
         );
     }
 }
+
+/// Slice-4 leftover (Lal P3 on e14efd725): the child logs without colour
+/// codes whatever this process's `RUST_LOG_STYLE` says, so the listening
+/// record's header is plain text.
+#[test]
+fn the_child_logs_without_colour() {
+    let dir = tempfile::tempdir().unwrap();
+    let style = dir.path().join("style");
+    let binary = script(
+        dir.path(),
+        "executor",
+        &format!(
+            "echo \"style=$RUST_LOG_STYLE\" > '{}'\ncat > /dev/null\nexit 0",
+            style.display()
+        ),
+    );
+    let sup = Supervisor::with_reader(
+        config(dir.path(), binary, health()),
+        Arc::new(Reader::default()),
+    );
+    sup.start();
+    wait_for(&sup, "ready", 10, |s| matches!(s, Lifecycle::Ready { .. }));
+    assert_eq!(
+        std::fs::read_to_string(&style).unwrap().trim(),
+        "style=never"
+    );
+}
+
+/// Slice-4 leftover (Lal P3 on e14efd725): an executor that never logged
+/// where it listens fails at the ready timeout with the settings that hide
+/// that record. One that said its port and then did not answer there does
+/// not get them: its record was seen.
+#[test]
+fn a_start_that_never_said_its_port_names_what_hides_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut quiet = silent(dir.path(), waits_on_stdin(dir.path()));
+    quiet.ready_timeout = Duration::from_secs(1);
+    let sup = Supervisor::with_reader(quiet, Arc::new(Reader::default()));
+    sup.start();
+    wait_for(&sup, "failed", 10, |s| {
+        matches!(s, Lifecycle::Failed { .. })
+    });
+    let Lifecycle::Failed { reason, stopped } = sup.state() else {
+        unreachable!()
+    };
+    assert!(!stopped);
+    for setting in ["AD4M_LOG_DIR", "RUST_LOG", "AD4M_LOCALHOST=false"] {
+        assert!(reason.contains(setting), "{setting} not named: {reason}");
+    }
+
+    let dir = tempfile::tempdir().unwrap();
+    let mut said = config(dir.path(), waits_on_stdin(dir.path()), closed_port());
+    said.ready_timeout = Duration::from_secs(1);
+    let sup = Supervisor::with_reader(said, Arc::new(Reader::default()));
+    sup.start();
+    wait_for(&sup, "failed", 10, |s| {
+        matches!(s, Lifecycle::Failed { .. })
+    });
+    let Lifecycle::Failed { reason, .. } = sup.state() else {
+        unreachable!()
+    };
+    assert!(reason.contains("didn't respond"), "{reason}");
+    assert!(!reason.contains("AD4M_LOG_DIR"), "{reason}");
+}
