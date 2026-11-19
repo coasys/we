@@ -36,6 +36,51 @@ pub fn identity_from_answers(
     status: &serde_json::Value,
     devices: &serde_json::Value,
 ) -> Result<Identity, String> {
-    let _ = (status, devices);
-    Err("not read yet".into())
+    use serde_json::Value;
+    let status = status
+        .as_object()
+        .ok_or("identity.status did not answer an object")?;
+    let did = match status.get("did") {
+        Some(Value::Null) => None,
+        Some(Value::String(did)) => Some(did.clone()),
+        _ => return Err("identity.status answered no did".into()),
+    };
+    let store_trusted = match status.get("store") {
+        Some(Value::Null) => false,
+        Some(Value::Object(store)) => store
+            .get("trusted")
+            .and_then(Value::as_bool)
+            .ok_or("identity.status answered a store without trust")?,
+        _ => return Err("identity.status answered no store".into()),
+    };
+    let devices = devices
+        .as_array()
+        .ok_or("identity.devices did not answer a list")?
+        .iter()
+        .map(|device| {
+            let this_device = device
+                .get("thisDevice")
+                .and_then(Value::as_bool)
+                .ok_or("identity.devices answered a device of another shape")?;
+            let revoked = match device.get("revokedSeq") {
+                Some(Value::Null) => false,
+                Some(Value::Number(_)) => true,
+                _ => return Err("identity.devices answered a device of another shape"),
+            };
+            let bot = match device.get("bot") {
+                Some(Value::Null) => false,
+                Some(Value::Object(_)) => true,
+                _ => return Err("identity.devices answered a device of another shape"),
+            };
+            Ok((!revoked && !bot).then_some(KeyDevice { this_device }))
+        })
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .flatten()
+        .collect();
+    Ok(Identity {
+        did,
+        store_trusted,
+        devices,
+    })
 }

@@ -69,7 +69,7 @@ use std::sync::{mpsc, Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use crate::connect::{app_info, GrantScope};
-use crate::identity::Identity;
+use crate::identity::{identity_from_answers, Identity};
 use crate::Connection;
 
 /// The executor's exit codes: its run contract with a supervisor (ad4m
@@ -306,6 +306,41 @@ impl AgentReader for Ad4mReader {
             .map_err(|e| format!("{e:#}"))
     }
 
+    fn identity(&self, url: &str, admin: &str) -> Result<Identity, String> {
+        let handle = self.handle.clone();
+        let (url, admin) = (url.to_string(), admin.to_string());
+        let read = async move {
+            let conn = Connection::open(handle, &url, &admin).await?;
+            let status = conn
+                .ws()
+                .call::<serde_json::Value>("identity.status", serde_json::json!({}))
+                .await;
+            let devices = match &status {
+                Ok(_) => Some(
+                    conn.ws()
+                        .call::<serde_json::Value>("identity.devices", serde_json::json!({}))
+                        .await,
+                ),
+                Err(_) => None,
+            };
+            conn.ws().close().await;
+            let status = status?;
+            let devices = devices.expect("asked after a status")?;
+            anyhow::Ok((status, devices))
+        };
+        // The executor's own words stay in the log: an error can quote
+        // the agent's key.
+        let (status, devices) = self
+            .handle
+            .block_on(async { tokio::time::timeout(READ_TIMEOUT, read).await })
+            .map_err(|_| "Coasys didn't answer in time.".to_string())?
+            .map_err(|e| {
+                log::warn!("the identity read failed: {e:#}");
+                "Coasys didn't say.".to_string()
+            })?;
+        identity_from_answers(&status, &devices)
+    }
+
     fn permit(&self, url: &str, admin: &str, auth: &str) -> Result<String, String> {
         let handle = self.handle.clone();
         let (url, admin, auth) = (url.to_string(), admin.to_string(), auth.to_string());
@@ -509,7 +544,22 @@ impl Supervisor {
     /// Read the identity's public facts, as the operator. Blocks; call it
     /// off the UI thread. Only while the executor is ready.
     pub fn identity(&self) -> Result<Identity, String> {
-        Err("not read yet".into())
+        let (url, run) = {
+            let mut status = self.shared.lock();
+            let run = status.run;
+            if !matches!(status.lifecycle, Lifecycle::Ready { .. }) {
+                return Err("Coasys is not running".into());
+            }
+            let url = admin_url(&mut status, run).ok_or("Coasys is not running")?;
+            (url, run)
+        };
+        let identity = self.shared.reader.identity(&url, &self.shared.admin)?;
+        // An answer from a process that has since been replaced is not
+        // this executor's.
+        if self.shared.lock().run != run {
+            return Err("Coasys started again".into());
+        }
+        Ok(identity)
     }
 
     /// Read the agent again (TS `executor.refresh`), off this thread. The

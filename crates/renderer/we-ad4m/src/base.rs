@@ -201,8 +201,7 @@ pub struct BaseFile {
 impl BaseFile {
     /// Keep "Skip for now". The id chosen and the server list are kept.
     pub fn skip_identity(path: &Path) -> std::io::Result<()> {
-        let _ = path;
-        Ok(())
+        Self::update(path, |file| file.skipped_identity = true)
     }
 
     /// The file at `path`. A missing or unreadable file is an empty one.
@@ -216,8 +215,13 @@ impl BaseFile {
     /// Keep `id` as the connection chosen last. The server list is kept.
     /// The file is replaced whole, through a temporary file beside it.
     pub fn remember(path: &Path, id: &str) -> std::io::Result<()> {
+        Self::update(path, |file| file.connection = Some(id.to_string()))
+    }
+
+    /// Load, change and write the file whole.
+    fn update(path: &Path, change: impl FnOnce(&mut Self)) -> std::io::Result<()> {
         let mut file = Self::load(path);
-        file.connection = Some(id.to_string());
+        change(&mut file);
         let dir = path.parent().unwrap_or_else(|| Path::new("."));
         std::fs::create_dir_all(dir)?;
         let text = serde_json::to_string_pretty(&file).map_err(std::io::Error::other)?;
