@@ -14,7 +14,7 @@ import {
   treeRow,
 } from '@we/template-kit';
 
-import { CLASS_COUNT, classGroup, FLOW_DEFINITIONS, MODEL, POLICY, POLICY_RULES, RUNNING_FLOWS } from './dna.ts';
+import { CLASS_COUNT, classGroup, FLOW_DEFINITIONS, MODEL, POLICY, POLICY_RULES } from './dna.ts';
 import { countPill, liveDot } from './marks.ts';
 import {
   callPath,
@@ -59,29 +59,26 @@ const isOpen = (value: string): SchemaProp => ({ $: `'${value}' in ${OPEN}` });
 const toggle = (value: SchemaProp): SchemaProp => ({ $toggleLocalIn: 'openRows', value });
 
 /**
- * A row that moved under another, or that holds one which did: open while its own key is saved open,
- * while any of `keys` is (the rows under it, and a key it had before it moved), or while one of
- * `within` holds — something chosen inside it. So a tree saved before Templates and the flows moved
- * into Social DNA shows them again, and a flow opened from the flows page is seen lit rather than
- * chosen inside a closed row.
+ * A row open while its own key is saved open, or while one of `within` holds — something chosen
+ * inside it. So a flow opened from the flows page is seen lit rather than chosen inside a closed row.
  *
- * Closing it forgets all of those keys, and does each `up` whose `when` holds — moving the choice up
- * to the row, as `revealing` does — so it closes when asked. `press` is the flip a press on the row's
- * label runs (`onSelect`): it asks only what is saved, so pressing a row that is open because of what
- * is chosen keeps it open and saves it, as before.
+ * Closing it forgets its key, and does each `up` whose `when` holds — moving the choice up to the row,
+ * as `revealing` does — so it closes when asked. `press` is the flip a press on the row's label runs
+ * (`onSelect`): it asks only what is saved, so pressing a row that is open because of what is chosen
+ * keeps it open and saves it.
  */
-const holding = (value: string, keys: string[], within: { when: string; up: SchemaProp }[]) => {
-  const held = `[${[value, ...keys].map((k) => `'${k}'`).join(', ')}]`;
-  const isOpenNow = [`${held}.exists(k, k in ${OPEN})`, ...within.map((w) => `(${w.when})`)].join(' || ');
-  const open = { $if: { condition: { $: `!('${value}' in ${OPEN})` }, then: toggle(value) } };
+const holding = (value: string, within: { when: string; up: SchemaProp }[]) => {
+  const saved = `'${value}' in ${OPEN}`;
+  const isOpenNow = [saved, ...within.map((w) => `(${w.when})`)].join(' || ');
+  const open = { $if: { condition: { $: `!(${saved})` }, then: toggle(value) } };
   const close = [
-    { $setLocal: 'openRows', value: { $: `${OPEN}.filter(k, !(k in ${held}))` } },
+    { $setLocal: 'openRows', value: { $: `${OPEN}.filter(k, k != '${value}')` } },
     ...within.map((w) => ({ $if: { condition: { $: w.when }, then: w.up } })),
   ];
   return {
     open: { $: isOpenNow },
     onOpenChange: { $if: { condition: { $: 'event.detail.open' }, then: open, else: close } },
-    press: { $if: { condition: { $: `${held}.exists(k, k in ${OPEN})` }, then: close, else: open } } as SchemaProp,
+    press: { $if: { condition: { $: saved }, then: close, else: open } } as SchemaProp,
   };
 };
 
@@ -226,22 +223,44 @@ const FLOWS_PAGE = "spaceStore.spacePath + '/workflows'";
 const FLOW_CHOSEN = `(${PAGE_EXPR}) == 'workflows' && workflowStore.open`;
 const flowChosen = { when: FLOW_CHOSEN, up: { $invoke: 'workflowStore.closeWorkflow' } as SchemaProp };
 
-/**
- * Social DNA's Flows: open while saved open, or saved as the old Workflows group it took the rows of
- * (`group|workflows`, which the running Flows row keeps and never saves, having no rows), or while a
- * flow is chosen.
- */
-const FLOWS_HELD = holding('dnagroup|flows', ['group|workflows'], [flowChosen]);
+/** Social DNA's Flows: open while saved open, or while a flow is chosen. */
+const FLOWS_HELD = holding('dnagroup|flows', [flowChosen]);
+
+/** A running record's row, as `run|<workflow>|<record>`. */
+const RUN_WORKFLOW = "split(event.detail.value, '|')[1]";
+const RUN_RECORD = "split(event.detail.value, '|')[2]";
 
 /**
- * Flows: what is running in the space. Its row opens the flows page (still `/workflows`, and still
- * `group|workflows` as a row, so an open tree and a link keep working); what a flow *is* is listed
- * under Social DNA.
+ * Active flows: what is going on in the space — every record still going through one of its flows,
+ * the one with the latest activity first, named by what it is and marked with the step it is at. A
+ * record in two flows is two rows. Its row opens the flows page (`group|workflows`); a record's row
+ * opens its flow there with the record chosen. What a flow *is* is listed under Social DNA.
  */
-const runningFlows = group('workflows', 'Flows', 'flow-arrow', [], {
-  count: RUNNING_FLOWS,
-  expandable: false,
-});
+const activeFlows = group(
+  'workflows',
+  'Active flows',
+  'flow-arrow',
+  [
+    {
+      type: '$each',
+      props: { items: { $: 'workflowStore.active' }, as: 'run' },
+      children: [
+        treeRow({
+          nested: true,
+          value: { $: "'run|' + run.workflow + '|' + run.record" },
+          label: { $: 'run.title' },
+          icon: { $: "run.stalled ? 'warning' : run.waiting ? 'hourglass-medium' : 'flow-arrow'" },
+          badge: {
+            type: 'we-text',
+            props: { variant: 'footnote', color: 'text-faint', truncate: true, maxWidth: '96px' },
+            children: [{ $: 'run.stateLabel' }],
+          },
+        }),
+      ],
+    },
+  ],
+  { count: 'count(workflowStore.active)' },
+);
 
 /** The flows written for this space, under Social DNA: a row each, opening it, and the + that writes another. */
 const flowDefinitions = group(
@@ -258,7 +277,6 @@ const flowDefinitions = group(
           value: { $: "'workflow|' + workflow.name" },
           label: { $: 'workflow.label' },
           icon: 'flow-arrow',
-          badge: countPill('workflow.records'),
         }),
       ],
     },
@@ -493,21 +511,16 @@ const themesGroup = group(
 );
 
 /**
- * Social DNA is open while saved open, or while a row moved into it is (Templates, the flows written,
- * and those under the old Workflows key), or while something in it is in focus or chosen — a
- * definition on the vocabulary map, a flow on the flows page. Closing it then shows all of it.
+ * Social DNA is open while saved open, or while something in it is in focus or chosen — a definition
+ * on the vocabulary map, a flow on the flows page. Closing it then shows all of it.
  */
-const SOCIAL_DNA_HELD = holding(
-  'group|dna',
-  ['group|templates', 'dnagroup|flows', 'group|workflows'],
-  [
-    {
-      when: `(${DNA_SHOWN}) && ${DNA_AT} != 'all'`,
-      up: { $invoke: 'routeStore.setParam', args: [DNA_PARAM, 'all'] },
-    },
-    flowChosen,
-  ],
-);
+const SOCIAL_DNA_HELD = holding('group|dna', [
+  {
+    when: `(${DNA_SHOWN}) && ${DNA_AT} != 'all'`,
+    up: { $invoke: 'routeStore.setParam', args: [DNA_PARAM, 'all'] },
+  },
+  flowChosen,
+]);
 
 /**
  * Everything the space has defined about itself — see above: Models, Flows, Templates, then WE's
@@ -541,10 +554,8 @@ const DEF_ID = "split(event.detail.value, '|')[2]";
 const onSelect: SchemaProp = [
   {
     $if: {
-      // Social DNA opens and closes as `holding` says; the running Flows row has no rows to open.
-      condition: {
-        $: "startsWith(event.detail.value, 'group|') && !(event.detail.value in ['group|dna', 'group|workflows'])",
-      },
+      // Social DNA opens and closes as `holding` says.
+      condition: { $: "startsWith(event.detail.value, 'group|') && event.detail.value != 'group|dna'" },
       then: { $toggleLocalIn: 'openRows', value: { $: 'event.detail.value' } },
     },
   },
@@ -593,6 +604,16 @@ const onSelect: SchemaProp = [
       then: [
         { $invoke: 'workflowStore.openWorkflow', args: [{ $: ROW_ID }] },
         { $invoke: 'routeStore.navigate', args: [{ $: withView(FLOWS_PAGE) }] },
+      ],
+    },
+  },
+  // A running record opens its flow on the flows page, with the record chosen there.
+  {
+    $if: {
+      condition: { $: "startsWith(event.detail.value, 'run|')" },
+      then: [
+        { $invoke: 'workflowStore.openWorkflow', args: [{ $: RUN_WORKFLOW }] },
+        { $invoke: 'routeStore.navigate', args: [{ $: withView(`${FLOWS_PAGE} + '?card=' + ${RUN_RECORD}`) }] },
       ],
     },
   },
@@ -892,12 +913,8 @@ export const treeSection: SchemaNode = {
   $localState: {
     openRows: {
       type: 'array',
-      /*
-        Calls start open. The flows written, which the old Workflows group showed open, are under
-        Social DNA now, and opening it on every first visit would show Models and the rest too; a
-        tree saved with that group open still opens them (see `holding`).
-      */
-      initial: ['group|calls'],
+      // Calls and Active flows start open: what is going on in the space, before what it has defined.
+      initial: ['group|calls', 'group|workflows'],
       persist: 'coasys.tree.open',
     },
   },
@@ -918,7 +935,7 @@ export const treeSection: SchemaNode = {
             is the one thing that folds. Guides drop from each row's glyph, so a lead's width is given.
           */
           props: { label: 'This space', selected: { $: SELECTED_EXPR }, onSelect, caret: 'end', lead: TREE_LEAD },
-          children: [feedRow, calls, runningFlows, people, socialDna, themesGroup],
+          children: [feedRow, calls, activeFlows, people, socialDna, themesGroup],
         },
       ],
     },

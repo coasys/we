@@ -2,8 +2,8 @@
  * The Coasys tree's Social DNA: Models (the space's own classes, then other apps', each with its
  * namespace), Flows (the flows written), Templates, the built-in classes (WE's vocabulary, then its
  * blocks together in a nested Blocks row) and the policy with its rules. A class is a leaf: its
- * records are on its page, not rows under it. At the top, Flows counts what is running and lists
- * nothing, and Templates is no longer a group of its own.
+ * records are on its page, not rows under it. At the top, Active flows lists each record still
+ * running, latest first, and Templates is no longer a group of its own.
  *
  * Rows are opened by setting `open` on them, as the tree's own state would; choosing one would also
  * navigate, which this case has nowhere to do.
@@ -12,7 +12,7 @@ export const name = "the Coasys tree's Social DNA";
 export const scenario = 'coasys:tree-dna';
 export const widths = [320];
 
-const ROWS = ['Social DNA', 'Models', 'Flows', 'Templates', 'Built in', 'Blocks', 'Policy'];
+const ROWS = ['Active flows', 'Social DNA', 'Models', 'Flows', 'Templates', 'Built in', 'Blocks', 'Policy'];
 
 export async function check({ evaluate, screenshot }) {
   const problems = [];
@@ -21,7 +21,6 @@ export async function check({ evaluate, screenshot }) {
   await evaluate(async (rows) => {
     const label = (item) => item.firstElementChild?.textContent?.trim() ?? '';
     for (const text of rows) {
-      // Every row of that label: Flows is both the running flows at the top and the flows written.
       for (const item of [...document.querySelectorAll('we-tree-item')].filter((i) =>
         new RegExp(`^${text}\\d*$`).test(label(i)),
       ))
@@ -71,10 +70,20 @@ export async function check({ evaluate, screenshot }) {
   );
   if (order.some((i, n) => i < 0 || (n > 0 && i < order[n - 1])))
     problems.push(`Social DNA's rows are out of order: ${order.join(', ')}`);
-  // Two Flows rows: the running ones at the top (two of Review's three records) and the flows written, inside.
+  // Active flows at the top counts its two rows, each a record by name and its step, the latest first.
+  if (!shown.includes('Active flows2')) problems.push('Active flows does not count the two running');
+  const roof = shown.findIndex((row) => row.startsWith('Fix the roof'));
+  const gate = shown.findIndex((row) => row.startsWith('Paint the gate'));
+  if (roof < 0 || gate < 0) problems.push('the running records are not listed under Active flows');
+  else if (roof > gate) problems.push('the running records are not latest first');
+  if (roof >= 0 && !shown[roof].endsWith('Checking'))
+    problems.push(`a running record does not show its step: ${shown[roof]}`);
+  // One Flows row, the flows written inside Social DNA, counting them as Models counts its classes.
   const flows = shown.filter((row) => /^Flows\d*$/.test(row));
-  if (flows.length !== 2) problems.push(`${flows.length} Flows rows, not two`);
-  if (!flows.includes('Flows2')) problems.push(`the top Flows row does not count the two running: ${flows.join(', ')}`);
+  if (flows.length !== 1) problems.push(`${flows.length} Flows rows, not one`);
+  // A flow is a definition, so its own row carries no count, as a class's does not.
+  if (!shown.includes('Review'))
+    problems.push(`the flow written carries a count: ${shown.find((r) => r.startsWith('Review'))}`);
   if (shown.filter((row) => /^Templates\d*$/.test(row)).length !== 1) problems.push('Templates is not one row');
   await screenshot?.('coasys-tree-dna');
   return problems;

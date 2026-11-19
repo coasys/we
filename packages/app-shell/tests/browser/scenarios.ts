@@ -2383,11 +2383,37 @@ const coasysTreeDna = (): Scenario => {
     },
     stores: {
       // A flow written, three records through it and two still running, and one put away: Social DNA
-      // lists the first, and the top level's Flows counts what is running in it.
+      // lists the first, and Active flows lists the two running in it, the latest first.
       workflowStore: {
         workflows: [
           { name: 'review', label: 'Review', archived: false, records: 3, running: 2, editable: true, managedBy: '' },
           { name: 'old', label: 'Old process', archived: true, records: 4, running: 4, editable: true, managedBy: '' },
+        ],
+        active: [
+          {
+            workflow: 'review',
+            label: 'Review',
+            record: 'run-roof',
+            title: 'Fix the roof',
+            kind: 'Task',
+            state: 'checking',
+            stateLabel: 'Checking',
+            lastActivity: '2026-11-19T10:00:00.000Z',
+            waiting: 1,
+            stalled: false,
+          },
+          {
+            workflow: 'review',
+            label: 'Review',
+            record: 'run-gate',
+            title: 'Paint the gate',
+            kind: 'Task',
+            state: 'draft',
+            stateLabel: 'Draft',
+            lastActivity: '2026-11-18T10:00:00.000Z',
+            waiting: 0,
+            stalled: false,
+          },
         ],
       },
       templateStore: {
