@@ -76,7 +76,12 @@ pub struct ConnectedApp {
 
 impl ConnectedApp {
     pub fn new(ctx: egui::Context, bundle: we_template::Bundle, args: ConnectArgs) -> Self {
-        let base = BaseScreen::open(ctx.clone(), &bundle, args.settings.clone());
+        let base = BaseScreen::open(
+            ctx.clone(),
+            &bundle,
+            args.settings.clone(),
+            args.remember.clone(),
+        );
         Self {
             bundle,
             auto_space: args.space.clone(),

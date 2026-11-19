@@ -2,18 +2,21 @@
 //! and a host that dials This computer through [`ConnectFlow`].
 //!
 //! The flow starts when the template calls `baseStore.choose` or
-//! `baseStore.retry`, and when the lost-connection banner asks to
-//! reconnect. It does not start when the window opens.
+//! `baseStore.retry`, when the lost-connection banner asks to reconnect,
+//! and when the window opens with a remembered place still listed (a
+//! resume, not a click). Every start goes through [`select`]: a server is
+//! refused with its reason and nothing is dialed.
 
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use we_ad4m::base::{classify_failure, explicit_local_url, FailureClass};
+use we_ad4m::base::{classify_failure, select, BaseFile, FailureClass};
 use we_ad4m::connect::{Ask, ConnectFlow, ConnectPhase, ConnectSettings};
 use we_ad4m::Connection;
 use we_egui::Registry;
 use we_expr::Value;
 use we_screen::{ScreenSchema, ScreenState};
-use we_session::{BaseController, ConnectionRow, HostJob};
+use we_session::{BaseController, ChoiceMemory, ConnectionRow, HostJob, NoMemory};
 use we_template::{Action, ActionRequest, Completer, Host, Invoked, RootSpec, StoreBag};
 
 use crate::RendererApp;
@@ -47,24 +50,36 @@ pub struct BaseScreen {
 }
 
 impl BaseScreen {
+    /// `remember` is the base file: the place chosen last and the servers
+    /// listed. `None` keeps nothing.
     pub fn open(
         ctx: egui::Context,
         bundle: &we_template::Bundle,
         settings: ConnectSettings,
+        remember: Option<PathBuf>,
     ) -> Self {
         let rt = we_ad4m::Runtime::new().expect("the adapter runtime starts");
         let handle = rt.handle();
-        let offer = we_ad4m::base::this_computer();
-        let controller = BaseController::new(
-            we_session::BUILTIN_BUNDLE,
-            vec![ConnectionRow {
+        let servers = remember
+            .as_deref()
+            .map(BaseFile::load)
+            .unwrap_or_default()
+            .servers;
+        let rows = we_ad4m::base::catalog(&settings, &servers)
+            .into_iter()
+            .map(|offer| ConnectionRow {
                 id: offer.id.into(),
                 kind: offer.kind.into(),
                 icon: offer.icon.into(),
                 label: offer.label.into(),
                 detail: offer.detail.into(),
-            }],
-        );
+            })
+            .collect();
+        let memory: Arc<dyn ChoiceMemory> = match remember {
+            Some(path) => Arc::new(FileMemory(path)),
+            None => Arc::new(NoMemory),
+        };
+        let controller = BaseController::with_memory(we_session::BUILTIN_BUNDLE, rows, memory);
         let slot = Arc::new(Mutex::new(SlotState {
             live: None,
             seen: None,
@@ -99,7 +114,7 @@ impl BaseScreen {
         if let Some(theme) = crate::gallery::load_theme_set().get("glow").cloned() {
             app.theme = theme;
         }
-        Self {
+        let mut this = Self {
             app,
             controller,
             slot,
@@ -108,7 +123,12 @@ impl BaseScreen {
             ctx,
             ready: None,
             rt,
+        };
+        if let Some(job) = this.controller.resume() {
+            this.spawn(job);
         }
+        this.sync_facts();
+        this
     }
 
     /// Draw the template. Facts update after the frame's events, so the
@@ -223,20 +243,43 @@ impl BaseScreen {
     }
 
     fn spawn(&mut self, job: HostJob) {
-        spawn_flow(
-            &self.slot,
-            &self.handle,
-            local_settings(&self.settings),
-            &self.ctx,
-            job.attempt,
-        );
+        if let Some(dial) = endpoint(&self.controller, &self.settings, &job) {
+            spawn_flow(&self.slot, &self.handle, dial, &self.ctx, job.attempt);
+        }
     }
 }
 
-fn local_settings(settings: &ConnectSettings) -> ConnectSettings {
-    let mut settings = settings.clone();
-    settings.url = Some(explicit_local_url(&settings));
-    settings
+/// The settings `job` dials, or `None` when its row is refused. A refusal
+/// is the connect stage's reason; nothing is dialed, so this computer's
+/// tokens never go to the place refused.
+fn endpoint(
+    controller: &BaseController,
+    settings: &ConnectSettings,
+    job: &HostJob,
+) -> Option<ConnectSettings> {
+    let row = &job.connection;
+    match select(&row.kind, &row.label, settings) {
+        Ok(dial) => Some(dial),
+        Err(reason) => {
+            controller.note_refused(job.attempt, &reason);
+            None
+        }
+    }
+}
+
+/// The base file as the controller's memory. The file keeps the id only.
+struct FileMemory(PathBuf);
+
+impl ChoiceMemory for FileMemory {
+    fn remembered(&self) -> Option<String> {
+        BaseFile::load(&self.0).connection
+    }
+
+    fn remember(&self, id: &str) {
+        if let Err(error) = BaseFile::remember(&self.0, id) {
+            log::warn!("we-app: could not keep the connection chosen: {error}");
+        }
+    }
 }
 
 fn lock_slot(slot: &Mutex<SlotState>) -> MutexGuard<'_, SlotState> {
@@ -299,7 +342,9 @@ impl BaseHost {
     }
 
     fn start(&self, job: HostJob) {
-        let dial = local_settings(&self.settings);
+        let Some(dial) = endpoint(&self.controller, &self.settings, &job) else {
+            return;
+        };
         match &self.jobs {
             Jobs::Dial { slot, handle, ctx } => {
                 spawn_flow(slot, handle, dial, ctx, job.attempt);
