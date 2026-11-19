@@ -16,6 +16,8 @@ const SOLID_TESTS = [
   // Mounts a part's frame and changes its subject under it: real Solid effects and cleanups.
   'tests/partWhileShown.test.tsx',
   'tests/executorFreeBoot.test.tsx',
+  // The real template store, its sibling stores doubled: which space a late read may still answer for.
+  'tests/templateStoreSpaceSwitch.test.tsx',
   'tests/runtimeStore.test.tsx',
   'tests/accountStore.test.tsx',
   'tests/identityStore.test.tsx',
