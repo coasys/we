@@ -30,8 +30,9 @@ function makeShape(targetClass?: string): SHACLShape {
 /**
  * The shape registry as the executor answers it: the names, the index query's rows, and `getShacl`.
  *
- * `getAllShacl` throws: in the SDK copy the app runs it reads every shape one at a time, which is
- * the cost `getForeignShacl` exists to avoid.
+ * `getAllShacl` throws. It reads every named shape in one call and skips one it cannot decode, but
+ * it still carries every link of every shape — the cost `getForeignShacl` exists to avoid by
+ * asking the index query first and reading in full only the shapes it has to.
  */
 function mockPerspective(shapes: Array<{ name: string; shape: SHACLShape }>, listed = shapes.map((s) => s.name)) {
   return {
@@ -48,7 +49,7 @@ function mockPerspective(shapes: Array<{ name: string; shape: SHACLShape }>, lis
     ),
     getShacl: vi.fn(async (name: string) => shapes.find((s) => s.name === name)?.shape ?? null),
     getAllShacl: vi.fn(() => {
-      throw new Error('getAllShacl reads every shape one at a time');
+      throw new Error('getAllShacl carries every link of every shape');
     }),
   } as unknown as PerspectiveProxy;
 }

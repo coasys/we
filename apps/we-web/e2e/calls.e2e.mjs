@@ -28,8 +28,18 @@ import { createSpace, dismissNamePrompt, inTheCall, openSpace } from './steps/sp
 const DIST = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist');
 
 const REPLACED = 'You joined this call from another tab, so it ended here.';
-// The sidebar's running call is one button, named by everything on it: "Call running · 1 in it Join".
-const JOIN_BUTTON = /^Call running\b.*\b(Open|Join)$/;
+/** The running call's row in the space tree, under Calls: named by its title and its Live tag. */
+const liveCallRow = (page) =>
+  page
+    .locator('we-tree')
+    .getByRole('treeitem', { name: /\bLive$/ })
+    .first();
+
+/** Join the call running in the open space: its Live row opens the call's page, which has the way in. */
+async function joinFromTree(page) {
+  await liveCallRow(page).click({ timeout: 30_000 });
+  await page.getByRole('button', { name: 'Join', exact: true }).first().click({ timeout: 30_000 });
+}
 
 /** What the page says, shadow roots included. */
 const text = (page) => page.locator('body').innerText();
@@ -140,18 +150,11 @@ for (const [topology, mode] of [
     step('a second tab sees the call the first tab is in', async () => {
       tabB = await laptop.tab('B');
       await openSpace(tabB, app, space);
-      await h.until(
-        () => text(tabB),
-        (t) => t.includes('Call running'),
-        {
-          timeout: 60_000,
-          what: "tab B to show tab A's call running",
-        },
-      );
+      await liveCallRow(tabB).waitFor({ timeout: 60_000 });
     });
 
     step('joining from the second tab moves the call there, and the first lets go', async () => {
-      await tabB.getByRole('button', { name: JOIN_BUTTON }).first().click({ timeout: 30_000 });
+      await joinFromTree(tabB);
       await waitInCall(tabB, 1, 'tab B in the call');
       await h.until(
         () => text(tabA),
@@ -175,15 +178,8 @@ for (const [topology, mode] of [
     step("a second device of the same agent joins beside the first, each showing the other's tile", async () => {
       phoneTab = await phone.tab('C');
       await openSpace(phoneTab, app, space);
-      await h.until(
-        () => text(phoneTab),
-        (t) => t.includes('Call running'),
-        {
-          timeout: 60_000,
-          what: 'the second device to show the call running',
-        },
-      );
-      await phoneTab.getByRole('button', { name: JOIN_BUTTON }).first().click({ timeout: 30_000 });
+      await liveCallRow(phoneTab).waitFor({ timeout: 60_000 });
+      await joinFromTree(phoneTab);
       await waitInCall(phoneTab, 2, 'the second device to count both devices');
       await waitInCall(tabB, 2, 'the first device to count both devices');
       await waitVideos(phoneTab, 2, 'two tiles with moving video on the second device');
