@@ -5,6 +5,7 @@ import {
   chooseTheme,
   field,
   formModal,
+  peopleTooltip,
   SPACE_TEMPLATE_CHOICES,
   SPACE_THEME_CHOICES,
   templateChoice,
@@ -116,6 +117,27 @@ const feedRow = treeRow({ value: { $: "'channel|' + spaceStore.root" }, label: '
 /** A call still running carries a Live tag, so the way back into it is on the row. */
 export const LIVE = 'find(modules.call.liveCalls, { recordId: call.id })';
 
+/**
+ * Who is in a running call, on its row: their faces, overlapped, and on hover everyone in it, one
+ * per line with a picture and a name. Shown whether or not this agent is in the call — it is the
+ * row's answer to "who is there", which matters most before joining.
+ */
+const callPeople: SchemaNode = peopleTooltip({
+  items: { $: `${LIVE}.faces` },
+  as: 'person',
+  image: { $: 'person.image' },
+  hash: { $: 'person.hash' },
+  // `initials` carries the profile's name: the stack draws initials from it.
+  name: { $: 'person.initials' },
+  placement: 'right',
+  children: [
+    {
+      type: 'AvatarStack',
+      props: { avatars: { $: `${LIVE}.faces.map(f, { image: f.image, hash: f.hash })` }, max: 3, size: 'xs' },
+    },
+  ],
+});
+
 const calls = group(
   'calls',
   'Calls',
@@ -134,7 +156,14 @@ const calls = group(
             type: '$if',
             props: {
               condition: { $: LIVE },
-              then: { type: 'we-badge', props: { tone: 'success', size: 'xs' }, children: [liveDot, 'Live'] },
+              then: {
+                type: 'Row',
+                props: { gap: '100', ay: 'center' },
+                children: [
+                  callPeople,
+                  { type: 'we-badge', props: { tone: 'success', size: 'xs' }, children: [liveDot, 'Live'] },
+                ],
+              },
               else: {
                 type: 'we-timestamp',
                 props: {
@@ -685,7 +714,7 @@ const findOrAsk: SchemaNode = {
 const callButton: SchemaNode = {
   type: '$if',
   props: {
-    // Only while there is no call here: once there is, the line under the header offers it.
+    // Only while there is no call here: once there is, its row under Calls, tagged Live, is the way in.
     condition: { $: 'modules.call.canCall && !count(modules.call.liveCalls)' },
     then: {
       type: 'Column',
@@ -693,77 +722,9 @@ const callButton: SchemaNode = {
       children: [
         {
           type: 'we-button',
-          // Solid, in the accent: starting a call is the one thing the tree invites, as Join is once one runs.
+          // Solid, in the accent: starting a call is the one thing the tree invites.
           props: { variant: 'solid', onClick: { $invoke: 'modules.call.goToCall' } },
           children: [{ type: 'we-icon', props: { name: 'phone' } }, 'Start a call'],
-        },
-      ],
-    },
-  },
-};
-
-/** Whether this agent is in the call running here, rather than in one somewhere else or none. */
-const IN_IT = 'modules.call.active && !modules.call.elsewhere';
-
-/**
- * A call running in this space, under its name, as d12's tree draws it: "Call running · 3 in it".
- * One entry, pressed once — `goToCall` joins it for somebody not in it and opens it for somebody
- * who is, so the row offers the verb rather than a second destination beside the text.
- */
-const callRunning: SchemaNode = {
-  type: '$if',
-  props: {
-    condition: { $: 'count(modules.call.liveCalls)' },
-    then: {
-      type: 'Column',
-      props: { px: INSET, pb: '300' },
-      children: [
-        /*
-          One entry, not a line with a button beside it: `goToCall` already carries the branch —
-          it joins the call running here when you are not in it, and brings it up when you are —
-          so the row asks for the verb and nothing else. The trailing word still says which of
-          the two it will do.
-        */
-        {
-          type: 'we-button',
-          props: {
-            variant: 'ghost',
-            width: '100%',
-            ax: 'start',
-            gap: '200',
-            /*
-              Branched at press time, like the trailing word says it is: "Join" is `goToCall`, and
-              "Open" — for somebody already in it — navigates to the call's own page, the reading
-              the entry had before the two ways in were one and the one the review asked back.
-            */
-            onClick: [
-              {
-                $if: {
-                  condition: { $: IN_IT },
-                  then: [
-                    { $invoke: 'routeStore.navigate', args: [{ $: callPath('modules.call.callRecordId') }] },
-                    // And the stage, for the reason every other way in raises it: "Open" asked
-                    // for the call, not for the page with the call still folded away.
-                    { $invoke: 'modules.call.goToCall' },
-                  ],
-                  else: { $invoke: 'modules.call.goToCall' },
-                },
-              },
-            ],
-          },
-          children: [
-            { ...liveDot, props: { ...liveDot.props, size: 'xs' } },
-            {
-              type: 'we-text',
-              props: { variant: 'footnote', color: 'text-muted', flex: '1', minWidth: '0', truncate: true, ta: 'left' },
-              children: [{ $: '`Call running · ${first(modules.call.liveCalls).count} in it`' }],
-            },
-            {
-              type: 'we-text',
-              props: { variant: 'footnote', color: 'accent' },
-              children: [{ $: `${IN_IT} ? 'Open' : 'Join'` }],
-            },
-          ],
         },
       ],
     },
@@ -843,7 +804,6 @@ export const treeSection: SchemaNode = {
     header,
     purpose,
     findOrAsk,
-    callRunning,
     {
       type: 'Column',
       props: { flex: '1', minHeight: '0', overflowY: 'auto', px: '200' },
