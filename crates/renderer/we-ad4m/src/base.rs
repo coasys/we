@@ -10,7 +10,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::connect::{scrub, ConnectSettings};
+use crate::connect::ConnectSettings;
 
 /// This computer, as the base template's connection row names it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -230,35 +230,6 @@ pub fn default_base_file() -> PathBuf {
     dir
 }
 
-/// How a failed connect attempt is shown.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum FailureClass {
-    /// The executor did not answer. The screen uses its own sentence.
-    Unreachable,
-    /// Any other failure. `reason` is the sentence the connect stage shows.
-    Refused { reason: String },
-}
-
-/// Classify a [`crate::connect::ConnectPhase::Failed`] reason.
-///
-/// The flow's typed error is a string in this build. The match is on the
-/// words that string already carries.
-pub fn classify_failure(reason: &str) -> FailureClass {
-    let lower = reason.to_ascii_lowercase();
-    if lower.contains("does not answer")
-        || lower.contains("no ad4m executor")
-        || lower.contains("connection refused")
-        || lower.contains("timed out")
-        || lower.contains("os error")
-    {
-        FailureClass::Unreachable
-    } else {
-        FailureClass::Refused {
-            reason: scrub(reason),
-        }
-    }
-}
-
 /// The URL a click on This computer dials.
 ///
 /// A loopback `--executor-url` wins. One that is not loopback is not this
@@ -376,26 +347,6 @@ mod tests {
             ..ConnectSettings::default()
         };
         assert_eq!(explicit_local_url(&settings), "http://127.0.0.1:12000");
-    }
-
-    #[test]
-    fn refused_and_unreachable_are_different() {
-        assert_eq!(
-            classify_failure("connection refused"),
-            FailureClass::Unreachable
-        );
-        assert_eq!(
-            classify_failure("The executor at http://127.0.0.1:1 does not answer."),
-            FailureClass::Unreachable
-        );
-        assert_eq!(
-            classify_failure("No AD4M executor found."),
-            FailureClass::Unreachable
-        );
-        match classify_failure("the executor refused this app's token — connect again") {
-            FailureClass::Refused { reason } => assert!(reason.contains("refused"), "{reason}"),
-            FailureClass::Unreachable => panic!("a refusal was classed unreachable"),
-        }
     }
 
     fn isolated(url: Option<&str>) -> (tempfile::TempDir, ConnectSettings) {
@@ -581,18 +532,14 @@ mod tests {
         let rt = crate::Runtime::new().unwrap();
         let flow = crate::connect::ConnectFlow::start(&rt.handle(), local, || {});
         let start = std::time::Instant::now();
-        let reason = loop {
-            if let crate::connect::ConnectPhase::Failed { reason, .. } = flow.phase() {
-                break reason;
+        let (kind, reason) = loop {
+            if let crate::connect::ConnectPhase::Failed { kind, reason } = flow.phase() {
+                break (kind, reason);
             }
             assert!(start.elapsed().as_secs() < 30, "the flow did not end");
             std::thread::sleep(std::time::Duration::from_millis(20));
         };
-        assert_eq!(
-            classify_failure(&reason),
-            FailureClass::Unreachable,
-            "{reason}"
-        );
+        assert_eq!(kind, crate::connect::FailureKind::Unreachable, "{reason}");
         let mut accepted = 0;
         while stale.accept().is_ok() {
             accepted += 1;

@@ -7,7 +7,7 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use serde_json::json;
-use we_ad4m::connect::{Ask, ConnectFlow, ConnectPhase, ConnectSettings, GrantScope};
+use we_ad4m::connect::{Ask, ConnectFlow, ConnectPhase, ConnectSettings, FailureKind, GrantScope};
 
 /// A flow with its own token directory and no launcher port file.
 fn flow(
@@ -524,4 +524,43 @@ fn a_write_token_for_another_space_is_not_reused() {
         "a token for another space must not be reused: {other:?}"
     );
     create_call(&rt, &conn, &b).expect("the new grant writes in b");
+}
+
+/// Slice 3: the flow kept after the hand-off watches the socket too. The
+/// executor stops under an open session: the flow ends Unreachable (not a
+/// refusal), and the connection it handed out stops redialling.
+#[test]
+fn a_stopped_executor_ends_the_session_unreachable() {
+    let Some(mut executor) = common::start_executor() else {
+        return;
+    };
+    let rt = we_ad4m::Runtime::new().unwrap();
+    let writer = common::connect(&rt, &executor.url);
+    // An agent, so the executor is not locked.
+    common::seed_space(&rt, &writer, "flow-dies");
+    drop(writer);
+    let tokens = tempfile::tempdir().unwrap();
+    let (flow, wake) = flow(&rt, &executor.url, tokens.path());
+    wait(&flow, &wake, Duration::from_secs(60), |p| match p {
+        ConnectPhase::Connected { .. } => Some(()),
+        ConnectPhase::Failed { reason, .. } => panic!("connect failed: {reason}"),
+        _ => None,
+    });
+    let conn = flow.take_connection().expect("the connection");
+    assert!(conn.is_connected());
+
+    executor.stop();
+    let ((kind, reason), _) = wait(&flow, &wake, Duration::from_secs(30), |p| match p {
+        ConnectPhase::Failed { kind, reason } => Some((*kind, reason.clone())),
+        _ => None,
+    });
+    assert_eq!(kind, FailureKind::Unreachable, "{reason}");
+    assert!(reason.contains(&executor.port.to_string()), "{reason}");
+
+    // Back on the same port: the closed socket does not come back by
+    // itself. The next session is a new flow.
+    executor.restart();
+    drop(common::connect(&rt, &executor.url));
+    std::thread::sleep(Duration::from_secs(3));
+    assert!(!conn.is_connected(), "the lost session's socket redialled");
 }

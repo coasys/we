@@ -10,8 +10,8 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use we_ad4m::base::{classify_failure, select, BaseFile, FailureClass};
-use we_ad4m::connect::{Ask, ConnectFlow, ConnectPhase, ConnectSettings};
+use we_ad4m::base::{select, BaseFile};
+use we_ad4m::connect::{Ask, ConnectFlow, ConnectPhase, ConnectSettings, FailureKind};
 use we_ad4m::Connection;
 use we_egui::Registry;
 use we_expr::Value;
@@ -233,19 +233,29 @@ impl BaseScreen {
 
 /// What a flow's phase (other than Connected) does to the base store.
 /// `attempt` is the flow's attempt id: a phase of an attempt that is no
-/// longer the current one changes nothing.
+/// longer the current one, or of a session that is no longer open,
+/// changes nothing.
+///
+/// The failure's kind decides; its words are only shown. No answer is the
+/// offline stage, for the attempt in flight or for the session it opened
+/// (the executor stopped under it). Anything else (a refusal, something
+/// that is not an executor) is the list with the reason; a refused
+/// session does not jump back to the place that refused it.
 fn apply_phase(controller: &BaseController, attempt: u64, phase: ConnectPhase) {
     match phase {
-        ConnectPhase::Failed { reason, .. } => match classify_failure(&reason) {
-            FailureClass::Unreachable => {
-                controller.note_unreachable(attempt);
+        ConnectPhase::Failed {
+            kind: FailureKind::Unreachable,
+            ..
+        } => {
+            if !controller.note_unreachable(attempt) {
+                controller.note_session_lost(attempt);
             }
-            FailureClass::Refused { reason } => {
-                if !controller.note_refused(attempt, &reason) {
-                    controller.note_adopted_refusal(attempt, &reason);
-                }
+        }
+        ConnectPhase::Failed { reason, .. } => {
+            if !controller.note_refused(attempt, &reason) {
+                controller.note_adopted_refusal(attempt, &reason);
             }
-        },
+        }
         ConnectPhase::Locked { url } => {
             let sentence = format!(
                 "The executor at {} is locked. Unlock it in the AD4M launcher, then retry.",

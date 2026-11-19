@@ -28,6 +28,7 @@
 //! token stands in for the other. See [`app_info`].
 use std::future::Future;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use ad4m_client::connect::{
@@ -462,6 +463,9 @@ impl ConnectPrompts for UiPrompts {
 struct Io {
     inner: WsIo,
     only: Option<String>,
+    /// Set when an address failed the health check but took a TCP
+    /// connection: something is there, and it is not an executor.
+    answered: Arc<AtomicBool>,
 }
 
 impl Io {
@@ -480,7 +484,11 @@ impl ExecutorIo for Io {
 
     async fn healthy<'a>(&'a self, base_url: &'a str) -> anyhow::Result<()> {
         self.allowed(base_url)?;
-        self.inner.healthy(base_url).await
+        let health = self.inner.healthy(base_url).await;
+        if health.is_err() && takes_connections(base_url).await {
+            self.answered.store(true, Ordering::SeqCst);
+        }
+        health
     }
 
     async fn rpc<'a>(&'a self, base_url: &'a str, token: &'a str) -> anyhow::Result<Self::Rpc> {
@@ -488,6 +496,40 @@ impl ExecutorIo for Io {
         self.inner.rpc(base_url, token).await
     }
 }
+
+/// Whether something accepts a TCP connection at `base_url`'s host and
+/// port, within a second.
+async fn takes_connections(base_url: &str) -> bool {
+    let rest = base_url.split_once("://").map_or(base_url, |(_, r)| r);
+    let authority = &rest[..rest.find(['/', '?', '#']).unwrap_or(rest.len())];
+    let authority = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
+    let has_port = authority
+        .rsplit_once(':')
+        .is_some_and(|(_, port)| port.parse::<u16>().is_ok());
+    let addr = if has_port {
+        authority.to_string()
+    } else if base_url.starts_with("https") {
+        format!("{authority}:443")
+    } else {
+        format!("{authority}:80")
+    };
+    matches!(
+        tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            tokio::net::TcpStream::connect(addr)
+        )
+        .await,
+        Ok(Ok(_))
+    )
+}
+
+/// How often an open session's socket is looked at.
+const LIVENESS_TICK: std::time::Duration = std::time::Duration::from_millis(250);
+
+/// How long an open session's socket may stay down before the flow says
+/// the executor is gone. `ad4m-client` redials on its own; a blip shorter
+/// than this keeps the session.
+const LOST_AFTER: std::time::Duration = std::time::Duration::from_secs(2);
 
 async fn run(
     shared: Arc<Shared>,
@@ -511,14 +553,19 @@ async fn run(
     opts.email = settings.email;
     opts.token_dir = settings.token_dir;
     opts.executor_port_file = settings.port_file;
+    let answered = Arc::new(AtomicBool::new(false));
     let io = Io {
         inner: WsIo::new(),
         only: opts.url.as_deref().map(normalize_base_url),
+        answered: answered.clone(),
     };
     let only = io.only.clone();
-    let failed = |e: &anyhow::Error| ConnectPhase::Failed {
-        kind: failure_kind(e, false),
-        reason: reason_for(e, only.as_deref()),
+    let failed = |e: &anyhow::Error| {
+        let answered = answered.load(Ordering::SeqCst);
+        ConnectPhase::Failed {
+            kind: failure_kind(e, answered),
+            reason: reason_for(e, only.as_deref(), answered),
+        }
     };
     let mut session = match Ad4mConnect::with_io(opts, io) {
         Ok(s) => s,
@@ -570,27 +617,57 @@ async fn run(
                 });
             };
             if let Ok(mut c) = shared.connection.lock() {
-                *c = Some(Connection::new(handle, ws));
+                *c = Some(Connection::new(handle, ws.clone()));
             }
-            shared.set(ConnectPhase::Connected { url });
+            shared.set(ConnectPhase::Connected { url: url.clone() });
             // The session owns the refusal watch and the token's lifetime:
             // keep it until the flow is dropped (the app's connection lives
-            // as long as the flow's owner keeps it).
+            // as long as the flow's owner keeps it). It also watches the
+            // socket: down for longer than LOST_AFTER, the executor is gone,
+            // and the socket is closed so it stops redialling.
             let mut watch = session.watch_state();
-            while watch.changed().await.is_ok() {
-                if *watch.borrow() == AuthState::Unauthenticated {
-                    shared.set(ConnectPhase::Failed {
-                        kind: FailureKind::Other,
-                        reason: "the executor refused this app's token — connect again".into(),
-                    });
-                    break;
+            let mut tick = tokio::time::interval(LIVENESS_TICK);
+            let mut down_since: Option<std::time::Instant> = None;
+            loop {
+                tokio::select! {
+                    changed = watch.changed() => {
+                        if changed.is_err() {
+                            break;
+                        }
+                        if *watch.borrow() == AuthState::Unauthenticated {
+                            shared.set(ConnectPhase::Failed {
+                                kind: FailureKind::Refused,
+                                reason: "the executor refused this app's token — connect again"
+                                    .into(),
+                            });
+                            break;
+                        }
+                    }
+                    _ = tick.tick() => {
+                        if ws.is_connected() {
+                            down_since = None;
+                            continue;
+                        }
+                        let since = *down_since.get_or_insert_with(std::time::Instant::now);
+                        if since.elapsed() >= LOST_AFTER {
+                            shared.set(ConnectPhase::Failed {
+                                kind: FailureKind::Unreachable,
+                                reason: format!(
+                                    "The executor at {} stopped answering.",
+                                    redact_url(&url)
+                                ),
+                            });
+                            ws.close().await;
+                            return;
+                        }
+                    }
                 }
             }
             std::future::pending::<()>().await;
         }
         AuthState::Locked => shared.set(ConnectPhase::Locked { url }),
         AuthState::Unauthenticated => shared.set(ConnectPhase::Failed {
-            kind: FailureKind::Other,
+            kind: FailureKind::Refused,
             reason: "the executor did not accept this app".into(),
         }),
     }
@@ -600,14 +677,52 @@ async fn run(
 /// whether something took a TCP connection at an address that failed the
 /// executor health check.
 ///
-/// Slice 2 behaviour (stub for the failing tests): not computed.
-fn failure_kind(_e: &anyhow::Error, _answered: bool) -> FailureKind {
-    FailureKind::Other
+/// Network errors are the `std::io::Error` kinds of a peer that is not
+/// there or went away, anywhere in the error's chain. An `io::Error` of
+/// another kind (a token file that cannot be written) is not one.
+fn failure_kind(e: &anyhow::Error, answered: bool) -> FailureKind {
+    match e.downcast_ref::<ConnectError>() {
+        Some(ConnectError::ExecutorNotFound { .. }) if answered => FailureKind::NotAnExecutor,
+        Some(ConnectError::ExecutorNotFound { .. }) => FailureKind::Unreachable,
+        Some(ConnectError::Refused { .. }) => FailureKind::Refused,
+        Some(ConnectError::InsecureTransport { .. }) => FailureKind::Other,
+        None if e.chain().any(is_network_error) => FailureKind::Unreachable,
+        None => FailureKind::Other,
+    }
+}
+
+fn is_network_error(e: &(dyn std::error::Error + 'static)) -> bool {
+    use std::io::ErrorKind::*;
+    e.downcast_ref::<std::io::Error>().is_some_and(|io| {
+        matches!(
+            io.kind(),
+            ConnectionRefused
+                | ConnectionReset
+                | ConnectionAborted
+                | NotConnected
+                | TimedOut
+                | BrokenPipe
+                | UnexpectedEof
+                | AddrNotAvailable
+                | HostUnreachable
+                | NetworkUnreachable
+                | NetworkDown
+        )
+    })
 }
 
 /// The sentence for a failed connect; `only` is the explicit URL, if any.
-fn reason_for(e: &anyhow::Error, only: Option<&str>) -> String {
+/// `answered`: something at an address tried is not an executor.
+fn reason_for(e: &anyhow::Error, only: Option<&str>, answered: bool) -> String {
     match e.downcast_ref::<ConnectError>() {
+        Some(ConnectError::ExecutorNotFound { .. }) if answered && only.is_some() => format!(
+            "Something at {} answers, but it is not an AD4M executor. Check the port, or leave out --executor-url to look for one.",
+            only.unwrap_or_default()
+        ),
+        Some(ConnectError::ExecutorNotFound { tried }) if answered => format!(
+            "No AD4M executor found. Something answers, but not as an AD4M executor. Tried: {}",
+            tried.join(", ")
+        ),
         Some(ConnectError::ExecutorNotFound { .. }) if only.is_some() => format!(
             "The executor at {} does not answer. Start it, or leave out --executor-url to look for one.",
             only.unwrap_or_default()

@@ -27,7 +27,7 @@ async-trait.workspace = true
 # it merges.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 ad4m-client = { git = "https://github.com/coasys/ad4m.git", rev = "d2e6fab93a61588d429fd44e7139e5d3bcaa7fcd" }
-tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros", "net"] }
 anyhow = "1"
 tempfile = { version = "3", optional = true }
 
