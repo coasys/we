@@ -90,27 +90,27 @@ describe('sharingOptions', () => {
     const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
 
     expect(await lifecycle.sharingOptions?.()).toEqual([
-      { id: HOLOCHAIN.address, name: HOLOCHAIN.name, kind: 'peer-to-peer' },
       { id: SERVER.address, name: SERVER.name, kind: 'server', servers: [PRODUCTION, STAGING] },
+      { id: HOLOCHAIN.address, name: HOLOCHAIN.name, kind: 'peer-to-peer' },
     ]);
   });
 
-  it('offers it once a link server is configured, after the peer-to-peer templates', async () => {
-    // AD4M sorts known templates by address, so a server template can come first. It must not
+  it('offers it once a link server is configured, before the peer-to-peer templates', async () => {
+    // AD4M sorts known templates by address, so a peer-to-peer template can come first. It must not
     // become the default for that.
-    const client = mockClient([SERVER, HOLOCHAIN]);
+    const client = mockClient([HOLOCHAIN, SERVER]);
     const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient, {
       linkServerUrl: 'https://links.example.org',
     });
 
     expect(await lifecycle.sharingOptions?.()).toEqual([
-      { id: HOLOCHAIN.address, name: HOLOCHAIN.name, kind: 'peer-to-peer' },
       {
         id: SERVER.address,
         name: SERVER.name,
         kind: 'server',
         servers: ['https://links.example.org', PRODUCTION, STAGING],
       },
+      { id: HOLOCHAIN.address, name: HOLOCHAIN.name, kind: 'peer-to-peer' },
     ]);
   });
 
@@ -248,13 +248,13 @@ describe('publish', () => {
     expect(client.languages.applyTemplateAndPublish).not.toHaveBeenCalled();
   });
 
-  it('uses the first publishable template when none is chosen', async () => {
-    const client = mockClient([SERVER, HOLOCHAIN]);
+  it('uses the first publishable template, the server one, when none is chosen', async () => {
+    const client = mockClient([HOLOCHAIN, SERVER]);
     const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
 
     await lifecycle.publish?.('dataset-1', { sharing: '' });
 
-    expect(client.languages.applyTemplateAndPublish.mock.calls[0][0]).toBe(HOLOCHAIN.address);
+    expect(client.languages.applyTemplateAndPublish.mock.calls[0][0]).toBe(SERVER.address);
   });
 
   it('gives a template declaring no parameters the uid and name it always had', async () => {
@@ -288,7 +288,7 @@ describe('development registration', () => {
       expect.objectContaining({ possibleTemplateParams: expect.arrayContaining(['SERVER_URL', 'UID']) }),
     ]);
     expect(client.runtime.addKnownLinkLanguageTemplates).toHaveBeenCalledWith(['Qm-dev-server']);
-    expect(templates?.map((t) => t.id)).toEqual([HOLOCHAIN.address, 'Qm-dev-server']);
+    expect(templates?.map((t) => t.id)).toEqual(['Qm-dev-server', HOLOCHAIN.address]);
   });
 
   it('does not register a build the language store holds under other parameters', async () => {

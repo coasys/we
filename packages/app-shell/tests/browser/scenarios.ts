@@ -1782,8 +1782,8 @@ const bundleUpdatePrompt =
  */
 /**
  * The create-space modal on a deployment that can share a space both ways, listed as the AD4M
- * backend lists them: peer-to-peer first, then the server link language with AD4M's two link
- * servers. The sharing option and server `createSpace` was given are marked on the body.
+ * backend lists them: the server link language with AD4M's two link servers first, then
+ * peer-to-peer. The sharing option and server `createSpace` was given are marked on the body.
  */
 const createSpaceShared = (): Scenario => ({
   node: createSpaceModal as SchemaNode,
@@ -1791,15 +1791,15 @@ const createSpaceShared = (): Scenario => ({
   stores: {
     spaceStore: {
       sharingOptions: sharingPickerOptions([
-        { id: 'Qm-p2p', name: 'perspective-diff-sync', kind: 'peer-to-peer' },
         {
           id: 'Qm-server',
           name: 'server-link-language',
           kind: 'server',
           servers: ['https://link.ad4m.dev', 'https://link-staging.ad4m.dev'],
         },
+        { id: 'Qm-p2p', name: 'perspective-diff-sync', kind: 'peer-to-peer' },
       ]),
-      defaultSharing: 'Qm-p2p',
+      defaultSharing: 'Qm-server',
       starterChoices: [
         {
           id: 'coasys-default',
