@@ -77,6 +77,13 @@ const EXIT_RESTART: i32 = 75;
 const EXIT_CONFIG_REFUSED: i32 = 78;
 const EXIT_DATA_FOLDER_BUSY: i32 = 79;
 
+/// The oldest executor this supervisor runs: the first release with
+/// `--watch-stdin` (stop on stdin end) and the data-folder lock (exit 79).
+/// `ad4m 0.13.1-staging.11`, the client pin's release, has neither.
+pub const MIN_EXECUTOR_VERSION: &str = "0.13.1-staging.12";
+/// How long `ad4m-executor --version` may take.
+const VERSION_TIMEOUT: Duration = Duration::from_secs(10);
+
 /// How long one `/health` probe may take, and how far apart they are.
 const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 const PROBE_INTERVAL: Duration = Duration::from_millis(250);
@@ -165,6 +172,51 @@ pub trait AgentReader: Send + Sync {
     fn permit(&self, url: &str, admin: &str, auth: &str) -> Result<String, String> {
         let _ = (url, admin, auth);
         Err("this reader approves nothing".into())
+    }
+}
+
+/// Whether `said` (the output of `ad4m-executor --version`, e.g.
+/// `ad4m 0.13.1-staging.13`) names an executor this supervisor can run:
+/// [`MIN_EXECUTOR_VERSION`] or newer. `Err` is the sentence to show.
+pub fn executor_version_ok(said: &str) -> Result<(), String> {
+    let need = format!(
+        "Coasys needs ad4m {MIN_EXECUTOR_VERSION} or newer (it stops the executor through \
+         --watch-stdin)."
+    );
+    let version = said
+        .split_whitespace()
+        .find(|word| word.starts_with(|c: char| c.is_ascii_digit()));
+    let Some(version) = version else {
+        return Err(format!(
+            "Couldn't tell which ad4m version this executor is (it said {:?}). {need}",
+            said.trim()
+        ));
+    };
+    let (core, pre) = match version.split_once('-') {
+        Some((core, pre)) => (core, Some(pre)),
+        None => (version, None),
+    };
+    let numbers: Vec<u64> = core.split('.').filter_map(|n| n.parse().ok()).collect();
+    let too_old = || Err(format!("This executor is ad4m {version}. {need}"));
+    let [major, minor, patch] = numbers[..] else {
+        return too_old();
+    };
+    let newer = match (major, minor, patch).cmp(&(0, 13, 1)) {
+        std::cmp::Ordering::Greater => true,
+        std::cmp::Ordering::Less => false,
+        // 0.13.1 itself, or one of its staging builds from .12 on.
+        std::cmp::Ordering::Equal => match pre {
+            None => true,
+            Some(pre) => pre
+                .strip_prefix("staging.")
+                .and_then(|n| n.parse::<u64>().ok())
+                .is_some_and(|n| n >= 12),
+        },
+    };
+    if newer {
+        Ok(())
+    } else {
+        too_old()
     }
 }
 
@@ -492,6 +544,33 @@ fn run_child(shared: &Shared) -> Lifecycle {
         reason,
         stopped: false,
     };
+    match bounded(
+        shared,
+        Command::new(&config.binary).arg("--version"),
+        VERSION_TIMEOUT,
+    ) {
+        Bounded::Done(exit, out) if exit.success() => {
+            if let Err(reason) = executor_version_ok(&out) {
+                return failed(reason);
+            }
+        }
+        Bounded::Done(exit, _) => {
+            return failed(format!(
+                "Couldn't tell which ad4m version {} is ({}).",
+                config.binary.display(),
+                describe(&exit)
+            ))
+        }
+        Bounded::Stopped => return stopped_by_us(),
+        Bounded::Timeout => {
+            return failed(format!(
+                "{} --version didn't answer within {} seconds.",
+                config.binary.display(),
+                VERSION_TIMEOUT.as_secs()
+            ))
+        }
+        Bounded::NotRun(reason) => return failed(reason),
+    }
     if let Err(reason) = init(config) {
         return failed(reason);
     }
@@ -555,6 +634,87 @@ fn run_child(shared: &Shared) -> Lifecycle {
                 };
             }
         }
+    }
+}
+
+/// How a short helper command ([`bounded`]) ended.
+enum Bounded {
+    /// It exited; its stdout (the first 64 KiB).
+    Done(ExitStatus, String),
+    /// The stop was asked; it was killed.
+    Stopped,
+    /// Past its deadline; it was killed.
+    Timeout,
+    /// It could not be started.
+    NotRun(String),
+}
+
+/// Run a helper command (`--version`, `init`) as a child the supervisor
+/// holds: the stop reaches it (killed and reaped at once), and so does a
+/// deadline. Its stdin is closed; its output is read on a thread, so a
+/// full pipe cannot block it.
+fn bounded(shared: &Shared, cmd: &mut Command, limit: Duration) -> Bounded {
+    let spawned = cmd
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn();
+    let mut child = match spawned {
+        Ok(child) => child,
+        Err(e) => {
+            return Bounded::NotRun(format!(
+                "Couldn't run {}: {e}",
+                shared.config.binary.display()
+            ))
+        }
+    };
+    let (out_tx, out_rx) = mpsc::channel();
+    if let Some(stdout) = child.stdout.take() {
+        let _ = std::thread::Builder::new()
+            .name("we-executor-helper".into())
+            .spawn(move || {
+                let mut text = String::new();
+                let _ = stdout.take(64 * 1024).read_to_string(&mut text);
+                let _ = out_tx.send(text);
+            });
+    }
+    {
+        let mut status = shared.lock();
+        if status.stopping {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Bounded::Stopped;
+        }
+        status.child = Some(child);
+    }
+    let deadline = Instant::now() + limit;
+    loop {
+        let mut status = shared.lock();
+        let stopping = status.stopping;
+        let Some(child) = status.child.as_mut() else {
+            return Bounded::Stopped;
+        };
+        if let Ok(Some(exit)) = child.try_wait() {
+            status.child = None;
+            drop(status);
+            let out = out_rx
+                .recv_timeout(Duration::from_secs(1))
+                .unwrap_or_default();
+            return Bounded::Done(exit, out);
+        }
+        if stopping || Instant::now() >= deadline {
+            let mut child = status.child.take().expect("held above");
+            drop(status);
+            let _ = child.kill();
+            let _ = child.wait();
+            return if stopping {
+                Bounded::Stopped
+            } else {
+                Bounded::Timeout
+            };
+        }
+        drop(status);
+        std::thread::sleep(Duration::from_millis(50));
     }
 }
 

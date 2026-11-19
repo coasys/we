@@ -64,7 +64,9 @@ fn script(dir: &Path, name: &str, body: &str) -> PathBuf {
     std::fs::write(
         &path,
         format!(
-            "#!/bin/sh\nif [ \"$1\" = init ]; then exit 0; fi\n\
+            "#!/bin/sh\nif [ \"$1\" = --version ]; then \
+             cat \"$(dirname \"$0\")/version\" 2>/dev/null || echo 'ad4m 0.13.1-staging.13'; exit 0; fi\n\
+             if [ \"$1\" = init ]; then exit 0; fi\n\
              PORT=$(cat \"$(dirname \"$0\")/port\" 2>/dev/null)\n\
              if [ -n \"$PORT\" ]; then {LISTENING}; fi\n{body}\n"
         ),
@@ -519,7 +521,8 @@ fn init_runs_only_for_an_empty_data_folder() {
         std::fs::write(
             &binary,
             format!(
-                "#!/bin/sh\nif [ \"$1\" = init ]; then touch '{}'; exit 0; fi\nexit 3\n",
+                "#!/bin/sh\nif [ \"$1\" = --version ]; then echo 'ad4m 0.13.1-staging.13'; exit 0; fi\n\
+                 if [ \"$1\" = init ]; then touch '{}'; exit 0; fi\nexit 3\n",
                 marker.display()
             ),
         )
@@ -591,4 +594,58 @@ fn the_port_is_read_from_the_listening_line() {
         reported_port("SFU event loop started on 127.0.0.1:46113"),
         None
     );
+}
+
+/// Round 2 (Lal: the flag contract): an executor older than the first
+/// one with `--watch-stdin` (and exit 79) is refused before it runs,
+/// with a sentence that names the version needed.
+#[test]
+fn an_executor_too_old_for_the_stop_contract_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("version"), "ad4m 0.13.1-staging.11\n").unwrap();
+    let sup = Supervisor::with_reader(
+        config(dir.path(), waits_on_stdin(dir.path()), health()),
+        Arc::new(Reader::default()),
+    );
+    sup.start();
+    wait_for(&sup, "failed", 10, |s| {
+        matches!(s, Lifecycle::Failed { .. })
+    });
+    let Lifecycle::Failed { reason, stopped } = sup.state() else {
+        unreachable!()
+    };
+    assert!(!stopped);
+    assert!(reason.contains("0.13.1-staging.11"), "{reason}");
+    assert!(reason.contains("0.13.1-staging.12 or newer"), "{reason}");
+    assert!(
+        !dir.path().join("args").exists(),
+        "the old executor was run"
+    );
+}
+
+#[test]
+fn the_minimum_executor_version() {
+    use we_ad4m::supervisor::executor_version_ok;
+    for ok in [
+        "ad4m 0.13.1-staging.12",
+        "ad4m 0.13.1-staging.13\n",
+        "ad4m 0.13.1",
+        "ad4m 0.13.2",
+        "ad4m 0.14.0-rc.1",
+        "ad4m 1.0.0",
+    ] {
+        assert!(executor_version_ok(ok).is_ok(), "{ok}");
+    }
+    for old in [
+        "ad4m 0.13.1-staging.11",
+        "ad4m 0.13.1-rc.3",
+        "ad4m 0.13.0",
+        "ad4m 0.12.9",
+        "ad4m",
+        "",
+        "not an executor",
+    ] {
+        let said = executor_version_ok(old).unwrap_err();
+        assert!(said.contains("0.13.1-staging.12 or newer"), "{old}: {said}");
+    }
 }
