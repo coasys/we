@@ -383,7 +383,7 @@ describe('the Coasys cartridge', () => {
         });
     };
     const graph = findNode(canvasPane, (n) => n.type === 'GraphView')!;
-    const focusRules = ((graph.props as { nodeStyle: unknown[] }).nodeStyle as unknown[]).slice(-3);
+    const focusRules = ((graph.props as { nodeStyle: unknown[] }).nodeStyle as unknown[]).slice(-5);
     const dims = (evaluate: (p: unknown) => unknown) => focusRules.flatMap((rule) => evaluate(rule) as unknown[]);
 
     it('says what to do on an empty canvas, rather than the canvas’s address', () => {
@@ -413,6 +413,25 @@ describe('the Coasys cartridge', () => {
       // The Feed, and a record that is not a call, dim nothing.
       expect(dims(at([], { view: 'canvas' }))).toEqual([]);
       expect(dims(at(['record'], { kind: 'task', id: 't1', view: 'canvas' }))).toEqual([]);
+    });
+
+    /*
+      Calls chosen as a group lit nothing: only one call dimmed the canvas. It lights what any call
+      produced now — resolved by the graph's own style resolver, over a card from a call, one found in
+      the Feed, and one made by hand.
+    */
+    it('dims what came from no call when Calls is chosen', () => {
+      const rules = dims(at(['calls'], { view: 'canvas' }, { spaceStore: { root: 'space-root', landmarks: {} } }));
+      const card = (id: string, origin?: string) => ({
+        id,
+        kind: 'entity',
+        type: 'TaskBlock',
+        data: origin ? { origin } : {},
+      });
+      const dimmed = [card('from-call', 'call-1'), card('from-feed', 'space-root'), card('by-hand')]
+        .filter((n) => (resolveStyle(n as never, rules as never) as { opacity?: number }).opacity === FOCUS_DIM)
+        .map((n) => n.id);
+      expect(dimmed).toEqual(['from-feed', 'by-hand']);
     });
 
     it('is carried by every navigation the tree makes, so choosing another thing stays on the canvas', () => {

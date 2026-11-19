@@ -22039,6 +22039,12 @@ export const seedBundles: Bundle[] = [
                                   $: "((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? [{ when: { 'data.origin': { not: ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') } }, style: { opacity: 0.1 } }] : []",
                                 },
                                 {
+                                  $: "((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'calls') ? [{ when: { 'data.origin': { exists: false } }, style: { opacity: 0.1 } }] : []",
+                                },
+                                {
+                                  $: "((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'calls') ? [{ when: { 'data.origin': spaceStore.root }, style: { opacity: 0.1 } }] : []",
+                                },
+                                {
                                   $: "((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? [{ when: { 'data.author': { not: ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') } }, style: { opacity: 0.1 } }] : []",
                                 },
                                 {

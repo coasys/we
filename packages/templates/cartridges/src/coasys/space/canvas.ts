@@ -44,7 +44,8 @@ import { DNA_FOCUS, DNA_PARAM, IN_CANVAS, inspect, PAGE_EXPR, withView } from '.
  *
  * | Chosen | On the canvas |
  * |---|---|
- * | The Feed, a group's page | everything |
+ * | The Feed, a group's page other than Calls | everything |
+ * | Calls | what any call produced: what came from neither a call nor the space's own conversation is dimmed |
  * | A call | what was extracted from it |
  * | A person | what they made |
  * | A workflow | the records going through it |
@@ -67,6 +68,17 @@ import { DNA_FOCUS, DNA_PARAM, IN_CANVAS, inspect, PAGE_EXPR, withView } from '.
 export const CALL = `(${PAGE_EXPR}) == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : ''`;
 const PERSON = `(${PAGE_EXPR}) == 'person' ? routeStore.params.did : ''`;
 const WORKFLOW = `(${PAGE_EXPR}) == 'workflows' && workflowStore.open`;
+
+/**
+ * Calls chosen as a group: what any call produced, lit. A card's `origin` is the conversation it was
+ * found in. Cards found in the space's own conversation (typed in the Feed) and cards somebody made by
+ * hand, with no origin, are dimmed. A channel is a conversation of its own too, but the space lists
+ * none while it is one conversation, so anything else found counts as a call's.
+ */
+const CALLS = `(${PAGE_EXPR}) == 'calls'`;
+// Two rules rather than one `OR`: the graph's style matcher has no `OR` (see `matches` in graph-core).
+const MADE_BY_HAND = "{ 'data.origin': { exists: false } }";
+const FOUND_IN_THE_FEED = "{ 'data.origin': spaceStore.root }";
 
 /** The space's canvas — its `canvas` landmark, whose placements are its children. */
 const CANVAS_EXPR = "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''";
@@ -297,6 +309,8 @@ export const canvasPane: SchemaNode = {
               ...SUGGESTION_STYLES,
               // The focus, after the suggestions: a suggestion out of focus is dimmed with the rest.
               focusDim(CALL, 'data.origin', CALL),
+              focusDimWhere(CALLS, MADE_BY_HAND),
+              focusDimWhere(CALLS, FOUND_IN_THE_FEED),
               focusDim(PERSON, 'data.author', PERSON),
               focusDim(WORKFLOW, 'data.recordId', 'workflowStore.open.records.map(r, r.record)'),
             ],
