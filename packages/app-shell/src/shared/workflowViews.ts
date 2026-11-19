@@ -17,8 +17,10 @@ import type {
 import { allowedMoves, approvalsFor, evidenceFor } from '@we/backend-shared';
 
 import { subjectOfEvidence } from './evidenceSubjects';
+import { modelLabel } from './shapes/recordDisplay';
 import { stateLabelOf } from './workflowDraft';
 import { finalStates, toLanes, walkOf, type WorkflowLanes, type WorkflowSequenceRule } from './workflowLanes';
+import { subjectLabel, type SubjectName } from './workflowSubjects';
 
 /** The role task states and the workflow editor both write: holders of an involvement kind on the record. */
 export function involvementRole(kind: string): AgentQuery {
@@ -251,7 +253,10 @@ export function editorView(
 
 export interface RecordView {
   record: string;
+  /** What the record is called: its name, else its kind and a short id. Never empty. */
   title: string;
+  /** What kind of record it is ("Task"), or empty where that is not known yet. */
+  kind: string;
   /** When it entered the workflow, as an ISO date for a timestamp; empty where the backend cannot say. */
   startedAt: string;
   state: string | null;
@@ -293,14 +298,15 @@ export function recordView(
   definition: WorkflowDefinition,
   model: WorkflowLanes,
   item: WorkflowItem,
-  title: string,
+  subject: SubjectName,
   me: string | undefined,
   labels: WorkflowLabels = defaultLabels,
 ): RecordView {
   const walk = walkOf(definition, model, item.state);
   return {
     record: item.record,
-    title,
+    title: subjectLabel(subject, item.record),
+    kind: subject.entity ? modelLabel(subject.entity) : '',
     startedAt: isoOf(item.since),
     state: item.state,
     stateLabel: item.state ? labels.state(item.state) : '',
