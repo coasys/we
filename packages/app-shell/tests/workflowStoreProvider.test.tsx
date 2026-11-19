@@ -241,6 +241,26 @@ describe('what is going on across the flows', () => {
     expect(staged()[0]?.lastActivity).toMatch(/^\d{4}-/);
   });
 
+  /*
+    Opening a workflow read its definition again after dropping the one held, so until the read landed
+    `open` was null — the tree lit Active flows instead of the record chosen — and none of its records
+    counted as running, so its rows went and came back. Each row has an id, so a list keeps it in place.
+  */
+  it('keeps the workflow open and its records listed while it is read again', async () => {
+    await workflowPort.install(dataset, { ...STAGED, name: 'kept' });
+    const store = mount();
+    await vi.waitFor(() => expect(store.startable().map((f) => f.name)).toContain('kept'));
+    await store.startWorkflow('kept', 'k1');
+    await vi.waitFor(() => expect(store.active().find((row) => row.workflow === 'kept')?.id).toBe('kept|k1'));
+    await store.openWorkflow('kept');
+
+    const reopening = store.openWorkflow('kept');
+    expect(store.open()?.label).toBe('Kept');
+    expect(store.active().filter((row) => row.workflow === 'kept')).toHaveLength(1);
+    await reopening;
+    expect(store.open()?.records.map((r) => r.id)).toEqual(['k1']);
+  });
+
   // Only the open workflow's records were named, so a list across every flow read "Record 3f9a2c".
   it('names a record of a workflow nobody has opened', async () => {
     stored.TaskBlock = [{ id: 'n1', title: 'Fix the roof' }];

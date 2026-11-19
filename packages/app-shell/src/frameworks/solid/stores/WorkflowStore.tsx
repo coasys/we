@@ -148,6 +148,11 @@ export interface RecordWorkflowChip {
 
 /** One record still going through one of the space's workflows: a row of what is going on. */
 export interface ActiveRunView {
+  /**
+   * `<workflow>|<record>`: one row for one record in one workflow. With an id each row keeps its place
+   * in a list as the rows are rebuilt, which they are on every move anybody makes.
+   */
+  id: string;
   workflow: string;
   /** The workflow's name as a person reads it. */
   label: string;
@@ -356,9 +361,13 @@ export function WorkflowStoreProvider(props: ParentProps) {
   // Declared before `workflows`, which reads them: a memo runs as soon as it is made, and a signal
   // declared below it does not exist yet at that moment.
   const [definitions, setDefinitions] = createSignal<Record<string, WorkflowDefinition>>({});
-  const definitionOfWorkflow = async (name: string): Promise<WorkflowDefinition | null> => {
+  /**
+   * A workflow's definition: the one already read, or — `fresh`, or none read yet — the backend's.
+   * A fresh read leaves the one held in place until it lands, so nothing reading it goes without.
+   */
+  const definitionOfWorkflow = async (name: string, fresh = false): Promise<WorkflowDefinition | null> => {
     const known = untrack(definitions)[name];
-    if (known) return known;
+    if (known && !fresh) return known;
     const p = port();
     const h = handle();
     if (!p || !h) return null;
@@ -582,9 +591,14 @@ export function WorkflowStoreProvider(props: ParentProps) {
     searched.clear();
     setOpenName(name);
     setHistory({});
-    setDefinitions(({ [name]: _stale, ...rest }) => rest);
+    /*
+      Read again, as somebody may have changed it, but over the one held rather than after dropping it.
+      Dropped, the workflow had no definition until the read landed: `open` went to null — the tree lit
+      the group above the record just chosen — and none of its records counted as running, so every
+      row of Active flows for it went and came back.
+    */
     try {
-      await definitionOfWorkflow(name);
+      await definitionOfWorkflow(name, true);
     } catch (error) {
       console.error('WorkflowStore: could not read that workflow', error);
       toastService.error('Could not open that workflow');
@@ -678,6 +692,7 @@ export function WorkflowStoreProvider(props: ParentProps) {
         const subject = named[item.record] ?? NO_SUBJECT;
         const at = item.lastActivity ?? item.since;
         rows.push({
+          id: `${name}|${item.record}`,
           workflow: name,
           label: workflowLabelOf(name),
           record: item.record,

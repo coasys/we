@@ -8493,6 +8493,7 @@
         "active": {
           "type": "array",
           "properties": [
+            "id",
             "workflow",
             "label",
             "record",

@@ -252,6 +252,8 @@ export function editorView(
 }
 
 export interface RecordView {
+  /** The record's id again, as `id`: a row with one keeps its place in a list as the list is rebuilt. */
+  id: string;
   record: string;
   /** What the record is called: its name, else its kind and a short id. Never empty. */
   title: string;
@@ -304,6 +306,7 @@ export function recordView(
 ): RecordView {
   const walk = walkOf(definition, model, item.state);
   return {
+    id: item.record,
     record: item.record,
     title: subjectLabel(subject, item.record),
     kind: subject.entity ? modelLabel(subject.entity) : '',

@@ -3719,6 +3719,7 @@ export const contextData: ContextData = {
         active: {
           type: 'array',
           properties: [
+            'id',
             'workflow',
             'label',
             'record',
