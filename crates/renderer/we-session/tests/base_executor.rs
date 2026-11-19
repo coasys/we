@@ -272,6 +272,17 @@ fn ready_shows_the_list_or_resumes_the_place_chosen() {
     assert_eq!(stage(&controller), "handing-off");
     // Ready again is nothing new: no second dial.
     assert!(controller.note_executor(ready()).is_none());
+
+    // Failed at the start (not busy, unlike starting): nothing is dialed
+    // either; the failed stage stays.
+    let controller = BaseController::with_memory(
+        BUILTIN_BUNDLE,
+        vec![ConnectionRow::this_computer()],
+        Arc::new(MemoryCell::holding("this-device")),
+    );
+    controller.own_executor(failed_to_start());
+    assert!(controller.resume().is_none(), "dialed while it failed");
+    assert_eq!(stage(&controller), "failed");
 }
 
 /// Acceptance: the executor stops under an open session → the base takes

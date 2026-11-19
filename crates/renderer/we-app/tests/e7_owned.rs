@@ -174,11 +174,19 @@ fn the_window_runs_its_executor_and_takes_back_a_stop() {
     let _ = std::process::Command::new("kill")
         .args(["-9", &pid.to_string()])
         .status();
+    let killed = Instant::now();
     step_until(&mut h, "the stopped screen", Duration::from_secs(30), |h| {
         stage(h) == "connect"
             && h.query_by_label_contains("Coasys stopped").is_some()
             && h.query_by_label("Start Coasys").is_some()
     });
+    // The supervisor's word takes the window back, not the socket's
+    // 2-second grace (slice 3), which would come later.
+    assert!(
+        killed.elapsed() < Duration::from_millis(1800),
+        "the space stayed up {:?} after the executor stopped",
+        killed.elapsed()
+    );
     assert!(h.query_by_label_contains("couldn’t start").is_none());
     assert!(h.query_by_label_contains("Connection lost").is_none());
     save_shot(&mut h, "owned-session-stopped.png");
