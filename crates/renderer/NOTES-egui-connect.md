@@ -64,5 +64,27 @@ Commands ran from `crates/renderer` unless a command names another directory. `C
 - No executor supervisor. The starting, failed, and password screens do not show.
 - Login from a web app through Coasys Connect is out of scope.
 - The space list after login is the existing picker. This slice does not change that screen.
-- A remembered connection choice is later work.
 - Follow-up for the action-permit slice (Lal, non-blocking P2 on b902d08c2): `BaseHost` compares `permit.mount` with the constant name `base`, not with an incarnation of the live mount. A permit issued before a remount can still pass. Bind the permit to a per-mount incarnation id.
+
+# egui Connect, slice 2: connection choice and persistence
+
+## What this slice does
+
+- The list shows This computer, then each server in the base file. A server row has the id `server:<address>`, the label from its name (or its address) and the `hard-drives` icon.
+- The base file is `{config}/we-renderer/base.json` (`$XDG_CONFIG_HOME`, else `~/.config`). It keeps the id chosen last and the server list. It does not keep an address of this computer or a token.
+- A start with a remembered id that the list still has goes to that place without a click. The host gets `chosen = false`. A click gives `chosen = true`.
+- A remembered id that the list does not have leaves the list on screen. There is no error.
+- "Choose another" shows the list. After it, "Try again" does not go back to the remembered place. A refused session does the same.
+- On the offline screen, "Try again" goes to the place chosen.
+- A choose with an id that is not in the list does nothing. The gate gives no permit. The controller also shows "That option isn't available anymore."
+- A server cannot be opened from this app yet. The choice shows "Can't open <label> from this app yet. Choose This computer." Nothing is dialed. This is the same as the TS desktop host.
+- This computer dials loopback only (`127.0.0.0/8`, `localhost`, `::1`). An `--executor-url` that is not loopback becomes a server row. It is not dialed under the This computer label.
+- This computer does not need a network. If the host says that it is offline, a server choice shows "This computer is offline." The desktop app does not give a network probe yet, so the app counts as online.
+- The Coming soon section for hosted places does not change.
+- `we-tag` with only text children painted "…". Now it paints its text. The widget-gallery goldens showed the "…" and are new.
+
+## Not in this slice
+
+- No remote login. No UI to add or remove a server. Edit the base file to list one.
+- No OS network monitor.
+- The permit binds the mount name, not a mount incarnation (Lal P2 on slice 1). This slice does not change it.
