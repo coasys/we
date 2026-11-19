@@ -4541,6 +4541,11 @@ export const contextData: ContextData = {
           doc: 'Loads one more page of the transcript, in whichever direction it is being read.',
           ambient: true,
         },
+        {
+          name: 'skipped',
+          kind: 'state',
+          doc: 'Utterances let go in this session without a transcript: the speech model was too far behind or could not be reached.',
+        },
         { name: 'speaking', kind: 'state', doc: 'Whether the microphone level currently counts as speech.' },
         {
           name: 'startReply',

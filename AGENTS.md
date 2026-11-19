@@ -4055,6 +4055,7 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - recordingCall — This agent’s recording of the call it is in, wherever the call is — { enabled, listening, available }. For the call bar; the other members answer for the space on screen.
   - replyingTo — The line a reply is being written to — { id, text, author, surface } — or null. `surface` is always 'transcript'.
   - serverInstallUrl — Where to get a speech server, for when none was found on the node’s machine; empty where this connection may not set one up.
+  - skipped — Utterances let go in this session without a transcript: the speech model was too far behind or could not be reached.
   - speaking — Whether the microphone level currently counts as speech.
   - status — What the session is doing — idle, no-backend, no-model, no-audio, model-unready, starting, listening or error.
   - thresholdPercent — The speech-onset threshold as a CSS width, to mark on the same meter.
