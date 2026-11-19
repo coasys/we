@@ -154,6 +154,12 @@ fn the_window_runs_its_executor_and_takes_back_a_stop() {
             .is_some()
     });
     eprintln!("the starting screen was seen: {saw_starting}");
+    // Slice 5: the fresh executor has no agent yet, so its identity can't
+    // be read. That is not an empty identity: no first run.
+    assert!(h.query_by_label_contains("Set up Coasys").is_none());
+    assert!(h
+        .query_by_label_contains("Couldn't read your identity")
+        .is_some());
 
     // The operator makes the agent and a space (what slices 5-6 will do
     // from the window).
@@ -205,11 +211,21 @@ fn the_window_runs_its_executor_and_takes_back_a_stop() {
         |h| h.query_by_label_contains("is locked").is_some(),
     );
     assert_eq!(owned_starts(&h), 2, "Start Coasys started more than once");
-    // Locked, said as it is: no password stage.
+    // Slice 5: the restarted agent speaks for no identity, so the first
+    // run shows; its doors say the agent is locked, as it is. No password
+    // stage.
     assert_eq!(stage(&h), "connect");
-    assert!(h.query_by_label_contains("password").is_none());
-    assert!(h.query_by_label_contains("Password").is_none());
+    assert!(h.query_by_label_contains("Set up Coasys").is_some());
+    assert!(h.query_by_label_contains("Enter your password").is_none());
+    assert!(h.query_by_label_contains("Create a password").is_none());
     save_shot(&mut h, "owned-locked.png");
+    h.get_by_label_contains("Skip for now").click();
+    step_until(
+        &mut h,
+        "the list after the skip",
+        Duration::from_secs(20),
+        |h| h.query_by_label_contains("This computer").is_some(),
+    );
 
     // Unlocked by the operator: the space list again.
     let url = owned_url(&h);
@@ -231,4 +247,146 @@ fn the_window_runs_its_executor_and_takes_back_a_stop() {
         .unwrap()
         .success();
     assert!(!alive, "the executor outlived the window");
+}
+
+/// Slice 5, live: the window's own fresh executor. Before it has an agent
+/// the identity can't be read (the list, no first run). Once the operator
+/// made the agent and the window asked again, its empty identity opens B's
+/// first run. "Skip for now" is kept in the base file: a new window on the
+/// same data folder (the agent now locked, still no identity) shows the
+/// list.
+#[test]
+fn the_first_run_shows_for_a_fresh_agent_and_skip_is_kept() {
+    let Some(binary) = kit::require_binary() else {
+        return;
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let base = dir.path().join("base.json");
+    let window = |binary: PathBuf| {
+        let mut config = SupervisorConfig::new(binary, dir.path().join("executor"));
+        config.seed = Some(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../we-ad4m/testdata/bootstrapSeed.json"),
+        );
+        config.admin_credential = Some(ADMIN.into());
+        config.extra_args = [
+            "--run-holochain",
+            "false",
+            "--language-language-only",
+            "true",
+        ]
+        .map(String::from)
+        .to_vec();
+        config.ready_timeout = Duration::from_secs(120);
+        let tokens = dir.path().join("tokens");
+        std::fs::create_dir_all(&tokens).unwrap();
+        let args = ConnectArgs {
+            settings: ConnectSettings {
+                url: None,
+                token_dir: Some(tokens.clone()),
+                port_file: Some(tokens.join("no-port-file")),
+                ..ConnectSettings::default()
+            },
+            space: None,
+            theme: "dark".into(),
+            data: Default::default(),
+            access: we_ad4m::Access::ReadOnly,
+            remember: Some(base.clone()),
+            executor: Some(config),
+        };
+        let bundle = we_template::Bundle::parse(BUNDLE).unwrap();
+        let h: H = egui_kittest::Harness::builder()
+            .renderer(gpu::serial())
+            .with_size(egui::vec2(1280.0, 800.0))
+            .with_accessibility_check(false)
+            .build_ui_state(
+                move |ui, app: &mut Option<ConnectedApp>| {
+                    app.get_or_insert_with(|| {
+                        we_app::init_host(ui.ctx());
+                        ConnectedApp::new(ui.ctx().clone(), bundle.clone(), args.clone())
+                    })
+                    .ui(ui)
+                },
+                None,
+            );
+        h
+    };
+
+    let mut h = window(binary.clone());
+    step_until(&mut h, "the list", Duration::from_secs(120), |h| {
+        h.query_by_label_contains("Where to keep your spaces")
+            .is_some()
+    });
+    assert!(h.query_by_label_contains("Set up Coasys").is_none());
+
+    // The operator makes the agent; the window asks its executor again.
+    let rt = we_ad4m::Runtime::new().unwrap();
+    let admin = kit::connect_as(&rt, &owned_url(&h), ADMIN);
+    kit::new_space(&rt, &admin, "s5-first-run");
+    drop(admin);
+    h.state()
+        .as_ref()
+        .and_then(|app| app.owned())
+        .expect("the window runs an executor")
+        .refresh();
+    step_until(&mut h, "the first run", Duration::from_secs(30), |h| {
+        h.query_by_label_contains("Set up Coasys").is_some()
+    });
+    for words in [
+        "Create new identity",
+        "Link to another device",
+        "Restore with recovery phrase",
+        "Skip for now",
+    ] {
+        assert!(h.query_by_label_contains(words).is_some(), "{words}");
+    }
+    let mut labels = Vec::new();
+    collect_labels(h.root(), &mut labels);
+    eprintln!("first-run labels: {labels:?}");
+    for label in &labels {
+        assert!(!label.contains("did:"), "an identifier is drawn: {label}");
+        assert!(
+            !label.contains("Couldn't read your identity"),
+            "the old read failure is said over the answer: {label}"
+        );
+    }
+    save_shot(&mut h, "owned-first-run.png");
+    h.get_by_label_contains("Skip for now").click();
+    step_until(
+        &mut h,
+        "the list after the skip",
+        Duration::from_secs(20),
+        |h| h.query_by_label_contains("This computer").is_some(),
+    );
+    let pid = owned_pid(&h);
+    drop(h);
+    let alive = |pid: u32| {
+        std::process::Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .stderr(std::process::Stdio::null())
+            .status()
+            .unwrap()
+            .success()
+    };
+    assert!(!alive(pid), "the executor outlived the window");
+    let kept = std::fs::read_to_string(&base).unwrap();
+    assert!(kept.contains("\"skippedIdentity\": true"), "{kept}");
+
+    // A new window: the agent is locked now and still has no identity.
+    let mut h = window(binary);
+    let mut first_run = false;
+    step_until(&mut h, "the list again", Duration::from_secs(120), |h| {
+        first_run |= h.query_by_label_contains("Set up Coasys").is_some();
+        h.query_by_label_contains("Where to keep your spaces")
+            .is_some()
+    });
+    for _ in 0..20 {
+        h.step();
+        first_run |= h.query_by_label_contains("Set up Coasys").is_some();
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(!first_run, "the first run came back after the skip");
+    let pid = owned_pid(&h);
+    drop(h);
+    assert!(!alive(pid), "the executor outlived the window");
 }
