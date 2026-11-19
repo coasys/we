@@ -54,6 +54,7 @@ import {
 import { firstScreen } from '@solid/firstScreen';
 import { useDatasetStore } from '@solid/stores/DatasetStore';
 import { useSessionStore } from '@solid/stores/SessionStore';
+import { useShapeStore } from '@solid/stores/ShapeStore';
 import { useSpaceStore } from '@solid/stores/SpaceStore';
 import type {
   Requirement,
@@ -230,6 +231,7 @@ export function WorkflowStoreProvider(props: ParentProps) {
   const session = useSessionStore();
   const datasetStore = useDatasetStore();
   const spaceStore = useSpaceStore();
+  const shapeStore = useShapeStore();
 
   const port = () => (datasetStore.isWeSpace() ? (session.backendPorts()?.workflows ?? null) : null);
   const handle = () => datasetStore.currentDataset()?.handle;
@@ -443,8 +445,9 @@ export function WorkflowStoreProvider(props: ParentProps) {
     const name = openName();
     const list = items()[name] ?? [];
     const definition = definitions()[name];
-    // Tracked so a record whose model was not registered yet is looked for again once it is.
-    const spaceModels = [...nameProperties().keys()];
+    // Tracked so a record whose model was not registered yet is looked for again once it is. The
+    // foreign snapshot is read on navigation; a model adopted since is only in the shape store's list.
+    const spaceModels = [...nameProperties().keys(), ...shapeStore.spaceShapes().map((s) => s.name)];
     if (!h || !list.length) return;
     const candidates = definition?.entities.length
       ? definition.entities

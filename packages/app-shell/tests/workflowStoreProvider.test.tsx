@@ -13,7 +13,13 @@ import { createSignal } from 'solid-js';
 import { describe, expect, it, vi } from 'vitest';
 
 const dataset = { id: 'space-1' };
-const [spaceModels, setSpaceModels] = createSignal<unknown[]>([]);
+/** The foreign-schema snapshot the dataset store reads on navigation. */
+const [foreignModels, setForeignModels] = createSignal<unknown[]>([]);
+/** The models the space has adopted, as the shape store publishes them. */
+const [adoptedShapes, setAdoptedShapes] = createSignal<unknown[]>([]);
+/** A space's own models, which exist for its dataset only once registered. */
+const OWN_MODELS = new Set(['Proposal', 'Sighting', 'Pitch', 'Memo']);
+const registered = new Set<string>();
 /** The records each model finds, by entity — what a `findAll` by id answers with. */
 const stored: Record<string, Record<string, unknown>[]> = {};
 const workflowPort = createInMemoryWorkflowPort(() => 'did:test:me');
@@ -25,20 +31,40 @@ vi.mock('../src/frameworks/solid/stores/DatasetStore', () => ({
   useDatasetStore: () => ({
     isWeSpace: () => true,
     currentDataset: () => ({ id: dataset.id, handle: dataset }),
-    currentDatasetEntities: spaceModels,
+    currentDatasetEntities: foreignModels,
   }),
 }));
-// A space's own model is registered for its dataset only once the space's models have been read.
+vi.mock('../src/frameworks/solid/stores/ShapeStore', () => ({
+  useShapeStore: () => ({ spaceShapes: adoptedShapes }),
+}));
 vi.mock('@we/entities', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   getEntityForDataset: (entity: string) =>
-    entity === 'Proposal' && !spaceModels().length
+    OWN_MODELS.has(entity) && !registered.has(entity)
       ? undefined
       : {
           findAll: async (_d: unknown, q: { where: { id: string[] } }) =>
             (stored[entity] ?? []).filter((row) => q.where.id.includes(row.id as string)),
         },
 }));
+
+/** A model the space adopted, as `spaceShapes` lists it. */
+const shape = (name: string, properties: Record<string, unknown>, display?: Record<string, string>) => ({
+  id: `shape-${name}`,
+  name,
+  manifest: { entities: { [name]: { properties, ...(display ? { display } : {}) } } },
+  problems: [],
+});
+
+/** Mounts the store with a workflow over `record` started and open. */
+async function openOn(workflow: string, record: string, entities: string[] = []): Promise<WorkflowStore> {
+  await workflowPort.install(dataset, { ...REVIEW, name: workflow, entities });
+  const store = mount();
+  await vi.waitFor(() => expect(store.startable().map((f) => f.name)).toContain(workflow));
+  await store.startWorkflow(workflow, record);
+  await store.openWorkflow(workflow);
+  return store;
+}
 vi.mock('../src/frameworks/solid/stores/SpaceStore', () => ({
   useSpaceStore: () => ({
     taskStates: () => [],
@@ -154,18 +180,14 @@ describe('a record going through the open workflow', () => {
   // registered, the miss was kept for good, and its naming field was not one the store knew.
   it("is named by its model's naming field once the space's models are read", async () => {
     stored.Proposal = [{ id: 'r9', headline: 'Fix the roof' }];
-    await workflowPort.install(dataset, { ...REVIEW, name: 'proposals' });
-    const store = mount();
-    await vi.waitFor(() => expect(store.startable().map((f) => f.name)).toContain('proposals'));
-    await store.startWorkflow('proposals', 'r9');
-    await store.openWorkflow('proposals');
+    const store = await openOn('proposals', 'r9');
     await vi.waitFor(() => expect(store.open()?.records.map((r) => r.title)).toEqual(['Record r9']));
 
-    setSpaceModels([
+    registered.add('Proposal');
+    setForeignModels([
       {
         name: 'Proposal',
         targetClass: 'Proposal',
-        nameProperty: 'headline',
         properties: [
           {
             name: 'headline',
@@ -181,5 +203,16 @@ describe('a record going through the open workflow', () => {
     await vi.waitFor(() =>
       expect(store.open()?.records[0]).toMatchObject({ title: 'Fix the roof', kind: 'Proposal', stateLabel: 'Draft' }),
     );
+  });
+
+  // The foreign snapshot is read on navigation; a model made in this session is only in `spaceShapes`.
+  it('is found in a model the space adopts after its models were read', async () => {
+    stored.Sighting = [{ id: 's1', title: 'Saw a fox' }];
+    const store = await openOn('sightings', 's1');
+    await vi.waitFor(() => expect(store.open()?.records.map((r) => r.title)).toEqual(['Record s1']));
+
+    registered.add('Sighting');
+    setAdoptedShapes([...adoptedShapes(), shape('Sighting', { title: { type: 'string' } })]);
+    await vi.waitFor(() => expect(store.open()?.records[0]).toMatchObject({ title: 'Saw a fox', kind: 'Sighting' }));
   });
 });
