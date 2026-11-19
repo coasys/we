@@ -5643,6 +5643,9 @@ export function SpaceStoreProvider(props: ParentProps) {
       setCurrentSpace(null);
       return;
     }
+    // Read for the dependency alone: this read can fail on a shape the switch's upkeep installs
+    // afterwards, and the bump is what asks it again.
+    datasetStore.schemaRevision(ds.handle);
     // `taskStates` too: the order of the space's states rides on the same record — see the effect
     // beside `loadTaskStateOrder`.
     const builder: LiveRows<Space> = Space.query(ds.handle, {

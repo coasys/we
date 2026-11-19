@@ -2990,6 +2990,104 @@ describe('the schema upkeep behind a switch', () => {
     expect(stores.datasets.schemaRevision({ uuid: 'ds-a' })).toBe(0);
   }, 10000);
 
+  it('holds a write started by an observer of the space as it is published', async () => {
+    seededDatasets = [{ id: 'ds-a', name: 'A' }];
+    const release = holdRefresh('ds-a');
+    const stores = mountShell();
+    await ready(stores);
+
+    let state: 'none' | 'pending' | 'ready' = 'none';
+    const dispose = createRoot((off) => {
+      createEffect(() => {
+        const current = stores.datasets.currentDataset();
+        if (current?.id !== 'ds-a') return;
+        state = 'pending';
+        void stores.datasets.schemaReady(current.handle).then(() => (state = 'ready'));
+      });
+      return off;
+    });
+    try {
+      await stores.datasets.switchDataset('ds-a');
+      await settle();
+      expect(state).toBe('pending');
+      release();
+      await vi.waitFor(() => expect(state).toBe('ready'));
+    } finally {
+      dispose();
+    }
+  }, 10000);
+
+  it('abandons a switch whose schema check was still out when the agent locked', async () => {
+    seededDatasets = [{ id: 'ds-a', name: 'A' }];
+    let release!: () => void;
+    const until = new Promise<void>((resolve) => (release = resolve));
+    const refreshed: string[] = [];
+    onPorts = (ports) => {
+      const { hasCoreSchema, refreshSpace } = ports.schemas;
+      ports.schemas.hasCoreSchema = async (dataset) => {
+        await until;
+        return hasCoreSchema(dataset);
+      };
+      ports.schemas.refreshSpace = async (target) => {
+        refreshed.push((target as { id: string }).id);
+        return refreshSpace(target);
+      };
+    };
+    const stores = mountShell();
+    await ready(stores);
+
+    const switched = stores.datasets.switchDataset('ds-a');
+    await stores.session.logout();
+    expect(stores.session.bootState()).toBe('login');
+    release();
+    await switched;
+    await settle();
+    expect(stores.datasets.currentDataset()?.id).not.toBe('ds-a');
+    expect(refreshed).not.toContain('ds-a');
+  }, 10000);
+
+  it('reads the space record again once the upkeep has written the shapes its first read lacked', async () => {
+    seededDatasets = [{ id: 'ds-a', name: 'A' }];
+    // Until armed the refresh fails, so the space is refreshed again the next time it is opened;
+    // armed, it is held and then writes a shape.
+    let armed = false;
+    let release!: () => void;
+    const until = new Promise<void>((resolve) => (release = resolve));
+    onPorts = (ports) => {
+      ports.schemas.refreshSpace = async () => {
+        if (!armed) throw new Error('refresh failed');
+        await until;
+        return ['Task'];
+      };
+    };
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const stores = mountShell();
+    await ready(stores);
+    await stores.spaces.createSpace('Late', 'x', 'personal', 'hidden');
+    const late = (await lifecycle.list()).find((d) => d.name === 'Late')!.id;
+    await stores.datasets.switchDataset('ds-a');
+    // The first read of the space record fails, as it does on a space lacking a shape the upkeep installs.
+    const impl = getEntity('Space') as unknown as { query: (...a: unknown[]) => unknown };
+    const query = impl.query.bind(impl);
+    const asked = vi.spyOn(impl, 'query');
+    asked.mockImplementationOnce(
+      () => ({ subscribe: () => Promise.reject(new Error('No SHACL shape stored')), dispose: () => {} }) as never,
+    );
+    asked.mockImplementation(query as never);
+    armed = true;
+    try {
+      await stores.datasets.switchDataset(late);
+      await settle();
+      expect(stores.spaces.currentSpace()).toBeNull();
+
+      release();
+      await vi.waitFor(() => expect(stores.spaces.currentSpace()?.name).toBe('Late'));
+    } finally {
+      asked.mockRestore();
+      errors.mockRestore();
+    }
+  }, 10000);
+
   it('re-runs only the effects of the dataset whose shapes were written', async () => {
     seededDatasets = [
       { id: 'ds-a', name: 'A' },

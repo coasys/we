@@ -340,6 +340,56 @@ describe('the last answer of a question let go of', () => {
     expect(kept).toHaveBeenCalledWith([{ id: 'e1' }]);
   });
 
+  it('is not restored by an entry of the cleared dataset still waiting out its grace', async () => {
+    subscriptionPoolConfig.releaseGraceMs = 20;
+    try {
+      const { Model, builders } = model();
+      const release = acquireSubscription(Model, dataset, question, vi.fn(), vi.fn(), 'Involvement');
+      builders[0].answer([{ id: 'i1' }]);
+      await tick();
+      release();
+      clearLastAnswersFor('space');
+      await new Promise((r) => setTimeout(r, 40));
+
+      const again = vi.fn();
+      acquireSubscription(Model, dataset, question, again, vi.fn(), 'Involvement');
+      await tick();
+      expect(again).not.toHaveBeenCalled();
+    } finally {
+      subscriptionPoolConfig.releaseGraceMs = 0;
+    }
+  });
+
+  it('is not delivered when the dataset is cleared before the queued delivery runs', async () => {
+    const { Model, builders } = model();
+    await askAndLetGo(Model, builders, [{ id: 'i1' }]);
+    const again = vi.fn();
+    acquireSubscription(Model, dataset, question, again, vi.fn(), 'Involvement');
+    clearLastAnswersFor('space');
+    await tick();
+    expect(again).not.toHaveBeenCalled();
+  });
+
+  it('is shown to every reader that joins before the live answer, and the live answer still wins', async () => {
+    const { Model, builders } = model();
+    await askAndLetGo(Model, builders, [{ id: 'i1' }]);
+
+    const first = vi.fn();
+    const second = vi.fn();
+    acquireSubscription(Model, dataset, question, first, vi.fn(), 'Involvement');
+    acquireSubscription(Model, dataset, question, second, vi.fn(), 'Involvement');
+    expect(Model.query).toHaveBeenCalledTimes(2);
+    await Promise.resolve();
+    expect(first).toHaveBeenLastCalledWith([{ id: 'i1' }]);
+    expect(second).toHaveBeenLastCalledWith([{ id: 'i1' }]);
+
+    builders[1].push([{ id: 'live' }]);
+    const third = vi.fn();
+    acquireSubscription(Model, dataset, question, third, vi.fn(), 'Involvement');
+    await tick();
+    expect(third.mock.calls.map((c) => c[0])).toEqual([[{ id: 'live' }]]);
+  });
+
   it('drops the kept rows of a question whose live answer then fails', async () => {
     const { Model, builders } = model();
     await askAndLetGo(Model, builders, [{ id: 'i1' }]);

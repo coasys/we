@@ -855,6 +855,9 @@ export function DatasetStoreProvider(props: ParentProps) {
     const lifecycle = session.lifecycle();
     if (!lifecycle) return;
     requestedDataset = uuid;
+    // The session it was asked in: a round trip below can outlive the agent's lock, and what it
+    // finds then is another session's to ignore.
+    const sessionAtStart = sessionsEnded;
     const started = performance.now();
     let step = started;
     const lap = () => {
@@ -909,7 +912,7 @@ export function DatasetStoreProvider(props: ParentProps) {
 
       // Everything above is a round trip, and the reader may have asked for somewhere else while
       // they ran. Publishing now would overwrite a newer switch with an older answer.
-      if (requestedDataset !== uuid) return;
+      if (requestedDataset !== uuid || sessionAtStart !== sessionsEnded) return;
       /*
         The other way a switch goes stale: not superseded by a later switch, but by a later
         *navigation*. `requestedDataset` only knows about switches, so a switch the address bar asked
@@ -925,6 +928,15 @@ export function DatasetStoreProvider(props: ParentProps) {
       // for the visible switch at all — it's only consumed below, in the background.
       // A new read starts below, so whatever was read before — even for this same space — is not it.
       const readIsLatest = entitiesRead.begin();
+      const upkeepNeeded = existingWeSpace && !spaceSchemaRefreshed.has(uuid);
+      // Pending before the publish: an observer of the new current dataset runs inside it, and a
+      // write it starts must meet the upkeep that is about to begin, not slip in ahead of it.
+      let upkeepSettled!: () => void;
+      const ready = new Promise<void>((resolve) => (upkeepSettled = resolve));
+      if (upkeepNeeded) {
+        spaceSchemaRefreshed.add(uuid);
+        upkeepInFlight.set(uuid, ready);
+      }
       batch(() => {
         setIsWeSpace(weSpace);
         setCurrentDataset(app);
@@ -938,10 +950,7 @@ export function DatasetStoreProvider(props: ParentProps) {
       if (weSpace) weSpaceAnswers.add(uuid);
 
       // Background: the schema upkeep the switch no longer waits for.
-      if (existingWeSpace && !spaceSchemaRefreshed.has(uuid)) {
-        spaceSchemaRefreshed.add(uuid);
-        // The session it belongs to: what it finds after the agent locked is another session's to ignore.
-        const sessionAtStart = sessionsEnded;
+      if (upkeepNeeded) {
         const upkeep = (async () => {
           let failed = false;
           const failure = (err: unknown) => {
@@ -977,13 +986,13 @@ export function DatasetStoreProvider(props: ParentProps) {
           }
           trace('dataset', 'switch:refresh', { dataset: uuid, written: written.length, failed });
         })();
-        const ready = upkeep
+        void upkeep
           .catch((err) => console.error('DatasetStore: space schema refresh failed', err))
           .then(() => {
             // Only its own entry: a later session's upkeep for the same space may be in the map by now.
             if (upkeepInFlight.get(uuid) === ready) upkeepInFlight.delete(uuid);
+            upkeepSettled();
           });
-        upkeepInFlight.set(uuid, ready);
       }
 
       // Background: discover schemas foreign to the host (another app's entities synced into

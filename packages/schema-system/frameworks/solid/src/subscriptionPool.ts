@@ -51,6 +51,8 @@ interface Entry {
   listeners: Set<Listener>;
   /** The newest rows, for a listener that joins after they arrived. */
   latest: Rows | null;
+  /** The last answer kept from an earlier ask, for a reader joining before any live one — `latest` wins. */
+  remembered: Rows | null;
   error: unknown;
   failed: boolean;
   settled: boolean;
@@ -133,10 +135,17 @@ export function clearLastAnswers(): void {
   lastAnswers.clear();
 }
 
-/** Forget the kept last answers of one dataset — it was removed, so nothing it said is shown again. */
+/**
+ * Forget the kept last answers of one dataset — it was removed, so nothing it said is shown again.
+ * Entries of it still open or waiting out their grace are stamped as from an ended session, so neither
+ * their release nor a delivery already queued puts the rows back, and the next ask opens its own.
+ */
 export function clearLastAnswersFor(datasetId: string): void {
   for (const id of [...lastAnswers.keys()]) {
     if (id.split('\u0000')[1] === datasetId) lastAnswers.delete(id);
+  }
+  for (const byDataset of pool.values()) {
+    for (const entry of byDataset.get(datasetId)?.values() ?? []) entry.generation = -1;
   }
 }
 
@@ -212,12 +221,14 @@ export function acquireSubscription(
       if (!joined.listeners.has(listener)) return;
       if (joined.failed) listener.onError(joined.error);
       else if (joined.latest) listener.onRows(joined.latest);
+      else if (joined.remembered && joined.generation === sessionGeneration) listener.onRows(joined.remembered);
     });
   } else {
     const created: Entry = {
       builder: model.query(dataset, options) as SubscribingBuilder,
       listeners: new Set([listener]),
       latest: null,
+      remembered: null,
       error: undefined,
       failed: false,
       settled: false,
@@ -271,6 +282,8 @@ export function acquireSubscription(
       // at once and the live answer corrects it.
       const rows = lastAnswerFor(kind, at, key);
       if (rows !== undefined) {
+        // Kept on the entry too, for a reader that joins before the live answer — see `remembered`.
+        created.remembered = rows;
         queueMicrotask(() => {
           if (!created.listeners.has(listener) || created.latest !== null || created.failed) return;
           if (created.generation !== sessionGeneration) return;

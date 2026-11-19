@@ -1161,6 +1161,8 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
             options: rawOptions,
             subscribe: resolveSubscribe(descriptor.subscribe, stores, context),
             stores,
+            // Read in this effect, as the list path does, so a bump re-asks it.
+            schemaRevision: stores.$schemaRevision?.(p) ?? 0,
             onRows: (rows) => {
               if (rows.length === 0) {
                 setHasItem(false);
