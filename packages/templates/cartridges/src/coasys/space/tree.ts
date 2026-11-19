@@ -23,6 +23,7 @@ import {
   DNA_PARAM,
   DNA_SHOWN,
   GROUP_PAGES,
+  PAGE_EXPR,
   personPath,
   ROW_ID,
   SELECTED_EXPR,
@@ -56,6 +57,33 @@ const INSET = '300';
 const OPEN = 'local.openRows';
 const isOpen = (value: string): SchemaProp => ({ $: `'${value}' in ${OPEN}` });
 const toggle = (value: SchemaProp): SchemaProp => ({ $toggleLocalIn: 'openRows', value });
+
+/**
+ * A row that moved under another, or that holds one which did: open while its own key is saved open,
+ * while any of `keys` is (the rows under it, and a key it had before it moved), or while one of
+ * `within` holds — something chosen inside it. So a tree saved before Templates and the flows moved
+ * into Social DNA shows them again, and a flow opened from the flows page is seen lit rather than
+ * chosen inside a closed row.
+ *
+ * Closing it forgets all of those keys, and does each `up` whose `when` holds — moving the choice up
+ * to the row, as `revealing` does — so it closes when asked. `press` is the flip a press on the row's
+ * label runs (`onSelect`): it asks only what is saved, so pressing a row that is open because of what
+ * is chosen keeps it open and saves it, as before.
+ */
+const holding = (value: string, keys: string[], within: { when: string; up: SchemaProp }[]) => {
+  const held = `[${[value, ...keys].map((k) => `'${k}'`).join(', ')}]`;
+  const isOpenNow = [`${held}.exists(k, k in ${OPEN})`, ...within.map((w) => `(${w.when})`)].join(' || ');
+  const open = { $if: { condition: { $: `!('${value}' in ${OPEN})` }, then: toggle(value) } };
+  const close = [
+    { $setLocal: 'openRows', value: { $: `${OPEN}.filter(k, !(k in ${held}))` } },
+    ...within.map((w) => ({ $if: { condition: { $: w.when }, then: w.up } })),
+  ];
+  return {
+    open: { $: isOpenNow },
+    onOpenChange: { $if: { condition: { $: 'event.detail.open' }, then: open, else: close } },
+    press: { $if: { condition: { $: `${held}.exists(k, k in ${OPEN})` }, then: close, else: open } } as SchemaProp,
+  };
+};
 
 /**
  * A group: one of the space's kinds of thing, with its glyph, opened or closed by a press anywhere on
@@ -194,6 +222,17 @@ const calls = group(
 
 const FLOWS_PAGE = "spaceStore.spacePath + '/workflows'";
 
+/** A flow is chosen on the flows page — its row, under Social DNA's Flows, is the one lit. */
+const FLOW_CHOSEN = `(${PAGE_EXPR}) == 'workflows' && workflowStore.open`;
+const flowChosen = { when: FLOW_CHOSEN, up: { $invoke: 'workflowStore.closeWorkflow' } as SchemaProp };
+
+/**
+ * Social DNA's Flows: open while saved open, or saved as the old Workflows group it took the rows of
+ * (`group|workflows`, which the running Flows row keeps and never saves, having no rows), or while a
+ * flow is chosen.
+ */
+const FLOWS_HELD = holding('dnagroup|flows', ['group|workflows'], [flowChosen]);
+
 /**
  * Flows: what is running in the space. Its row opens the flows page (still `/workflows`, and still
  * `group|workflows` as a row, so an open tree and a link keep working); what a flow *is* is listed
@@ -227,6 +266,7 @@ const flowDefinitions = group(
   {
     kind: 'dnagroup',
     nested: true,
+    openness: FLOWS_HELD,
     count: `count(${FLOW_DEFINITIONS})`,
     action: addButton('New flow', { $invoke: 'routeStore.navigate', args: [{ $: `${FLOWS_PAGE} + '?new=1'` }] }),
   },
@@ -453,6 +493,23 @@ const themesGroup = group(
 );
 
 /**
+ * Social DNA is open while saved open, or while a row moved into it is (Templates, the flows written,
+ * and those under the old Workflows key), or while something in it is in focus or chosen — a
+ * definition on the vocabulary map, a flow on the flows page. Closing it then shows all of it.
+ */
+const SOCIAL_DNA_HELD = holding(
+  'group|dna',
+  ['group|templates', 'dnagroup|flows', 'group|workflows'],
+  [
+    {
+      when: `(${DNA_SHOWN}) && ${DNA_AT} != 'all'`,
+      up: { $invoke: 'routeStore.setParam', args: [DNA_PARAM, 'all'] },
+    },
+    flowChosen,
+  ],
+);
+
+/**
  * Everything the space has defined about itself — see above: Models, Flows, Templates, then WE's
  * built-in classes and the policy. It always holds something (Models, Flows and Templates are listed
  * empty), so it always opens; its count is of its classes.
@@ -465,8 +522,7 @@ const socialDna = group(
   {
     count: CLASS_COUNT,
     expandable: true,
-    // Open while anything in it is in focus; closing it then shows all of it.
-    openness: revealing("'group|dna'", `${DNA_AT} != 'all'`, "'all'"),
+    openness: SOCIAL_DNA_HELD,
   },
 );
 
@@ -485,7 +541,10 @@ const DEF_ID = "split(event.detail.value, '|')[2]";
 const onSelect: SchemaProp = [
   {
     $if: {
-      condition: { $: "startsWith(event.detail.value, 'group|')" },
+      // Social DNA opens and closes as `holding` says; the running Flows row has no rows to open.
+      condition: {
+        $: "startsWith(event.detail.value, 'group|') && !(event.detail.value in ['group|dna', 'group|workflows'])",
+      },
       then: { $toggleLocalIn: 'openRows', value: { $: 'event.detail.value' } },
     },
   },
@@ -513,7 +572,7 @@ const onSelect: SchemaProp = [
   {
     $if: {
       condition: { $: "event.detail.value == 'group|dna'" },
-      then: showDna("'all'"),
+      then: [SOCIAL_DNA_HELD.press, showDna("'all'")],
     },
   },
   {
@@ -555,10 +614,11 @@ const onSelect: SchemaProp = [
   },
   {
     $if: {
-      condition: { $: "startsWith(event.detail.value, 'dnagroup|')" },
+      condition: { $: "startsWith(event.detail.value, 'dnagroup|') && event.detail.value != 'dnagroup|flows'" },
       then: { $toggleLocalIn: 'openRows', value: { $: 'event.detail.value' } },
     },
   },
+  { $if: { condition: { $: "event.detail.value == 'dnagroup|flows'" }, then: FLOWS_HELD.press } },
   // A kind of definition opens as a group does, and is lit on the map with all it holds.
   {
     $if: {
@@ -832,7 +892,12 @@ export const treeSection: SchemaNode = {
   $localState: {
     openRows: {
       type: 'array',
-      initial: ['group|calls', 'group|workflows'],
+      /*
+        Calls start open. The flows written, which the old Workflows group showed open, are under
+        Social DNA now, and opening it on every first visit would show Models and the rest too; a
+        tree saved with that group open still opens them (see `holding`).
+      */
+      initial: ['group|calls'],
       persist: 'coasys.tree.open',
     },
   },

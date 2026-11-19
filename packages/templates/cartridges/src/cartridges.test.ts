@@ -560,11 +560,15 @@ describe('the Coasys cartridge', () => {
       expect(focusOf({ type: 'TaskBlock', recordId: 't1', data: {} })).toBeNull();
 
       // The tree opens Social DNA and the group around a class in focus, and nothing else.
+      // A row by its value: a literal one (Social DNA) as written, an expression by its open state.
       const row = (value: string) =>
-        findNode(treeSection, (n) =>
-          String(JSON.stringify((n.props as { open?: unknown } | undefined)?.open)).includes(
-            `((${value}) in local.openRows)`,
-          ),
+        findNode(
+          treeSection,
+          (n) =>
+            (n.props as { value?: unknown } | undefined)?.value === value.replace(/'/g, '') ||
+            String(JSON.stringify((n.props as { open?: unknown } | undefined)?.open)).includes(
+              `((${value}) in local.openRows)`,
+            ),
         )!;
       const open = (value: string, params: Record<string, string>, extra = {}) =>
         at([], params, { local: { openRows: [] }, ...extra })((row(value).props as { open: unknown }).open);
@@ -696,6 +700,29 @@ describe('the Coasys cartridge', () => {
         { name: 'c', archived: true, records: 9, running: 9 },
       ];
       expect(at([], {}, { workflowStore: { workflows } })({ $: RUNNING_FLOWS })).toBe(1);
+    });
+
+    /*
+      Templates and the flows written moved inside Social DNA. A tree saved with them open has to
+      show them again, and a flow opened from the flows page has to be seen lit, not chosen inside
+      a closed row: an open row holds the rows above it open.
+    */
+    it('opens Social DNA around a row saved open or a flow chosen, under its new parent', () => {
+      const rowOf = (value: string) => findNode(treeSection, (n) => (n.props as { value?: unknown })?.value === value)!;
+      const open = (value: string, openRows: string[], path: string[] = [], extra = {}) =>
+        at(path, {}, { local: { openRows }, ...extra })((rowOf(value).props as { open: unknown }).open);
+      // Saved before the move: Templates open, and the old Workflows group (now the flows written) open.
+      expect(open('group|dna', ['group|templates'])).toBe(true);
+      expect(open('group|dna', ['group|workflows'])).toBe(true);
+      expect(open('dnagroup|flows', ['group|workflows'])).toBe(true);
+      expect(open('group|templates', ['group|templates'])).toBe(true);
+      // A flow chosen on the flows page lights its row, so the rows above it open.
+      const chosen = { workflowStore: { open: { name: 'review' } } };
+      expect(open('group|dna', [], ['workflows'], chosen)).toBe(true);
+      expect(open('dnagroup|flows', [], ['workflows'], chosen)).toBe(true);
+      // Nothing saved and nothing chosen: closed.
+      expect(open('group|dna', [])).toBe(false);
+      expect(open('dnagroup|flows', [], ['workflows'])).toBe(false);
     });
 
     it('reads the Social DNA page in the order the tree lists it', () => {

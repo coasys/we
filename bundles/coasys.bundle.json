@@ -1152,11 +1152,7 @@
               "type": "Column",
               "props": { "width": "100%", "height": "100%" },
               "$localState": {
-                "openRows": {
-                  "type": "array",
-                  "initial": ["group|calls", "group|workflows"],
-                  "persist": "coasys.tree.open"
-                }
+                "openRows": { "type": "array", "initial": ["group|calls"], "persist": "coasys.tree.open" }
               },
               "$queries": {
                 "calls": {
@@ -1333,7 +1329,9 @@
                         "onSelect": [
                           {
                             "$if": {
-                              "condition": { "$": "startsWith(event.detail.value, 'group|')" },
+                              "condition": {
+                                "$": "startsWith(event.detail.value, 'group|') && !(event.detail.value in ['group|dna', 'group|workflows'])"
+                              },
                               "then": { "$toggleLocalIn": "openRows", "value": { "$": "event.detail.value" } }
                             }
                           },
@@ -1371,19 +1369,58 @@
                           {
                             "$if": {
                               "condition": { "$": "event.detail.value == 'group|dna'" },
-                              "then": {
-                                "$if": {
-                                  "condition": { "$": "routeStore.params.view == 'canvas'" },
-                                  "then": { "$invoke": "routeStore.setParam", "args": ["dna", { "$": "'all'" }] },
-                                  "else": {
-                                    "$invoke": "routeStore.navigate",
-                                    "args": [
-                                      { "$": "spaceStore.spacePath + '/dna'" },
-                                      { "$": "{ query: { dna: 'all' } }" }
-                                    ]
+                              "then": [
+                                {
+                                  "$if": {
+                                    "condition": {
+                                      "$": "['group|dna', 'group|templates', 'dnagroup|flows', 'group|workflows'].exists(k, k in local.openRows)"
+                                    },
+                                    "then": [
+                                      {
+                                        "$setLocal": "openRows",
+                                        "value": {
+                                          "$": "local.openRows.filter(k, !(k in ['group|dna', 'group|templates', 'dnagroup|flows', 'group|workflows']))"
+                                        }
+                                      },
+                                      {
+                                        "$if": {
+                                          "condition": {
+                                            "$": "(((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') != 'all'"
+                                          },
+                                          "then": { "$invoke": "routeStore.setParam", "args": ["dna", "all"] }
+                                        }
+                                      },
+                                      {
+                                        "$if": {
+                                          "condition": {
+                                            "$": "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open"
+                                          },
+                                          "then": { "$invoke": "workflowStore.closeWorkflow" }
+                                        }
+                                      }
+                                    ],
+                                    "else": {
+                                      "$if": {
+                                        "condition": { "$": "!('group|dna' in local.openRows)" },
+                                        "then": { "$toggleLocalIn": "openRows", "value": "group|dna" }
+                                      }
+                                    }
+                                  }
+                                },
+                                {
+                                  "$if": {
+                                    "condition": { "$": "routeStore.params.view == 'canvas'" },
+                                    "then": { "$invoke": "routeStore.setParam", "args": ["dna", { "$": "'all'" }] },
+                                    "else": {
+                                      "$invoke": "routeStore.navigate",
+                                      "args": [
+                                        { "$": "spaceStore.spacePath + '/dna'" },
+                                        { "$": "{ query: { dna: 'all' } }" }
+                                      ]
+                                    }
                                   }
                                 }
-                              }
+                              ]
                             }
                           },
                           {
@@ -1474,8 +1511,44 @@
                           },
                           {
                             "$if": {
-                              "condition": { "$": "startsWith(event.detail.value, 'dnagroup|')" },
+                              "condition": {
+                                "$": "startsWith(event.detail.value, 'dnagroup|') && event.detail.value != 'dnagroup|flows'"
+                              },
                               "then": { "$toggleLocalIn": "openRows", "value": { "$": "event.detail.value" } }
+                            }
+                          },
+                          {
+                            "$if": {
+                              "condition": { "$": "event.detail.value == 'dnagroup|flows'" },
+                              "then": {
+                                "$if": {
+                                  "condition": {
+                                    "$": "['dnagroup|flows', 'group|workflows'].exists(k, k in local.openRows)"
+                                  },
+                                  "then": [
+                                    {
+                                      "$setLocal": "openRows",
+                                      "value": {
+                                        "$": "local.openRows.filter(k, !(k in ['dnagroup|flows', 'group|workflows']))"
+                                      }
+                                    },
+                                    {
+                                      "$if": {
+                                        "condition": {
+                                          "$": "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open"
+                                        },
+                                        "then": { "$invoke": "workflowStore.closeWorkflow" }
+                                      }
+                                    }
+                                  ],
+                                  "else": {
+                                    "$if": {
+                                      "condition": { "$": "!('dnagroup|flows' in local.openRows)" },
+                                      "then": { "$toggleLocalIn": "openRows", "value": "dnagroup|flows" }
+                                    }
+                                  }
+                                }
+                              }
                             }
                           },
                           {
@@ -1869,23 +1942,41 @@
                           "props": {
                             "value": "group|dna",
                             "open": {
-                              "$": "(('group|dna') in local.openRows) || ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && ((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') != 'all'))"
+                              "$": "['group|dna', 'group|templates', 'dnagroup|flows', 'group|workflows'].exists(k, k in local.openRows) || ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') != 'all') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open)"
                             },
                             "onOpenChange": {
                               "$if": {
-                                "condition": {
-                                  "$": "!event.detail.open && ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && ((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') != 'all'))"
+                                "condition": { "$": "event.detail.open" },
+                                "then": {
+                                  "$if": {
+                                    "condition": { "$": "!('group|dna' in local.openRows)" },
+                                    "then": { "$toggleLocalIn": "openRows", "value": "group|dna" }
+                                  }
                                 },
-                                "then": [
-                                  { "$invoke": "routeStore.setParam", "args": ["dna", { "$": "'all'" }] },
+                                "else": [
+                                  {
+                                    "$setLocal": "openRows",
+                                    "value": {
+                                      "$": "local.openRows.filter(k, !(k in ['group|dna', 'group|templates', 'dnagroup|flows', 'group|workflows']))"
+                                    }
+                                  },
                                   {
                                     "$if": {
-                                      "condition": { "$": "('group|dna') in local.openRows" },
-                                      "then": { "$toggleLocalIn": "openRows", "value": { "$": "'group|dna'" } }
+                                      "condition": {
+                                        "$": "(((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') != 'all'"
+                                      },
+                                      "then": { "$invoke": "routeStore.setParam", "args": ["dna", "all"] }
+                                    }
+                                  },
+                                  {
+                                    "$if": {
+                                      "condition": {
+                                        "$": "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open"
+                                      },
+                                      "then": { "$invoke": "workflowStore.closeWorkflow" }
                                     }
                                   }
-                                ],
-                                "else": { "$toggleLocalIn": "openRows", "value": { "$": "'group|dna'" } }
+                                ]
                               }
                             },
                             "expandable": true
@@ -2196,8 +2287,36 @@
                               "slot": "children",
                               "props": {
                                 "value": "dnagroup|flows",
-                                "open": { "$": "'dnagroup|flows' in local.openRows" },
-                                "onOpenChange": { "$toggleLocalIn": "openRows", "value": "dnagroup|flows" },
+                                "open": {
+                                  "$": "['dnagroup|flows', 'group|workflows'].exists(k, k in local.openRows) || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open)"
+                                },
+                                "onOpenChange": {
+                                  "$if": {
+                                    "condition": { "$": "event.detail.open" },
+                                    "then": {
+                                      "$if": {
+                                        "condition": { "$": "!('dnagroup|flows' in local.openRows)" },
+                                        "then": { "$toggleLocalIn": "openRows", "value": "dnagroup|flows" }
+                                      }
+                                    },
+                                    "else": [
+                                      {
+                                        "$setLocal": "openRows",
+                                        "value": {
+                                          "$": "local.openRows.filter(k, !(k in ['dnagroup|flows', 'group|workflows']))"
+                                        }
+                                      },
+                                      {
+                                        "$if": {
+                                          "condition": {
+                                            "$": "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open"
+                                          },
+                                          "then": { "$invoke": "workflowStore.closeWorkflow" }
+                                        }
+                                      }
+                                    ]
+                                  }
+                                },
                                 "expandable": { "$": "count(workflowStore.workflows.filter(f, !f.archived)) > 0" }
                               },
                               "children": [
