@@ -172,10 +172,16 @@ struct Inner {
     page: String,
     error: String,
     offline_reason: String,
-    /// The id chosen this boot. Empty until a choose names one.
+    /// The id chosen this start or kept from the last one. Empty for none.
     /// A retry keeps it. This is the public `chosen` string, not [`HostJob::chosen`].
     chosen_id: String,
     rows: Vec<ConnectionRow>,
+    /// Go straight to the place chosen when nothing else is due. Off once
+    /// the person asked to see the list, or a session was refused.
+    auto: bool,
+    /// [`BaseController::resume`] runs once per start.
+    resumed: bool,
+    online: Option<OnlineProbe>,
 }
 
 /// A connect attempt the host should start. `attempt` is the id a later
@@ -235,31 +241,16 @@ pub fn command_for(target: &str, args: &[Value]) -> Option<BaseCommand> {
 /// The stage machine. Pure: no runtime, no socket.
 pub struct BaseController {
     inner: Mutex<Inner>,
+    memory: Arc<dyn ChoiceMemory>,
     model: Arc<BaseModel>,
     builtin: Arc<str>,
     mark: String,
 }
 
 impl BaseController {
+    /// A controller that keeps nothing between starts.
     pub fn new(builtin: impl Into<Arc<str>>, rows: Vec<ConnectionRow>) -> Arc<Self> {
-        let this = Arc::new(Self {
-            inner: Mutex::new(Inner {
-                generation: 1,
-                attempt: 0,
-                busy: false,
-                stage: Stage::Connect,
-                page: String::new(),
-                error: String::new(),
-                offline_reason: String::new(),
-                chosen_id: String::new(),
-                rows,
-            }),
-            model: Arc::new(BaseModel::new()),
-            builtin: builtin.into(),
-            mark: mark_url(),
-        });
-        this.publish(&this.lock());
-        this
+        Self::with_memory(builtin, rows, Arc::new(NoMemory))
     }
 
     /// A controller that starts with the id `memory` kept and keeps each
@@ -269,19 +260,49 @@ impl BaseController {
         rows: Vec<ConnectionRow>,
         memory: Arc<dyn ChoiceMemory>,
     ) -> Arc<Self> {
-        let _ = memory;
-        Self::new(builtin, rows)
+        let chosen_id = memory.remembered().unwrap_or_default();
+        let this = Arc::new(Self {
+            inner: Mutex::new(Inner {
+                generation: 1,
+                attempt: 0,
+                busy: false,
+                stage: Stage::Connect,
+                page: String::new(),
+                error: String::new(),
+                offline_reason: String::new(),
+                chosen_id,
+                rows,
+                auto: true,
+                resumed: false,
+                online: None,
+            }),
+            memory,
+            model: Arc::new(BaseModel::new()),
+            builtin: builtin.into(),
+            mark: mark_url(),
+        });
+        this.publish(&this.lock());
+        this
     }
 
     /// The host's network probe. Without one the network counts as up.
+    /// This computer is reached whatever it says.
     pub fn set_online(&self, online: Option<OnlineProbe>) {
-        let _ = online;
+        self.lock().online = online;
     }
 
     /// At start: go straight to the remembered connection when it is still
-    /// listed. The job is not a click (`chosen` is `false`).
+    /// listed. The job is not a click (`chosen` is `false`). Runs once per
+    /// start; a remembered id the list no longer has leaves the list up.
     pub fn resume(&self) -> Option<HostJob> {
-        None
+        let mut inner = self.lock();
+        if std::mem::replace(&mut inner.resumed, true) || !inner.auto || inner.busy {
+            return None;
+        }
+        let row = chosen_row(&inner)?;
+        let job = reach(&mut inner, row, false);
+        self.publish(&inner);
+        job
     }
 
     /// This computer, mounted as [`BUILTIN_BUNDLE`].
@@ -336,22 +357,33 @@ impl BaseController {
         }
         let job = match command {
             BaseCommand::Choose(id) => {
-                if !inner.rows.iter().any(|row| row.id.as_ref() == id) {
+                let Some(row) = inner.rows.iter().find(|row| row.id.as_ref() == id).cloned() else {
+                    inner.stage = Stage::Connect;
+                    inner.error = NOT_LISTED.to_string();
+                    inner.offline_reason.clear();
+                    inner.page.clear();
+                    self.publish(&inner);
                     return None;
-                }
-                let row = inner
-                    .rows
-                    .iter()
-                    .find(|row| row.id.as_ref() == id)
-                    .cloned()?;
+                };
                 inner.chosen_id.clone_from(&id);
-                begin_attempt(&mut inner, true, row)
+                self.memory.remember(&id);
+                reach(&mut inner, row, true)
             }
-            BaseCommand::Retry => {
-                let row = inner.rows.first().cloned()?;
-                begin_attempt(&mut inner, false, row)
-            }
+            // Offline: the place chosen again. Otherwise what a start does:
+            // the place chosen while the list is not asked for, else the list.
+            BaseCommand::Retry => match chosen_row(&inner) {
+                Some(row) if inner.stage == Stage::Offline || inner.auto => {
+                    reach(&mut inner, row, false)
+                }
+                _ => {
+                    inner.stage = Stage::Connect;
+                    inner.error.clear();
+                    inner.offline_reason.clear();
+                    None
+                }
+            },
             BaseCommand::ShowConnections => {
+                inner.auto = false;
                 inner.stage = Stage::Connect;
                 inner.busy = false;
                 inner.error.clear();
@@ -377,10 +409,8 @@ impl BaseController {
     /// template click. `chosen` on the job is `false`.
     pub fn start_reconnect(&self) -> HostJob {
         let mut inner = self.lock();
-        let row = inner
-            .rows
-            .first()
-            .cloned()
+        let row = chosen_row(&inner)
+            .or_else(|| inner.rows.first().cloned())
             .expect("the catalog lists this computer");
         let job = begin_attempt(&mut inner, false, row).expect("generation advances");
         self.publish(&inner);
@@ -414,6 +444,8 @@ impl BaseController {
         }
         inner.attempt = 0;
         inner.busy = false;
+        // The list is shown, not jumped past again to the place that refused.
+        inner.auto = false;
         inner.stage = Stage::Connect;
         inner.error = reason.to_string();
         inner.offline_reason.clear();
@@ -446,6 +478,29 @@ impl BaseController {
     fn publish(&self, inner: &Inner) {
         self.model.publish(snap_value(inner, &self.mark));
     }
+}
+
+fn chosen_row(inner: &Inner) -> Option<ConnectionRow> {
+    inner
+        .rows
+        .iter()
+        .find(|row| row.id.as_ref() == inner.chosen_id)
+        .cloned()
+}
+
+/// Start reaching `row`, unless it is off this computer and the host
+/// reports no network: then the offline stage says so and nothing starts.
+fn reach(inner: &mut Inner, row: ConnectionRow, chosen: bool) -> Option<HostJob> {
+    let offline = inner.online.as_ref().is_some_and(|online| !online());
+    if offline && row.kind.as_ref() != ConnectionRow::this_computer().kind.as_ref() {
+        inner.busy = false;
+        inner.stage = Stage::Offline;
+        inner.error.clear();
+        inner.offline_reason = NO_NETWORK.to_string();
+        inner.page.clear();
+        return None;
+    }
+    begin_attempt(inner, chosen, row)
 }
 
 fn begin_attempt(inner: &mut Inner, chosen: bool, connection: ConnectionRow) -> Option<HostJob> {
