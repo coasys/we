@@ -68,9 +68,40 @@ pub struct SavedServer {
 /// server. An `--executor-url` that is not loopback is listed as a server
 /// too: it is not this computer, so it does not get that label.
 pub fn catalog(settings: &ConnectSettings, servers: &[SavedServer]) -> Vec<Offer> {
-    let _ = (settings, servers);
-    vec![this_computer().into()]
+    let mut rows: Vec<Offer> = vec![this_computer().into()];
+    let mut add = |address: &str, name: &str| {
+        let address = address.trim();
+        let id = format!("{SERVER_PREFIX}{address}");
+        if address.is_empty() || rows.iter().any(|row| row.id == id) {
+            return;
+        }
+        let name = name.trim();
+        rows.push(Offer {
+            id,
+            kind: "server".into(),
+            icon: "hard-drives".into(),
+            label: if name.is_empty() { address } else { name }.into(),
+            detail: address.into(),
+        });
+    };
+    for server in servers {
+        add(&server.address, &server.name);
+    }
+    if let Some(url) = settings.url.as_deref().map(str::trim) {
+        if !url.is_empty() && !is_loopback(url) {
+            if let Some((host, port)) = authority(url) {
+                let address = match port {
+                    Some(port) => format!("{host}:{port}"),
+                    None => host,
+                };
+                add(&address, "");
+            }
+        }
+    }
+    rows
 }
+
+const SERVER_PREFIX: &str = "server:";
 
 /// What the desktop host says when a server is chosen.
 pub fn server_refusal(label: &str) -> String {
@@ -87,7 +118,9 @@ pub fn select(
     label: &str,
     settings: &ConnectSettings,
 ) -> Result<ConnectSettings, String> {
-    let _ = (kind, label);
+    if kind != this_computer().kind {
+        return Err(server_refusal(label));
+    }
     let mut local = settings.clone();
     local.url = Some(explicit_local_url(settings));
     Ok(local)
@@ -95,8 +128,52 @@ pub fn select(
 
 /// Whether `url` names this computer: `127.0.0.0/8`, `localhost` or `::1`.
 pub fn is_loopback(url: &str) -> bool {
-    let _ = url;
-    true
+    match authority(url) {
+        Some((host, _)) => {
+            host == "localhost"
+                || host == "::1"
+                || host
+                    .parse::<std::net::Ipv4Addr>()
+                    .is_ok_and(|ip| ip.is_loopback())
+        }
+        None => false,
+    }
+}
+
+/// The lower-case host (no brackets) and the port of an `http`, `https`,
+/// `ws` or `wss` URL. `None` for anything else, or for a URL with
+/// userinfo: its host is not what a reader sees first.
+fn authority(url: &str) -> Option<(String, Option<u16>)> {
+    let (scheme, rest) = url.trim().split_once("://")?;
+    if !matches!(
+        scheme.to_ascii_lowercase().as_str(),
+        "http" | "https" | "ws" | "wss"
+    ) {
+        return None;
+    }
+    let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let authority = &rest[..end];
+    if authority.contains('@') {
+        return None;
+    }
+    let (host, port) = if let Some(bracketed) = authority.strip_prefix('[') {
+        let (host, after) = bracketed.split_once(']')?;
+        let port = match after {
+            "" => None,
+            after => Some(after.strip_prefix(':')?),
+        };
+        (host, port)
+    } else {
+        match authority.split_once(':') {
+            Some((host, port)) => (host, Some(port)),
+            None => (authority, None),
+        }
+    };
+    let port = port.map(str::parse::<u16>).transpose().ok()?;
+    if host.is_empty() {
+        return None;
+    }
+    Some((host.to_ascii_lowercase(), port))
 }
 
 /// What the base file keeps: the id chosen last and the servers listed.
@@ -112,15 +189,45 @@ pub struct BaseFile {
 impl BaseFile {
     /// The file at `path`. A missing or unreadable file is an empty one.
     pub fn load(path: &Path) -> Self {
-        let _ = path;
-        Self::default()
+        std::fs::read_to_string(path)
+            .ok()
+            .and_then(|text| serde_json::from_str(&text).ok())
+            .unwrap_or_default()
     }
 
     /// Keep `id` as the connection chosen last. The server list is kept.
+    /// The file is replaced whole, through a temporary file beside it.
     pub fn remember(path: &Path, id: &str) -> std::io::Result<()> {
-        let _ = (path, id);
-        Ok(())
+        let mut file = Self::load(path);
+        file.connection = Some(id.to_string());
+        let dir = path.parent().unwrap_or_else(|| Path::new("."));
+        std::fs::create_dir_all(dir)?;
+        let text = serde_json::to_string_pretty(&file).map_err(std::io::Error::other)?;
+        let mut temp = path.as_os_str().to_owned();
+        temp.push(".tmp");
+        let temp = PathBuf::from(temp);
+        std::fs::write(&temp, text)?;
+        std::fs::rename(&temp, path)
     }
+}
+
+/// Where the desktop app keeps its base file:
+/// `{config}/we-renderer/base.json` (`$XDG_CONFIG_HOME`, else
+/// `~/.config`).
+pub fn default_base_file() -> PathBuf {
+    let mut dir = std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .filter(|dir| dir.is_absolute())
+        .unwrap_or_else(|| {
+            let mut home = std::env::var_os("HOME")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from("."));
+            home.push(".config");
+            home
+        });
+    dir.push("we-renderer");
+    dir.push("base.json");
+    dir
 }
 
 /// How a failed connect attempt is shown.
@@ -154,18 +261,20 @@ pub fn classify_failure(reason: &str) -> FailureClass {
 
 /// The URL a click on This computer dials.
 ///
-/// An `--executor-url` wins. Otherwise a port file that is a port number
-/// or a loopback `http` URL becomes `http://127.0.0.1:{port}`. Anything
-/// else, including a non-loopback URL in the port file, is
-/// `http://127.0.0.1:12000`. The caller writes the result into
-/// [`ConnectSettings::url`] before [`crate::connect::ConnectFlow::start`],
-/// so discovery cannot replace it.
+/// A loopback `--executor-url` wins. One that is not loopback is not this
+/// computer: [`catalog`] lists it as a server, and it is ignored here.
+/// Otherwise a port file that is a port number or a loopback `http` URL
+/// becomes `http://127.0.0.1:{port}`. Anything else, including a
+/// non-loopback URL in the port file, is `http://127.0.0.1:12000`. The
+/// caller writes the result into [`ConnectSettings::url`] before
+/// [`crate::connect::ConnectFlow::start`], so discovery and a remembered
+/// URL cannot replace it.
 pub fn explicit_local_url(settings: &ConnectSettings) -> String {
     if let Some(url) = settings
         .url
         .as_deref()
         .map(str::trim)
-        .filter(|url| !url.is_empty())
+        .filter(|url| is_loopback(url))
     {
         return url.to_string();
     }
