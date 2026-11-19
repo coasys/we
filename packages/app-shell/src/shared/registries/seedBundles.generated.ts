@@ -75,6 +75,9 @@ export const seedBundles: Bundle[] = [
                         zIndex: 'chrome',
                         top: '0',
                         left: '0',
+                        display: {
+                          $: "((shellStore.narrowWindow && !local.expanded) && shellStore.chromeCovered) ? 'none' : 'flex'",
+                        },
                         'data-we-covers-window': {
                           $: "(shellStore.narrowWindow && local.expanded) ? 'true' : 'false'",
                         },
@@ -1520,14 +1523,22 @@ export const seedBundles: Bundle[] = [
                                 condition: {
                                   $: "event.detail.value in ['group|channels', 'group|calls', 'group|people']",
                                 },
-                                then: {
-                                  $invoke: 'routeStore.navigate',
-                                  args: [
-                                    {
-                                      $: "(spaceStore.spacePath + '/' + split(event.detail.value, '|')[1]) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/' + split(event.detail.value, '|')[1], '?') ? '&' : '?') + 'view=canvas' : '')",
+                                then: [
+                                  {
+                                    $invoke: 'routeStore.navigate',
+                                    args: [
+                                      {
+                                        $: "(spaceStore.spacePath + '/' + split(event.detail.value, '|')[1]) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/' + split(event.detail.value, '|')[1], '?') ? '&' : '?') + 'view=canvas' : '')",
+                                      },
+                                    ],
+                                  },
+                                  {
+                                    $if: {
+                                      condition: { $: "surface.tier == 'base'" },
+                                      then: { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', true] },
                                     },
-                                  ],
-                                },
+                                  },
+                                ],
                               },
                             },
                             {
@@ -1543,51 +1554,81 @@ export const seedBundles: Bundle[] = [
                                       },
                                     ],
                                   },
+                                  {
+                                    $if: {
+                                      condition: { $: "surface.tier == 'base'" },
+                                      then: { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', true] },
+                                    },
+                                  },
                                 ],
                               },
                             },
                             {
                               $if: {
                                 condition: { $: "event.detail.value == 'group|dna'" },
-                                then: {
-                                  $if: {
-                                    condition: { $: "routeStore.params.view == 'canvas'" },
-                                    then: { $invoke: 'routeStore.setParam', args: ['dna', { $: "'all'" }] },
-                                    else: {
-                                      $invoke: 'routeStore.navigate',
-                                      args: [
-                                        { $: "spaceStore.spacePath + '/dna'" },
-                                        { $: "{ query: { dna: 'all' } }" },
-                                      ],
+                                then: [
+                                  {
+                                    $if: {
+                                      condition: { $: "routeStore.params.view == 'canvas'" },
+                                      then: { $invoke: 'routeStore.setParam', args: ['dna', { $: "'all'" }] },
+                                      else: {
+                                        $invoke: 'routeStore.navigate',
+                                        args: [
+                                          { $: "spaceStore.spacePath + '/dna'" },
+                                          { $: "{ query: { dna: 'all' } }" },
+                                        ],
+                                      },
                                     },
                                   },
-                                },
+                                  {
+                                    $if: {
+                                      condition: { $: "surface.tier == 'base'" },
+                                      then: { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', true] },
+                                    },
+                                  },
+                                ],
                               },
                             },
                             {
                               $if: {
                                 condition: { $: "startsWith(event.detail.value, 'channel|')" },
-                                then: {
-                                  $invoke: 'routeStore.navigate',
-                                  args: [
-                                    {
-                                      $: "(spaceStore.spacePath + '?channel=' + (split(event.detail.value, '|')[1])) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '?channel=' + (split(event.detail.value, '|')[1]), '?') ? '&' : '?') + 'view=canvas' : '')",
+                                then: [
+                                  {
+                                    $invoke: 'routeStore.navigate',
+                                    args: [
+                                      {
+                                        $: "(spaceStore.spacePath + '?channel=' + (split(event.detail.value, '|')[1])) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '?channel=' + (split(event.detail.value, '|')[1]), '?') ? '&' : '?') + 'view=canvas' : '')",
+                                      },
+                                    ],
+                                  },
+                                  {
+                                    $if: {
+                                      condition: { $: "surface.tier == 'base'" },
+                                      then: { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', true] },
                                     },
-                                  ],
-                                },
+                                  },
+                                ],
                               },
                             },
                             {
                               $if: {
                                 condition: { $: "startsWith(event.detail.value, 'call|')" },
-                                then: {
-                                  $invoke: 'routeStore.navigate',
-                                  args: [
-                                    {
-                                      $: "(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (split(event.detail.value, '|')[1])) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (split(event.detail.value, '|')[1]), '?') ? '&' : '?') + 'view=canvas' : '')",
+                                then: [
+                                  {
+                                    $invoke: 'routeStore.navigate',
+                                    args: [
+                                      {
+                                        $: "(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (split(event.detail.value, '|')[1])) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (split(event.detail.value, '|')[1]), '?') ? '&' : '?') + 'view=canvas' : '')",
+                                      },
+                                    ],
+                                  },
+                                  {
+                                    $if: {
+                                      condition: { $: "surface.tier == 'base'" },
+                                      then: { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', true] },
                                     },
-                                  ],
-                                },
+                                  },
+                                ],
                               },
                             },
                             {
@@ -1606,48 +1647,70 @@ export const seedBundles: Bundle[] = [
                                       },
                                     ],
                                   },
+                                  {
+                                    $if: {
+                                      condition: { $: "surface.tier == 'base'" },
+                                      then: { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', true] },
+                                    },
+                                  },
                                 ],
                               },
                             },
                             {
                               $if: {
                                 condition: { $: "startsWith(event.detail.value, 'person|')" },
-                                then: {
-                                  $invoke: 'routeStore.navigate',
-                                  args: [
-                                    {
-                                      $: "(spaceStore.spacePath + '/person?did=' + (split(event.detail.value, '|')[1])) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/person?did=' + (split(event.detail.value, '|')[1]), '?') ? '&' : '?') + 'view=canvas' : '')",
+                                then: [
+                                  {
+                                    $invoke: 'routeStore.navigate',
+                                    args: [
+                                      {
+                                        $: "(spaceStore.spacePath + '/person?did=' + (split(event.detail.value, '|')[1])) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/person?did=' + (split(event.detail.value, '|')[1]), '?') ? '&' : '?') + 'view=canvas' : '')",
+                                      },
+                                    ],
+                                  },
+                                  {
+                                    $if: {
+                                      condition: { $: "surface.tier == 'base'" },
+                                      then: { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', true] },
                                     },
-                                  ],
-                                },
+                                  },
+                                ],
                               },
                             },
                             {
                               $if: {
                                 condition: { $: "startsWith(event.detail.value, 'dna|')" },
-                                then: {
-                                  $if: {
-                                    condition: { $: "routeStore.params.view == 'canvas'" },
-                                    then: {
-                                      $invoke: 'routeStore.setParam',
-                                      args: [
-                                        'dna',
-                                        {
-                                          $: "split(event.detail.value, '|')[1] + '|' + split(event.detail.value, '|')[2]",
-                                        },
-                                      ],
-                                    },
-                                    else: {
-                                      $invoke: 'routeStore.navigate',
-                                      args: [
-                                        { $: "spaceStore.spacePath + '/dna'" },
-                                        {
-                                          $: "{ query: { dna: split(event.detail.value, '|')[1] + '|' + split(event.detail.value, '|')[2] } }",
-                                        },
-                                      ],
+                                then: [
+                                  {
+                                    $if: {
+                                      condition: { $: "routeStore.params.view == 'canvas'" },
+                                      then: {
+                                        $invoke: 'routeStore.setParam',
+                                        args: [
+                                          'dna',
+                                          {
+                                            $: "split(event.detail.value, '|')[1] + '|' + split(event.detail.value, '|')[2]",
+                                          },
+                                        ],
+                                      },
+                                      else: {
+                                        $invoke: 'routeStore.navigate',
+                                        args: [
+                                          { $: "spaceStore.spacePath + '/dna'" },
+                                          {
+                                            $: "{ query: { dna: split(event.detail.value, '|')[1] + '|' + split(event.detail.value, '|')[2] } }",
+                                          },
+                                        ],
+                                      },
                                     },
                                   },
-                                },
+                                  {
+                                    $if: {
+                                      condition: { $: "surface.tier == 'base'" },
+                                      then: { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', true] },
+                                    },
+                                  },
+                                ],
                               },
                             },
                             {
@@ -1694,6 +1757,12 @@ export const seedBundles: Bundle[] = [
                                       },
                                     },
                                   },
+                                  {
+                                    $if: {
+                                      condition: { $: "surface.tier == 'base'" },
+                                      then: { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', true] },
+                                    },
+                                  },
                                 ],
                               },
                             },
@@ -1718,22 +1787,30 @@ export const seedBundles: Bundle[] = [
                             {
                               $if: {
                                 condition: { $: "startsWith(event.detail.value, 'dnaprop|policy|')" },
-                                then: {
-                                  $if: {
-                                    condition: { $: "routeStore.params.view == 'canvas'" },
-                                    then: {
-                                      $invoke: 'routeStore.setParam',
-                                      args: ['dna', { $: "'policy|' + split(event.detail.value, '|')[2]" }],
-                                    },
-                                    else: {
-                                      $invoke: 'routeStore.navigate',
-                                      args: [
-                                        { $: "spaceStore.spacePath + '/dna'" },
-                                        { $: "{ query: { dna: 'policy|' + split(event.detail.value, '|')[2] } }" },
-                                      ],
+                                then: [
+                                  {
+                                    $if: {
+                                      condition: { $: "routeStore.params.view == 'canvas'" },
+                                      then: {
+                                        $invoke: 'routeStore.setParam',
+                                        args: ['dna', { $: "'policy|' + split(event.detail.value, '|')[2]" }],
+                                      },
+                                      else: {
+                                        $invoke: 'routeStore.navigate',
+                                        args: [
+                                          { $: "spaceStore.spacePath + '/dna'" },
+                                          { $: "{ query: { dna: 'policy|' + split(event.detail.value, '|')[2] } }" },
+                                        ],
+                                      },
                                     },
                                   },
-                                },
+                                  {
+                                    $if: {
+                                      condition: { $: "surface.tier == 'base'" },
+                                      then: { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', true] },
+                                    },
+                                  },
+                                ],
                               },
                             },
                           ],
@@ -21349,7 +21426,7 @@ export const seedBundles: Bundle[] = [
           },
           {
             type: 'Column',
-            props: { flex: '1', minWidth: '0', height: '100%' },
+            props: { flex: '1', minWidth: '0', height: '100%', overflow: 'hidden' },
             children: [
               {
                 type: '$if',
@@ -25032,7 +25109,20 @@ export const seedBundles: Bundle[] = [
           {
             path: '/',
             type: 'Column',
-            props: { width: '100%', height: '100%' },
+            props: {
+              width: '100%',
+              height: '100%',
+              position: { $: "surface.tier == 'base' && ('tree' in shellStore.collapsedLanes) ? 'fixed' : 'static'" },
+              top: '0',
+              left: '0',
+              right: '0',
+              bottom: '0',
+              zIndex: 'modal',
+              bg: 'page',
+              'data-we-covers-window': {
+                $: "surface.tier == 'base' && ('tree' in shellStore.collapsedLanes) ? 'window' : 'false'",
+              },
+            },
             $queries: {
               channelRecord: {
                 entity: 'CollectionBlock',
@@ -25070,10 +25160,10 @@ export const seedBundles: Bundle[] = [
                   {
                     type: '$if',
                     props: {
-                      condition: { $: "'tree' in shellStore.collapsedLanes" },
+                      condition: { $: "surface.tier == 'base' && ('tree' in shellStore.collapsedLanes)" },
                       then: {
                         type: 'we-tooltip',
-                        props: { content: 'Show the sidebar', placement: 'bottom' },
+                        props: { content: 'Back', placement: 'bottom' },
                         children: [
                           {
                             type: 'we-button',
@@ -25081,12 +25171,35 @@ export const seedBundles: Bundle[] = [
                               variant: 'ghost',
                               size: 'md',
                               square: true,
-                              label: 'Show the sidebar',
+                              label: 'Back',
                               onClick: { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', false] },
                             },
-                            children: [{ type: 'we-icon', props: { name: 'sidebar-simple' } }],
+                            children: [{ type: 'we-icon', props: { name: 'arrow-left' } }],
                           },
                         ],
+                      },
+                      else: {
+                        type: '$if',
+                        props: {
+                          condition: { $: "'tree' in shellStore.collapsedLanes" },
+                          then: {
+                            type: 'we-tooltip',
+                            props: { content: 'Show the sidebar', placement: 'bottom' },
+                            children: [
+                              {
+                                type: 'we-button',
+                                props: {
+                                  variant: 'ghost',
+                                  size: 'md',
+                                  square: true,
+                                  label: 'Show the sidebar',
+                                  onClick: { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', false] },
+                                },
+                                children: [{ type: 'we-icon', props: { name: 'sidebar-simple' } }],
+                              },
+                            ],
+                          },
+                        },
                       },
                     },
                   },

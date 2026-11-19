@@ -1309,6 +1309,9 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // Read by the sidebar, which opens from a menu button rather than under the pointer on a phone.
     // Chrome-tier like its neighbours: a template answers to its own surface, never to the window.
     narrowWindow: state('host-layout'),
+    // Read by a compact rail, which draws no bar while a cover holds the whole window — its own
+    // chrome's to answer, as `narrowWindow` is.
+    chromeCovered: state('host-layout'),
     /*
       Written by the host layout, which can see the editor's widths — never by a template.
 

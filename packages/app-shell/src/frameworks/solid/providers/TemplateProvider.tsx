@@ -145,8 +145,12 @@ export default function TemplateProvider() {
   // publishes no rail width, so nothing keeps clear of a rail that is not there.
   // The bands the app's chrome holds, as it declares them — what panels dock against.
   // At phone width an app may hold different bands — its sidebar a bar across the top — so the frame
-  // follows the window across the `sm` breakpoint as well as the app template.
-  createEffect(() => declareAppFrame(templateStore.appTemplate().meta?.frame, shellStore.narrowWindow()));
+  // follows the window across the `sm` breakpoint as well as the app template. And while a cover
+  // asks for the whole window — a phone's thread — it holds none at all, so the surface the cover
+  // stands in reaches every edge and the cover has it (see `windowCover.ts`).
+  createEffect(() =>
+    declareAppFrame(templateStore.appTemplate().meta?.frame, shellStore.narrowWindow(), shellStore.chromeCovered()),
+  );
   // And how its edges frame the panels pushing the content aside there (`meta.edges`).
   createEffect(() => declareAppEdges(templateStore.appTemplate().meta?.edges));
 

@@ -103,6 +103,8 @@ const SOLID_TESTS = [
   // The subject is the mount itself: the body element must stay the same node while other panel
   // records come and go — only the browser build tracks the per-id memo finely enough to prove it.
   'tests/panelBodyRemount.test.tsx',
+  // The template's surface reaching a panel body: render context is what the test mounts.
+  'tests/panelBodySurface.test.tsx',
   // A panel drawn once and moved between places: needs the browser build's reactivity, as the lanes do.
   'tests/panelHost.test.tsx',
   // Mounts the real RecordStore over a stand-in data layer to drive a canvas's undo round trip.

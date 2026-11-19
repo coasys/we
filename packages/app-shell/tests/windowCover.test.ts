@@ -18,7 +18,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { COVER_ATTR, installWindowCover } from '../src/shared/windowCover';
+import { chromeCovered, COVER_ATTR, installWindowCover } from '../src/shared/windowCover';
 
 /** jsdom lays nothing out, so nothing would count as drawn; every element is, here. */
 const realRects = HTMLElement.prototype.getClientRects;
@@ -187,5 +187,65 @@ describe('two covers', () => {
     await vi.waitFor(() => expect(document.activeElement).toBe(row));
     // And the menu is in front again, its own controls in reach.
     expect(row.inert).toBe(false);
+  });
+});
+
+describe('a cover that asks for the whole window', () => {
+  /*
+    `COVER_ATTR="window"` asks for the app's chrome with the page — what a phone's thread marks,
+    since the surface it is drawn in cannot paint over the app's bar. `chromeCovered` reports the
+    ask while such a cover is in front, and the app answers by taking its furniture away: the frame
+    holds no bands (`declareAppFrame`) and the compact bar is not drawn. A `"true"` cover keeps its
+    smaller ask — the page's share of the window — and reports nothing here.
+  */
+  it('holds while the asking cover is in front, and lets go when it does', async () => {
+    const { rail } = app();
+    expect(chromeCovered()).toBe(false);
+
+    rail.setAttribute(COVER_ATTR, 'window');
+    await settle();
+    expect(chromeCovered()).toBe(true);
+
+    rail.setAttribute(COVER_ATTR, 'false');
+    await settle();
+    expect(chromeCovered()).toBe(false);
+  });
+
+  it('does not hold for a cover that asks only for the page', async () => {
+    const { rail } = app();
+    rail.setAttribute(COVER_ATTR, 'true');
+    await settle();
+    expect(chromeCovered()).toBe(false);
+    // Still a cover — the rest of the cover's work is unchanged.
+    expect(document.getElementById('page')!.inert).toBe(true);
+  });
+
+  it('answers for the cover in front, not any cover that is open', async () => {
+    const { layer, rail } = app();
+    rail.setAttribute(COVER_ATTR, 'window');
+    await settle();
+    expect(chromeCovered()).toBe(true);
+
+    // A sheet over the thread that asks only for the page: the bar comes back under it.
+    const sheet = el('div', layer, 'sheet');
+    sheet.setAttribute(COVER_ATTR, 'true');
+    await settle();
+    expect(chromeCovered()).toBe(false);
+
+    // And when it lets go, the thread's ask is what is in front again.
+    sheet.setAttribute(COVER_ATTR, 'false');
+    await settle();
+    expect(chromeCovered()).toBe(true);
+  });
+
+  it('follows the mark itself, re-read while the same cover holds', async () => {
+    const { rail } = app();
+    rail.setAttribute(COVER_ATTR, 'window');
+    await settle();
+    expect(chromeCovered()).toBe(true);
+
+    rail.setAttribute(COVER_ATTR, 'true');
+    await settle();
+    expect(chromeCovered()).toBe(false);
   });
 });

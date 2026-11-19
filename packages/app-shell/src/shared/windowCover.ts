@@ -21,9 +21,37 @@
  * it. The same arrangement as the safety prompts, which make the app layer inert from the host
  * rather than asking each template to cooperate.
  */
+import { createSignal } from 'solid-js';
 
-/** Set to `"true"` on an element while it covers the window; anything else is not covering. */
+/**
+ * Set to `"true"` on an element while it covers the window; anything else is not covering.
+ *
+ * `"window"` instead asks for the *whole* window — the app's own chrome with the page — which a
+ * cover inside a template's surface cannot take by paint alone: the surface's containment makes it
+ * the containing block and a stacking context, so nothing it holds reaches the bar that holds it.
+ * The app answers by taking its furniture away while such a cover is in front (see `chromeCovered`),
+ * so the cover fills the window from where it already stands — the top layer is never touched.
+ */
 export const COVER_ATTR = 'data-we-covers-window';
+
+/** Whether a marked element asks for the whole window rather than the page's share of it. */
+const takesWindow = (el: Element): boolean => el.getAttribute(COVER_ATTR) === 'window';
+
+/*
+  The covers in front, across the app's layers, that asked for the whole window. A set rather than
+  a flag because nothing says one app layer is all there is — each `installWindowCover` keeps its
+  own front cover's ask here while it holds.
+*/
+const wholeWindow = new Set<Element>();
+const [covered, setCovered] = createSignal(false);
+const syncCovered = () => setCovered(wholeWindow.size > 0);
+
+/**
+ * True while the cover in front asks for the whole window, chrome and all — what the app takes its
+ * own furniture away on: the frame's bands go to nothing (`declareAppFrame`) and a compact rail's
+ * bar is not drawn. Read as `shellStore.chromeCovered` in chrome-tier templates.
+ */
+export const chromeCovered = covered;
 
 /** The element nested deepest that has focus, through shadow roots — `document.activeElement` stops at a host. */
 function deepActiveElement(): Element | null {
@@ -148,11 +176,15 @@ export function installWindowCover(layer: HTMLElement): () => void {
   const hold = (next: Element) => {
     cover = next;
     changed = inertAround(next, layer);
+    if (takesWindow(next)) wholeWindow.add(next);
+    syncCovered();
     document.addEventListener('keydown', onKeyDown, true);
     document.addEventListener('focusin', onFocusIn, true);
   };
   /** Let go of the cover in front, and give focus back to `back` if the letting go left it nowhere. */
   const release = (back: HTMLElement | null) => {
+    if (cover) wholeWindow.delete(cover);
+    syncCovered();
     for (const el of changed) el.inert = false;
     changed = [];
     document.removeEventListener('keydown', onKeyDown, true);
@@ -173,7 +205,7 @@ export function installWindowCover(layer: HTMLElement): () => void {
 
   const update = () => {
     // Gone from the layer counts as closed, mark or no mark: a cover unmounted while open is not open.
-    const marked = new Set(layer.querySelectorAll(`[${COVER_ATTR}="true"]`));
+    const marked = new Set(layer.querySelectorAll(`[${COVER_ATTR}="true"], [${COVER_ATTR}="window"]`));
     let back: HTMLElement | null = null;
     for (const [el, opener] of opened) {
       if (marked.has(el)) continue;
@@ -186,8 +218,17 @@ export function installWindowCover(layer: HTMLElement): () => void {
     }
     const next = [...opened.keys()].pop() ?? null;
     if (next === cover) {
-      // The same cover, and something else arrived beside it: hold that inert as well.
-      if (cover) changed.push(...inertAround(cover, layer));
+      /*
+        The same cover, and something else arrived beside it: hold that inert as well. The mark may
+        also have moved between `"true"` and `"window"` while it held — the ask is re-read rather
+        than remembered.
+      */
+      if (cover) {
+        if (takesWindow(cover)) wholeWindow.add(cover);
+        else wholeWindow.delete(cover);
+        syncCovered();
+        changed.push(...inertAround(cover, layer));
+      }
       return;
     }
     // Covered by a newer one rather than closed: no focus to give back yet.

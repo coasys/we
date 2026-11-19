@@ -22,12 +22,17 @@ export const appFrame = frame;
  * app's `frame.narrow` replaces the frame, because a sidebar a phone has no width for becomes a bar
  * across the top and the content has to clear that instead. An app that declares no narrow frame has
  * the same frame at every width.
+ *
+ * `covered` is whether a cover has asked for the *whole* window (`shellStore.chromeCovered` — a
+ * phone's thread, marked `data-we-covers-window="window"`). Then the app holds no bands at all, so
+ * the surface the cover stands in reaches every edge and the cover has the window it asked for.
  */
 export function declareAppFrame(
   declared: (Partial<AppFrame> & { narrow?: Partial<AppFrame> }) | undefined,
   narrow = false,
+  covered = false,
 ): void {
-  const bands = narrow && declared?.narrow ? declared.narrow : declared;
+  const bands = covered ? {} : narrow && declared?.narrow ? declared.narrow : declared;
   const next = bands
     ? { left: bands.left ?? 0, right: bands.right ?? 0, top: bands.top ?? 0, bottom: bands.bottom ?? 0 }
     : DEFAULT_APP_FRAME;

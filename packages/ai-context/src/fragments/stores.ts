@@ -2148,6 +2148,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         "boolean — some panel covers the whole window. The app's own chrome — sidebar, module rail — hides while it is true; a template's fixed chrome should too",
       narrowWindow:
         'boolean — the window is narrower than the sm breakpoint (640px): a phone held upright. Chrome only, because chrome sits outside every surface and has no surface.tier to read; while it is true the sidebar is a bar across the top whose Menu button switches between it and the page, and meta.frame.narrow replaces the app frame. A template answers to its own surface with smUpProps instead',
+      chromeCovered:
+        'boolean — an element marked data-we-covers-window="window" is the cover in front: something (a phone’s thread) has the WHOLE window, the app’s own chrome with the page. Chrome only, like narrowWindow — the app’s compact bar is not drawn while it is true, and the app frame holds no bands, so the cover has the window it asked for',
       panelInstances:
         '{ id, panel, inputs, title? }[] — the instances open in the interface on screen: which declared panel each is of, and what it was opened with. To list them, or to tell a control whether its record already has one',
       panelFrames:

@@ -3289,6 +3289,7 @@ export const contextData: ContextData = {
         dockResizing: { type: 'boolean' },
         panelMaximised: { type: 'boolean' },
         narrowWindow: { type: 'boolean' },
+        chromeCovered: { type: 'boolean' },
         dockPlacement: { type: 'object' },
         panelFrames: { type: 'object' },
         movingDock: { type: 'string' },

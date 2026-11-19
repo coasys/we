@@ -119,6 +119,16 @@ export const personPath = (didExpr: string): string => withView(`spaceStore.spac
 export const PAGE_EXPR = "routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''";
 
 /**
+ * A channel's chat covering the whole window: on a phone, once the tree lane is folded, the thread
+ * is the window — the app's bar included — and its own bar's way back opens the lane again. Only on
+ * a phone: on a desktop a folded lane and the view sit side by side, as they always have.
+ *
+ * The phone is the surface at `base` — under `sm`, the same breakpoint `shellStore.narrowWindow`
+ * answers to. A template answers to its own surface, never to the window: `narrowWindow` is chrome's.
+ */
+export const CHAT_COVERS = "surface.tier == 'base' && ('tree' in shellStore.collapsedLanes)";
+
+/**
  * The groups of the tree that are pages as well: pressing the row opens the page, a full view of what
  * the group lists. The key is both the group's row (`group|<key>`) and the page's address segment.
  * Workflows is the one page that was already there.

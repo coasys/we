@@ -110,6 +110,7 @@ import {
   templatePanels,
   templatePanelScope,
 } from '@shared/registries/templatePanels';
+import { chromeCovered } from '@shared/windowCover';
 import { usePlatform } from '@solid/providers/PlatformProvider';
 import { DRAGGING_ATTR } from '@we/drag';
 import type { ChromeReserve, DockAspect, DockEdge, DockSize } from '@we/module-shared';
@@ -418,6 +419,14 @@ export interface ShellStore {
    * pointer, because on a touch screen the pointer arrives with every tap and never leaves.
    */
   narrowWindow: Accessor<boolean>;
+  /**
+   * True while the element in front covers the *whole* window — the app's own chrome with the page
+   * (`data-we-covers-window="window"`, a phone's thread). The chrome reads it to take itself away,
+   * since nothing it draws can reach over the cover: the frame holds no bands while it is true
+   * (`declareAppFrame`), so the surface the cover stands in spans the window, and a compact rail's
+   * bar is not drawn. See `windowCover.ts`.
+   */
+  chromeCovered: Accessor<boolean>;
   /** Remember a dock's current size, so the drag that follows is measured from it. */
   beginDockResize: (id: string) => void;
   /**
@@ -3474,6 +3483,7 @@ export function ShellStoreProvider(props: ParentProps) {
     dockResizing,
     panelMaximised,
     narrowWindow,
+    chromeCovered,
 
     dockPlacement: () =>
       Object.fromEntries(

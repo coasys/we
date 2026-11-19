@@ -36,6 +36,29 @@ const showTree: SchemaNode = {
 };
 
 /**
+ * Back to the sidebar, in a thread that covers the window — where `showTree` cannot be, for there is
+ * no app bar to put it under. Same job, worded as the phone's own way back: opening the lane is what
+ * uncovers the window, the bar and all.
+ */
+const backToTree: SchemaNode = {
+  type: 'we-tooltip',
+  props: { content: 'Back', placement: 'bottom' },
+  children: [
+    {
+      type: 'we-button',
+      props: {
+        variant: 'ghost',
+        size: 'md',
+        square: true,
+        label: 'Back',
+        onClick: { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', false] },
+      },
+      children: [{ type: 'we-icon', props: { name: 'arrow-left' } }],
+    },
+  ],
+};
+
+/**
  * Page or Canvas, at the end of every bar, in the same place whatever is chosen — see `canvas.ts`. Into
  * the address, which every navigation then carries. A Social DNA focus is kept either way: from the
  * canvas, Page goes to the Social DNA page with it; from that page, Canvas draws it over the canvas.
@@ -144,11 +167,19 @@ export const viewBar = (
   icon: SchemaProp,
   aside: SchemaNode[] = [],
   beside: SchemaNode[] = [],
+  /**
+   * While this holds the view is a phone's full-window thread (`CHAT_COVERS`), and the bar leads
+   * with Back to the sidebar rather than the sidebar button — the app bar it would belong with is
+   * under the view. Everywhere else the bar is unchanged.
+   */
+  covering?: SchemaProp,
 ): SchemaNode => ({
   type: 'Row',
   props: { gap: '300', ay: 'center', px: '500', py: '300', borderBottom: '1px solid border', minHeight: '56px' },
   children: [
-    showTree,
+    covering === undefined
+      ? showTree
+      : { type: '$if', props: { condition: covering, then: backToTree, else: showTree } },
     { type: 'we-icon', props: { name: icon, color: 'text-muted' } },
     {
       type: 'Row',

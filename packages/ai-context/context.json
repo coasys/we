@@ -7897,6 +7897,9 @@
         "narrowWindow": {
           "type": "boolean"
         },
+        "chromeCovered": {
+          "type": "boolean"
+        },
         "dockPlacement": {
           "type": "object"
         },
