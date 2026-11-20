@@ -642,7 +642,7 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
           if (!relationNames.has(key) || value === undefined) continue;
           if (relations.find((r) => r.name === key)?.cardinality === 'many') {
             const ids = (Array.isArray(value) ? value : value === null ? [] : [value]).map((one) => idOf(key, one));
-            out.set(key, [...new Set(ids)]);
+            out.set(key, ids);
           } else {
             out.set(key, value === null || value === '' ? null : idOf(key, value));
           }
