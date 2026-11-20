@@ -629,7 +629,8 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
     const current = deps.setupIntent?.get(refId);
     if (!current) return;
     const next = { ...current, [bit]: false };
-    if (!next.writeMeta && !next.announce) deps.setupIntent!.clear(refId);
+    // At `open` the record outlives its debt: the tail it marks is still running.
+    if (!next.writeMeta && !next.announce && next.phase !== 'open') deps.setupIntent!.clear(refId);
     else deps.setupIntent!.set(refId, next);
   };
 
@@ -702,19 +703,16 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
     phase: 'mount' | 'open',
   ): void => {
     /*
-      A mounted target with nothing owed has no record to keep — the mount link
-      itself says where the language lives, and an intent carrying no debt would
-      only read as a pending mount it is not. The live ledger and the durable
-      intent move together: whatever one records, the other records.
+      The live ledger holds remote debt only. The durable intent holds more: at
+      `open` it is also the record that the local setup tail has not finished,
+      debt or none — so it is kept until the run that finishes the tail clears
+      it, and a setup or override that fails after the debt was paid still
+      leaves a record a restart can offer.
     */
     if (owed.writeMeta || owed.announce) {
       owedLedger.set(refId, { name: owed.name, writeMeta: owed.writeMeta, announce: owed.announce });
     } else {
       owedLedger.delete(refId);
-    }
-    if (phase === 'open' && !owed.writeMeta && !owed.announce) {
-      deps.setupIntent?.clear(refId);
-      return;
     }
     deps.setupIntent?.set(refId, {
       name: owed.name,
@@ -1031,6 +1029,8 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
         running on.
       */
       if (pendingOps.get(op.lang) === op) pendingOps.delete(op.lang);
+      // The tail finished: the durable record of an unfinished setup goes with it.
+      if (!owedFor(prepared.ref.id)) deps.setupIntent?.clear(prepared.ref.id);
       deps.progress?.(null);
       return id;
     } catch (error) {
@@ -1379,15 +1379,20 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       const port = deps.port();
       const lifecycle = deps.lifecycle();
       if (!port || !lifecycle || !deps.setupIntent) return null;
+      /*
+        After a restart only the durable intent is left: a pending mount, or a
+        mounted project whose setup tail never finished (`open`, with or
+        without remote debt). Both are offered the way a parked op is.
+      */
       for (const ref of await lifecycle.list()) {
         const intent = deps.setupIntent.get(ref.id);
-        if (intent?.phase === 'mount' && intent.languageAddress) {
+        if (intent?.phase && intent.languageAddress) {
           return {
             phase: 'failed',
             name: intent.name,
             datasetId: ref.id,
             languageAddress: intent.languageAddress,
-            failure: makeFailure('mount', '', true),
+            failure: makeFailure(intent.phase === 'mount' ? 'mount' : 'setup', '', true),
           };
         }
       }
@@ -1429,7 +1434,7 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
         });
         for (const ref of refs) {
           const intent = deps.setupIntent.get(ref.id);
-          if (!intent || intent.phase !== 'mount' || !intent.languageAddress) continue;
+          if (!intent?.phase || !intent.languageAddress) continue;
           if ((datasetId || languageAddress) && ref.id !== datasetId && intent.languageAddress !== languageAddress) {
             continue;
           }

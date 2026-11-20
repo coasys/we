@@ -720,6 +720,73 @@ describe('openAcornProject', () => {
   });
 
   /*
+    A restart keeps only the durable intent. Setup debt recorded at phase=open —
+    the mount answered, the tail did not finish — is offered and resumed by a
+    new lifecycle instance the same way a pending mount is.
+  */
+  it('offers and resumes phase=open debt after a restart', async () => {
+    const record: string[] = [];
+    const d = deps(record);
+    (d.lifecycle()!.list as ReturnType<typeof vi.fn>).mockResolvedValue([ref('dataset-1', 'P')]);
+    const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
+    port.mountsOf['dataset-1'] = [LANG];
+    d.setupIntent!.set('dataset-1', {
+      name: 'P',
+      writeMeta: false,
+      announce: true,
+      languageAddress: LANG,
+      phase: 'open',
+    });
+    const afterRestart = createAcornLifecycle(d);
+
+    await expect(afterRestart.pendingAcornOperation()).resolves.toMatchObject({
+      phase: 'failed',
+      datasetId: 'dataset-1',
+      languageAddress: LANG,
+      failure: { stage: 'setup', retryable: true },
+    });
+    await expect(afterRestart.resumeAcornOperation('dataset-1', LANG)).resolves.toBe('dataset-1');
+    expect(record.filter((c) => c.startsWith('interact:announceJoin'))).toHaveLength(1);
+    expect(record.filter((c) => c.startsWith('mount:'))).toHaveLength(0); // the mount was there already
+    expect(d.setupIntent!.get('dataset-1')).toBeNull();
+    await expect(afterRestart.pendingAcornOperation()).resolves.toBeNull();
+  });
+
+  it('keeps the durable record when local setup fails after the remote debt is paid — a restart still offers it', async () => {
+    const record: string[] = [];
+    let overrideFails = true;
+    const d = deps(record, {
+      setSpaceTemplateOverride: vi.fn(async (id: string, uuid?: string) => {
+        record.push(`override:${id}:${uuid}`);
+        if (overrideFails) throw new Error('zome unreachable');
+      }),
+    });
+    (d.lifecycle()!.list as ReturnType<typeof vi.fn>).mockResolvedValue([ref('dataset-1', 'P')]);
+    const acorn = createAcornLifecycle(d);
+
+    // The join's announce lands; the local override after it does not.
+    await expect(acorn.joinAcornProject(undefined, 'a b c', BASE)).rejects.toThrow('zome unreachable');
+    expect(record.filter((c) => c.startsWith('interact:announceJoin'))).toHaveLength(1);
+    expect(d.setupIntent!.get('dataset-1')).toMatchObject({
+      announce: false,
+      writeMeta: false,
+      languageAddress: LANG,
+      phase: 'open',
+    });
+
+    // Restart: the new instance offers the unfinished setup, and Retry finishes it without re-announcing.
+    overrideFails = false;
+    const afterRestart = createAcornLifecycle(d);
+    await expect(afterRestart.pendingAcornOperation()).resolves.toMatchObject({
+      datasetId: 'dataset-1',
+      failure: { stage: 'setup', retryable: true },
+    });
+    await expect(afterRestart.resumeAcornOperation()).resolves.toBe('dataset-1');
+    expect(record.filter((c) => c.startsWith('interact:announceJoin'))).toHaveLength(1);
+    expect(d.setupIntent!.get('dataset-1')).toBeNull();
+  });
+
+  /*
     The same entry, repaired: a create that failed its mount leaves the op and
     the intent's owed meta; the list row's Open is the ask that finishes it —
     and a finished operation is removed, so a close/reopen does not offer a
@@ -1753,7 +1820,9 @@ describe('mount retry — the fresh-cell stall', () => {
     await expect(retry).resolves.toBe('dataset-1');
     // Exactly one announce — in memory, and in the persisted intent alike.
     expect(record.filter((c) => c.startsWith('interact:announceJoin'))).toHaveLength(1);
-    expect(intentAfterPhaseMove).toBeNull();
+    // The persisted record does not re-owe it either. It stays, debt-free, at
+    // phase=open until the tail finishes — the restart record K5 needs.
+    expect(intentAfterPhaseMove).toMatchObject({ announce: false, writeMeta: false, phase: 'open' });
     expect(d.setupIntent!.get('dataset-1')).toBeNull();
   });
 
