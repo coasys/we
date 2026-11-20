@@ -6603,8 +6603,10 @@ shapes from links or with SPARQL: the registry is the one source the model queri
 Write it with `perspective.registerShapes(shapes)` (or `Model.register(p)` /
 `Ad4mModel.registerAll(p, models)`). The executor compares each shape with the stored one and writes
 only a changed one, and the call answers once queries see the new shapes, so do not read first, sleep
-after, or write hints again after. One call refuses two shapes for one class, and the executor refuses
-a class name that another target class already holds in the perspective. WE's own links on a shape
+after, or write hints again after. One call refuses two shapes for one class, a shape URI another
+class already holds, or a `node_shape_uri` not ending in `{Class}Shape` — and writes nothing from
+the call. Two classes may share a name (`we://Topic` beside `flux://Topic`): each is addressed by
+its target class IRI, and the bare name reads the least IRI. WE's own links on a shape
 node (annotations, the tuned-hints marker) are links, read and written as links; the executor keeps
 them when it rewrites a shape.
 

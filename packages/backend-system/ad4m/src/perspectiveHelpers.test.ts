@@ -176,6 +176,24 @@ describe('a foreign class named by its target class', () => {
     ]);
   });
 
+  it('keeps a real class under its name over another class’s `Shape` alias', async () => {
+    // `Task` comes first and would mint the `TaskShape` alias — but a class actually called
+    // TaskShape owns that name. The manifest names it `TaskShape`, so `TaskShape` must be its class.
+    const task = await realShape('app://Task', { name: 'title', path: 'app://title' });
+    const taskShape = await realShape('app://TaskShape', { name: 'note', path: 'app://note' });
+
+    const classes = buildEntityClasses([
+      { name: 'Task', shape: task },
+      { name: 'TaskShape', shape: taskShape },
+    ]);
+    const targetOf = (key: string) => (classes[key] as unknown as { getTargetClass(): string }).getTargetClass();
+
+    expect(targetOf('Task')).toBe('app://Task');
+    expect(targetOf('TaskShape')).toBe('app://TaskShape');
+    // And the lone class still gets its alias when no class owns the name.
+    expect(Object.keys(buildEntityClasses([{ name: 'Task', shape: task }]))).toContain('TaskShape');
+  });
+
   it('two foreign classes of one name, with no WE class of that name, are both reachable', async () => {
     // `Note` is not a WE model in this registry (the mock has Message and Channel only).
     const a = await realShape('a://Note', { name: 'body', path: 'a://body' });

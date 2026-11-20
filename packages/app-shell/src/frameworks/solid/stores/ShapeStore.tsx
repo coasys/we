@@ -680,8 +680,13 @@ export function ShapeStoreProvider(props: ParentProps) {
    *
    * Every class the model declares goes in one install, which the backend takes or refuses whole: a
    * refused model leaves none of its classes behind. Rejects with the backend's reason.
+   *
+   * `install: false` declares the runtime classes only, for a model whose stored schema says more
+   * than its manifest can (`StoredShape.editable` false): the stored shape is already registered —
+   * it is where the manifest was read from — and installing the compiled one would write the
+   * reduced schema over it.
    */
-  async function adoptShape(shape: ShapeInput, dataset = handle()): Promise<void> {
+  async function adoptShape(shape: ShapeInput, dataset = handle(), install = true): Promise<void> {
     const ports = schemas();
     if (!ports || !dataset) return;
     const view = { name: shape.name, shapeId: shape.shapeId.replace('we://shapes/', '') };
@@ -690,7 +695,7 @@ export function ShapeStoreProvider(props: ParentProps) {
     const classes = ports.declareInDataset(dataset, manifest, { moduleId: `shape/${view.shapeId}` });
     const declared = performance.now();
     try {
-      await ports.installModules(dataset, Object.values(classes));
+      if (install) await ports.installModules(dataset, Object.values(classes));
     } catch (err) {
       // The model is the only module in the call, so the refusal's reason is the model's.
       if (err instanceof ModuleSchemasRefused) throw new Error(err.refused.map((r) => r.reason).join('; '));
@@ -781,7 +786,7 @@ export function ShapeStoreProvider(props: ParentProps) {
         if (!view.manifest || view.problems.length || adopted.has(view.name)) continue;
         adopted.add(view.name);
         try {
-          await adoptShape({ ...view, manifest: view.manifest });
+          await adoptShape({ ...view, manifest: view.manifest }, dataset, view.editable);
         } catch (err) {
           view.problems = [`adoption failed: ${err instanceof Error ? err.message : String(err)}`];
         }

@@ -5339,4 +5339,57 @@ describe('a schema install the backend refuses', () => {
     expect(await stores.shapes.addRecordTypes('garden-app', [type('Plant')] as never)).toEqual([]);
     expect((await shapes.list(handle)).map((s) => s.name)).toEqual(['Plant']);
   });
+
+  it('declares a stored model it cannot edit without reinstalling its schema', async () => {
+    // `editable: false` means the stored shape says more than the manifest can (another tool wrote
+    // to it). Installing the compiled manifest would write the reduced schema back over it.
+    seededDatasets = [{ id: 'garden-1', name: 'Garden' }];
+    const manifest = {
+      version: '1',
+      entities: { Sighting: { properties: { label: { type: 'string' } }, relations: {} } },
+    };
+    const installs: string[][] = [];
+    const declared: string[] = [];
+    onPorts = (ports) => {
+      ports.schemas.shapes = {
+        list: async () => [
+          {
+            id: 'sighting-1',
+            name: 'Sighting',
+            description: '',
+            icon: 'cube',
+            shapeId: 'we://shapes/sighting',
+            version: 1,
+            forkedFrom: '',
+            manifest: manifest as never,
+            editable: false,
+          },
+        ],
+        save: async () => {
+          throw new Error('unreachable');
+        },
+        remove: async () => {},
+      };
+      const { installModules, declareInDataset } = ports.schemas;
+      ports.schemas.installModules = async (dataset, schemas) => {
+        installs.push(classNames(schemas));
+        return installModules(dataset, schemas);
+      };
+      ports.schemas.declareInDataset = (dataset, m, opts) => {
+        declared.push(...Object.keys(m.entities));
+        return declareInDataset(dataset, m, opts);
+      };
+    };
+    const stores = mountShell();
+    await ready(stores);
+    await stores.datasets.switchDataset('garden-1');
+    await vi.waitFor(() => expect(stores.shapes.shapesLoaded()).toBe(true));
+
+    // Listed, adopted for queries — and never re-registered.
+    expect(stores.shapes.spaceShapes()).toEqual([
+      expect.objectContaining({ name: 'Sighting', editable: false, problems: [] }),
+    ]);
+    expect(declared).toContain('Sighting');
+    expect(installs.flat()).not.toContain('Sighting');
+  });
 });

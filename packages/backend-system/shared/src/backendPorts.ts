@@ -29,8 +29,8 @@ import type { WorkflowPort } from './workflows';
 /**
  * Some modules' schemas were refused by the backend, and the rest were installed.
  *
- * Each module's schemas install on their own, so one module the backend refuses — a class name
- * another app already holds, say — leaves every other module, and the host's own schemas, working.
+ * Each module's schemas install on their own, so one module the backend refuses — a shape URI
+ * another app's class already holds, say — leaves every other module, and the host's own schemas, working.
  * This rejection comes after all of them were tried, naming the modules refused and why; a module
  * not named here is installed. A refused module wrote nothing.
  */

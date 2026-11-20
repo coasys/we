@@ -231,7 +231,12 @@ export function withLockfileCheck(verdict, pin, lockText) {
   const reason = `The lockfile installs the snapshot with no integrity, so a frozen install would accept whatever bytes the URL serves.`;
   const fix = `pnpm bump:ad4m ${pin.commit}`;
   if (verdict.ok) return { ok: false, reason, fix };
-  return { ...verdict, reason: `${verdict.reason}\n${reason}`, fix: verdict.fix ? `${verdict.fix}; ${fix}` : fix };
+  /*
+    A verdict that already fails has its own fix — a move to dev, or a version bump — and running it
+    writes the lockfile integrity for the commit it pins. Naming the rejected commit after it would
+    pin the rejection straight back, and the gate would fail again on the same reason.
+  */
+  return { ...verdict, reason: `${verdict.reason}\n${reason}`, fix: verdict.fix ?? fix };
 }
 
 /** The base branch's package.json, as it is now. */

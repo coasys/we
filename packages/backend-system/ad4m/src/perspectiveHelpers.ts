@@ -136,6 +136,9 @@ export function buildEntityClasses(shapes: ForeignShape[]): Record<string, Entit
   // overwrite the first. Each such class is reached by its target class IRI instead.
   const perName = new Map<string, number>();
   for (const { name } of shapes) perName.set(name, (perName.get(name) ?? 0) + 1);
+  // `…Shape` aliases go last: a class actually called `TaskShape` owns that name, and an alias
+  // written while `Task` was processed would take it first.
+  const aliases: [string, typeof Ad4mModel][] = [];
   for (const { name, shape } of shapes) {
     const local = shape.targetClass ? classNameOf(shape.targetClass) : name;
     const cls = Ad4mModel.fromSHACL(shape, local, classResolver);
@@ -148,8 +151,9 @@ export function buildEntityClasses(shapes: ForeignShape[]): Record<string, Entit
     if (shape.targetClass) result[shape.targetClass] ??= cls;
     // Also register under nodeShapeUri-style name (e.g. "MessageShape") so that
     // sh:class URI local-names resolve even when they include the "Shape" suffix.
-    if (!shared && name === local) result[`${name}Shape`] ??= cls;
+    if (!shared && name === local) aliases.push([`${name}Shape`, cls]);
   }
+  for (const [key, cls] of aliases) result[key] ??= cls;
   return result;
 }
 

@@ -49,6 +49,7 @@ import {
 } from './entities';
 import { moduleOfModel } from './manifestCompiler';
 import { entityNameOfClass } from './recordTypes';
+import { rpcStatus } from './rpcStatus';
 
 export { classNameOf };
 
@@ -330,6 +331,13 @@ export async function installSpaceSdna(p: PerspectiveProxy, moduleEntities: read
  * the others are in. A class not compiled from a module manifest (one written by hand) counts as a
  * module of its own, under its class name.
  *
+ * **Only a confirmed refusal counts as refused.** The executor answers a refused batch as a 400
+ * (`WsRpcError::bad_request` wraps every error `register_shapes` returns). Anything else — the
+ * marker read timing out, a lost registration response — is the install failing, not the schema
+ * being refused: whether it wrote anything is unknown, and saying "refused, wrote nothing" would be
+ * a claim nobody made. So a non-400 error propagates at once, and the handlers that log a
+ * `ModuleSchemasRefused` and continue rethrow it instead.
+ *
  * The models arrive as an argument rather than being read from the module registry. The registry is
  * the host's, and a backend adapter reaching up into it would be the one edge that inverts this
  * package's dependency direction — everything else here is imported *by* the shell, not from it.
@@ -346,6 +354,9 @@ export async function installModuleSdna(p: PerspectiveProxy, moduleEntities: rea
     try {
       await registerModels(p, models);
     } catch (error) {
+      // A 400 is the executor's answer to the batch itself — the only failure that is certainly a
+      // refusal. The reads before it fail 500-or-worse, and an unanswered call is 408 or 503.
+      if (rpcStatus(error) !== 400) throw error;
       refused.push({ moduleId, reason: error instanceof Error ? error.message : String(error) });
     }
   }

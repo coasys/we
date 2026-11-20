@@ -234,6 +234,18 @@ describe('the fake registers a call the way the executor does', () => {
     expect(r.registry.size).toBe(0);
   });
 
+  it('refuses a shape URI without the `{Class}Shape` suffix, writing none of the call', async () => {
+    const r = fakeShapeRegistry();
+    const [alpha, beta] = moduleOf('m', 'Alpha', 'Beta').map(shapeOf);
+    beta.nodeShapeUri = 'app://WrongShape';
+
+    await expect(r.perspective.registerShapes([alpha, beta])).rejects.toThrow(/must end with 'BetaShape'/);
+
+    // The whole call is refused: even the shape nothing was wrong with stays unwritten.
+    expect(r.registry.size).toBe(0);
+    expect(r.calls.written).toEqual([]);
+  });
+
   it.each([
     'FlowInstance',
     'FlowTransitionProposal',
@@ -319,6 +331,36 @@ describe('a refused registration', () => {
 
     expect(await isEntityRegistered(r.proxy, Space)).toBe(true);
     expect(r.registry.has(targetOf(bad[0]))).toBe(false);
+  });
+});
+
+describe('an install that fails, rather than being refused', () => {
+  it('of the marker read propagates the error — the module was never submitted', async () => {
+    const r = fakeShapeRegistry();
+    r.perspective.get = async () => {
+      throw Object.assign(new Error('WebSocket connection closed'), { status: 503 });
+    };
+
+    const failure = await installModuleSdna(r.proxy, moduleOf('m', 'Alpha')).catch((e: unknown) => e);
+
+    // Not `ModuleSchemasRefused`: nothing was refused, and nothing was even sent.
+    expect(failure).not.toBeInstanceOf(ModuleSchemasRefused);
+    expect((failure as Error).message).toMatch(/WebSocket connection closed/);
+    expect(r.calls.registerShapes).toEqual([]);
+  });
+
+  it('of a registration answer that never arrived propagates — the write outcome is unknown', async () => {
+    const r = fakeShapeRegistry();
+    r.perspective.registerShapes = async () => {
+      // The call went out; its reply did not come back. 503 is the client's dropped-socket answer.
+      throw Object.assign(new Error("RPC call 'perspective.registerShapes' timed out"), { status: 503 });
+    };
+
+    const failure = await installModuleSdna(r.proxy, moduleOf('m', 'Alpha')).catch((e: unknown) => e);
+
+    // Reporting it as refused would claim the batch wrote nothing, which nobody knows.
+    expect(failure).not.toBeInstanceOf(ModuleSchemasRefused);
+    expect((failure as { status?: number }).status).toBe(503);
   });
 });
 

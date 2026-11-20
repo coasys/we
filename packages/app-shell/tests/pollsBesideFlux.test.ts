@@ -5,15 +5,16 @@
  * classes of the same names. The executor addresses a class by its target class IRI, so the module's
  * classes register beside Flux's: nothing is refused, and Flux's classes are not changed.
  *
- * The registry below does what the executor's `register_shapes` does with a call: it keys classes by
- * target class, refuses a shape URI another class holds, and answers `shapes(keys)` by name or by
- * target class.
+ * The registry is the shared fake (`fakeShapeRegistry`), which registers a call the way the
+ * executor's `register_shapes` does — a call naming one class twice or two classes one shape URI is
+ * refused whole, never silently overwritten.
  */
 import { SHACLShape } from '@coasys/ad4m';
 import { createAd4mSchemaPort, getEntityTargetClass, installModuleSdna } from '@we/backend-ad4m';
 import { pollsModule } from '@we/module-polls';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { fakeShapeRegistry } from '../../backend-system/ad4m/tests/fakeShapeRegistry';
 import { createModuleStoreDeps } from '../src/shared/registries/moduleHostServices';
 import { moduleRegistry } from '../src/shared/registries/moduleRegistry';
 
@@ -29,32 +30,6 @@ const storeDeps = createModuleStoreDeps({
 type Model = { generateSHACL(): { shape: SHACLShape } };
 const shapeOf = (model: unknown) => SHACLShape.fromJSON((model as Model).generateSHACL().shape.toJSON());
 const nameOf = (targetClass: string) => targetClass.slice(targetClass.lastIndexOf('/') + 1);
-
-function shapeRegistry() {
-  const registry = new Map<string, SHACLShape>();
-  const proxy = {
-    get: async () => [],
-    async registerShapes(shapes: SHACLShape[]) {
-      for (const shape of shapes) {
-        const uri = shape.nodeShapeUri ?? `${shape.targetClass}Shape`;
-        for (const [other, held] of registry) {
-          if (other !== shape.targetClass && (held.nodeShapeUri ?? `${other}Shape`) === uri) {
-            throw new Error(`Shape '${uri}' already belongs to class '${other}'`);
-          }
-        }
-      }
-      for (const shape of shapes) registry.set(shape.targetClass!, shape);
-      // By target class IRI, as the executor answers (two classes may share a name).
-      return { written: shapes.map((s) => s.targetClass!).sort(), unchanged: [] };
-    },
-    async shapes(keys?: string[]) {
-      return [...registry.entries()]
-        .filter(([targetClass]) => !keys || keys.includes(targetClass) || keys.includes(nameOf(targetClass)))
-        .map(([targetClass, shape]) => ({ name: nameOf(targetClass), shape }));
-    },
-  };
-  return { registry, proxy };
-}
 
 /** Flux's class of one name: the polls module's shape, in Flux's namespace. */
 function flux(model: unknown, name: string): SHACLShape {
@@ -73,20 +48,26 @@ describe('the polls module beside Flux’s Poll and Vote', () => {
     const byName = Object.fromEntries(models.map((m) => [nameOf(getEntityTargetClass(m as never)!), m]));
     expect(Object.keys(byName).sort()).toEqual(['Poll', 'Vote']);
 
-    const r = shapeRegistry();
+    const r = fakeShapeRegistry();
     const fluxPoll = flux(byName.Poll, 'Poll');
     const fluxVote = flux(byName.Vote, 'Vote');
-    await r.proxy.registerShapes([fluxPoll, fluxVote]);
+    await r.perspective.registerShapes([fluxPoll, fluxVote]);
 
-    await installModuleSdna(r.proxy as never, models);
+    await installModuleSdna(r.proxy, models);
 
     const ours = [getEntityTargetClass(byName.Poll as never)!, getEntityTargetClass(byName.Vote as never)!];
     expect(ours.some((iri) => iri.startsWith('flux://'))).toBe(false);
+    // One call, both classes in it, each exactly once — a call naming a class twice is refused whole.
+    expect(r.calls.registerTargets).toHaveLength(2);
+    const submitted = r.calls.registerTargets[1];
+    expect(submitted).toHaveLength(2);
+    expect([...submitted].sort()).toEqual([...ours].sort());
     expect([...r.registry.keys()].sort()).toEqual(['flux://Poll', 'flux://Vote', ...ours].sort());
-    expect(r.registry.get('flux://Poll')).toBe(fluxPoll);
-    expect(r.registry.get('flux://Vote')).toBe(fluxVote);
+    // The fake stores copies; the shapes themselves are what compare.
+    expect(r.registry.get('flux://Poll')?.toJSON()).toEqual(fluxPoll.toJSON());
+    expect(r.registry.get('flux://Vote')?.toJSON()).toEqual(fluxVote.toJSON());
     // Asked by name, both apps' polls answer; asked by IRI, only the one.
-    expect(await r.proxy.shapes(['Poll'])).toHaveLength(2);
-    expect((await r.proxy.shapes([ours[0]])).map((s) => s.shape.targetClass)).toEqual([ours[0]]);
+    expect(await r.perspective.shapes(['Poll'])).toHaveLength(2);
+    expect((await r.perspective.shapes([ours[0]])).map((s) => s.shape.targetClass)).toEqual([ours[0]]);
   });
 });

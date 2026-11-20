@@ -230,6 +230,17 @@ describe('the lockfile integrity check', () => {
     assert.equal(verdict.fix, `pnpm bump:ad4m ${UNMERGED}`);
   });
 
+  it('keeps a failing verdict’s own fix — re-pinning the rejected commit would fail again', () => {
+    // The pin is behind the base, so the gate says `bump:ad4m dev`; the move writes the integrity
+    // itself, and a second command re-pinning OLD would put the rejection back.
+    const behind = { ok: false, reason: 'Would move the pin back.', fix: 'pnpm bump:ad4m dev' };
+    const verdict = withLockfileCheck(behind, snapshot(OLD), lock(false));
+    assert.equal(verdict.ok, false);
+    assert.match(verdict.reason, /move the pin back/);
+    assert.match(verdict.reason, /no integrity/);
+    assert.equal(verdict.fix, 'pnpm bump:ad4m dev');
+  });
+
   it('leaves the verdict alone when the lockfile has the integrity, or the pin is a version', () => {
     assert.equal(withLockfileCheck(waiting, snapshot(UNMERGED), lock(true)), waiting);
     const passing = { ok: true, reason: 'fine' };
