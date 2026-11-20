@@ -1536,6 +1536,8 @@ describe('moving cards on the live mount', () => {
 
   it('a card dragged under another parent moves its stock connection there, one below its new siblings', async () => {
     await shot('map-before-reparent.png', [P1, K1, K2, K3, P2, Q]);
+    // The connection K2 hangs from, as stock holds it: a move is an update of this record, not a new one.
+    const [[, , before]] = await parentsOf(made.k2.actionHash, (cs) => cs.length === 1, 'held K2');
     const [, , q] = await frame([K2, P2, Q]);
     const xs = Array.from({ length: 24 }, (_, i) => q.x - q.width + (i * q.width) / 6);
     // The place on Q's right under P2: a line from P2's card down to a ghost right of Q.
@@ -1544,12 +1546,15 @@ describe('moving cards on the live mount', () => {
       const fromP2 = Math.abs(line.x - p2.cx) < p2.width / 4 || Math.abs(line.x + line.width - p2.cx) < p2.width / 4;
       return fromP2 && ghost.x + ghost.width / 2 > qNow.cx + qNow.width / 2;
     });
-    const [[parent, order]] = await parentsOf(
+    const [[parent, order, after]] = await parentsOf(
       made.k2.actionHash,
       (cs) => cs.length === 1 && cs[0][0] === hashText(made.p2.actionHash),
       'moved K2 under P2',
     );
     assert.equal(parent, hashText(made.p2.actionHash));
+    // The same connection: its original actionHash and its randomizer survive the update.
+    assert.equal(hashText(after.actionHash), hashText(before.actionHash), 'the connection keeps its actionHash');
+    assert.equal(after.entry.randomizer, before.entry.randomizer, 'the connection keeps its randomizer');
     // stock's lowerThanLowestSiblingOrder under P2: Q is at 0. A real integer now (b12).
     assert.equal(order, -1);
     const [p2Box, k2Box] = await settledBoxes([P2, K2]);
