@@ -13,12 +13,11 @@
  *    a secret is never given a new one;
  * 3. hands it to the executor with `storage.unlock`, as the operator (the admin credential), over the
  *    loopback WebSocket, and zeroes its own copy whatever the answer;
- * 4. waits for its storage to be `open`, following `storage-state-changed` (and reading
- *    `runtime.storageStatus` besides, for an executor that sends no events).
+ * 4. waits for its storage to be `open`, reading `runtime.storageStatus` every 100 ms.
  *
  * An executor that ran before its data was encrypted keeps it in plaintext until its first unlock,
- * which moves it under its keys: the storage is `migrating` meanwhile, and `storage-migration-progress`
- * says how many stores are done. The identity window shows "Moving your data under its key: X of Y"
+ * which moves it under its keys: the storage is `migrating` meanwhile, and its status says how many
+ * stores are done. The identity window shows "Moving your data under its key: X of Y"
  * until it is open. A move that fails leaves the plaintext as it was and the storage sealed again
  * (`lastError: migration-failed`); the window offers to try again, which is a new `storage.unlock`.
  *
@@ -65,9 +64,6 @@ export const STORAGE_WORDS = Object.freeze({
 /** What the passphrase step says when the move under its key failed: the passphrase starts it again. */
 export const MIGRATION_FAILED_PASSPHRASE =
   'Moving your data under its key did not finish. Nothing was lost: your data stays as it was. Type the passphrase to try again.';
-
-/** The executor's events the supervisor follows its storage by (`events.watch`). */
-export const STORAGE_EVENTS = Object.freeze(['storage-state-changed', 'storage-migration-progress']);
 
 /** The words a start that could not open the data fails with. */
 export function storageFailure(why) {
@@ -211,87 +207,34 @@ async function giveSecret(call, secret, log) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * Follows the executor's storage on one admin socket: the status as last heard, from
- * `storage-state-changed` and `storage-migration-progress` where `onEvent` is given (`executorRpc`'s,
- * after `events.watch` for both, which the executor answers while sealed), and from reading
- * `runtime.storageStatus` every `interval` ms in addition, for an executor that sends no events. An
- * event is newer than a read that was on its way when it came, so that read is dropped.
+ * Follows the executor's storage by reading `runtime.storageStatus`: the status as last read, and a
+ * next one read every `interval` ms. Nothing else is listened to: the status says all the executor
+ * does, and a poll never has to be told which of two answers is newer.
  *
- * `read()` answers the status now; `next()` the next one heard, by an event or the next read;
- * `subscribe(listener)` hears each one and answers its unsubscribe; `close()` stops listening.
+ * `read()` answers the status now; `next()` the status after waiting `interval`; `current()` the last
+ * one read; `subscribe(listener)` hears each one read and answers its unsubscribe; `close()` stops
+ * telling subscribers.
  */
-export function followStorage({ call, onEvent = null, interval, wait = sleep }) {
+export function followStorage({ call, interval = 100, wait = sleep }) {
   let status = null;
-  let heard = 0;
-  let waiters = [];
-  let watching = false;
   const listeners = new Set();
-  const set = (next) => {
-    heard += 1;
-    status = next;
-    const woken = waiters;
-    waiters = [];
-    for (const wake of woken) wake(next);
-    for (const listener of listeners) listener(next);
-  };
-  const off = onEvent
-    ? onEvent((event) => {
-        const { type, ...payload } = event ?? {};
-        if (type === 'storage-state-changed') set(payload);
-        // Progress after the store opened is late: the open status already says it is done.
-        else if (type === 'storage-migration-progress' && status?.state !== 'open')
-          set({ ...(status ?? {}), state: 'migrating', migration: payload });
-      })
-    : null;
-  if (onEvent) {
-    const wanted = Object.fromEntries(STORAGE_EVENTS.map((name) => [name, null]));
-    // An executor that refuses the watch is read on the interval alone.
-    Promise.resolve(call('events.watch', wanted)).then(
-      () => (watching = true),
-      () => {},
-    );
-  }
   const read = async () => {
-    const at = heard;
-    const answer = await call('runtime.storageStatus');
-    if (heard === at) set(answer);
+    status = await call('runtime.storageStatus');
+    for (const listener of listeners) listener(status);
     return status;
   };
   return {
     current: () => status,
-    heard: () => heard,
     read,
-    next(after) {
-      return new Promise((resolve, reject) => {
-        // Something was heard since the caller's `heard()`: that is its next status.
-        if (after !== undefined && heard > after) {
-          resolve(status);
-          return;
-        }
-        let done = false;
-        const finish = (next) => {
-          if (done) return;
-          done = true;
-          resolve(next);
-        };
-        waiters.push(finish);
-        const every = interval ?? (watching ? 1_000 : 100);
-        wait(every).then(() => {
-          if (done) return;
-          read().then(finish, (err) => {
-            if (done) return;
-            done = true;
-            reject(err);
-          });
-        });
-      });
+    async next() {
+      await wait(interval);
+      return read();
     },
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
     close() {
-      off?.();
       listeners.clear();
     },
   };
@@ -313,16 +256,13 @@ const progressKey = (status) =>
 
 /**
  * Follows `follow` until `stop(status)`, from a fresh read (or, with `first: 'next'`, from the next
- * status heard). Throws the start's words for a sealed status that says why, and past `timeoutMs` —
+ * status read; with `first: 'current'`, from the one last read). Throws the start's words for a sealed status that says why, and past `timeoutMs` —
  * which a move under the keys is given again each time it finishes a store: it is slow, not stuck.
  */
 async function watchUntil(follow, stop, { timeoutMs = 60_000, now = Date.now, first = 'read' } = {}) {
   let deadline = now() + timeoutMs;
   let moved = null;
   let status = first === 'next' ? await follow.next() : first === 'current' ? follow.current() : await follow.read();
-  // Events can come between two waits; each wait starts from the last one taken, so none is missed.
-  let seen = follow.heard();
-  status = follow.current() ?? status;
   for (;;) {
     if (stop(status)) return status;
     const why = sealedFailure(status);
@@ -333,9 +273,7 @@ async function watchUntil(follow, stop, { timeoutMs = 60_000, now = Date.now, fi
       deadline = now() + timeoutMs;
     }
     if (now() >= deadline) throw failure('timeout');
-    const next = await follow.next(seen);
-    seen = follow.heard();
-    status = follow.current() ?? next;
+    status = await follow.next();
   }
 }
 
@@ -345,15 +283,21 @@ async function watchUntil(follow, stop, { timeoutMs = 60_000, now = Date.now, fi
  * a move under the keys that failed, or past `timeoutMs`.
  */
 export async function waitUntilOpen(call, { follow, timeoutMs = 60_000, interval, wait = sleep, now = Date.now } = {}) {
-  const following = follow ?? followStorage({ call, interval: interval ?? 100, wait });
+  const following = follow ?? followStorage({ call, interval, wait });
   return watchUntil(following, (status) => status?.state === 'open', { timeoutMs, now });
 }
+
+/** Whether `n` is a count of stores: a whole number, none or more. */
+const isCount = (n) => Number.isInteger(n) && n >= 0;
 
 /** The window's screen for a status that is moving the data under its keys: how far it is. */
 export function migrationScreen(status) {
   const m = status?.migration;
-  const count = (n) => (Number.isInteger(n) && n >= 0 ? n : 0);
-  return { screen: 'storage-migrating', storesDone: count(m?.storesDone), storesTotal: count(m?.storesTotal) };
+  return {
+    screen: 'storage-migrating',
+    storesDone: isCount(m?.storesDone) ? m.storesDone : 0,
+    storesTotal: isCount(m?.storesTotal) ? m.storesTotal : 0,
+  };
 }
 
 /**
@@ -387,6 +331,28 @@ async function settledScreen(follow, { onFailed, shown = null, first = 'read', n
 }
 
 /**
+ * What the window is shown while the data moves under its keys, for both steps that show it: the
+ * progress last shown (`shown`), `restarted()` for the screen after the move was started (or started
+ * again) with a secret, and `next()` for the screen once the status is past the progress shown. A
+ * move that failed is answered by `onFailed()`.
+ */
+function migrationDriver({ follow, shown = null, onFailed, now, timeoutMs }) {
+  const showing = (answer) => {
+    if (answer.progress !== undefined) shown = answer.progress;
+    return { screen: answer.screen, outcome: answer.outcome };
+  };
+  return {
+    async restarted() {
+      shown = null;
+      return showing(await settledScreen(follow, { onFailed, now, timeoutMs }));
+    },
+    async next() {
+      return showing(await settledScreen(follow, { onFailed, shown, first: 'next', now, timeoutMs }));
+    },
+  };
+}
+
+/**
  * The window's step while the executor moves a plaintext data folder under its keys, after the secret
  * the keyring keeps opened it: `first` is the progress, and the window asks for the next one with
  * `{kind: 'wait-storage'}` until the data is open (`storage-open`, done). A move that failed shows
@@ -394,23 +360,19 @@ async function settledScreen(follow, { onFailed, shown = null, first = 'read', n
  * (`retry()`, a new `storage.unlock`), which runs the steps not done.
  */
 export function migrationStep({ follow, retry, status, now, timeoutMs }) {
-  const failedMove = () => ({ screen: { screen: 'storage-migration-failed' }, outcome: null });
-  let shown = progressKey(status);
-  const showing = (answer) => {
-    if (answer.progress !== undefined) shown = answer.progress;
-    return { screen: answer.screen, outcome: answer.outcome };
-  };
+  const driver = migrationDriver({
+    follow,
+    shown: progressKey(status),
+    onFailed: () => ({ screen: { screen: 'storage-migration-failed' }, outcome: null }),
+    now,
+    timeoutMs,
+  });
   return {
     first: { screen: migrationScreen(status), outcome: null },
     async submit(input) {
-      if (input?.kind === 'try-again') {
-        const again = await retry();
-        if (again) return again;
-        shown = null;
-        return showing(await settledScreen(follow, { onFailed: failedMove, now, timeoutMs }));
-      }
+      if (input?.kind === 'try-again') return (await retry()) ?? driver.restarted();
       if (input?.kind !== 'wait-storage') return { screen: migrationScreen(follow.current()), outcome: null };
-      return showing(await settledScreen(follow, { onFailed: failedMove, shown, first: 'next', now, timeoutMs }));
+      return driver.next();
     },
   };
 }
@@ -431,24 +393,23 @@ export function passphraseStep({ call, keystore, keyringId, first, follow, log =
   // A move that failed leaves the keyring made: the passphrase is asked as at every later start.
   let isNew = first;
   let name = first ? 'set-storage-passphrase' : 'unlock-storage';
-  let shown = null;
   const again = (error) => ({ screen: { screen: name, error }, outcome: null });
   const failed = (message) => ({ screen: { screen: 'failed', message }, outcome: 'failed' });
-  const moveFailed = () => {
-    log('[main] Moving the data under its keys failed: the storage passphrase starts it again');
-    isNew = false;
-    name = 'unlock-storage';
-    return again(MIGRATION_FAILED_PASSPHRASE);
-  };
-  const showing = (answer) => {
-    if (answer.progress !== undefined) shown = answer.progress;
-    return { screen: answer.screen, outcome: answer.outcome };
-  };
+  const driver = migrationDriver({
+    follow: following,
+    onFailed: () => {
+      log('[main] Moving the data under its keys failed: the storage passphrase starts it again');
+      isNew = false;
+      name = 'unlock-storage';
+      return again(MIGRATION_FAILED_PASSPHRASE);
+    },
+    now,
+    timeoutMs,
+  });
   return {
     first: again(null),
     async submit(input) {
-      if (input?.kind === 'wait-storage')
-        return showing(await settledScreen(following, { onFailed: moveFailed, shown, first: 'next', now, timeoutMs }));
+      if (input?.kind === 'wait-storage') return driver.next();
       if (input?.kind !== 'passphrase' || typeof input.passphrase !== 'string' || !input.passphrase)
         return again('Type the passphrase.');
       const derived = await keystore.derive({
@@ -469,16 +430,15 @@ export function passphraseStep({ call, keystore, keyringId, first, follow, log =
         return failed(err.message);
       }
       if (given === 'wrong') return again(WRONG_STORAGE_PASSPHRASE);
-      shown = null;
-      return showing(await settledScreen(following, { onFailed: moveFailed, now, timeoutMs }));
+      return driver.restarted();
     },
   };
 }
 
 /**
  * Opens the executor's storage, or throws in words for the window (`storageFailure`). `call` is an
- * admin call to the executor (`executorRpc`), and `onEvent` its event listener, by which the storage
- * is followed ({@link followStorage}; without it the status is read every 100 ms); `keystore` is
+ * admin call to the executor (`executorRpc`), by which the storage is followed ({@link followStorage}:
+ * the status is read every 100 ms); `keystore` is
  * {@link storageKeystore}, or null where there is no custody helper (an executor that is already open
  * needs none); `firstStart` says the folder has no keyring file yet ({@link keyringFile});
  * `askPassphrase(step)` opens the identity window on {@link passphraseStep}'s `step` and resolves
@@ -490,7 +450,6 @@ export function passphraseStep({ call, keystore, keyringId, first, follow, log =
  */
 export async function unlockStorage({
   call,
-  onEvent = null,
   keystore,
   firstStart,
   askPassphrase,
@@ -500,7 +459,7 @@ export async function unlockStorage({
   now,
   timeoutMs,
 }) {
-  const follow = followStorage({ call, onEvent, wait });
+  const follow = followStorage({ call, wait });
   try {
     const status = await follow.read();
     if (status?.state === 'open') return { status, how: 'already' };
@@ -591,7 +550,7 @@ const STATES = new Set(['sealed', 'unlocking', 'migrating', 'open']);
 const AT_REST = new Set(['plain', 'migrating', 'encrypted']);
 
 /**
- * What the window is told of the executor's `runtime.storageStatus` (or `storage-state-changed`): its
+ * What the window is told of the executor's `runtime.storageStatus`: its
  * state, whether it is encrypted at rest, each store's state, and while the data moves under its keys,
  * how many of its stores are done. Nothing of the keyring, where the secret came from, the last error,
  * or which store is moving. A value the executor did not answer in its own words reads as no status
@@ -607,9 +566,8 @@ export function storageShown(status) {
   const shown = { state: status.state, encryptedAtRest: status.encryptedAtRest === true, stores };
   if (status.state !== 'migrating') return shown;
   const m = status.migration;
-  const counted = (n) => Number.isInteger(n) && n >= 0;
   const migration =
-    m && counted(m.storesDone) && counted(m.storesTotal)
+    m && isCount(m.storesDone) && isCount(m.storesTotal)
       ? { storesDone: m.storesDone, storesTotal: m.storesTotal }
       : null;
   return { ...shown, migration };
