@@ -4227,6 +4227,14 @@ Project management over a mounted Acorn project — outcomes, the tree, prioriti
   - acornScopeLabel(scope) — An outcome's scope — 'Big', 'Small', 'Uncertain' — as a label.  e.g. acornScopeLabel({ scope: outcome.scopeType })
   - acornTimeFrameLabel(timeFrame) — An outcome's time frame as a date range, or '' when unset.  e.g. acornTimeFrameLabel({ timeFrame: outcome.timeFrame })
   - acornOutcomeSummary(outcome) — One line on an outcome — status, task progress and scope, joined where present.  e.g. acornOutcomeSummary({ outcome: outcome })
+  - acornTasksAdded(taskList, task) — The task list with one more, not yet done, task at its end — as the JSON text `taskList` holds.  e.g. acornTasksAdded({ taskList: outcome.taskList, task: local.newTask })
+  - acornTasksToggled(taskList, index) — The task list with the task at `index` marked done, or not done again — as JSON text.  e.g. acornTasksToggled({ taskList: outcome.taskList, index: index })
+  - acornTasksRemoved(taskList, index) — The task list without the task at `index` — as JSON text.  e.g. acornTasksRemoved({ taskList: outcome.taskList, index: index })
+  - acornChildren(outcome, outcomes, connections) — An outcome's child outcomes, in sibling order — joined through the AcornConnection records.  e.g. acornChildren({ outcome: outcome.id, outcomes: local.outcomes, connections: local.connections })
+  - acornRollup(outcome, outcomes, connections) — Acorn's computed scope and status for an outcome from its descendants — { scope, status, uncertains, smallsAchieved, smallsTotal, tasksAchieved, tasksTotal, children }.  e.g. acornRollup({ outcome: outcome, outcomes: local.outcomes, connections: local.connections }).status
+  - acornRollupLabel(rollup) — A roll-up as a person reads it — 'Partially achieved · 1/2 smalls · 1 uncertain'.  e.g. acornRollupLabel({ rollup: acornRollup({ outcome: outcome, outcomes: local.outcomes, connections: local.connections }) })
+  - acornAuthor(did, profiles) — Who an agent DID is in the project — the AcornProfile's name, or the DID's short form when no profile names it.  e.g. acornAuthor({ did: comment.creator, profiles: local.profiles })
+  - acornWhen(timestamp) — An Acorn timestamp — unix seconds, or milliseconds — as 'YYYY-MM-DD HH:mm' (UTC), or '' when unset.  e.g. acornWhen({ timestamp: comment.unixTimestamp })
 
 ### Polls (`polls`)
 Ask the space a question and watch the answer arrive.
