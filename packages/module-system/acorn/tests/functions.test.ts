@@ -72,6 +72,20 @@ describe('children and the roll-up', () => {
     expect(call('acornChildren', { outcome: 's1', outcomes, connections })).toEqual([]);
   });
 
+  it("a new child's siblingOrder is one below its lowest sibling's, as stock appends on the right; 0 with none", () => {
+    const next = (connections: unknown) => call('acornNextSiblingOrder', { parent: 'root', connections });
+    // No siblings: 0, as stock's expanded view writes.
+    expect(next([])).toBe(0);
+    expect(next([edge('other', 's1', 5)])).toBe(0);
+    // Dense: below the lowest, never the count.
+    expect(next([edge('root', 's1', 0), edge('root', 's2', 1)])).toBe(-1);
+    // Sparse: the count (2) would land between them; one below the lowest does not.
+    expect(next([edge('root', 's1', 20), edge('root', 's2', 10), edge('other', 'u1', -50)])).toBe(9);
+    // Negative orders, and parents read as included records.
+    expect(next([edge('root', 's1', 5), { parent: { id: 'root' }, child: { id: 's2' }, siblingOrder: -3 }])).toBe(-4);
+    expect(call('acornNextSiblingOrder', {})).toBe(0);
+  });
+
   it('an Uncertain outcome over Smalls only is Big; partly achieved Smalls make it partially achieved', () => {
     const connections = [edge('root', 's1'), edge('root', 's2')];
     const r = call('acornRollup', { outcome: outcomes[0], outcomes, connections }) as Record<string, unknown>;

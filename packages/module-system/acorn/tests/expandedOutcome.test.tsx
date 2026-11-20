@@ -395,9 +395,9 @@ describe('the expanded outcome — children, tasks, comments', () => {
       expect(child).toBeTruthy();
       expect(creates[1]).toEqual({
         entity: 'AcornConnection',
-        fields: { parent: 'acorn-outcome-1', child: child!.id, siblingOrder: 2 },
+        fields: { parent: 'acorn-outcome-1', child: child!.id, siblingOrder: -1 },
       });
-      // Drawn as the third child, and the roll-up counts it.
+      // Below the lowest sibling (0 and 1), so Acorn draws it on the right; the roll-up counts it.
       await waitFor(() => expect(buttonNamed(dialog(container)!, 'Open child Map lands read-only')).toBeTruthy());
       expect(dialog(container)!.textContent).toContain('Children 3');
       expect(dialog(container)!.textContent).toContain('1/1 smalls · 2 uncertain');
@@ -431,7 +431,7 @@ describe('the expanded outcome — children, tasks, comments', () => {
       await waitFor(() => expect(creates).toHaveLength(3));
       expect(creates[2]).toEqual({
         entity: 'AcornConnection',
-        fields: { parent: 'acorn-outcome-1', child: child!.id, siblingOrder: 2 },
+        fields: { parent: 'acorn-outcome-1', child: child!.id, siblingOrder: -1 },
       });
       await waitFor(() => expect(buttonNamed(dialog(container)!, 'Open child Map lands read-only')).toBeTruthy());
       expect((await all('AcornOutcome')).length).toBe(before + 1);

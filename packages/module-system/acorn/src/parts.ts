@@ -40,7 +40,7 @@ const CHILD_LINK = {
   args: [
     'AcornConnection',
     {
-      $: '{ parent: local.orphanParent, child: local.orphan, siblingOrder: count(acornChildren({ outcome: local.orphanParent, outcomes: local.outcomes, connections: local.connections })) }',
+      $: '{ parent: local.orphanParent, child: local.orphan, siblingOrder: acornNextSiblingOrder({ parent: local.orphanParent, connections: local.connections }) }',
     },
   ],
   onSuccess: CHILD_LINKED,
