@@ -583,7 +583,31 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         for (const [key, value] of Object.entries(changed)) writeField(row, key, value);
         row.updatedAt = new Date().toISOString();
         notify(dataset);
+        await Entity.setNamedRelations(Entity.hydrate(dataset, row), data);
         return Entity.hydrate(dataset, row);
+      }
+
+      private static async setNamedRelations(instance: Entity, data: Record<string, unknown>): Promise<void> {
+        /*
+          Relations named in an update are written, not dropped — `linkNamedRelations`' reason, for
+          the update. AD4M's `update` writes a to-many relation as the whole new list (a mounted
+          Acorn collection, `tags` or `topPriorityOutcomes`, is written no other way), and this one
+          ignored it, so the same `record.update` replaced a list on one backend and did nothing on
+          the other. Through `set<Relation>`, which checks and keeps the foreign keys like every
+          other relation write here. A to-one relation given nothing is unlinked.
+        */
+        for (const [key, value] of Object.entries(data)) {
+          if (!relationNames.has(key) || value === undefined) continue;
+          const suffix = `${key.charAt(0).toUpperCase()}${key.slice(1)}`;
+          const accessors = instance as unknown as Record<string, (arg: unknown) => Promise<void>>;
+          if (relations.find((r) => r.name === key)?.cardinality === 'many') {
+            await accessors[`set${suffix}`].call(instance, Array.isArray(value) ? value : [value]);
+          } else if (value === null || value === '') {
+            await accessors[`remove${suffix}`].call(instance, null);
+          } else {
+            await accessors[`set${suffix}`].call(instance, value);
+          }
+        }
       }
 
       /**
