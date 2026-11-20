@@ -128,7 +128,14 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
                 },
                 {
                   type: 'Row',
-                  props: { gap: '200', ay: 'center', flex: '0 0 auto' },
+                  /*
+                    `0 1 auto` + wrap, not `0 0 auto`: every tag's button is priced in its
+                    `Tag <text> → <content>` label, so an unshrinkable row squeezes the
+                    content column to zero width once the tags outnumber a single line —
+                    the input stays in the DOM, invisible. Wrapping lets the buttons give
+                    that ground back.
+                  */
+                  props: { gap: '200', ay: 'center', flex: '0 1 auto', minWidth: '0', wrap: true },
                   children: [
                     /*
                       The collection's setter-replace surface: each existing tag assigns itself
