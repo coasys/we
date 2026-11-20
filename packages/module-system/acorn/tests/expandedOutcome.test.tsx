@@ -574,6 +574,33 @@ describe('the expanded outcome — children, tasks, comments', () => {
     }
   });
 
+  it('a task typed while the add before it is in flight is kept when that add lands', async () => {
+    const { container, unmount, read, writes, release } = await openList({ hold: true });
+    const field = () => labelled(dialog(container)!, 'we-input', 'New task') as { value?: string } & Element;
+    try {
+      const modal = await open(container, SMALL);
+      await waitFor(() => expect(checkboxNamed(modal, 'boots')).toBeTruthy());
+      type(field(), 'a');
+      fireEvent.click(buttonNamed(modal, 'Add task')!);
+      await waitFor(() => expect(writes).toHaveLength(1));
+      // The next task, typed before the first add has landed.
+      type(field(), 'b');
+      await waitFor(() => expect(field().value).toBe('b'));
+      release();
+      await waitFor(async () =>
+        expect(await tasksOf(read, 'acorn-outcome-2')).toEqual([
+          { task: 'boots', complete: true },
+          { task: 'a', complete: false },
+        ]),
+      );
+      // Settled: the task controls are enabled again.
+      await waitFor(() => expect(checkboxNamed(dialog(container)!, 'a')?.disabled).toBe(false));
+      expect(field().value).toBe('b');
+    } finally {
+      unmount();
+    }
+  });
+
   it('a task edit waits while the one before it is unsettled; removing the last leaves an empty list', async () => {
     const { container, unmount, read, writes, release } = await openList({ hold: true });
     try {

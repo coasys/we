@@ -430,6 +430,7 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
                 saveError: { type: 'string', initial: '' },
                 newChild: { type: 'string', initial: '' },
                 newTask: { type: 'string', initial: '' },
+                addedTask: { type: 'string', initial: '' },
                 newComment: { type: 'string', initial: '' },
                 writeError: { type: 'string', initial: '' },
               },
@@ -745,9 +746,22 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
                               props: {
                                 variant: 'soft',
                                 disabled: { $: '!trim(local.newTask) || local.taskBusy' },
-                                onClick: taskEdit(`acornTasksAdded({ taskList: ${TASKS}, task: local.newTask })`, [
-                                  { $setLocal: 'newTask', value: '' },
-                                ]),
+                                /*
+                                  The field stays open while the add is in flight, so the next task
+                                  can be typed; the draft is cleared on success only if it is still
+                                  the one that was added.
+                                */
+                                onClick: [
+                                  { $setLocal: 'addedTask', value: { $: 'local.newTask' } },
+                                  ...taskEdit(`acornTasksAdded({ taskList: ${TASKS}, task: local.addedTask })`, [
+                                    {
+                                      $if: {
+                                        condition: { $: 'local.newTask == local.addedTask' },
+                                        then: { $setLocal: 'newTask', value: '' },
+                                      },
+                                    },
+                                  ]),
+                                ],
                               },
                               children: ['Add task'],
                             },
