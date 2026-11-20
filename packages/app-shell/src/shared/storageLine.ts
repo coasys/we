@@ -5,8 +5,7 @@
  * Each sentence is true of every status it is given for, and none says more than the status does:
  * where a store is still being moved under its key, or the storage is not open, nothing is said,
  * because any sentence would be out of date before it was read. The one exception is the move of a
- * whole data folder under its keys (`migrating`), which the host follows as it goes: the line says how
- * far it is, and changes with each store. All of them end on the same caveat:
+ * whole data folder under its keys (`migrating`): the line says how far it is. All of them end on the same caveat:
  * whatever is encrypted on the disk, the device reads it while it works, so the device is trusted
  * either way.
  */
@@ -22,8 +21,8 @@ export const DATA_PLAIN_LINE = `Your data on this device is not encrypted on its
 export const ENCRYPTED_LINE = `Your data is encrypted on this device's disk. ${TRUST}`;
 
 /**
- * While data kept before encryption moves under its key: how far the move is, which the host follows
- * as it goes. Without a count, that it is moving.
+ * While data kept before encryption moves under its key: how far the move is. Without a count, that it
+ * is moving.
  */
 export function migratingLine(migration: StorageStatus['migration']): string {
   const done = migration?.storesDone;

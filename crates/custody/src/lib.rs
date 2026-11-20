@@ -32,6 +32,7 @@
 pub mod enc;
 pub mod host;
 pub mod keylog;
+mod keyring_item;
 pub mod pending;
 pub mod platform;
 pub mod seal;

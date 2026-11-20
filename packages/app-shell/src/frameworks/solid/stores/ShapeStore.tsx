@@ -22,6 +22,7 @@
  */
 import { hostSlot } from '@shared/hostSlot';
 import {
+  type DatasetHandle,
   type EntityManifest,
   extractableEntities,
   manifestEntries,
@@ -201,6 +202,15 @@ export interface ShapeStore {
    * may be missing members that are coming.
    */
   extractionCandidatesLoaded: Accessor<boolean>;
+  /**
+   * The same candidacy, answered for a dataset that may not be the one on screen: its shapes and
+   * its foreign classes read through the handle, so a call asking about its own space while
+   * another is up narrows by the rule the live list does. Async — both are a read.
+   *
+   * `installed` names the foreign classes the dataset holds: present whether or not this session
+   * has registered them, which the read deliberately does not.
+   */
+  extractionCandidatesFor(dataset: DatasetHandle): Promise<{ candidates: string[]; installed: string[] }>;
   /** Options for the relationship target picker — `{ label, value }`, grouped and labelled. */
   relationshipTargets: Accessor<RelationshipTargetOption[]>;
   /**
@@ -488,15 +498,34 @@ export function ShapeStoreProvider(props: ParentProps) {
     Then the classes the space already had: every SHACL class WE did not write, apart from WE's own
     plumbing, those carrying an interpretation hint first — see `foreignExtractionCandidates`. Last,
     so WE's own read first.
+
+    One rule for the list on screen and for `extractionCandidatesFor` below: candidacy is which
+    models may be extracted into, not which names the registry happens to resolve — an adopted
+    model whose manifest is not extractable resolves all the same.
   */
-  const foreignCandidates = createMemo(() =>
-    foreignExtractionCandidates(datasetStore.currentDatasetEntities(), {
+  const extractionCandidatesOf = (
+    shapes: readonly { name: string; manifest: EntityManifest | null }[],
+    foreign: readonly { name: string; interpretationHint?: string }[],
+  ): { candidates: string[]; shadowed: string[] } => {
+    const { offered, shadowed } = foreignExtractionCandidates(foreign, {
       taken: [...Object.keys(CORE_MANIFEST.entities), ...getRegisteredEntityNames()],
-      adopted: spaceShapes().map((shape) => shape.name),
-    }),
-  );
+      adopted: shapes.map((shape) => shape.name),
+    });
+    return {
+      candidates: [
+        ...new Set([
+          ...coreExtractionTargets,
+          ...shapes.flatMap((shape) => (shape.manifest ? extractableEntities(shape.manifest) : [])),
+          ...offered,
+        ]),
+      ],
+      shadowed,
+    };
+  };
+
+  const candidatesRead = createMemo(() => extractionCandidatesOf(spaceShapes(), datasetStore.currentDatasetEntities()));
   createEffect(() => {
-    const { shadowed } = foreignCandidates();
+    const { shadowed } = candidatesRead();
     if (shadowed.length)
       console.warn(
         `extraction: not offering ${shadowed.map((n) => `"${n}"`).join(', ')} from this space's own classes — ` +
@@ -504,14 +533,46 @@ export function ShapeStoreProvider(props: ParentProps) {
       );
   });
 
-  const extractionCandidates = createMemo<string[]>(() => {
-    const names = [
-      ...coreExtractionTargets,
-      ...spaceShapes().flatMap((shape) => (shape.manifest ? extractableEntities(shape.manifest) : [])),
-      ...foreignCandidates().offered,
-    ];
-    return [...new Set(names)];
-  });
+  const extractionCandidates = createMemo<string[]>(() => candidatesRead().candidates);
+
+  /*
+    The same rule read through a handle rather than the signals a switch fills — SpaceStore's
+    off-screen collection reads ask about the collection's own dataset, which may not be the one
+    on screen. Its shapes are listed and validated as `loadShapes` validates them — a manifest
+    that could not stand is no candidate — and `foreignEntries` answers the classes it already
+    had. The read is the pure one: `foreignSchemas` *registers* what it finds, which on AD4M
+    replaces the dataset's synthesised-class registry — adopted shapes' compiled classes
+    included — and an ask about a dataset nobody is adopting into must not take its classes
+    apart as the price of asking.
+  */
+  async function extractionCandidatesFor(
+    dataset: DatasetHandle,
+  ): Promise<{ candidates: string[]; installed: string[] }> {
+    // `loadShapes` publishes no adopted shapes for a dataset that is not a WE space, so neither
+    // does this: a stored shape document there is no candidate on screen and none off it. The
+    // foreign read still answers a stored shape's class, though, so its name is kept out of the
+    // foreign candidates instead of being offered as though the space had brought it.
+    const weSpace = (await schemas()?.hasCoreSchema(dataset)) === true;
+    const [stored, allForeign] = await Promise.all([
+      storage().list(dataset),
+      schemas()?.foreignEntries(dataset) ?? Promise.resolve([]),
+    ]);
+    const records = weSpace ? stored : [];
+    const storedNames = new Set(stored.map((record) => record.name));
+    const foreign = weSpace ? allForeign : allForeign.filter((m) => !storedNames.has(m.name));
+    const shapes = records.map((record) => {
+      if (!record.manifest) return { name: record.name, manifest: null };
+      const gate = validateManifest(record.manifest, {
+        externalEntities: [
+          ...Object.keys(CORE_MANIFEST.entities),
+          ...foreign.map((m) => m.name),
+          ...records.map((r) => r.name).filter((n) => n !== record.name),
+        ],
+      });
+      return { name: record.name, manifest: gate.valid ? gate.manifest : null };
+    });
+    return { candidates: extractionCandidatesOf(shapes, foreign).candidates, installed: allForeign.map((m) => m.name) };
+  }
 
   /*
     Whether the candidates are whole. A picker shows the core classes at once; a standing watch
@@ -1409,6 +1470,7 @@ export function ShapeStoreProvider(props: ParentProps) {
     hintEntities,
     extractionCandidates,
     extractionCandidatesLoaded,
+    extractionCandidatesFor,
     provideExtractionEnroller: extractionEnroller.provide,
     relationshipTargets,
     identityOptions,

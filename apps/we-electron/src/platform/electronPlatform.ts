@@ -29,8 +29,6 @@ export const electronPlatform = createDesktopPlatform({
     restart: () => window.electron.restartExecutor(),
     chooseFile: (options) => window.electron.chooseFile(options),
     storageStatus: () => window.electron.storageStatus?.() ?? Promise.resolve(null),
-    // An older main process tells nothing: the settings page then reads it when it opens.
-    onStorageStatus: (listener) => window.electron.onStorageStatus?.(listener) ?? (() => {}),
     // The tray's "Startup settings…". An older main process has no such ask: nothing to hear.
     onOpenSettings: (listener) => window.electron.executor?.onOpenSettings?.(listener) ?? (() => {}),
   },

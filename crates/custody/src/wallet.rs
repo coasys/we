@@ -42,7 +42,11 @@ use rand_core::{OsRng, RngCore};
 use serde::Serialize;
 use zeroize::Zeroizing;
 
+use crate::keyring_item;
 use crate::store::{is_keyring_locked, is_no_keyring, SecretStore};
+
+/// The macOS keychain service the item is kept under; the account is [`item_name`].
+pub const SERVICE: &str = "org.coasys.app.wallet";
 
 /// What every wallet item's name starts with, apart from custody's own (`coasys.identity/`).
 pub const ITEM_PREFIX: &str = "coasys.wallet/";
@@ -99,13 +103,7 @@ fn refused(error: VaultError, kept: bool) -> Answer {
 }
 
 fn read(store: &dyn SecretStore, name: &str) -> Result<Option<Zeroizing<String>>, VaultError> {
-    let Some(bytes) = store.get(name)?.map(Zeroizing::new) else {
-        return Ok(None);
-    };
-    let text = std::str::from_utf8(&bytes)
-        .map_err(|_| VaultError::Tampered)?
-        .to_string();
-    Ok(Some(Zeroizing::new(text)))
+    keyring_item::read(store, name, |text| Some(Zeroizing::new(text.to_string())))
 }
 
 /// 32 bytes from the OS, in base58: nothing a person types, so nothing short.
@@ -131,12 +129,11 @@ pub fn answer(store: &dyn SecretStore, name: &str, mode: Mode) -> Answer {
         (None, Mode::Read) => Answer::None,
         (None, Mode::Make) => {
             let made = new_passphrase();
-            if let Err(e) = store.put(name, made.as_bytes()) {
-                return refused(e, false);
-            }
-            match read(store, name) {
-                Ok(Some(back)) if *back == *made => Answer::Passphrase(made),
-                Ok(_) => Answer::Failed {
+            match keyring_item::keep_and_read_back(store, name, &made, |text| {
+                Some(Zeroizing::new(text.to_string()))
+            }) {
+                Ok(true) => Answer::Passphrase(made),
+                Ok(false) => Answer::Failed {
                     reason: "the keyring did not keep the passphrase".into(),
                     kept: false,
                 },
@@ -212,11 +209,7 @@ pub fn answer_line(answer: &Answer) -> Zeroizing<String> {
             kept: false,
         },
     };
-    let mut bytes = Zeroizing::new(Vec::with_capacity(line_capacity(answer)));
-    serde_json::to_writer(&mut *bytes, &line).expect("a line of strings is written to memory");
-    debug_assert!(bytes.capacity() == line_capacity(answer), "the line grew");
-    // JSON is UTF-8; the buffer moves into the String, uncopied.
-    Zeroizing::new(String::from_utf8(std::mem::take(&mut *bytes)).expect("JSON is UTF-8"))
+    keyring_item::write_line(&line, line_capacity(answer))
 }
 
 /// `read|make --data-folder <dir>`: the mode and the item it names.
@@ -246,32 +239,11 @@ pub fn parse_args(args: impl IntoIterator<Item = String>) -> Result<(Mode, Strin
 /// This computer's keyring for the wallet passphrase, or why there is none ([`no_keyring`] where
 /// there is none at all; another error where it is there and could not be reached).
 pub fn keyring() -> Result<Box<dyn SecretStore>, VaultError> {
-    #[cfg(target_os = "linux")]
-    {
-        // The custody folder every custody process takes the claim lock in; the wallet's own
-        // reads and writes never take it.
-        let home =
-            dirs::home_dir().ok_or_else(|| VaultError::Unavailable("no home folder".into()))?;
-        crate::store::SecretServiceStore::connect(&crate::host::custody_dir(&home))
-            .map(|store| Box::new(store) as Box<dyn SecretStore>)
-    }
-    #[cfg(target_os = "macos")]
-    {
-        Ok(Box::new(login_keychain::LoginKeychain::new(
-            login_keychain::WALLET_SERVICE,
-        )))
-    }
-    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-    {
-        Err(crate::store::no_keyring(
-            "this app keeps no keyring item on this system",
-        ))
-    }
+    keyring_item::keyring(SERVICE)
 }
 
 /// The `wallet-passphrase` command: answers on stdout, one line, and exits 0; 2 on bad arguments.
 pub fn main(args: impl IntoIterator<Item = String>) -> std::process::ExitCode {
-    use std::io::Write;
     let (mode, name) = match parse_args(args) {
         Ok(parsed) => parsed,
         Err(problem) => {
@@ -279,21 +251,12 @@ pub fn main(args: impl IntoIterator<Item = String>) -> std::process::ExitCode {
             return std::process::ExitCode::from(2);
         }
     };
-    let answered = match keyring() {
-        Ok(store) => {
-            let answered = answer(store.as_ref(), &name, mode);
-            // A store whose thread still waits on an unanswered prompt would hold the exit until it
-            // is answered; the process ends here either way.
-            std::mem::forget(store);
-            answered
-        }
-        Err(e) => refused(e, false),
-    };
-    let line = answer_line(&answered);
-    let mut out = std::io::stdout().lock();
-    let _ = out.write_all(line.as_bytes());
-    let _ = out.write_all(b"\n");
-    let _ = out.flush();
+    let answered = keyring_item::on_keyring(
+        SERVICE,
+        |store| answer(store, &name, mode),
+        |e| refused(e, false),
+    );
+    keyring_item::print_line(answer_line(&answered).as_str());
     std::process::ExitCode::SUCCESS
 }
 
@@ -325,7 +288,6 @@ pub(crate) mod login_keychain {
     use crate::store::{keyring_locked, no_keyring, StoreKind};
 
     pub const UNLOCK_WAIT: Duration = Duration::from_secs(90);
-    pub const WALLET_SERVICE: &str = "org.coasys.app.wallet";
     const ERR_SEC_ITEM_NOT_FOUND: i32 = -25300;
     const ERR_SEC_DUPLICATE_ITEM: i32 = -25299;
     const ERR_SEC_USER_CANCELED: i32 = -128;

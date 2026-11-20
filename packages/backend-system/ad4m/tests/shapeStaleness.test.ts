@@ -48,6 +48,7 @@ const MODEL = {
       properties: [
         { path: 'we://title', name: 'title', identity: true, interpretationHint: 'imperative, short' },
         { path: 'we://description', name: 'description' },
+        { path: 'we://extracted_from', name: 'extractedFrom', polymorphic: true },
         { path: 'we://due_date', name: 'dueDate', interpretationHint: 'when it is due' },
       ],
     },
@@ -60,6 +61,7 @@ function current(): StoredShape {
   return {
     paths: new Set(declared.paths),
     pathCounts: new Map(declared.pathCounts),
+    polymorphicPaths: new Set(declared.polymorphicPaths),
     classHint: declared.classHint,
     identityPath: declared.identityPath,
     propHints: new Map(declared.propHints),
@@ -78,7 +80,9 @@ describe('shapeIsStale', () => {
     // Replication lag on a freshly-joined neighbourhood: the SubjectClass marker can arrive before
     // the shape triples. Reading that gap as "missing everything" would rewrite every shape in the
     // space on the strength of data that had simply not arrived.
-    expect(isStale({ paths: new Set(), pathCounts: new Map(), propHints: new Map() })).toBe(false);
+    expect(
+      isStale({ paths: new Set(), pathCounts: new Map(), polymorphicPaths: new Set(), propHints: new Map() }),
+    ).toBe(false);
   });
 
   it('catches a property the model has gained', () => {
@@ -108,6 +112,35 @@ describe('shapeIsStale', () => {
     const shape = current();
     shape.pathCounts.set('we://due_date', 5);
     expect(isStale(shape)).toBe(false);
+  });
+
+  describe('polymorphic relations', () => {
+    // The executor reads a relation's declared polymorphism off the stored shape, so a shape
+    // stored before the SDK wrote `ad4m://polymorphic` fails a nested include of that relation.
+    it('catches a declared-polymorphic relation whose stored flag is missing', () => {
+      const shape = current();
+      shape.polymorphicPaths.delete('we://extracted_from');
+      expect(isStale(shape)).toBe(true);
+    });
+
+    it('leaves a shape alone when the stored flag is present', () => {
+      const shape = current();
+      expect(shape.polymorphicPaths.has('we://extracted_from')).toBe(true);
+      expect(isStale(shape)).toBe(false);
+    });
+
+    it('is not affected by a relation that is not declared polymorphic', () => {
+      const shape = current();
+      expect(shape.polymorphicPaths.has('we://description')).toBe(false);
+      expect(isStale(shape)).toBe(false);
+    });
+
+    it('still catches it on a hint-customized shape', () => {
+      const shape = current();
+      shape.polymorphicPaths.clear();
+      shape.hintsCustomized = true;
+      expect(isStale(shape)).toBe(true);
+    });
   });
 
   it('catches a reworded class hint', () => {
@@ -245,7 +278,7 @@ describe('missing models', () => {
 
   const withPaths = (targetClass: string): [string, StoredShape] => [
     targetClass,
-    { paths: new Set(['we://x']), pathCounts: new Map(), propHints: new Map() },
+    { paths: new Set(['we://x']), pathCounts: new Map(), polymorphicPaths: new Set(), propHints: new Map() },
   ];
 
   it('reports a class the perspective has never had', async () => {

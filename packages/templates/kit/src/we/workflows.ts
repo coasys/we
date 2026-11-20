@@ -573,10 +573,23 @@ const historyList: SchemaNode = {
   },
 };
 
-/** One record going through the open workflow. */
+/** The record chosen — from this list, or from a row elsewhere that opened this workflow at it. */
+const CHOSEN = 'rec.record == routeStore.params.card';
+
+/**
+ * One record going through the open workflow. The one chosen is marked as a selection is everywhere
+ * else: an accent edge on the accent's soft fill. Choosing another record of the same workflow
+ * otherwise changed nothing on this page.
+ */
 const recordRow: SchemaNode = {
   type: 'Column',
-  props: { gap: '200', p: '300', r: 'card', border: '1px solid border', bg: 'surface' },
+  props: {
+    gap: '200',
+    p: '300',
+    r: 'card',
+    border: { $: `(${CHOSEN}) ? '1px solid accent' : '1px solid border'` },
+    bg: { $: `(${CHOSEN}) ? 'accent-soft' : 'surface'` },
+  },
   children: [
     {
       type: 'Row',
@@ -588,7 +601,22 @@ const recordRow: SchemaNode = {
             variant: 'bare',
             onClick: { $invoke: 'routeStore.setParam', args: ['card', { $: 'rec.record' }] },
           },
-          children: [text({ $: "rec.title ? rec.title : 'Untitled'" }, { truncate: true, maxWidth: '360px' })],
+          // What the record is, which workflow it is going through and where it stands in it.
+          children: [
+            {
+              type: 'Column',
+              props: { gap: '0', ax: 'start' },
+              children: [
+                text({ $: 'rec.title' }, { truncate: true, maxWidth: '360px' }),
+                text(
+                  {
+                    $: `(rec.kind ? rec.kind + ' in ' : 'In ') + ${OPEN}.label + (rec.stateLabel ? ' · at ' + rec.stateLabel : '')`,
+                  },
+                  { variant: 'footnote', color: 'text-muted', truncate: true, maxWidth: '360px' },
+                ),
+              ],
+            },
+          ],
         },
         {
           type: '$if',

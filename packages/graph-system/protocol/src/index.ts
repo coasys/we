@@ -43,6 +43,7 @@ export type {
   SeedSource,
   WatchQuery,
 } from './expander';
+export { heldByChild, treeEnds } from './expander';
 export type {
   Bounds,
   EdgeAnchors,
