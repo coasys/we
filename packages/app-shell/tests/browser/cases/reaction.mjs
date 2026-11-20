@@ -75,14 +75,36 @@ export async function check(api) {
  * quieter, and a comparison reading only the colour would call a pure-opacity hover "no response".
  */
 const presence = ({ color, opacity }, bg) => {
+  /*
+    Relative luminance of a computed colour, in whichever form Chrome reports it.
+
+    A colour made with `oklch(from …)` is reported as `oklch(L C h)`, and one that resolved to a
+    plain sRGB value as `rgb(r, g, b)`. Which of the two the page background is depends on whether
+    the role chain stayed an `oklch()` through `min()` — so both are read as what they say, rather
+    than reading the three numbers of an oklch colour as if they were 0..255 channels.
+  */
   const lum = (c) => {
-    const [r, g, b] = c
-      .match(/[\d.]+/g)
-      .slice(0, 3)
-      .map((n) => {
-        const v = Number(n) / 255;
+    const nums = c.match(/-?[\d.]+(?:e-?\d+)?/g).map(Number);
+    let linear;
+    if (c.trim().startsWith('oklch')) {
+      const [L, C, H] = nums;
+      const a = C * Math.cos((H * Math.PI) / 180);
+      const b = C * Math.sin((H * Math.PI) / 180);
+      const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+      const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+      const s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3;
+      linear = [
+        4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+        -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+        -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
+      ].map((v) => Math.min(1, Math.max(0, v)));
+    } else {
+      linear = nums.slice(0, 3).map((n) => {
+        const v = n / 255;
         return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
       });
+    }
+    const [r, g, b] = linear;
     return 0.2126 * r + 0.7152 * g + 0.0722 * b;
   };
   return Math.abs(lum(color) - lum(bg)) * Number(opacity);
