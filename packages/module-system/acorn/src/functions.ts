@@ -826,6 +826,22 @@ export const ACORN_FUNCTIONS: ModuleFunction[] = [
       connectRefusal(refId(option(args, 'parent')), refId(option(args, 'child')), list(option(args, 'connections'))),
   },
   {
+    name: 'acornLinks',
+    params: ['connections', 'add'],
+    doc: "The connections as links — `{ parent, child }` outcome ids, each pair once, sorted — with `add` (one more link) among them. One canonical value however a subscription orders or hydrates the records, so the map's set of lines can be held as a working value (acornWorking) while a line it wrote has not read back.",
+    example: 'acornLinks({ connections: local.connections, add: { parent: event.sourceId, child: event.targetId } })',
+    fn: (...args: never[]) => {
+      const add = option(args, 'add');
+      const pairs = new Map<string, { parent: string; child: string }>();
+      for (const c of [...list(option(args, 'connections')), ...list(add ? [add] : [])]) {
+        const parent = refId(c.parent);
+        const child = refId(c.child);
+        if (parent && child) pairs.set(JSON.stringify([parent, child]), { parent, child });
+      }
+      return [...pairs.keys()].sort().map((key) => pairs.get(key)!);
+    },
+  },
+  {
     name: 'acornWorking',
     params: ['stored', 'working', 'written'],
     doc: 'The whole-field value the next edit starts from. `stored` is the value as subscribed, `working` the last one this view wrote, `written` its history (acornWritten). While that write is unsettled — the stored value is one it replaced on the way — the working value stands, so an edit builds on the one before it. Once the stored value is the one written, or one this view never saw, the history is settled for good and the stored value is the truth again, so a later change elsewhere back to an earlier value is drawn.',

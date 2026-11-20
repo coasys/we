@@ -78,7 +78,19 @@ const rec = (address: string | undefined): Rec => {
   return { recordId: at.id, recordType: at.type };
 };
 
-async function drawMap() {
+/**
+ * How the host's creates behave. `lagConnections`: an AcornConnection create is acknowledged at
+ * once but reaches the store only on `flush()` — the subscription stays without it meanwhile, as a
+ * slow mount's does. `holdCreates`: an AcornOutcome create neither lands nor settles until
+ * `release()`. `failConnections`: that many AcornConnection creates are refused.
+ */
+interface MapHostOptions {
+  lagConnections?: boolean;
+  holdCreates?: boolean;
+  failConnections?: number;
+}
+
+async function drawMap(options: MapHostOptions = {}) {
   const ports = createInMemoryBackendPorts(
     { selfId: () => SELF },
     { datasets: [{ id: acornDatasetId, name: 'Acorn fixture' }] },
@@ -103,8 +115,26 @@ async function drawMap() {
     return cls;
   };
   // `record.*` as `TemplateProvider` runs them: the dataset's class.
+  const creates: Array<{ entity: string; fields: Record<string, unknown> }> = [];
+  const deferred: Array<() => Promise<unknown>> = [];
+  const held: Array<() => void> = [];
+  let refusals = options.failConnections ?? 0;
   const record = {
-    create: (name: string, fields: Record<string, unknown>) => entity(name).create(handle, fields),
+    create: (name: string, fields: Record<string, unknown>) => {
+      creates.push({ entity: name, fields });
+      const land = () => entity(name).create(handle, fields);
+      if (name === 'AcornConnection' && refusals > 0) {
+        refusals--;
+        return Promise.reject(new Error('connection refused'));
+      }
+      if (name === 'AcornConnection' && options.lagConnections) {
+        deferred.push(land);
+        return Promise.resolve({ id: `lagged-${creates.length}`, ...fields });
+      }
+      if (name === 'AcornOutcome' && options.holdCreates)
+        return new Promise((resolve) => held.push(() => resolve(land())));
+      return land();
+    },
     update: (name: string, id: string, fields: Record<string, unknown>) => entity(name).update(handle, id, fields),
     delete: (name: string, id: string) => entity(name).delete(handle, id),
   };
@@ -147,7 +177,15 @@ async function drawMap() {
     />
   ));
   await waitFor(() => expect(cards(view.container)).toHaveLength(3));
-  return { ...view, errors, entity, handle, graph: () => graph };
+  /** The lagging writes — the first `n`, or all — landed in the order they were made. */
+  const flush = async (n = Infinity) => {
+    for (let i = 0; i < n && deferred.length; i++) await deferred.shift()!();
+  };
+  /** The held writes, settled in the order they were made. */
+  const release = () => {
+    while (held.length) held.shift()!();
+  };
+  return { ...view, errors, entity, handle, creates, flush, release, graph: () => graph };
 }
 
 const cards = (root: HTMLElement) =>
@@ -264,8 +302,8 @@ const connect = (graph: GraphProps, parent: string, child: string) =>
   graph.onEdgeCreate?.({ sourceId: parent, targetId: child, sourceType: 'AcornOutcome', targetType: 'AcornOutcome' });
 
 describe('editing the outcome map (S2-9)', () => {
-  async function editMap() {
-    const map = await drawMap();
+  async function editMap(options: MapHostOptions = {}) {
+    const map = await drawMap(options);
     const all = async (name: string) =>
       (await map.entity(name).findAll(map.handle, {})) as Array<Record<string, unknown> & { id: string }>;
     return { ...map, all };
@@ -414,6 +452,89 @@ describe('editing the outcome map (S2-9)', () => {
       graph().onDeleteSelection?.({ kind: 'node', count: 1, ...rec(addressOf(graph(), 'acorn-outcome-2')) });
       await waitFor(() => expect(cards(container)).not.toContain(SMALL));
       expect((await all('AcornOutcome')).map((o) => o.id).sort()).toEqual(['acorn-outcome-1', 'acorn-outcome-3']);
+    } finally {
+      unmount();
+    }
+  });
+
+  /*
+    A line is written at once but reads back later. Until it does, the map's validation still has
+    it: a reverse line would close a loop through it, and the same line again would be a second
+    record of one connection.
+  */
+  it('a line dragged back the other way before the first reads back is refused as a loop', async () => {
+    const { container, unmount, all, creates, flush, graph } = await editMap({ lagConnections: true });
+    try {
+      connect(graph(), 'acorn-outcome-2', 'acorn-outcome-3');
+      await waitFor(() => expect(creates.filter((c) => c.entity === 'AcornConnection')).toHaveLength(1));
+      connect(graph(), 'acorn-outcome-3', 'acorn-outcome-2');
+      await waitFor(() => expect(container.textContent).toContain('loop'));
+      expect(creates.filter((c) => c.entity === 'AcornConnection')).toHaveLength(1);
+      await flush();
+      await waitFor(() => expect(graph().seeds?.edges).toHaveLength(3));
+      const lines = (await all('AcornConnection')).map((c) => [c.parent, c.child]);
+      expect(lines).toContainEqual(['acorn-outcome-2', 'acorn-outcome-3']);
+      expect(lines).not.toContainEqual(['acorn-outcome-3', 'acorn-outcome-2']);
+    } finally {
+      unmount();
+    }
+  });
+
+  it('the same line dragged twice before the first reads back is written once', async () => {
+    const { container, unmount, all, creates, flush, graph } = await editMap({ lagConnections: true });
+    try {
+      connect(graph(), 'acorn-outcome-2', 'acorn-outcome-3');
+      await waitFor(() => expect(creates.filter((c) => c.entity === 'AcornConnection')).toHaveLength(1));
+      connect(graph(), 'acorn-outcome-2', 'acorn-outcome-3');
+      await waitFor(() => expect(container.textContent).toContain('already under'));
+      expect(creates.filter((c) => c.entity === 'AcornConnection')).toHaveLength(1);
+      await flush();
+      await waitFor(() => expect(graph().seeds?.edges).toHaveLength(3));
+      const twoToThree = (await all('AcornConnection')).filter(
+        (c) => c.parent === 'acorn-outcome-2' && c.child === 'acorn-outcome-3',
+      );
+      expect(twoToThree).toHaveLength(1);
+    } finally {
+      unmount();
+    }
+  });
+
+  it('two lines in flight are both held until the last reads back', async () => {
+    const { container, unmount, creates, entity, handle, flush, graph } = await editMap({ lagConnections: true });
+    try {
+      const lines = () => creates.filter((c) => c.entity === 'AcornConnection');
+      const x = (await entity('AcornOutcome').create(handle, { content: 'X', scopeType: 'Uncertain' })) as {
+        id: string;
+      };
+      await waitFor(() => expect(cards(container)).toContain('X'));
+      connect(graph(), 'acorn-outcome-2', 'acorn-outcome-3');
+      connect(graph(), 'acorn-outcome-3', x.id);
+      await waitFor(() => expect(lines()).toHaveLength(2));
+      // The first reads back; the second has not, and X is still under 2 through it.
+      await flush(1);
+      await waitFor(() => expect(graph().seeds?.edges).toHaveLength(3));
+      connect(graph(), x.id, 'acorn-outcome-2');
+      await waitFor(() => expect(container.textContent).toContain('loop'));
+      expect(lines()).toHaveLength(2);
+      await flush();
+      await waitFor(() => expect(graph().seeds?.edges).toHaveLength(4));
+    } finally {
+      unmount();
+    }
+  });
+
+  it('a refused line is not held: the same line can be dragged again', async () => {
+    const { container, unmount, all, creates, graph } = await editMap({ failConnections: 1 });
+    try {
+      connect(graph(), 'acorn-outcome-2', 'acorn-outcome-3');
+      await waitFor(() => expect(container.textContent).toContain('Could not connect'));
+      connect(graph(), 'acorn-outcome-2', 'acorn-outcome-3');
+      await waitFor(async () =>
+        expect(
+          (await all('AcornConnection')).some((c) => c.parent === 'acorn-outcome-2' && c.child === 'acorn-outcome-3'),
+        ).toBe(true),
+      );
+      expect(creates.filter((c) => c.entity === 'AcornConnection')).toHaveLength(2);
     } finally {
       unmount();
     }

@@ -415,6 +415,25 @@ describe('connecting two outcomes on the map (S2-9)', () => {
     expect(refusal('a', 'c', looped)).toBe('');
   });
 
+  it('names the connections as links: parent and child only, each once, in one order, one added', () => {
+    const links = (options: Record<string, unknown>) => call('acornLinks', options);
+    const one = links({
+      connections: [edge('r', 'b'), edge('r', 'a', 1), { parent: { id: 'r' }, child: { id: 'a' } }],
+    });
+    expect(one).toEqual([
+      { parent: 'r', child: 'a' },
+      { parent: 'r', child: 'b' },
+    ]);
+    // The same set however the subscription orders or hydrates it: one canonical value to compare.
+    expect(links({ connections: [edge('r', 'a', 7), edge('r', 'b', 3)] })).toEqual(one);
+    expect(links({ connections: [edge('r', 'b')], add: { parent: 'a', child: 'c' } })).toEqual([
+      { parent: 'a', child: 'c' },
+      { parent: 'r', child: 'b' },
+    ]);
+    expect(links({ connections: [{ parent: 'r' }], add: { parent: 'x' } })).toEqual([]);
+    expect(links({})).toEqual([]);
+  });
+
   it('refuses a line without both ends', () => {
     expect(refusal('', 'a', tree)).toMatch(/two outcomes/);
     expect(call('acornConnectRefusal', {})).toMatch(/two outcomes/);

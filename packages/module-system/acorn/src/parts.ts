@@ -187,6 +187,19 @@ const DELETE_OUTCOME = [
 ];
 
 /*
+  The map's lines, as a connect is checked against them. A line is written at once but reads back
+  later, and until it does the subscription lacks it: a line dragged back the other way would close
+  a loop through it, and the same line again would be a second record of one connection. So the set
+  of links is held as a working value, the task list's way (`acornWorking`): each connect adds its
+  line to the links it was checked against, and while the subscription still holds a set this view
+  replaced on the way, the working set stands. Once the last line reads back — or a set this view
+  never wrote arrives — the subscription is the truth again. A refused write drops the working set;
+  a line still in flight then reads back unguarded, as somebody else's would.
+*/
+const STORED_LINKS = 'acornLinks({ connections: local.connections })';
+const LINKS = `acornWorking({ stored: ${STORED_LINKS}, working: local.linkWork, written: local.linkWritten })`;
+
+/*
   The task list is one JSON field, so every edit is a whole-list replace — and an edit made before
   the last one has read back would start from the list that one replaced, undoing it. So each edit
   starts from the working list (`acornWorking`: the last list this view wrote, while the subscription
@@ -1742,6 +1755,9 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
         made: { type: 'string', initial: '' },
         busy: { type: 'boolean', initial: false },
         notice: { type: 'string', initial: '' },
+        // The lines as this view last wrote them, and that write's history (see LINKS).
+        linkWork: { type: 'array', initial: [] },
+        linkWritten: { type: 'array', initial: [] },
       },
       $queries: {
         outcomes: { entity: 'AcornOutcome', order: { timestampCreated: 'asc' } },
@@ -1839,22 +1855,39 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
                   {
                     $if: {
                       condition: {
-                        $: "acornConnectRefusal({ parent: event.sourceId, child: event.targetId, connections: local.connections }) == ''",
+                        $: `acornConnectRefusal({ parent: event.sourceId, child: event.targetId, connections: ${LINKS} }) == ''`,
                       },
-                      then: {
-                        $invoke: 'record.create',
-                        args: [
-                          'AcornConnection',
-                          {
-                            $: '{ parent: event.sourceId, child: event.targetId, siblingOrder: acornNextSiblingOrder({ parent: event.sourceId, connections: local.connections }) }',
+                      then: [
+                        {
+                          $setLocal: 'linkWork',
+                          value: {
+                            $: `acornLinks({ connections: ${LINKS}, add: { parent: event.sourceId, child: event.targetId } })`,
                           },
-                        ],
-                        onError: [{ $setLocal: 'notice', value: { $: "'Could not connect: ' + result.message" } }],
-                      },
+                        },
+                        {
+                          $setLocal: 'linkWritten',
+                          value: {
+                            $: `acornWritten({ stored: ${STORED_LINKS}, working: local.linkWork, written: local.linkWritten })`,
+                          },
+                        },
+                        {
+                          $invoke: 'record.create',
+                          args: [
+                            'AcornConnection',
+                            {
+                              $: '{ parent: event.sourceId, child: event.targetId, siblingOrder: acornNextSiblingOrder({ parent: event.sourceId, connections: local.connections }) }',
+                            },
+                          ],
+                          onError: [
+                            { $setLocal: 'notice', value: { $: "'Could not connect: ' + result.message" } },
+                            { $setLocal: 'linkWritten', value: [] },
+                          ],
+                        },
+                      ],
                       else: {
                         $setLocal: 'notice',
                         value: {
-                          $: "'Not connected. ' + acornConnectRefusal({ parent: event.sourceId, child: event.targetId, connections: local.connections })",
+                          $: `'Not connected. ' + acornConnectRefusal({ parent: event.sourceId, child: event.targetId, connections: ${LINKS} })`,
                         },
                       },
                     },
