@@ -439,3 +439,221 @@ describe('connecting two outcomes on the map (S2-9)', () => {
     expect(call('acornConnectRefusal', {})).toMatch(/two outcomes/);
   });
 });
+
+/*
+  S2-9b: a card dragged to another place in the map's tree (GraphView's `arrange-nodes`), and a
+  selected card moved one place along its row with Shift+←/→ (stock's `alterSiblingOrder`). Each
+  answers with a plan of at most two writes — a handler cannot loop — that `mapView` carries out.
+*/
+describe('acornArrange', () => {
+  const o = (id: string, content = id) => ({ id, content, scopeType: 'Uncertain' });
+  // r over a (2), b (1), c (0), drawn a b c; s over d (0); e on its own.
+  const outcomes = ['r', 'a', 'b', 'c', 's', 'd', 'e'].map((id) => o(id));
+  const connections = [edge('r', 'a', 2), edge('r', 'b', 1), edge('r', 'c', 0), edge('s', 'd', 0)];
+  const arrange = (event: Record<string, unknown>, conns: Record<string, unknown>[] = connections) =>
+    call('acornArrange', { ...event, outcomes, connections: conns }) as Record<string, unknown>;
+
+  it('moves a card under another parent by updating the line it hangs from: parent and siblingOrder', () => {
+    // Dropped on the right of d: one below s's lowest, stock's lowerThanLowestSiblingOrder.
+    const plan = arrange({ outcome: 'b', into: 'sibling', target: 'd', before: false, order: ['d', 'b'] });
+    expect(plan).toMatchObject({ refusal: '', move: 'r>b', create: false, parent: 's', child: 'b', siblingOrder: -1 });
+    expect(plan.updates).toEqual([]);
+    expect(plan.pending).toEqual([
+      { id: 'r>b', was: { parent: 'r', siblingOrder: 1 }, now: { parent: 's', siblingOrder: -1 } },
+    ]);
+  });
+
+  it('keeps the place it was dropped in when one write can: left of every sibling, or between two with room', () => {
+    expect(arrange({ outcome: 'b', into: 'sibling', target: 'd', before: true, order: ['b', 'd'] })).toMatchObject({
+      move: 'r>b',
+      parent: 's',
+      siblingOrder: 1,
+      notice: '',
+    });
+    const gapped = [edge('r', 'a', 4), edge('r', 'c', 0), edge('s', 'd', 0)];
+    expect(
+      arrange({ outcome: 'd', into: 'sibling', target: 'c', before: true, order: ['a', 'd', 'c'] }, gapped),
+    ).toMatchObject({ move: 's>d', parent: 'r', siblingOrder: 2, notice: '' });
+  });
+
+  it('puts it on the right, and says so, where its place would need its new siblings renumbered', () => {
+    const plan = arrange({ outcome: 'd', into: 'sibling', target: 'b', before: true, order: ['a', 'd', 'b', 'c'] });
+    expect(plan).toMatchObject({ move: 's>d', parent: 'r', siblingOrder: -1 });
+    expect(plan.notice).toMatch(/right/);
+  });
+
+  it('a card dropped under one with no children becomes its first, at 0', () => {
+    expect(arrange({ outcome: 'c', into: 'child', target: 'e', order: ['c'] })).toMatchObject({
+      move: 'r>c',
+      parent: 'e',
+      siblingOrder: 0,
+    });
+  });
+
+  it('a root dragged under a card gets a new line rather than a moved one', () => {
+    const plan = arrange({ outcome: 'e', into: 'sibling', target: 'c', before: false, order: ['a', 'b', 'c', 'e'] });
+    expect(plan).toMatchObject({ refusal: '', move: '', create: true, parent: 'r', child: 'e', siblingOrder: -1 });
+    expect(plan.pending).toEqual([]);
+  });
+
+  it('refuses what a connect refuses — a loop, or a parent it is already under — and writes nothing', () => {
+    // d also under b: dragging b under d closes a loop through the second parent.
+    const twoParents = [...connections, edge('b', 'd', 0)];
+    const loop = arrange({ outcome: 'b', into: 'child', target: 'd', order: ['b'] }, twoParents);
+    expect(loop.refusal).toMatch(/loop/);
+    expect(loop).toMatchObject({ move: '', create: false, updates: [] });
+    // d drawn under b or s — under r through b already, so r is a parent it is already under.
+    const under = arrange({ outcome: 'd', into: 'sibling', target: 'c', before: false, order: ['a', 'b', 'c', 'd'] }, [
+      ...twoParents,
+    ]);
+    expect(under.refusal).toMatch(/already under/);
+  });
+
+  it('a move off a line the drop replaces is not refused for going through that line', () => {
+    // a1 under a under r: moving a1 from a to r is not "already under r" — that path is the one moved.
+    const deep = [...connections, edge('a', 'a1', 0)];
+    const plan = call('acornArrange', {
+      outcome: 'a1',
+      into: 'sibling',
+      target: 'c',
+      before: false,
+      order: ['a', 'b', 'c', 'a1'],
+      outcomes: [...outcomes, o('a1')],
+      connections: deep,
+    }) as Record<string, unknown>;
+    expect(plan).toMatchObject({ refusal: '', move: 'a>a1', parent: 'r', siblingOrder: -1 });
+  });
+
+  it('reorders along a row with one write where there is room: to either end', () => {
+    expect(arrange({ outcome: 'c', into: 'sibling', target: 'a', before: true, order: ['c', 'a', 'b'] })).toMatchObject(
+      { refusal: '', move: '', create: false, updates: [{ id: 'r>c', siblingOrder: 3 }] },
+    );
+    expect(
+      arrange({ outcome: 'a', into: 'sibling', target: 'c', before: false, order: ['b', 'c', 'a'] }),
+    ).toMatchObject({ updates: [{ id: 'r>a', siblingOrder: -1 }] });
+  });
+
+  it("reorders one place over with stock's swap where there is no room: two writes", () => {
+    const plan = arrange({ outcome: 'b', into: 'sibling', target: 'a', before: true, order: ['b', 'a', 'c'] });
+    // b to the far left has room (above a) — one write; c over b has none, so the two swap.
+    expect(plan.updates).toEqual([{ id: 'r>b', siblingOrder: 3 }]);
+    const swap = arrange({ outcome: 'c', into: 'sibling', target: 'b', before: true, order: ['a', 'c', 'b'] });
+    expect(swap.updates).toEqual([
+      { id: 'r>c', siblingOrder: 1 },
+      { id: 'r>b', siblingOrder: 0 },
+    ]);
+    expect(swap.pending).toEqual([
+      { id: 'r>c', was: { parent: 'r', siblingOrder: 0 }, now: { parent: 'r', siblingOrder: 1 } },
+      { id: 'r>b', was: { parent: 'r', siblingOrder: 1 }, now: { parent: 'r', siblingOrder: 0 } },
+    ]);
+  });
+
+  it('refuses a reorder that would need the row renumbered, and points at the keys', () => {
+    const four = [...connections.slice(0, 3), edge('r', 'd', -1)];
+    const plan = arrange(
+      { outcome: 'd', into: 'sibling', target: 'b', before: true, order: ['a', 'd', 'b', 'c'] },
+      four,
+    );
+    expect(plan.refusal).toMatch(/Shift/);
+    expect(plan.updates).toEqual([]);
+  });
+
+  it('a drop back where it was writes nothing', () => {
+    const plan = arrange({ outcome: 'b', into: 'sibling', target: 'c', before: true, order: ['a', 'b', 'c'] });
+    expect(plan).toMatchObject({ refusal: '', notice: '', move: '', create: false, updates: [] });
+  });
+});
+
+describe('acornSiblingMove (Shift+←/→)', () => {
+  const o = (id: string) => ({ id, content: id, scopeType: 'Uncertain' });
+  const outcomes = ['r', 'a', 'b', 'c', 'e'].map(o);
+  const connections = [edge('r', 'a', 2), edge('r', 'b', 1), edge('r', 'c', 0)];
+  const card = (id: string) => `we-graph://entity//AcornOutcome/${id}`;
+  const move = (selected: string[], direction: string, conns = connections) =>
+    call('acornSiblingMove', { selected, direction, outcomes, connections: conns }) as Record<string, unknown>;
+
+  it('swaps the selected card with its neighbour: two update_connection writes, as stock does', () => {
+    expect(move([card('b')], 'left').updates).toEqual([
+      { id: 'r>b', siblingOrder: 2 },
+      { id: 'r>a', siblingOrder: 1 },
+    ]);
+    expect(move([card('b')], 'right').updates).toEqual([
+      { id: 'r>b', siblingOrder: 0 },
+      { id: 'r>c', siblingOrder: 1 },
+    ]);
+  });
+
+  it('equal orders move by one, left up and right down', () => {
+    const tied = [edge('r', 'a', 0), edge('r', 'b', 0)];
+    expect(move([card('b')], 'left', tied).updates).toEqual([
+      { id: 'r>b', siblingOrder: 1 },
+      { id: 'r>a', siblingOrder: 0 },
+    ]);
+    expect(move([card('a')], 'right', tied).updates).toEqual([
+      { id: 'r>a', siblingOrder: -1 },
+      { id: 'r>b', siblingOrder: 0 },
+    ]);
+  });
+
+  it('does nothing at the end of a row, with nothing selected, or with several', () => {
+    expect(move([card('a')], 'left').updates).toEqual([]);
+    expect(move([card('c')], 'right').updates).toEqual([]);
+    expect(move([], 'left').updates).toEqual([]);
+    expect(move([card('a'), card('b')], 'left').updates).toEqual([]);
+  });
+
+  it('says a root has no sibling order', () => {
+    const plan = move([card('e')], 'left');
+    expect(plan.updates).toEqual([]);
+    expect(plan.refusal).toMatch(/root/);
+  });
+
+  it('takes a plain id as well as a card address', () => {
+    expect(move(['b'], 'left').updates).toHaveLength(2);
+  });
+});
+
+describe('acornPending', () => {
+  const stored = [edge('r', 'a', 2), edge('r', 'b', 1)];
+  const pending = [
+    { id: 'r>a', was: { parent: 'r', siblingOrder: 2 }, now: { parent: 'r', siblingOrder: 1 } },
+    { id: 'r>b', was: { parent: 'r', siblingOrder: 1 }, now: { parent: 's', siblingOrder: 2 } },
+  ];
+  const view = (connections: unknown[], p: unknown[]) =>
+    (call('acornPending', { connections, pending: p }) as Array<Record<string, unknown>>).map((c) => [
+      c.id,
+      c.parent,
+      c.siblingOrder,
+    ]);
+
+  it('draws a write not yet read back over the value it replaced', () => {
+    expect(view(stored, pending)).toEqual([
+      ['r>a', 'r', 1],
+      ['r>b', 's', 2],
+    ]);
+  });
+
+  it('lets go of a write once it reads back, or somebody else’s value arrives — and does not take it up again', () => {
+    const p = pending.map((e) => ({ ...e }));
+    // a read back; b was changed elsewhere to 5.
+    expect(view([edge('r', 'a', 1), edge('r', 'b', 5)], p)).toEqual([
+      ['r>a', 'r', 1],
+      ['r>b', 'r', 5],
+    ]);
+    // b back at the value the write replaced: the write is settled, the stored value is drawn.
+    expect(view([edge('r', 'a', 2), edge('r', 'b', 1)], p)).toEqual([
+      ['r>a', 'r', 2],
+      ['r>b', 'r', 1],
+    ]);
+  });
+
+  it('acornPendingAdd keeps the writes still unsettled, replaced by a newer one for the same line', () => {
+    const p = pending.map((e) => ({ ...e }));
+    const add = [{ id: 'r>a', was: { parent: 'r', siblingOrder: 1 }, now: { parent: 'r', siblingOrder: 0 } }];
+    expect(call('acornPendingAdd', { connections: stored, pending: p, add })).toEqual([p[1], add[0]]);
+    // Settled ones are dropped.
+    expect(
+      call('acornPendingAdd', { connections: [edge('r', 'a', 1), edge('r', 'b', 9)], pending: p, add: [] }),
+    ).toEqual([]);
+  });
+});

@@ -65,6 +65,19 @@ interface GraphProps {
   onNodeAction?: (payload: { action: string; id: string; x: number; y: number } & Rec) => void;
   onEdgeCreate?: (payload: { sourceId: string; targetId: string; sourceType: string; targetType: string }) => void;
   onDeleteSelection?: (payload: { kind?: 'node' | 'edge'; count: number; records?: Rec[] } & Partial<Rec>) => void;
+  onNodeArrange?: (
+    payload: {
+      id: string;
+      into: 'child' | 'sibling' | 'loose';
+      targetId?: string;
+      targetType?: string;
+      before?: boolean;
+      order?: string[];
+      x: number;
+      y: number;
+    } & Rec,
+  ) => void;
+  onSelectionChange?: (ids: string[]) => void;
 }
 interface Rec {
   recordId: string;
@@ -88,6 +101,8 @@ interface MapHostOptions {
   lagConnections?: boolean;
   holdCreates?: boolean;
   failConnections?: number;
+  /** An AcornConnection update is acknowledged at once but reaches the store only on `flush()`. */
+  lagUpdates?: boolean;
 }
 
 async function drawMap(options: MapHostOptions = {}) {
@@ -116,6 +131,7 @@ async function drawMap(options: MapHostOptions = {}) {
   };
   // `record.*` as `TemplateProvider` runs them: the dataset's class.
   const creates: Array<{ entity: string; fields: Record<string, unknown> }> = [];
+  const updates: Array<{ entity: string; id: string; fields: Record<string, unknown> }> = [];
   const deferred: Array<() => Promise<unknown>> = [];
   const held: Array<() => void> = [];
   let refusals = options.failConnections ?? 0;
@@ -135,7 +151,15 @@ async function drawMap(options: MapHostOptions = {}) {
         return new Promise((resolve) => held.push(() => resolve(land())));
       return land();
     },
-    update: (name: string, id: string, fields: Record<string, unknown>) => entity(name).update(handle, id, fields),
+    update: (name: string, id: string, fields: Record<string, unknown>) => {
+      updates.push({ entity: name, id, fields });
+      const land = () => entity(name).update(handle, id, fields);
+      if (name === 'AcornConnection' && options.lagUpdates) {
+        deferred.push(land);
+        return Promise.resolve({ id, ...fields });
+      }
+      return land();
+    },
     delete: (name: string, id: string) => entity(name).delete(handle, id),
   };
   const stores = {
@@ -168,11 +192,17 @@ async function drawMap(options: MapHostOptions = {}) {
     );
   };
   const Passthrough = (props: { children?: JSX.Element }) => props.children;
+  // A Column is a box that hears the keys pressed inside it, as the real one does (its rest props land on its div).
+  const Box = (props: { children?: JSX.Element; onKeyDown?: (event: KeyboardEvent) => void }) => (
+    <div data-column onKeyDown={(event) => props.onKeyDown?.(event)}>
+      {props.children}
+    </div>
+  );
   const view = render(() => (
     <RenderSchema
       node={expandParts(ACORN_PARTS.mapView.node) as SchemaNode}
       stores={stores as never}
-      registry={{ Column: Passthrough, Row: Passthrough, GraphView: GraphView as never }}
+      registry={{ Column: Box as never, Row: Passthrough, GraphView: GraphView as never }}
       context={{}}
     />
   ));
@@ -185,7 +215,7 @@ async function drawMap(options: MapHostOptions = {}) {
   const release = () => {
     while (held.length) held.shift()!();
   };
-  return { ...view, errors, entity, handle, creates, flush, release, graph: () => graph };
+  return { ...view, errors, entity, handle, creates, updates, flush, release, graph: () => graph };
 }
 
 const cards = (root: HTMLElement) =>
@@ -210,11 +240,11 @@ describe('the outcome map', () => {
       const rank = (id: string) => seeds?.nodes?.find((n) => rec(n.id).recordId === id)?.data.rank as number;
       expect(rank('acorn-outcome-1')).toBeLessThan(rank('acorn-outcome-3'));
       expect(rank('acorn-outcome-3')).toBeLessThan(rank('acorn-outcome-2'));
-      // Cards drawn by the host's record card, ringed by the computed status. Click selects, as in
-      // Acorn; a double-click opens; pan-zoom last, the background fallback.
+      // Cards drawn by the host's record card, ringed by the computed status. A drag moves a card in the
+      // tree (S2-9b); a click selects, as in Acorn; a double-click opens; pan-zoom last, the background fallback.
       expect(nodeStyle?.[0].style).toMatchObject({ shape: 'card', content: 'record' });
       expect(nodeStyle?.some((r) => r.when?.['data.status'] === 'Achieved')).toBe(true);
-      expect(behaviours).toEqual(['node-double-click', 'select', 'pan-zoom']);
+      expect(behaviours).toEqual(['node-double-click', 'arrange-nodes', 'select', 'pan-zoom']);
       expect(errors).toEqual([]);
     } finally {
       unmount();
@@ -570,6 +600,187 @@ describe('editing the outcome map (S2-9)', () => {
     try {
       act(graph(), 'open', 'acorn-outcome-3');
       await waitFor(() => expect(dialog(container)?.textContent).toContain(UNCERTAIN));
+    } finally {
+      unmount();
+    }
+  });
+});
+
+/** A card dragged to another place in the tree, as the real graph's `arrange-nodes` reports it. */
+const arrange = (
+  graph: GraphProps,
+  id: string,
+  drop: { into: 'child' | 'sibling'; target: string; before?: boolean; order: string[] },
+) =>
+  graph.onNodeArrange?.({
+    id: addressOf(graph, id)!,
+    recordId: id,
+    recordType: 'AcornOutcome',
+    into: drop.into,
+    targetId: drop.target,
+    targetType: 'AcornOutcome',
+    ...(drop.before === undefined ? {} : { before: drop.before }),
+    order: drop.order,
+    x: 0,
+    y: 0,
+  });
+/** Shift+← or Shift+→ pressed on the map with a card selected. */
+const shiftArrow = (root: HTMLElement, graph: GraphProps, id: string, key: 'ArrowLeft' | 'ArrowRight') => {
+  graph.onSelectionChange?.([addressOf(graph, id)!]);
+  const box = root.querySelector('[data-graph]')!.closest('[data-column]')!;
+  fireEvent.keyDown(box, { key, shiftKey: true });
+};
+/** The children of the fixture's root as the map draws them, left to right. */
+const drawnUnder = (graph: GraphProps, parent: string) => {
+  const nodes = graph.seeds?.nodes ?? [];
+  const kids = (graph.seeds?.edges ?? [])
+    .filter((e) => rec(e.source).recordId === parent)
+    .map((e) => nodes.find((n) => n.id === e.target)!);
+  return kids.sort((a, b) => Number(a.data.rank) - Number(b.data.rank)).map((n) => rec(n.id).recordId);
+};
+
+// The fixture: acorn-outcome-1 over 3 (siblingOrder 1) and 2 (siblingOrder 0), drawn 3 then 2.
+describe('moving cards on the outcome map (S2-9b)', () => {
+  async function moveMap(options: MapHostOptions = {}) {
+    const map = await drawMap(options);
+    const all = async () =>
+      (await map.entity('AcornConnection').findAll(map.handle, {})) as Array<Record<string, unknown> & { id: string }>;
+    const line = async (child: string) => (await all()).find((c) => c.child === child)!;
+    return { ...map, all, line };
+  }
+
+  it('lets a card be dragged: arrange-nodes ahead of select, and the keys heard around the graph', async () => {
+    const { unmount, graph, container } = await moveMap();
+    try {
+      const behaviours = graph().behaviours ?? [];
+      expect(behaviours).toContain('arrange-nodes');
+      expect(behaviours.indexOf('arrange-nodes')).toBeLessThan(behaviours.indexOf('select'));
+      expect(typeof graph().onNodeArrange).toBe('function');
+      expect(typeof graph().onSelectionChange).toBe('function');
+      expect(container.querySelector('[data-graph]')!.closest('[data-column]')).toBeTruthy();
+    } finally {
+      unmount();
+    }
+  });
+
+  it('a card dragged under another parent moves its line there: one update, parent and siblingOrder', async () => {
+    const { unmount, line, graph, updates, creates, errors } = await moveMap();
+    try {
+      const before = await line('acorn-outcome-2');
+      arrange(graph(), 'acorn-outcome-2', { into: 'child', target: 'acorn-outcome-3', order: ['acorn-outcome-2'] });
+      await waitFor(async () => expect((await line('acorn-outcome-2')).parent).toBe('acorn-outcome-3'));
+      const after = await line('acorn-outcome-2');
+      expect(after).toMatchObject({ id: before.id, parent: 'acorn-outcome-3', siblingOrder: 0 });
+      expect(updates).toHaveLength(1);
+      expect(creates).toEqual([]);
+      await waitFor(() => expect(drawnUnder(graph(), 'acorn-outcome-3')).toEqual(['acorn-outcome-2']));
+      expect(errors).toEqual([]);
+    } finally {
+      unmount();
+    }
+  });
+
+  it('a card dragged along its row is reordered: to the far left in one write', async () => {
+    const { unmount, line, graph, updates } = await moveMap();
+    try {
+      arrange(graph(), 'acorn-outcome-2', {
+        into: 'sibling',
+        target: 'acorn-outcome-3',
+        before: true,
+        order: ['acorn-outcome-2', 'acorn-outcome-3'],
+      });
+      await waitFor(async () => expect((await line('acorn-outcome-2')).siblingOrder).toBe(2));
+      expect(updates).toHaveLength(1);
+      await waitFor(() =>
+        expect(drawnUnder(graph(), 'acorn-outcome-1')).toEqual(['acorn-outcome-2', 'acorn-outcome-3']),
+      );
+    } finally {
+      unmount();
+    }
+  });
+
+  it("Shift+← swaps a selected card with its left neighbour, as stock's alterSiblingOrder does", async () => {
+    const { container, unmount, line, graph, updates } = await moveMap();
+    try {
+      shiftArrow(container, graph(), 'acorn-outcome-2', 'ArrowLeft');
+      await waitFor(async () => expect((await line('acorn-outcome-3')).siblingOrder).toBe(0));
+      expect((await line('acorn-outcome-2')).siblingOrder).toBe(1);
+      expect(updates.map((u) => u.fields)).toEqual([{ siblingOrder: 1 }, { siblingOrder: 0 }]);
+      await waitFor(() =>
+        expect(drawnUnder(graph(), 'acorn-outcome-1')).toEqual(['acorn-outcome-2', 'acorn-outcome-3']),
+      );
+      // And back with Shift+→.
+      shiftArrow(container, graph(), 'acorn-outcome-2', 'ArrowRight');
+      await waitFor(() =>
+        expect(drawnUnder(graph(), 'acorn-outcome-1')).toEqual(['acorn-outcome-3', 'acorn-outcome-2']),
+      );
+    } finally {
+      unmount();
+    }
+  });
+
+  it('an arrow without Shift, or Shift+← at the end of the row, writes nothing', async () => {
+    const { container, unmount, graph, updates } = await moveMap();
+    try {
+      graph().onSelectionChange?.([addressOf(graph(), 'acorn-outcome-2')!]);
+      fireEvent.keyDown(container.querySelector('[data-graph]')!.closest('[data-column]')!, { key: 'ArrowLeft' });
+      shiftArrow(container, graph(), 'acorn-outcome-3', 'ArrowLeft');
+      await new Promise((r) => setTimeout(r, 20));
+      expect(updates).toEqual([]);
+    } finally {
+      unmount();
+    }
+  });
+
+  it('a second move before the first reads back starts from the first: the map draws it at once', async () => {
+    const { container, unmount, line, graph, updates, flush } = await moveMap({ lagUpdates: true });
+    try {
+      shiftArrow(container, graph(), 'acorn-outcome-2', 'ArrowLeft');
+      await waitFor(() => expect(updates).toHaveLength(2));
+      // Not read back yet, and drawn as written.
+      expect((await line('acorn-outcome-2')).siblingOrder).toBe(0);
+      await waitFor(() =>
+        expect(drawnUnder(graph(), 'acorn-outcome-1')).toEqual(['acorn-outcome-2', 'acorn-outcome-3']),
+      );
+      // Already leftmost as written: a second Shift+← has nowhere to go, rather than swapping back.
+      shiftArrow(container, graph(), 'acorn-outcome-2', 'ArrowLeft');
+      await new Promise((r) => setTimeout(r, 20));
+      expect(updates).toHaveLength(2);
+      await flush();
+      await waitFor(async () => expect((await line('acorn-outcome-2')).siblingOrder).toBe(1));
+      expect(drawnUnder(graph(), 'acorn-outcome-1')).toEqual(['acorn-outcome-2', 'acorn-outcome-3']);
+    } finally {
+      unmount();
+    }
+  });
+
+  it('refuses a drag into a loop, saying why, and writes nothing', async () => {
+    const { container, unmount, graph, updates, creates } = await moveMap();
+    try {
+      arrange(graph(), 'acorn-outcome-1', { into: 'child', target: 'acorn-outcome-2', order: ['acorn-outcome-1'] });
+      await waitFor(() => expect(container.textContent).toContain('loop'));
+      expect(updates).toEqual([]);
+      expect(creates).toEqual([]);
+    } finally {
+      unmount();
+    }
+  });
+
+  it('a root dragged under a card gets a line, on the right of its new siblings', async () => {
+    const { container, unmount, all, entity, handle, graph, creates } = await moveMap();
+    try {
+      const x = (await entity('AcornOutcome').create(handle, { content: 'X', scopeType: 'Uncertain' })) as {
+        id: string;
+      };
+      await waitFor(() => expect(cards(container)).toContain('X'));
+      arrange(graph(), x.id, {
+        into: 'sibling',
+        target: 'acorn-outcome-2',
+        before: false,
+        order: ['acorn-outcome-3', 'acorn-outcome-2', x.id],
+      });
+      await waitFor(async () => expect((await all()).some((c) => c.child === x.id)).toBe(true));
+      expect(creates.map((c) => c.fields)).toEqual([{ parent: 'acorn-outcome-1', child: x.id, siblingOrder: -1 }]);
     } finally {
       unmount();
     }

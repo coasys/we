@@ -555,6 +555,278 @@ const mapGraph = (options: Record<string, unknown>) => {
 };
 
 /**
+ * The parent each outcome is drawn under on the map, and the connection that hangs it there — the
+ * lines `mapGraph` draws, read through `forestParents`, so a gesture on a card talks about the line
+ * the reader sees it hanging from. An outcome on no drawn line has no entry.
+ */
+const drawnParents = (outcomes: Record<string, unknown>[], connections: Record<string, unknown>[]) => {
+  const ids = new Set(outcomes.map((o) => refId(o.id)).filter(Boolean));
+  const card = (id: string) => recordAddress('AcornOutcome', id);
+  const links = connections.flatMap((c) => {
+    const parent = refId(c.parent);
+    const child = refId(c.child);
+    return ids.has(parent) && ids.has(child) && parent !== child ? [{ source: card(parent), target: card(child) }] : [];
+  });
+  const owner = forestParents(links);
+  const drawn = new Map<string, { parent: string; connection: Record<string, unknown> | undefined }>();
+  for (const id of ids) {
+    const at = owner.get(card(id));
+    if (!at) continue;
+    const parent = decodeURIComponent(at.slice(at.lastIndexOf('/') + 1));
+    drawn.set(id, { parent, connection: connections.find((c) => refId(c.parent) === parent && refId(c.child) === id) });
+  }
+  return drawn;
+};
+
+/** A card's address or a plain id — either way, the outcome's id. */
+const outcomeId = (value: unknown): string => {
+  const id = refId(value);
+  return id.startsWith('we-graph://') ? decodeURIComponent(id.slice(id.lastIndexOf('/') + 1)) : id;
+};
+
+/** One write a move makes to a connection, as `acornPending` holds it until it reads back. */
+interface PendingWrite {
+  id: string;
+  was: { parent: string; siblingOrder: number };
+  now: { parent: string; siblingOrder: number };
+}
+
+/**
+ * What a move on the map writes — at most two records, since a handler runs a fixed list of writes
+ * and cannot loop. `refusal` set means nothing is written; `notice` is said after a write that
+ * landed somewhere other than the drop. Then one of: `move`, a connection updated to `parent` at
+ * `siblingOrder`; `create`, a new connection from `parent` to `child`; or `updates`, siblingOrder
+ * writes on the connections named. `pending` is those writes as `acornPending` draws them.
+ */
+interface MovePlan {
+  refusal: string;
+  notice: string;
+  move: string;
+  create: boolean;
+  parent: string;
+  child: string;
+  siblingOrder: number;
+  updates: Array<{ id: string; siblingOrder: number }>;
+  pending: PendingWrite[];
+}
+const plan = (fields: Partial<MovePlan> = {}): MovePlan => ({
+  refusal: '',
+  notice: '',
+  move: '',
+  create: false,
+  parent: '',
+  child: '',
+  siblingOrder: 0,
+  updates: [],
+  pending: [],
+  ...fields,
+});
+
+/** `ids` in Acorn's sibling order (`indexTree`'s), each at the order `orderOf` gives it. */
+const inSiblingOrder = (ids: string[], orderOf: (id: string) => number, byId: Map<string, Record<string, unknown>>) =>
+  [...ids].sort(
+    (x, y) =>
+      orderOf(y) - orderOf(x) ||
+      text(byId.get(x)?.content).localeCompare(text(byId.get(y)?.content)) ||
+      x.localeCompare(y),
+  );
+
+/**
+ * The siblingOrder that puts `id` where it is in `order` (its new row, left to right) with no other
+ * sibling written: above the first, below the last, or strictly between two neighbours with a whole
+ * number free between them. `undefined` where its place would need the row renumbered.
+ */
+const orderFor = (
+  id: string,
+  order: string[],
+  orderOf: (id: string) => number,
+  byId: Map<string, Record<string, unknown>>,
+): number | undefined => {
+  const at = order.indexOf(id);
+  const left = order[at - 1];
+  const right = order[at + 1];
+  let value: number | undefined;
+  if (left === undefined && right === undefined) value = 0;
+  else if (left === undefined) value = orderOf(right) + 1;
+  else if (right === undefined) value = orderOf(left) - 1;
+  else if (orderOf(left) - orderOf(right) >= 2) value = Math.floor((orderOf(left) + orderOf(right)) / 2);
+  if (value === undefined) return undefined;
+  const v = value;
+  const drawn = inSiblingOrder(order, (x) => (x === id ? v : orderOf(x)), byId);
+  return drawn.join('\n') === order.join('\n') ? v : undefined;
+};
+
+/**
+ * Stock's `alterSiblingOrder` (`connections/index.ts`): the selected outcome takes its neighbour's
+ * siblingOrder — one past it, left up and right down, where the two are equal — and the neighbour
+ * takes the selected one's. Two `update_connection` writes.
+ */
+const swap = (
+  mine: Record<string, unknown>,
+  theirs: Record<string, unknown>,
+  left: boolean,
+): { updates: MovePlan['updates']; pending: PendingWrite[] } => {
+  const a = num(mine.siblingOrder);
+  const b = num(theirs.siblingOrder);
+  const next = a === b ? b + (left ? 1 : -1) : b;
+  const parent = refId(mine.parent);
+  const updates = [
+    { id: refId(mine.id), siblingOrder: next },
+    { id: refId(theirs.id), siblingOrder: a },
+  ];
+  const pending = [
+    { id: refId(mine.id), was: { parent, siblingOrder: a }, now: { parent, siblingOrder: next } },
+    { id: refId(theirs.id), was: { parent, siblingOrder: b }, now: { parent, siblingOrder: a } },
+  ];
+  return { updates, pending };
+};
+
+const NO_ROOM =
+  'It can’t go there without renumbering the whole row. Select it and press Shift+← or Shift+→ to move it one place at a time.';
+
+/**
+ * A card dropped somewhere else in the map's tree (GraphView's `arrange-nodes`, with `order` its new
+ * row as the reader saw it land), as writes. Under another parent: the connection it hangs from is
+ * moved there (stock deletes and re-creates it — see the part), or a root gets a new one; either way
+ * with the refusals a connect has, checked against the lines without the one being moved. Along its
+ * own row: one siblingOrder write where there is room, stock's two-write swap one place over.
+ */
+const arrangePlan = (options: Record<string, unknown>): MovePlan => {
+  const outcomes = list(options.outcomes);
+  const connections = list(options.connections);
+  const links = options.links === undefined ? connections : list(options.links);
+  const id = outcomeId(options.outcome);
+  const target = outcomeId(options.target);
+  const byId = new Map(outcomes.map((o) => [refId(o.id), o]));
+  if (!id || !target || !byId.has(id)) return plan();
+  const drawn = drawnParents(outcomes, connections);
+  const into = options.into;
+  const parent = into === 'child' ? target : into === 'sibling' ? (drawn.get(target)?.parent ?? '') : '';
+  if (!parent) return plan();
+  const home = drawn.get(id);
+  const order = (Array.isArray(options.order) ? options.order.map(outcomeId) : []).filter(Boolean);
+  const row = order.includes(id) ? order : [...order, id];
+  // Each card in the row at its order under `parent`; a card coming from elsewhere has none yet.
+  const lineUnder = (child: string) => connections.find((c) => refId(c.parent) === parent && refId(c.child) === child);
+  const orderOf = (child: string) => num(lineUnder(child)?.siblingOrder);
+
+  if (home?.parent === parent) {
+    const current = inSiblingOrder(
+      row.filter((x) => lineUnder(x)),
+      orderOf,
+      byId,
+    );
+    if (current.join('\n') === row.join('\n')) return plan();
+    const mine = lineUnder(id);
+    if (!mine) return plan();
+    const single = orderFor(id, row, orderOf, byId);
+    if (single !== undefined) {
+      const was = { parent, siblingOrder: num(mine.siblingOrder) };
+      return plan({
+        updates: [{ id: refId(mine.id), siblingOrder: single }],
+        pending: [{ id: refId(mine.id), was, now: { parent, siblingOrder: single } }],
+      });
+    }
+    // One place over: stock's swap with the sibling it passed.
+    const from = current.indexOf(id);
+    const to = row.indexOf(id);
+    if (Math.abs(from - to) === 1) {
+      const theirs = lineUnder(current[to]);
+      if (theirs) {
+        const swapped = swap(mine, theirs, to < from);
+        const after = new Map(swapped.updates.map((u) => [u.id, u.siblingOrder]));
+        const drawnAfter = inSiblingOrder(row, (x) => after.get(refId(lineUnder(x)?.id)) ?? orderOf(x), byId);
+        if (drawnAfter.join('\n') === row.join('\n')) return plan(swapped);
+      }
+    }
+    return plan({ refusal: NO_ROOM });
+  }
+
+  // Another parent. The line being moved does not count against the move itself.
+  const moved = home?.connection;
+  const others = moved ? links.filter((c) => !(refId(c.parent) === home.parent && refId(c.child) === id)) : links;
+  const refusal = connectRefusal(parent, id, others);
+  if (refusal) return plan({ refusal });
+  const placed = orderFor(id, row, orderOf, byId);
+  const rightmost = row[row.length - 1] === id;
+  // Stock's lowerThanLowestSiblingOrder for the right end; the drop's own place where one write keeps it.
+  const siblingOrder = rightmost || placed === undefined ? nextSiblingOrder(parent, connections) : placed;
+  const notice =
+    placed === undefined && !rightmost
+      ? 'Moved, and drawn on the right of its new siblings: its place there would need them renumbered. Shift+← moves it along.'
+      : '';
+  if (!moved) return plan({ create: true, parent, child: id, siblingOrder, notice });
+  const movedId = refId(moved.id);
+  return plan({
+    move: movedId,
+    parent,
+    child: id,
+    siblingOrder,
+    notice,
+    pending: [
+      {
+        id: movedId,
+        was: { parent: home.parent, siblingOrder: num(moved.siblingOrder) },
+        now: { parent, siblingOrder },
+      },
+    ],
+  });
+};
+
+/** Shift+← / Shift+→ on one selected card: stock's swap with the sibling drawn beside it. */
+const siblingMovePlan = (options: Record<string, unknown>): MovePlan => {
+  const selected = Array.isArray(options.selected) ? options.selected.map(outcomeId).filter(Boolean) : [];
+  if (selected.length !== 1) return plan();
+  const [id] = selected;
+  const outcomes = list(options.outcomes);
+  const connections = list(options.connections);
+  const drawn = drawnParents(outcomes, connections);
+  const home = drawn.get(id);
+  if (!home) {
+    return outcomes.some((o) => refId(o.id) === id)
+      ? plan({ refusal: 'A root outcome has no sibling order to change.' })
+      : plan();
+  }
+  // The row as it is drawn: the parent's children that hang from it here, in Acorn's order.
+  const row = indexTree(outcomes, connections)
+    .kids(home.parent)
+    .map((k) => refId(k.id))
+    .filter((k) => drawn.get(k)?.parent === home.parent);
+  const left = options.direction === 'left';
+  const neighbour = row[row.indexOf(id) + (left ? -1 : 1)];
+  const theirs = neighbour
+    ? connections.find((c) => refId(c.parent) === home.parent && refId(c.child) === neighbour)
+    : undefined;
+  if (!home.connection || !theirs) return plan();
+  return plan(swap(home.connection, theirs, left));
+};
+
+/*
+  The writes a move made that have not read back, drawn over what they replaced. A write stands while
+  its line still holds the value it replaced; once the line holds what was written (it read back) or
+  anything else (somebody else's write), it is settled for good — recorded against the write itself,
+  as `pendingHistory` does, so a line that later returns to the replaced value is drawn as it is.
+*/
+const settledWrites = new WeakSet<object>();
+const pendingWrites = (value: unknown): PendingWrite[] =>
+  list(value).filter((w): w is Record<string, unknown> & PendingWrite => {
+    const was = w.was as PendingWrite['was'] | undefined;
+    const now = w.now as PendingWrite['now'] | undefined;
+    return typeof w.id === 'string' && !!was && !!now;
+  });
+const standing = (connections: Record<string, unknown>[], value: unknown): Map<string, PendingWrite> => {
+  const byId = new Map(connections.map((c) => [refId(c.id), c]));
+  const live = new Map<string, PendingWrite>();
+  for (const w of pendingWrites(value)) {
+    const c = byId.get(w.id);
+    if (settledWrites.has(w) || !c) continue;
+    if (refId(c.parent) === w.was.parent && num(c.siblingOrder) === w.was.siblingOrder) live.set(w.id, w);
+    else settledWrites.add(w);
+  }
+  return live;
+};
+
+/**
  * A whole-field value in one canonical text, so a read-back compares equal to what was written:
  * JSON text is parsed first (the mount hands a task list back with its keys in another order),
  * object keys are sorted, and an absent value is the empty list the field means.
@@ -839,6 +1111,49 @@ export const ACORN_FUNCTIONS: ModuleFunction[] = [
         if (parent && child) pairs.set(JSON.stringify([parent, child]), { parent, child });
       }
       return [...pairs.keys()].sort().map((key) => pairs.get(key)!);
+    },
+  },
+  {
+    name: 'acornArrange',
+    params: ['outcome', 'into', 'target', 'order', 'outcomes', 'connections', 'links'],
+    doc: "What a card dragged on the map writes — GraphView's onNodeArrange (`into` child or sibling of `target`, `order` its new row left to right) as a plan of at most two writes: { refusal, notice, move (the connection it hangs from, moved to `parent` at `siblingOrder`), create (a root's new connection from `parent` to `child`), updates ([{ id, siblingOrder }] along its own row: one where there is room, else stock's swap one place over), pending (those writes, for acornPendingAdd) }. Refuses what acornConnectRefusal refuses, checked against `links` without the line moved, and a reorder that would renumber the row.",
+    example:
+      'acornArrange({ outcome: event.recordId, into: event.into, target: event.targetId, order: event.order, outcomes: local.outcomes, connections: local.connections })',
+    fn: (...args: never[]) => arrangePlan(args[0] && typeof args[0] === 'object' ? args[0] : {}),
+  },
+  {
+    name: 'acornSiblingMove',
+    params: ['selected', 'direction', 'outcomes', 'connections'],
+    doc: "Shift+← / Shift+→ on the map: the selected card (one card address or outcome id in `selected`) swapped with the sibling drawn on its `direction` ('left' or 'right') side, as stock's alterSiblingOrder — the same plan as acornArrange, with two `updates`; none at the end of a row or with no single selection, and a `refusal` for a root.",
+    example:
+      "acornSiblingMove({ selected: local.selected, direction: 'left', outcomes: local.outcomes, connections: local.connections })",
+    fn: (...args: never[]) => siblingMovePlan(args[0] && typeof args[0] === 'object' ? args[0] : {}),
+  },
+  {
+    name: 'acornPending',
+    params: ['connections', 'pending'],
+    doc: "The connections with the map's move writes that have not read back (`pending`, from acornPendingAdd) drawn in: each stands while its connection still holds the parent and siblingOrder it replaced, and is settled for good once it holds anything else — what was written, or somebody else's value.",
+    example: 'acornPending({ connections: local.connections, pending: local.moveWork })',
+    fn: (...args: never[]) => {
+      const connections = list(option(args, 'connections'));
+      const live = standing(connections, option(args, 'pending'));
+      if (!live.size) return connections;
+      return connections.map((c) => {
+        const w = live.get(refId(c.id));
+        return w ? { ...c, parent: w.now.parent, siblingOrder: w.now.siblingOrder } : c;
+      });
+    },
+  },
+  {
+    name: 'acornPendingAdd',
+    params: ['connections', 'pending', 'add'],
+    doc: 'The pending move writes after one more move: those still standing (see acornPending), less any for a connection `add` writes again, then `add`.',
+    example: 'acornPendingAdd({ connections: local.connections, pending: local.moveWork, add: local.plan.pending })',
+    fn: (...args: never[]) => {
+      const add = pendingWrites(option(args, 'add'));
+      const again = new Set(add.map((w) => w.id));
+      const live = standing(list(option(args, 'connections')), option(args, 'pending'));
+      return [...[...live.values()].filter((w) => !again.has(w.id)), ...add];
     },
   },
   {

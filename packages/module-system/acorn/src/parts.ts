@@ -56,6 +56,14 @@ const CHILD_LINK = {
 };
 
 /*
+  The map's connections with its own moves drawn in before they read back (`acornPending`): a card
+  dragged or Shift+arrowed is drawn where it went at once, and the next move — or a connect, or a new
+  child's siblingOrder — starts from there rather than from the row as it was. A move refused by the
+  host drops them all; a move still in flight then reads back as somebody else's would.
+*/
+const MAP_CONNECTIONS = 'acornPending({ connections: local.connections, pending: local.moveWork })';
+
+/*
   The map's create row. A root is one write; a child is two — the outcome, then its connection —
   as in the expanded outcome, so the second can fail after the first landed. On the map that leaves
   the new outcome drawn as a root, and the way to link it is on the same screen: a line dragged from
@@ -66,7 +74,7 @@ const MAP_CHILD_LINK = {
   args: [
     'AcornConnection',
     {
-      $: '{ parent: local.linkParent, child: local.made, siblingOrder: acornNextSiblingOrder({ parent: local.linkParent, connections: local.connections }) }',
+      $: `{ parent: local.linkParent, child: local.made, siblingOrder: acornNextSiblingOrder({ parent: local.linkParent, connections: ${MAP_CONNECTIONS} }) }`,
     },
   ],
   onSuccess: [
@@ -206,8 +214,176 @@ const DELETE_OUTCOME = [
   never wrote arrives — the subscription is the truth again. A refused write drops the working set;
   a line still in flight then reads back unguarded, as somebody else's would.
 */
-const STORED_LINKS = 'acornLinks({ connections: local.connections })';
+const STORED_LINKS = `acornLinks({ connections: ${MAP_CONNECTIONS} })`;
 const LINKS = `acornWorking({ stored: ${STORED_LINKS}, working: local.linkWork, written: local.linkWritten })`;
+
+/*
+  A move on the map (S2-9b) — a card dragged to another place in the tree, or Shift+←/→ on a selected
+  card — is worked out whole by `acornArrange` / `acornSiblingMove` into `local.plan`, and carried out
+  here: at most two writes, since a handler runs a fixed list. One move at a time (`moving`), so a
+  second cannot start from a plan the first is still writing.
+
+  - Under another parent, the connection the card hangs from is moved: one `record.update` of its
+    `parent` and `siblingOrder`. Stock deletes the old connection and creates a new one; here the
+    host would put its delete confirmation in front of every drag, and a cancelled one resolves like
+    a done one, so a create chained after it could not tell. The mount moves a connection's ends on
+    update (acorn-ad4m B6). A root has no connection to move: it gets a new one, as a connect does.
+  - Along its own row: siblingOrder writes on `AcornConnection`, stock's `update_connection` — one
+    where the order has room, stock's swap of two (`alterSiblingOrder`) one place over.
+*/
+const MOVE_FAILED = [
+  { $setLocal: 'notice', value: { $: "'Could not move it: ' + result.message" } },
+  { $setLocal: 'moveWork', value: [] },
+  { $setLocal: 'moving', value: false },
+];
+const MOVE_DONE = [
+  { $setLocal: 'notice', value: { $: 'local.plan.notice' } },
+  { $setLocal: 'moving', value: false },
+];
+const SECOND_UPDATE = {
+  $if: {
+    condition: { $: 'count(local.plan.updates) > 1' },
+    then: {
+      $invoke: 'record.update',
+      args: [
+        'AcornConnection',
+        { $: 'local.plan.updates[1].id' },
+        { $: '{ siblingOrder: local.plan.updates[1].siblingOrder }' },
+      ],
+      onSuccess: MOVE_DONE,
+      onError: MOVE_FAILED,
+    },
+    else: MOVE_DONE,
+  },
+};
+const RUN_MOVE = [
+  { $setLocal: 'notice', value: '' },
+  {
+    $if: {
+      condition: { $: 'local.plan.refusal' },
+      then: { $setLocal: 'notice', value: { $: "'Not moved. ' + local.plan.refusal" } },
+    },
+  },
+  {
+    $if: {
+      condition: { $: 'count(local.plan.pending) > 0' },
+      then: {
+        $setLocal: 'moveWork',
+        value: {
+          $: 'acornPendingAdd({ connections: local.connections, pending: local.moveWork, add: local.plan.pending })',
+        },
+      },
+    },
+  },
+  {
+    $if: {
+      condition: { $: 'local.plan.move' },
+      then: [
+        { $setLocal: 'moving', value: true },
+        {
+          $invoke: 'record.update',
+          args: [
+            'AcornConnection',
+            { $: 'local.plan.move' },
+            { $: '{ parent: local.plan.parent, siblingOrder: local.plan.siblingOrder }' },
+          ],
+          onSuccess: MOVE_DONE,
+          onError: MOVE_FAILED,
+        },
+      ],
+    },
+  },
+  {
+    $if: {
+      condition: { $: 'local.plan.create' },
+      then: [
+        { $setLocal: 'moving', value: true },
+        {
+          $setLocal: 'linkWork',
+          value: {
+            $: `acornLinks({ connections: ${LINKS}, add: { parent: local.plan.parent, child: local.plan.child } })`,
+          },
+        },
+        {
+          $setLocal: 'linkWritten',
+          value: {
+            $: `acornWritten({ stored: ${STORED_LINKS}, working: local.linkWork, written: local.linkWritten })`,
+          },
+        },
+        {
+          $invoke: 'record.create',
+          args: [
+            'AcornConnection',
+            { $: '{ parent: local.plan.parent, child: local.plan.child, siblingOrder: local.plan.siblingOrder }' },
+          ],
+          onSuccess: MOVE_DONE,
+          onError: [...MOVE_FAILED, { $setLocal: 'linkWritten', value: [] }],
+        },
+      ],
+    },
+  },
+  {
+    $if: {
+      condition: { $: 'count(local.plan.updates) > 0' },
+      then: [
+        { $setLocal: 'moving', value: true },
+        {
+          $invoke: 'record.update',
+          args: [
+            'AcornConnection',
+            { $: 'local.plan.updates[0].id' },
+            { $: '{ siblingOrder: local.plan.updates[0].siblingOrder }' },
+          ],
+          onSuccess: [SECOND_UPDATE],
+          onError: MOVE_FAILED,
+        },
+      ],
+    },
+  },
+];
+const STILL_MOVING = { $setLocal: 'notice', value: 'Still saving the last move — try again in a moment.' };
+const ARRANGE = [
+  {
+    $if: {
+      condition: { $: 'local.moving' },
+      then: STILL_MOVING,
+      else: [
+        {
+          $setLocal: 'plan',
+          value: {
+            $: `acornArrange({ outcome: event.recordId, into: event.into, target: event.targetId, order: event.order, outcomes: local.outcomes, connections: ${MAP_CONNECTIONS}, links: ${LINKS} })`,
+          },
+        },
+        ...RUN_MOVE,
+      ],
+    },
+  },
+];
+// Shift+← / Shift+→ on the map with one card selected — stock's keys (`bodyKeydown.ts`).
+const SIBLING_KEYS = [
+  {
+    $if: {
+      condition: {
+        $: "event.shiftKey && (event.key == 'ArrowLeft' || event.key == 'ArrowRight') && count(local.selected) == 1",
+      },
+      then: {
+        $if: {
+          condition: { $: 'local.moving' },
+          then: STILL_MOVING,
+          else: [
+            {
+              $setLocal: 'plan',
+              value: {
+                $: `acornSiblingMove({ selected: local.selected, direction: event.key == 'ArrowLeft' ? 'left' : 'right', outcomes: local.outcomes, connections: ${MAP_CONNECTIONS} })`,
+              },
+            },
+            ...RUN_MOVE,
+          ],
+        },
+      },
+    },
+  },
+];
 
 /*
   The task list is one JSON field, so every edit is a whole-list replace — and an edit made before
@@ -1736,7 +1912,7 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
   mapView: {
     label: 'Outcome map',
     description:
-      "The outcome tree as Acorn's map — parents above their children, siblings in sibling order, an outcome on no connection a tree of its own — each card its statement with the computed scope and status. Always Acorn's Classic layout. Edits as Acorn's map does: a new outcome (a root, or a child of a card on the right of its siblings, Uncertain), a line dragged from a selected card's connect dot to another card (refused to itself, to one already under it, or into a loop), and Delete on a selected line or card. A double-click, or the card's Open, opens the expanded outcome",
+      "The outcome tree as Acorn's map — parents above their children, siblings in sibling order, an outcome on no connection a tree of its own — each card its statement with the computed scope and status. Always Acorn's Classic layout. Edits as Acorn's map does: a new outcome (a root, or a child of a card on the right of its siblings, Uncertain), a line dragged from a selected card's connect dot to another card (refused to itself, to one already under it, or into a loop), Delete on a selected line or card, a card dragged under another parent or along its row, and Shift+←/→ swapping a selected card with its neighbour. A double-click, or the card's Open, opens the expanded outcome",
     node: {
       type: 'Column',
       props: { gap: '300', width: '100%' },
@@ -1758,14 +1934,18 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
           into a child of that card, linked on the right of its siblings (`acornNextSiblingOrder`, stock's
           `lowerThanLowestSiblingOrder`). Uncertain either way, stock's default.
         - Connect: a selected card's connect dots; the card dragged from is the parent. Stock's lower
-          port, so the child keeps any parent it has (re-parenting from the upper port is not here).
+          port, so the child keeps any parent it has (stock's Shift+drag from the upper port; moving a card is the drag below).
           `acornConnectRefusal` refuses what stock never offers: itself, a child already under it, a loop.
         - Delete: Delete or Backspace on a selected line deletes its connection; on one selected card,
           or the card's Delete, the outcome — stock's Delete key, though the host asks first, as it does for every `record.delete`. On the mount the outcome's
           delete is stock's `delete_outcome_fully`, which takes its connections with it; its children stay,
           as roots. The in-memory host leaves those connections behind, and the map draws no line to an
           outcome that is gone.
-        Reparent and reorder by drag are not here (no `arrange-nodes`, no `drag-node`).
+        - Move (S2-9b): a card dragged (`arrange-nodes`) under another parent moves the connection it
+          hangs from there, with the connect's refusals; a root dragged under a card gets a new line.
+          Dragged along its row it is reordered; Shift+←/→ on one selected card swaps it with its
+          neighbour, stock's `alterSiblingOrder`. See RUN_MOVE for what each writes and why a move is
+          an update rather than stock's delete and create.
       */
       $localState: {
         openOutcome: { type: 'string', initial: '' },
@@ -1782,6 +1962,12 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
         // The lines as this view last wrote them, and that write's history (see LINKS).
         linkWork: { type: 'array', initial: [] },
         linkWritten: { type: 'array', initial: [] },
+        // The cards selected on the map, as the graph names them — what Shift+←/→ moves.
+        selected: { type: 'array', initial: [] },
+        // A move worked out (acornArrange / acornSiblingMove), its writes in flight, and those not read back.
+        plan: { type: 'object', initial: {} },
+        moving: { type: 'boolean', initial: false },
+        moveWork: { type: 'array', initial: [] },
       },
       $queries: {
         outcomes: { entity: 'AcornOutcome', order: { timestampCreated: 'asc' } },
@@ -1809,142 +1995,164 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
               props: { tone: 'secondary', p: '300' },
               children: ['No outcomes yet — add one above and the map draws it.'],
             },
+            // The keys pressed on the graph reach the box around it: Shift+←/→ moves the selected card.
             else: {
-              type: 'GraphView',
-              props: {
-                seeds: { $: 'acornMapGraph({ outcomes: local.outcomes, connections: local.connections })' },
-                layout: {
-                  type: 'forest',
-                  options: {
-                    sortBy: 'rank',
-                    unattached: 'trees',
-                    containment: [],
-                    card: { width: 240, height: 130 },
-                  },
-                },
-                nodeStyle: [
-                  {
-                    style: {
-                      shape: 'card',
-                      width: 240,
-                      height: 130,
-                      content: 'record',
-                      borderWidth: 3,
-                      borderColor: 'border',
-                      scaleLabelWithZoom: true,
-                    },
-                  },
-                  // Acorn's status ring: achieved, partly, not yet.
-                  { when: { 'data.status': 'Achieved' }, style: { borderColor: 'success-500' } },
-                  { when: { 'data.status': 'PartiallyAchieved' }, style: { borderColor: 'warning-500' } },
-                ],
-                edgeStyle: [
-                  {
-                    style: { curve: 'smooth', sourceAnchor: 's', targetAnchor: 'n', ignoreRoute: true, arrow: 'none' },
-                  },
-                ],
-                behaviours: ['node-double-click', 'select', 'pan-zoom'],
-                showControls: true,
-                height: '70vh',
-                empty: 'No outcomes yet.',
-                onNodeDoubleClick: { $setLocal: 'openOutcome', value: { $: "event.recordId ?? ''" } },
-                nodeActions: [
-                  { id: 'add-child', icon: 'plus', title: 'Add a child outcome' },
-                  { id: 'open', icon: 'arrows-out-simple', title: 'Open' },
-                  { id: 'delete', icon: 'trash', title: 'Delete this outcome', tone: 'danger' },
-                ],
-                onNodeAction: [
-                  { $setLocal: 'notice', value: '' },
-                  {
-                    $if: {
-                      condition: { $: "event.action == 'add-child'" },
-                      then: { $setLocal: 'childOf', value: { $: "event.recordId ?? ''" } },
-                    },
-                  },
-                  {
-                    $if: {
-                      condition: { $: "event.action == 'open'" },
-                      then: { $setLocal: 'openOutcome', value: { $: "event.recordId ?? ''" } },
-                    },
-                  },
-                  {
-                    $if: {
-                      condition: { $: "event.action == 'delete' && event.recordId" },
-                      then: DELETE_OUTCOME,
-                    },
-                  },
-                ],
-                onEdgeCreate: [
-                  { $setLocal: 'notice', value: '' },
-                  {
-                    $if: {
-                      condition: {
-                        $: `acornConnectRefusal({ parent: event.sourceId, child: event.targetId, connections: ${LINKS} }) == ''`,
+              type: 'Column',
+              props: { width: '100%', onKeyDown: SIBLING_KEYS },
+              children: [
+                {
+                  type: 'GraphView',
+                  props: {
+                    seeds: { $: `acornMapGraph({ outcomes: local.outcomes, connections: ${MAP_CONNECTIONS} })` },
+                    layout: {
+                      type: 'forest',
+                      options: {
+                        sortBy: 'rank',
+                        unattached: 'trees',
+                        containment: [],
+                        card: { width: 240, height: 130 },
                       },
-                      then: [
-                        {
-                          $setLocal: 'linkWork',
-                          value: {
-                            $: `acornLinks({ connections: ${LINKS}, add: { parent: event.sourceId, child: event.targetId } })`,
-                          },
+                    },
+                    nodeStyle: [
+                      {
+                        style: {
+                          shape: 'card',
+                          width: 240,
+                          height: 130,
+                          content: 'record',
+                          borderWidth: 3,
+                          borderColor: 'border',
+                          scaleLabelWithZoom: true,
                         },
-                        {
-                          $setLocal: 'linkWritten',
-                          value: {
-                            $: `acornWritten({ stored: ${STORED_LINKS}, working: local.linkWork, written: local.linkWritten })`,
-                          },
+                      },
+                      // Acorn's status ring: achieved, partly, not yet.
+                      { when: { 'data.status': 'Achieved' }, style: { borderColor: 'success-500' } },
+                      { when: { 'data.status': 'PartiallyAchieved' }, style: { borderColor: 'warning-500' } },
+                    ],
+                    edgeStyle: [
+                      {
+                        style: {
+                          curve: 'smooth',
+                          sourceAnchor: 's',
+                          targetAnchor: 'n',
+                          ignoreRoute: true,
+                          arrow: 'none',
                         },
-                        {
-                          $invoke: 'record.create',
-                          args: [
-                            'AcornConnection',
+                      },
+                    ],
+                    // A card is dragged to another place in the tree (`arrange-nodes`); a press that goes nowhere falls through to select.
+                    behaviours: ['node-double-click', 'arrange-nodes', 'select', 'pan-zoom'],
+                    onSelectionChange: { $setLocal: 'selected', value: { $: 'event' } },
+                    onNodeArrange: ARRANGE,
+                    showControls: true,
+                    height: '70vh',
+                    empty: 'No outcomes yet.',
+                    onNodeDoubleClick: { $setLocal: 'openOutcome', value: { $: "event.recordId ?? ''" } },
+                    nodeActions: [
+                      { id: 'add-child', icon: 'plus', title: 'Add a child outcome' },
+                      { id: 'open', icon: 'arrows-out-simple', title: 'Open' },
+                      { id: 'delete', icon: 'trash', title: 'Delete this outcome', tone: 'danger' },
+                    ],
+                    onNodeAction: [
+                      { $setLocal: 'notice', value: '' },
+                      {
+                        $if: {
+                          condition: { $: "event.action == 'add-child'" },
+                          then: { $setLocal: 'childOf', value: { $: "event.recordId ?? ''" } },
+                        },
+                      },
+                      {
+                        $if: {
+                          condition: { $: "event.action == 'open'" },
+                          then: { $setLocal: 'openOutcome', value: { $: "event.recordId ?? ''" } },
+                        },
+                      },
+                      {
+                        $if: {
+                          condition: { $: "event.action == 'delete' && event.recordId" },
+                          then: DELETE_OUTCOME,
+                        },
+                      },
+                    ],
+                    onEdgeCreate: [
+                      { $setLocal: 'notice', value: '' },
+                      {
+                        $if: {
+                          condition: {
+                            $: `acornConnectRefusal({ parent: event.sourceId, child: event.targetId, connections: ${LINKS} }) == ''`,
+                          },
+                          then: [
                             {
-                              $: '{ parent: event.sourceId, child: event.targetId, siblingOrder: acornNextSiblingOrder({ parent: event.sourceId, connections: local.connections }) }',
+                              $setLocal: 'linkWork',
+                              value: {
+                                $: `acornLinks({ connections: ${LINKS}, add: { parent: event.sourceId, child: event.targetId } })`,
+                              },
+                            },
+                            {
+                              $setLocal: 'linkWritten',
+                              value: {
+                                $: `acornWritten({ stored: ${STORED_LINKS}, working: local.linkWork, written: local.linkWritten })`,
+                              },
+                            },
+                            {
+                              $invoke: 'record.create',
+                              args: [
+                                'AcornConnection',
+                                {
+                                  $: `{ parent: event.sourceId, child: event.targetId, siblingOrder: acornNextSiblingOrder({ parent: event.sourceId, connections: ${MAP_CONNECTIONS} }) }`,
+                                },
+                              ],
+                              onError: [
+                                { $setLocal: 'notice', value: { $: "'Could not connect: ' + result.message" } },
+                                { $setLocal: 'linkWritten', value: [] },
+                              ],
                             },
                           ],
-                          onError: [
-                            { $setLocal: 'notice', value: { $: "'Could not connect: ' + result.message" } },
-                            { $setLocal: 'linkWritten', value: [] },
-                          ],
-                        },
-                      ],
-                      else: {
-                        $setLocal: 'notice',
-                        value: {
-                          $: `'Not connected. ' + acornConnectRefusal({ parent: event.sourceId, child: event.targetId, connections: ${LINKS} })`,
+                          else: {
+                            $setLocal: 'notice',
+                            value: {
+                              $: `'Not connected. ' + acornConnectRefusal({ parent: event.sourceId, child: event.targetId, connections: ${LINKS} })`,
+                            },
+                          },
                         },
                       },
-                    },
-                  },
-                ],
-                onDeleteSelection: [
-                  { $setLocal: 'notice', value: '' },
-                  {
-                    $if: {
-                      condition: { $: "event.kind == 'edge' && event.recordType == 'AcornConnection'" },
-                      then: {
-                        $invoke: 'record.delete',
-                        args: ['AcornConnection', { $: 'event.recordId' }],
-                        onError: [
-                          { $setLocal: 'notice', value: { $: "'Could not delete the connection: ' + result.message" } },
-                        ],
+                    ],
+                    onDeleteSelection: [
+                      { $setLocal: 'notice', value: '' },
+                      {
+                        $if: {
+                          condition: { $: "event.kind == 'edge' && event.recordType == 'AcornConnection'" },
+                          then: {
+                            $invoke: 'record.delete',
+                            args: ['AcornConnection', { $: 'event.recordId' }],
+                            onError: [
+                              {
+                                $setLocal: 'notice',
+                                value: { $: "'Could not delete the connection: ' + result.message" },
+                              },
+                            ],
+                          },
+                        },
                       },
-                    },
+                      {
+                        $if: {
+                          condition: { $: "event.kind == 'node' && event.count == 1 && event.recordId" },
+                          then: DELETE_OUTCOME,
+                        },
+                      },
+                      {
+                        $if: {
+                          condition: { $: "event.kind == 'node' && event.count > 1" },
+                          then: {
+                            $setLocal: 'notice',
+                            value: 'The map deletes one outcome at a time — select just one.',
+                          },
+                        },
+                      },
+                    ],
                   },
-                  {
-                    $if: {
-                      condition: { $: "event.kind == 'node' && event.count == 1 && event.recordId" },
-                      then: DELETE_OUTCOME,
-                    },
-                  },
-                  {
-                    $if: {
-                      condition: { $: "event.kind == 'node' && event.count > 1" },
-                      then: { $setLocal: 'notice', value: 'The map deletes one outcome at a time — select just one.' },
-                    },
-                  },
-                ],
-              },
+                },
+              ],
             },
           },
         },

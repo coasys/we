@@ -10620,6 +10620,30 @@
           "example": "acornLinks({ connections: local.connections, add: { parent: event.sourceId, child: event.targetId } })"
         },
         {
+          "name": "acornArrange",
+          "params": ["outcome", "into", "target", "order", "outcomes", "connections", "links"],
+          "doc": "What a card dragged on the map writes — GraphView's onNodeArrange (`into` child or sibling of `target`, `order` its new row left to right) as a plan of at most two writes: { refusal, notice, move (the connection it hangs from, moved to `parent` at `siblingOrder`), create (a root's new connection from `parent` to `child`), updates ([{ id, siblingOrder }] along its own row: one where there is room, else stock's swap one place over), pending (those writes, for acornPendingAdd) }. Refuses what acornConnectRefusal refuses, checked against `links` without the line moved, and a reorder that would renumber the row.",
+          "example": "acornArrange({ outcome: event.recordId, into: event.into, target: event.targetId, order: event.order, outcomes: local.outcomes, connections: local.connections })"
+        },
+        {
+          "name": "acornSiblingMove",
+          "params": ["selected", "direction", "outcomes", "connections"],
+          "doc": "Shift+← / Shift+→ on the map: the selected card (one card address or outcome id in `selected`) swapped with the sibling drawn on its `direction` ('left' or 'right') side, as stock's alterSiblingOrder — the same plan as acornArrange, with two `updates`; none at the end of a row or with no single selection, and a `refusal` for a root.",
+          "example": "acornSiblingMove({ selected: local.selected, direction: 'left', outcomes: local.outcomes, connections: local.connections })"
+        },
+        {
+          "name": "acornPending",
+          "params": ["connections", "pending"],
+          "doc": "The connections with the map's move writes that have not read back (`pending`, from acornPendingAdd) drawn in: each stands while its connection still holds the parent and siblingOrder it replaced, and is settled for good once it holds anything else — what was written, or somebody else's value.",
+          "example": "acornPending({ connections: local.connections, pending: local.moveWork })"
+        },
+        {
+          "name": "acornPendingAdd",
+          "params": ["connections", "pending", "add"],
+          "doc": "The pending move writes after one more move: those still standing (see acornPending), less any for a connection `add` writes again, then `add`.",
+          "example": "acornPendingAdd({ connections: local.connections, pending: local.moveWork, add: local.plan.pending })"
+        },
+        {
           "name": "acornWorking",
           "params": ["stored", "working", "written"],
           "doc": "The whole-field value the next edit starts from. `stored` is the value as subscribed, `working` the last one this view wrote, `written` its history (acornWritten). While that write is unsettled — the stored value is one it replaced on the way — the working value stands, so an edit builds on the one before it. Once the stored value is the one written, or one this view never saw, the history is settled for good and the stored value is the truth again, so a later change elsewhere back to an earlier value is drawn.",
