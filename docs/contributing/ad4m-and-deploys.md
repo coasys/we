@@ -237,10 +237,13 @@ writes to an agent it did not create: against an executor already running it onl
 profile, and its last case checks that the profile is as it found it.
 
 They share one executor in a temporary directory, on free ports, with MCP on and no network, removed
-afterwards. Which binary is chosen as for the app (see
+afterwards. It runs multi-user, as a hosted node does, and the tests run as an account signed up on
+it (`startExecutor` and `signUp` in `@we/e2e`; [End-to-end tests](../testing/e2e.md) has the rest of
+WE's live tests). Which binary is chosen as for the app (see
 [The executor you run locally](#the-executor-you-run-locally)): the pinned one by default, which
 `pnpm ad4m:executor` downloads. `AD4M_LIVE_URL` with `AD4M_LIVE_TOKEN` uses one already running
-instead, its agent unlocked, with `AD4M_LIVE_MCP_URL` naming its MCP endpoint for the waker test.
+instead, its agent unlocked, with `AD4M_LIVE_MCP_URL` naming its MCP endpoint for the waker test
+and `AD4M_LIVE_OPERATOR_TOKEN` the operator's credential for the calls an account may not make.
 
 It also runs in CI, as the `AD4M live` workflow (`.github/workflows/ad4m-live.yaml`): on a PR that
 touches the backend packages, the entities or the pin, on `dev` after such a merge, and on the bump

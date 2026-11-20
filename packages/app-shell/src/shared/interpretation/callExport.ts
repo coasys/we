@@ -128,11 +128,12 @@ export interface ExtractionLogInput {
   callTitle?: string;
   spaceName?: string;
   exportedAt: Date;
-  /** What this call looks for, after its participants' own choices. */
-  callTargets: string[];
-  /** What the space's calls start out looking for. */
-  spaceTargets: string[];
-  autoInterpret: boolean;
+  /** What this call looks for, after its participants' own choices. Absent when the settings could not be read. */
+  callTargets?: string[];
+  /** What the space's calls start out looking for. Absent when the settings could not be read. */
+  spaceTargets?: string[];
+  /** Absent when the settings could not be read. */
+  autoInterpret?: boolean;
   transcript: TranscriptTurn[];
   passes: PassEntry[];
   /** The records a pass wrote against this call, whatever became of them since. */
@@ -151,7 +152,7 @@ export interface ExtractionLogInput {
   nameFor: (did: string) => string;
 }
 
-const list = (items: string[]) => (items.length ? items.join(', ') : '(none)');
+const list = (items: string[] | undefined) => (!items ? '(unavailable)' : items.length ? items.join(', ') : '(none)');
 
 /** The entity names an extraction run looked for, out of its `detail`. */
 function parseTargets(detail: string | undefined): string[] {
@@ -194,7 +195,7 @@ export function formatExtractionLog(input: ExtractionLogInput): string {
     '',
     `- Looking for, on this call: ${list(input.callTargets)}`,
     `- Space default: ${list(input.spaceTargets)}`,
-    `- Extracts automatically as the call happens: ${input.autoInterpret ? 'yes' : 'no'}`,
+    `- Extracts automatically as the call happens: ${input.autoInterpret === undefined ? '(unavailable)' : input.autoInterpret ? 'yes' : 'no'}`,
     '',
     `## Transcript (${input.transcript.length} ${input.transcript.length === 1 ? 'line' : 'lines'})`,
     '',
