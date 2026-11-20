@@ -10,7 +10,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { lockfileSnapshots, PACKAGES, parsePin, PinError, snapshotUrl, withIntegrity } from './ad4m-pin.mjs';
+import { lockfileSnapshots, PACKAGES, parsePin, pinCommit, PinError, snapshotUrl, withIntegrity } from './ad4m-pin.mjs';
 
 const SHA = 'ee40d1143a72650039e6e847810f6e795320e58c';
 const OTHER = '2343daaeac8d62f1e8ad7e975a77c85c281c2876';
@@ -28,6 +28,26 @@ describe('what the pin reads as', () => {
 
   it('a snapshot, by its full commit', () => {
     assert.deepEqual(parsePin(snapshots(SHA)), { kind: 'snapshot', commit: SHA });
+  });
+
+  it('a local tarball, whatever connect is pinned to', () => {
+    // A `file:` override is a spike pin: the tarball came from some ad4m checkout and
+    // carries no commit, so there is nothing to cross-check connect's pin against —
+    // the reader answers for the SDK alone and the executor question falls to
+    // AD4M_EXECUTOR or the seed's executorPath, exactly as for a hand build.
+    for (const connect of [snapshotUrl(PACKAGES[1], SHA), '0.13.1-staging.2', 'file:.local/connect.tgz']) {
+      assert.deepEqual(parsePin({ [PACKAGES[0]]: 'file:.local/ad4m.tgz', [PACKAGES[1]]: connect }), {
+        kind: 'local',
+        path: 'file:.local/ad4m.tgz',
+      });
+    }
+  });
+
+  it('a local pin names no commit — the executor answer names the two knobs instead', async () => {
+    await assert.rejects(
+      () => pinCommit({ kind: 'local', path: 'file:.local/ad4m.tgz' }),
+      (e) => e instanceof PinError && /AD4M_EXECUTOR/.test(e.message) && /executorPath/.test(e.message),
+    );
   });
 });
 
