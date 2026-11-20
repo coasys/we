@@ -1031,11 +1031,12 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
           props: { gap: '200', ay: 'center', wrap: true, width: '100%' },
           children: [
             {
-              type: 'we-button',
+              type: 'we-checkbox',
               props: {
                 size: 'sm',
-                variant: { $: "local.highPriority ? 'solid' : 'soft'" },
-                onClick: { $toggleLocal: 'highPriority' },
+                label: 'Only high priority',
+                checked: { $: 'local.highPriority' },
+                onChange: { $toggleLocal: 'highPriority' },
               },
               children: ['Only high priority'],
             },
@@ -1050,11 +1051,12 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
               },
               children: [
                 {
-                  type: 'we-button',
+                  type: 'we-checkbox',
                   props: {
                     size: 'sm',
-                    variant: { $: "choice.value in local.statuses ? 'solid' : 'soft'" },
-                    onClick: { $toggleLocalIn: 'statuses', value: { $: 'choice.value' } },
+                    label: { $: 'choice.label' },
+                    checked: { $: 'choice.value in local.statuses' },
+                    onChange: { $toggleLocalIn: 'statuses', value: { $: 'choice.value' } },
                   },
                   children: [{ $: 'choice.label' }],
                 },
@@ -1071,11 +1073,12 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
               },
               children: [
                 {
-                  type: 'we-button',
+                  type: 'we-checkbox',
                   props: {
                     size: 'sm',
-                    variant: { $: "choice.value in local.scopes ? 'solid' : 'soft'" },
-                    onClick: { $toggleLocalIn: 'scopes', value: { $: 'choice.value' } },
+                    label: { $: 'choice.label' },
+                    checked: { $: 'choice.value in local.scopes' },
+                    onChange: { $toggleLocalIn: 'scopes', value: { $: 'choice.value' } },
                   },
                   children: [{ $: 'choice.label' }],
                 },
@@ -1093,11 +1096,12 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
               props: { items: { $: 'local.tags' }, as: 'tag' },
               children: [
                 {
-                  type: 'we-button',
+                  type: 'we-checkbox',
                   props: {
                     size: 'sm',
-                    variant: { $: "tag.id in local.tagFilter ? 'solid' : 'soft'" },
-                    onClick: { $toggleLocalIn: 'tagFilter', value: { $: 'tag.id' } },
+                    label: { $: 'tag.text' },
+                    checked: { $: 'tag.id in local.tagFilter' },
+                    onChange: { $toggleLocalIn: 'tagFilter', value: { $: 'tag.id' } },
                   },
                   children: [{ $: 'tag.text' }],
                 },
@@ -1128,117 +1132,161 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
             },
           ],
         },
+        /*
+          The table, as assistive technology reads it: a table of rows, a header row of column
+          headers and a cell per column — the layout stays the Rows' own.
+        */
         {
-          type: 'Row',
-          props: { gap: '400', p: '300', borderBottom: '1px solid border', width: '100%' },
-          children: [
-            {
-              type: 'we-text',
-              props: { fontWeight: 'semibold', width: '4.5rem', flex: '0 0 auto' },
-              children: ['ID#'],
-            },
-            { type: 'we-text', props: { fontWeight: 'semibold', flex: '4 1 0' }, children: ['Outcome'] },
-            { type: 'we-text', props: { fontWeight: 'semibold', flex: '1 1 0' }, children: ['Scope'] },
-            { type: 'we-text', props: { fontWeight: 'semibold', flex: '1.4 1 0' }, children: ['Status'] },
-            { type: 'we-text', props: { fontWeight: 'semibold', flex: '1 1 0' }, children: ['Progress'] },
-            { type: 'we-text', props: { fontWeight: 'semibold', flex: '2 1 0' }, children: ['Tags'] },
-          ],
-        },
-        {
-          type: '$each',
-          props: {
-            items: {
-              $: 'acornTableRows({ outcomes: local.outcomes, connections: local.connections, tags: local.tags, priorities: first(local.meta).topPriorityOutcomes, collapsed: local.collapsed, filter: { keyword: local.keyword, highPriority: local.highPriority, statuses: local.statuses, scopes: local.scopes, tags: local.tagFilter } })',
-            },
-            as: 'row',
-          },
+          type: 'Column',
+          props: { width: '100%', role: 'table', 'aria-label': 'Outcomes' },
           children: [
             {
               type: 'Row',
+              props: { role: 'row', gap: '400', p: '300', borderBottom: '1px solid border', width: '100%' },
+              children: [
+                {
+                  type: 'div',
+                  props: { role: 'columnheader', style: { flex: '0 0 auto', width: '4.5rem' } },
+                  children: [{ type: 'we-text', props: { fontWeight: 'semibold' }, children: ['ID#'] }],
+                },
+                {
+                  type: 'div',
+                  props: { role: 'columnheader', style: { flex: '4 1 0' } },
+                  children: [{ type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Outcome'] }],
+                },
+                {
+                  type: 'div',
+                  props: { role: 'columnheader', style: { flex: '1 1 0' } },
+                  children: [{ type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Scope'] }],
+                },
+                {
+                  type: 'div',
+                  props: { role: 'columnheader', style: { flex: '1.4 1 0' } },
+                  children: [{ type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Status'] }],
+                },
+                {
+                  type: 'div',
+                  props: { role: 'columnheader', style: { flex: '1 1 0' } },
+                  children: [{ type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Progress'] }],
+                },
+                {
+                  type: 'div',
+                  props: { role: 'columnheader', style: { flex: '2 1 0' } },
+                  children: [{ type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Tags'] }],
+                },
+              ],
+            },
+            {
+              type: '$each',
               props: {
-                gap: '400',
-                px: '300',
-                py: '200',
-                borderBottom: '1px solid border',
-                width: '100%',
-                ay: 'center',
+                items: {
+                  $: 'acornTableRows({ outcomes: local.outcomes, connections: local.connections, tags: local.tags, priorities: first(local.meta).topPriorityOutcomes, collapsed: local.collapsed, filter: { keyword: local.keyword, highPriority: local.highPriority, statuses: local.statuses, scopes: local.scopes, tags: local.tagFilter } })',
+                },
+                as: 'row',
               },
               children: [
                 {
-                  type: 'we-text',
-                  props: { tone: 'secondary', width: '4.5rem', flex: '0 0 auto' },
-                  children: [{ $: 'row.number' }],
-                },
-                {
                   type: 'Row',
-                  props: { gap: '100', ay: 'center', flex: '4 1 0', minWidth: '0' },
+                  props: {
+                    role: 'row',
+                    gap: '400',
+                    px: '300',
+                    py: '200',
+                    borderBottom: '1px solid border',
+                    width: '100%',
+                    ay: 'center',
+                  },
                   children: [
-                    // The tree's indent: a level per depth, as Acorn's table draws it.
-                    { type: 'div', props: { style: { $: "{ width: (row.depth * 1.5) + 'rem', flexShrink: '0' }" } } },
                     {
-                      type: '$if',
-                      props: {
-                        condition: { $: 'row.children > 0' },
-                        then: {
+                      type: 'div',
+                      props: { role: 'cell', style: { width: '4.5rem', flex: '0 0 auto' } },
+                      children: [{ type: 'we-text', props: { tone: 'secondary' }, children: [{ $: 'row.number' }] }],
+                    },
+                    {
+                      type: 'Row',
+                      props: { role: 'cell', gap: '100', ay: 'center', flex: '4 1 0', minWidth: '0' },
+                      children: [
+                        // The tree's indent: a level per depth, as Acorn's table draws it.
+                        {
+                          type: 'div',
+                          props: { style: { $: "{ width: (row.depth * 1.5) + 'rem', flexShrink: '0' }" } },
+                        },
+                        {
+                          type: '$if',
+                          props: {
+                            condition: { $: 'row.children > 0' },
+                            then: {
+                              type: 'we-button',
+                              props: {
+                                variant: 'bare',
+                                size: 'xs',
+                                label: { $: "(row.open ? 'Collapse ' : 'Expand ') + row.outcome.content" },
+                                expanded: { $: 'row.open' },
+                                onClick: { $toggleLocalIn: 'collapsed', value: { $: 'row.id' } },
+                              },
+                              children: [
+                                { type: 'we-icon', props: { name: { $: "row.open ? 'caret-down' : 'caret-right'" } } },
+                              ],
+                            },
+                            else: { type: 'div', props: { style: { width: '1.25rem', flexShrink: '0' } } },
+                          },
+                        },
+                        {
                           type: 'we-button',
                           props: {
                             variant: 'bare',
-                            size: 'xs',
-                            label: { $: "(row.open ? 'Collapse ' : 'Expand ') + row.outcome.content" },
-                            onClick: { $toggleLocalIn: 'collapsed', value: { $: 'row.id' } },
+                            label: { $: '`Open ${row.outcome.content}`' },
+                            onClick: { $setLocal: 'openOutcome', value: { $: 'row.id' } },
                           },
+                          children: [{ $: 'row.outcome.content' }],
+                        },
+                        {
+                          type: '$if',
+                          props: {
+                            condition: { $: 'row.priority' },
+                            then: {
+                              type: 'we-icon',
+                              props: { name: 'medal', color: 'warning', label: 'High priority' },
+                            },
+                          },
+                        },
+                      ],
+                    },
+                    {
+                      type: 'div',
+                      props: { role: 'cell', style: { flex: '1 1 0' } },
+                      children: [{ type: 'we-text', props: { tone: 'secondary' }, children: [{ $: 'row.scope' }] }],
+                    },
+                    {
+                      type: 'div',
+                      props: { role: 'cell', style: { flex: '1.4 1 0' } },
+                      children: [
+                        {
+                          type: 'we-text',
+                          props: { tone: 'secondary' },
                           children: [
-                            { type: 'we-icon', props: { name: { $: "row.open ? 'caret-down' : 'caret-right'" } } },
+                            {
+                              $: "row.status == 'PartiallyAchieved' ? 'Partially achieved' : row.status == 'NotAchieved' ? 'Not achieved' : 'Achieved'",
+                            },
                           ],
                         },
-                        else: { type: 'div', props: { style: { width: '1.25rem', flexShrink: '0' } } },
-                      },
+                      ],
                     },
                     {
-                      type: 'we-button',
-                      props: {
-                        variant: 'bare',
-                        label: { $: '`Open ${row.outcome.content}`' },
-                        onClick: { $setLocal: 'openOutcome', value: { $: 'row.id' } },
-                      },
-                      children: [{ $: 'row.outcome.content' }],
+                      type: 'div',
+                      props: { role: 'cell', style: { flex: '1 1 0' } },
+                      children: [{ type: 'we-text', props: { tone: 'secondary' }, children: [{ $: 'row.progress' }] }],
                     },
                     {
-                      type: '$if',
-                      props: {
-                        condition: { $: 'row.priority' },
-                        then: { type: 'we-icon', props: { name: 'medal', color: 'warning', label: 'High priority' } },
-                      },
-                    },
-                  ],
-                },
-                {
-                  type: 'we-text',
-                  props: { flex: '1 1 0', tone: 'secondary' },
-                  children: [{ $: 'row.scope' }],
-                },
-                {
-                  type: 'we-text',
-                  props: { flex: '1.4 1 0', tone: 'secondary' },
-                  children: [
-                    {
-                      $: "row.status == 'PartiallyAchieved' ? 'Partially achieved' : row.status == 'NotAchieved' ? 'Not achieved' : 'Achieved'",
-                    },
-                  ],
-                },
-                {
-                  type: 'we-text',
-                  props: { flex: '1 1 0', tone: 'secondary' },
-                  children: [{ $: 'row.progress' }],
-                },
-                {
-                  type: 'Row',
-                  props: { gap: '100', wrap: true, flex: '2 1 0', minWidth: '0' },
-                  children: [
-                    {
-                      type: '$each',
-                      props: { items: { $: 'row.tags' }, as: 'tag' },
-                      children: [{ type: 'we-tag', children: [{ $: 'tag.text' }] }],
+                      type: 'Row',
+                      props: { role: 'cell', gap: '100', wrap: true, flex: '2 1 0', minWidth: '0' },
+                      children: [
+                        {
+                          type: '$each',
+                          props: { items: { $: 'row.tags' }, as: 'tag' },
+                          children: [{ type: 'we-tag', children: [{ $: 'tag.text' }] }],
+                        },
+                      ],
                     },
                   ],
                 },
