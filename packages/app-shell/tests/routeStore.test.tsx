@@ -109,6 +109,14 @@ describe('routeStore params', () => {
     store.navigate('./board', { query: { id: awkward } });
     const [written] = nav.mock.lastCall!;
     expect(new URL(written, 'http://x/').searchParams.get('id')).toBe(awkward);
+
+    // An interpreted record's id carries its source already encoded. Pasted after a `?` by hand it
+    // read back decoded — another id — so nothing compared against it ever matched.
+    const interpreted = 'we://interpreted/ad4m%3A%2F%2Fobj%2Fefz/actionitem/480f';
+    store.navigate('/space/s1/workflows', { query: { card: interpreted } });
+    const url = new URL(nav.mock.lastCall![0] as string, 'http://x/');
+    store.setCurrentPath(url.pathname, url.search);
+    expect(store.params().card).toBe(interpreted);
   });
 
   it('navigate adds to a query already in the path, leaves out empty values and passes the rest on', () => {

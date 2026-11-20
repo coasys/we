@@ -137,6 +137,20 @@ describe('in-memory workflows: moves', () => {
     });
   });
 
+  it('dates its last activity by the latest start, ask or move, so the liveliest record can come first', async () => {
+    await workflows.start(dataset, 'Tasks', task);
+    const started = itemFor(await latest(), task)!;
+    expect(started.lastActivity).toBe(started.since);
+
+    await move('doing');
+    const moved = itemFor(await latest(), task)!.lastActivity!;
+    expect(moved).toBeGreaterThan(started.since!);
+
+    // An ask still waiting for a second person is activity too.
+    await move('done');
+    expect(itemFor(await latest(), task)!.lastActivity).toBeGreaterThan(moved);
+  });
+
   it('treats asking for where a record already stands as done', async () => {
     await move('doing');
     expect(await move('doing')).toEqual({ outcome: 'moved', state: 'doing', moves: [] });

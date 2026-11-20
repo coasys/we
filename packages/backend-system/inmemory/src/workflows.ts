@@ -194,6 +194,11 @@ export function createInMemoryWorkflowPort(selfId: () => string | undefined): Wo
     record: item.record,
     state: item.state,
     since: item.since,
+    lastActivity: Math.max(
+      item.since,
+      ...item.history.map((move) => move.at ?? 0),
+      ...[...item.asks.values()].flatMap((ask) => [ask.askedAt, ...ask.approvers.map((a) => a.at)]),
+    ),
     waiting: [...item.asks.entries()]
       .sort(([, a], [, b]) => a.askedAt - b.askedAt)
       .map(([to, ask]) => ({

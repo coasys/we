@@ -248,7 +248,6 @@ describe('a sealed executor opens from the secret the keyring keeps', { skip: no
       assert.equal((await first.rpc.call('runtime.storageStatus')).state, 'sealed');
       const opened = await unlockStorage({
         call: first.rpc.call,
-        onEvent: first.rpc.onEvent,
         keystore,
         firstStart: true,
         askPassphrase: noWindow,
@@ -267,7 +266,6 @@ describe('a sealed executor opens from the secret the keyring keeps', { skip: no
       assert.equal((await again.rpc.call('runtime.storageStatus')).state, 'sealed');
       const opened = await unlockStorage({
         call: again.rpc.call,
-        onEvent: again.rpc.onEvent,
         keystore,
         firstStart: false,
         askPassphrase: noWindow,
@@ -300,7 +298,6 @@ describe('the storage passphrase opens it where Linux has no Secret Service', { 
       let driven;
       const opened = await unlockStorage({
         call: first.rpc.call,
-        onEvent: first.rpc.onEvent,
         keystore,
         firstStart: true,
         askPassphrase: async (step) => {
@@ -330,7 +327,6 @@ describe('the storage passphrase opens it where Linux has no Secret Service', { 
       let driven;
       const opened = await unlockStorage({
         call: again.rpc.call,
-        onEvent: again.rpc.onEvent,
         keystore,
         firstStart: false,
         askPassphrase: async (step) => {
@@ -392,7 +388,6 @@ describe('an executor from before at-rest encryption moves its data under its ke
       let driven = null;
       const opened = await unlockStorage({
         call: executor.rpc.call,
-        onEvent: executor.rpc.onEvent,
         keystore,
         firstStart: true,
         askPassphrase: noWindow,

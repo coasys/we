@@ -40,11 +40,12 @@ export type ForeignShape = { name: string; shape: SHACLShape };
 /*
   Why the shape registry is read with SPARQL rather than `getAllShacl()`.
 
-  In the browser the client the app runs comes from `@coasys/ad4m-connect`, which bundles its own
-  copy of `@coasys/ad4m` — not the one this package depends on. In that copy `getAllShacl()` is not one
-  call: it lists the names, then reads every shape with `getShacl()`, which costs 3 + P calls for a
-  shape of P properties. A space with ~40 shapes paid ~650 `queryLinks` on every load to keep the
-  handful that are foreign, and a remote executor queued them for seconds.
+  The client the app runs comes from `@coasys/ad4m-connect`, which bundles its own copy of
+  `@coasys/ad4m`. Until ad4m #1443 `getAllShacl()` in that copy was not one call: it listed the
+  names, then read every shape with `getShacl()`, which cost 3 + P calls for a shape of P
+  properties. A space with ~40 shapes paid ~650 `queryLinks` on every load to keep the handful that
+  are foreign, and a remote executor queued them for seconds. It is one call now, but it still
+  carries every link of every shape asked for.
 
   What a caller here needs to know about most shapes is a few links each — name → shape → target
   class, shape → property → path — so one SPARQL query answers it for every shape at once, and a
@@ -220,7 +221,7 @@ export function buildEntityClasses(shapes: ForeignShape[]): Record<string, Entit
  * injection into an AI system prompt as `externalEntities`.
  */
 export function buildEntityManifest(shapes: ForeignShape[]): EntityManifestEntry[] {
-  return shapes.map(({ name, shape }) => ({
+  const entries = shapes.map(({ name, shape }) => ({
     name,
     targetClass: shape.targetClass ?? '',
     ...(shape.interpretationHint !== undefined && { interpretationHint: shape.interpretationHint }),
@@ -234,11 +235,35 @@ export function buildEntityManifest(shapes: ForeignShape[]): EntityManifestEntry
         required: (p.minCount ?? 0) >= 1,
         writable: p.writable ?? true,
         ...(p.resolveLanguage !== undefined && { resolveLanguage: p.resolveLanguage }),
-        ...(p.class !== undefined && { relatedEntity: shaclClassToLocalName(p.class) }),
+        // The target class reaches us two ways, and decorator-generated classes write BOTH:
+        // `sh:class` is the target's *shape* URI (`…Shape`), `target_class_name` its class name.
+        // The name is the entity, so it wins; a shape declaring only `sh:class` still resolves.
+        ...((p.targetClassName ?? p.class) !== undefined && {
+          relatedEntity: shaclClassToLocalName((p.targetClassName ?? p.class)!),
+        }),
         // The shape says which end owns the link, so an entry read back from storage keeps it.
         ...(p.relationKind?.startsWith('belongsTo') && { reverse: true }),
         ...(p.interpretationHint !== undefined && { interpretationHint: p.interpretationHint }),
         ...(p.identity ? { identity: true } : {}),
       })),
   }));
+  /*
+    Name each reverse's forward. SHACL says which end owns a link (`belongsTo*`) but not which
+    property on the other entity is its forward half — it does not have to: the two share one
+    predicate, the same link read from opposite ends. That is enough to pair them here, and the
+    name is what every consumer of `reverseOf` — the graph's direction, a tree move's writable
+    side — reads rather than re-deriving.
+  */
+  for (const entry of entries) {
+    for (const p of entry.properties) {
+      if (!p.reverse || p.reverseOf || !p.relatedEntity) continue;
+      // Several forwards can share a predicate; the one that points back at this entity is the pair.
+      const candidates = entries
+        .find((e) => e.name === p.relatedEntity)
+        ?.properties.filter((q) => !q.reverse && q.predicate === p.predicate);
+      const forward = candidates?.find((q) => q.relatedEntity === entry.name) ?? candidates?.[0];
+      if (forward) p.reverseOf = forward.name;
+    }
+  }
+  return entries;
 }

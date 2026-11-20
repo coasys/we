@@ -8,6 +8,7 @@
 
 use std::time::Duration;
 
+use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use zeroize::Zeroizing;
@@ -77,10 +78,6 @@ impl Platform {
         ))
     }
 
-    pub fn base(&self) -> &str {
-        &self.base
-    }
-
     /// `POST /api/vouch/email/start {email, did}`: the platform sends a code to `email`. It
     /// answers `202` for every address, known or not.
     pub async fn start(&self, email: &str, did: &str) -> Result<(), PlatformError> {
@@ -89,7 +86,7 @@ impl Platform {
             json!({ "email": email, "did": did }),
         )
         .await
-        .map(|_| ())
+        .map(|_: serde::de::IgnoredAny| ())
     }
 
     /// `POST /api/vouch/email/verify {email, did, code}`: the one-use token for the right code.
@@ -99,21 +96,18 @@ impl Platform {
         did: &str,
         code: &str,
     ) -> Result<Zeroizing<String>, PlatformError> {
-        let answer = self
+        let issued: Issued = self
             .post(
                 "/api/vouch/email/verify",
                 json!({ "email": email, "did": did, "code": code }),
             )
             .await?;
-        let issued: Issued =
-            serde_json::from_value(answer).map_err(|_| PlatformError::Refused {
-                status: 200,
-                error: Some("no token".into()),
-            })?;
         Ok(Zeroizing::new(issued.token))
     }
 
-    async fn post(&self, path: &str, body: Value) -> Result<Value, PlatformError> {
+    /// `body` to `path`, the answer read as a `T`; an empty answer reads as `null` (`start`'s
+    /// `202`). One that is not a `T` is `Refused` with its status and `unreadable answer`.
+    async fn post<T: DeserializeOwned>(&self, path: &str, body: Value) -> Result<T, PlatformError> {
         let response = self
             .http
             .post(format!("{}{path}", self.base))
@@ -127,7 +121,15 @@ impl Platform {
             .await
             .map_err(|e| PlatformError::Unreachable(e.without_url().to_string()))?;
         if (200..300).contains(&status) {
-            return Ok(serde_json::from_str(&text).unwrap_or(Value::Null));
+            let text = if text.trim().is_empty() {
+                "null"
+            } else {
+                &text
+            };
+            return serde_json::from_str(text).map_err(|_| PlatformError::Refused {
+                status,
+                error: Some("unreadable answer".into()),
+            });
         }
         let refusal: Option<Refusal> = serde_json::from_str(&text).ok();
         let error = refusal.as_ref().and_then(|r| r.error.clone());
@@ -144,10 +146,10 @@ impl Platform {
 }
 
 /// The platform's base URL from the value of `WE_PLATFORM_URL`: the value when it is set and not
-/// blank, else [`DEFAULT_PLATFORM_URL`].
+/// blank, else [`DEFAULT_PLATFORM_URL`]. (`Platform::new` removes a trailing `/`.)
 pub fn platform_url(set: Option<&str>) -> String {
     match set.map(str::trim) {
-        Some(url) if !url.is_empty() => url.trim_end_matches('/').to_string(),
+        Some(url) if !url.is_empty() => url.to_string(),
         _ => DEFAULT_PLATFORM_URL.to_string(),
     }
 }
@@ -229,6 +231,10 @@ pub(crate) mod tests {
         assert_eq!(platform_url(Some("  ")), DEFAULT_PLATFORM_URL);
         assert_eq!(
             platform_url(Some(" https://staging.example/ ")),
+            "https://staging.example/"
+        );
+        assert_eq!(
+            Platform::new(&platform_url(Some(" https://staging.example/ "))).base,
             "https://staging.example"
         );
     }

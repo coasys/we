@@ -40,14 +40,13 @@
  *
  * ## Turning it off in a build that has it
  *
- * A third gate, and the only one that can be thrown deliberately: `devToolsEnabled` reads the shared
- * `we.devTools` switch (Settings → Developer), so a developer checking what a *user* sees loses
- * these controls along with every other developer affordance rather than having to remember this
- * one separately. Live in both directions — the count is re-read per solve and the controls are
- * gated in the schema on `sessionStore.devTools`, so nothing here needs a reload.
+ * A third gate, and the only one that can be thrown deliberately: `testPeopleEnabled` reads the
+ * shared Test people switch (Settings → Developer). It is off until a developer turns it on, and off
+ * whenever the developer tools are. Live in both directions — the count is re-read per solve and
+ * the controls are gated in the schema on `sessionStore.testPeople`, so nothing here needs a reload.
  */
 
-import { DEV_FEATURES, devToolsEnabled } from '@we/module-shared';
+import { DEV_FEATURES, testPeopleEnabled } from '@we/module-shared';
 
 /** More than this is a stray keypress rather than a test. */
 const MAX = 24;
@@ -79,7 +78,7 @@ export const devPeersAvailable = DEV_FEATURES;
  * otherwise be looking at a stage with two synthetic participants still on it.
  */
 function visible(): boolean {
-  return devToolsEnabled(DEV_FEATURES);
+  return testPeopleEnabled(DEV_FEATURES);
 }
 
 /** Identity and media for one synthetic participant. The store turns these into tiles. */
