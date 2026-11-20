@@ -1,0 +1,12 @@
+[package]
+name = "we-screen"
+version = "0.1.0"
+edition = "2021"
+description = "ScreenState, Navigator, back stack — the typed screen state of the renderer"
+publish = false
+
+[dependencies]
+we-expr.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+indexmap.workspace = true
