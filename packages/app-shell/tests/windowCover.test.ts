@@ -16,9 +16,10 @@
  *   cover the outer one's controls stayed reachable, and beside a sibling cover the newer one was
  *   made inert by the older.
  */
+import { createSignal } from 'solid-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { COVER_ATTR, installWindowCover } from '../src/shared/windowCover';
+import { chromeCovered, COVER_ATTR, installWindowCover } from '../src/shared/windowCover';
 
 /** jsdom lays nothing out, so nothing would count as drawn; every element is, here. */
 const realRects = HTMLElement.prototype.getClientRects;
@@ -59,8 +60,12 @@ function tab(shift = false): boolean {
   return event.defaultPrevented;
 }
 
-/** The app as TemplateProvider draws it: its layer, the chrome nesting the rail, the page beside it. */
-function app() {
+/**
+ * The app as TemplateProvider draws it: its layer, the chrome nesting the rail, the page beside it.
+ * `narrow` answers the window's own question — `shellStore.narrowWindow`; a phone unless said
+ * otherwise, which is where every plain cover here already holds.
+ */
+function app(narrow: () => boolean = () => true) {
   const layer = el('div', document.body, 'layer');
   const chrome = el('div', layer, 'chrome');
   const rail = el('nav', chrome, 'rail');
@@ -68,7 +73,7 @@ function app() {
   const row = el('button', rail, 'row');
   const page = el('main', chrome, 'page');
   const pageButton = el('button', page, 'page-button');
-  stop = installWindowCover(layer);
+  stop = installWindowCover(layer, narrow);
   return { layer, chrome, rail, toggle, row, page, pageButton };
 }
 
@@ -187,5 +192,116 @@ describe('two covers', () => {
     await vi.waitFor(() => expect(document.activeElement).toBe(row));
     // And the menu is in front again, its own controls in reach.
     expect(row.inert).toBe(false);
+  });
+});
+
+describe('a "window" mark on a window that is not narrow', () => {
+  /*
+    The ask is a phone's. On a wider window the chrome stays drawn, so a mark that made it inert
+    would send the one thing in reach nowhere — and a mark that emptied the frame would widen the
+    very surface whose tier wrote it, an oscillation that settles nowhere. A `"window"` mark on a
+    wider window is no cover at all: no inert, no trap, no `chromeCovered`.
+  */
+  it('is no cover at all: nothing inert, Tab free, and the chrome not reported covered', async () => {
+    const { page, pageButton, rail } = app(() => false);
+    rail.setAttribute(COVER_ATTR, 'window');
+    await settle();
+    expect(page.inert).not.toBe(true);
+    expect(chromeCovered()).toBe(false);
+    pageButton.focus();
+    expect(tab()).toBe(false);
+  });
+
+  it('takes the mark up as the window narrows, and puts it down again as it widens', async () => {
+    const [narrow, setNarrow] = createSignal(true);
+    const { page, rail } = app(narrow);
+    rail.setAttribute(COVER_ATTR, 'window');
+    await settle();
+    expect(page.inert).toBe(true);
+    expect(chromeCovered()).toBe(true);
+
+    setNarrow(false);
+    window.dispatchEvent(new Event('resize'));
+    await settle();
+    expect(page.inert).not.toBe(true);
+    expect(chromeCovered()).toBe(false);
+
+    // And the same mark, never rewritten, is a cover again when the window narrows back.
+    setNarrow(true);
+    window.dispatchEvent(new Event('resize'));
+    await settle();
+    expect(page.inert).toBe(true);
+    expect(chromeCovered()).toBe(true);
+  });
+
+  it('leaves an ordinary cover beside it in front, and the page under it inert', async () => {
+    const { layer, chrome, rail } = app(() => false);
+    rail.setAttribute(COVER_ATTR, 'window');
+    // A sheet opened over the thread: a page-cover, which a window of any width grants.
+    const sheet = el('div', layer, 'sheet');
+    sheet.setAttribute(COVER_ATTR, 'true');
+    await settle();
+    expect(chrome.inert).toBe(true);
+    expect(chromeCovered()).toBe(false);
+  });
+});
+
+describe('a cover that asks for the whole window', () => {
+  /*
+    `COVER_ATTR="window"` asks for the app's chrome with the page — what a phone's thread marks,
+    since the surface it is drawn in cannot paint over the app's bar. `chromeCovered` reports the
+    ask while such a cover is in front, and the app answers by taking its furniture away: the frame
+    holds no bands (`declareAppFrame`) and the compact bar is not drawn. A `"true"` cover keeps its
+    smaller ask — the page's share of the window — and reports nothing here.
+  */
+  it('holds while the asking cover is in front, and lets go when it does', async () => {
+    const { rail } = app();
+    expect(chromeCovered()).toBe(false);
+
+    rail.setAttribute(COVER_ATTR, 'window');
+    await settle();
+    expect(chromeCovered()).toBe(true);
+
+    rail.setAttribute(COVER_ATTR, 'false');
+    await settle();
+    expect(chromeCovered()).toBe(false);
+  });
+
+  it('does not hold for a cover that asks only for the page', async () => {
+    const { rail } = app();
+    rail.setAttribute(COVER_ATTR, 'true');
+    await settle();
+    expect(chromeCovered()).toBe(false);
+    // Still a cover — the rest of the cover's work is unchanged.
+    expect(document.getElementById('page')!.inert).toBe(true);
+  });
+
+  it('answers for the cover in front, not any cover that is open', async () => {
+    const { layer, rail } = app();
+    rail.setAttribute(COVER_ATTR, 'window');
+    await settle();
+    expect(chromeCovered()).toBe(true);
+
+    // A sheet over the thread that asks only for the page: the bar comes back under it.
+    const sheet = el('div', layer, 'sheet');
+    sheet.setAttribute(COVER_ATTR, 'true');
+    await settle();
+    expect(chromeCovered()).toBe(false);
+
+    // And when it lets go, the thread's ask is what is in front again.
+    sheet.setAttribute(COVER_ATTR, 'false');
+    await settle();
+    expect(chromeCovered()).toBe(true);
+  });
+
+  it('follows the mark itself, re-read while the same cover holds', async () => {
+    const { rail } = app();
+    rail.setAttribute(COVER_ATTR, 'window');
+    await settle();
+    expect(chromeCovered()).toBe(true);
+
+    rail.setAttribute(COVER_ATTR, 'true');
+    await settle();
+    expect(chromeCovered()).toBe(false);
   });
 });

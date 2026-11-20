@@ -14,6 +14,7 @@
  * Stub <Route> components are emitted for keepAlive paths so the router matches
  * them without 404, while the real content lives in the persistent div.
  */
+import { templateSurface } from '@shared/registries/templateBag';
 import { componentRegistry } from '@solid/registries/componentRegistry';
 import type { Stores } from '@solid/types';
 import { Navigate, Route } from '@solidjs/router';
@@ -39,7 +40,13 @@ export const RouteSurface = createContext<unknown>();
 
 /** A route pass's render context: its navigation depth, and the surface where there is one. */
 function routeContext(baseDepth: number): Record<string, unknown> {
-  const surface = useContext(RouteSurface);
+  /*
+    A route's `component` runs in the router's own scope, and the provider above reaches it only
+    where the router's outlet really is under the layout's owner — it is not on every mount. The
+    lent template surface is the same answer there: the surface the whole template measures
+    against, published beside its bag — see `templateBag.ts`.
+  */
+  const surface = useContext(RouteSurface) ?? templateSurface();
   return surface ? { surface, $nav: { baseDepth } } : { $nav: { baseDepth } };
 }
 

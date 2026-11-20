@@ -127,4 +127,29 @@ describe('one write at a time, per key', () => {
     expect(events).toEqual(['start']);
     held.resolve();
   });
+
+  it('forgets a key whose chain failed', async () => {
+    // Symmetric with the drain: a refused write's entry is still an entry to keep or to drop, and
+    // dropping it must not take the guard with it — the next caller's queued ops still run one at
+    // a time.
+    const queue = oneAtATime();
+    await expect(
+      queue('post|like', async () => {
+        throw new Error('refused');
+      }),
+    ).rejects.toThrow('refused');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const events: string[] = [];
+    const held = deferred<void>();
+    void queue('post|like', async () => {
+      events.push('start');
+      await held.promise;
+    });
+    await Promise.resolve();
+    void queue('post|like', async () => void events.push('second'));
+    await Promise.resolve();
+    expect(events).toEqual(['start']);
+    held.resolve();
+  });
 });
