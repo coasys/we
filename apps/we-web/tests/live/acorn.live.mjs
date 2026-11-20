@@ -382,7 +382,7 @@ describe('the outcomes view on the live mount', () => {
     });
   });
 
-  it('rename writes through', { skip: WRITE_GAP }, async () => {
+  it('rename writes through', async () => {
     const input = page.getByRole('textbox', { name: SEED_RENAME, exact: true });
     await input.waitFor({ state: 'visible', timeout: 120_000 });
     await input.fill(SEED_RENAMED);
