@@ -1234,8 +1234,14 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
                   The order is one field on the project meta, and every change to it — a drag, an
                   add, a remove — is a whole-list replace through `record.update`: the mount
                   declares no adder or remover, so its `update` call takes the new list entire
-                  (design §2). `we-sortable` hands over exactly that, the zone's ids in their new
-                  order, so the drop writes what it reports and nothing is spliced here.
+                  (design §2). `we-sortable` reports only the ids it draws, and a stored id whose
+                  outcome has not arrived (or is gone) is not drawn — so the drop is merged back
+                  into the stored list by `acornPriorityOrder`, which moves the drawn ids among
+                  their own places and leaves the rest where they were. A reorder is never a
+                  remove. The expression language cannot say this itself: it has no index in a
+                  comprehension to refill the drawn places with.
+                  The drawn list is `distinct` first: two carriers sharing a `data-we-id` would
+                  give the sortable one item under two rows.
                 */
                 {
                   type: '$if',
@@ -1247,7 +1253,13 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
                         gap: '200',
                         onReorder: {
                           $invoke: 'record.update',
-                          args: ['AcornProjectMeta', { $: 'meta.id' }, { $: '{ topPriorityOutcomes: event.detail }' }],
+                          args: [
+                            'AcornProjectMeta',
+                            { $: 'meta.id' },
+                            {
+                              $: '{ topPriorityOutcomes: acornPriorityOrder({ stored: meta.topPriorityOutcomes, visible: event.detail }) }',
+                            },
+                          ],
                         },
                       },
                       children: [
@@ -1255,7 +1267,7 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
                           type: '$each',
                           props: {
                             items: {
-                              $: 'meta.topPriorityOutcomes.map(i, local.outcomes.find(o, o.id == i)).filter(o, o)',
+                              $: 'distinct(meta.topPriorityOutcomes).map(i, local.outcomes.find(o, o.id == i)).filter(o, o)',
                             },
                             as: 'priority',
                           },

@@ -5199,6 +5199,12 @@ export const contextData: ContextData = {
           example:
             'acornTableRows({ outcomes: local.outcomes, connections: local.connections, tags: local.tags, priorities: first(local.meta).topPriorityOutcomes, collapsed: local.collapsed, filter: { keyword: local.keyword } })',
         },
+        {
+          name: 'acornPriorityOrder',
+          params: ['stored', 'visible'],
+          doc: "The project's priority ids after a reorder of the drawn ones. `stored` is the list as kept, `visible` the drawn ids in their new order; each place a drawn id held takes the next of `visible`, and an id that is not drawn — its outcome not loaded, or gone — keeps its place. No stored id is dropped, and each is kept once.",
+          example: 'acornPriorityOrder({ stored: meta.topPriorityOutcomes, visible: event.detail })',
+        },
       ],
       views: [],
       blocks: [],
