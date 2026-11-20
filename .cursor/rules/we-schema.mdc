@@ -4227,6 +4227,7 @@ Project management over a mounted Acorn project — outcomes, the tree, prioriti
   - acornScopeLabel(scope) — An outcome's scope — 'Big', 'Small', 'Uncertain' — as a label.  e.g. acornScopeLabel({ scope: outcome.scopeType })
   - acornTimeFrameLabel(timeFrame) — An outcome's time frame as a date range, or '' when unset.  e.g. acornTimeFrameLabel({ timeFrame: outcome.timeFrame })
   - acornOutcomeSummary(outcome) — One line on an outcome — status, task progress and scope, joined where present.  e.g. acornOutcomeSummary({ outcome: outcome })
+  - acornPriorityOrder(stored, visible) — The project's priority ids after a reorder of the drawn ones. `stored` is the list as kept, `visible` the drawn ids in their new order; each place a drawn id held takes the next of `visible`, and an id that is not drawn — its outcome not loaded, or gone — keeps its place. No stored id is dropped, and each is kept once.  e.g. acornPriorityOrder({ stored: meta.topPriorityOutcomes, visible: event.detail })
 
 ### Polls (`polls`)
 Ask the space a question and watch the answer arrive.
