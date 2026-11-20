@@ -50,6 +50,11 @@ export interface KeySessionRemote {
     logout(): Promise<boolean>;
   };
   onAuthFailed(callback: (reason: string) => void): () => void;
+  /**
+   * Gives the client's HTTP side (which `ApiClient.getToken()` reads, e.g. for the transcription
+   * stream's header) the renewed token. The socket reads the token at every dial instead.
+   */
+  setToken(token: string): void;
   close(): void;
 }
 
@@ -352,6 +357,7 @@ export async function openKeySession(
       if (finished) return;
       token = renewed.token;
       expiresAt = renewed.expiresAt;
+      client.setToken(token);
       schedule(expiresAt - now() - margin);
     } catch (error) {
       if (finished) return;

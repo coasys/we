@@ -295,7 +295,7 @@ export function createAccountRegistry({ configDir, defaultPath, defaultName = 'M
   /** Rewrites one account's entry, creating it when the scan found the account but nothing named it. */
   function updateEntry(path, change) {
     const state = read();
-    const entry = state.accounts.find((a) => a.path === path) ?? { path, name: '' };
+    const entry = state.accounts.find((a) => a.path === path) ?? { path };
     const next = change(entry);
     const listed = state.accounts.some((a) => a.path === path);
     const accounts = listed ? state.accounts.map((a) => (a.path === path ? next : a)) : [...state.accounts, next];
@@ -484,11 +484,9 @@ export function createAccountRegistry({ configDir, defaultPath, defaultName = 'M
 
     removeServer(address) {
       updateEntry(this.resolveActivePath(), (entry) => {
-        // A stored entry that may not be dialled serves nobody (the app stays on this computer), so
-        // it can be removed even while it is the one chosen.
-        if (entry.serving === address && diallable(address)) {
-          throw new Error('This host is in use. Switch to another device first.');
-        }
+        // The saved choice is not proof the host is in use: a login that failed leaves the app on
+        // this computer with the choice still saved. What is in use is known to the session, whose
+        // port refuses to remove it; removing the saved choice here sends the next start to this computer.
         const rest = { ...entry, servers: (entry.servers ?? []).filter((s) => s.address !== address) };
         if (rest.serving === address) delete rest.serving;
         return rest;

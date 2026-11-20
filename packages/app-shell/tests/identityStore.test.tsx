@@ -594,6 +594,66 @@ describe('which device serves you', () => {
     toastService.remove(toast!.id);
   });
 
+  it('keeps the newest answer to which device serves, when an older one arrives after it', async () => {
+    const s = servingBackend();
+    setPorts({ identity: s.port });
+    const { devices: deviceStore } = mount();
+    await flush();
+
+    const answers: ((view: ServingView) => void)[] = [];
+    s.port.serving = () => new Promise<ServingView>((resolve) => answers.push(resolve));
+    const older = deviceStore.refreshServers();
+    const newer = deviceStore.refreshServers();
+    const view = (name: string): ServingView => ({
+      devices: [{ id: 'this-computer', name, address: null, current: true }],
+      role: null,
+      problem: null,
+    });
+    answers[1](view('newer'));
+    await newer;
+    answers[0](view('older'));
+    await older;
+    expect(deviceStore.servers()[0].name).toBe('newer');
+  });
+
+  it('drops the session-ended toast with its port, and its action never acts on the next one', async () => {
+    const first = servingBackend();
+    setPorts({ identity: first.port });
+    const { devices: deviceStore } = mount();
+    await flush();
+    first.end({ reason: 'ended', id: 'https://a.example', name: 'a.example' });
+    const toast = toastService.toasts().find((t) => t.message === "You're signed out of a.example.");
+    expect(toast).toBeDefined();
+
+    const second = servingBackend();
+    setPorts({ identity: second.port });
+    await flush();
+    expect(toastService.toasts().some((t) => t.id === toast!.id)).toBe(false);
+    // Pressed anyway (a stale reference): it must not switch the new account.
+    toast!.action?.run();
+    await flush();
+    expect(second.calls).toEqual([]);
+    expect(deviceStore.sessionEnded()).toBeNull();
+  });
+
+  it('stays busy until the last of overlapping server steps ends', async () => {
+    const s = servingBackend();
+    setPorts({ identity: s.port });
+    const { devices: deviceStore } = mount();
+    await flush();
+    const releases: (() => void)[] = [];
+    s.port.removeServer = () => new Promise<void>((resolve) => releases.push(resolve));
+    const one = deviceStore.removeServer('https://a.example');
+    const two = deviceStore.removeServer('https://b.example');
+    expect(deviceStore.serverBusy()).toBe(true);
+    releases[0]();
+    await one;
+    expect(deviceStore.serverBusy()).toBe(true);
+    releases[1]();
+    await two;
+    expect(deviceStore.serverBusy()).toBe(false);
+  });
+
   it('says an ended session in plain words', async () => {
     const s = servingBackend();
     setPorts({ identity: s.port });

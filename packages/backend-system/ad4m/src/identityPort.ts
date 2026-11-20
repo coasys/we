@@ -89,11 +89,10 @@ export interface Ad4mServerHost {
   list(): Promise<{ servers: { address: string; name: string }[]; serving: string | null }>;
   add(server: { address: string; name: string }): Promise<void>;
   remove(address: string): Promise<void>;
-  /**
-   * Serves the account from `address` (`null`: this computer) from the next start, and starts the
-   * app over. A renderer that reloads does not resolve.
-   */
+  /** Records that the account is served from `address` (`null`: this computer) from the next start. Rejects when it cannot. */
   choose(address: string | null): Promise<void>;
+  /** Starts the app over, so it connects the way `choose` recorded. A renderer that reloads does not resolve. */
+  restart(): Promise<void>;
 }
 
 /** Which device serves this session, as the connector found it at start. */
@@ -293,7 +292,18 @@ function servingMembers(
 
   return {
     async serving(): Promise<ServingView> {
-      const { servers } = await host.list();
+      let servers: { address: string; name: string }[];
+      try {
+        ({ servers } = await host.list());
+      } catch (error) {
+        // The list cannot be read (the connector said so at start, and still cannot): this computer
+        // serves the session, and the page shows why rather than an error in place of the problem.
+        return {
+          devices: [{ id: THIS_COMPUTER_ID, name: 'This computer', address: null, current: servedBy === null }],
+          role: current?.session.role ?? null,
+          problem: serving.problem ?? `Can't load your hosts. ${String(error)}`,
+        };
+      }
       return {
         devices: [
           { id: THIS_COMPUTER_ID, name: 'This computer', address: null, current: servedBy === null },
@@ -317,17 +327,22 @@ function servingMembers(
         const refusal = error as KeySessionError;
         return { ok: false, reason: refusal.reason, message: refusal.message };
       }
-      const { servers } = await host.list();
-      if (servers.some((server) => server.address === origin)) return { ok: true, id: origin };
-      // Kept only once it lets this computer in: a server that does not is not one of the person's.
+      // Never rejects: whatever goes wrong, from the host's list to its store, is an outcome.
       try {
+        const { servers } = await host.list();
+        if (servers.some((server) => server.address === origin)) return { ok: true, id: origin };
+        // Kept only once it lets this computer in: a server that does not is not one of the person's.
         await tryKeyLogin(signer, origin, serving.connect ? { connect: serving.connect } : {});
+        await host.add({ address: origin, name: serverName(origin) });
+        return { ok: true, id: origin };
       } catch (error) {
         if (error instanceof KeySessionError) return { ok: false, reason: error.reason, message: error.message };
-        throw error;
+        return {
+          ok: false,
+          reason: 'unavailable',
+          message: `Couldn't add that host. ${error instanceof Error ? error.message : String(error)}`,
+        };
       }
-      await host.add({ address: origin, name: serverName(origin) });
-      return { ok: true, id: origin };
     },
 
     async removeServer(id: string) {
@@ -343,8 +358,11 @@ function servingMembers(
       }
       // Already served from there, and nothing went wrong getting there: nothing to start over.
       if (address === servedBy && serving.problem === null && ended === null) return;
-      await current?.session.close();
+      // Recorded before anything is closed: a choice that cannot be kept must leave this session
+      // connected, or the app has nothing to talk to until it restarts.
       await host.choose(address);
+      await current?.session.close();
+      await host.restart();
     },
 
     onSessionEnded(listener) {

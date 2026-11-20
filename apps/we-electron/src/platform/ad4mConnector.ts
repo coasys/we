@@ -67,8 +67,8 @@ function serverHost(): Ad4mServerHost | undefined {
     list: () => servers.list(),
     add: (server) => servers.add(server),
     remove: (address) => servers.remove(address),
-    async choose(address) {
-      await servers.choose(address);
+    choose: (address) => servers.choose(address),
+    async restart() {
       window.location.reload();
     },
   };

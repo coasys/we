@@ -574,6 +574,21 @@ describe('a backend that keeps its own config file', () => {
       expect(store.executorRestartPending()).toBe(true);
     });
 
+    it('judges a refused restart by its own answer, not by whatever error was shown last', async () => {
+      const { runtime } = serverBackend('refused');
+      runtime.executorLogTail = async () => {
+        throw new Error('log unreadable');
+      };
+      ports = { runtime };
+      const store = mount();
+
+      // Another call fails in the same turn, so the shared slot ends on its words, not the restart's.
+      const restarting = store.restartExecutor();
+      await store.loadExecutorLogTail();
+      await restarting;
+      expect(store.canRestartExecutor()).toBe(false);
+    });
+
     it('restarts the server when it allows it', async () => {
       const { runtime, calls } = serverBackend('allowed');
       ports = { runtime };

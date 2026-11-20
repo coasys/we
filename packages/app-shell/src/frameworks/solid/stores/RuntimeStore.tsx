@@ -763,7 +763,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
    * the error slot. Read that way, a failed mutation always erased its own message before anyone
    * could see it: the user got a control that silently did nothing.
    */
-  type RunResult<T> = { ok: true; value: T | undefined } | { ok: false };
+  type RunResult<T> = { ok: true; value: T | undefined } | { ok: false; error: string };
 
   async function run<T>(key: string, fn: () => Promise<T> | undefined): Promise<RunResult<T>> {
     setPending((keys) => [...keys, key]);
@@ -782,8 +782,9 @@ export function RuntimeStoreProvider(props: ParentProps) {
         between 1024 and 65535", "languages is part of the running node and cannot be removed". A
         generic sentence would replace a fix with a shrug.
       */
-      setError(err instanceof Error ? err.message : String(err));
-      return { ok: false };
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message);
+      return { ok: false, error: message };
     } finally {
       // One occurrence, not every one: the same action can overlap itself (a double-clicked refresh),
       // and the second call is still running when the first returns.
@@ -1083,7 +1084,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
     if (onServer()) {
       const done = await run('restartExecutor', () => port?.restartExecutor?.());
       if (done.ok) setExecutorRestartPending(false);
-      else if (/local-only/.test(error())) {
+      else if (/local-only/.test(done.error)) {
         setRestartRefused(true);
         setError("You can't restart the host from here. Changes apply at its next start.");
       }

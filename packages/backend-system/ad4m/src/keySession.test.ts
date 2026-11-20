@@ -60,7 +60,13 @@ function fakeServer(
   const tokens = new Map<string, string>(); // token → grant
   const grants = new Set<string>();
   const revokedKeys = new Set<string>();
-  const clients: { token: (() => string) | null; closed: boolean; authFailed: ((r: string) => void)[] }[] = [];
+  const clients: {
+    token: (() => string) | null;
+    /** What the SDK's HTTP side holds (`ApiClient.getToken()`): set at dial, moved only by `setToken`. */
+    httpToken: string | null;
+    closed: boolean;
+    authFailed: ((r: string) => void)[];
+  }[] = [];
   const loggedOut: string[] = [];
 
   const check = ({ statement }: SignedKeyStatement) => {
@@ -79,7 +85,12 @@ function fakeServer(
 
   const connect = (address: string, token?: () => string): KeySessionRemote => {
     expect(address).toBe(origin);
-    const state = { token: token ?? null, closed: false, authFailed: [] as ((r: string) => void)[] };
+    const state = {
+      token: token ?? null,
+      httpToken: token ? token() : null,
+      closed: false,
+      authFailed: [] as ((r: string) => void)[],
+    };
     clients.push(state);
     const live = () => {
       const grant = state.token ? tokens.get(state.token()) : undefined;
@@ -122,6 +133,9 @@ function fakeServer(
       },
       // The SDK client's event subscription, which the ports open over the session's client.
       ...{ on: () => () => {} },
+      setToken: (next: string) => {
+        state.httpToken = next;
+      },
       onAuthFailed: (callback) => {
         state.authFailed.push(callback);
         return () => {};
@@ -250,6 +264,8 @@ describe('a key session on a server', () => {
     expect(session.token()).toBe('token-2');
     expect(session.expiresAt()).toBe(server.now() + 3600);
     expect(server.clients[1].token?.()).toBe('token-2');
+    // The HTTP side (the transcription stream's header) is moved too, not left on the first token.
+    expect(server.clients[1].httpToken).toBe('token-2');
     // And the next one is scheduled from the new expiry.
     expect([...timers.pending.values()][0].ms).toBe((3600 - 300) * 1000);
   });
@@ -407,6 +423,7 @@ describe('a key session on a server', () => {
           logout: async () => true,
         },
         onAuthFailed: () => () => {},
+        setToken: () => {},
         close: () => {},
       };
     };
@@ -607,6 +624,7 @@ function fakeHost(servers: { address: string; name: string }[] = [], serving: st
     choose: vi.fn(async (address: string | null) => {
       state.serving = address;
     }),
+    restart: vi.fn(async () => {}),
   };
   return host;
 }
@@ -694,6 +712,66 @@ describe('choosing which device serves the account (the identity port)', () => {
     expect(host.add).not.toHaveBeenCalled();
   });
 
+  it('answers an add whose host list or store fails, rather than rejecting', async () => {
+    const local = fakeLocal();
+    const server = fakeServer();
+    const base = { signer: local, current: null, problem: null, connect: server.connect };
+    const listFails = fakeHost();
+    listFails.list = async () => {
+      throw new Error('registry unreadable');
+    };
+    const a = createAd4mIdentityPort(local, undefined, { host: listFails, ...base });
+    expect(await a.addServer!(ADDRESS)).toMatchObject({
+      ok: false,
+      message: expect.stringMatching(/registry unreadable/),
+    });
+
+    const addFails = fakeHost();
+    addFails.add = vi.fn(async () => {
+      throw new Error('disk full');
+    });
+    const b = createAd4mIdentityPort(local, undefined, { host: addFails, ...base });
+    expect(await b.addServer!(ADDRESS)).toMatchObject({ ok: false, message: expect.stringMatching(/disk full/) });
+  });
+
+  it('keeps the session open when the choice cannot be recorded, and restarts only once it is', async () => {
+    const server = fakeServer();
+    const local = fakeLocal();
+    const host = fakeHost([{ address: ADDRESS, name: 'home' }], ADDRESS);
+    const session = await openKeySession(local, ADDRESS, { connect: server.connect, now: server.now });
+    const port = createAd4mIdentityPort(local, undefined, {
+      host,
+      signer: local,
+      current: { session, name: 'home' },
+      problem: null,
+      connect: server.connect,
+    });
+    host.choose = vi.fn(async () => {
+      throw new Error('registry is read-only');
+    });
+    await expect(port.serveFrom!(THIS_COMPUTER_ID)).rejects.toThrow(/read-only/);
+    expect(server.loggedOut).toHaveLength(0);
+    expect(server.clients.at(-1)?.closed).toBe(false);
+    expect(host.restart).not.toHaveBeenCalled();
+  });
+
+  it('shows this computer with the stored problem when the host list keeps failing', async () => {
+    const local = fakeLocal();
+    const host = fakeHost();
+    host.list = async () => {
+      throw new Error('registry unreadable');
+    };
+    const result = await createLocalAd4mConnector(async () => ({ port: 12000, token: 'admin' }), {
+      startupDelayMs: 0,
+      servers: host,
+      connectRemote: fakeServer().connect,
+      connectLocal: async () => ({ client: local }),
+    }).initialize(ctx);
+    const view = await result.ports.identity!.serving!();
+    expect(view.devices).toEqual([{ id: THIS_COMPUTER_ID, name: 'This computer', address: null, current: true }]);
+    expect(view.problem).toMatch(/Can't load your hosts.*registry unreadable/);
+  });
+
   it('switches to a listed server, and back to this computer, logging out of the server it leaves', async () => {
     const server = fakeServer();
     const local = fakeLocal();
@@ -727,6 +805,7 @@ describe('choosing which device serves the account (the identity port)', () => {
     await there.serveFrom!(THIS_COMPUTER_ID);
     expect(server.loggedOut).toHaveLength(1);
     expect(host.choose).toHaveBeenLastCalledWith(null);
+    expect(host.restart).toHaveBeenCalled();
   });
 
   it('tells whoever listens that the server ended the session, even one that listens later', async () => {

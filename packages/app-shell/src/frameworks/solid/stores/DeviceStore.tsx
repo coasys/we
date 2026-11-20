@@ -180,37 +180,51 @@ export function DeviceStoreProvider(props: ParentProps) {
   const [sessionEnded, setSessionEnded] = createSignal<SessionEndedView | null>(null);
   const [serverAddress, setServerAddress] = createSignal('');
   const [serverError, setServerError] = createSignal('');
-  const [serverBusy, setServerBusy] = createSignal(false);
+  // How many add/choose/remove steps are running: busy until the last of them ends.
+  const [serverSteps, setServerSteps] = createSignal(0);
+  const serverBusy = () => serverSteps() > 0;
+  // Which `serving()` question is the newest, so an older answer arriving late is dropped.
+  let servingAsked = 0;
 
   async function refreshServers(): Promise<void> {
     const p = port();
     if (!canSwitch() || !p?.serving) return;
+    const asked = ++servingAsked;
     try {
       const next = await p.serving();
-      if (port() === p) setServing(next);
+      if (port() === p && asked === servingAsked) setServing(next);
     } catch (e) {
-      if (port() === p) setServerError(e instanceof Error ? e.message : String(e));
+      if (port() === p && asked === servingAsked) setServerError(e instanceof Error ? e.message : String(e));
     }
   }
 
   createEffect(
     on(port, (p) => {
+      servingAsked++;
       setServing(null);
       setSessionEnded(null);
       setServerError('');
       if (!p?.onSessionEnded) return;
+      let endedToast: string | null = null;
       // The port keeps an end that came before anyone listened, so subscribing late still hears it.
       const off = p.onSessionEnded((ended) => {
         const message = sessionEndedMessage(ended);
         setSessionEnded({ ...ended, message });
         // Said wherever the person is, not only on the Devices page, and kept until they act on it:
         // nothing they do on that server works any more.
-        toastService.add(message, 'danger', 0, {
+        endedToast = toastService.add(message, 'danger', 0, {
           label: 'Switch to this computer',
-          run: () => void serveFrom(THIS_COMPUTER_ID),
+          // Acts for the port that ended, never for whichever one is current by the time it is pressed.
+          run: () => {
+            if (port() === p) void serveFrom(THIS_COMPUTER_ID);
+          },
         });
       });
-      onCleanup(off);
+      // It is about this port's session: gone when the port is, not left to act on the next account.
+      onCleanup(() => {
+        off();
+        if (endedToast) toastService.remove(endedToast);
+      });
     }),
   );
   createEffect(() => {
@@ -218,14 +232,14 @@ export function DeviceStoreProvider(props: ParentProps) {
   });
 
   async function serverStep(run: () => Promise<void>): Promise<void> {
-    setServerBusy(true);
+    setServerSteps((n) => n + 1);
     setServerError('');
     try {
       await run();
     } catch (e) {
       setServerError(e instanceof Error ? e.message : String(e));
     } finally {
-      setServerBusy(false);
+      setServerSteps((n) => n - 1);
     }
   }
 
