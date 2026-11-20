@@ -5,8 +5,8 @@ import type { TemplateSchema } from '@we/schema-shared';
  *
  * The list itself is the module's `acorn.outcomeList` part: `$query` on `AcornOutcome`
  * drawing content, notes and status per row, with the write affordances the mounted
- * `update`/`delete` call actions answer. The tree arrives with the map work and the
- * expanded card with S2-4.
+ * `update`/`delete` call actions answer, and each row opens the `acorn.expandedOutcome` part
+ * over the list to read and edit that one outcome. The tree arrives with the map work.
  */
 export const acornOutcomesView: TemplateSchema = {
   meta: {

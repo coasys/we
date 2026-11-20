@@ -5088,7 +5088,12 @@ export const contextData: ContextData = {
         {
           name: 'expandedOutcome',
           subject: 'outcome',
-          inputs: [{ name: 'outcome', description: 'the AcornOutcome record shown expanded' }],
+          inputs: [
+            {
+              name: 'outcome',
+              description: 'the AcornOutcome record shown expanded, its `tags` included as AcornTag records',
+            },
+          ],
         },
         { name: 'outcomeTable' },
         { name: 'priorityList' },

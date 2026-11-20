@@ -10482,7 +10482,7 @@
           "inputs": [
             {
               "name": "outcome",
-              "description": "the AcornOutcome record shown expanded"
+              "description": "the AcornOutcome record shown expanded, its `tags` included as AcornTag records"
             }
           ]
         },

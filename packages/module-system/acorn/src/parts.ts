@@ -3,8 +3,9 @@ import type { ModulePart } from '@we/module-shared';
 /**
  * The Acorn parts, named for what they are — the set the later stages fill in.
  *
- * v0 stubs are honest stubs: `outcomeCard` and `expandedOutcome` draw one record's fields;
- * the list parts query the mounted classes directly. The map and dashboard are declarations
+ * `outcomeList` is the working list, and opens `expandedOutcome` over itself — one outcome read
+ * and edited (S2-4). `outcomeCard` draws one record's fields; the other list parts query the
+ * mounted classes directly. The map and dashboard are declarations
  * of intent — they exist so the module's surface is named in one place, not to pretend the
  * canvas landed early.
  *
@@ -24,7 +25,14 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
     node: {
       type: 'Column',
       props: { gap: '300', width: '100%' },
-      $localState: { newOutcome: { type: 'string', initial: '' } },
+      /*
+        `openOutcome` is the id of the outcome drawn expanded, '' for none — local to the list,
+        so opening one is a look, not a navigation, as Acorn's own expanded view is an overlay.
+      */
+      $localState: {
+        newOutcome: { type: 'string', initial: '' },
+        openOutcome: { type: 'string', initial: '' },
+      },
       children: [
         /*
           The create row: `record.create` is the generic write the host gives every space
@@ -137,6 +145,15 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
                   */
                   props: { gap: '200', ay: 'center', flex: '0 1 auto', minWidth: '0', wrap: true },
                   children: [
+                    {
+                      type: 'we-button',
+                      props: {
+                        variant: 'soft',
+                        size: 'sm',
+                        onClick: { $setLocal: 'openOutcome', value: { $: 'outcome.id' } },
+                      },
+                      children: [{ $: '`Open ${outcome.content}`' }],
+                    },
                     /*
                       The collection's setter-replace surface: each existing tag assigns itself
                       (`tags: [this tag]`), and the plain button empties the list — both through
@@ -192,6 +209,38 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
             },
           ],
         },
+        /*
+          The expanded outcome, over the list. Read by id rather than handed the row, so the
+          dialog follows the record — a stock-side edit, or this dialog's own save, redraws it
+          from the same subscription the list uses. Tags come included as AcornTag records,
+          which the expanded part draws by name.
+        */
+        {
+          type: '$if',
+          props: {
+            condition: { $: 'local.openOutcome' },
+            then: {
+              type: 'we-modal',
+              props: { size: 'lg', close: { $setLocal: 'openOutcome', value: '' } },
+              children: [
+                {
+                  type: '$single',
+                  props: {
+                    item: {
+                      $query: {
+                        entity: 'AcornOutcome',
+                        where: { id: { $: 'local.openOutcome' } },
+                        include: { tags: true },
+                      },
+                    },
+                    as: 'outcome',
+                  },
+                  children: [{ type: '$part', props: { id: 'acorn.expandedOutcome' } }],
+                },
+              ],
+            },
+          },
+        },
       ],
     },
   },
@@ -215,24 +264,224 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
   },
   expandedOutcome: {
     label: 'Expanded outcome',
-    description: 'One outcome, full: content, description, tasks, estimate and time frame',
+    description:
+      'One outcome, opened — title and description with an editor, scope and status set in place, its tags, tasks and time frame',
     subject: 'outcome',
-    inputs: { outcome: { description: 'the AcornOutcome record shown expanded' } },
+    inputs: {
+      outcome: { description: 'the AcornOutcome record shown expanded, its `tags` included as AcornTag records' },
+    },
     node: {
       type: 'Column',
-      props: { gap: '300', p: '400' },
+      props: { gap: '400', width: '100%' },
+      /*
+        The editor's drafts. Title and description are edited together and written once, on
+        Save, as one `record.update` — one `update` call on the mount, so stock Acorn sees
+        one revision rather than one per field. Cancel just drops the drafts.
+      */
+      $localState: {
+        editing: { type: 'boolean', initial: false },
+        draftContent: { type: 'string', initial: '' },
+        draftDescription: { type: 'string', initial: '' },
+        saveError: { type: 'string', initial: '' },
+      },
       children: [
-        { type: 'we-text', props: { fontSize: 'xl', fontWeight: 'bold' }, children: [{ $: 'outcome.content' }] },
-        { type: 'we-text', children: [{ $: 'outcome.description' }] },
+        {
+          type: '$if',
+          props: {
+            condition: { $: '!local.editing' },
+            then: {
+              type: 'Column',
+              props: { gap: '300', width: '100%' },
+              children: [
+                {
+                  type: 'Row',
+                  props: { gap: '300', ay: 'start', width: '100%' },
+                  children: [
+                    {
+                      type: 'we-text',
+                      props: { variant: 'heading-sm', flex: '1 1 auto', minWidth: '0' },
+                      children: [{ $: 'outcome.content' }],
+                    },
+                    {
+                      type: 'we-button',
+                      props: {
+                        variant: 'soft',
+                        size: 'sm',
+                        onClick: [
+                          { $setLocal: 'draftContent', value: { $: 'outcome.content' } },
+                          { $setLocal: 'draftDescription', value: { $: "outcome.description ?? ''" } },
+                          { $setLocal: 'saveError', value: '' },
+                          { $setLocal: 'editing', value: true },
+                        ],
+                      },
+                      children: ['Edit outcome'],
+                    },
+                  ],
+                },
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: 'outcome.description' },
+                    then: {
+                      type: 'we-text',
+                      props: { whiteSpace: 'pre-wrap' },
+                      children: [{ $: 'outcome.description' }],
+                    },
+                    else: { type: 'we-text', props: { tone: 'secondary' }, children: ['No description'] },
+                  },
+                },
+              ],
+            },
+            /*
+              The editor. Writes through `record.update` — the generic record path every space
+              surface has, which the model layer turns into the mount's `update` call on an
+              Acorn space and into a plain row write on the in-memory backend. An empty
+              description is a write of '', the same empty-clear S2-3 proved reaches stock.
+            */
+            else: {
+              type: 'Column',
+              props: { gap: '300', width: '100%' },
+              children: [
+                {
+                  type: 'we-input',
+                  props: {
+                    width: '100%',
+                    label: 'Title',
+                    value: { $: 'local.draftContent' },
+                    onInput: { $setLocal: 'draftContent', value: { $: 'event.detail' } },
+                  },
+                },
+                {
+                  type: 'we-textarea',
+                  props: {
+                    width: '100%',
+                    label: 'Description',
+                    rows: 5,
+                    value: { $: 'local.draftDescription' },
+                    onInput: { $setLocal: 'draftDescription', value: { $: 'event.detail' } },
+                  },
+                },
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: 'local.saveError' },
+                    then: { type: 'we-text', props: { color: 'danger-text' }, children: [{ $: 'local.saveError' }] },
+                  },
+                },
+                {
+                  type: 'Row',
+                  props: { gap: '200', ax: 'end', width: '100%' },
+                  children: [
+                    {
+                      type: 'we-button',
+                      props: { variant: 'ghost', onClick: { $setLocal: 'editing', value: false } },
+                      children: ['Cancel'],
+                    },
+                    {
+                      type: 'we-button',
+                      props: {
+                        variant: 'solid',
+                        // Acorn requires an outcome's content; an empty title is not a write.
+                        disabled: { $: '!local.draftContent' },
+                        onClick: {
+                          $invoke: 'record.update',
+                          args: [
+                            'AcornOutcome',
+                            { $: 'outcome.id' },
+                            { $: '{ content: local.draftContent, description: local.draftDescription }' },
+                          ],
+                          onSuccess: [{ $setLocal: 'editing', value: false }],
+                          onError: [{ $setLocal: 'saveError', value: { $: "'Could not save: ' + result.message" } }],
+                        },
+                      },
+                      children: ['Save'],
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+        /*
+          Scope and status, set in place as Acorn's own right column does — each pick is its own
+          single-field `record.update`. Status belongs to a Small outcome only: the mount folds
+          `achievementStatus` into `scope.Small` and drops it for an Uncertain one (an Uncertain
+          outcome's status is computed from its children, which is S2-5's roll-up), so the picker
+          is offered only where the write means something.
+        */
+        {
+          type: 'Row',
+          props: { gap: '400', ay: 'end', wrap: true, width: '100%' },
+          children: [
+            {
+              type: 'we-select',
+              props: {
+                label: 'This outcome is',
+                size: 'sm',
+                fit: true,
+                value: { $: "outcome.scopeType ?? ''" },
+                options: [
+                  { value: 'Small', label: 'Small' },
+                  { value: 'Uncertain', label: 'Uncertain' },
+                ],
+                onChange: {
+                  $invoke: 'record.update',
+                  args: ['AcornOutcome', { $: 'outcome.id' }, { $: '{ scopeType: event.detail }' }],
+                },
+              },
+            },
+            {
+              type: '$if',
+              props: {
+                condition: { $: "outcome.scopeType == 'Small'" },
+                then: {
+                  type: 'we-select',
+                  props: {
+                    label: 'Status',
+                    size: 'sm',
+                    fit: true,
+                    value: { $: "outcome.achievementStatus ?? 'NotAchieved'" },
+                    options: [
+                      { value: 'Achieved', label: 'Achieved' },
+                      { value: 'NotAchieved', label: 'Not achieved' },
+                    ],
+                    onChange: {
+                      $invoke: 'record.update',
+                      args: ['AcornOutcome', { $: 'outcome.id' }, { $: '{ achievementStatus: event.detail }' }],
+                    },
+                  },
+                },
+              },
+            },
+          ],
+        },
+        // The rest of the record, read-only here: the tag picker, tasks and children are S2-5's.
         {
           type: 'we-text',
           props: { tone: 'secondary' },
           children: [{ $: 'acornOutcomeSummary({ outcome: outcome })' }],
         },
         {
-          type: 'we-text',
-          props: { tone: 'secondary' },
-          children: [{ $: 'acornTimeFrameLabel({ timeFrame: outcome.timeFrame })' }],
+          type: '$if',
+          props: {
+            condition: { $: 'acornTimeFrameLabel({ timeFrame: outcome.timeFrame })' },
+            then: {
+              type: 'we-text',
+              props: { tone: 'secondary' },
+              children: [{ $: "'Time frame: ' + acornTimeFrameLabel({ timeFrame: outcome.timeFrame })" }],
+            },
+          },
+        },
+        {
+          type: 'Row',
+          props: { gap: '200', wrap: true, width: '100%' },
+          children: [
+            {
+              type: '$each',
+              props: { items: { $: 'outcome.tags' }, as: 'tag' },
+              children: [{ type: 'we-tag', children: [{ $: 'tag.text' }] }],
+            },
+          ],
         },
       ],
     },
