@@ -821,8 +821,9 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
         );
       }
       await closing(reader, true);
-      // The load that failed has no outcome: only the ones before it take their late replies.
-      tallyLate(current ? current.load - 1 : undefined);
+      // Only loads with an outcome take their late replies: the failed one, too, when it recorded its
+      // outcome before it failed (`run.attempted` is set with the outcome).
+      tallyLate(current && run.attempted !== current.run ? current.load - 1 : undefined);
       throw error;
     }
     const cpuAfter = cpuOf(executor.pid);
