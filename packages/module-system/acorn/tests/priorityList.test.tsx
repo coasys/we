@@ -22,7 +22,8 @@ const FIRST = 'Acorn runs as a WE template'; // acorn-outcome-1, the fixture's o
 const SECOND = 'Shell boots on the in-memory backend'; // acorn-outcome-2
 const THIRD = 'Outcome list reads live mounted records'; // acorn-outcome-3
 
-async function fixtureHost() {
+/** `lag`: a write is acknowledged at once and reaches the store only on `flush()`. */
+async function fixtureHost(options: { lag?: boolean } = {}) {
   const ports = createInMemoryBackendPorts(
     { selfId: () => SELF },
     { datasets: [{ id: acornDatasetId, name: 'Acorn fixture' }] },
@@ -52,11 +53,18 @@ async function fixtureHost() {
   };
   // `record.update` as `TemplateProvider`'s `recordActions.update` runs it: the dataset's class.
   const writes: Array<{ entity: string; id: string; fields: Record<string, unknown> }> = [];
+  const deferred: Array<() => Promise<unknown>> = [];
   const record = {
     update: (name: string, id: string, fields: Record<string, unknown>) => {
       writes.push({ entity: name, id, fields });
-      return entity(name).update(handle, id, fields);
+      const land = () => entity(name).update(handle, id, fields);
+      if (!options.lag) return land();
+      deferred.push(land);
+      return Promise.resolve();
     },
+  };
+  const flush = async () => {
+    while (deferred.length) await deferred.shift()!();
   };
   /** The meta's priority list as stored — ids, in order. */
   const priorities = async () => {
@@ -74,7 +82,7 @@ async function fixtureHost() {
     $onError: (message: string) => errors.push(message),
     $modelsPending: () => false,
   };
-  return { stores, errors, writes, priorities };
+  return { stores, errors, writes, priorities, flush };
 }
 
 const Passthrough = (props: { children?: JSX.Element }) => props.children;
@@ -85,8 +93,8 @@ const buttonNamed = (root: HTMLElement, label: string) =>
     HTMLElement | undefined;
 
 /** The list drawn; `stored`, when given, replaces the meta's priority ids before it is. */
-async function drawList(stored?: string[]) {
-  const host = await fixtureHost();
+async function drawList(stored?: string[], options: { lag?: boolean } = {}) {
+  const host = await fixtureHost(options);
   if (stored) {
     await host.stores.record.update('AcornProjectMeta', 'acorn-project-meta', { topPriorityOutcomes: stored });
     host.writes.length = 0;
@@ -97,6 +105,10 @@ async function drawList(stored?: string[]) {
   await waitFor(() => expect(buttonNamed(view.container, `Prioritise ${THIRD}`)).toBeTruthy());
   return { ...host, ...view };
 }
+
+/** A button drawn and pressable — no write of the list in flight. */
+const ready = (root: HTMLElement, label: string) =>
+  waitFor(() => expect((buttonNamed(root, label) as { disabled?: boolean } | undefined)?.disabled).not.toBe(true));
 
 /** The ranked rows' contents, top first — read off the sortable's carriers. */
 const ranked = (root: HTMLElement) =>
@@ -198,6 +210,24 @@ describe('the priority list', () => {
     try {
       await waitFor(() => expect(ranked(container)).toEqual(['acorn-outcome-1', 'acorn-outcome-2']));
       expect(errors).toEqual([]);
+    } finally {
+      unmount();
+    }
+  });
+  it('adds and removes made before the last one reads back each build on the one before', async () => {
+    const { container, unmount, writes, priorities, flush } = await drawList(undefined, { lag: true });
+    try {
+      fireEvent.click(buttonNamed(container, `Prioritise ${SECOND}`)!);
+      await waitFor(() => expect(writes).toHaveLength(1));
+      await ready(container, `Prioritise ${THIRD}`);
+      fireEvent.click(buttonNamed(container, `Prioritise ${THIRD}`)!);
+      await waitFor(() => expect(writes).toHaveLength(2));
+      await ready(container, `Remove ${FIRST} from priority`);
+      fireEvent.click(buttonNamed(container, `Remove ${FIRST} from priority`)!);
+      await waitFor(() => expect(writes).toHaveLength(3));
+      await flush();
+      await waitFor(async () => expect(await priorities()).toEqual(['acorn-outcome-2', 'acorn-outcome-3']));
+      await waitFor(() => expect(ranked(container)).toEqual(['acorn-outcome-2', 'acorn-outcome-3']));
     } finally {
       unmount();
     }

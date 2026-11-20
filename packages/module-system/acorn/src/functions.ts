@@ -131,6 +131,34 @@ const rollup = (
 };
 
 /** The task list with one change, as the JSON text the record holds — what `record.update` writes. */
+/**
+ * A whole-field value in one canonical text, so a read-back compares equal to what was written:
+ * JSON text is parsed first (the mount hands a task list back with its keys in another order),
+ * object keys are sorted, and an absent value is the empty list the field means.
+ */
+const canonical = (value: unknown): string => {
+  let v = value;
+  if (typeof v === 'string') {
+    try {
+      v = JSON.parse(v);
+    } catch {
+      return JSON.stringify(v);
+    }
+  }
+  if (v === undefined || v === null || v === '') v = [];
+  const sorted = (x: unknown): unknown =>
+    Array.isArray(x)
+      ? x.map(sorted)
+      : x && typeof x === 'object'
+        ? Object.fromEntries(
+            Object.keys(x as object)
+              .sort()
+              .map((k) => [k, sorted((x as Record<string, unknown>)[k])]),
+          )
+        : x;
+  return JSON.stringify(sorted(v));
+};
+
 const tasksText = (tasks: AcornTask[]): string => JSON.stringify(tasks);
 
 /** `did:key:z6MkabcdEFGH…wxyz` → `z6Mk…wxyz` — enough to tell two authors apart. */
@@ -319,6 +347,19 @@ export const ACORN_FUNCTIONS: ModuleFunction[] = [
       const t = num(option(args, 'timestamp'));
       if (t <= 0) return '';
       return new Date(t < 1e12 ? t * 1000 : t).toISOString().slice(0, 16).replace('T', ' ');
+    },
+  },
+  {
+    name: 'acornWorking',
+    params: ['stored', 'working', 'written'],
+    doc: "The whole-field value the next edit starts from. `stored` is the value as subscribed, `working` the last one this view wrote, `written` every value this view has replaced or written. While the stored value is one of those — the write has not read back yet, or reads back as it went — the working value stands, so an edit builds on the one before it; a stored value this view never saw is somebody else's write, and wins.",
+    example: 'acornWorking({ stored: outcome.taskList, working: local.taskWork, written: local.taskWritten })',
+    fn: (...args: never[]) => {
+      const stored = option(args, 'stored');
+      const written = option(args, 'written');
+      if (!Array.isArray(written) || !written.length) return stored;
+      const seen = canonical(stored);
+      return written.some((w) => canonical(w) === seen) ? option(args, 'working') : stored;
     },
   },
   {

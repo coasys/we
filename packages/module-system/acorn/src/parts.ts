@@ -43,6 +43,58 @@ const CHILD_LINK = {
   ],
 };
 
+/*
+  The task list is one JSON field, so every edit is a whole-list replace — and an edit made before
+  the last one has read back would start from the list that one replaced, undoing it. So each edit
+  starts from the working list (`acornWorking`: the last list this view wrote, while the subscription
+  still holds one it replaced or wrote) and only one write per view is in flight (`taskBusy`
+  disables the task controls), so the writes land in the order they were made. A refused write
+  drops the working list, and the subscription's list is drawn and edited again.
+*/
+const TASKS =
+  'acornWorking({ stored: outcome.taskList, working: local.taskWork, written: local.taskFor == outcome.id ? local.taskWritten : [] })';
+const taskEdit = (next: string, onSuccess: unknown[] = []) => [
+  { $setLocal: 'taskWork', value: { $: next } },
+  {
+    $setLocal: 'taskWritten',
+    value: { $: 'distinct(local.taskFor == outcome.id ? local.taskWritten : [], [outcome.taskList, local.taskWork])' },
+  },
+  { $setLocal: 'taskFor', value: { $: 'outcome.id' } },
+  { $setLocal: 'taskBusy', value: true },
+  { $setLocal: 'writeError', value: '' },
+  {
+    $invoke: 'record.update',
+    args: ['AcornOutcome', { $: 'outcome.id' }, { $: '{ taskList: local.taskWork }' }],
+    onSuccess,
+    onError: [
+      { $setLocal: 'writeError', value: { $: "'Could not save: ' + result.message" } },
+      { $setLocal: 'taskFor', value: '' },
+      { $setLocal: 'taskWritten', value: [] },
+    ],
+    onFinally: [{ $setLocal: 'taskBusy', value: false }],
+  },
+];
+
+/*
+  The priority order is one field on the project meta, replaced whole by every add, remove and
+  reorder — the same hazard as the task list, on the same path: each edit starts from the working
+  list (the last this view wrote, while the meta still holds one it replaced or wrote), and one
+  write per project is in flight (`prioBusy`). The state sits on the meta's own row, so it is per
+  project.
+*/
+const PRIO = 'acornWorking({ stored: meta.topPriorityOutcomes, working: local.prioWork, written: local.prioWritten })';
+const prioEdit = (next: string) => [
+  { $setLocal: 'prioWork', value: { $: next } },
+  { $setLocal: 'prioWritten', value: { $: 'distinct(local.prioWritten, [meta.topPriorityOutcomes, local.prioWork])' } },
+  { $setLocal: 'prioBusy', value: true },
+  {
+    $invoke: 'record.update',
+    args: ['AcornProjectMeta', { $: 'meta.id' }, { $: '{ topPriorityOutcomes: local.prioWork }' }],
+    onError: [{ $setLocal: 'prioWritten', value: [] }],
+    onFinally: [{ $setLocal: 'prioBusy', value: false }],
+  },
+];
+
 export const ACORN_PARTS: Record<string, ModulePart> = {
   outcomeList: {
     label: 'Outcome list',
@@ -315,6 +367,10 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
         orphan: { type: 'string', initial: '' },
         orphanParent: { type: 'string', initial: '' },
         childBusy: { type: 'boolean', initial: false },
+        taskWork: { type: 'string', initial: '' },
+        taskFor: { type: 'string', initial: '' },
+        taskWritten: { type: 'array', initial: [] },
+        taskBusy: { type: 'boolean', initial: false },
       },
       $queries: {
         outcomes: { entity: 'AcornOutcome', order: { timestampCreated: 'asc' } },
@@ -625,13 +681,13 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
                           props: { variant: 'label' },
                           children: [
                             {
-                              $: "'Tasks' + (acornTaskProgress({ taskList: outcome.taskList }) ? ' ' + acornTaskProgress({ taskList: outcome.taskList }) : '')",
+                              $: `'Tasks' + (acornTaskProgress({ taskList: ${TASKS} }) ? ' ' + acornTaskProgress({ taskList: ${TASKS} }) : '')`,
                             },
                           ],
                         },
                         {
                           type: '$each',
-                          props: { items: { $: 'acornTasks({ taskList: outcome.taskList })' }, as: 'task' },
+                          props: { items: { $: `acornTasks({ taskList: ${TASKS} })` }, as: 'task' },
                           children: [
                             {
                               type: 'Row',
@@ -642,23 +698,9 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
                                   props: {
                                     flex: '1 1 auto',
                                     checked: { $: 'task.complete' },
+                                    disabled: { $: 'local.taskBusy' },
                                     label: { $: 'task.task' },
-                                    onChange: {
-                                      $invoke: 'record.update',
-                                      args: [
-                                        'AcornOutcome',
-                                        { $: 'outcome.id' },
-                                        {
-                                          $: '{ taskList: acornTasksToggled({ taskList: outcome.taskList, index: index }) }',
-                                        },
-                                      ],
-                                      onError: [
-                                        {
-                                          $setLocal: 'writeError',
-                                          value: { $: "'Could not save: ' + result.message" },
-                                        },
-                                      ],
-                                    },
+                                    onChange: taskEdit(`acornTasksToggled({ taskList: ${TASKS}, index: index })`),
                                   },
                                   children: [{ $: 'task.task' }],
                                 },
@@ -667,23 +709,9 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
                                   props: {
                                     variant: 'ghost',
                                     size: 'sm',
+                                    disabled: { $: 'local.taskBusy' },
                                     label: { $: '`Remove task ${task.task}`' },
-                                    onClick: {
-                                      $invoke: 'record.update',
-                                      args: [
-                                        'AcornOutcome',
-                                        { $: 'outcome.id' },
-                                        {
-                                          $: '{ taskList: acornTasksRemoved({ taskList: outcome.taskList, index: index }) }',
-                                        },
-                                      ],
-                                      onError: [
-                                        {
-                                          $setLocal: 'writeError',
-                                          value: { $: "'Could not save: ' + result.message" },
-                                        },
-                                      ],
-                                    },
+                                    onClick: taskEdit(`acornTasksRemoved({ taskList: ${TASKS}, index: index })`),
                                   },
                                   children: [{ type: 'we-icon', props: { name: 'x' } }],
                                 },
@@ -709,21 +737,10 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
                               type: 'we-button',
                               props: {
                                 variant: 'soft',
-                                disabled: { $: '!trim(local.newTask)' },
-                                onClick: {
-                                  $invoke: 'record.update',
-                                  args: [
-                                    'AcornOutcome',
-                                    { $: 'outcome.id' },
-                                    {
-                                      $: '{ taskList: acornTasksAdded({ taskList: outcome.taskList, task: local.newTask }) }',
-                                    },
-                                  ],
-                                  onSuccess: [{ $setLocal: 'newTask', value: '' }],
-                                  onError: [
-                                    { $setLocal: 'writeError', value: { $: "'Could not save: ' + result.message" } },
-                                  ],
-                                },
+                                disabled: { $: '!trim(local.newTask) || local.taskBusy' },
+                                onClick: taskEdit(`acornTasksAdded({ taskList: ${TASKS}, task: local.newTask })`, [
+                                  { $setLocal: 'newTask', value: '' },
+                                ]),
                               },
                               children: ['Add task'],
                             },
@@ -1028,6 +1045,11 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
             {
               type: 'Column',
               props: { gap: '400', width: '100%' },
+              $localState: {
+                prioWork: { type: 'array', initial: [] },
+                prioWritten: { type: 'array', initial: [] },
+                prioBusy: { type: 'boolean', initial: false },
+              },
               children: [
                 /*
                   The order is one field on the project meta, and every change to it — a drag, an
@@ -1045,28 +1067,20 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
                 {
                   type: '$if',
                   props: {
-                    condition: { $: 'count(meta.topPriorityOutcomes)' },
+                    condition: { $: `count(${PRIO})` },
                     then: {
                       type: 'we-sortable',
                       props: {
                         gap: '200',
-                        onReorder: {
-                          $invoke: 'record.update',
-                          args: [
-                            'AcornProjectMeta',
-                            { $: 'meta.id' },
-                            {
-                              $: '{ topPriorityOutcomes: acornPriorityOrder({ stored: meta.topPriorityOutcomes, visible: event.detail }) }',
-                            },
-                          ],
-                        },
+                        locked: { $: 'local.prioBusy' },
+                        onReorder: prioEdit(`acornPriorityOrder({ stored: ${PRIO}, visible: event.detail })`),
                       },
                       children: [
                         {
                           type: '$each',
                           props: {
                             items: {
-                              $: 'distinct(meta.topPriorityOutcomes).map(i, local.outcomes.find(o, o.id == i)).filter(o, o)',
+                              $: `distinct(${PRIO}).map(i, local.outcomes.find(o, o.id == i)).filter(o, o)`,
                             },
                             as: 'priority',
                           },
@@ -1120,16 +1134,8 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
                                       props: {
                                         variant: 'ghost',
                                         size: 'sm',
-                                        onClick: {
-                                          $invoke: 'record.update',
-                                          args: [
-                                            'AcornProjectMeta',
-                                            { $: 'meta.id' },
-                                            {
-                                              $: '{ topPriorityOutcomes: meta.topPriorityOutcomes.filter(i, i != priority.id) }',
-                                            },
-                                          ],
-                                        },
+                                        disabled: { $: 'local.prioBusy' },
+                                        onClick: prioEdit(`${PRIO}.filter(i, i != priority.id)`),
                                       },
                                       children: [{ $: '`Remove ${priority.content} from priority`' }],
                                     },
@@ -1161,7 +1167,7 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
                         {
                           type: '$if',
                           props: {
-                            condition: { $: '!(outcome.id in meta.topPriorityOutcomes)' },
+                            condition: { $: `!(outcome.id in ${PRIO})` },
                             then: {
                               type: 'Row',
                               props: { gap: '300', ay: 'center', px: '300', py: '200', width: '100%' },
@@ -1176,16 +1182,8 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
                                   props: {
                                     variant: 'soft',
                                     size: 'sm',
-                                    onClick: {
-                                      $invoke: 'record.update',
-                                      args: [
-                                        'AcornProjectMeta',
-                                        { $: 'meta.id' },
-                                        {
-                                          $: '{ topPriorityOutcomes: distinct(meta.topPriorityOutcomes, [outcome.id]) }',
-                                        },
-                                      ],
-                                    },
+                                    disabled: { $: 'local.prioBusy' },
+                                    onClick: prioEdit(`distinct(${PRIO}, [outcome.id])`),
                                   },
                                   children: [{ $: '`Prioritise ${outcome.content}`' }],
                                 },

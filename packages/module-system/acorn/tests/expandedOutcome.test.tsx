@@ -489,6 +489,75 @@ describe('the expanded outcome — children, tasks, comments', () => {
     }
   });
 
+  it('task edits made before the last one reads back each build on the one before', async () => {
+    const { container, unmount, read, writes, flush } = await openList({ lag: true });
+    const tick = (label: string) =>
+      checkboxNamed(dialog(container)!, label)!.dispatchEvent(
+        new CustomEvent('change', { detail: true, bubbles: true, composed: true }),
+      );
+    try {
+      const modal = await open(container, SMALL);
+      await waitFor(() => expect(checkboxNamed(modal, 'boots')).toBeTruthy());
+      // Two adds, each acknowledged before the subscription has seen the one before it.
+      type(labelled(modal, 'we-input', 'New task')!, 'a');
+      fireEvent.click(buttonNamed(modal, 'Add task')!);
+      await waitFor(() => expect(writes).toHaveLength(1));
+      type(labelled(dialog(container)!, 'we-input', 'New task')!, 'b');
+      await waitFor(() =>
+        expect((buttonNamed(dialog(container)!, 'Add task') as { disabled?: boolean }).disabled).toBe(false),
+      );
+      fireEvent.click(buttonNamed(dialog(container)!, 'Add task')!);
+      await waitFor(() => expect(writes).toHaveLength(2));
+      await flush();
+      await waitFor(async () =>
+        expect(await tasksOf(read, 'acorn-outcome-2')).toEqual([
+          { task: 'boots', complete: true },
+          { task: 'a', complete: false },
+          { task: 'b', complete: false },
+        ]),
+      );
+      // Two ticks in different rows, the same way.
+      await waitFor(() => expect(checkboxNamed(dialog(container)!, 'b')).toBeTruthy());
+      tick('boots');
+      await waitFor(() => expect(checkboxNamed(dialog(container)!, 'boots')!.checked).toBe(false));
+      tick('a');
+      await waitFor(() => expect(checkboxNamed(dialog(container)!, 'a')!.checked).toBe(true));
+      await flush();
+      await waitFor(async () =>
+        expect(await tasksOf(read, 'acorn-outcome-2')).toEqual([
+          { task: 'boots', complete: false },
+          { task: 'a', complete: true },
+          { task: 'b', complete: false },
+        ]),
+      );
+      expect(dialog(container)!.textContent).toContain('Tasks 1/3');
+    } finally {
+      unmount();
+    }
+  });
+
+  it('a task edit waits while the one before it is unsettled; removing the last leaves an empty list', async () => {
+    const { container, unmount, read, writes, release } = await openList({ hold: true });
+    try {
+      const modal = await open(container, SMALL);
+      await waitFor(() => expect(iconButtonNamed(modal, 'Remove task boots')).toBeTruthy());
+      fireEvent.click(iconButtonNamed(modal, 'Remove task boots')!);
+      await waitFor(() => expect(writes).toHaveLength(1));
+      // In flight: no control can start a second write from the list the first is replacing.
+      type(labelled(dialog(container)!, 'we-input', 'New task')!, 'later');
+      expect((buttonNamed(dialog(container)!, 'Add task') as { disabled?: boolean }).disabled).toBe(true);
+      release();
+      await waitFor(async () => expect((await read('acorn-outcome-2'))?.taskList).toBe('[]'));
+      await waitFor(() =>
+        expect((buttonNamed(dialog(container)!, 'Add task') as { disabled?: boolean }).disabled).toBe(false),
+      );
+      expect(checkboxNamed(dialog(container)!, 'boots')).toBeUndefined();
+      expect(dialog(container)!.textContent).not.toContain('Tasks 0');
+    } finally {
+      unmount();
+    }
+  });
+
   it("shows an outcome's comments by their author's profile name, and adds one", async () => {
     const { container, unmount, creates, all } = await openList();
     try {
