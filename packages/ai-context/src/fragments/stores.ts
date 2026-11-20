@@ -752,12 +752,28 @@ export const storeEntries: StoreEntry[] = [
       canEdit: { type: 'boolean' },
       workflows: {
         type: 'array',
-        properties: ['name', 'label', 'editable', 'records', 'managedBy', 'archived', 'steps', 'moves'],
+        properties: ['name', 'label', 'editable', 'records', 'running', 'managedBy', 'archived', 'steps', 'moves'],
       },
       startable: { type: 'array', properties: ['name', 'label', 'entities'] },
       open: { type: 'object' },
       draft: { type: 'object' },
       recordWorkflows: { type: 'object' },
+      active: {
+        type: 'array',
+        properties: [
+          'id',
+          'workflow',
+          'label',
+          'record',
+          'title',
+          'kind',
+          'state',
+          'stateLabel',
+          'lastActivity',
+          'waiting',
+          'stalled',
+        ],
+      },
     },
     actions: [
       'refreshWorkflows',
@@ -898,6 +914,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         'boolean — whether this build has developer features at all: a dev server, or a deploy of work in progress (a preview). The ceiling devTools sits under. Gate the way to the developer switch on this',
       devTools:
         'boolean — whether developer affordances should be VISIBLE. True in a development build unless a developer has thrown the Settings → Developer switch to see what a shipped app looks like. Reactive, so a control gated on it appears and disappears on the press. Gate any developer-only control on this — a schema-test page, a fixture toggle — and wrap it in $if rather than hiding it, since a hidden row is still in the accessibility tree and still found by find-in-page. Never true in a production build, whatever the switch says',
+      testPeople:
+        'boolean — whether the test people are offered: fake participants and fake cursors in a call, pretend people on a weighed canvas. OFF until a developer turns it on in Settings → Developer, and never on while devTools is off. Gate any control that puts people on screen who are not there on this, not on devTools',
       credentialEntered:
         "boolean — something has been typed into the host's password field. The password itself is never readable from a template — see CredentialField — so gate a Sign in button on this",
       credentialConfirmed:
@@ -916,6 +934,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '(): starts the whole boot again from the failure screen, by reloading. A failed boot can have got anywhere before it threw, so retrying in place would race the remains of the first attempt',
       finishSetup: "(): leaves 'finishing' for the running app — sets bootState to 'ready'",
       logout: '(): locks the agent and returns to the login screen',
+      setTestPeople:
+        '(on: boolean): turns the test people on or off for this device. Takes the value a we-switch emits, so pass `event.detail` bare. While devTools is off the device keeps the choice, but testPeople stays false until devTools is on again',
       setDevTools:
         '(on: boolean): shows or hides developer affordances for this session. Takes the value the control shows, so a we-switch can pass `event.detail` bare. Cannot turn developer UI on in a production build',
     },
@@ -2229,16 +2249,18 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         "{ requirements, enforcement, sealedEvidence, contention } | null — what this backend can do with workflows. `requirements` lists the kinds of rule it enforces ('approvals', 'evidence'); `enforcement` is 'server' (one authority applies every rule) or 'peers' (every member's software applies them, so a member running other software can write past one — say so beside a rule); `contention` is 'stall' when two moves out of one step both agreed leave a record stuck until somebody withdraws, or 'first' when the earlier wins",
       canEdit: 'boolean — the viewer may save, delete and archive workflows here: whoever administers the space',
       workflows:
-        "{ name, label, editable, records, managedBy, archived, steps, moves }[] — every workflow in the space, archived ones included. `editable` is false for one written by something that uses more than this editor shows, and for the task-state workflow; `managedBy` is 'task-states' for the workflow the board's task states write, which is edited in the space's settings and moved on the board, never here; `records` is how many records are going through it; `steps` ({ name, label, final }[]) and `moves` ({ from, to }[]) are its definition once read — what a map of the space's workflows draws",
+        "{ name, label, editable, records, running, managedBy, archived, steps, moves }[] — every workflow in the space, archived ones included. `running` is how many of its records are not at a final step, live from the watched records (0 for an archived or the task-state workflow). `editable` is false for one written by something that uses more than this editor shows, and for the task-state workflow; `managedBy` is 'task-states' for the workflow the board's task states write, which is edited in the space's settings and moved on the board, never here; `records` is how many records are going through it; `steps` ({ name, label, final }[]) and `moves` ({ from, to }[]) are its definition once read — what a map of the space's workflows draws",
       workflowsLoaded:
         'boolean — the backend has answered with this space\'s workflows. An empty `workflows` before then is not yet an answer: gate a "no workflows" sentence on it and draw the list as loading until it is true',
       startable:
         '{ name, label, entities }[] — workflows a record can be put through: not archived, not written by something else. `entities` are the entity names a workflow is for, empty for any record — filter with `card.__subjectClass in workflow.entities || !count(workflow.entities)`',
-      open: "{ name, label, hint, entities, rule, fits, editable, managedBy, archived, lanes, exceptions, steps, records, history } | null — the workflow opened with openWorkflow. `lanes` is the workflow as a main line and branches: each { index, main, leaves, leavesLabel, rejoins, rejoinsLabel, ends, steps }, every step { name, label, final, approvals, approverKind, approverLabel, evidence, requires, hint }, `requires` being each thing entering it takes as a short phrase. `rule` is 'next', 'next-and-back' or 'any'; `exceptions` the moves nothing else covers, { from, to, fromLabel, toLabel, name }. `records` are what is going through it, newest first: { record, title, startedAt, state, stateLabel, stalled, waiting, walk, next }, `startedAt` an ISO date for a we-timestamp (empty when unknown), `walk` its path as { name, label, at } with `at` 'done', 'current' or 'ahead' — a stepper — and `next` where it may be asked to go, `waiting` each move asked for { to, toLabel, approvers, needs, note, mine }. `recordsLoaded` says the records have been read — gate anything offered only for a workflow with none on it. `history[record]` is filled by loadHistory: { from, to, fromLabel, toLabel, approvers, at, when, evidence, note }[], `when` being `at` as an ISO date",
+      open: "{ name, label, hint, entities, rule, fits, editable, managedBy, archived, lanes, exceptions, steps, records, history } | null — the workflow opened with openWorkflow. `lanes` is the workflow as a main line and branches: each { index, main, leaves, leavesLabel, rejoins, rejoinsLabel, ends, steps }, every step { name, label, final, approvals, approverKind, approverLabel, evidence, requires, hint }, `requires` being each thing entering it takes as a short phrase. `rule` is 'next', 'next-and-back' or 'any'; `exceptions` the moves nothing else covers, { from, to, fromLabel, toLabel, name }. `records` are what is going through it, newest first: { id, record, title, kind, startedAt, state, stateLabel, stalled, waiting, walk, next }, `title` what the record is called (its name, else its kind and a short id, never empty), `kind` what kind of record it is ('Task', empty until read), `startedAt` an ISO date for a we-timestamp (empty when unknown), `walk` its path as { name, label, at } with `at` 'done', 'current' or 'ahead' — a stepper — and `next` where it may be asked to go, `waiting` each move asked for { to, toLabel, approvers, needs, note, mine }. `recordsLoaded` says the records have been read — gate anything offered only for a workflow with none on it. `history[record]` is filled by loadHistory: { from, to, fromLabel, toLabel, approvers, at, when, evidence, note }[], `when` being `at` as an ISO date",
       draft:
         '{ …the shape of open’s lanes, label, isNew, dirty, problems } | null — the workflow being written, after newWorkflow or editWorkflow. `problems` are sentences saying what saving would be refused for; saveDraft refuses while there are any, so show them beside the button',
       recordWorkflows:
         'Record<recordId, { workflow, label, state, stateLabel, waiting, stalled, next, asks }[]> — by record, every startable workflow it is going through and where it stands: what a chip on a card shows. `next` ({ name, label }[]) is where it may be asked to go, for moveRecord; `asks` ({ to, toLabel, approvers, needs, note, mine }[]) the moves waiting on agreement — offer withdrawRecord where `mine`, moveRecord to the same `to` to agree. Read as `workflowStore.recordWorkflows[card.id]`, which is undefined for a record in none',
+      active:
+        "{ id, workflow, label, record, title, kind, state, stateLabel, lastActivity, waiting, stalled }[] — what is going on: every record still going through a startable workflow (not at a final step), across all of them, the one with the latest activity first. A record in two workflows is two rows. `title` is what the record is called (its name, else its kind and a short id, never empty), `kind` what kind of record it is ('Task', empty until read), `lastActivity` an ISO date for a we-timestamp — when it started, or a move was last asked for or made — `waiting` how many moves are asked for and not made. `count(workflowStore.active)` is how many are running; take the first few with `slice` for a short list. Live, for this member's moves and anybody else's",
     },
     actions: {
       refreshWorkflows: '(): asks the backend for the workflow list again — after something another member did',

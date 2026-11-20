@@ -6,6 +6,8 @@
  */
 import assert from 'node:assert/strict';
 
+import { getEntityForDataset } from '@we/backend-ad4m';
+
 import { createSpace } from '../steps/space.mjs';
 import { leaveCall, startCall, stopTranscribing, typeIntoCall, untilHeard, watchCall } from './call.mjs';
 import { SLOW, STUB, until, vertical, world } from './context.mjs';
@@ -98,6 +100,51 @@ vertical('V2 call: transcript, extraction, accept, leave', (v) => {
     const canvas = alice.page.locator('.we-graph');
     for (const title of titles) await canvas.getByText(title).first().waitFor({ timeout: SLOW });
   });
+
+  v.step(
+    'an extracted record placed on the canvas stays there, and the canvas still loads when it is opened again',
+    async () => {
+      const pick = STUB ? expectedRecords()[0] : null;
+      const record = STUB ? found.get(pick.cls).find((r) => r.title === pick.title) : [...found.values()].flat()[0];
+      const card = () =>
+        alice.page
+          .locator('.we-graph__node--card')
+          .filter({ hasText: record.title })
+          .locator('.we-graph__card')
+          .first();
+      // The page's console from here: the canvas warns when it cannot read or watch its placements.
+      const mark = alice.device.logs.length;
+      // A card nobody has placed sits in the tray; dragging it out is how a person puts it on the canvas.
+      await card().waitFor({ timeout: SLOW });
+      const box = await card().boundingBox();
+      assert.ok(box, `the card for "${record.title}" is on the screen`);
+      const from = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+      await alice.page.mouse.move(from.x, from.y);
+      await alice.page.mouse.down();
+      await alice.page.mouse.move(from.x + 20, from.y - 40, { steps: 8 });
+      await alice.page.mouse.move(from.x + 40, from.y - 100, { steps: 8 });
+      await alice.page.mouse.up();
+      // Stored: a Placement row of the space names the record as its node.
+      const placed = async () => {
+        const rows = await getEntityForDataset('Placement', perspective).findAll(perspective);
+        return rows.some((row) => [row.node].flat().includes(record.id));
+      };
+      await until(placed, Boolean, { timeout: 60_000, what: `a placement of "${record.title}" to be stored` });
+
+      // Opened again: the page and back, which keeps the call going, so the canvas reads its placements anew.
+      await alice.page.getByRole('button', { name: 'Page', exact: true }).click();
+      await alice.page.locator('.we-graph').first().waitFor({ state: 'detached', timeout: 30_000 });
+      await alice.page.getByRole('button', { name: 'Canvas', exact: true }).click();
+      await card().waitFor({ timeout: SLOW });
+      // The read that failed refused with a warning, and every placement went with it: give it its time.
+      await alice.page.waitForTimeout(5_000);
+      const refused = alice.device.logs
+        .slice(mark)
+        .filter((line) => /canvas: cannot read|\[graph\] cannot (read|watch)/.test(line));
+      assert.deepEqual(refused, [], 'the canvas read its placements without a warning');
+      assert.ok(await card().isVisible(), `"${record.title}" still shows as a card on the canvas`);
+    },
+  );
 
   v.todo(`the found records show in the Feed: ${FEED_BUG}`);
 

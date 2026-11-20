@@ -168,8 +168,10 @@ export async function acceptInInspector(who, perspective, record) {
  */
 export async function openInspectorWorkflows(page) {
   const name = 'Show or hide workflows';
-  const closed = page.getByRole('button', { name, expanded: false });
-  if ((await closed.count()) > 0) await closed.first().click();
+  // Wait for the inspector to draw the button first: a count before it is drawn finds nothing to open.
+  const fold = page.getByRole('button', { name }).first();
+  await fold.waitFor({ timeout: 30_000 });
+  if ((await fold.getAttribute('aria-expanded')) !== 'true') await fold.click();
   await page.getByRole('button', { name, expanded: true }).first().waitFor({ timeout: 30_000 });
 }
 

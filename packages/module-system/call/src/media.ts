@@ -377,9 +377,9 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
 
   /** The work of `setDevice`: open the chosen device, then let the old one go. */
   async function replaceDevice(kind: 'audio' | 'video'): Promise<boolean> {
-    // Nothing is open yet — the choice is remembered and `start` will ask for it. This is the
-    // ordinary path when somebody picks a device before joining.
-    if (!stream) return true;
+    // Nothing of this kind is open — the choice is remembered, and whatever opens it next asks for
+    // it. This is the ordinary path when somebody picks a device before joining or while it is off.
+    if (!stream || !(kind === 'audio' ? micTrack() : cameraTrack())) return true;
 
     const isMine = acquisitions.current();
     let acquired: MediaStream;
@@ -439,6 +439,15 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
       if (stream) return;
       // Remembered, so every later acquisition asks for the same thing — see `asked`.
       asked = constraints;
+      /*
+        Nothing is on, so nothing is asked for: no prompt and no camera light until one is turned on,
+        when `setAudioEnabled` / `setVideoEnabled` acquire the device into this stream. Empty rather
+        than absent, so the call has one stream from the start and a session joins with it.
+      */
+      if (!state.audioEnabled && !state.videoEnabled) {
+        stream = new MediaStream();
+        return void emitState();
+      }
       const isMine = acquisitions.begin();
       // A `setAudioEnabled` / `setVideoEnabled` after this owns that flag: a refusal here must not
       // turn it off over the newer ask.
@@ -462,7 +471,11 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
           // Through `constraintsFor`, not the argument as given, so a device chosen *before* joining
           // is asked for on the first acquisition rather than only on a later switch. That is the
           // ordinary path: the choice is made once in settings and every call after it uses it.
-          acquired = await devices.getUserMedia({ audio: constraintsFor('audio'), video: constraintsFor('video') });
+          // Only what is on: a device that is off is not opened, so its light stays off.
+          acquired = await devices.getUserMedia({
+            audio: state.audioEnabled && constraintsFor('audio'),
+            video: state.videoEnabled && constraintsFor('video'),
+          });
         } catch (error) {
           /*
             A refused or missing device must not take the other one with it — audio-only and
@@ -476,13 +489,13 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
           if (!isMine()) return;
           // One after the other rather than together: two permission prompts at once is a race some
           // platforms lose. Each is checked against `isMine`, since either can sit on a prompt.
-          const mic = await acquireAlone('audio');
+          const mic = state.audioEnabled ? await acquireAlone('audio') : null;
           if (!isMine()) return void mic?.stop();
           // Parked where `stop()` can reach it for as long as it is held only in this local — a
           // leave while the camera prompt is still open must put the microphone out at once, not
           // whenever the prompt happens to be answered.
           if (mic) pending.add(mic);
-          const camera = await acquireAlone('video');
+          const camera = state.videoEnabled ? await acquireAlone('video') : null;
           if (mic) pending.delete(mic);
           if (!isMine()) {
             mic?.stop();

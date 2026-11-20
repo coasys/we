@@ -245,6 +245,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     devFeatures: state('session'),
     devTools: state('session'),
     setDevTools: action('session'),
+    testPeople: state('session'),
+    setTestPeople: action('session'),
     credentialEntered: state('session'),
     credentialConfirmed: state('session'),
     // Signs in with the host field's password. No argument, so nothing a template collected can be
@@ -1555,6 +1557,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     open: state('content'),
     draft: state('view-state'),
     recordWorkflows: state('content'),
+    active: state('content'),
     refreshWorkflows: ambient('content'),
     openWorkflow: ambient('view-state'),
     closeWorkflow: ambient('view-state'),

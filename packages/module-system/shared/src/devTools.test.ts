@@ -8,7 +8,14 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { DEV_TOOLS_KEY, devToolsEnabled, setDevToolsMuted } from './devTools';
+import {
+  DEV_TOOLS_KEY,
+  devToolsEnabled,
+  setDevToolsMuted,
+  setTestPeopleOn,
+  TEST_PEOPLE_KEY,
+  testPeopleEnabled,
+} from './devTools';
 
 /** Stand in for `localStorage`, including the case where reading it throws. */
 function stubStorage(value: string | null | (() => never)) {
@@ -125,5 +132,27 @@ describe('setDevToolsMuted', () => {
     });
     expect(() => setDevToolsMuted(true)).not.toThrow();
     expect(() => setDevToolsMuted(false)).not.toThrow();
+  });
+});
+
+describe('testPeopleEnabled', () => {
+  it('is off in a dev build until a developer turns it on', () => {
+    // Unlike the other developer tools: they put people on screen who are not there.
+    const store = stubLiveStorage();
+    expect(testPeopleEnabled(true)).toBe(false);
+    setTestPeopleOn(true);
+    expect(store.get(TEST_PEOPLE_KEY)).toBe('on');
+    expect(testPeopleEnabled(true)).toBe(true);
+    setTestPeopleOn(false);
+    expect(store.has(TEST_PEOPLE_KEY)).toBe(false);
+    expect(testPeopleEnabled(true)).toBe(false);
+  });
+
+  it('is off while the developer tools are muted, and in a production build', () => {
+    stubLiveStorage();
+    setTestPeopleOn(true);
+    expect(testPeopleEnabled(false)).toBe(false);
+    setDevToolsMuted(true);
+    expect(testPeopleEnabled(true)).toBe(false);
   });
 });

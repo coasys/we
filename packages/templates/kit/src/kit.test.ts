@@ -46,6 +46,7 @@ import {
   treeStrip,
   VOCABULARY_BUCKETS,
   VOCABULARY_OPENS,
+  workflowsPage,
 } from './index.ts';
 
 /**
@@ -1528,5 +1529,15 @@ describe('the vocabulary map’s classes from other apps', () => {
     const buckets = evaluate(VOCABULARY_BUCKETS, roots) as { key: string; models?: { name: string }[] }[];
     expect(buckets.find((b) => b.key === 'other')!.models).toEqual([{ name: 'Question' }]);
     expect(evaluate(OTHER_APP_CLASS_NAMES, roots)).toEqual(['Question']);
+  });
+});
+
+describe('the flows page’s records', () => {
+  // A record chosen from the space tree opened the page at its flow with nothing to say which it was:
+  // choosing another record of the same flow changed nothing on screen.
+  it('marks the record chosen as a selection is marked everywhere else', () => {
+    const page = JSON.stringify(workflowsPage({}));
+    expect(page).toContain("(rec.record == routeStore.params.card) ? '1px solid accent' : '1px solid border'");
+    expect(page).toContain("(rec.record == routeStore.params.card) ? 'accent-soft' : 'surface'");
   });
 });
