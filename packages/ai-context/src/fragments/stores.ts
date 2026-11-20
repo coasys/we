@@ -914,6 +914,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         'boolean — whether this build has developer features at all: a dev server, or a deploy of work in progress (a preview). The ceiling devTools sits under. Gate the way to the developer switch on this',
       devTools:
         'boolean — whether developer affordances should be VISIBLE. True in a development build unless a developer has thrown the Settings → Developer switch to see what a shipped app looks like. Reactive, so a control gated on it appears and disappears on the press. Gate any developer-only control on this — a schema-test page, a fixture toggle — and wrap it in $if rather than hiding it, since a hidden row is still in the accessibility tree and still found by find-in-page. Never true in a production build, whatever the switch says',
+      testPeople:
+        'boolean — whether the test people are offered: fake participants and fake cursors in a call, pretend people on a weighed canvas. OFF until a developer turns it on in Settings → Developer, and never on while devTools is off. Gate any control that puts people on screen who are not there on this, not on devTools',
       credentialEntered:
         "boolean — something has been typed into the host's password field. The password itself is never readable from a template — see CredentialField — so gate a Sign in button on this",
       credentialConfirmed:
@@ -932,6 +934,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '(): starts the whole boot again from the failure screen, by reloading. A failed boot can have got anywhere before it threw, so retrying in place would race the remains of the first attempt',
       finishSetup: "(): leaves 'finishing' for the running app — sets bootState to 'ready'",
       logout: '(): locks the agent and returns to the login screen',
+      setTestPeople:
+        '(on: boolean): turns the test people on or off for this device. Takes the value a we-switch emits, so pass `event.detail` bare. While devTools is off the device keeps the choice, but testPeople stays false until devTools is on again',
       setDevTools:
         '(on: boolean): shows or hides developer affordances for this session. Takes the value the control shows, so a we-switch can pass `event.detail` bare. Cannot turn developer UI on in a production build',
     },

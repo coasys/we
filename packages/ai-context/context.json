@@ -7388,6 +7388,9 @@
         "devTools": {
           "type": "boolean"
         },
+        "testPeople": {
+          "type": "boolean"
+        },
         "credentialEntered": {
           "type": "boolean"
         },
@@ -7397,6 +7400,7 @@
       },
       "actions": [
         "setDevTools",
+        "setTestPeople",
         "unlock",
         "touchCredential",
         "clearPasswordError",
@@ -7405,7 +7409,7 @@
         "retryBoot"
       ],
       "ambient": ["touchCredential", "clearPasswordError"],
-      "needsArgs": ["setDevTools"]
+      "needsArgs": ["setDevTools", "setTestPeople"]
     },
     {
       "name": "shapeStore",

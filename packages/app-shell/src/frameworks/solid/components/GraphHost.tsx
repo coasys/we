@@ -488,7 +488,7 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
   const weighs = createMemo(() =>
     seedList().some((seed) => 'source' in seed && seed.source === 'canvas' && Boolean(seed.options?.weigh)),
   );
-  const pretending = () => pretendPeopleAvailable && sessionStore.devTools() && weighs();
+  const pretending = () => pretendPeopleAvailable && sessionStore.testPeople() && weighs();
   const seeds = createMemo(() => {
     const simulate = pretending() ? pretendSettings() : undefined;
     if (!simulate) return props.seeds;
@@ -511,7 +511,7 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
     nodeBadges: { reaction: ReactionBadge },
     // The header controls a template may name — colour, shape, scale. See `graphControls`.
     nodeControls,
-    // Only while a canvas is weighed, in a development build with developer tools showing.
+    // Only while a canvas is weighed, in a development build with the test people turned on.
     ...(pretendPeopleAvailable ? { overlay: () => <Show when={pretending()}>{PretendControl()}</Show> } : {}),
 
     /**
