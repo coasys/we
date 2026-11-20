@@ -1101,6 +1101,105 @@ describe('mount retry — the fresh-cell stall', () => {
   });
 
   /*
+    Ownership holds inside the preparation and profile helpers too, not only
+    between the outer steps: a Close while target discovery, `whoami` or a
+    poll is out lets that call settle, and nothing after it is issued.
+  */
+  it('a close during target discovery stops the run — the absence answer allocates nothing', async () => {
+    const record: string[] = [];
+    const d = deps(record);
+    (d.lifecycle()!.list as ReturnType<typeof vi.fn>).mockResolvedValue([ref('other-1'), ref('other-2')]);
+    let releaseMounts!: (mounted: string[]) => void;
+    (d.port()!.mounts as ReturnType<typeof vi.fn>).mockImplementation(async (uuid: string) => {
+      record.push(`mounts:${uuid}`);
+      return new Promise<string[]>((resolve) => (releaseMounts = resolve));
+    });
+    const acorn = createAcornLifecycle(d);
+
+    const create = acorn.createAcornProject('P', 'a b c', BASE);
+    await vi.waitFor(() => expect(record).toContain('mounts:other-1'));
+    acorn.dismissAcornOperation(); // Close while discovery is out
+    releaseMounts([]); // "not mounted here"
+
+    await expect(create).resolves.toBeNull();
+    expect(record).not.toContain('mounts:other-2'); // discovery stopped where it was
+    expect(d.lifecycle()!.create).not.toHaveBeenCalled();
+    expect(record.find((c) => c.startsWith('mount:'))).toBeUndefined();
+    await expect(acorn.pendingAcornOperation()).resolves.toMatchObject({
+      phase: 'failed',
+      failure: { retryable: true },
+    });
+  });
+
+  it('a close while whoami is out stops the profile write — a null answer creates nothing', async () => {
+    const record: string[] = [];
+    const d = deps(record);
+    let releaseWhoami!: (who: null) => void;
+    (d.port()!.interact as ReturnType<typeof vi.fn>).mockImplementation(
+      async (url: string, call: { name: string; parameters?: object }) => {
+        record.push(`interact:${call.name}:${url}`);
+        if (call.name === 'whoami') return new Promise((resolve) => (releaseWhoami = resolve));
+        return null;
+      },
+    );
+    const acorn = createAcornLifecycle(d);
+
+    const create = acorn.createAcornProject('P', 'a b c', BASE);
+    await vi.waitFor(() => expect(record).toContain(`interact:whoami:${LANG}://project`));
+    acorn.dismissAcornOperation(); // Close while whoami is out
+    releaseWhoami(null); // "no profile yet"
+
+    await expect(create).resolves.toBeNull();
+    expect(record).not.toContain(`interact:create:${LANG}://class/AcornProfile`);
+    expect(record.filter((c) => c.startsWith('override:'))).toHaveLength(0);
+  });
+
+  it('a close stops the poll loops — shapes, info and whoami are not asked again', async () => {
+    vi.useFakeTimers();
+    const record: string[] = [];
+    const d = deps(record, { pollMs: 1_000 });
+    // The shapes never land: the wait polls until its bound.
+    (d.schemas()!.hasAnySchema as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+      record.push('hasAnySchema');
+      return false;
+    });
+    const acorn = createAcornLifecycle(d);
+
+    const create = acorn.createAcornProject('P', 'a b c', BASE);
+    await vi.advanceTimersByTimeAsync(2_500);
+    const polled = record.filter((c) => c === 'hasAnySchema').length;
+    expect(polled).toBeGreaterThan(0);
+    acorn.dismissAcornOperation();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await expect(create).resolves.toBeNull();
+    // At most the read already out when the close landed — none scheduled after it.
+    expect(record.filter((c) => c === 'hasAnySchema').length).toBeLessThanOrEqual(polled + 1);
+
+    // The same for a cold cell's `info` (join by address) and `whoami`, which retry while they throw.
+    for (const name of ['info', 'whoami']) {
+      const calls: string[] = [];
+      const dd = deps(calls, { pollMs: 1_000 });
+      (dd.port()!.interact as ReturnType<typeof vi.fn>).mockImplementation(
+        async (url: string, call: { name: string }) => {
+          calls.push(`interact:${call.name}:${url}`);
+          if (call.name === name) throw new Error('cell still coming up');
+          if (call.name === 'info') return { dnaHash: 'QmdnaUnderTest' };
+          return null;
+        },
+      );
+      const a = createAcornLifecycle(dd);
+      const join = a.joinAcornProject(LANG, 'a b c', BASE);
+      await vi.advanceTimersByTimeAsync(2_500);
+      const asked = calls.filter((c) => c.startsWith(`interact:${name}:`)).length;
+      expect(asked, name).toBeGreaterThan(0);
+      a.dismissAcornOperation();
+      await vi.advanceTimersByTimeAsync(10_000);
+      await expect(join).resolves.toBeNull();
+      expect(calls.filter((c) => c.startsWith(`interact:${name}:`)).length, name).toBe(asked);
+    }
+  });
+
+  /*
     The budget bounds the wait itself, not just the loop: a mount call still in
     flight when the phase's clock runs out is abandoned — its late answer is the
     server's to keep and the next explicit Retry's mounts read to find — never a

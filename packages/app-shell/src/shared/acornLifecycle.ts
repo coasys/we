@@ -376,14 +376,25 @@ function withinBudget<T>(work: Promise<T>, ms: number): Promise<T | typeof BUDGE
   return Promise.race([work, out]).finally(() => clearTimeout(timer));
 }
 
-/** Poll `read` until it answers truthy — an rpc that throws counts as "not yet". */
-async function waitFor<T>(read: () => Promise<T>, timeoutMs: number, pollMs: number): Promise<T | null> {
+/**
+ * Poll `read` until it answers truthy — an rpc that throws counts as "not yet".
+ * `owns` is the caller's ownership: once it is gone the loop asks nothing more
+ * and answers null, the same as running out of time.
+ */
+async function waitFor<T>(
+  read: () => Promise<T>,
+  timeoutMs: number,
+  pollMs: number,
+  owns: () => boolean = () => true,
+): Promise<T | null> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     const value = await read().catch(() => null);
+    if (!owns()) return null;
     if (value) return value;
     if (Date.now() >= deadline) return null;
     await new Promise((done) => setTimeout(done, pollMs));
+    if (!owns()) return null;
   }
 }
 
@@ -392,14 +403,20 @@ async function waitFor<T>(read: () => Promise<T>, timeoutMs: number, pollMs: num
  * a resolved value, `null` included, is the language's answer, not "not yet": a
  * `whoami` that resolves null means the member profile does not exist.
  */
-async function answering<T>(call: () => Promise<T>, timeoutMs: number, pollMs: number): Promise<T | null> {
+async function answering<T>(
+  call: () => Promise<T>,
+  timeoutMs: number,
+  pollMs: number,
+  owns: () => boolean = () => true,
+): Promise<T | null> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     try {
       return await call();
     } catch {
-      if (Date.now() >= deadline) return null;
+      if (!owns() || Date.now() >= deadline) return null;
       await new Promise((done) => setTimeout(done, pollMs));
+      if (!owns()) return null;
     }
   }
 }
@@ -453,12 +470,14 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
    * until the member profile exists), the profile `create` when it does not.
    * The AcornProfile fields are the zome's `create_whoami` shape — the agent's
    * WE display name mapped onto them, since Acorn splits a name WE keeps whole.
+   * A run that lost ownership while `whoami` was out writes no profile: its null
+   * answer is the newer owner's to act on, not this one's.
    */
-  const ensureProfile = async (lang: string): Promise<void> => {
-    const who = (await answering(() => interact(`${lang}://project`, 'whoami'), timeoutMs, pollMs)) as {
+  const ensureProfile = async (lang: string, owns: () => boolean): Promise<void> => {
+    const who = (await answering(() => interact(`${lang}://project`, 'whoami'), timeoutMs, pollMs, owns)) as {
       address?: string;
     } | null;
-    if (who?.address) return;
+    if (!owns() || who?.address) return;
     const name = deps.agentName?.() ?? 'Acorn member';
     await interact(`${lang}://class/AcornProfile`, 'create', {
       firstName: name,
@@ -678,12 +697,18 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
    * language (a mount that landed, late or old), else null to allocate one.
    * `mounted` says which answered: a pending target still owes a mounts read
    * before anything calls mount again; an Active mount is reused as it stands.
+   * A run that lost ownership stops reading and answers null — the caller asks
+   * `owns` again before it takes that null as licence to allocate.
    */
-  const targetFor = async (lang: string): Promise<{ ref: DatasetRef; mounted: boolean } | null> => {
+  const targetFor = async (
+    lang: string,
+    owns: () => boolean,
+  ): Promise<{ ref: DatasetRef; mounted: boolean } | null> => {
     const port = deps.port();
     const lifecycle = deps.lifecycle();
     if (!port || !lifecycle) return null;
     const refs = await lifecycle.list();
+    if (!owns()) return null;
     if (deps.setupIntent) {
       for (const ref of refs) {
         const intent = deps.setupIntent.get(ref.id);
@@ -698,6 +723,7 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
         retries when the executor answers again.
       */
       const mounted = await port.mounts(ref.id);
+      if (!owns()) return null;
       if (mounted.includes(lang)) return { ref, mounted: true };
     }
     return null;
@@ -804,8 +830,10 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       });
     const found = op.ref
       ? { ref: op.ref, mounted: false }
-      : await withinBudget(targetFor(op.lang), deadline - Date.now());
+      : await withinBudget(targetFor(op.lang, owns), deadline - Date.now());
     if (found === BUDGET_OUT) throw budgetSpent();
+    // A Close or a newer ask during discovery: its "nothing found" allocates nothing.
+    if (!owns()) return null;
     let ref = found?.ref;
     if (!ref) {
       const allocation = deps.lifecycle()!.create(op.name);
@@ -825,6 +853,15 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
         throw budgetSpent();
       }
       ref = allocated;
+      /*
+        Stood down while the perspective was being made: it is kept as the
+        operation's target — the Retry mounts it rather than making another —
+        and nothing is issued on it from this run.
+      */
+      if (!owns()) {
+        op.ref ??= ref;
+        return null;
+      }
     }
     op.ref = ref;
     /*
@@ -1013,7 +1050,7 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
     // anyway: a still-shapeless dataset gets WE's schemas installed next, which
     // is what `ensureSpaceStructure` is about to do itself — the order that matters
     // (mount before init) is already kept.
-    await waitFor(() => deps.schemas()?.hasAnySchema(ref.handle) ?? Promise.resolve(true), timeoutMs, pollMs);
+    await waitFor(() => deps.schemas()?.hasAnySchema(ref.handle) ?? Promise.resolve(true), timeoutMs, pollMs, own);
     if (!own()) return null;
     /*
       Setup names its target everywhere — nothing below reads the current dataset.
@@ -1100,7 +1137,7 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
         markPaid(ref.id, 'writeMeta');
         if (!own()) return;
       }
-      await ensureProfile(lang);
+      await ensureProfile(lang, own);
       if (!own()) return;
       if (owed?.announce) {
         await interact(`${lang}://project`, 'announceJoin');
@@ -1222,7 +1259,8 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
         cold cell the same grace `whoami` gets; a templated language needs no check —
         it is Acorn by construction.
       */
-      if (languageAddress && !(await answering(() => acornInfo(lang), timeoutMs, pollMs))) return null;
+      const owns = () => nav.generation === openGeneration;
+      if (languageAddress && !(await answering(() => acornInfo(lang), timeoutMs, pollMs, owns))) return null;
       if (nav.generation !== openGeneration) return null;
       /*
         Same sharing as create: a retried join merges into the pending op —
