@@ -425,7 +425,7 @@ describe('the outcomes view on the live mount', () => {
     );
   });
 
-  it('delete writes through', { skip: WRITE_GAP }, async () => {
+  it('delete writes through', async () => {
     await page.getByRole('button', { name: `Delete ${SEED_DELETE}` }).click({ timeout: 120_000 });
     // The host's own confirm — the only "are you sure" a space action gets.
     await page.getByRole('button', { name: 'Delete', exact: true }).click();
