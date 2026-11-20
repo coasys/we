@@ -394,7 +394,7 @@ describe('the outcomes view on the live mount', () => {
     });
   });
 
-  it('empty clear writes through', { skip: WRITE_GAP }, async () => {
+  it('empty clear writes through', async () => {
     const input = page.getByRole('textbox', { name: `Notes: ${SEED_CLEAR}` });
     await input.waitFor({ state: 'visible', timeout: 120_000 });
     await input.fill('');
