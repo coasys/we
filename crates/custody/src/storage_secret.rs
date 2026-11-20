@@ -28,12 +28,12 @@ use std::io::BufRead;
 use std::path::{Path, PathBuf};
 
 use ad4m_identity_client::VaultError;
-use argon2::{Algorithm, Argon2, Params, Version};
 use rand_core::{OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;
 
+use crate::keyring_item;
 use crate::seal::{self, Kdf, PassphraseProblem};
 use crate::store::{is_keyring_locked, is_no_keyring, SecretStore};
 
@@ -118,14 +118,13 @@ fn refused(error: VaultError) -> Answer {
 }
 
 fn read(store: &dyn SecretStore, name: &str) -> Result<Option<Zeroizing<String>>, VaultError> {
-    let Some(bytes) = store.get(name)?.map(Zeroizing::new) else {
-        return Ok(None);
-    };
-    let text = std::str::from_utf8(&bytes).map_err(|_| VaultError::Tampered)?;
-    if !is_secret_hex(text) {
-        return Err(VaultError::Tampered);
-    }
-    Ok(Some(Zeroizing::new(text.to_ascii_lowercase())))
+    keyring_item::read(store, name, accept)
+}
+
+/// What is kept of a stored text that is a secret (64 hex characters), in lowercase; nothing of one
+/// that is not.
+fn accept(text: &str) -> Option<Zeroizing<String>> {
+    is_secret_hex(text).then(|| Zeroizing::new(text.to_ascii_lowercase()))
 }
 
 /// 32 bytes from the OS, as hex.
@@ -152,12 +151,9 @@ pub fn answer(store: &dyn SecretStore, name: &str, mode: Mode) -> Answer {
         (None, Mode::Read) => Answer::None,
         (None, Mode::Make) => {
             let made = new_secret();
-            if let Err(e) = store.put(name, made.as_bytes()) {
-                return refused(e);
-            }
-            match read(store, name) {
-                Ok(Some(back)) if *back == *made => Answer::Secret(made),
-                Ok(_) | Err(VaultError::Tampered) => {
+            match keyring_item::keep_and_read_back(store, name, &made, accept) {
+                Ok(true) => Answer::Secret(made),
+                Ok(false) | Err(VaultError::Tampered) => {
                     Answer::Failed("the keyring did not keep the secret".into())
                 }
                 Err(e) => refused(e),
@@ -176,16 +172,7 @@ pub fn derive(
     keyring_id: &[u8],
     kdf: Kdf,
 ) -> Result<Zeroizing<String>, VaultError> {
-    let params = Params::new(kdf.m_kib, kdf.t, kdf.p, Some(SECRET_BYTES))
-        .map_err(|e| VaultError::Unavailable(format!("argon2 parameters: {e}")))?;
-    let mut key = Zeroizing::new([0u8; SECRET_BYTES]);
-    Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
-        .hash_password_into(
-            seal::normalise(passphrase).as_bytes(),
-            keyring_id,
-            &mut key[..],
-        )
-        .map_err(|e| VaultError::Unavailable(format!("argon2: {e}")))?;
+    let key = seal::derive(passphrase, keyring_id, kdf)?;
     Ok(secret_hex(key.as_ref()))
 }
 
@@ -296,10 +283,7 @@ pub fn answer_line(answer: &Answer) -> Zeroizing<String> {
             reason: Some(reason),
         },
     };
-    let mut bytes = Zeroizing::new(Vec::with_capacity(line_capacity(answer)));
-    serde_json::to_writer(&mut *bytes, &line).expect("a line of strings is written to memory");
-    debug_assert!(bytes.capacity() == line_capacity(answer), "the line grew");
-    Zeroizing::new(String::from_utf8(std::mem::take(&mut *bytes)).expect("JSON is UTF-8"))
+    keyring_item::write_line(&line, line_capacity(answer))
 }
 
 /// What the command was asked.
@@ -352,27 +336,7 @@ pub fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Command, Str
 
 /// This computer's keyring for the storage secret, or why there is none.
 pub fn keyring() -> Result<Box<dyn SecretStore>, VaultError> {
-    #[cfg(target_os = "linux")]
-    {
-        // The custody folder every custody process takes the claim lock in; the storage secret's
-        // own reads and writes never take it.
-        let home =
-            dirs::home_dir().ok_or_else(|| VaultError::Unavailable("no home folder".into()))?;
-        crate::store::SecretServiceStore::connect(&crate::host::custody_dir(&home))
-            .map(|store| Box::new(store) as Box<dyn SecretStore>)
-    }
-    #[cfg(target_os = "macos")]
-    {
-        Ok(Box::new(crate::wallet::login_keychain::LoginKeychain::new(
-            SERVICE,
-        )))
-    }
-    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-    {
-        Err(crate::store::no_keyring(
-            "this app keeps no keyring item on this system",
-        ))
-    }
+    keyring_item::keyring(SERVICE)
 }
 
 /// Reads the passphrase line from `input`: one line of JSON, zeroised once parsed.
@@ -387,7 +351,6 @@ pub fn read_passphrase_line(input: &mut impl BufRead) -> Result<PassphraseLine, 
 /// The `storage-secret` command: answers on stdout, one line, and exits 0; 2 on bad arguments or a
 /// passphrase line that is not one.
 pub fn main(args: impl IntoIterator<Item = String>) -> std::process::ExitCode {
-    use std::io::Write;
     let command = match parse_args(args) {
         Ok(command) => command,
         Err(problem) => {
@@ -396,16 +359,9 @@ pub fn main(args: impl IntoIterator<Item = String>) -> std::process::ExitCode {
         }
     };
     let answered = match command {
-        Command::Keyring { mode, item } => match keyring() {
-            Ok(store) => {
-                let answered = answer(store.as_ref(), &item, mode);
-                // A store whose thread still waits on an unanswered prompt would hold the exit
-                // until it is answered; the process ends here either way.
-                std::mem::forget(store);
-                answered
-            }
-            Err(e) => refused(e),
-        },
+        Command::Keyring { mode, item } => {
+            keyring_item::on_keyring(SERVICE, |store| answer(store, &item, mode), refused)
+        }
         Command::Derive { keyring_id, new } => {
             let line = match read_passphrase_line(&mut std::io::stdin().lock()) {
                 Ok(line) => line,
@@ -417,10 +373,6 @@ pub fn main(args: impl IntoIterator<Item = String>) -> std::process::ExitCode {
             answer_passphrase(&line, &keyring_id, new, PASSPHRASE_KDF)
         }
     };
-    let line = answer_line(&answered);
-    let mut out = std::io::stdout().lock();
-    let _ = out.write_all(line.as_bytes());
-    let _ = out.write_all(b"\n");
-    let _ = out.flush();
+    keyring_item::print_line(answer_line(&answered).as_str());
     std::process::ExitCode::SUCCESS
 }

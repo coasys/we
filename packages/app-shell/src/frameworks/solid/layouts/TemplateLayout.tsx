@@ -26,6 +26,7 @@ import { activePanels as panelsFor } from '@shared/panelScope';
 import { appFrame } from '@shared/registries/appFrame';
 import { registerHostChromeReserve } from '@shared/registries/dockRegistry';
 import { resolveParts } from '@shared/registries/moduleParts';
+import { provideTemplateSurface } from '@shared/registries/templateBag';
 import { holdTemplatePanels, setTemplatePanels } from '@shared/registries/templatePanels';
 import { buildTemplateBag, CHROME_TIER } from '@shared/registries/templateSurface';
 import { isValidThemeKey } from '@shared/registries/themeRegistry';
@@ -362,6 +363,8 @@ export function TemplateLayout(
     entirely correct, and never adapt.
   */
   const templateSurface = createSurface();
+  // Lent for the render sites this owner never reaches — a panel body draws under `PanelHost`'s.
+  onCleanup(provideTemplateSurface(templateSurface.surface));
 
   createEffect(() => {
     const td = stores.themeStore.activeTemplateTheme();

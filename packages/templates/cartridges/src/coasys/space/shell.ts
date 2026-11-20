@@ -112,7 +112,9 @@ export const coasysSpace: TemplateSchema & { id: string } = {
     },
     {
       type: 'Column',
-      props: { flex: '1', minWidth: '0', height: '100%' },
+      // Clipped: on a phone a lane covering the row squeezes the view to nothing, and its page must
+      // not draw over that lane. The full-window thread is fixed, so the clip does not reach it.
+      props: { flex: '1', minWidth: '0', height: '100%', overflow: 'hidden' },
       // Page or Canvas — see `canvas.ts`. The canvas is drawn here rather than as a route, so it stays
       // mounted while the tree's choice changes; the address still changes as the tree is used, and
       // the pages come back as they were when the mode does.

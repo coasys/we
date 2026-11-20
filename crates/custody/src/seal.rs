@@ -184,7 +184,11 @@ impl Kdf {
     }
 }
 
-fn derive(passphrase: &str, salt: &[u8], kdf: Kdf) -> Result<Zeroizing<[u8; 32]>, VaultError> {
+pub(crate) fn derive(
+    passphrase: &str,
+    salt: &[u8],
+    kdf: Kdf,
+) -> Result<Zeroizing<[u8; 32]>, VaultError> {
     let params = Params::new(kdf.m_kib, kdf.t, kdf.p, Some(32))
         .map_err(|e| VaultError::Unavailable(format!("argon2 parameters: {e}")))?;
     let mut key = Zeroizing::new([0u8; 32]);

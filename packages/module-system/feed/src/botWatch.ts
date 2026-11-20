@@ -4,7 +4,8 @@
  * The scene it is for: people are in a call with the stage filling the screen, somebody mentions a
  * bot, and the bot answers in the space a few seconds later. Nobody sees it, because the Feed is not
  * open. So a line a bot writes in the space on screen raises a notice with a way to open the Feed,
- * unless the reader is already looking at the Feed's newest line.
+ * unless the reader is already looking at the Feed's newest line, or at the newest line of the call
+ * the bot answered in.
  *
  * ## Who is a bot
  *
@@ -47,8 +48,12 @@ export interface BotWatchDeps {
   notify: ModuleStoreDeps['notify'];
   /** Whether the reader wants these notices (the Feed's `botNotices` setting). */
   enabled: () => boolean;
-  /** Whether the reader is looking at the Feed's newest line, so a notice would tell them nothing. */
-  readingLive: () => boolean;
+  /**
+   * Whether the reader is looking at the newest of these lines already — the Feed's, or the Feed of
+   * the call they were said in — so a notice would tell them nothing. Each by its id and the call it
+   * was said in (`partOf`), or `''` when that is not known.
+   */
+  readingLive: (lines: { id: string; call: string }[]) => boolean;
   /** Whether the Feed keeps spoken lines out of view — a hidden line is not unseen activity. */
   spokenHidden: () => boolean;
   /** Show the Feed at its newest line: the notice's Open. */
@@ -57,6 +62,9 @@ export interface BotWatchDeps {
 
 /** A line as the watch weighs it. */
 interface Heard {
+  id: string;
+  /** The collection it was said in — a call's, or the space's — or `''` when the row does not say. */
+  call: string;
   author: string;
   text: string;
   /** How it was written — `spoken` for a line a call heard, '' for one WE did not write. */
@@ -78,6 +86,14 @@ export function botNotice(lines: string[]): string {
   return `Sent ${lines.length} messages`;
 }
 
+/** A relation's id, however the row carries it — an id, a list of one, or the hydrated record. */
+const idOf = (value: unknown): string => {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) return idOf(value[0]);
+  const id = (value as { id?: unknown } | null)?.id;
+  return typeof id === 'string' ? id : '';
+};
+
 export function watchBotMessages(deps: BotWatchDeps): void {
   const { records, identities } = deps;
   let stop: (() => void) | null = null;
@@ -85,7 +101,10 @@ export function watchBotMessages(deps: BotWatchDeps): void {
   /** The lines weighed already, by id: a line raises a notice once at most. */
   let seen = new Set<string>();
   /** Lines held for a burst, by author. */
-  const held = new Map<string, { lines: string[]; timer: ReturnType<typeof setTimeout> }>();
+  const held = new Map<
+    string,
+    { lines: string[]; heard: { id: string; call: string }[]; timer: ReturnType<typeof setTimeout> }
+  >();
 
   const forget = () => {
     stop?.();
@@ -98,7 +117,7 @@ export function watchBotMessages(deps: BotWatchDeps): void {
   function raise(author: string): void {
     const burst = held.get(author);
     held.delete(author);
-    if (!burst || !deps.enabled() || deps.readingLive()) return;
+    if (!burst || !deps.enabled() || deps.readingLive(burst.heard)) return;
     const who = identities?.get(author);
     if (who?.kind !== 'bot') return;
     deps.notify?.('info', botNotice(burst.lines), {
@@ -122,11 +141,17 @@ export function watchBotMessages(deps: BotWatchDeps): void {
     if (who && who.kind !== 'bot') return;
     if (!who) identities?.fetch(line.author);
     const burst = held.get(line.author);
+    const where = { id: line.id, call: line.call };
     if (burst) {
       burst.lines.push(line.text);
+      burst.heard.push(where);
       return;
     }
-    held.set(line.author, { lines: [line.text], timer: setTimeout(() => raise(line.author), BOT_BURST_MS) });
+    held.set(line.author, {
+      lines: [line.text],
+      heard: [where],
+      timer: setTimeout(() => raise(line.author), BOT_BURST_MS),
+    });
   }
 
   deps.effect?.(() => {
@@ -145,6 +170,8 @@ export function watchBotMessages(deps: BotWatchDeps): void {
         // The first answer is what was already there: a notice is for what arrives.
         if (!first)
           heard({
+            id,
+            call: idOf(row.partOf),
             author: typeof row.author === 'string' ? row.author : '',
             text: typeof row.text === 'string' ? row.text : '',
             source: typeof row.source === 'string' ? row.source : '',

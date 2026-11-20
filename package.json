@@ -11,6 +11,7 @@
     "ad4m:executor": "node scripts/ad4m-executor.mjs",
     "codemod:invoke": "node scripts/codemod-invoke.mjs",
     "verify:ad4m": "pnpm --filter @we/backend-ad4m test:live",
+    "e2e": "node scripts/e2e.mjs",
     "check:source-consumers": "node scripts/check-source-consumers.mjs",
     "check:we-props": "node scripts/check-we-props.mjs",
     "validate:schemas": "pnpm --filter @we/schema-shared validate",
@@ -62,8 +63,8 @@
   },
   "pnpm": {
     "overrides": {
-      "@coasys/ad4m": "https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@130cc19a48f4dac851b47eb39a77d466b8b22b23",
-      "@coasys/ad4m-connect": "https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@130cc19a48f4dac851b47eb39a77d466b8b22b23",
+      "@coasys/ad4m": "https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@a1e9dc908cfdcd9b414bae51cea4b20591b7080b",
+      "@coasys/ad4m-connect": "https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@a1e9dc908cfdcd9b414bae51cea4b20591b7080b",
       "prettier": "3.9.10",
       "@xmldom/xmldom": ">=0.9.12",
       "plist": ">=3.1.1",

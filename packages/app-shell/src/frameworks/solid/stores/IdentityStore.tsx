@@ -26,6 +26,7 @@ import type {
   KeyLogEvent,
   KeyLogFork,
 } from '@we/backend-shared';
+import { latest } from '@we/module-shared';
 import {
   type Accessor,
   createContext,
@@ -165,12 +166,12 @@ export function IdentityStoreProvider(props: ParentProps) {
     another backend (another account, a reconnect) is dropped rather than drawn as the new one's, and
     so is one overtaken by a later read of the same port.
   */
-  let generation = 0;
+  const reads = latest();
 
   // Another backend is another person, or the same one reached afresh: nothing read before carries over.
   createEffect(
     on(port, () => {
-      generation++;
+      reads.cancel();
       setStatus(null);
       setStatusLoaded(false);
       setEvents([]);
@@ -186,8 +187,8 @@ export function IdentityStoreProvider(props: ParentProps) {
   async function refresh(): Promise<void> {
     const identity = port();
     if (!identity) return;
-    const asked = ++generation;
-    const current = () => asked === generation && port() === identity;
+    const isLatest = reads.begin();
+    const current = () => isLatest() && port() === identity;
     if (identity.custody) {
       try {
         const state = await identity.custody();

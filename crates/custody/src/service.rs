@@ -17,7 +17,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use ad4m_client::ws_rpc::WsRpcClient;
-use ad4m_identity_client::executor::IdentityStatus;
+use ad4m_identity_client::executor::{IdentityStatus, RpcError};
 use ad4m_identity_client::flows::create::{resume, CreateFlow, CreateScreen, Created};
 use ad4m_identity_client::flows::link::{Claimed, LinkFlow};
 use ad4m_identity_client::flows::master::{
@@ -887,16 +887,53 @@ fn words_refused(e: &ad4m_identity_core::words::WordsError) -> (String, Option<u
     }
 }
 
-/// The wait in seconds a `429` of the executor names (`rate-limited: Address, retry after 3600 s`).
-fn retry_after(e: &ClientError) -> Option<u64> {
-    let ClientError::Rpc(e) = e else {
-        return None;
-    };
-    if e.code != 429 {
-        return None;
+/// A refusal the flow acts on, read from an executor answer.
+///
+/// The identity client's `RpcError` is a code and a message and nothing else, so this is the one
+/// place that reads the message: the executor's reply names the refusal first
+/// (`rate-limited: Address, retry after 3600 s`, `forbidden: "pow"`, `already-vouched: …`,
+/// `no-identity: …`). When the client keeps the reply's structured data, match on that here.
+#[derive(Debug, PartialEq, Eq)]
+enum Refusal {
+    /// `429`: the wait in seconds.
+    Wait(u64),
+    /// `403 forbidden: "pow"`: the store refused the proof of work sent with a new identity (its
+    /// cost went up after the proof was solved, or the proof is wrong). A new proof can pass.
+    Proof,
+    /// `409`: the store keeps a vouch note for the identity already.
+    AlreadyVouched,
+    /// `409`: the agent speaks for no identity.
+    NoIdentity,
+}
+
+fn refusal(e: &RpcError) -> Option<Refusal> {
+    let message = e.message.as_str();
+    match e.code {
+        429 => {
+            let (_, after) = message.split_once("retry after ")?;
+            after
+                .split_whitespace()
+                .next()?
+                .parse()
+                .ok()
+                .map(Refusal::Wait)
+        }
+        403 if message.starts_with("forbidden: \"pow\"") => Some(Refusal::Proof),
+        409 if message.starts_with("already-vouched") => Some(Refusal::AlreadyVouched),
+        409 if message.starts_with("no-identity") => Some(Refusal::NoIdentity),
+        _ => None,
     }
-    let (_, after) = e.message.split_once("retry after ")?;
-    after.split_whitespace().next()?.parse().ok()
+}
+
+/// The wait in seconds a `429` of the executor names.
+fn retry_after(e: &ClientError) -> Option<u64> {
+    match e {
+        ClientError::Rpc(e) => match refusal(e)? {
+            Refusal::Wait(seconds) => Some(seconds),
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
 /// `seconds` as a person reads a wait: in minutes up to an hour, else in hours, rounded up.
@@ -918,11 +955,18 @@ fn a_wait(seconds: u64) -> String {
 /// The store refused the proof of work sent with a new identity (`403 forbidden: "pow"`): its
 /// cost went up after the proof was solved, or the proof is wrong. A new proof can pass.
 fn refused_the_proof(e: &ClientError) -> bool {
-    matches!(e, ClientError::Rpc(e) if e.code == 403 && e.message.starts_with("forbidden: \"pow\""))
+    matches!(e, ClientError::Rpc(e) if refusal(e) == Some(Refusal::Proof))
 }
 
 /// Words a person reads, for each way a flow stops.
 fn failed(e: &ClientError) -> Screen {
+    Screen::Failed {
+        message: failure_message(e),
+    }
+}
+
+/// The sentence of `failed`, for a flow that says more around it.
+fn failure_message(e: &ClientError) -> String {
     let message = match e {
         e if names_no_store(e) => NO_STORE.into(),
         ClientError::Vault(VaultError::Cancelled) => {
@@ -982,9 +1026,7 @@ fn failed(e: &ClientError) -> Screen {
         ),
         other => other.to_string(),
     };
-    Screen::Failed {
-        message: a_sentence(message),
-    }
+    a_sentence(message)
 }
 
 /// `message`, ending as a sentence: the executor's and the vault's own answers are quoted as they
@@ -1574,9 +1616,7 @@ async fn next_input_or_cancel(
 
 /// A pending identity that could not be finished yet: why, and that trying again finishes it.
 fn unfinished(e: &ClientError) -> Screen {
-    let Screen::Failed { message } = failed(e) else {
-        unreachable!("failed() answers Failed")
-    };
+    let message = failure_message(e);
     if names_no_store(e) {
         return Screen::Failed { message };
     }
@@ -1627,7 +1667,9 @@ async fn create_on<R: ExecutorRpc>(
     // An identity made here earlier whose publish was not confirmed is finished, never replaced:
     // its master key is already kept, and its words are the ones the person wrote down.
     match finish_pending(executor, vault).await {
-        Ok(Some(created)) => return answer(reply, Ok(identity_ready(executor, created).await)),
+        Ok(Some(created)) => {
+            return answer(reply, Ok(resumed_identity_ready(executor, created).await))
+        }
         Ok(None) => {}
         Err(e) => {
             if !offer_discard(executor, vault, address, rx, reply, &e).await {
@@ -1722,9 +1764,7 @@ async fn create_on<R: ExecutorRpc>(
     // ends the step here, with nothing made.
     let bits = match executor.pow_params().await {
         Ok(params) if params.bits > ad4m_identity_client::pow::MAX_POW_BITS => {
-            let Screen::Failed { message } = failed(&ClientError::PowTooCostly(params.bits)) else {
-                unreachable!("failed() answers Failed")
-            };
+            let message = failure_message(&ClientError::PowTooCostly(params.bits));
             return answer(
                 reply,
                 Ok(Screen::Failed {
@@ -1754,7 +1794,9 @@ async fn create_on<R: ExecutorRpc>(
             if let Some(Err(e)) = &created.record {
                 log::warn!("custody: the record does not list this computer yet: {e}");
             }
-            identity_ready(executor, created).await
+            // A new identity is published with a proof and no note, and only `attachNote` turns
+            // `vouched` true: there is nothing to ask.
+            identity_ready(created, false)
         }
         // Custody came first, so a publish that failed left an identity to finish, not a loss —
         // when the incept kept is this executor's. Another account's is not this step's.
@@ -1764,9 +1806,21 @@ async fn create_on<R: ExecutorRpc>(
     give_created(vault, address, rx, reply, screen).await;
 }
 
-/// `IdentityReady` for `created`, with whether the store keeps a vouch note for it (`false` when
-/// the executor does not say).
-async fn identity_ready<R: ExecutorRpc>(executor: &ViaExecutor<R>, created: Created) -> Screen {
+/// `IdentityReady` for `created`. `vouched` is whether the store keeps a vouch note for it.
+fn identity_ready(created: Created, vouched: bool) -> Screen {
+    Screen::IdentityReady {
+        did: created.did,
+        key_id: created.device_key_id,
+        vouched,
+    }
+}
+
+/// `identity_ready` for an identity finished from an earlier run, whose note the executor may
+/// already hold: asks it (`false` when it does not say).
+async fn resumed_identity_ready<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    created: Created,
+) -> Screen {
     let vouched = match executor.status().await {
         Ok(status) => status.vouched,
         Err(e) => {
@@ -1777,11 +1831,7 @@ async fn identity_ready<R: ExecutorRpc>(executor: &ViaExecutor<R>, created: Crea
             false
         }
     };
-    Screen::IdentityReady {
-        did: created.did,
-        key_id: created.device_key_id,
-        vouched,
-    }
+    identity_ready(created, vouched)
 }
 
 /// After `Preparing`: answers `screen`, the create's end, to the window's `WaitCreated`. A cancel
@@ -5130,10 +5180,10 @@ async fn check_email_on<R: ExecutorRpc>(
                     Ok(token) => match executor.attach_note(&token).await {
                         Ok(_) => return answer(reply, Ok(Screen::EmailChecked { did })),
                         // Another app of this identity attached a note first: the check is done.
-                        Err(e) if e.code == 409 && e.message.starts_with("already-vouched") => {
+                        Err(e) if refusal(&e) == Some(Refusal::AlreadyVouched) => {
                             return answer(reply, Ok(Screen::EmailChecked { did }))
                         }
-                        Err(e) if e.code == 409 && e.message.starts_with("no-identity") => {
+                        Err(e) if refusal(&e) == Some(Refusal::NoIdentity) => {
                             return answer(
                                 reply,
                                 Ok(Screen::Failed {
@@ -5149,12 +5199,7 @@ async fn check_email_on<R: ExecutorRpc>(
                             log::warn!("custody: the note was not attached: {}", e.message);
                             refused(CHECKS_UNAVAILABLE.into())
                         }
-                        Err(e) => {
-                            let Screen::Failed { message } = failed(&ClientError::Rpc(e)) else {
-                                unreachable!("failed() answers Failed")
-                            };
-                            refused(message)
-                        }
+                        Err(e) => refused(failure_message(&ClientError::Rpc(e))),
                     },
                     Err(PlatformError::WrongCode { tries_left: 0 })
                     | Err(PlatformError::TooManyTries) => {
@@ -5379,10 +5424,7 @@ mod tests {
                 }
                 "identity.powParams" => Ok(json!({
                     "bits": self.pow_bits.get(),
-                    "previousBits": self.pow_bits.get(),
-                    "changedAt": 0,
-                    // The store mints a one-use challenge the proof commits to (ad4m `PowChallenge`).
-                    "challenge": { "nonce": "challenge-1", "expires": 4_000_000_000u64 },
+                    "challenge": { "nonce": "test-challenge", "expires": 4_000_000_000u64 },
                 })),
                 "identity.attachNote" => {
                     if self.held.borrow().is_none() {
@@ -5821,6 +5863,19 @@ mod tests {
             panic!("{screens:?}");
         };
         assert!(!vouched, "a new identity has no vouch note");
+        // No `identity.status` follows the publish: a new identity has no note to ask after.
+        let seen = executor.rpc().seen.borrow();
+        let published = seen
+            .iter()
+            .position(|(m, _)| m == "identity.publish")
+            .expect("the identity was published");
+        assert!(
+            seen[published..]
+                .iter()
+                .all(|(m, _)| m != "identity.status"),
+            "{seen:?}"
+        );
+        drop(seen);
         assert_eq!(executor.rpc().publishes.get(), 1);
         let publish = &executor.rpc().called("identity.publish")[0];
         let pow: ad4m_identity_core::pow::Pow =
@@ -5911,6 +5966,38 @@ mod tests {
             "{screens:?}"
         );
         assert_eq!(executor.rpc().publishes.get(), 1);
+    }
+
+    /// The four answers of the executor this flow acts on are read in `refusal`, and nowhere else.
+    #[test]
+    fn a_refusal_is_read_from_the_executors_answer_in_one_place() {
+        let rpc = |code: u16, message: &str| RpcError {
+            code,
+            message: message.into(),
+        };
+        assert_eq!(
+            refusal(&rpc(429, "rate-limited: Address, retry after 3600 s")),
+            Some(Refusal::Wait(3600))
+        );
+        assert_eq!(refusal(&rpc(429, "too many")), None);
+        assert_eq!(
+            refusal(&rpc(403, "forbidden: \"pow\"")),
+            Some(Refusal::Proof)
+        );
+        assert_eq!(refusal(&rpc(403, "forbidden: \"vouch\"")), None);
+        assert_eq!(
+            refusal(&rpc(
+                409,
+                "already-vouched: the store keeps a note for x already"
+            )),
+            Some(Refusal::AlreadyVouched)
+        );
+        assert_eq!(
+            refusal(&rpc(409, "no-identity: the agent speaks for no identity")),
+            Some(Refusal::NoIdentity)
+        );
+        // The same words under another code are another refusal.
+        assert_eq!(refusal(&rpc(500, "already-vouched")), None);
     }
 
     #[test]

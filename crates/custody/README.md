@@ -442,11 +442,16 @@ A patched build rewrites `Cargo.lock`'s `source` lines; restore it before commit
 The end-to-end test runs the three flows against a real identity-store and real executors, and a
 desktop executor (`--custody-channel`, the custody credential on stdin, no `--operator`) whose first
 link records its operator, after which another identity's offer is refused `first-link`; see the
-header of `tests/live.rs` for what it needs:
+header of `tests/live.rs` for what it needs. The executors are the one every WE live test runs
+(`scripts/ad4m-executor.mjs --path`: `AD4M_EXECUTOR`, else the pinned download). `AD4M_REPO` names an
+ad4m checkout only for the identity-store binary and its `tests/js` language directories:
 
 ```sh
+pnpm e2e custody-live          # from the repository root
 CUSTODY_LIVE=1 AD4M_REPO=<ad4m> cargo test --features cheap-kdf --test live -- --nocapture
 ```
+
+It is a live contract test; `docs/testing/e2e.md` places it among the others.
 
 In the Tauri app build the generated `Cargo.toml` patches this crate's ad4m crates to the seed's
 checkout (`apps/we-tauri/src-tauri/Cargo.toml.template`), so there is one ad4m in the binary.
