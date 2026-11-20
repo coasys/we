@@ -16,6 +16,7 @@ const created = vi.hoisted(() => ({
   clients: [] as { args: unknown[]; closed: boolean }[],
   /** connect's embedded-proxy transport, as `AD4M_CONFIG { proxy: true }` leaves it on the core. */
   proxy: undefined as undefined | { baseUrl: string; options: Record<string, unknown> },
+  failPorts: false,
 }));
 
 vi.mock('@coasys/ad4m', async (importActual) => {
@@ -38,6 +39,7 @@ vi.mock('@coasys/ad4m', async (importActual) => {
 vi.mock('@we/backend-ad4m', async (importActual) => ({
   ...(await importActual<typeof import('@we/backend-ad4m')>()),
   createAd4mBackendPorts: (client: unknown, _ctx: unknown, options: { operator?: boolean }) => {
+    if (created.failPorts) throw new Error('ports failed');
     created.client = client;
     created.options.push(options);
     return {};
@@ -84,6 +86,7 @@ beforeEach(() => {
   created.options = [];
   created.clients = [];
   created.proxy = undefined;
+  created.failPorts = false;
   vi.stubGlobal('window', { location: { origin: 'https://we.example.test', href: 'https://we.example.test/' } });
 });
 
@@ -150,6 +153,23 @@ describe('the WE web connector', () => {
     },
   );
 
+  it('closes the session client it built when the session ends', { timeout: IMPORT_TIMEOUT }, async () => {
+    const { ad4mConnector } = await import('./ad4mConnector');
+    created.token = GRANT;
+    const result = await ad4mConnector.initialize({} as never);
+    expect(created.clients[0].closed).toBe(false);
+    await result.disconnect?.();
+    expect(created.clients[0].closed).toBe(true);
+  });
+
+  it('closes the session client when building the ports fails', { timeout: IMPORT_TIMEOUT }, async () => {
+    const { ad4mConnector } = await import('./ad4mConnector');
+    created.token = GRANT;
+    created.failPorts = true;
+    await expect(ad4mConnector.initialize({} as never)).rejects.toThrow('ports failed');
+    expect(created.clients.map((c) => c.closed)).toEqual([true]);
+  });
+
   it('dials the executor at connect’s baseUrl when there is no proxy', { timeout: IMPORT_TIMEOUT }, async () => {
     const { ad4mConnector } = await import('./ad4mConnector');
     created.token = GRANT;
@@ -178,5 +198,13 @@ describe('the guest connector', () => {
     const [url, , options] = created.clients[0].args as [string, string, Record<string, unknown>];
     expect(url).toBe('http://proxy');
     expect(options.webSocketImpl).toBe(PostMessageWs);
+  });
+
+  it('closes the session client it built when the session ends', { timeout: IMPORT_TIMEOUT }, async () => {
+    const { createGuestConnector } = await import('./guestConnector');
+    created.token = GRANT;
+    const result = await createGuestConnector('https://node.example.org').initialize({} as never);
+    await result.disconnect?.();
+    expect(created.clients.map((c) => c.closed)).toEqual([true]);
   });
 });

@@ -3,7 +3,7 @@ import type { BackendConnector, BackendInitResult } from '@we/app-shell/shared';
 import { capabilitiesFromToken, createAd4mBackendPorts, holdsOperatorCredential } from '@we/backend-ad4m';
 import weSeed from '@we/seed-file';
 
-import { sessionClient } from './sessionClient';
+import { closingOnFailure, sessionClient } from './sessionClient';
 import { storedGuestHost } from './storedSession';
 
 export const ad4mConnector: BackendConnector = {
@@ -31,15 +31,6 @@ export const ad4mConnector: BackendConnector = {
     // Resolves when the user has connected and authorised WE — the connect UI is up until then, so
     // this is where a web boot waits.
     await connecting;
-
-    /*
-      The client `connecting` answers is connect's own vendored copy of the SDK — a second,
-      older Ad4mClient whose PerspectiveProxy carries no mount, no `shapes()` and no `instance*`
-      writes. The session's client is this bundle's own `@coasys/ad4m`, over the same transport
-      and token — one SDK copy in the bundle, and every RPC the ports call is on it. See
-      `sessionClient` for why that is not simply the url.
-    */
-    const client = sessionClient(core);
 
     // Whether this connection operates the node it reached. A host chosen from the connect UI is
     // somebody else's by definition; a multi-user executor is one where this agent is a user rather
@@ -74,20 +65,30 @@ export const ad4mConnector: BackendConnector = {
     const guestHost = storedGuestHost();
     const isGuest = !!guestHost && (!core.baseUrl || core.baseUrl === guestHost);
 
-    const ports = createAd4mBackendPorts(client, ctx, {
-      administersNode: administersNode && !isGuest,
-      // Whether the token is the executor's operator credential or a grant. The app token this
-      // connector asks for is a grant, so it is not the operator however much it holds — and the
-      // executor keeps some calls (installing local AI, for one) to the operator alone.
-      operator: holdsOperatorCredential(core.token),
-      capabilities,
-      // ad4m-connect reaches 'authenticated' only after `agent.status` answered initialised and
-      // unlocked, and hands the client over only then — so the session's first status is known.
-      unlockedAtConnect: core.authState === 'authenticated',
-      linkServerUrl: (weSeed.ad4m as { linkServerUrl?: string }).linkServerUrl,
-      // Read on each use: ad4m-connect replaces the token when a session is re-authorised.
-      connection: () => (core.baseUrl ? { url: core.baseUrl, token: core.token } : null),
-    });
+    /*
+      The client `connecting` answers is connect's own vendored copy of the SDK — a second,
+      older Ad4mClient whose PerspectiveProxy carries no mount, no `shapes()` and no `instance*`
+      writes. The session's client is this bundle's own `@coasys/ad4m`, over the same transport
+      and token — one SDK copy in the bundle, and every RPC the ports call is on it. See
+      `sessionClient` for why that is not simply the url.
+    */
+    const client = sessionClient(core);
+    const ports = closingOnFailure(client, () =>
+      createAd4mBackendPorts(client, ctx, {
+        administersNode: administersNode && !isGuest,
+        // Whether the token is the executor's operator credential or a grant. The app token this
+        // connector asks for is a grant, so it is not the operator however much it holds — and the
+        // executor keeps some calls (installing local AI, for one) to the operator alone.
+        operator: holdsOperatorCredential(core.token),
+        capabilities,
+        // ad4m-connect reaches 'authenticated' only after `agent.status` answered initialised and
+        // unlocked, and hands the client over only then — so the session's first status is known.
+        unlockedAtConnect: core.authState === 'authenticated',
+        linkServerUrl: (weSeed.ad4m as { linkServerUrl?: string }).linkServerUrl,
+        // Read on each use: ad4m-connect replaces the token when a session is re-authorised.
+        connection: () => (core.baseUrl ? { url: core.baseUrl, token: core.token } : null),
+      }),
+    );
 
     return {
       client,
@@ -127,6 +128,7 @@ export const ad4mConnector: BackendConnector = {
       // forgetting the token and the chosen host, which is what `core.disconnect` does. The shell
       // reloads afterwards, which brings the connect UI back.
       disconnect: async () => {
+        client.close();
         await core.disconnect();
       },
       // Use baseUrl (not url) so wss:// remote-host URLs are normalized to https:// before

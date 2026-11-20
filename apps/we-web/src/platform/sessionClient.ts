@@ -30,3 +30,17 @@ export function sessionClient(core: ConnectCoreLike): Ad4mClient {
   const proxy = (core as ConnectCoreLike & { proxy?: ConnectProxy }).proxy;
   return proxy ? new Ad4mClient(proxy.baseUrl, core.token, proxy.options) : new Ad4mClient(core.baseUrl, core.token);
 }
+
+/**
+ * Build what rides on the session client, closing the client if that fails. connect's
+ * `disconnect` only forgets its own client and token, so the one built here is closed by whoever
+ * built it — on logout, and on a boot that never got as far as handing it over.
+ */
+export function closingOnFailure<T>(client: Ad4mClient, build: () => T): T {
+  try {
+    return build();
+  } catch (error) {
+    client.close();
+    throw error;
+  }
+}

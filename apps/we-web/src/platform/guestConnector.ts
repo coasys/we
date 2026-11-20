@@ -18,7 +18,7 @@ import { parseGuestLink } from '@we/app-shell/shared';
 import { capabilitiesFromToken, createAd4mBackendPorts } from '@we/backend-ad4m';
 import weSeed from '@we/seed-file';
 
-import { sessionClient } from './sessionClient';
+import { closingOnFailure, sessionClient } from './sessionClient';
 
 export type { GuestJoinTarget };
 export { hasStoredSession } from './storedSession';
@@ -68,14 +68,16 @@ export function createGuestConnector(hostUrl: string): BackendConnector {
       const client = sessionClient(core);
       const capabilities = capabilitiesFromToken(core.token);
 
-      const ports = createAd4mBackendPorts(client, ctx, {
-        administersNode: false,
-        // A guest logs in to a grant, never the node's operator credential.
-        operator: false,
-        capabilities,
-        linkServerUrl: (weSeed.ad4m as { linkServerUrl?: string }).linkServerUrl,
-        connection: () => (core.baseUrl ? { url: core.baseUrl, token: core.token } : null),
-      });
+      const ports = closingOnFailure(client, () =>
+        createAd4mBackendPorts(client, ctx, {
+          administersNode: false,
+          // A guest logs in to a grant, never the node's operator credential.
+          operator: false,
+          capabilities,
+          linkServerUrl: (weSeed.ad4m as { linkServerUrl?: string }).linkServerUrl,
+          connection: () => (core.baseUrl ? { url: core.baseUrl, token: core.token } : null),
+        }),
+      );
 
       return {
         client,
@@ -84,6 +86,7 @@ export function createGuestConnector(hostUrl: string): BackendConnector {
         ports,
         // Ending the session forgets the token and the host choice.
         disconnect: async () => {
+          client.close();
           await core.disconnect();
         },
         ...(core.token ? { connection: { port: core.port, token: core.token, url: core.baseUrl } } : {}),
