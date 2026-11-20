@@ -719,6 +719,16 @@ export interface ModuleStoreDeps {
    */
   showCallOnScreen?: (recordId: string, datasetUri: string | null) => void;
   /**
+   * Go to the page of the space on screen that draws one of this module's parts (`<moduleId>.<name>`),
+   * as the space's own navigation goes there. Answers whether there was one: `false`, going nowhere,
+   * where the space's template draws the part on no page — and absent on a host that cannot say.
+   *
+   * For a module asked to show what it also offers as a panel. A template that gave the part a page
+   * has said where it lives, and a window over that page would be a second copy of it; where no page
+   * draws it, the panel is how the module shows it.
+   */
+  showPart?: (part: string) => boolean;
+  /**
    * This module's own settings, resolved for where the agent is right now and defaulted where nobody
    * spoke. Reactive. Secret-typed settings are absent here — read them through the `secrets` kernel.
    */
