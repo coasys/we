@@ -338,7 +338,7 @@ const canonical = (value: unknown): string => {
       ? x.map(sorted)
       : x && typeof x === 'object'
         ? Object.fromEntries(
-            Object.keys(x as object)
+            Object.keys(x)
               .sort()
               .map((k) => [k, sorted((x as Record<string, unknown>)[k])]),
           )
