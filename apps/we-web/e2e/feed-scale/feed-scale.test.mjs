@@ -323,6 +323,7 @@ describe('results', () => {
     older: [400, 410, 390, 420, 500],
     queries: [100, 120, 110],
     otherQueries: [40, 700],
+    loads: 5,
     attempted: 5,
     newestFailures: [],
     olderAttempted: 5,
@@ -436,6 +437,7 @@ describe('results', () => {
     const out = metrics({
       messages: 1_000_000,
       seed: { generateSeconds: 5_900, importSeconds: 100, links: 12_000_000 },
+      loads: 5,
       attempted: 5,
       newestFailures: [
         'feed-call-refused',
@@ -476,6 +478,17 @@ describe('results', () => {
     }
     // A time does not add up over the loads: its key is the size alone.
     expect(by['feed.newest_page.median'].params).toEqual({ messages: 1_000 });
+  });
+
+  it('publishes no failure counts for a run that stopped before its last load', () => {
+    // One of five loads drew, then the second was interrupted: no outcome, so no attempt.
+    const run = { messages: 1_000, loads: 5, attempted: 1, newestFailures: [], olderAttempted: 1, newest: [300] };
+    const names = metrics(run).map((m) => m.metric);
+    expect(names).not.toContain('feed.newest_page.failures');
+    expect(names).not.toContain('feed.older_page.failures');
+    expect(names).not.toContain('executor.feed_query.failures');
+    // The load it reached is still a time.
+    expect(names).toContain('feed.newest_page.median');
   });
 
   it('says why the older page did not draw', () => {

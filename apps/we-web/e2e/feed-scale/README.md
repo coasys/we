@@ -70,7 +70,9 @@ three failure metrics count different things:
 - `executor.feed_query.failures`: Feed calls the executor answered with an error, not loads. A load
   that timed out with no refused call adds to the first count and not to this one.
 
-A passing run can therefore hold failures: read these counts, not the exit status. Feed calls the
+The counts are published only when every load of the run reached an outcome: a run interrupted
+part way publishes none (its loads so far stay in the detail). A passing run can hold failures:
+read these counts, not the exit status. Feed calls the
 executor did answer before the load gave up still count toward `executor.feed_query.*`, and so
 does a reply that comes after its load gave up, before the next load starts (`detail.runs[].late`). When the tab itself is what closed, the next load runs
 in a fresh tab of the same device, so the loads after it are still measured. `feed-call-refused` is

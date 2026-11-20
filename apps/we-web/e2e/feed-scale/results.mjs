@@ -72,12 +72,15 @@ export function metrics(run) {
   add('executor.feed_query.median', median(run.queries ?? []), 'ms', 'lower');
   add('executor.feed_query.max', max(run.queries ?? []), 'ms', 'lower');
   add('executor.feed_other_queries.max', max(run.otherQueries ?? []), 'ms', 'lower');
-  // What never drew: recorded as a count, not absent — the page not loading is a result too.
-  if (run.attempted) {
+  // What never drew: recorded as a count, not absent — the page not loading is a result too. Only
+  // for a run whose every load reached an outcome: a count over the loads before an interruption is
+  // not the run's (the loads it reached stay in the detail).
+  const complete = run.attempted > 0 && run.attempted === run.loads;
+  if (complete) {
     add('feed.newest_page.failures', run.newestFailures?.length ?? 0, 'count', 'lower', perLoads);
     add('executor.feed_query.failures', run.failedFeedCalls ?? 0, 'count', 'lower', perLoads);
   }
-  if (run.olderAttempted) {
+  if (complete && run.olderAttempted) {
     add('feed.older_page.failures', run.olderFailures?.length ?? 0, 'count', 'lower', perLoads);
   }
   add('executor.cpu_seconds.ui_phase', run.cpu?.uiPhase ?? null, 's', 'lower', perLoads);
