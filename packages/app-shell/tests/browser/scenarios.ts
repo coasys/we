@@ -2574,7 +2574,7 @@ const coasysTreeDna = (): Scenario => {
  * The Feed as a page: a few lines, one of them from a call, and what extraction found — in a box the
  * height of a view, so its stream scrolls and its box sits at the foot.
  */
-const feedViewPage = (): Scenario => {
+const feedViewPage = (hasMore = false): Scenario => {
   const line = (id: string, author: string, text: string, at: string, call = '', callTitle = '') => ({
     kind: 'line',
     id,
@@ -2614,7 +2614,7 @@ const feedViewPage = (): Scenario => {
             line('m1', 'did:them', 'Morning all', '2026-10-27T10:00:00Z'),
           ],
           feedLoaded: true,
-          feedHasMore: false,
+          feedHasMore: hasMore,
           feedFromStart: false,
           timelineOrientation: 'newestBottom',
           replyingTo: null,
@@ -2635,7 +2635,8 @@ const feedViewPage = (): Scenario => {
 
 export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'coasys:about': coasysAbout,
-  'feed:view': feedViewPage,
+  'feed:view': () => feedViewPage(),
+  'feed:view-more': () => feedViewPage(true),
   'coasys:bar': coasysBar,
   'coasys:call-bar': coasysCallBar,
   'coasys:calls-page': coasysCallsPage,
