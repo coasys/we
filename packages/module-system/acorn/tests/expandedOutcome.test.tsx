@@ -401,7 +401,9 @@ describe('the expanded outcome — children, tasks, comments', () => {
       // Below the lowest sibling (0 and 1), so Acorn draws it on the right; the roll-up counts it.
       await waitFor(() => expect(buttonNamed(dialog(container)!, 'Open child Map lands read-only')).toBeTruthy());
       expect(dialog(container)!.textContent).toContain('Children 3');
-      expect(dialog(container)!.textContent).toContain('1/1 smalls · 2 uncertain');
+      const drawn = dialog(container)!.textContent ?? '';
+      expect(drawn.indexOf('Open child Map lands read-only')).toBeGreaterThan(drawn.indexOf(`Open child ${SMALL}`));
+      expect(drawn).toContain('1/1 smalls · 2 uncertain');
     } finally {
       unmount();
     }

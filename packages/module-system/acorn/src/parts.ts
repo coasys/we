@@ -1570,18 +1570,23 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
   mapView: {
     label: 'Outcome map',
     description:
-      "The outcome tree as Acorn's map — parents above their children, siblings in sibling order, an outcome on no connection a tree of its own — each card its statement with the computed scope and status, each opening the expanded outcome. Read-only; pans and zooms",
+      "The outcome tree as Acorn's map — parents above their children, siblings in sibling order, an outcome on no connection a tree of its own — each card its statement with the computed scope and status, each opening the expanded outcome. Always Acorn's Classic layout. The canvas is read-only (it pans and zooms); the expanded outcome it opens is editable",
     node: {
       type: 'Column',
       props: { gap: '300', width: '100%' },
       /*
-        Acorn's Classic layout (`classicCoordinates.ts`) is a row of tidy trees, each parent over
-        its own children, siblings by `siblingOrder` — which is the graph's `forest`, not its
-        layered `tree`. `acornMapGraph` projects the outcomes and connections into its literal
-        seed: sibling order rides on each card as `rank`, the card's values are the roll-up.
-        `unattached: 'trees'` keeps an isolated outcome in line as a one-card tree, where Acorn puts
-        it, rather than in a zone labelled "Unconnected". `containment: []` because the only lines
-        are connections. No drag, no connect: editing is S2-9.
+        Layout: Classic, always. Acorn's Classic layout (`classicCoordinates.ts`) is a row of tidy
+        trees, each parent over its own children, siblings by `siblingOrder` — which is the graph's
+        `forest`, not its layered `tree`. The project's `layeringAlgorithm` is not followed: stock's
+        default, LongestPath, and CoffmanGraham are d3-dag layouts this map does not reproduce.
+        `acornMapGraph` projects the outcomes and connections into its literal seed: sibling order
+        rides on each card as `rank`, the card's values are the roll-up. `unattached: 'trees'`
+        keeps an isolated outcome in line as a one-card tree, where Acorn puts it, rather than in a
+        zone labelled "Unconnected". `containment: []` because the only lines are connections. Cards are `content: 'record'`, the scope and status on them computed.
+
+        Read-only is the canvas: no drag, connect, create or delete on it (that is S2-9). A card
+        opens the expanded outcome, the same part the table opens, and that dialog stays editable —
+        its fields, tasks and Add child.
       */
       $localState: {
         openOutcome: { type: 'string', initial: '' },
