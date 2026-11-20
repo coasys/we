@@ -182,9 +182,23 @@ describe('the outcome table rows', () => {
     ).toEqual([['b', 1]]);
   });
 
-  it('a cycle with no root draws nothing rather than looping', () => {
-    const outcomes = [outcome('x', 'Small'), outcome('y', 'Small')];
-    expect(rowsOf({ outcomes, connections: [edge('x', 'y'), edge('y', 'x')] })).toEqual([]);
+  it('a cycle with no root is still drawn, from its first outcome, with what hangs below it', () => {
+    const outcomes = [
+      outcome('x', 'Uncertain', { content: 'ex' }),
+      outcome('y', 'Uncertain', { content: 'why' }),
+      outcome('leaf', 'Small', { content: 'leaf' }),
+    ];
+    const connections = [edge('x', 'y'), edge('y', 'x'), edge('y', 'leaf')];
+    expect(rowsOf({ outcomes, connections }).map((r) => [r.id, r.depth])).toEqual([
+      ['x', 0],
+      ['y', 1],
+      ['leaf', 2],
+    ]);
+    // A search finds the cycle's outcomes, as any other.
+    expect(rowsOf({ outcomes, connections, filter: { keyword: 'why' } }).map((r) => [r.id, r.depth])).toEqual([
+      ['y', 1],
+    ]);
+    expect(rowsOf({ outcomes, connections, filter: { keyword: 'leaf' } }).map((r) => r.id)).toEqual(['leaf']);
   });
 });
 

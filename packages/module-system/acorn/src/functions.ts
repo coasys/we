@@ -200,8 +200,8 @@ const strings = (value: unknown): string[] => (Array.isArray(value) ? value.map(
 
 /**
  * The outcome table's rows, as Acorn's `OutcomeTable` draws them: every root outcome (one no
- * connection names as a child) and its descendants depth-first in sibling order, each row a level
- * deeper than its parent. Unfiltered, a row is drawn while every ancestor is open; filtered, every
+ * connection names as a child), then any outcome no root reaches, and their descendants
+ * depth-first in sibling order, each row a level deeper than its parent. Unfiltered, a row is drawn while every ancestor is open; filtered, every
  * outcome that matches is drawn at its own depth, as Acorn's `filterMatch` does — keyword or ID
  * number, high priority, computed status, computed scope and tags, each list an OR, all ANDed.
  */
@@ -292,7 +292,29 @@ const tableRows = (options: Record<string, unknown>) => {
         stack.push({ outcome: kids[i], depth: depth + 1, shown: shown && open });
     }
   };
-  for (const root of outcomes.filter((o) => !childIds.has(refId(o.id)))) walk(root);
+  /*
+    Every outcome is under some walk. The roots go first; an outcome no root reaches is in a cycle
+    with no way in (A → B → A), or under one, and is walked from its first outcome in list order —
+    so such a component is drawn, and searched, like any other.
+  */
+  const reached = new Set<string>();
+  const reach = (id: string) => {
+    const queue = [id];
+    while (queue.length) {
+      const next = queue.pop()!;
+      if (reached.has(next)) continue;
+      reached.add(next);
+      for (const c of tree.kids(next)) queue.push(refId(c.id));
+    }
+  };
+  const roots = outcomes.filter((o) => !childIds.has(refId(o.id)));
+  for (const root of roots) reach(refId(root.id));
+  for (const root of roots) walk(root);
+  for (const o of outcomes) {
+    if (reached.has(refId(o.id))) continue;
+    reach(refId(o.id));
+    walk(o);
+  }
   return rows;
 };
 
