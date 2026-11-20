@@ -188,6 +188,51 @@ describe('the outcome table rows', () => {
   });
 });
 
+describe('the outcome table on a long chain', () => {
+  /** A chain r0 → r1 → … of Small leaves under Uncertain parents, each connection counting its reads. */
+  const chain = (n: number) => {
+    let reads = 0;
+    const outcomes = Array.from({ length: n }, (_, i) =>
+      outcome(`r${i}`, i === n - 1 ? 'Small' : 'Uncertain', { content: `step ${i}` }),
+    );
+    const connections = Array.from({ length: n - 1 }, (_, i) => {
+      const c = edge(`r${i}`, `r${i + 1}`);
+      return new Proxy(c, {
+        get: (target, key) => {
+          if (key === 'parent' || key === 'child') reads++;
+          return target[key as keyof typeof target];
+        },
+      });
+    });
+    return { outcomes, connections, reads: () => reads };
+  };
+
+  it('reads each connection a bounded number of times, however long the chain', () => {
+    const { outcomes, connections, reads } = chain(300);
+    const rows = call('acornTableRows', { outcomes, connections }) as Array<{ depth: number; scope: string }>;
+    expect(rows).toHaveLength(300);
+    expect(rows[299].depth).toBe(299);
+    expect(rows[0].scope).toBe('Big');
+    expect(reads()).toBeLessThan(300 * 10);
+  });
+
+  it('draws a 2000-outcome chain, filtered or not, fast', () => {
+    const { outcomes, connections } = chain(2000);
+    const started = performance.now();
+    const rows = call('acornTableRows', { outcomes, connections }) as Array<{ id: string; depth: number }>;
+    const found = call('acornTableRows', { outcomes, connections, filter: { keyword: 'step 1999' } }) as Array<{
+      id: string;
+      depth: number;
+    }>;
+    const folded = call('acornTableRows', { outcomes, connections, collapsed: ['r0'] }) as Array<{ id: string }>;
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(rows).toHaveLength(2000);
+    expect(rows[1999]).toMatchObject({ id: 'r1999', depth: 1999 });
+    expect(found).toEqual([expect.objectContaining({ id: 'r1999', depth: 1999 })]);
+    expect(folded.map((r) => r.id)).toEqual(['r0']);
+  });
+});
+
 describe('the outcome table filter', () => {
   it('finds a row by its ID number', () => {
     const outcomes = [outcome('QmL://uhCkkOne', 'Small'), outcome('QmL://uhCkkTwoDifferent', 'Small')];
