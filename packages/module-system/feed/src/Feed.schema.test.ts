@@ -122,6 +122,37 @@ describe('two placements of one stream', () => {
   });
 });
 
+describe('more beyond the window', () => {
+  /** The list's `data-we-more`, evaluated against a stubbed feed store. */
+  const marker = (feed: { feedHasMore: boolean; feedFromStart: boolean; timelineOrientation: string }) => {
+    const list = findNode(feedPanel, (n) =>
+      Boolean((n.props as Record<string, unknown> | undefined)?.['data-we-more']),
+    )!;
+    const source = ((list.props as Record<string, unknown>)['data-we-more'] as { $: string }).$;
+    return evaluateExpression(parseExpression(source), {
+      root: (name) => ({ bound: name === 'modules', value: { feed } }),
+      call: () => undefined,
+    });
+  };
+
+  it('draws no spinner or text for it', () => {
+    for (const json of [panel, view, callView]) {
+      expect(json).not.toContain('Earlier in');
+      expect(json).not.toContain('Later in');
+    }
+  });
+
+  it('marks the end away from the anchor, so the jump button there asks instead of scrolling', () => {
+    const at = (feedFromStart: boolean, timelineOrientation: string) =>
+      marker({ feedHasMore: true, feedFromStart, timelineOrientation });
+    expect(at(false, 'newestBottom')).toBe('start');
+    expect(at(true, 'newestBottom')).toBe('end');
+    expect(at(false, 'newestTop')).toBe('end');
+    expect(at(true, 'newestTop')).toBe('start');
+    expect(marker({ feedHasMore: false, feedFromStart: false, timelineOrientation: 'newestBottom' })).toBe('');
+  });
+});
+
 describe('call transcripts in the Feed', () => {
   /*
     Every line a call hears is written into the space, so the Feed of a space that calls often is

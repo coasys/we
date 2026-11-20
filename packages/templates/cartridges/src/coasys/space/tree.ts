@@ -5,6 +5,7 @@ import {
   chooseTheme,
   field,
   formModal,
+  peopleTooltip,
   SPACE_TEMPLATE_CHOICES,
   SPACE_THEME_CHOICES,
   templateChoice,
@@ -13,17 +14,16 @@ import {
   treeRow,
 } from '@we/template-kit';
 
-import { DNA_LISTS, DNA_QUERIES, type DnaList, POLICY, POLICY_RULES } from './dna.ts';
+import { CLASS_COUNT, classGroup, FLOW_DEFINITIONS, MODEL, POLICY, POLICY_RULES } from './dna.ts';
 import { countPill, liveDot } from './marks.ts';
 import {
   callPath,
   channelPath,
-  DNA_FOCUS,
+  DNA_AT,
   DNA_PARAM,
   DNA_SHOWN,
-  dnaEntityOf,
   GROUP_PAGES,
-  inspect,
+  PAGE_EXPR,
   personPath,
   ROW_ID,
   SELECTED_EXPR,
@@ -32,8 +32,8 @@ import {
 } from './paths.ts';
 
 /**
- * The space as a tree: its Feed, its calls, its workflows, its people and its Social DNA, under the
- * space's name and what it is for. Nico's d12 inner sidebar, built on `we-tree`.
+ * The space as a tree: its Feed, its calls, its running flows, its people, its Social DNA and its
+ * themes, under the space's name and what it is for. Nico's d12 inner sidebar, built on `we-tree`.
  *
  * Each group is a query, not a list somebody keeps: a call held, a workflow written, a member joining
  * — each appears here because it exists. Choosing a row navigates; the view beside the tree draws
@@ -59,14 +59,40 @@ const isOpen = (value: string): SchemaProp => ({ $: `'${value}' in ${OPEN}` });
 const toggle = (value: SchemaProp): SchemaProp => ({ $toggleLocalIn: 'openRows', value });
 
 /**
+ * A row open while its own key is saved open, or while one of `within` holds — something chosen
+ * inside it. So a flow opened from the flows page is seen lit rather than chosen inside a closed row.
+ *
+ * Closing it forgets its key, and does each `up` whose `when` holds — moving the choice up to the row,
+ * as `revealing` does — so it closes when asked. `press` is the flip a press on the row's label runs
+ * (`onSelect`): it asks only what is saved, so pressing a row that is open because of what is chosen
+ * keeps it open and saves it.
+ */
+const holding = (value: string, within: { when: string; up: SchemaProp }[]) => {
+  const saved = `'${value}' in ${OPEN}`;
+  const isOpenNow = [saved, ...within.map((w) => `(${w.when})`)].join(' || ');
+  const open = { $if: { condition: { $: `!(${saved})` }, then: toggle(value) } };
+  const close = [
+    { $setLocal: 'openRows', value: { $: `${OPEN}.filter(k, k != '${value}')` } },
+    ...within.map((w) => ({ $if: { condition: { $: w.when }, then: w.up } })),
+  ];
+  return {
+    open: { $: isOpenNow },
+    onOpenChange: { $if: { condition: { $: 'event.detail.open' }, then: open, else: close } },
+    press: { $if: { condition: { $: saved }, then: close, else: open } } as SchemaProp,
+  };
+};
+
+/**
  * A group: one of the space's kinds of thing, with its glyph, opened or closed by a press anywhere on
  * its row as by its caret. Most groups' rows open a page of what the group lists as well (see
  * `onSelect`).
  *
  * `count` is how many rows it holds, as an expression. Every group says it at the end of its row, and
  * only a group with something in it has a caret and opens: an empty one has nothing to show, and a
- * caret on it promised rows that were not there. `tone` colours the count — Calls goes green while
- * one is running. `action` is a control beside the count, the + that makes one more.
+ * caret on it promised rows that were not there — `expandable` says otherwise where the count is not
+ * of rows (running flows are counted and not listed). `tone` colours the count — Calls goes green
+ * while one is running. `action` is a control beside the count, the + that makes one more. `nested`
+ * draws it as a row inside another group, and `kind` is its value's prefix (`group|<key>`).
  */
 const group = (
   key: string,
@@ -78,14 +104,21 @@ const group = (
     tone?: SchemaProp;
     action?: SchemaNode;
     openness?: { open: SchemaProp; onOpenChange: SchemaProp };
+    expandable?: SchemaProp;
+    nested?: boolean;
+    kind?: string;
   },
 ): SchemaNode =>
   treeRow({
-    value: `group|${key}`,
+    ...(opts.nested ? { nested: true } : {}),
+    value: `${opts.kind ?? 'group'}|${key}`,
     label,
     icon,
-    ...(opts.openness ?? { open: isOpen(`group|${key}`), onOpenChange: toggle(`group|${key}`) }),
-    expandable: { $: `${opts.count} > 0` },
+    ...(opts.openness ?? {
+      open: isOpen(`${opts.kind ?? 'group'}|${key}`),
+      onOpenChange: toggle(`${opts.kind ?? 'group'}|${key}`),
+    }),
+    expandable: opts.expandable ?? { $: `${opts.count} > 0` },
     badge: {
       type: 'Row',
       props: { gap: '100', ay: 'center' },
@@ -118,6 +151,27 @@ const feedRow = treeRow({ value: { $: "'channel|' + spaceStore.root" }, label: '
 /** A call still running carries a Live tag, so the way back into it is on the row. */
 export const LIVE = 'find(modules.call.liveCalls, { recordId: call.id })';
 
+/**
+ * Who is in a running call, on its row: their faces, overlapped, and on hover everyone in it, one
+ * per line with a picture and a name. Shown whether or not this agent is in the call — it is the
+ * row's answer to "who is there", which matters most before joining.
+ */
+const callPeople: SchemaNode = peopleTooltip({
+  items: { $: `${LIVE}.faces` },
+  as: 'person',
+  image: { $: 'person.image' },
+  hash: { $: 'person.hash' },
+  // `initials` carries the profile's name: the stack draws initials from it.
+  name: { $: 'person.initials' },
+  placement: 'right',
+  children: [
+    {
+      type: 'AvatarStack',
+      props: { avatars: { $: `${LIVE}.faces.map(f, { image: f.image, hash: f.hash })` }, max: 3, size: 'xs' },
+    },
+  ],
+});
+
 const calls = group(
   'calls',
   'Calls',
@@ -136,7 +190,14 @@ const calls = group(
             type: '$if',
             props: {
               condition: { $: LIVE },
-              then: { type: 'we-badge', props: { tone: 'success', size: 'xs' }, children: [liveDot, 'Live'] },
+              then: {
+                type: 'Row',
+                props: { gap: '100', ay: 'center' },
+                children: [
+                  callPeople,
+                  { type: 'we-badge', props: { tone: 'success', size: 'xs' }, children: [liveDot, 'Live'] },
+                ],
+              },
               else: {
                 type: 'we-timestamp',
                 props: {
@@ -158,28 +219,74 @@ const calls = group(
 
 const FLOWS_PAGE = "spaceStore.spacePath + '/workflows'";
 
-const workflows = group(
+/** A flow is chosen on the flows page — its row, under Social DNA's Flows, is the one lit. */
+const FLOW_CHOSEN = `(${PAGE_EXPR}) == 'workflows' && workflowStore.open`;
+const flowChosen = { when: FLOW_CHOSEN, up: { $invoke: 'workflowStore.closeWorkflow' } as SchemaProp };
+
+/** Social DNA's Flows: open while saved open, or while a flow is chosen. */
+const FLOWS_HELD = holding('dnagroup|flows', [flowChosen]);
+
+/** A running record's row, as `run|<workflow>|<record>`. */
+const RUN_WORKFLOW = "split(event.detail.value, '|')[1]";
+const RUN_RECORD = "split(event.detail.value, '|')[2]";
+
+/**
+ * Active flows: what is going on in the space — every record still going through one of its flows,
+ * the one with the latest activity first, named by what it is and marked with the step it is at. A
+ * record in two flows is two rows. Its row opens the flows page (`group|workflows`); a record's row
+ * opens its flow there with the record chosen. What a flow *is* is listed under Social DNA.
+ */
+const activeFlows = group(
   'workflows',
-  'Workflows',
+  'Active flows',
   'flow-arrow',
   [
     {
       type: '$each',
-      props: { items: { $: 'workflowStore.workflows.filter(f, !f.archived)' }, as: 'workflow' },
+      props: { items: { $: 'workflowStore.active' }, as: 'run' },
+      children: [
+        treeRow({
+          nested: true,
+          value: { $: "'run|' + run.workflow + '|' + run.record" },
+          label: { $: 'run.title' },
+          icon: { $: "run.stalled ? 'warning' : run.waiting ? 'hourglass-medium' : 'flow-arrow'" },
+          badge: {
+            type: 'we-text',
+            props: { variant: 'footnote', color: 'text-faint', truncate: true, maxWidth: '96px' },
+            children: [{ $: 'run.stateLabel' }],
+          },
+        }),
+      ],
+    },
+  ],
+  { count: 'count(workflowStore.active)' },
+);
+
+/** The flows written for this space, under Social DNA: a row each, opening it, and the + that writes another. */
+const flowDefinitions = group(
+  'flows',
+  'Flows',
+  'flow-arrow',
+  [
+    {
+      type: '$each',
+      props: { items: { $: FLOW_DEFINITIONS }, as: 'workflow' },
       children: [
         treeRow({
           nested: true,
           value: { $: "'workflow|' + workflow.name" },
           label: { $: 'workflow.label' },
           icon: 'flow-arrow',
-          badge: countPill('workflow.records'),
         }),
       ],
     },
   ],
   {
-    count: 'count(workflowStore.workflows.filter(f, !f.archived))',
-    action: addButton('New workflow', { $invoke: 'routeStore.navigate', args: [{ $: `${FLOWS_PAGE} + '?new=1'` }] }),
+    kind: 'dnagroup',
+    nested: true,
+    openness: FLOWS_HELD,
+    count: `count(${FLOW_DEFINITIONS})`,
+    action: addButton('New flow', { $invoke: 'routeStore.navigate', args: [{ $: `${FLOWS_PAGE} + '?new=1'` }] }),
   },
 );
 
@@ -205,14 +312,16 @@ const people = group(
 );
 
 /*
-  Social DNA: everything the space has defined about itself, as the vocabulary settings list it, and
-  its policy. Four levels — the group, each kind of definition, each definition, and what it says —
-  so the tree is the space's own graph read as an outline, the same things the canvas draws.
+  Social DNA: what the space has defined about itself — its Models (its own and other apps' classes),
+  its Flows, its Templates, WE's built-in classes and its policy. Four levels — the group, each group
+  in it, each class or flow or template, and for the policy each rule — so the tree is the space's own
+  graph read as an outline, the same classes the canvas draws.
 
-  Values are `dnakind|<kind>` for a kind, `dna|<kind>|<id>` for a definition and `dnaprop|policy|<rule>`
-  for one rule of the policy. A definition is a leaf: what it is goes in the inspector beside the view
-  (its fields), and what it is used for on the vocabulary map (its uses) — never as rows under it here,
-  which listed a hand-picked few of its fields and drifted from what the definition holds.
+  Values are `dnagroup|<group>` for a group of classes (`models`, `we`, `we.blocks`) and for the flows
+  (`dnagroup|flows`), `dna|model|<name>` for a class — any class, whoever wrote it — and
+  `dnaprop|policy|<rule>` for one rule of the policy. Templates keeps `group|templates`. A class is a
+  leaf: its records are on its page (or on the vocabulary map, in Canvas mode), never rows under it
+  here, since a class can hold thousands.
 */
 
 /**
@@ -239,36 +348,77 @@ const revealing = (value: string, inside: string, up: string) => {
   };
 };
 
-/** One kind of definition: a row with its count, and a row for each definition, bound as `def`. */
-const dnaKind = (list: DnaList): SchemaNode => {
-  const kindValue = `'dnakind|${list.kind}'`;
-  return treeRow({
-    nested: true,
-    value: { $: kindValue },
-    label: list.label,
-    icon: list.icon,
-    ...revealing(kindValue, `startsWith(${DNA_FOCUS}, '${list.kind}|')`, `'${list.kind}'`),
-    expandable: { $: `count(${list.items}) > 0` },
-    badge: countPill(`count(${list.items})`),
-    children: [
-      {
-        type: '$each',
-        props: { items: { $: list.items }, as: 'def' },
-        children: [
-          treeRow({
-            nested: true,
-            value: { $: `'dna|${list.kind}|' + def.id` },
-            label: { $: 'def.name' },
-            icon: { $: list.itemIcon },
-          }),
-        ],
-      },
-    ],
-  });
+/** Another app's class says its namespace after its name, quietly — the first to carry that name; one name is one row. */
+const namespace: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'cls.namespace' },
+    then: {
+      type: 'we-text',
+      props: { variant: 'footnote', color: 'text-faint', truncate: true, maxWidth: '96px' },
+      children: [{ $: 'cls.namespace' }],
+    },
+  },
 };
 
-/** The space's own definitions, in the order the vocabulary settings show them. */
-const DNA_KINDS: SchemaNode[] = DNA_LISTS.map(dnaKind);
+/** A class: a leaf, opening its page. */
+const classRows = (items: string): SchemaNode => ({
+  type: '$each',
+  props: { items: { $: items }, as: 'cls' },
+  children: [
+    treeRow({
+      nested: true,
+      value: { $: `'dna|${MODEL}|' + cls.id` },
+      label: { $: 'cls.label' },
+      icon: { $: 'cls.icon' },
+      badge: namespace,
+    }),
+  ],
+});
+
+/** Some class in `classes` is in focus — what keeps a row around it open. */
+const holdsFocus = (classes: string) =>
+  `startsWith(${DNA_AT}, '${MODEL}|') && ${classes}.exists(c, c.id == split(${DNA_AT}, '|')[1])`;
+
+/**
+ * A group of classes, open while a class in it is in focus: its own classes a row each, then its
+ * nested groups (the built-in group's Blocks), each a row holding its classes. `items` lists the group,
+ * or nothing where it has nothing to list.
+ */
+const classGroupRows = (items: string): SchemaNode => ({
+  type: '$each',
+  props: { items: { $: items }, as: 'group' },
+  children: [
+    treeRow({
+      nested: true,
+      value: { $: "'dnagroup|' + group.key" },
+      label: { $: 'group.label' },
+      icon: { $: "group.key == 'we' ? 'cube' : 'shapes'" },
+      ...revealing("'dnagroup|' + group.key", holdsFocus('group.classes'), "'all'"),
+      expandable: { $: 'count(group.classes) > 0' },
+      badge: countPill('count(group.classes)'),
+      children: [
+        classRows('group.rows'),
+        {
+          type: '$each',
+          props: { items: { $: 'group.sub' }, as: 'sub' },
+          children: [
+            treeRow({
+              nested: true,
+              value: { $: "'dnagroup|' + group.key + '.' + sub.key" },
+              label: { $: 'sub.label' },
+              icon: 'squares-four',
+              ...revealing("'dnagroup|' + group.key + '.' + sub.key", holdsFocus('sub.classes'), "'all'"),
+              expandable: { $: 'count(sub.classes) > 0' },
+              badge: countPill('count(sub.classes)'),
+              children: [classRows('sub.classes')],
+            }),
+          ],
+        },
+      ],
+    }),
+  ],
+});
 
 /** The space's policy: who may do what, one rule a row, as the people settings word them. */
 const policyKind: SchemaNode = treeRow({
@@ -276,7 +426,7 @@ const policyKind: SchemaNode = treeRow({
   value: { $: "'dnakind|policy'" },
   label: POLICY.label,
   icon: POLICY.icon,
-  ...revealing("'dnakind|policy'", `startsWith(${DNA_FOCUS}, 'policy|')`, "'policy'"),
+  ...revealing("'dnakind|policy'", `startsWith(${DNA_AT}, 'policy|')`, "'policy'"),
   expandable: { $: `count(${POLICY_RULES}) > 0` },
   badge: countPill(`count(${POLICY_RULES})`),
   children: [
@@ -287,16 +437,6 @@ const policyKind: SchemaNode = treeRow({
       children: [treeRow({ nested: true, value: { $: "'dnaprop|policy|' + rule" }, label: { $: 'rule' } })],
     },
   ],
-});
-
-/** Every definition there is, across the kinds and the policy: the group's count. */
-const DNA_COUNT = [...DNA_LISTS.map((list) => list.items), POLICY_RULES].map((list) => `count(${list})`).join(' + ');
-
-/** Everything the space has defined about itself — see above. */
-const socialDna = group('dna', 'Social DNA', 'dna', [...DNA_KINDS, policyKind], {
-  count: DNA_COUNT,
-  // Open while anything in it is in focus; closing it then shows all of it.
-  openness: revealing("'group|dna'", `${DNA_FOCUS} != 'all'`, "'all'"),
 });
 
 /*
@@ -347,6 +487,7 @@ const templatesGroup = group(
     },
   ],
   {
+    nested: true,
     count: `count(${SPACE_TEMPLATE_CHOICES})`,
     action: newButton('New template', { $invoke: 'editorStore.startFresh' }),
   },
@@ -369,14 +510,43 @@ const themesGroup = group(
   },
 );
 
-/** A definition row's kind and id — `dna|<kind>|<id>`. */
+/**
+ * Social DNA is open while saved open, or while something in it is in focus or chosen — a definition
+ * on the vocabulary map, a flow on the flows page. Closing it then shows all of it.
+ */
+const SOCIAL_DNA_HELD = holding('group|dna', [
+  {
+    when: `(${DNA_SHOWN}) && ${DNA_AT} != 'all'`,
+    up: { $invoke: 'routeStore.setParam', args: [DNA_PARAM, 'all'] },
+  },
+  flowChosen,
+]);
+
+/**
+ * Everything the space has defined about itself — see above: Models, Flows, Templates, then WE's
+ * built-in classes and the policy. It always holds something (Models, Flows and Templates are listed
+ * empty), so it always opens; its count is of its classes.
+ */
+const socialDna = group(
+  'dna',
+  'Social DNA',
+  'dna',
+  [classGroupRows(classGroup('models')), flowDefinitions, templatesGroup, classGroupRows(classGroup('we')), policyKind],
+  {
+    count: CLASS_COUNT,
+    expandable: true,
+    openness: SOCIAL_DNA_HELD,
+  },
+);
+
+/** A class row's kind and name — `dna|model|<name>`. */
 const DEF_KIND = "split(event.detail.value, '|')[1]";
 const DEF_ID = "split(event.detail.value, '|')[2]";
 
 /**
  * What choosing a row does, by the kind its value names.
  *
- * Every row is a place. A group's row opens its page — Channels, Calls, Workflows and People are full
+ * Every row is a place. A group's row opens its page — Channels, Calls, Flows and People are full
  * views of what the group lists — and opens or closes the group, as its caret does. Opening on a press
  * but closing only on the caret read as two rules for one row, so a press folds as well. Social DNA's
  * page is the vocabulary map (`showDna`).
@@ -384,7 +554,8 @@ const DEF_ID = "split(event.detail.value, '|')[2]";
 const onSelect: SchemaProp = [
   {
     $if: {
-      condition: { $: "startsWith(event.detail.value, 'group|')" },
+      // Social DNA opens and closes as `holding` says.
+      condition: { $: "startsWith(event.detail.value, 'group|') && event.detail.value != 'group|dna'" },
       then: { $toggleLocalIn: 'openRows', value: { $: 'event.detail.value' } },
     },
   },
@@ -398,7 +569,7 @@ const onSelect: SchemaProp = [
       then: { $invoke: 'routeStore.navigate', args: [{ $: withView(`spaceStore.spacePath + '/' + ${ROW_ID}`) }] },
     },
   },
-  // Workflows' page shows every workflow until one is chosen, so choosing the group closes the one open.
+  // The flows page shows every flow until one is chosen, so choosing the group closes the one open.
   {
     $if: {
       condition: { $: "event.detail.value == 'group|workflows'" },
@@ -412,7 +583,7 @@ const onSelect: SchemaProp = [
   {
     $if: {
       condition: { $: "event.detail.value == 'group|dna'" },
-      then: showDna("'all'"),
+      then: [SOCIAL_DNA_HELD.press, showDna("'all'")],
     },
   },
   {
@@ -436,6 +607,24 @@ const onSelect: SchemaProp = [
       ],
     },
   },
+  /*
+    A running record opens its flow on the flows page, with the record chosen there. The id goes in
+    `query`, never pasted after a `?`: an interpreted record's id carries its source already encoded
+    (`we://interpreted/ad4m%3A%2F%2Fobj…`), and pasted raw it was decoded on the way back, so the `card`
+    read back was not the record's id and neither its row here nor its card on the page was lit.
+  */
+  {
+    $if: {
+      condition: { $: "startsWith(event.detail.value, 'run|')" },
+      then: [
+        { $invoke: 'workflowStore.openWorkflow', args: [{ $: RUN_WORKFLOW }] },
+        {
+          $invoke: 'routeStore.navigate',
+          args: [{ $: withView(FLOWS_PAGE) }, { $: `{ query: { card: ${RUN_RECORD} } }` }],
+        },
+      ],
+    },
+  },
   {
     $if: {
       condition: { $: "startsWith(event.detail.value, 'person|')" },
@@ -443,9 +632,8 @@ const onSelect: SchemaProp = [
     },
   },
   /*
-    A definition is lit on the vocabulary map, opened into its uses, and opens in the inspector beside
-    it — what it is. A model is a Shape, which the inspector does not read; the map's bar has the way
-    to where it is edited.
+    A class is lit on the vocabulary map in Canvas mode and is its page in Page mode, where its records
+    are. A group of classes opens as a group does.
   */
   {
     $if: {
@@ -455,10 +643,11 @@ const onSelect: SchemaProp = [
   },
   {
     $if: {
-      condition: { $: `startsWith(event.detail.value, 'dna|') && ${DEF_KIND} != 'model'` },
-      then: inspect(DEF_ID, { $: dnaEntityOf(DEF_KIND) }),
+      condition: { $: "startsWith(event.detail.value, 'dnagroup|') && event.detail.value != 'dnagroup|flows'" },
+      then: { $toggleLocalIn: 'openRows', value: { $: 'event.detail.value' } },
     },
   },
+  { $if: { condition: { $: "event.detail.value == 'dnagroup|flows'" }, then: FLOWS_HELD.press } },
   // A kind of definition opens as a group does, and is lit on the map with all it holds.
   {
     $if: {
@@ -651,7 +840,7 @@ const findOrAsk: SchemaNode = {
 const callButton: SchemaNode = {
   type: '$if',
   props: {
-    // Only while there is no call here: once there is, the line under the header offers it.
+    // Only while there is no call here: once there is, its row under Calls, tagged Live, is the way in.
     condition: { $: 'modules.call.canCall && !count(modules.call.liveCalls)' },
     then: {
       type: 'Column',
@@ -659,77 +848,9 @@ const callButton: SchemaNode = {
       children: [
         {
           type: 'we-button',
-          // Solid, in the accent: starting a call is the one thing the tree invites, as Join is once one runs.
+          // Solid, in the accent: starting a call is the one thing the tree invites.
           props: { variant: 'solid', onClick: { $invoke: 'modules.call.goToCall' } },
           children: [{ type: 'we-icon', props: { name: 'phone' } }, 'Start a call'],
-        },
-      ],
-    },
-  },
-};
-
-/** Whether this agent is in the call running here, rather than in one somewhere else or none. */
-const IN_IT = 'modules.call.active && !modules.call.elsewhere';
-
-/**
- * A call running in this space, under its name, as d12's tree draws it: "Call running · 3 in it".
- * One entry, pressed once — `goToCall` joins it for somebody not in it and opens it for somebody
- * who is, so the row offers the verb rather than a second destination beside the text.
- */
-const callRunning: SchemaNode = {
-  type: '$if',
-  props: {
-    condition: { $: 'count(modules.call.liveCalls)' },
-    then: {
-      type: 'Column',
-      props: { px: INSET, pb: '300' },
-      children: [
-        /*
-          One entry, not a line with a button beside it: `goToCall` already carries the branch —
-          it joins the call running here when you are not in it, and brings it up when you are —
-          so the row asks for the verb and nothing else. The trailing word still says which of
-          the two it will do.
-        */
-        {
-          type: 'we-button',
-          props: {
-            variant: 'ghost',
-            width: '100%',
-            ax: 'start',
-            gap: '200',
-            /*
-              Branched at press time, like the trailing word says it is: "Join" is `goToCall`, and
-              "Open" — for somebody already in it — navigates to the call's own page, the reading
-              the entry had before the two ways in were one and the one the review asked back.
-            */
-            onClick: [
-              {
-                $if: {
-                  condition: { $: IN_IT },
-                  then: [
-                    { $invoke: 'routeStore.navigate', args: [{ $: callPath('modules.call.callRecordId') }] },
-                    // And the stage, for the reason every other way in raises it: "Open" asked
-                    // for the call, not for the page with the call still folded away.
-                    { $invoke: 'modules.call.goToCall' },
-                  ],
-                  else: { $invoke: 'modules.call.goToCall' },
-                },
-              },
-            ],
-          },
-          children: [
-            { ...liveDot, props: { ...liveDot.props, size: 'xs' } },
-            {
-              type: 'we-text',
-              props: { variant: 'footnote', color: 'text-muted', flex: '1', minWidth: '0', truncate: true, ta: 'left' },
-              children: [{ $: '`Call running · ${first(modules.call.liveCalls).count} in it`' }],
-            },
-            {
-              type: 'we-text',
-              props: { variant: 'footnote', color: 'accent' },
-              children: [{ $: `${IN_IT} ? 'Open' : 'Join'` }],
-            },
-          ],
         },
       ],
     },
@@ -800,16 +921,16 @@ export const treeSection: SchemaNode = {
   $localState: {
     openRows: {
       type: 'array',
+      // Calls and Active flows start open: what is going on in the space, before what it has defined.
       initial: ['group|calls', 'group|workflows'],
       persist: 'coasys.tree.open',
     },
   },
-  $queries: { calls: LATEST_CALLS, ...DNA_QUERIES },
+  $queries: { calls: LATEST_CALLS },
   children: [
     header,
     purpose,
     findOrAsk,
-    callRunning,
     {
       type: 'Column',
       props: { flex: '1', minHeight: '0', overflowY: 'auto', px: '200' },
@@ -822,7 +943,7 @@ export const treeSection: SchemaNode = {
             is the one thing that folds. Guides drop from each row's glyph, so a lead's width is given.
           */
           props: { label: 'This space', selected: { $: SELECTED_EXPR }, onSelect, caret: 'end', lead: TREE_LEAD },
-          children: [feedRow, calls, workflows, people, socialDna, templatesGroup, themesGroup],
+          children: [feedRow, calls, activeFlows, people, socialDna, themesGroup],
         },
       ],
     },
