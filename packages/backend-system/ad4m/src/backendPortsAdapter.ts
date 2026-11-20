@@ -89,7 +89,7 @@ export function createAd4mSchemaPort(backendClient: unknown): SchemaPort {
       return isEntityRegistered(proxy(dataset), Space);
     },
     prepare: (dataset) => warmSchemaReads(proxy(dataset)),
-    hasAnySchema: async (dataset) => (await proxy(dataset).getShaclNames()).length > 0,
+    hasAnySchema: async (dataset) => (await proxy(dataset).shapes()).length > 0,
 
     async foreignSchemas(dataset): Promise<EntityManifestEntry[]> {
       const shapes = await getForeignShacl(proxy(dataset));

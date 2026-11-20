@@ -183,7 +183,7 @@ const WATCH_DEFAULTS = {
  * and would have no reason to go looking at its class list.
  */
 async function assertShapesInstalled(perspective: PerspectiveProxy, names: string[]): Promise<void> {
-  const installed = new Set(await perspective.getShaclNames());
+  const installed = new Set((await perspective.shapes()).map((s) => s.name));
   const missing = names.filter((name) => !installed.has(name));
   if (missing.length) {
     throw new Error(
@@ -1735,7 +1735,10 @@ async function targetClasses(perspective: PerspectiveProxy, names: readonly stri
       */
       const targetClass = model
         ? getEntityTargetClass(model as never)
-        : await perspective.getShaclTargetClass(name).catch(() => undefined);
+        : await perspective
+            .shapes([name])
+            .then((summaries) => summaries.find((s) => s.name === name)?.shape.targetClass)
+            .catch(() => undefined);
       if (!targetClass) throw new Error(`interpretation: no target class for "${name}" — is the model registered?`);
       return targetClass;
     }),

@@ -45,8 +45,8 @@ type Overlay = { base: string; kind: 'create' | 'update'; inferred: [string, unk
  *
  * The shapes are served as the executor answers the property query — name node, property shape,
  * path — so this exercises the same code a community's own model goes down rather than the
- * compiled-in registry. There is no `getShacl` and no `getAllShacl`: in the SDK the app runs, both
- * read shapes one at a time, and a mock that answered them would let that come back unnoticed.
+ * compiled-in registry. `shapes()` answers the registry listing; the property details still
+ * arrive by the SPARQL query the SDK makes for them.
  */
 function perspectiveWith(
   overlays: Overlay[],
@@ -61,9 +61,11 @@ function perspectiveWith(
   const handle = {
     runInterpretation: () => undefined,
     interpretationOverlays: async () => overlays,
-    getShaclNames: async () => {
+    shapes: async (names?: string[]) => {
       reads.names++;
-      return registry();
+      return registry()
+        .filter((name) => !names || names.includes(name))
+        .map((name) => ({ name, shape: { targetClass: undefined }, hash: 'h' }));
     },
     querySparql: async (query: string) => {
       reads.sparql++;

@@ -51,21 +51,19 @@ function mockPerspective(registeredClasses: string[]) {
 type MockProxy = {
   get: ReturnType<typeof vi.fn>;
   querySparql: ReturnType<typeof vi.fn>;
-  ensureSubjectClasses: ReturnType<typeof vi.fn>;
-  clearEnsuredSubjectClasses: ReturnType<typeof vi.fn>;
+  registerShapes: ReturnType<typeof vi.fn>;
   uuid: string;
 };
 
 /**
  * A perspective `ensureEntityRegistered` can both read and write through. `Ad4mModel.registerAll`
- * is `perspective.ensureSubjectClasses(models)`, so that is the whole write surface to mock.
+ * is `perspective.registerShapes(shapes)`, so that is the whole write surface to mock.
  */
 function writablePerspective(registeredClasses: string[]): MockProxy {
   return {
     get: vi.fn().mockResolvedValue(registeredClasses.map(mockLink)),
     querySparql: vi.fn().mockResolvedValue([]),
-    ensureSubjectClasses: vi.fn().mockResolvedValue(undefined),
-    clearEnsuredSubjectClasses: vi.fn(),
+    registerShapes: vi.fn().mockResolvedValue({ created: [], updated: [], unchanged: [] }),
     uuid: `test-${Math.random().toString(36).slice(2)}`,
   };
 }
@@ -187,7 +185,7 @@ describe('storedShapes cache', () => {
     await ensureEntityRegistered(p as never, TaskBlock);
 
     expect(p.querySparql).toHaveBeenCalledTimes(QUERIES_PER_READ);
-    expect(p.ensureSubjectClasses).not.toHaveBeenCalled();
+    expect(p.registerShapes).not.toHaveBeenCalled();
   });
 
   it('keeps perspectives apart', async () => {
@@ -205,7 +203,7 @@ describe('storedShapes cache', () => {
     // Absent at first: the call reads (populating the cache), then registers the class.
     const p = writablePerspective([]);
     await ensureEntityRegistered(p as never, TaskBlock);
-    expect(p.ensureSubjectClasses).toHaveBeenCalledTimes(1);
+    expect(p.registerShapes).toHaveBeenCalledTimes(1);
     expect(p.querySparql).toHaveBeenCalledTimes(QUERIES_PER_READ);
 
     // Now present. Had the write not dropped the cache, this would be served the pre-write map —
@@ -226,7 +224,7 @@ describe('storedShapes cache', () => {
     await ensureEntityRegistered(p as never, TaskBlock);
 
     expect(p.querySparql).toHaveBeenCalledTimes(QUERIES_PER_READ * 2);
-    expect(p.ensureSubjectClasses).not.toHaveBeenCalled();
+    expect(p.registerShapes).not.toHaveBeenCalled();
   });
 
   it('is dropped by forgetStoredShapes for that perspective only', async () => {

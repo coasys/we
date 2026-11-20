@@ -63,7 +63,10 @@ describe('the acorn fixture against the mount’s discovered manifest', () => {
     // The mounted dataset is the one holding Acorn's shapes — WE's own spaces never do.
     const mounted = [];
     for (const proxy of await client.perspective.all()) {
-      const names = await proxy.getShaclNames().catch(() => [] as string[]);
+      const names = await proxy
+        .shapes()
+        .then((summaries) => summaries.map((s) => s.name))
+        .catch(() => [] as string[]);
       if (names.includes('AcornOutcome')) mounted.push(proxy);
     }
     expect(

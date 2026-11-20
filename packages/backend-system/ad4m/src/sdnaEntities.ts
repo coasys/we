@@ -528,10 +528,9 @@ async function registerEntities(
       `refreshing out-of-date SDNA shapes (${refreshed.join(', ')}) — ` +
         `the stored shape predates a property the model now declares`,
     );
-    // `registerAll` skips any class this *process* already registered on this proxy, and a refresh
-    // is always such a case: the class is present, so something registered it. The diff against the
-    // perspective — not that cache — is the authority on what needs writing.
-    p.clearEnsuredSubjectClasses();
+    // `registerAll` → `registerShapes` diffs each shape against what the
+    // perspective holds — the diff is the authority on what needs writing, not
+    // any process-side cache of what was registered before.
     for (const m of toRefresh) refreshedThisSession.add(refreshKey(m));
   }
 

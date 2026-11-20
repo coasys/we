@@ -91,7 +91,7 @@ function propertyName(propShape: string): string | undefined {
 
 /**
  * Every installed shape's properties — path, and name where the shape gives one — in the order
- * `getShaclNames()` lists the shapes. Two round trips however many shapes there are.
+ * `perspective.shapes()` lists the classes. Two round trips however many shapes there are.
  *
  * Where the graph holds more than one answer, this keeps all of them and `getShacl()` kept one: a
  * name mapped to two shapes gives both shapes' properties, and a property with two paths gives
@@ -100,7 +100,8 @@ function propertyName(propShape: string): string | undefined {
 export async function readShapeProperties(
   perspective: PerspectiveProxy,
 ): Promise<{ name: string; properties: { path: string; name?: string }[] }[]> {
-  const [names, rows] = await Promise.all([perspective.getShaclNames(), select(perspective, SHAPE_PROPERTIES)]);
+  const [summaries, rows] = await Promise.all([perspective.shapes(), select(perspective, SHAPE_PROPERTIES)]);
+  const names = [...new Set(summaries.map((s) => s.name))];
   const byShape = new Map<string, { path: string; name?: string }[]>();
   for (const row of rows) {
     const shape = shapeName(row.name);
@@ -141,9 +142,15 @@ const isExecutorClass = (targetClass: string | null | undefined): boolean =>
  * this data, not separate fetches.
  */
 export async function getForeignShacl(perspective: PerspectiveProxy): Promise<ForeignShape[]> {
-  // Without the index every shape is read, as before it existed: slower, and the same answer.
-  const [names, rows] = await Promise.all([
-    perspective.getShaclNames(),
+  // `shapes()` reads the whole registry in one call. When it fails — a shape this
+  // SDK cannot parse breaks the call — the names the index lists take their reads
+  // one at a time instead, so the broken shape costs its own model, not every
+  // foreign model in the dataset.
+  const [registry, rows] = await Promise.all([
+    perspective.shapes().catch((error: unknown) => {
+      console.warn('ad4m: the shape registry read failed; falling back to per-shape reads', error);
+      return null;
+    }),
     select(perspective, SHAPE_INDEX).catch((error: unknown) => {
       console.warn('ad4m: the shape index query failed; reading every shape instead', error);
       return null;
@@ -163,10 +170,14 @@ export async function getForeignShacl(perspective: PerspectiveProxy): Promise<Fo
     return !rows || !nativeNames.has(name) || stored.some((c) => c !== nativeTargetClass(name));
   };
 
+  const listed = registry
+    ? [...new Set(registry.map((s) => s.name))]
+    : [...new Set((rows ?? []).map((row) => shapeName(row.name)).filter((n): n is string => n !== undefined))];
   const read = await Promise.all(
-    names.filter(worthReading).map(async (name) => {
+    listed.filter(worthReading).map(async (name) => {
       try {
-        return { name, shape: await perspective.getShacl(name) };
+        const summary = registry ? registry.find((s) => s.name === name) : (await perspective.shapes([name]))[0];
+        return { name, shape: summary?.shape ?? null };
       } catch (error) {
         // A shape this SDK cannot parse — a property transform a newer SDK encoded, say — costs
         // its own model, not every foreign model in the dataset.

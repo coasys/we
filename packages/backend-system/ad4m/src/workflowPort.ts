@@ -425,12 +425,12 @@ async function readProposals(perspective: PerspectiveProxy, runs: readonly Run[]
   const mine = rows.filter((row) => runIds.has(row.flowInstance));
   if (!mine.length) return [];
 
-  // One read for every vote at once, and one per run with proposals for what settled — the executor
-  // answers settled proposals per run, and keeps them per agent, so there is no link to read instead.
+  // One read for every vote at once, and one call for every run's settled proposals — the executor
+  // answers them per agent, so there is no link to read instead.
   const runsWithProposals = [...new Set(mine.map((row) => row.flowInstance))];
   const [votes, firedPerRun] = await Promise.all([
     perspective.get(new LinkQuery({ predicate: ACCEPTED_BY })),
-    Promise.all(runsWithProposals.map((run) => perspective.flowFired(run))),
+    perspective.flowFired(runsWithProposals),
   ]);
   const votersOf = new Map<string, string[]>();
   for (const vote of votes) {
@@ -442,7 +442,7 @@ async function readProposals(perspective: PerspectiveProxy, runs: readonly Run[]
     if (!list.includes(voter)) list.push(voter);
     votersOf.set(vote.data.source, list);
   }
-  const fired = new Set(firedPerRun.flat());
+  const fired = new Set(firedPerRun.flatMap((entry) => entry.fired));
 
   return mine.map((row) => {
     const proposedAt = millisOf((row as { createdAt?: unknown }).createdAt);

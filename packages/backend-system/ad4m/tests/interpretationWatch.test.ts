@@ -73,9 +73,14 @@ function perspective(agent = 'did:me', foreign: Record<string, string> = {}) {
   const handle = {
     uuid: 'p1',
     on: () => () => {},
-    getShaclNames: async () => ['TaskBlock', 'EventBlock', 'Relationship', ...Object.keys(foreign)],
-    // Only the classes another app registered are asked for: WE's own resolve through their models.
-    getShaclTargetClass: async (name: string) => foreign[name],
+    // `shapes` answers the registry listing and, with a name list, the per-name lookup
+    // `targetClasses` makes for a class another app registered — WE's own resolve through models.
+    shapes: async (names?: string[]) => {
+      const listed = ['TaskBlock', 'EventBlock', 'Relationship', ...Object.keys(foreign)];
+      return (names ?? listed)
+        .filter((name) => listed.includes(name))
+        .map((name) => ({ name, shape: { targetClass: foreign[name] }, hash: 'h' }));
+    },
     get: async (query: { source?: string; predicate?: string }) => {
       calls.get += 1;
       // A real read yields the event loop; so does this one, so concurrent callers interleave.

@@ -28,32 +28,49 @@ function makeShape(targetClass?: string): SHACLShape {
 }
 
 /**
- * The shape registry as the executor answers it: the names, the index query's rows, and `getShacl`.
+ * The shape registry as the executor answers it: `perspective.shapes()` — one call,
+ * every registered class with its shape — plus the index query's rows.
  *
- * `getAllShacl` throws: in the SDK copy the app runs it reads every shape one at a time, which is
- * the cost `getForeignShacl` exists to avoid.
+ * The mock keeps `shapes(names)` honest to the real filter: a name list matches a
+ * summary by its class name OR its target class IRI, exactly as the RPC does.
  */
-function mockPerspective(shapes: Array<{ name: string; shape: SHACLShape }>, listed = shapes.map((s) => s.name)) {
+function mockPerspective(
+  shapes: Array<{ name: string; shape: SHACLShape }>,
+  listed = shapes.map((s) => s.name),
+  rows?: Array<{ name: string; shape?: string; targetClass?: string }>,
+) {
+  const summaries = listed
+    .map((name) => shapes.find((s) => s.name === name))
+    .filter((s): s is { name: string; shape: SHACLShape } => Boolean(s))
+    .map(({ name, shape }) => ({ name, shape, hash: 'hash' }));
   return {
-    getShaclNames: vi.fn().mockResolvedValue(listed),
+    summaries,
+    shapes: vi.fn(async (names?: string[]) =>
+      names ? summaries.filter((s) => names.includes(s.name) || names.includes(s.shape.targetClass ?? '')) : summaries,
+    ),
     // Rows only for a query that walks name → shape → target class, so a broken query fails here.
     querySparql: vi.fn(async (query: string) =>
       query.includes('<ad4m://shacl_shape_uri>') && query.includes('<sh://targetClass>')
-        ? shapes.map(({ name, shape }) => ({
+        ? (rows ??
+          shapes.map(({ name, shape }) => ({
             name: `literal:string:shacl://${name}`,
             shape: shape.nodeShapeUri,
             ...(shape.targetClass ? { targetClass: shape.targetClass } : {}),
-          }))
+          })))
         : [],
     ),
-    getShacl: vi.fn(async (name: string) => shapes.find((s) => s.name === name)?.shape ?? null),
-    getAllShacl: vi.fn(() => {
-      throw new Error('getAllShacl reads every shape one at a time');
-    }),
-  } as unknown as PerspectiveProxy;
+  } as unknown as PerspectiveProxy & { summaries: { name: string; shape: SHACLShape; hash: string }[] };
 }
 
-const shapesRead = (perspective: PerspectiveProxy) => vi.mocked(perspective.getShacl).mock.calls.map(([name]) => name);
+/**
+ * The names the per-shape fallback read — `shapes([name])` calls. An empty list is
+ * the success case: `shapes()` answered everything in one call.
+ */
+const shapesRead = (perspective: PerspectiveProxy) =>
+  vi
+    .mocked(perspective.shapes)
+    .mock.calls.filter(([names]) => names !== undefined)
+    .map(([names]) => names![0]);
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 
@@ -82,8 +99,8 @@ describe('getForeignShacl', () => {
 
     expect(foreign.length).toBe(1);
     expect(foreign[0].name).toBe('Task');
-    // The native shape is recognised from the index alone — never read in full.
-    expect(shapesRead(perspective)).toEqual(['Task']);
+    // `shapes()` read the registry in one call — no per-shape reads follow.
+    expect(shapesRead(perspective)).toEqual([]);
   });
 
   it('keeps shapes that share a native name but have a different targetClass', async () => {
@@ -110,7 +127,6 @@ describe('getForeignShacl', () => {
     // Nothing distinguishes it from WE's own Channel, so it is treated as native and skipped —
     // the same call the multi-round-trip version made when getShaclTargetClass came back empty.
     expect(foreign.length).toBe(0);
-    expect(shapesRead(perspective)).toEqual([]);
   });
 
   it("leaves out the executor's own classes, without reading them", async () => {
@@ -123,7 +139,7 @@ describe('getForeignShacl', () => {
     const foreign = await getForeignShacl(perspective);
 
     expect(foreign.map((s) => s.name)).toEqual(['Task']);
-    expect(shapesRead(perspective)).toEqual(['Task']);
+    expect(shapesRead(perspective)).toEqual([]);
   });
 
   it('returns an empty array when the perspective has no shapes', async () => {
@@ -132,7 +148,7 @@ describe('getForeignShacl', () => {
     expect(foreign).toEqual([]);
   });
 
-  it('asks one index query, whatever the number of shapes, and never getAllShacl', async () => {
+  it('asks one index query and one registry read, whatever the number of shapes', async () => {
     const perspective = mockPerspective([
       { name: 'Message', shape: makeShape('flux://Message') },
       { name: 'Channel', shape: makeShape('flux://Channel') },
@@ -142,35 +158,41 @@ describe('getForeignShacl', () => {
     await getForeignShacl(perspective);
 
     expect(perspective.querySparql).toHaveBeenCalledTimes(1);
-    expect(perspective.getShaclNames).toHaveBeenCalledTimes(1);
-    expect(perspective.getAllShacl).not.toHaveBeenCalled();
-    expect(shapesRead(perspective)).toEqual(['X']);
+    expect(vi.mocked(perspective.shapes).mock.calls.filter(([names]) => names === undefined)).toHaveLength(1);
+    expect(shapesRead(perspective)).toEqual([]);
   });
 
   it('decides on the shape as read when the index and the shape disagree', async () => {
-    // The index marks Message as another target class, so it is read — and the rule then runs on
-    // what `getShacl` returns, which here is WE's own Message after all.
-    const perspective = mockPerspective([{ name: 'Message', shape: makeShape('other-app://Message') }]);
-    vi.mocked(perspective.getShacl).mockResolvedValue(makeShape('flux://Message'));
+    // The index marks Message as another target class, so it is kept — but the rule then runs
+    // on the shape the registry reads, which here is WE's own Message after all.
+    const perspective = mockPerspective(
+      [{ name: 'Message', shape: makeShape('flux://Message') }],
+      ['Message'],
+      [{ name: 'literal:string:shacl://Message', shape: 'MessageShape', targetClass: 'other-app://Message' }],
+    );
 
     expect(await getForeignShacl(perspective)).toEqual([]);
-    expect(shapesRead(perspective)).toEqual(['Message']);
+    expect(shapesRead(perspective)).toEqual([]);
   });
 
   it('builds the other foreign models when one shape cannot be read', async () => {
-    // The SDK the app runs cannot parse a property transform a newer SDK encoded, and throws.
+    // A whole-registry `shapes()` call fails — the fallback reads each name alone, and the one
+    // shape that still fails costs its own model, not every foreign model in the dataset.
     const perspective = mockPerspective([
       { name: 'Task', shape: makeShape('app://Task') },
       { name: 'Broken', shape: makeShape('app://Broken') },
     ]);
-    vi.mocked(perspective.getShacl).mockImplementation(async (name: string) => {
-      if (name === 'Broken') throw new Error('Failed to deserialize transform');
-      return makeShape('app://Task');
+    const { summaries } = perspective;
+    vi.mocked(perspective.shapes).mockImplementation(async (names?: string[]) => {
+      if (!names) throw new Error('Failed to deserialize transform');
+      if (names.includes('Broken')) throw new Error('Failed to deserialize transform');
+      return summaries.filter((s) => names.includes(s.name));
     });
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     expect((await getForeignShacl(perspective)).map((s) => s.name)).toEqual(['Task']);
-    expect(warn).toHaveBeenCalledOnce();
+    expect(shapesRead(perspective)).toEqual(['Task', 'Broken']);
+    expect(warn).toHaveBeenCalledTimes(2);
     warn.mockRestore();
   });
 
@@ -183,7 +205,7 @@ describe('getForeignShacl', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     expect((await getForeignShacl(perspective)).map((s) => s.name)).toEqual(['Task']);
-    expect(shapesRead(perspective)).toEqual(['Task', 'Message']);
+    expect(shapesRead(perspective)).toEqual([]);
     expect(warn).toHaveBeenCalledOnce();
     warn.mockRestore();
   });
@@ -199,6 +221,6 @@ describe('getForeignShacl', () => {
     );
 
     expect((await getForeignShacl(perspective)).map((s) => s.name)).toEqual(['Task']);
-    expect(shapesRead(perspective)).toEqual(['Task']);
+    expect(shapesRead(perspective)).toEqual([]);
   });
 });
