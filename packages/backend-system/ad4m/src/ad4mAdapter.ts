@@ -54,6 +54,23 @@ import { type EntityClass as Ad4mEntityClass, getEntity, getEntityForDataset } f
 import { toAd4mPredicate } from './containment';
 import type { EntityManifestEntry } from './manifestTypes';
 import { nameRecordTypes, namingBuilder } from './recordTypes';
+import { linksEndingAt, withUndeclaredReverse } from './undeclaredReverse';
+
+/**
+ * Where a record's reverse relations are read from when its own class does not declare them — see
+ * `undeclaredReverse.ts`. The holders are WE's own classes, read through the same adapter.
+ */
+const reverseHolders = {
+  holder: (entity: string) => {
+    try {
+      return toRendererEntity(getEntity(entity));
+    } catch {
+      return undefined;
+    }
+  },
+  links: (dataset: DatasetHandle, predicate: string, ids: readonly string[]) =>
+    linksEndingAt(asPerspective(dataset), predicate, ids),
+};
 
 /**
  * Adapt an AD4M model class to the renderer's neutral {@link RendererEntityClass}.
@@ -93,35 +110,38 @@ const rendererEntities = new WeakMap<Ad4mEntityClass, RendererEntityClass>();
 export function toRendererEntity(Model: Ad4mEntityClass): RendererEntityClass {
   const known = rendererEntities.get(Model);
   if (known) return known;
-  const adapted: RendererEntityClass = {
-    // The registry types its classes loosely; every AD4M-registered one is an Ad4mModel subclass,
-    // as toRendererUnion below also relies on. Rows are named as `toRendererUnion` names them: a
-    // polymorphic member says its class by IRI too.
-    query: (dataset, opts) =>
-      namingBuilder(
-        (Model as unknown as typeof Ad4mModel).query(
-          asPerspective(dataset),
-          opts as Parameters<typeof Ad4mModel.query>[1],
-        ),
-        dataset,
-      ),
-    findAll: async (dataset, opts, ctl) =>
-      nameRecordTypes(
-        // Called through a widened signature on purpose: `@coasys/ad4m` types `findAll` as
-        // `(perspective, query?)`, with no third argument — yet the renderer passes an abort-signal
-        // options object, and both the renderer and WE's own docs describe it as forwarded to the
-        // executor's cancel machinery. The published `.d.ts` and the documented runtime disagree.
-        // Cast rather than drop it: silently removing the signal would disable cancellation of
-        // in-flight queries. Worth confirming against the executor — if it is genuinely unsupported,
-        // the abort is already a no-op and the renderer's AbortController buys nothing.
-        await ((Model.findAll as unknown as (p: unknown, q: unknown, c?: unknown) => unknown)(
+  const adapted: RendererEntityClass = withUndeclaredReverse(
+    {
+      // The registry types its classes loosely; every AD4M-registered one is an Ad4mModel subclass,
+      // as toRendererUnion below also relies on. Rows are named as `toRendererUnion` names them: a
+      // polymorphic member says its class by IRI too.
+      query: (dataset, opts) =>
+        namingBuilder(
+          (Model as unknown as typeof Ad4mModel).query(
+            asPerspective(dataset),
+            opts as Parameters<typeof Ad4mModel.query>[1],
+          ),
           dataset,
-          opts,
-          ctl,
-        ) as ReturnType<RendererEntityClass['findAll']>),
-        dataset,
-      ),
-  };
+        ),
+      findAll: async (dataset, opts, ctl) =>
+        nameRecordTypes(
+          // Called through a widened signature on purpose: `@coasys/ad4m` types `findAll` as
+          // `(perspective, query?)`, with no third argument — yet the renderer passes an abort-signal
+          // options object, and both the renderer and WE's own docs describe it as forwarded to the
+          // executor's cancel machinery. The published `.d.ts` and the documented runtime disagree.
+          // Cast rather than drop it: silently removing the signal would disable cancellation of
+          // in-flight queries. Worth confirming against the executor — if it is genuinely unsupported,
+          // the abort is already a no-op and the renderer's AbortController buys nothing.
+          await ((Model.findAll as unknown as (p: unknown, q: unknown, c?: unknown) => unknown)(
+            dataset,
+            opts,
+            ctl,
+          ) as ReturnType<RendererEntityClass['findAll']>),
+          dataset,
+        ),
+    },
+    reverseHolders,
+  );
   rendererEntities.set(Model, adapted);
   return adapted;
 }
@@ -134,14 +154,22 @@ export function toRendererEntity(Model: Ad4mEntityClass): RendererEntityClass {
  * names that class by its target class IRI; the contract names it by entity. So each row's
  * `__subjectClass` is turned back into the entity name here (see `nameRecordTypes`), and a template
  * that compares it with `'TaskBlock'` reads the same answer from either executor.
+ *
+ * A union is where an undeclared reverse relation goes missing most often: one read over WE's
+ * classes and a bot's, where the executor answers `extractedFrom` for the first and leaves it off
+ * the second. `withUndeclaredReverse` fills only the rows that came back without it.
  */
 export function toRendererUnion(Models: Ad4mEntityClass[]): RendererEntityClass {
   const classes = Models as unknown as (typeof Ad4mModel)[];
-  return {
-    query: (dataset, opts) => namingBuilder(Ad4mModel.queryOf(asPerspective(dataset), classes, opts as Query), dataset),
-    findAll: async (dataset, opts, ctl) =>
-      nameRecordTypes(await Ad4mModel.findAllOf(asPerspective(dataset), classes, opts as Query, ctl), dataset),
-  };
+  return withUndeclaredReverse(
+    {
+      query: (dataset, opts) =>
+        namingBuilder(Ad4mModel.queryOf(asPerspective(dataset), classes, opts as Query), dataset),
+      findAll: async (dataset, opts, ctl) =>
+        nameRecordTypes(await Ad4mModel.findAllOf(asPerspective(dataset), classes, opts as Query, ctl), dataset),
+    },
+    reverseHolders,
+  );
 }
 
 /**
