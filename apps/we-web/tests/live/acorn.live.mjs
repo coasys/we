@@ -769,3 +769,87 @@ describe('children, tasks and comments on the live mount', () => {
     await page.keyboard.press('Escape');
   });
 });
+
+/*
+  S2-6: the outcome table on the live mount — the production build's acorn template placing
+  `acorn.outcomeTable`. Stock's tree must show as Acorn's table does (a parent and its child, the
+  child a level in), Acorn's filters must narrow it, a stock-side child must appear, and a row
+  must open the expanded outcome.
+*/
+describe('the outcome table on the live mount', () => {
+  const tag = Date.now().toString(36);
+  const PARENT = `OT parent ${tag}`;
+  const CHILD = `OT child ${tag}`;
+  const LATE = `OT late child ${tag}`;
+  const SHOTS = process.env.ACORN_SHOTS;
+
+  let stockMod;
+  let stockH;
+  let page;
+  let parentSeed;
+
+  const rowButton = (content) => page.getByRole('button', { name: `Open ${content}`, exact: true });
+
+  before(async () => {
+    stockMod = await import(rigFile('stock.mjs'));
+    stockH = await stockMod.connect();
+    parentSeed = await stockMod.createOutcome(stockH, PARENT, {
+      scope: { Uncertain: { smallsEstimate: null, timeFrame: null, inBreakdown: false } },
+    });
+    await stockMod.createOutcomeUnder(stockH, parentSeed.actionHash, CHILD);
+
+    const joined = await datasetNamed('Acorn project');
+    page = await tab('table');
+    await page.setViewportSize({ width: 1400, height: 1000 });
+    await page.goto(app.url);
+    await answerNamePrompt(page, 'Acorn Dev');
+    await page.goto(`${app.url}/space/${joined.uuid}`);
+    await page.waitForURL(/\/space\//, { timeout: 300_000 });
+    await page.getByRole('button', { name: 'Table', exact: true }).click({ timeout: 300_000 });
+  });
+
+  after(async () => {
+    if (stockH) await stockMod.closeStock(stockH).catch(() => {});
+  });
+
+  it("draws stock's tree as Acorn's table, with its filters", async () => {
+    await rowButton(PARENT).waitFor({ state: 'visible', timeout: 300_000 });
+    await rowButton(CHILD).waitFor({ state: 'visible', timeout: 300_000 });
+    // The child sits under its parent, a level in, with a fold toggle on the parent.
+    const [parentBox, childBox] = [await rowButton(PARENT).boundingBox(), await rowButton(CHILD).boundingBox()];
+    assert.ok(childBox.y > parentBox.y, 'the child row should follow its parent');
+    assert.ok(childBox.x > parentBox.x, 'the child row should be indented under its parent');
+    await page.getByRole('button', { name: `Collapse ${PARENT}`, exact: true }).waitFor({ timeout: 60_000 });
+    if (SHOTS) await page.screenshot({ path: join(SHOTS, 'outcome-table.png'), fullPage: true });
+
+    await page.getByRole('textbox', { name: 'Filter by keyword or ID number' }).fill(CHILD);
+    await rowButton(PARENT).waitFor({ state: 'detached', timeout: 60_000 });
+    await rowButton(CHILD).waitFor({ state: 'visible', timeout: 60_000 });
+    await page.getByRole('button', { name: 'Uncertain', exact: true }).click();
+    // The child is Small: keyword AND scope Uncertain matches nothing of ours.
+    await rowButton(CHILD).waitFor({ state: 'detached', timeout: 60_000 });
+    if (SHOTS) await page.screenshot({ path: join(SHOTS, 'outcome-table-filtered.png'), fullPage: true });
+    await page.getByRole('button', { name: 'Clear filters', exact: true }).click();
+    await rowButton(PARENT).waitFor({ state: 'visible', timeout: 60_000 });
+  });
+
+  it('a stock-side child appears under its parent', async () => {
+    await stockMod.createOutcomeUnder(stockH, parentSeed.actionHash, LATE, 1);
+    await rowButton(LATE).waitFor({ state: 'visible', timeout: 300_000 });
+    await page.getByRole('button', { name: `Collapse ${PARENT}`, exact: true }).click();
+    await rowButton(LATE).waitFor({ state: 'detached', timeout: 60_000 });
+    await rowButton(CHILD).waitFor({ state: 'detached', timeout: 60_000 });
+    await page.getByRole('button', { name: `Expand ${PARENT}`, exact: true }).click();
+    await rowButton(LATE).waitFor({ state: 'visible', timeout: 60_000 });
+  });
+
+  it('a row opens the expanded outcome with its children', async () => {
+    await rowButton(PARENT).click();
+    const dialog = page.locator('we-modal');
+    await dialog
+      .getByRole('button', { name: `Open child ${CHILD}`, exact: true })
+      .waitFor({ state: 'visible', timeout: 120_000 });
+    await dialog.getByRole('button', { name: `Open child ${LATE}`, exact: true }).waitFor({ timeout: 60_000 });
+    await page.keyboard.press('Escape');
+  });
+});
