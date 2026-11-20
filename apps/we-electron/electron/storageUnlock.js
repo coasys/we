@@ -9,7 +9,8 @@
  * 1. reads `runtime.storageStatus`; an executor already `open` needs nothing;
  * 2. reads the storage secret this computer's keyring keeps for the data folder
  *    (`we-custody storage-secret read|make`, `crates/custody/src/storage_secret.rs`) — made, 32 random
- *    bytes as 64 hex, only where the folder has no keyring file yet, so a folder whose data is under
+ *    bytes as 64 hex, only where the status says `keyringExists` is false (the executor's own word that the folder has no
+ *    keyring file yet), so a folder whose data is under
  *    a secret is never given a new one;
  * 3. hands it to the executor with `storage.unlock`, as the operator (the admin credential), over the
  *    loopback WebSocket, and zeroes its own copy whatever the answer;
@@ -33,8 +34,6 @@
  * be (JavaScript strings are immutable), so this is defence in depth, not zeroisation end to end.
  */
 import { spawn } from 'child_process';
-import { existsSync } from 'fs';
-import { join } from 'path';
 
 import { withoutCustodyCredential } from './executorProcess.js';
 
@@ -73,11 +72,6 @@ export function storageFailure(why) {
 /** An error for the window, marked so the start does not wrap it again. */
 function failure(why) {
   return Object.assign(new Error(storageFailure(why)), { storage: why });
-}
-
-/** The executor's keyring file for `dataFolder`: present once any secret has opened the folder. */
-export function keyringFile(dataFolder) {
-  return join(dataFolder, 'ad4m', 'keyring.json');
 }
 
 /** How long the helper may take: its own wait on a locked keyring is bounded at 90 s. */
@@ -440,7 +434,7 @@ export function passphraseStep({ call, keystore, keyringId, first, follow, log =
  * admin call to the executor (`executorRpc`), by which the storage is followed ({@link followStorage}:
  * the status is read every 100 ms); `keystore` is
  * {@link storageKeystore}, or null where there is no custody helper (an executor that is already open
- * needs none); `firstStart` says the folder has no keyring file yet ({@link keyringFile});
+ * needs none); a first start (the status's `keyringExists` is false) makes the secret rather than reads it;
  * `askPassphrase(step)` opens the identity window on {@link passphraseStep}'s `step` and resolves
  * `'done'` or `'cancelled'`; `showMigration(step)`, where given, opens it on {@link migrationStep}'s
  * while a plaintext folder moves under its keys after the keyring's secret opened it, and resolves the
@@ -451,7 +445,6 @@ export function passphraseStep({ call, keystore, keyringId, first, follow, log =
 export async function unlockStorage({
   call,
   keystore,
-  firstStart,
   askPassphrase,
   showMigration = null,
   log = console.log,
@@ -463,6 +456,9 @@ export async function unlockStorage({
   try {
     const status = await follow.read();
     if (status?.state === 'open') return { status, how: 'already' };
+    // Only a data folder with no keyring file answers false: its first start, which `keyringId` cannot
+    // show (a sealed keyring with no file still has a random id).
+    const firstStart = !status?.keyringExists;
     const until = (how) => waitUntilOpen(call, { follow, now, timeoutMs }).then((open) => ({ status: open, how }));
     if (status?.state === 'unlocking' || status?.state === 'migrating') return await until('already');
     // Nothing to keep a secret in, and nothing to derive one with.
@@ -571,9 +567,4 @@ export function storageShown(status) {
       ? { storesDone: m.storesDone, storesTotal: m.storesTotal }
       : null;
   return { ...shown, migration };
-}
-
-/** Whether the folder has keys yet: no keyring file means this is its first start. */
-export function isFirstStart(dataFolder) {
-  return !existsSync(keyringFile(dataFolder));
 }

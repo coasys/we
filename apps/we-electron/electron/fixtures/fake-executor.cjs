@@ -119,6 +119,7 @@ const storageStatus = () => ({
   encryptedAtRest: false,
   stores: storageOpen ? { database: 'encrypted', languageStorage: 'encrypted', links: 'plain' } : null,
   keyringId: KEYRING_ID,
+  keyringExists: fs.existsSync(keyringFile),
   secretSource: storageOpen ? 'operator' : null,
   secretOnDataDisk: false,
   rootGeneration: fs.existsSync(keyringFile) ? 1 : 0,
