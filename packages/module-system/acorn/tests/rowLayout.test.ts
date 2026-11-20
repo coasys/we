@@ -43,7 +43,8 @@ describe('acorn.outcomeList — the row keeps its content field visible', () => 
   it('the tag/untag/delete row can shrink below max-content and wrap', () => {
     const part = ACORN_PARTS.outcomeList;
     expect(part).toBeDefined();
-    const buttonsRow = rowsWithTags(part.node).at(-1);
+    const rows = rowsWithTags(part.node);
+    const buttonsRow = rows[rows.length - 1];
     expect(buttonsRow, 'the outcome row must carry its action buttons in a Row').toBeDefined();
     expect(buttonsRow!.props?.wrap).toBe(true);
     // Shrinkable (`0 1 auto`), never grown — and min-width 0 so wrap actually folds it.

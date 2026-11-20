@@ -340,38 +340,13 @@ describe('the outcomes view on the live mount', () => {
   });
 
   /*
-    Every write family is skipped, not deleted — they are the step's acceptance gate and they
-    unskip the moment the pin moves. All were reproduced against this rig both through the UI
-    and through a `fromSHACL`-built `Ad4mModel` in Node, on the pinned `@coasys/ad4m@667d43e`
-    (a9 head) + a9 executor (c9d4a8de1):
-
-    - `Entity.create` → `save()`'s create path wraps itself in a batch when none is given, and
-      `createSubject` inside a batch is refused: `call actions cannot run inside a batch` (500).
-    - `Entity.update` / `updateRecordField` → `save()` → `innerUpdate` → `setProperty` →
-      `executeAction` → `perspective.executeCommands`: a mounted setter is a `call` action and
-      `execute_commands` answers `internal: call action reached execute_commands` — the
-      `update_subject` RPC that *does* dispatch calls is gated to abstract classes on this SDK.
-      `innerUpdate` also skips `""` scalars outright, so empty-clear cannot express itself.
-    - `Entity.delete` → `removeSubject` → concrete class → `getActionsFromSHACL` +
-      `executeAction` → the same `internal: call action reached execute_commands` (500).
-
-    The fix is S2-0's combined build (`acorn/s2-sdk`: `perspective.instance*` RPCs + the
-    `Ad4mModel` dispatch), which does not exist on this box — no branch, no rebuilt executor,
-    no pkg.pr.new snapshot. The executor-side calls are proven by direct RPC: `createSubject`
-    and `updateSubject` with PLAIN values reach stock in seconds; the SDK never routes a
-    concrete mounted class to them, and its `{action,value}` dispatch envelopes marshal as the
-    value itself where it does.
-
-    A separate WE-side gap sat on top and is fixed on this branch: `record.*` actions resolved
-    entity classes through the global registry only, so a per-dataset model (a mounted
-    language's vocabulary) threw "Model not found in registry" before reaching the SDK —
-    `recordModel` now takes the dataset like `entityClass` does. Without it the create test
-    would fail one step earlier, on every pin.
+    The five write families — S2-3's acceptance gate, skipped on the a9 pin where mounted
+    classes could not write at all (`call actions cannot run inside a batch` on create;
+    `internal: call action reached execute_commands` on update/delete). On the S2-0 pin
+    every one dispatches through `perspective.instance*`, whose mount-aware execution
+    answers the declared `call` actions; all five pass against executor `92690f459` and
+    the post-35dc46f3 SDK lib. The commit series carries the per-test evidence.
   */
-  const WRITE_GAP =
-    'model writes on mounted classes die in the pinned a9 SDK — create: "call actions cannot ' +
-    'run inside a batch"; update/delete: "internal: call action reached execute_commands". ' +
-    'Needs the S2-0 combined build (acorn/s2-sdk executor + SDK snapshot), never produced';
 
   it('create writes through', async () => {
     await page.getByRole('textbox', { name: /New outcome/ }).fill(CREATE_CONTENT);
