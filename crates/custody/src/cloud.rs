@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 /// Coasys cloud (AR-05 4.11). `WE_COASYS_CLOUD_URL` replaces it (staging, a local host).
-pub const DEFAULT_CLOUD_URL: &str = "https://cloud.coasys.org";
+pub const DEFAULT_CLOUD_URL: &str = "https://cloud.coasys.app";
 
 /// The environment variable that sets Coasys cloud's address.
 pub const CLOUD_URL_VAR: &str = "WE_COASYS_CLOUD_URL";
@@ -342,7 +342,7 @@ mod tests {
     fn coasys_cloud_has_its_own_address_and_a_staging_one_replaces_it() {
         assert_eq!(
             CloudHost::Coasys.url(None).as_deref(),
-            Ok("https://cloud.coasys.org")
+            Ok("https://cloud.coasys.app")
         );
         assert_eq!(
             CloudHost::Coasys
