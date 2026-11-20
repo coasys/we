@@ -5,9 +5,10 @@ import type { TemplateSchema } from '@we/schema-shared';
  *
  * The module's `acorn.mapView` part draws it (S2-8): Acorn's tree as tidy trees side by side,
  * siblings in sibling order, each card the statement with its computed scope and status, and a
- * card opening the expanded outcome. Always Acorn's Classic layout, whatever the project's
- * layering algorithm. The canvas is read-only — creating, connecting and moving on it are S2-9;
- * the expanded outcome a card opens is editable.
+ * double-click on a card opening the expanded outcome. Always Acorn's Classic layout, whatever the
+ * project's layering algorithm. The map edits as Acorn's does (S2-9): a new root or child outcome, a
+ * line dragged from one card to another, Delete on a line or a card. Moving a card to another parent
+ * or another place among its siblings is not here yet.
  *
  * It needs the graph module as well as Acorn's, because the canvas is the graph module's
  * `GraphView`.

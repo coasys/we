@@ -35,6 +35,7 @@
     "@we/cli": "workspace:*",
     "@we/entities": "workspace:*",
     "@we/graph-layouts": "workspace:*",
+    "@we/graph-protocol": "workspace:*",
     "@we/module-shared": "workspace:*",
     "@we/schema-shared": "workspace:*",
     "@we/schema-solid": "workspace:*",

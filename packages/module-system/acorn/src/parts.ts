@@ -56,6 +56,137 @@ const CHILD_LINK = {
 };
 
 /*
+  The map's create row. A root is one write; a child is two — the outcome, then its connection —
+  as in the expanded outcome, so the second can fail after the first landed. On the map that leaves
+  the new outcome drawn as a root, and the way to link it is on the same screen: a line dragged from
+  its parent. So no retry is held here; the notice says what to do.
+*/
+const MAP_CHILD_LINK = {
+  $invoke: 'record.create',
+  args: [
+    'AcornConnection',
+    {
+      $: '{ parent: local.linkParent, child: local.made, siblingOrder: acornNextSiblingOrder({ parent: local.linkParent, connections: local.connections }) }',
+    },
+  ],
+  onSuccess: [
+    { $setLocal: 'childOf', value: '' },
+    { $setLocal: 'made', value: '' },
+    { $setLocal: 'busy', value: false },
+  ],
+  onError: [
+    { $setLocal: 'busy', value: false },
+    {
+      $setLocal: 'notice',
+      value: {
+        $: "'Made the outcome, but could not link it: ' + result.message + ' — it is drawn as a root; drag a line from its parent to it.'",
+      },
+    },
+  ],
+};
+const MAP_CREATE_ROW = {
+  type: 'Column',
+  props: { gap: '100', width: '100%' },
+  children: [
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'local.childOf' },
+        then: {
+          type: 'Row',
+          props: { gap: '200', ay: 'center' },
+          children: [
+            {
+              type: 'we-text',
+              props: { tone: 'secondary' },
+              children: [{ $: '`New child of “${find(local.outcomes, { id: local.childOf }).content}”`' }],
+            },
+            {
+              type: 'we-button',
+              props: {
+                variant: 'ghost',
+                size: 'sm',
+                label: 'Make a root outcome instead',
+                onClick: { $setLocal: 'childOf', value: '' },
+              },
+              children: ['Make a root outcome instead'],
+            },
+          ],
+        },
+      },
+    },
+    {
+      type: 'Row',
+      props: { gap: '200', width: '100%' },
+      children: [
+        {
+          type: 'we-input',
+          props: {
+            flex: '1',
+            label: { $: "local.childOf ? 'New child outcome' : 'New outcome'" },
+            placeholder: { $: "local.childOf ? 'New child outcome…' : 'New outcome…'" },
+            value: { $: 'local.newOutcome' },
+            onInput: { $setLocal: 'newOutcome', value: { $: 'event.detail' } },
+          },
+        },
+        {
+          type: 'we-button',
+          props: {
+            variant: 'solid',
+            disabled: { $: '!trim(local.newOutcome) || local.busy' },
+            loading: { $: 'local.busy' },
+            onClick: [
+              { $setLocal: 'busy', value: true },
+              { $setLocal: 'notice', value: '' },
+              { $setLocal: 'linkParent', value: { $: 'local.childOf' } },
+              {
+                $invoke: 'record.create',
+                // Uncertain, as stock's create form leaves a new outcome unless it is ticked Small.
+                args: ['AcornOutcome', { $: "{ content: trim(local.newOutcome), scopeType: 'Uncertain' }" }],
+                onSuccess: [
+                  { $setLocal: 'newOutcome', value: '' },
+                  { $setLocal: 'made', value: { $: 'result.id' } },
+                  {
+                    $if: {
+                      condition: { $: 'local.linkParent' },
+                      then: MAP_CHILD_LINK,
+                      else: { $setLocal: 'busy', value: false },
+                    },
+                  },
+                ],
+                onError: [
+                  { $setLocal: 'busy', value: false },
+                  { $setLocal: 'notice', value: { $: "'Could not save: ' + result.message" } },
+                ],
+              },
+            ],
+          },
+          children: [{ $: "local.childOf ? 'Add child' : 'Add outcome'" }],
+        },
+      ],
+    },
+  ],
+};
+
+/*
+  Deleting an outcome from the map: the card's Delete, or the Delete key on one selected card —
+  `event.recordId` either way. A child being made under it goes back to being a root.
+*/
+const DELETE_OUTCOME = [
+  {
+    $if: {
+      condition: { $: 'local.childOf == event.recordId' },
+      then: { $setLocal: 'childOf', value: '' },
+    },
+  },
+  {
+    $invoke: 'record.delete',
+    args: ['AcornOutcome', { $: 'event.recordId' }],
+    onError: [{ $setLocal: 'notice', value: { $: "'Could not delete the outcome: ' + result.message" } }],
+  },
+];
+
+/*
   The task list is one JSON field, so every edit is a whole-list replace — and an edit made before
   the last one has read back would start from the list that one replaced, undoing it. So each edit
   starts from the working list (`acornWorking`: the last list this view wrote, while the subscription
@@ -1570,7 +1701,7 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
   mapView: {
     label: 'Outcome map',
     description:
-      "The outcome tree as Acorn's map — parents above their children, siblings in sibling order, an outcome on no connection a tree of its own — each card its statement with the computed scope and status, each opening the expanded outcome. Always Acorn's Classic layout. The canvas is read-only (it pans and zooms); the expanded outcome it opens is editable",
+      "The outcome tree as Acorn's map — parents above their children, siblings in sibling order, an outcome on no connection a tree of its own — each card its statement with the computed scope and status. Always Acorn's Classic layout. Edits as Acorn's map does: a new outcome (a root, or a child of a card on the right of its siblings, Uncertain), a line dragged from a selected card's connect dot to another card (refused to itself, to one already under it, or into a loop), and Delete on a selected line or card. A double-click, or the card's Open, opens the expanded outcome",
     node: {
       type: 'Column',
       props: { gap: '300', width: '100%' },
@@ -1584,18 +1715,51 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
         keeps an isolated outcome in line as a one-card tree, where Acorn puts it, rather than in a
         zone labelled "Unconnected". `containment: []` because the only lines are connections. Cards are `content: 'record'`, the scope and status on them computed.
 
-        Read-only is the canvas: no drag, connect, create or delete on it (that is S2-9). A card
-        opens the expanded outcome, the same part the table opens, and that dialog stays editable —
-        its fields, tasks and Add child.
+        Editing (S2-9) is the graph's own gestures, each reporting the record it touched — the seed
+        names every card and line by its record's graph address — and each answered with a generic
+        `record.*` write:
+        - A click selects, as in Acorn; a double-click, or the card's Open, opens the expanded outcome.
+        - New outcome: the row above the map makes a root; a card's "Add a child outcome" turns it
+          into a child of that card, linked on the right of its siblings (`acornNextSiblingOrder`, stock's
+          `lowerThanLowestSiblingOrder`). Uncertain either way, stock's default.
+        - Connect: a selected card's connect dots; the card dragged from is the parent. Stock's lower
+          port, so the child keeps any parent it has (re-parenting from the upper port is not here).
+          `acornConnectRefusal` refuses what stock never offers: itself, a child already under it, a loop.
+        - Delete: Delete or Backspace on a selected line deletes its connection; on one selected card,
+          or the card's Delete, the outcome. Stock's Delete key, unconfirmed. On the mount the outcome's
+          delete is stock's `delete_outcome_fully`, which takes its connections with it; its children stay,
+          as roots. The in-memory host leaves those connections behind, and the map draws no line to an
+          outcome that is gone.
+        Reparent and reorder by drag are not here (no `arrange-nodes`, no `drag-node`).
       */
       $localState: {
         openOutcome: { type: 'string', initial: '' },
+        newOutcome: { type: 'string', initial: '' },
+        // The card a new outcome is made under; '' makes a root.
+        childOf: { type: 'string', initial: '' },
+        // Held from the click to the link, so a change of card meanwhile cannot move the child.
+        linkParent: { type: 'string', initial: '' },
+        made: { type: 'string', initial: '' },
+        busy: { type: 'boolean', initial: false },
+        notice: { type: 'string', initial: '' },
       },
       $queries: {
         outcomes: { entity: 'AcornOutcome', order: { timestampCreated: 'asc' } },
         connections: { entity: 'AcornConnection' },
       },
       children: [
+        MAP_CREATE_ROW,
+        {
+          type: '$if',
+          props: {
+            condition: { $: 'local.notice' },
+            then: {
+              type: 'we-text',
+              props: { tone: 'warning' },
+              children: [{ $: 'local.notice' }],
+            },
+          },
+        },
         {
           type: '$if',
           props: {
@@ -1603,7 +1767,7 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
             then: {
               type: 'we-text',
               props: { tone: 'secondary', p: '300' },
-              children: ['No outcomes yet — the map draws them once there are some.'],
+              children: ['No outcomes yet — add one above and the map draws it.'],
             },
             else: {
               type: 'GraphView',
@@ -1639,11 +1803,90 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
                     style: { curve: 'smooth', sourceAnchor: 's', targetAnchor: 'n', ignoreRoute: true, arrow: 'none' },
                   },
                 ],
-                behaviours: ['pan-zoom', 'select'],
+                behaviours: ['node-double-click', 'select', 'pan-zoom'],
                 showControls: true,
                 height: '70vh',
                 empty: 'No outcomes yet.',
-                onNodeClick: { $setLocal: 'openOutcome', value: { $: "event.id ?? ''" } },
+                onNodeDoubleClick: { $setLocal: 'openOutcome', value: { $: "event.recordId ?? ''" } },
+                nodeActions: [
+                  { id: 'add-child', icon: 'plus', title: 'Add a child outcome' },
+                  { id: 'open', icon: 'arrows-out-simple', title: 'Open' },
+                  { id: 'delete', icon: 'trash', title: 'Delete this outcome', tone: 'danger' },
+                ],
+                onNodeAction: [
+                  { $setLocal: 'notice', value: '' },
+                  {
+                    $if: {
+                      condition: { $: "event.action == 'add-child'" },
+                      then: { $setLocal: 'childOf', value: { $: "event.recordId ?? ''" } },
+                    },
+                  },
+                  {
+                    $if: {
+                      condition: { $: "event.action == 'open'" },
+                      then: { $setLocal: 'openOutcome', value: { $: "event.recordId ?? ''" } },
+                    },
+                  },
+                  {
+                    $if: {
+                      condition: { $: "event.action == 'delete' && event.recordId" },
+                      then: DELETE_OUTCOME,
+                    },
+                  },
+                ],
+                onEdgeCreate: [
+                  { $setLocal: 'notice', value: '' },
+                  {
+                    $if: {
+                      condition: {
+                        $: "acornConnectRefusal({ parent: event.sourceId, child: event.targetId, connections: local.connections }) == ''",
+                      },
+                      then: {
+                        $invoke: 'record.create',
+                        args: [
+                          'AcornConnection',
+                          {
+                            $: '{ parent: event.sourceId, child: event.targetId, siblingOrder: acornNextSiblingOrder({ parent: event.sourceId, connections: local.connections }) }',
+                          },
+                        ],
+                        onError: [{ $setLocal: 'notice', value: { $: "'Could not connect: ' + result.message" } }],
+                      },
+                      else: {
+                        $setLocal: 'notice',
+                        value: {
+                          $: "'Not connected. ' + acornConnectRefusal({ parent: event.sourceId, child: event.targetId, connections: local.connections })",
+                        },
+                      },
+                    },
+                  },
+                ],
+                onDeleteSelection: [
+                  { $setLocal: 'notice', value: '' },
+                  {
+                    $if: {
+                      condition: { $: "event.kind == 'edge' && event.recordType == 'AcornConnection'" },
+                      then: {
+                        $invoke: 'record.delete',
+                        args: ['AcornConnection', { $: 'event.recordId' }],
+                        onError: [
+                          { $setLocal: 'notice', value: { $: "'Could not delete the connection: ' + result.message" } },
+                        ],
+                      },
+                    },
+                  },
+                  {
+                    $if: {
+                      condition: { $: "event.kind == 'node' && event.count == 1 && event.recordId" },
+                      then: DELETE_OUTCOME,
+                    },
+                  },
+                  {
+                    $if: {
+                      condition: { $: "event.kind == 'node' && event.count > 1" },
+                      then: { $setLocal: 'notice', value: 'The map deletes one outcome at a time — select just one.' },
+                    },
+                  },
+                ],
               },
             },
           },

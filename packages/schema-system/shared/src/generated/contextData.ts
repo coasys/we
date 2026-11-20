@@ -5208,8 +5208,15 @@ export const contextData: ContextData = {
         {
           name: 'acornMapGraph',
           params: ['outcomes', 'connections'],
-          doc: "The outcome map as a GraphView literal seed — { literal: true, nodes, edges }: a node per outcome (id the outcome's, type AcornOutcome, label its statement, data { content, scopeType and achievementStatus as Acorn computes them, status the computed code, rank its place in the tree a forest layout draws, each card under the parent forest places it under, for its sortBy }) and an edge per connection between two drawn outcomes.",
+          doc: "The outcome map as a GraphView literal seed — { literal: true, nodes, edges }: a node per outcome (id the graph's record address for the outcome, so the graph reports its recordId; type AcornOutcome, label its statement, data { content, scopeType and achievementStatus as Acorn computes them, status the computed code, rank its place in the tree a forest layout draws, each card under the parent forest places it under, for its sortBy }) and an edge per connection between two drawn outcomes, standing for its AcornConnection record (reifiedAs).",
           example: 'acornMapGraph({ outcomes: local.outcomes, connections: local.connections })',
+        },
+        {
+          name: 'acornConnectRefusal',
+          params: ['parent', 'child', 'connections'],
+          doc: "Why a connection from `parent` to `child` (outcome ids) is not one Acorn makes — an outcome to itself, a child already under the parent, or a loop (the child above the parent, through any of its parents) — or '' when it may be made.",
+          example:
+            'acornConnectRefusal({ parent: event.sourceId, child: event.targetId, connections: local.connections })',
         },
         {
           name: 'acornWorking',

@@ -372,3 +372,51 @@ describe('the working value a whole-field edit starts from', () => {
     expect(call('acornWorking', { stored: ['z'], working: ['x'], written: 'nope' })).toEqual(['z']);
   });
 });
+
+describe('connecting two outcomes on the map (S2-9)', () => {
+  const refusal = (parent: string, child: string, connections: unknown) =>
+    call('acornConnectRefusal', { parent, child, connections });
+  // r → a → a1, r → b; c on its own.
+  const tree = [edge('r', 'a', 1), edge('r', 'b', 0), edge('a', 'a1')];
+
+  it('allows a parent → child line that keeps the tree a tree', () => {
+    expect(refusal('b', 'c', tree)).toBe('');
+    expect(refusal('c', 'r', tree)).toBe('');
+    // A second parent, as stock's bottom port allows: a1 is under a, not under b.
+    expect(refusal('b', 'a1', tree)).toBe('');
+    expect(refusal('x', 'y', [])).toBe('');
+  });
+
+  it('refuses an outcome as its own child', () => {
+    expect(refusal('a', 'a', tree)).toMatch(/itself/);
+  });
+
+  it('refuses a child already under the parent, directly or further down — stock offers neither', () => {
+    expect(refusal('r', 'a', tree)).toMatch(/already under/);
+    expect(refusal('r', 'a1', tree)).toMatch(/already under/);
+  });
+
+  it('refuses a line that would close a loop: the child is above the parent', () => {
+    expect(refusal('a1', 'r', tree)).toMatch(/loop/);
+    expect(refusal('a', 'r', tree)).toMatch(/loop/);
+  });
+
+  it('follows every parent, not only the first — a loop through a second parent is still a loop', () => {
+    // x has two parents, p and q; q is under z. Connecting x → z would loop through q.
+    const shared = [edge('p', 'x'), edge('z', 'q'), edge('q', 'x')];
+    expect(refusal('x', 'z', shared)).toMatch(/loop/);
+  });
+
+  it('reads parents and children given as included records, and stops on a loop already stored', () => {
+    const included = [{ parent: { id: 'r' }, child: { id: 'a' } }];
+    expect(refusal('a', 'r', included)).toMatch(/loop/);
+    const looped = [edge('a', 'b'), edge('b', 'a')];
+    expect(refusal('c', 'a', looped)).toBe('');
+    expect(refusal('a', 'c', looped)).toBe('');
+  });
+
+  it('refuses a line without both ends', () => {
+    expect(refusal('', 'a', tree)).toMatch(/two outcomes/);
+    expect(call('acornConnectRefusal', {})).toMatch(/two outcomes/);
+  });
+});

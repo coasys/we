@@ -1647,6 +1647,9 @@ importers:
       '@we/graph-layouts':
         specifier: workspace:*
         version: link:../../graph-system/layouts
+      '@we/graph-protocol':
+        specifier: workspace:*
+        version: link:../../graph-system/protocol
       '@we/module-shared':
         specifier: workspace:*
         version: link:../shared

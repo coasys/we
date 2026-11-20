@@ -7,20 +7,39 @@
  * nothing thrown or dropped for a connection loop.
  */
 import { forestLayout } from '@we/graph-layouts';
+import { parseAddress } from '@we/graph-protocol';
 import { describe, expect, it } from 'vitest';
 
 import { ACORN_FUNCTIONS, ACORN_PARTS } from '../src/index.ts';
 
 interface Fragment {
   literal: true;
-  nodes: Array<{ id: string; label: string; data: Record<string, string | number> }>;
-  edges: Array<{ id: string; source: string; target: string; type: string }>;
+  nodes: Array<{ id: string; kind: string; type: string; label: string; data: Record<string, string | number> }>;
+  edges: Array<{ id: string; source: string; target: string; type: string; reifiedAs?: string }>;
 }
 
-const graphOf = (outcomes: unknown[], connections: unknown[]): Fragment => {
+/** The fragment as `acornMapGraph` answers it: every id a graph address. */
+const rawGraphOf = (outcomes: unknown[], connections: unknown[]): Fragment => {
   const fn = ACORN_FUNCTIONS.find((f) => f.name === 'acornMapGraph');
   if (!fn) throw new Error('no acornMapGraph');
   return (fn.fn as (o: unknown) => Fragment)({ outcomes, connections });
+};
+
+/** The record an address stands for, read with the graph's own parser. */
+const recordOf = (address: string) => {
+  const at = parseAddress(address);
+  if (at?.kind !== 'entity' || !at.id) throw new Error(`${address} is not a record address`);
+  return { type: at.type, id: at.id };
+};
+
+/** The same fragment with each card and line end named by its record's id, for reading asserts. */
+const graphOf = (outcomes: unknown[], connections: unknown[]): Fragment => {
+  const raw = rawGraphOf(outcomes, connections);
+  return {
+    literal: true,
+    nodes: raw.nodes.map((n) => ({ ...n, id: recordOf(n.id).id })),
+    edges: raw.edges.map((e) => ({ ...e, source: recordOf(e.source).id, target: recordOf(e.target).id })),
+  };
 };
 
 /** The `GraphView` the part places, wherever it sits in the part's tree. */
@@ -34,19 +53,27 @@ function graphView(node: unknown): Record<string, unknown> | undefined {
 
 const PART_LAYOUT = graphView(ACORN_PARTS.mapView.node)?.layout as { type: string; options: Record<string, unknown> };
 
+// Laid out as the graph receives it — addressed — and read back by record id.
 const layOut = (outcomes: unknown[], connections: unknown[]) => {
-  const graph = graphOf(outcomes, connections);
+  const raw = rawGraphOf(outcomes, connections);
   const result = forestLayout(PART_LAYOUT.options).init({
-    nodes: graph.nodes as never,
-    edges: graph.edges as never,
+    nodes: raw.nodes as never,
+    edges: raw.edges as never,
     viewport: { width: 1200, height: 800 },
   });
+  const addressOf = new Map(raw.nodes.map((n) => [recordOf(n.id).id, n.id]));
   const at = (id: string) => {
-    const p = result.positions.get(id);
+    const p = result.positions.get(addressOf.get(id) ?? id);
     if (!p) throw new Error(`${id} was not placed`);
     return p;
   };
-  return { graph, result, at };
+  const parents = new Map(
+    [...(result.hierarchy?.parents ?? new Map<string, string>())].map(([child, parent]) => [
+      recordOf(child).id,
+      recordOf(parent).id,
+    ]),
+  );
+  return { graph: graphOf(outcomes, connections), result, at, parents };
 };
 
 const outcome = (id: string, extra: Record<string, unknown> = {}) => ({
@@ -151,12 +178,12 @@ describe('the outcome map — layout', () => {
   it('siblings keep their order under the parent forest places them under, whichever parent the walk met first', () => {
     // q is listed first and reaches x first; forest still places x under p (p sorts before q), so
     // p's children must be in p's order: y (siblingOrder 1) left of x (0).
-    const { at, result } = layOut(
+    const { at, parents } = layOut(
       [outcome('q', { scopeType: 'Uncertain' }), outcome('p', { scopeType: 'Uncertain' }), outcome('x'), outcome('y')],
       [edge('q', 'x'), edge('p', 'y', 1), edge('p', 'x', 0)],
     );
-    expect(result.hierarchy?.parents.get('x')).toBe('p');
-    expect(result.hierarchy?.parents.get('y')).toBe('p');
+    expect(parents.get('x')).toBe('p');
+    expect(parents.get('y')).toBe('p');
     expect(at('y').x).toBeLessThan(at('x').x);
   });
 
@@ -175,8 +202,7 @@ describe('the outcome map — layout', () => {
         const b = outcomes[rand(outcomes.length)].id;
         return edge(a, b, rand(4) - 1);
       });
-      const { at, result, graph } = layOut(outcomes, connections);
-      const parents = result.hierarchy?.parents ?? new Map<string, string>();
+      const { at, parents, graph } = layOut(outcomes, connections);
       const kids = ACORN_FUNCTIONS.find((f) => f.name === 'acornChildren')!.fn as (o: unknown) => Array<{ id: string }>;
       for (const parent of outcomes) {
         const own = [...new Set(kids({ outcome: parent.id, outcomes, connections }).map((k) => k.id))].filter(
@@ -236,6 +262,21 @@ describe('the outcome map — what a card holds', () => {
       ['a>b', 'a', 'b', 'AcornConnection'],
       ['inc', 'b', 'a', 'AcornConnection'],
     ]);
+  });
+
+  it('names each card and line by a graph address for its record, so the graph reports which one was pressed', () => {
+    // An id with the characters a mounted outcome's has (`<lang>://<hash>`) round-trips whole.
+    const mounted = 'QmLang://uhCkk/abc+=';
+    const raw = rawGraphOf([outcome(mounted), outcome('b')], [{ id: 'conn://1', parent: mounted, child: 'b' }]);
+    expect(raw.nodes.map((n) => [n.kind, recordOf(n.id)])).toEqual([
+      ['entity', { type: 'AcornOutcome', id: mounted }],
+      ['entity', { type: 'AcornOutcome', id: 'b' }],
+    ]);
+    const [line] = raw.edges;
+    expect(recordOf(line.source).id).toBe(mounted);
+    expect(recordOf(line.target).id).toBe('b');
+    // The line stands for its connection record: selecting it and pressing Delete reports that record.
+    expect(recordOf(line.reifiedAs!)).toEqual({ type: 'AcornConnection', id: 'conn://1' });
   });
 
   it('answers an empty graph on wrong-typed input', () => {

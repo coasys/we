@@ -105,6 +105,53 @@ const nextSiblingOrder = (parent: string, connections: Record<string, unknown>[]
   return orders.length ? Math.min(...orders) - 1 : 0;
 };
 
+/**
+ * Why a line from `parent` to `child` would not be a connection Acorn makes, or '' when it would.
+ *
+ * Stock's map offers, from a card's lower port, every outcome but itself, those already under it
+ * and those above it (`calculateValidChildren` in `tree-logic.ts`): a self-connection, a second
+ * line to a descendant and a loop are never offered. Stock walks only the first parent of each
+ * outcome (`isAncestor`), assuming a tree; this walks every parent, so a loop through a second
+ * parent — which stock's shift-drag can make — is refused too. A loop already stored is walked
+ * once, not forever.
+ */
+const connectRefusal = (parent: string, child: string, connections: Record<string, unknown>[]): string => {
+  if (!parent || !child) return 'A connection needs two outcomes.';
+  if (parent === child) return 'An outcome cannot be connected to itself.';
+  const below = new Map<string, string[]>();
+  for (const c of connections) {
+    const from = refId(c.parent);
+    const to = refId(c.child);
+    if (from && to) (below.get(from) ?? below.set(from, []).get(from)!).push(to);
+  }
+  const reaches = (from: string, to: string) => {
+    const seen = new Set([from]);
+    const stack = [from];
+    while (stack.length) {
+      for (const next of below.get(stack.pop()!) ?? []) {
+        if (next === to) return true;
+        if (seen.has(next)) continue;
+        seen.add(next);
+        stack.push(next);
+      }
+    }
+    return false;
+  };
+  if (reaches(parent, child)) return 'That outcome is already under this one.';
+  if (reaches(child, parent)) return 'That would make a loop: the outcome dragged to is above the one dragged from.';
+  return '';
+};
+
+/**
+ * The graph's address for a record — `we-graph://entity/<dataset>/<type>/<id>`, `@we/graph-protocol`'s
+ * `entityAddress` with no dataset. Spelled out because a module imports nothing but the module contract
+ * (`portability.test.ts`); `mapLayout.test.ts` reads it back with the graph's own `parseAddress`. A card
+ * named this way is a record to the graph, so a press, a drawn line, an action or the Delete key
+ * reports `recordId`, which is what the map's writes take.
+ */
+const recordAddress = (type: string, id: string) =>
+  `we-graph://entity//${encodeURIComponent(type)}/${encodeURIComponent(id)}`;
+
 export interface AcornRollup {
   /** 'Small' | 'Uncertain' | 'Big' — Acorn's computed scope. */
   scope: string;
@@ -439,20 +486,33 @@ const mapGraph = (options: Record<string, unknown>) => {
   const ids = new Set(outcomes.map((o) => refId(o.id)));
   const tree = indexTree(outcomes, connections);
   const rollupOf = rollups(tree);
+  const card = (id: string) => recordAddress('AcornOutcome', id);
   const seen = new Set<string>();
   const edges = connections.flatMap((c) => {
     const source = refId(c.parent);
     const target = refId(c.child);
-    const id = refId(c.id) || `${source}>${target}`;
+    const record = refId(c.id);
+    const id = record || `${source}>${target}`;
     if (!ids.has(source) || !ids.has(target) || source === target || seen.has(id)) return [];
     seen.add(id);
-    return [{ id, source, target, type: 'AcornConnection', data: { siblingOrder: num(c.siblingOrder) } }];
+    return [
+      {
+        id,
+        source: card(source),
+        target: card(target),
+        type: 'AcornConnection',
+        // The line stands for its connection record, so selecting it and pressing Delete names it.
+        ...(record && { reifiedAs: recordAddress('AcornConnection', record) }),
+        data: { siblingOrder: num(c.siblingOrder) },
+      },
+    ];
   });
 
   // Rank in a pre-order walk of the tree forest draws: each card under the parent forest places
   // it under, those children in that parent's order. Genuine roots first, then the cards forest
   // opens a loop at, each group in the order the outcomes arrived. Without recursion, children
   // pushed last-first so the first sibling is ranked first.
+  // Over the addresses, which are the ids forest sorts by.
   const owner = forestParents(edges);
   const rank = new Map<string, number>();
   const visit = (root: string) => {
@@ -464,13 +524,13 @@ const mapGraph = (options: Record<string, unknown>) => {
       const kids = tree
         .kids(id)
         .map((k) => refId(k.id))
-        .filter((k) => owner.get(k) === id);
+        .filter((k) => owner.get(card(k)) === card(id));
       for (let i = kids.length - 1; i >= 0; i--) stack.push(kids[i]);
     }
   };
-  const unowned = outcomes.map((o) => refId(o.id)).filter((id) => !owner.has(id));
+  const unowned = outcomes.map((o) => refId(o.id)).filter((id) => !owner.has(card(id)));
   const targets = new Set(edges.map((e) => e.target));
-  for (const id of unowned) if (!targets.has(id)) visit(id);
+  for (const id of unowned) if (!targets.has(card(id))) visit(id);
   for (const id of unowned) visit(id);
 
   const nodes = outcomes.map((outcome) => {
@@ -478,7 +538,7 @@ const mapGraph = (options: Record<string, unknown>) => {
     const r = rollupOf(id);
     const content = text(outcome.content);
     return {
-      id,
+      id: card(id),
       kind: 'entity',
       type: 'AcornOutcome',
       label: content,
@@ -753,9 +813,17 @@ export const ACORN_FUNCTIONS: ModuleFunction[] = [
   {
     name: 'acornMapGraph',
     params: ['outcomes', 'connections'],
-    doc: "The outcome map as a GraphView literal seed — { literal: true, nodes, edges }: a node per outcome (id the outcome's, type AcornOutcome, label its statement, data { content, scopeType and achievementStatus as Acorn computes them, status the computed code, rank its place in the tree a forest layout draws, each card under the parent forest places it under, for its sortBy }) and an edge per connection between two drawn outcomes.",
+    doc: "The outcome map as a GraphView literal seed — { literal: true, nodes, edges }: a node per outcome (id the graph's record address for the outcome, so the graph reports its recordId; type AcornOutcome, label its statement, data { content, scopeType and achievementStatus as Acorn computes them, status the computed code, rank its place in the tree a forest layout draws, each card under the parent forest places it under, for its sortBy }) and an edge per connection between two drawn outcomes, standing for its AcornConnection record (reifiedAs).",
     example: 'acornMapGraph({ outcomes: local.outcomes, connections: local.connections })',
     fn: (...args: never[]) => mapGraph(args[0] && typeof args[0] === 'object' ? args[0] : {}),
+  },
+  {
+    name: 'acornConnectRefusal',
+    params: ['parent', 'child', 'connections'],
+    doc: "Why a connection from `parent` to `child` (outcome ids) is not one Acorn makes — an outcome to itself, a child already under the parent, or a loop (the child above the parent, through any of its parents) — or '' when it may be made.",
+    example: 'acornConnectRefusal({ parent: event.sourceId, child: event.targetId, connections: local.connections })',
+    fn: (...args: never[]) =>
+      connectRefusal(refId(option(args, 'parent')), refId(option(args, 'child')), list(option(args, 'connections'))),
   },
   {
     name: 'acornWorking',
