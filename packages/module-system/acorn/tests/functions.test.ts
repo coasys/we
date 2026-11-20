@@ -197,3 +197,23 @@ describe('the outcome table filter', () => {
     expect(hit.map((r) => r.id)).toEqual(['QmL://uhCkkTwoDifferent']);
   });
 });
+
+describe('the working value a whole-field edit starts from', () => {
+  const written = [tasks, JSON.stringify([{ task: 'a', complete: true }])];
+  it('is the last written while the stored value is one this view replaced or wrote', () => {
+    const working = JSON.stringify([{ task: 'a', complete: false }]);
+    expect(call('acornWorking', { stored: tasks, working, written })).toBe(working);
+    // The mount reads a list back with its keys in another order; it is still the same list.
+    expect(call('acornWorking', { stored: '[{"complete":true,"task":"a"}]', working, written })).toBe(working);
+    expect(call('acornWorking', { stored: ['x'], working: ['x', 'y'], written: [['x'], ['x', 'y']] })).toEqual([
+      'x',
+      'y',
+    ]);
+    expect(call('acornWorking', { stored: undefined, working: '[]', written: [undefined, '[]'] })).toBe('[]');
+  });
+  it("is the stored value when nothing was written, or the stored value is somebody else's", () => {
+    expect(call('acornWorking', { stored: tasks, working: 'x', written: [] })).toBe(tasks);
+    expect(call('acornWorking', { stored: '[]', working: 'x', written: [tasks] })).toBe('[]');
+    expect(call('acornWorking', { stored: ['z'], working: ['x'], written: 'nope' })).toEqual(['z']);
+  });
+});
