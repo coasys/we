@@ -12,6 +12,7 @@
  * `@we/app-shell/shared`'s `guestLink`, alongside the builder that writes one, so the two cannot
  * drift. This module is only the AD4M half.
  */
+import { Ad4mClient } from '@coasys/ad4m';
 import Ad4mConnect from '@coasys/ad4m-connect/core';
 import type { BackendConnector, BackendInitResult, GuestJoinTarget } from '@we/app-shell/shared';
 import { parseGuestLink } from '@we/app-shell/shared';
@@ -60,7 +61,10 @@ export function createGuestConnector(hostUrl: string): BackendConnector {
         capabilities: [{ with: { domain: '*', pointers: ['*'] }, can: ['*'] }],
       });
 
-      const client = await core.connectAsGuest(hostUrl);
+      // `connectAsGuest` answers connect's vendored client — an older SDK copy with no mount,
+      // `shapes()` or `instance*` writes. The session's client is this bundle's own.
+      await core.connectAsGuest(hostUrl);
+      const client = new Ad4mClient(core.baseUrl, core.token);
       const capabilities = capabilitiesFromToken(core.token);
 
       const ports = createAd4mBackendPorts(client, ctx, {
@@ -77,10 +81,8 @@ export function createGuestConnector(hostUrl: string): BackendConnector {
         // This identity was created by the link, not chosen. See `BackendInitResult.guest`.
         guest: true,
         ports,
-        // Ending the session forgets the token and the host choice — and closes the lifecycle
-        // socket the session opened for mounts and templates.
+        // Ending the session forgets the token and the host choice.
         disconnect: async () => {
-          ports.acornLifecycle?.dispose?.();
           await core.disconnect();
         },
         ...(core.token ? { connection: { port: core.port, token: core.token, url: core.baseUrl } } : {}),

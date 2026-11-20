@@ -1,3 +1,4 @@
+import { Ad4mClient } from '@coasys/ad4m';
 import { getAd4mConnect } from '@coasys/ad4m-connect';
 import type { BackendConnector, BackendInitResult } from '@we/app-shell/shared';
 import { capabilitiesFromToken, createAd4mBackendPorts, holdsOperatorCredential } from '@we/backend-ad4m';
@@ -29,7 +30,15 @@ export const ad4mConnector: BackendConnector = {
 
     // Resolves when the user has connected and authorised WE — the connect UI is up until then, so
     // this is where a web boot waits.
-    const client = await connecting;
+    await connecting;
+
+    /*
+      The client `connecting` answers is connect's own vendored copy of the SDK — a second,
+      older Ad4mClient whose PerspectiveProxy carries no mount, no `shapes()` and no `instance*`
+      writes. The session's client is this bundle's own `@coasys/ad4m`, over the same url and
+      token — one SDK copy in the bundle, and every RPC the ports call is on it.
+    */
+    const client = new Ad4mClient(core.baseUrl, core.token);
 
     // Whether this connection operates the node it reached. A host chosen from the connect UI is
     // somebody else's by definition; a multi-user executor is one where this agent is a user rather
@@ -117,8 +126,6 @@ export const ad4mConnector: BackendConnector = {
       // forgetting the token and the chosen host, which is what `core.disconnect` does. The shell
       // reloads afterwards, which brings the connect UI back.
       disconnect: async () => {
-        // The lifecycle socket is the session's own: it ends here, not when the page happens to.
-        ports.acornLifecycle?.dispose?.();
         await core.disconnect();
       },
       // Use baseUrl (not url) so wss:// remote-host URLs are normalized to https:// before

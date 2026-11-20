@@ -8,11 +8,16 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const created = vi.hoisted(() => ({ options: [] as { operator?: boolean }[], token: '' }));
+const created = vi.hoisted(() => ({
+  options: [] as { operator?: boolean }[],
+  token: '',
+  client: undefined as unknown,
+}));
 
 vi.mock('@we/backend-ad4m', async (importActual) => ({
   ...(await importActual<typeof import('@we/backend-ad4m')>()),
-  createAd4mBackendPorts: (_client: unknown, _ctx: unknown, options: { operator?: boolean }) => {
+  createAd4mBackendPorts: (client: unknown, _ctx: unknown, options: { operator?: boolean }) => {
+    created.client = client;
     created.options.push(options);
     return {};
   },
@@ -78,6 +83,23 @@ describe('the WE web connector', () => {
     // Both answers were exercised: the app's grant is not the operator, the admin credential is.
     expect(created.options.map((o) => o.operator)).toEqual([false, true]);
   });
+
+  it(
+    "hands the ports a client of this bundle's own SDK, not connect's vendored one",
+    { timeout: IMPORT_TIMEOUT },
+    async () => {
+      const { Ad4mClient } = await import('@coasys/ad4m');
+      const { ad4mConnector } = await import('./ad4mConnector');
+
+      created.token = GRANT;
+      await ad4mConnector.initialize({} as never);
+
+      // ad4m-connect resolves its auth flow with a client from the SDK copy it vendored — an
+      // older one, without perspective.mount / shapes / instance* — so the session's client is
+      // built on this bundle's own @coasys/ad4m from the same url and token.
+      expect(created.client).toBeInstanceOf(Ad4mClient);
+    },
+  );
 });
 
 describe('the guest connector', () => {
