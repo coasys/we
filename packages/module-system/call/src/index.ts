@@ -1653,9 +1653,9 @@ const controls: SchemaNode = {
               in a production build — see `devPeerControls` and `CALL_DEV_ANCHOR`.
 
               Two gates, doing different jobs. `devPeersAvailable` is the build, so a shipped app
-              carries no node at all. The `$if` is the `we.devTools` switch, which is live — a
-              developer looking at what a user sees loses these on the press rather than on the next
-              reload, and gets them back the same way.
+              carries no node at all. The `$if` is the Test people switch (Settings → Developer), off
+              until a developer turns it on and live — the controls go on the press rather than on the
+              next reload, and come back the same way.
 
               The region takes other modules' harnesses too, and they draw no rule of their own: this
               triple leads the group and brackets it once. The `$if` covers them as well, so the switch
@@ -1666,7 +1666,7 @@ const controls: SchemaNode = {
               {
                 type: '$if',
                 props: {
-                  condition: { $: 'sessionStore.devTools' },
+                  condition: { $: 'sessionStore.testPeople' },
                   then: {
                     type: 'Row',
                     /*

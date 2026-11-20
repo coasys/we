@@ -31,18 +31,6 @@ const channelQueries = {
 };
 
 /**
- * The bottom of a view, kept clear of whatever chrome covers it.
- *
- * `--we-covered-bottom` is how much the host says is covered there — a band some other piece of
- * chrome may float along the bottom of the window, so whatever a view pins to its foot — the
- * composer, the end of a transcript — rises above it, and settles back as the chrome goes. Zero in
- * the ordinary case, which is most of the point: the call's controls ride inside the call's own
- * stage now rather than over every page.
- */
-const CLEAR_OF_THE_BAR = 'calc(var(--we-space-500) + var(--we-covered-bottom, 0px))';
-const LIFT = 'padding-bottom 300 ease';
-
-/**
  * Where to start, in a space with nothing in it yet: a card for each first thing worth doing, which
  * does it when pressed. Shown above the Feed until the space has held a call.
  *
@@ -167,7 +155,7 @@ const rootFeed: SchemaNode = {
     firstSteps,
     {
       type: 'Column',
-      props: { flex: '1', minHeight: '0', px: '500', pt: '300', pb: CLEAR_OF_THE_BAR, transition: LIFT },
+      props: { flex: '1', minHeight: '0', px: '500', pt: '300', pb: '500' },
       children: [{ type: '$part', props: { id: 'feed.feedView' } }],
     },
   ],
@@ -188,7 +176,7 @@ const subChannelChat: SchemaNode = {
     },
     {
       type: 'Column',
-      props: { px: '500', pb: CLEAR_OF_THE_BAR, pt: '200', gap: '100', transition: LIFT },
+      props: { px: '500', pb: '500', pt: '200', gap: '100' },
       children: [
         {
           type: '$if',
@@ -399,7 +387,7 @@ export const callPage: SchemaNode = {
     */
     {
       type: 'Column',
-      props: { flex: '1', minHeight: '0', minWidth: '0', px: '500', pb: CLEAR_OF_THE_BAR, transition: LIFT },
+      props: { flex: '1', minHeight: '0', minWidth: '0', px: '500', pb: '500' },
       children: [{ type: '$part', props: { id: 'feed.callFeed', subject: { $: CALL_ID } } }],
     },
   ],

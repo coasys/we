@@ -42,7 +42,7 @@ import coasysBundle from '../../../../bundles/coasys.bundle.json';
 import fieldGuideBundle from '../../../../bundles/field-guide.bundle.json';
 import toolLibraryBundle from '../../../../bundles/tool-library.bundle.json';
 import { viewBar } from '../../../templates/cartridges/src/coasys/space/bar.ts';
-import { callBarAside } from '../../../templates/cartridges/src/coasys/space/views.ts';
+import { callBarAside, spaceRoutes } from '../../../templates/cartridges/src/coasys/space/views.ts';
 import { sharingPickerOptions } from '../../src/shared/sharingOptions';
 
 export interface Scenario {
@@ -2633,10 +2633,45 @@ const feedViewPage = (hasMore = false): Scenario => {
   };
 };
 
+/** A tree with each `$part` the map names swapped for the node that part draws. */
+const withParts = (node: unknown, parts: Record<string, SchemaNode>): unknown => {
+  if (Array.isArray(node)) return node.map((child) => withParts(child, parts));
+  if (!node || typeof node !== 'object') return node;
+  const n = node as SchemaNode;
+  const id = (n.props as { id?: string } | undefined)?.id;
+  if (n.type === '$part' && id && parts[id]) return parts[id];
+  return Object.fromEntries(Object.entries(n).map(([k, v]) => [k, withParts(v, parts)]));
+};
+
+/**
+ * A Coasys space's own page — its bar and the Feed — from the bundle's route, with the Feed's part
+ * drawn by the Feed module's view. The case sets `--we-covered-bottom` as a floating panel at the
+ * bottom of the window does.
+ */
+const coasysSpaceFeed = (): Scenario => {
+  const { path: _path, ...chat } = spaceRoutes[0] as SchemaNode & { path?: string };
+  const feed = feedViewPage();
+  return {
+    node: {
+      type: 'Column',
+      props: { width: '100%', height: '600px' },
+      children: [withParts(chat, { 'feed.feedView': feedView }) as SchemaNode],
+    },
+    stores: {
+      ...feed.stores,
+      routeStore: { params: {}, templateSegments: [], setParam: () => {}, navigate: () => {} },
+      // The space's own channel, with a call already held, so the page draws the Feed alone.
+      spaceStore: { root: 'root-1', rootLoaded: true },
+    },
+    tables: { CollectionBlock: [{ id: 'call-1', title: 'Monday sync', kind: 'call' }] },
+  };
+};
+
 export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'coasys:about': coasysAbout,
   'feed:view': () => feedViewPage(),
   'feed:view-more': () => feedViewPage(true),
+  'coasys:space-feed': coasysSpaceFeed,
   'coasys:bar': coasysBar,
   'coasys:call-bar': coasysCallBar,
   'coasys:calls-page': coasysCallsPage,
