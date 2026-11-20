@@ -410,7 +410,7 @@ describe('the outcomes view on the live mount', () => {
     );
   });
 
-  it('collection replace writes through', { skip: WRITE_GAP }, async () => {
+  it('collection replace writes through', async () => {
     await page.getByRole('button', { name: `Tag ${SEED_TAG_TEXT} → ${SEED_TAG}` }).click({ timeout: 120_000 });
     await h.until(
       async () => (await fetchOutcomes()).find((r) => r.entry?.content === SEED_TAG),
