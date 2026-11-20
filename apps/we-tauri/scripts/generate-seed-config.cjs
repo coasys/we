@@ -108,6 +108,10 @@ async function main() {
   }
 
   const seed = JSON.parse(fs.readFileSync(SEED_FILE, 'utf8'));
+  // `AD4M_REPO` names another ad4m checkout to build against than the seed's `ad4m.repoPath`: the
+  // acceptance world builds the app against the checkout it runs the identity store and the
+  // executors from (tests/acceptance/README.md).
+  if (process.env.AD4M_REPO) seed.ad4m = { ...seed.ad4m, repoPath: process.env.AD4M_REPO };
 
   // The product's name, identifier, icon and content security policy, whichever path below runs.
   writeSeedTauriConfig(seed, await mainWindowPolicy(seed));

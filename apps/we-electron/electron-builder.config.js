@@ -63,8 +63,9 @@ export default {
     Adding a runtime `import` to electron/*.js therefore means moving that package back into
     `dependencies` — otherwise it resolves in dev and is absent from the package.
   */
-  // Not the main process's tests or the stand-in programs they spawn (`electron/fixtures`).
-  files: ['dist/**/*', 'electron/**/*', '!electron/**/*.test.js', '!electron/fixtures/**'],
+  // Not the main process's tests or the stand-in programs they spawn (`electron/fixtures`), and not
+  // the acceptance world's harness (`electron/harness.js`): a shipped app has no way to be driven.
+  files: ['dist/**/*', 'electron/**/*', '!electron/**/*.test.js', '!electron/fixtures/**', '!electron/harness.js'],
   /*
     `icon` above packages the .desktop entry and the hicolor theme; neither gives a *running window*
     an icon, which on Linux comes from `_NET_WM_ICON` and so from BrowserWindow's own `icon` option.

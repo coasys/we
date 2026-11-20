@@ -307,11 +307,13 @@ export async function startWithPortRetry(startOnce, { samePort = false, appUp, a
  *   (`executor-0.log` is this run), which `runtime.logTail` reads.
  * - `--config`: the file `runtime.setConfig` writes and the next start reads.
  * - `--custody-channel`: opens `identity.custodyStatus` to the custody service beside it.
+ * - `holochain`: the Holochain arguments, `--connect-holochain true` unless given. The acceptance
+ *   world's build passes its own (`harness.holochainArgs`), which run none unless it asks.
  *
  * The admin credential is in the environment (`executorSpawnEnv`), not here: an argument is visible
  * to every user of the computer through `ps`.
  */
-export function executorArgs({ port, dataPath, configFile, logDir }) {
+export function executorArgs({ port, dataPath, configFile, logDir, holochain = ['--connect-holochain', 'true'] }) {
   return [
     'run',
     '--port',
@@ -328,8 +330,7 @@ export function executorArgs({ port, dataPath, configFile, logDir }) {
     'true',
     '--run-dapp-server',
     'false',
-    '--connect-holochain',
-    'true',
+    ...holochain,
   ];
 }
 

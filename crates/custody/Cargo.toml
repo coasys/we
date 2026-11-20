@@ -20,6 +20,10 @@ default = []
 # Lets a sealed item name an Argon2id cost below the floor `seal::open` otherwise refuses, so the
 # end-to-end test (tests/live.rs) does not spend seconds per unlock. Never in an app build.
 cheap-kdf = []
+# The acceptance world's sidecar (`tests/acceptance/`): custody items in memory unless
+# `COASYS_HARNESS_VAULT=os` (`src/sidecar.rs`, `Vault`). Never in an app build: `build-custody.mjs`
+# builds the shipped sidecar without it.
+harness = []
 
 [dependencies]
 # The master-key flows (create, link, revoke), the Vault trait and the executor's identity calls.

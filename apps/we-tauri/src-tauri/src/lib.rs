@@ -6,6 +6,11 @@ mod data_folder;
 mod executor_log;
 mod generated;
 mod main_window;
+// The acceptance world's driver: see `harness.rs`. Linux only, where the automated acceptance runs.
+#[cfg(all(feature = "harness", target_os = "linux"))]
+mod harness;
+#[cfg(all(feature = "harness", not(target_os = "linux")))]
+compile_error!("the harness build is for Linux only");
 
 // Declared by path rather than through `generated/mod.rs`: that module is only emitted on the
 // generator's embedded-apps path, while this file is emitted on both and is always read here.
@@ -125,19 +130,16 @@ pub fn run() {
     // own `setup`, where `start` does everything else, runs only later, when the event loop is
     // ready. So every side effect of a start lives in `start`; `startup_order` in the tests pins
     // that Tauri still runs a plugin's setup before the app's.
-    let app = tauri::Builder::default()
-        // First: a second start of the app shows this one's window and goes, so two copies of one
-        // product never run on one data folder. The plugin is keyed by the identifier; the custody
-        // folder and the keychain names are not, so a WE app and a Coasys app can run together on
-        // the same custody folder. The main window hides on close (`main_window.rs`), and starting
-        // the app again shows it.
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            main_window::show(app)
-        }))
-        // No opener plugin: no page calls it. `main_window.rs` opens a link in the browser from
-        // here, for an `https` address only.
-        .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![
+    //
+    // The harness build keeps which window invoked which command, for the acceptance world's
+    // assertions (never the arguments). The log is managed state, so `start` hands it to the
+    // harness link along with the custody service.
+    #[cfg(all(feature = "harness", target_os = "linux"))]
+    let ipc_log = harness::IpcLog::default();
+    #[cfg(all(feature = "harness", target_os = "linux"))]
+    let ipc_record = ipc_log.clone();
+    let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> =
+        Box::new(tauri::generate_handler![
             commands::state::get_port,
             commands::state::request_credential,
             commands::accounts::list_accounts,
@@ -156,7 +158,28 @@ pub fn run() {
             commands::identity::identity_flow_step,
             commands::identity::identity_flow_cancel,
             commands::identity::identity_flow_finish
-        ])
+        ]);
+
+    let builder = tauri::Builder::default();
+    #[cfg(all(feature = "harness", target_os = "linux"))]
+    let builder = builder.manage(ipc_log);
+    let app = builder
+        // First: a second start of the app shows this one's window and goes, so two copies of one
+        // product never run on one data folder. The plugin is keyed by the identifier; the custody
+        // folder and the keychain names are not, so a WE app and a Coasys app can run together on
+        // the same custody folder. The main window hides on close (`main_window.rs`), and starting
+        // the app again shows it.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            main_window::show(app)
+        }))
+        // No opener plugin: no page calls it. `main_window.rs` opens a link in the browser from
+        // here, for an `https` address only.
+        .plugin(tauri_plugin_dialog::init())
+        .invoke_handler(move |invoke| {
+            #[cfg(all(feature = "harness", target_os = "linux"))]
+            ipc_record.record(invoke.message.webview().label(), invoke.message.command());
+            handler(invoke)
+        })
         .setup(start)
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
@@ -269,11 +292,13 @@ fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     // and for a macOS build without the keychain entitlement.
     // The same folder keeps the incept of an identity made here until its publish is confirmed.
     let custody_dir = we_custody::host::custody_dir(&home);
+    #[cfg(not(all(feature = "harness", target_os = "linux")))]
+    let custody_store = we_custody::store::system_store(custody_dir.clone());
+    #[cfg(all(feature = "harness", target_os = "linux"))]
+    let custody_store =
+        harness::custody_store(|| we_custody::store::system_store(custody_dir.clone()));
     let custody = we_custody::spawn(
-        we_custody::DesktopVault::new(
-            we_custody::store::system_store(custody_dir.clone()),
-            we_custody::PendingIncepts::file(custody_dir),
-        ),
+        we_custody::DesktopVault::new(custody_store, we_custody::PendingIncepts::file(custody_dir)),
         we_custody::ExecutorAddress {
             url: format!("http://127.0.0.1:{executor_port}"),
             admin_credential: std::sync::Arc::from(req_credential.as_str()),
@@ -286,6 +311,10 @@ fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         config_dir,
         default_data_path,
     };
+
+    // The harness link answers the custody service's public state, so it keeps a handle of its own.
+    #[cfg(all(feature = "harness", target_os = "linux"))]
+    let harness_custody = custody.clone();
 
     app.manage(state);
     app.manage(commands::identity::IdentityState::new(custody));
@@ -305,7 +334,8 @@ fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let config = Ad4mConfig {
+    #[allow(unused_mut)]
+    let mut config = Ad4mConfig {
         // A `Secret`: the executor can compare it and never print or serialise it.
         admin_credential: Some(Secret::new(req_credential.clone())),
         app_data_path: Some(app_data_path.to_str().unwrap().to_string()),
@@ -325,10 +355,22 @@ fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         ..Default::default()
     };
 
+    #[cfg(all(feature = "harness", target_os = "linux"))]
+    harness::adjust_config(&mut config);
+
     // Start the executor in the background
     tauri::async_runtime::spawn(async move {
         rust_executor::run(config).await;
     });
+
+    // The acceptance world's driver: dials the harness link, when one is set. After the window
+    // exists, so its commands find it.
+    #[cfg(all(feature = "harness", target_os = "linux"))]
+    harness::start(
+        app.handle().clone(),
+        harness_custody,
+        app.state::<harness::IpcLog>().inner().clone(),
+    );
 
     // WebRTC needs the webview told it may have the devices — see `enable_media`.
     #[cfg(target_os = "linux")]
