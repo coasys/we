@@ -66,6 +66,23 @@ export function reverseReadsOf(
 
 const READS = reverseReadsOf();
 
+/**
+ * The fields a holder is read with when the include names none: its own scalar properties and the
+ * relation that says which rows it points at. Never every field: a holder's other relations come back
+ * as id lists, and a call's `children` is its whole transcript. Read in full, a page of cards asked
+ * for every call in the space with every line of every one, and timed out. A property held as a file
+ * is left out too, since reading it fetches the file.
+ */
+function holderFields(
+  read: ReverseRead,
+  manifest: { entities: Record<string, { properties?: Record<string, { format?: string }> }> } = CORE_MANIFEST,
+): string[] {
+  const own = Object.entries(manifest.entities[read.holder]?.properties ?? {})
+    .filter(([, spec]) => spec.format !== 'file')
+    .map(([name]) => name);
+  return [...new Set([...own, read.via])];
+}
+
 /** The ids a relation holds, as ids or as included records. */
 function idsIn(value: unknown): string[] {
   const list = Array.isArray(value) ? value : value == null ? [] : [value];
@@ -74,11 +91,38 @@ function idsIn(value: unknown): string[] {
     .filter((id): id is string => typeof id === 'string' && id !== '');
 }
 
-/** The reverse relations a read asks to include, if any. */
+/** The reverse relations a read asks to include at its own level, if any. */
 function wanted(opts: QueryOptions, reads: readonly ReverseRead[]): string[] {
   const include = opts.include;
   if (!include) return [];
   return [...new Set(reads.map((read) => read.relation))].filter((relation) => Boolean(include[relation]));
+}
+
+/**
+ * The included relations whose own sub-query asks for more includes, other than the reverse ones,
+ * which are read through a handle that fills its own.
+ */
+function nested(opts: QueryOptions, reads: readonly ReverseRead[]): [string, QueryOptions][] {
+  const filled = new Set(reads.map((read) => read.relation));
+  return Object.entries(opts.include ?? {}).filter(
+    (entry): entry is [string, QueryOptions] =>
+      !filled.has(entry[0]) &&
+      Boolean(entry[1]) &&
+      typeof entry[1] === 'object' &&
+      !('from' in (entry[1] as object)) &&
+      Boolean((entry[1] as QueryOptions).include),
+  );
+}
+
+/** Whether a read asks for a reverse relation at any depth: a placement's `node`'s, say. */
+function asks(opts: QueryOptions, reads: readonly ReverseRead[]): boolean {
+  return wanted(opts, reads).length > 0 || nested(opts, reads).some(([, sub]) => asks(sub, reads));
+}
+
+/** The records a relation holds, where it was included. */
+function recordsIn(value: unknown): Row[] {
+  const list = Array.isArray(value) ? value : value == null ? [] : [value];
+  return list.filter((item): item is Row => Boolean(item) && typeof item === 'object');
 }
 
 export interface ReverseReadDeps {
@@ -116,20 +160,24 @@ export async function fillUndeclaredReverse(
     // What the include asked of the record it hydrates, beyond whether to: its own includes and fields.
     const spec = (opts.include as Record<string, unknown>)[relation];
     const sub = spec && typeof spec === 'object' ? (spec as Row) : {};
-    const asked = {
-      ...(sub.include ? { include: sub.include } : {}),
-      ...(sub.properties ? { properties: sub.properties } : {}),
-    };
     const found = await Promise.all(
       reads
         .filter((read) => read.relation === relation)
         .map(async (read) => {
           const Model = deps.holder(read.holder);
           if (!Model) return [];
+          // The holder's `via` is how its rows are matched up, so it is read whatever else is asked.
+          const properties = Array.isArray(sub.properties)
+            ? [...new Set([...(sub.properties as string[]), read.via])]
+            : holderFields(read);
           try {
             const holders = await Model.findAll(
               dataset,
-              { ...asked, parent: { ids, predicate: read.predicate, direction: 'in' } } as QueryOptions,
+              {
+                ...(sub.include ? { include: sub.include } : {}),
+                properties,
+                parent: { ids, predicate: read.predicate, direction: 'in' },
+              } as QueryOptions,
               ctl,
             );
             return holders.map((holder) => ({ holder: holder as Row, via: read.via }));
@@ -144,6 +192,12 @@ export async function fillUndeclaredReverse(
       for (const id of idsIn(holder[via])) if (!sourceOf.has(id)) sourceOf.set(id, holder);
     }
     for (const row of missing) row[relation] = sourceOf.get(row.id as string) ?? null;
+  }
+  // A level down: the records each row included, all of them in one batch per relation.
+  for (const [relation, sub] of nested(opts, reads)) {
+    if (!asks(sub, reads)) continue;
+    const below = rows.flatMap((row) => (row && typeof row === 'object' ? recordsIn((row as Row)[relation]) : []));
+    if (below.length) await fillUndeclaredReverse(below, sub, dataset, deps, ctl);
   }
   return rows as unknown[];
 }
@@ -160,7 +214,7 @@ export function withUndeclaredReverse(Model: EntityClass, deps: ReverseReadDeps)
   return {
     query(dataset, opts): QuerySubscription {
       const subscription = Model.query(dataset, opts);
-      if (!wanted(opts, reads).length) return subscription;
+      if (!asks(opts, reads)) return subscription;
       let chain: Promise<unknown> = Promise.resolve();
       const inOrder = (rows: readonly unknown[]) => {
         const filled = chain.then(() => fillUndeclaredReverse(rows, opts, dataset, deps));
@@ -179,7 +233,7 @@ export function withUndeclaredReverse(Model: EntityClass, deps: ReverseReadDeps)
     },
     async findAll(dataset, opts, ctl) {
       const rows = await Model.findAll(dataset, opts, ctl);
-      return wanted(opts, reads).length ? fillUndeclaredReverse(rows, opts, dataset, deps, ctl) : rows;
+      return asks(opts, reads) ? fillUndeclaredReverse(rows, opts, dataset, deps, ctl) : rows;
     },
   };
 }

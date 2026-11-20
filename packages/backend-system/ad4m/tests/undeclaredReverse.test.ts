@@ -60,7 +60,42 @@ describe('a row without a reverse relation it asked to include', () => {
     const rows: Row[] = [{ id: 'item-1' }];
     await fillUndeclaredReverse(rows, { include: { extractedFrom: true } }, {}, { holder: () => calls.Model });
     expect(rows[0].extractedFrom).toBe(CALL);
-    expect(calls.asked).toEqual([{ parent: { ids: ['item-1'], predicate: 'we://extracted', direction: 'in' } }]);
+    expect(calls.asked).toHaveLength(1);
+    expect(calls.asked[0].parent).toEqual({ ids: ['item-1'], predicate: 'we://extracted', direction: 'in' });
+  });
+
+  it("reads a holder's own fields and the link, never its other relations", async () => {
+    // A call's `children` is its whole transcript. Read in full for a page of cards, it timed out.
+    const calls = holder([CALL]);
+    await fillUndeclaredReverse(
+      [{ id: 'item-1' }],
+      { include: { extractedFrom: true } },
+      {},
+      { holder: () => calls.Model },
+    );
+    const properties = calls.asked[0].properties as string[];
+    expect(properties).toContain('extracted');
+    expect(properties).toContain('title');
+    expect(properties).not.toContain('children');
+    expect(properties).not.toContain('thread');
+    // Held as a file: reading it would fetch the file for every call.
+    expect(properties).not.toContain('editorState');
+  });
+
+  it('is filled a level down, for the records a read included: a placed card', async () => {
+    const calls = holder([CALL]);
+    const placed: Row = { id: 'item-1' };
+    const own: Row = { id: 'task-1', extractedFrom: null };
+    const rows: Row[] = [
+      { id: 'placement-1', node: placed },
+      { id: 'placement-2', node: own },
+    ];
+    const wrapped = withUndeclaredReverse({ query: vi.fn(), findAll: async () => rows }, { holder: () => calls.Model });
+    await wrapped.findAll({}, { include: { node: { include: { extractedFrom: true } } } });
+    expect(placed.extractedFrom).toBe(CALL);
+    expect(own.extractedFrom).toBeNull();
+    expect(calls.asked).toHaveLength(1);
+    expect((calls.asked[0].parent as { ids: string[] }).ids).toEqual(['item-1']);
   });
 
   it('is asked about in one read for the whole page, and only where the class left it off', async () => {
@@ -87,7 +122,7 @@ describe('a row without a reverse relation it asked to include', () => {
       { holder: () => calls.Model },
     );
     expect(calls.asked[0]).toEqual({
-      properties: ['name'],
+      properties: ['name', 'extracted'],
       parent: { ids: ['item-1'], predicate: 'we://extracted', direction: 'in' },
     });
   });
