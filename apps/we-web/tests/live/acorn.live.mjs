@@ -853,3 +853,157 @@ describe('the outcome table on the live mount', () => {
     await page.keyboard.press('Escape');
   });
 });
+
+describe('the outcome map on the live mount', () => {
+  const tag = Date.now().toString(36);
+  const PARENT = `MAP parent ${tag}`;
+  const LEFT = `MAP left child ${tag}`;
+  const RIGHT = `MAP right child ${tag}`;
+  const LONE = `MAP lone outcome ${tag}`;
+  const LATE = `MAP late child ${tag}`;
+  const SHOTS = process.env.ACORN_SHOTS;
+
+  let stockMod;
+  let stockH;
+  let page;
+  let parentSeed;
+
+  const FETCH_ALL = { input: { All: null }, local: true };
+  const hashText = (hash) => (typeof hash === 'string' ? hash : `u${Buffer.from(hash).toString('base64url')}`);
+  /**
+   * A card on the canvas, by the statement it draws. The card box itself — `.we-graph__node` is a
+   * zero-size anchor at the card's centre, which a pointer cannot land on.
+   */
+  const cardFor = (content) => page.locator('.we-graph__node', { hasText: content }).locator('.we-graph__card');
+  const boxOf = async (content) => {
+    const box = await cardFor(content).boundingBox();
+    assert.ok(box, `no card drawn for "${content}"`);
+    return { ...box, cx: box.x + box.width / 2, cy: box.y + box.height / 2 };
+  };
+  /** The cards' boxes once two reads a beat apart agree — a new layout travels into place. */
+  const settledBoxes = async (contents) => {
+    let last = '';
+    for (let i = 0; i < 60; i++) {
+      const boxes = await Promise.all(contents.map(boxOf));
+      const now = JSON.stringify(boxes.map((b) => [Math.round(b.cx), Math.round(b.cy)]));
+      if (now === last) return boxes;
+      last = now;
+      await page.waitForTimeout(500);
+    }
+    assert.fail('the map never came to rest');
+  };
+  /** The lines on the canvas — one path per connection (a hover copy is drawn only under the pointer). */
+  const drawnLines = () => page.locator('svg.we-graph__edges > g > path:not(.we-graph__edge-hover)').count();
+  /** Stock's connections between two outcomes it still holds — what the map should draw. */
+  const stockLines = async () => {
+    const outcomes = await stockMod.stockCall(stockH, 'projects', 'fetch_outcomes', FETCH_ALL);
+    const live = new Set(outcomes.map((r) => hashText(r.actionHash)));
+    const connections = await stockMod.stockCall(stockH, 'projects', 'fetch_connections', FETCH_ALL);
+    return connections.filter((c) => {
+      const parent = hashText(c.entry.parentActionHash);
+      const child = hashText(c.entry.childActionHash);
+      return parent !== child && live.has(parent) && live.has(child);
+    }).length;
+  };
+  const waitForLines = async (want, timeout = 300_000) => {
+    const end = Date.now() + timeout;
+    let drawn = -1;
+    while (Date.now() < end) {
+      drawn = await drawnLines();
+      if (drawn === want) return;
+      await page.waitForTimeout(1000);
+    }
+    assert.equal(drawn, want, 'the map should draw one line per stock connection');
+  };
+
+  before(async () => {
+    stockMod = await import(rigFile('stock.mjs'));
+    stockH = await stockMod.connect();
+    // An Uncertain parent with two stock-made children — the higher siblingOrder is Acorn's left —
+    // and an outcome on no connection at all.
+    parentSeed = await stockMod.createOutcome(stockH, PARENT, {
+      scope: { Uncertain: { smallsEstimate: null, timeFrame: null, inBreakdown: false } },
+    });
+    await stockMod.createOutcomeUnder(stockH, parentSeed.actionHash, RIGHT, 0);
+    await stockMod.createOutcomeUnder(stockH, parentSeed.actionHash, LEFT, 1);
+    await stockMod.createOutcome(stockH, LONE);
+
+    const joined = await datasetNamed('Acorn project');
+    page = await tab('map');
+    await page.setViewportSize({ width: 1600, height: 1000 });
+    await page.goto(app.url);
+    await answerNamePrompt(page, 'Acorn Dev');
+    await page.goto(`${app.url}/space/${joined.uuid}`);
+    await page.waitForURL(/\/space\//, { timeout: 300_000 });
+    await page.getByRole('button', { name: 'Map', exact: true }).click({ timeout: 300_000 });
+  });
+
+  after(async () => {
+    if (stockH) await stockMod.closeStock(stockH).catch(() => {});
+  });
+
+  it("draws stock's outcomes and connections as Acorn's tree: cards, lines, sibling order, the lone outcome", async () => {
+    for (const content of [PARENT, LEFT, RIGHT, LONE]) {
+      await cardFor(content).waitFor({ state: 'visible', timeout: 300_000 });
+    }
+    // One line per stock connection between two outcomes it holds — none invented, none missing.
+    // Waited for first: the outcomes can arrive a beat before the connections that place them.
+    await waitForLines(await stockLines());
+    const [parent, left, right, lone] = await settledBoxes([PARENT, LEFT, RIGHT, LONE]);
+    // Parents above children; the higher siblingOrder on the left; the parent centred over both.
+    assert.ok(left.cy > parent.cy && right.cy > parent.cy, 'the children should sit below their parent');
+    assert.ok(Math.abs(left.cy - right.cy) < 2, 'siblings share a rank');
+    assert.ok(left.cx < right.cx, 'siblingOrder 1 should be left of siblingOrder 0, as in Acorn');
+    assert.ok(Math.abs(parent.cx - (left.cx + right.cx) / 2) < 2, 'the parent is centred over its children');
+    // The lone outcome is a tree of its own on the top rank, not dropped and not in a side zone.
+    assert.ok(Math.abs(lone.cy - parent.cy) < 2, 'the lone outcome sits on the top rank');
+    // Each card is its statement with Acorn's computed scope and status.
+    await cardFor(PARENT).getByText('Not achieved').first().waitFor({ timeout: 60_000 });
+    await cardFor(PARENT).getByText('Big').first().waitFor({ timeout: 60_000 });
+    if (SHOTS) {
+      // Zoomed in on this tree and its lone neighbour — the project holds every earlier suite's
+      // outcomes too, so the whole map is a row of small trees.
+      await page.mouse.move((left.cx + lone.cx) / 2, (parent.cy + left.cy) / 2);
+      for (let i = 0; i < 30 && (await boxOf(PARENT)).width < 200; i++) {
+        await page.mouse.wheel(0, -200);
+        await page.waitForTimeout(150);
+      }
+      // Then a drag on the empty canvas below the cards, to bring this tree and its lone
+      // neighbour to the middle of the view.
+      const [p, l] = await settledBoxes([PARENT, LONE]);
+      const from = { x: 200, y: Math.min(780, p.cy + 420) };
+      await page.mouse.move(from.x, from.y);
+      await page.mouse.down();
+      await page.mouse.move(from.x + 800 - (p.cx + l.cx) / 2, from.y + 380 - p.cy, { steps: 12 });
+      await page.mouse.up();
+      await settledBoxes([PARENT, LONE]);
+      await page.screenshot({ path: join(SHOTS, 'map.png') });
+    }
+  });
+
+  it('a stock-side connection made later shows as a new card and line, leftmost by its siblingOrder', async () => {
+    const before = await drawnLines();
+    await stockMod.createOutcomeUnder(stockH, parentSeed.actionHash, LATE, 2);
+    await cardFor(LATE).waitFor({ state: 'visible', timeout: 300_000 });
+    await waitForLines(before + 1);
+    assert.equal(before + 1, await stockLines());
+    const [late, left] = await settledBoxes([LATE, LEFT]);
+    assert.ok(late.cx < left.cx, 'siblingOrder 2 should be left of siblingOrder 1');
+    assert.ok(Math.abs(late.cy - left.cy) < 2, 'the new child joins its siblings on their rank');
+  });
+
+  it('a card opens the expanded outcome with its children, in sibling order', async () => {
+    // A press where the card is drawn: the canvas surface takes the pointer and hit-tests it, so
+    // the card element itself never receives the click.
+    const [parent] = await settledBoxes([PARENT]);
+    await page.mouse.click(parent.cx, parent.cy);
+    const dialog = page.locator('we-modal');
+    const child = (content) => dialog.getByRole('button', { name: `Open child ${content}`, exact: true });
+    for (const content of [LATE, LEFT, RIGHT]) await child(content).waitFor({ state: 'visible', timeout: 120_000 });
+    const ys = await Promise.all([LATE, LEFT, RIGHT].map(async (c) => (await child(c).boundingBox()).y));
+    assert.ok(ys[0] < ys[1] && ys[1] < ys[2], 'the dialog lists children in the order the map draws them');
+    if (SHOTS) await page.screenshot({ path: join(SHOTS, 'map-node-opened.png') });
+    await page.keyboard.press('Escape');
+    await dialog.waitFor({ state: 'detached', timeout: 60_000 });
+  });
+});
