@@ -1610,6 +1610,56 @@ describe('mount retry — the fresh-cell stall', () => {
     await expect(acorn.pendingAcornOperation()).resolves.toMatchObject({ phase: 'failed', languageAddress: LANG });
   });
 
+  /*
+    Reopen with no identity — the dialog's reload and an argument-less Retry —
+    offers the failure that happened last, not the entry inserted first.
+  */
+  it('reopens on the most recently failed operation, not the first inserted', async () => {
+    vi.useFakeTimers();
+    const record: string[] = [];
+    const LANG_B = 'QmzAcornLanguageB';
+    const d = deps(record, {
+      lifecycle: () =>
+        ({
+          list: vi.fn(async () => [] as DatasetRef[]),
+          get: vi.fn(async (id: string) => ref(id)),
+          create: vi.fn(async (name: string) => ref(`dataset-${name}`, name)),
+          remove: vi.fn(),
+          subscribe: vi.fn(() => () => {}),
+        }) as unknown as DatasetLifecyclePort,
+    });
+    const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
+    (port.applyTemplateLocal as ReturnType<typeof vi.fn>).mockImplementation(
+      async (_hash: string, data: Record<string, unknown>) => ({
+        address: data.seed === 'uid-b-b-b' ? LANG_B : LANG,
+      }),
+    );
+    (port.mount as ReturnType<typeof vi.fn>).mockImplementation(async (uuid: string, lang: string) => {
+      record.push(`mount:${uuid}:${lang}`);
+      throw INIT_TIMEOUT();
+    });
+    const acorn = createAcornLifecycle(d);
+
+    // A fails first, then B: B is the newer failure.
+    expect((await settle(acorn.createAcornProject('A', 'a a a', BASE))).error).toBeInstanceOf(AcornLifecycleError);
+    expect((await settle(acorn.createAcornProject('B', 'b b b', BASE))).error).toBeInstanceOf(AcornLifecycleError);
+    acorn.dismissAcornOperation();
+    await expect(acorn.pendingAcornOperation()).resolves.toMatchObject({ languageAddress: LANG_B });
+
+    // A fails again: now A is the newer one, for the reload and the no-argument Retry alike.
+    expect((await settle(acorn.resumeAcornOperation('dataset-A', LANG))).error).toBeInstanceOf(AcornLifecycleError);
+    acorn.dismissAcornOperation();
+    await expect(acorn.pendingAcornOperation()).resolves.toMatchObject({ languageAddress: LANG });
+    const before = record.filter((c) => c.startsWith('mount:dataset-B:')).length;
+    (port.mount as ReturnType<typeof vi.fn>).mockImplementation(async (uuid: string, lang: string) => {
+      record.push(`mount:${uuid}:${lang}`);
+      port.mountsOf[uuid] = [lang];
+      return true;
+    });
+    await expect(acorn.resumeAcornOperation()).resolves.toBe('dataset-A');
+    expect(record.filter((c) => c.startsWith('mount:dataset-B:'))).toHaveLength(before);
+  });
+
   it('does not resume an operation whose displayed failure is not retryable', async () => {
     vi.useFakeTimers();
     const record: string[] = [];

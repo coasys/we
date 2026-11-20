@@ -96,6 +96,8 @@ interface PendingAcornOp {
    * owns the dialog's read now, and the old run's standdown must not overwrite it.
    */
   stateOwner?: number;
+  /** When `state` last became `failed`, in failure order — what a reopen with no identity picks by. */
+  failedSeq?: number;
 }
 
 /** What `prepareAndMount` hands `openMounted`: the mounted target plus the name the newest ask gave it. */
@@ -608,7 +610,31 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
     resumed by running the Open again. A preflight that gets through clears its
     entry: from there on the op is the record.
   */
-  const preflightFailures = new Map<string, AcornOperationState>();
+  const preflightFailures = new Map<string, { state: AcornOperationState; seq: number }>();
+
+  /*
+    Failure order across both records. A reopen that names no operation — the
+    dialog's reload, an argument-less Retry — offers the failure that happened
+    last, not whichever entry was inserted first.
+  */
+  let failureSeq = 0;
+  const latestFailure = (): { op: PendingAcornOp } | { preflight: AcornOperationState } | null => {
+    let latest: { op: PendingAcornOp } | { preflight: AcornOperationState } | null = null;
+    let latestSeq = -1;
+    for (const op of pendingOps.values()) {
+      if (op.state?.phase === 'failed' && (op.failedSeq ?? 0) > latestSeq) {
+        latest = { op };
+        latestSeq = op.failedSeq ?? 0;
+      }
+    }
+    for (const entry of preflightFailures.values()) {
+      if (entry.seq > latestSeq) {
+        latest = { preflight: entry.state };
+        latestSeq = entry.seq;
+      }
+    }
+    return latest;
+  };
 
   /** The debt a target still owes — the live ledger's answer, the durable intent's when the session has none. */
   const owedFor = (refId: string): { name: string; writeMeta: boolean; announce: boolean } | null => {
@@ -963,6 +989,7 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       if (!owns()) return;
       op.state = state;
       op.stateOwner = runId;
+      if (state.phase === 'failed') op.failedSeq = ++failureSeq;
       deps.progress?.(state);
     };
     /*
@@ -981,6 +1008,7 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
         languageAddress: op.lang,
         failure: makeFailure(failure.stage, failure.cause, failure.retryable),
       };
+      op.failedSeq = ++failureSeq;
     };
     const park = (failure: { stage: AcornLifecycleStage; cause: string; retryable: boolean }) =>
       report({
@@ -1338,7 +1366,7 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
             datasetId,
             failure: makeFailure('prepare', failure.message, true),
           };
-          preflightFailures.set(datasetId, state);
+          preflightFailures.set(datasetId, { state, seq: ++failureSeq });
           deps.progress?.(state);
         }
         throw failure;
@@ -1374,8 +1402,9 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
      * target was retained: a completed setup clears the record entirely.
      */
     async pendingAcornOperation(): Promise<AcornOperationState | null> {
-      for (const op of pendingOps.values()) if (op.state) return op.state;
-      for (const state of preflightFailures.values()) return state;
+      for (const op of pendingOps.values()) if (op.state && op.state.phase !== 'failed') return op.state;
+      const latest = latestFailure();
+      if (latest) return 'op' in latest ? latest.op.state! : latest.preflight;
       const port = deps.port();
       const lifecycle = deps.lifecycle();
       if (!port || !lifecycle || !deps.setupIntent) return null;
@@ -1407,7 +1436,7 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
      * `datasetId`/`languageAddress` name the failure on display: several
      * operations can be parked at once and the Retry under a card must resume
      * that card's target, not whichever op happens to sit first in the map.
-     * With no identity the first retained op answers, as before.
+     * With no identity the most recently failed operation answers.
      */
     async resumeAcornOperation(datasetId?: string, languageAddress?: string): Promise<string | null> {
       const port = deps.port();
@@ -1416,17 +1445,17 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       const nav = { generation: ++openGeneration, selection: deps.currentDatasetId() };
       let op = languageAddress ? pendingOps.get(languageAddress) : undefined;
       if (!op && datasetId) op = [...pendingOps.values()].find((entry) => entry.ref?.id === datasetId);
-      if (!op && !datasetId && !languageAddress) op = [...pendingOps.values()][0];
       /*
         An Open that failed before it had an operation is resumed by running
-        the Open again — on the dataset its failure names.
+        the Open again — on the dataset its failure names. With no identity at
+        all, the failure that happened last answers, whichever record holds it.
       */
-      const preflight =
-        op || languageAddress
-          ? undefined
-          : datasetId
-            ? preflightFailures.get(datasetId)
-            : [...preflightFailures.values()][0];
+      let preflight = !op && !languageAddress && datasetId ? preflightFailures.get(datasetId)?.state : undefined;
+      if (!op && !datasetId && !languageAddress) {
+        const latest = latestFailure();
+        if (latest && 'preflight' in latest) preflight = latest.preflight;
+        else op = latest?.op ?? [...pendingOps.values()][0];
+      }
       if (preflight?.datasetId) return api.openAcornProject(preflight.datasetId);
       if (!op && deps.setupIntent) {
         const refs = await lifecycle.list().catch((error: unknown) => {
@@ -1467,6 +1496,7 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
             phase: 'failed',
             failure: makeFailure(op.state.phase === 'setting-up' ? 'setup' : 'mount', '', true),
           };
+          op.failedSeq = ++failureSeq;
         }
       }
       deps.progress?.(null);
