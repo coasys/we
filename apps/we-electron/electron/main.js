@@ -61,7 +61,7 @@ import {
   trustedOrigins,
 } from './navigationPolicy.js';
 import { setupSeedServers } from './seed-servers.js';
-import { isFirstStart, storageKeystore, storageShown, unlockStorage } from './storageUnlock.js';
+import { storageKeystore, storageShown, unlockStorage } from './storageUnlock.js';
 import { closeHides, createTray, setTrayMenu, trayHostPresent } from './tray.js';
 
 // Enable right-click context menu with inspect element in dev mode
@@ -621,7 +621,6 @@ async function unlockStorageFor(port, token, dataPath) {
     const { how } = await unlockStorage({
       call: rpc.call,
       keystore: binary ? storageKeystore({ binary, dataFolder: dataPath }) : null,
-      firstStart: isFirstStart(dataPath),
       askPassphrase: (step) => identity.openStorage(step),
       showMigration: (step) => identity.openStorage(step),
     });

@@ -211,6 +211,7 @@ pub async fn join<H: ExecutorRpc>(
     serde_json::from_value(answer).map_err(|e| RpcError {
         code: 500,
         message: format!("internal: host.join answered in a shape this build does not know: {e}"),
+        data: None,
     })
 }
 
@@ -311,6 +312,7 @@ mod tests {
         RpcError {
             code: 403,
             message: message.into(),
+            data: None,
         }
     }
 
@@ -436,6 +438,7 @@ mod tests {
             Err(RpcError {
                 code: 503,
                 message: "down".into(),
+                data: None,
             }),
         )]);
         assert!(info(&down).await.unwrap_err().contains("Can't reach"));
