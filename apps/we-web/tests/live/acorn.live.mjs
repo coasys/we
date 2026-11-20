@@ -373,7 +373,7 @@ describe('the outcomes view on the live mount', () => {
     'run inside a batch"; update/delete: "internal: call action reached execute_commands". ' +
     'Needs the S2-0 combined build (acorn/s2-sdk executor + SDK snapshot), never produced';
 
-  it('create writes through', { skip: WRITE_GAP }, async () => {
+  it('create writes through', async () => {
     await page.getByRole('textbox', { name: /New outcome/ }).fill(CREATE_CONTENT);
     await page.getByRole('button', { name: 'Add outcome', exact: true }).click();
     await h.until(findByContent(CREATE_CONTENT), (r) => Boolean(r), {
