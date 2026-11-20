@@ -14,8 +14,8 @@
  * relations is not a fix: the next app would not know to. So the read goes the other way round, from
  * the side that does declare the link. When a row comes back without a relation it asked to include
  * (`undefined`, which is how the executor leaves one the class does not declare, where one it
- * declares and finds empty is `null`), the collections pointing at those rows through that
- * predicate are read in one batch, and each row is given the first of them.
+ * declares and finds empty is `null`), the links through that predicate ending at those rows are
+ * looked up, the few collections they come from are read by id, and each row is given the first.
  *
  * This is a second read, and a second read is not the same snapshot. A live query re-reads on each
  * change to its own rows. A link added later to a record that has not otherwise changed shows up on
@@ -67,28 +67,18 @@ export function reverseReadsOf(
 const READS = reverseReadsOf();
 
 /**
- * The fields a holder is read with when the include names none: its own scalar properties and the
- * relation that says which rows it points at. Never every field: a holder's other relations come back
- * as id lists, and a call's `children` is its whole transcript. Read in full, a page of cards asked
- * for every call in the space with every line of every one, and timed out. A property held as a file
- * is left out too, since reading it fetches the file.
+ * The fields a holder is read with when the include names none: its own scalar properties. Never
+ * every field: a holder's relations come back as id lists, and each reverse one is a store read per
+ * row. A property held as a file is left out too, since reading it fetches the file. Read in full,
+ * every call resolved its `editorState` and each of its reverse relations.
  */
 function holderFields(
   read: ReverseRead,
   manifest: { entities: Record<string, { properties?: Record<string, { format?: string }> }> } = CORE_MANIFEST,
 ): string[] {
-  const own = Object.entries(manifest.entities[read.holder]?.properties ?? {})
+  return Object.entries(manifest.entities[read.holder]?.properties ?? {})
     .filter(([, spec]) => spec.format !== 'file')
     .map(([name]) => name);
-  return [...new Set([...own, read.via])];
-}
-
-/** The ids a relation holds, as ids or as included records. */
-function idsIn(value: unknown): string[] {
-  const list = Array.isArray(value) ? value : value == null ? [] : [value];
-  return list
-    .map((item) => (typeof item === 'string' ? item : (item as { id?: unknown } | null)?.id))
-    .filter((id): id is string => typeof id === 'string' && id !== '');
 }
 
 /** The reverse relations a read asks to include at its own level, if any. */
@@ -125,9 +115,55 @@ function recordsIn(value: unknown): Row[] {
   return list.filter((item): item is Row => Boolean(item) && typeof item === 'object');
 }
 
+/** One link: `from --predicate--> to`. */
+export interface LinkPair {
+  from: string;
+  to: string;
+}
+
+/** A term that can be written as `<…>` in SPARQL: a scheme, and none of the characters an IRI refuses. */
+const IRI_TERM = /^[A-Za-z][A-Za-z0-9+.-]*:[^\s<>"{}|\\^`]*$/;
+
+/** How many ends go into one lookup, so a page of thousands is several short queries, not one long one. */
+const LINK_BATCH = 300;
+
+/**
+ * The links through `predicate` ending at one of `ids`, looked up by their ends. An id or a predicate
+ * that cannot be written as an IRI is left out rather than spliced into the query.
+ */
+export async function linksEndingAt(
+  store: { querySparql(query: string): Promise<unknown> },
+  predicate: string,
+  ids: readonly string[],
+): Promise<LinkPair[]> {
+  if (!IRI_TERM.test(predicate)) return [];
+  const ends = [...new Set(ids)].filter((id) => IRI_TERM.test(id));
+  const batches: string[][] = [];
+  for (let i = 0; i < ends.length; i += LINK_BATCH) batches.push(ends.slice(i, i + LINK_BATCH));
+  const found = await Promise.all(
+    batches.map(async (batch) => {
+      const rows = await store.querySparql(
+        `SELECT ?from ?to WHERE { VALUES ?to { ${batch.map((id) => `<${id}>`).join(' ')} } ?from <${predicate}> ?to . }`,
+      );
+      return (Array.isArray(rows) ? (rows as Record<string, unknown>[]) : []).flatMap((row) =>
+        typeof row.from === 'string' && typeof row.to === 'string' ? [{ from: row.from, to: row.to }] : [],
+      );
+    }),
+  );
+  return found.flat();
+}
+
 export interface ReverseReadDeps {
   /** The entity a holder is read through. */
   holder: (entity: string) => EntityClass | undefined;
+  /**
+   * The links through `predicate` that end at one of `ids`, from whatever holds them.
+   *
+   * A link lookup rather than a model query scoped to the rows. In a space of a thousand cards the
+   * scoped query matched every collection in the space (every post, reply and channel is one) before
+   * it joined the ids in, and timed out at 30 s. Looking up the links by their ends is an index read.
+   */
+  links: (dataset: DatasetHandle, predicate: string, ids: readonly string[]) => Promise<LinkPair[]>;
   /** Defaults to the reads the core manifest gives every node. */
   reads?: readonly ReverseRead[];
 }
@@ -136,8 +172,11 @@ export interface ReverseReadDeps {
  * Fill each row's missing reverse relations, in place, and answer with the rows.
  *
  * A row is filled only where the relation was asked for and is `undefined`: a class that declares it
- * has already answered, `null` included. A holder that cannot be read leaves its rows `null`, which is
- * what the relation reads as on a record nothing points at.
+ * has already answered, `null` included. Two reads per relation, whatever the size of the page: the
+ * links, then the few holders they come from, by id. A holder that cannot be read is given as its id
+ * alone, which is what a reader that only needs to know where a record came from looks at. Links that
+ * cannot be read leave the rows `null`, which is what the relation reads as on a record nothing
+ * points at.
  */
 export async function fillUndeclaredReverse(
   rows: readonly unknown[],
@@ -166,31 +205,35 @@ export async function fillUndeclaredReverse(
         .map(async (read) => {
           const Model = deps.holder(read.holder);
           if (!Model) return [];
-          // The holder's `via` is how its rows are matched up, so it is read whatever else is asked.
-          const properties = Array.isArray(sub.properties)
-            ? [...new Set([...(sub.properties as string[]), read.via])]
-            : holderFields(read);
+          let pairs: LinkPair[];
+          try {
+            pairs = await deps.links(dataset, read.predicate, ids);
+          } catch (error) {
+            console.warn(`[ad4m] cannot read ${relation} links:`, error);
+            return [];
+          }
+          const holderIds = [...new Set(pairs.map((pair) => pair.from))];
+          if (!holderIds.length) return [];
+          const byId = new Map<string, Row>();
           try {
             const holders = await Model.findAll(
               dataset,
               {
                 ...(sub.include ? { include: sub.include } : {}),
-                properties,
-                parent: { ids, predicate: read.predicate, direction: 'in' },
+                properties: Array.isArray(sub.properties) ? sub.properties : holderFields(read),
+                where: { id: holderIds },
               } as QueryOptions,
               ctl,
             );
-            return holders.map((holder) => ({ holder: holder as Row, via: read.via }));
+            for (const holder of holders as Row[]) if (typeof holder?.id === 'string') byId.set(holder.id, holder);
           } catch (error) {
-            console.warn(`[ad4m] cannot read ${relation} from ${read.holder}:`, error);
-            return [];
+            console.warn(`[ad4m] cannot read the ${read.holder}s ${relation} names, so giving their ids:`, error);
           }
+          return pairs.map((pair) => ({ to: pair.to, holder: byId.get(pair.from) ?? { id: pair.from } }));
         }),
     );
     const sourceOf = new Map<string, Row>();
-    for (const { holder, via } of found.flat()) {
-      for (const id of idsIn(holder[via])) if (!sourceOf.has(id)) sourceOf.set(id, holder);
-    }
+    for (const { to, holder } of found.flat()) if (!sourceOf.has(to)) sourceOf.set(to, holder);
     for (const row of missing) row[relation] = sourceOf.get(row.id as string) ?? null;
   }
   // A level down: the records each row included, all of them in one batch per relation.

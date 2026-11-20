@@ -53,7 +53,7 @@ import { type EntityClass as Ad4mEntityClass, getEntity, getEntityForDataset } f
 
 import { toAd4mPredicate } from './containment';
 import type { EntityManifestEntry } from './manifestTypes';
-import { withUndeclaredReverse } from './undeclaredReverse';
+import { linksEndingAt, withUndeclaredReverse } from './undeclaredReverse';
 
 /**
  * Where a record's reverse relations are read from when its own class does not declare them — see
@@ -67,6 +67,8 @@ const reverseHolders = {
       return undefined;
     }
   },
+  links: (dataset: DatasetHandle, predicate: string, ids: readonly string[]) =>
+    linksEndingAt(asPerspective(dataset), predicate, ids),
 };
 
 /**
