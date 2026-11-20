@@ -13,8 +13,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   followStorage,
-  isFirstStart,
-  keyringFile,
   MIGRATION_FAILED_PASSPHRASE,
   passphraseStep,
   secretFromLine,
@@ -38,7 +36,14 @@ const SECRET_B = 'b2'.repeat(32);
  * secret its keyring was made with (the first secret makes it); `unlockingFor` status reads answer
  * `unlocking` after the unlock before `open`. Records every call.
  */
-function fakeExecutor({ keyringSecret = null, open = false, unlockingFor = 0, lastError = null, refuse = null } = {}) {
+function fakeExecutor({
+  keyringSecret = null,
+  open = false,
+  unlockingFor = 0,
+  lastError = null,
+  refuse = null,
+  keyringExists = true,
+} = {}) {
   const gate = { keyringSecret, open, unlockingFor, lastError };
   const calls = [];
   // A status read counts down the reads that answer `unlocking`; the unlock's own answer does not.
@@ -47,6 +52,7 @@ function fakeExecutor({ keyringSecret = null, open = false, unlockingFor = 0, la
     encryptedAtRest: false,
     stores: gate.open ? { database: 'encrypted', languageStorage: 'encrypted', links: 'plain' } : null,
     keyringId: KEYRING_ID,
+    keyringExists,
     secretSource: gate.open ? 'operator' : null,
     secretOnDataDisk: false,
     rootGeneration: gate.keyringSecret ? 1 : 0,
@@ -131,7 +137,6 @@ describe('unlockStorage', () => {
     const opened = await unlockStorage({
       call: executor.call,
       keystore,
-      firstStart: false,
       askPassphrase: () => {
         throw new Error('no passphrase is asked where the keyring keeps the secret');
       },
@@ -160,11 +165,10 @@ describe('unlockStorage', () => {
 
   it('makes the secret on the first start only, and reads the same one on every start after', async () => {
     const keystore = fakeKeystore();
-    const first = fakeExecutor();
+    const first = fakeExecutor({ keyringExists: false });
     await unlockStorage({
       call: first.call,
       keystore,
-      firstStart: true,
       askPassphrase: null,
       log: () => {},
       ...noWait,
@@ -179,7 +183,6 @@ describe('unlockStorage', () => {
     const opened = await unlockStorage({
       call: second.call,
       keystore,
-      firstStart: false,
       askPassphrase: null,
       log: () => {},
       ...noWait,
@@ -191,14 +194,14 @@ describe('unlockStorage', () => {
 
   it('asks nothing of an executor that is already open, and needs no keyring for it', async () => {
     const executor = fakeExecutor({ keyringSecret: SECRET_A, open: true });
-    const opened = await unlockStorage({ call: executor.call, keystore: null, firstStart: false, ...noWait });
+    const opened = await unlockStorage({ call: executor.call, keystore: null, ...noWait });
     expect(opened.how).toBe('already');
     expect(executor.calls.map((c) => c.method)).toEqual(['runtime.storageStatus']);
   });
 
   it('fails a sealed start in words where there is no custody helper', async () => {
     const executor = fakeExecutor({ keyringSecret: SECRET_A });
-    await expect(unlockStorage({ call: executor.call, keystore: null, firstStart: false, ...noWait })).rejects.toThrow(
+    await expect(unlockStorage({ call: executor.call, keystore: null, ...noWait })).rejects.toThrow(
       storageFailure('no-helper'),
     );
     expect(executor.calls.map((c) => c.method)).toEqual(['runtime.storageStatus']);
@@ -212,7 +215,6 @@ describe('unlockStorage', () => {
     const failed = unlockStorage({
       call: executor.call,
       keystore,
-      firstStart: false,
       askPassphrase: null,
       log,
       ...noWait,
@@ -236,9 +238,9 @@ describe('unlockStorage', () => {
     const executor = fakeExecutor({ refuse: code });
     const keystore = fakeKeystore({ secret: SECRET_A });
     const { log, text } = recordingLog();
-    await expect(
-      unlockStorage({ call: executor.call, keystore, firstStart: false, askPassphrase: null, log, ...noWait }),
-    ).rejects.toThrow(storageFailure(why));
+    await expect(unlockStorage({ call: executor.call, keystore, askPassphrase: null, log, ...noWait })).rejects.toThrow(
+      storageFailure(why),
+    );
     expect(text()).toContain(String(code));
     expect(text()).not.toContain(SECRET_A);
     expect(keystore.given[0].every((byte) => byte === 0)).toBe(true);
@@ -254,7 +256,6 @@ describe('unlockStorage', () => {
       unlockStorage({
         call: executor.call,
         keystore,
-        firstStart: false,
         askPassphrase: null,
         log: () => {},
         ...noWait,
@@ -278,7 +279,7 @@ describe('unlockStorage', () => {
   });
 
   it('with no keyring on a first start, asks for a new storage passphrase salted with the keyring id', async () => {
-    const executor = fakeExecutor();
+    const executor = fakeExecutor({ keyringExists: false });
     const keystore = fakeKeystore({ kind: 'absent' });
     const { log, text } = recordingLog();
     const screens = [];
@@ -287,7 +288,6 @@ describe('unlockStorage', () => {
     const opened = await unlockStorage({
       call: executor.call,
       keystore,
-      firstStart: true,
       log,
       ...noWait,
       async askPassphrase(step) {
@@ -328,7 +328,6 @@ describe('unlockStorage', () => {
     const opened = await unlockStorage({
       call: executor.call,
       keystore: made,
-      firstStart: false,
       log: () => {},
       ...noWait,
       async askPassphrase(step) {
@@ -358,7 +357,6 @@ describe('unlockStorage', () => {
       unlockStorage({
         call: executor.call,
         keystore,
-        firstStart: false,
         log: () => {},
         ...noWait,
         askPassphrase: async (step) => {
@@ -505,21 +503,6 @@ describe('storageKeystore, through a helper', () => {
   });
 });
 
-describe('isFirstStart', () => {
-  it('is a first start until the executor has written its keyring file', () => {
-    const root = mkdtempSync(join(tmpdir(), 'we-storage-first-'));
-    try {
-      expect(isFirstStart(root)).toBe(true);
-      mkdirSync(dirname(keyringFile(root)), { recursive: true });
-      writeFileSync(keyringFile(root), '{}');
-      expect(isFirstStart(root)).toBe(false);
-      expect(keyringFile(root)).toBe(join(root, 'ad4m', 'keyring.json'));
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-});
-
 describe('storageShown', () => {
   it('keeps the state and each store, and drops what only the operator is told', () => {
     const shown = storageShown({
@@ -615,6 +598,7 @@ function migratingExecutor({ total = 3, failAt = null, failures = 1 } = {}) {
     encryptedAtRest: gate.state === 'open',
     stores: gate.state === 'open' ? { database: 'encrypted', languageStorage: 'encrypted', links: 'encrypted' } : null,
     keyringId: KEYRING_ID,
+    keyringExists: gate.secret !== null,
     secretSource: gate.state === 'sealed' ? null : 'operator',
     secretOnDataDisk: false,
     rootGeneration: gate.secret ? 1 : 0,
@@ -731,7 +715,6 @@ describe('moving a plaintext executor under its keys at its first unlock', () =>
     const opened = unlockStorage({
       call: executor.call,
       keystore,
-      firstStart: true,
       askPassphrase: () => {
         throw new Error('no passphrase is asked where the keyring keeps the secret');
       },
@@ -774,7 +757,6 @@ describe('moving a plaintext executor under its keys at its first unlock', () =>
     const opened = unlockStorage({
       call: executor.call,
       keystore,
-      firstStart: true,
       askPassphrase: null,
       showMigration: window.show,
       log: () => {},
@@ -812,7 +794,6 @@ describe('moving a plaintext executor under its keys at its first unlock', () =>
     const opened = unlockStorage({
       call: executor.call,
       keystore: fakeKeystore(),
-      firstStart: true,
       askPassphrase: null,
       showMigration: window.show,
       log: () => {},
@@ -832,7 +813,6 @@ describe('moving a plaintext executor under its keys at its first unlock', () =>
     const opened = unlockStorage({
       call: executor.call,
       keystore: fakeKeystore(),
-      firstStart: true,
       askPassphrase: null,
       showMigration: window.show,
       log: () => {},
@@ -854,7 +834,6 @@ describe('moving a plaintext executor under its keys at its first unlock', () =>
     const opened = unlockStorage({
       call: executor.call,
       keystore: fakeKeystore(),
-      firstStart: true,
       askPassphrase: null,
       log: () => {},
       ...polled,
@@ -875,7 +854,6 @@ describe('moving a plaintext executor under its keys at its first unlock', () =>
     const opened = unlockStorage({
       call: executor.call,
       keystore,
-      firstStart: true,
       askPassphrase: async (step) => {
         expect(step.first.screen).toEqual({ screen: 'set-storage-passphrase', error: null });
         let answer = await step.submit({ kind: 'passphrase', passphrase, confirm: passphrase });
