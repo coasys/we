@@ -47,17 +47,20 @@ const CHILD_LINK = {
   The task list is one JSON field, so every edit is a whole-list replace — and an edit made before
   the last one has read back would start from the list that one replaced, undoing it. So each edit
   starts from the working list (`acornWorking`: the last list this view wrote, while the subscription
-  still holds one it replaced or wrote) and only one write per view is in flight (`taskBusy`
-  disables the task controls), so the writes land in the order they were made. A refused write
-  drops the working list, and the subscription's list is drawn and edited again.
+  still holds one it replaced on the way) and only one write per view is in flight (`taskBusy`
+  disables the task controls), so the writes land in the order they were made. Once the write reads
+  back — or somebody else's list arrives — the history is settled and the subscription is the truth
+  again, so a later change elsewhere back to an earlier list is drawn and edited from; the next edit
+  starts a new history (`acornWritten`). A refused write drops the working list, and the
+  subscription's list is drawn and edited again.
 */
-const TASKS =
-  'acornWorking({ stored: outcome.taskList, working: local.taskWork, written: local.taskFor == outcome.id ? local.taskWritten : [] })';
+const TASK_HISTORY = 'local.taskFor == outcome.id ? local.taskWritten : []';
+const TASKS = `acornWorking({ stored: outcome.taskList, working: local.taskWork, written: ${TASK_HISTORY} })`;
 const taskEdit = (next: string, onSuccess: unknown[] = []) => [
   { $setLocal: 'taskWork', value: { $: next } },
   {
     $setLocal: 'taskWritten',
-    value: { $: 'distinct(local.taskFor == outcome.id ? local.taskWritten : [], [outcome.taskList, local.taskWork])' },
+    value: { $: `acornWritten({ stored: outcome.taskList, working: local.taskWork, written: ${TASK_HISTORY} })` },
   },
   { $setLocal: 'taskFor', value: { $: 'outcome.id' } },
   { $setLocal: 'taskBusy', value: true },
@@ -78,14 +81,18 @@ const taskEdit = (next: string, onSuccess: unknown[] = []) => [
 /*
   The priority order is one field on the project meta, replaced whole by every add, remove and
   reorder — the same hazard as the task list, on the same path: each edit starts from the working
-  list (the last this view wrote, while the meta still holds one it replaced or wrote), and one
-  write per project is in flight (`prioBusy`). The state sits on the meta's own row, so it is per
-  project.
+  list (the last this view wrote, while its write is unsettled), and one write per project is in
+  flight (`prioBusy`). The state sits on the meta's own row, so it is per project.
 */
 const PRIO = 'acornWorking({ stored: meta.topPriorityOutcomes, working: local.prioWork, written: local.prioWritten })';
 const prioEdit = (next: string) => [
   { $setLocal: 'prioWork', value: { $: next } },
-  { $setLocal: 'prioWritten', value: { $: 'distinct(local.prioWritten, [meta.topPriorityOutcomes, local.prioWork])' } },
+  {
+    $setLocal: 'prioWritten',
+    value: {
+      $: 'acornWritten({ stored: meta.topPriorityOutcomes, working: local.prioWork, written: local.prioWritten })',
+    },
+  },
   { $setLocal: 'prioBusy', value: true },
   {
     $invoke: 'record.update',

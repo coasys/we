@@ -150,9 +150,10 @@ describe('authors and times', () => {
 });
 
 describe('the working value a whole-field edit starts from', () => {
-  const written = [tasks, JSON.stringify([{ task: 'a', complete: true }])];
-  it('is the last written while the stored value is one this view replaced or wrote', () => {
-    const working = JSON.stringify([{ task: 'a', complete: false }]);
+  // The history as acornWritten records it: what each edit replaced, ending with the value written last.
+  const working = JSON.stringify([{ task: 'a', complete: false }]);
+  const written = [tasks, JSON.stringify([{ task: 'a', complete: true }]), working];
+  it('is the last written while the stored value is one this view replaced on the way', () => {
     expect(call('acornWorking', { stored: tasks, working, written })).toBe(working);
     // The mount reads a list back with its keys in another order; it is still the same list.
     expect(call('acornWorking', { stored: '[{"complete":true,"task":"a"}]', working, written })).toBe(working);
@@ -161,6 +162,33 @@ describe('the working value a whole-field edit starts from', () => {
       'y',
     ]);
     expect(call('acornWorking', { stored: undefined, working: '[]', written: [undefined, '[]'] })).toBe('[]');
+  });
+  it('once the working value has read back, an earlier value stored again is drawn, not hidden', () => {
+    const history = [['x'], ['x', 'y']];
+    expect(call('acornWorking', { stored: ['x'], working: ['x', 'y'], written: history })).toEqual(['x', 'y']);
+    expect(call('acornWorking', { stored: ['x', 'y'], working: ['x', 'y'], written: history })).toEqual(['x', 'y']);
+    // Stock reverts after the read-back: no write is pending, so the revert is the list.
+    expect(call('acornWorking', { stored: ['x'], working: ['x', 'y'], written: history })).toEqual(['x']);
+  });
+  it('the history an edit records is text, extends an unsettled one, and starts afresh after a settled one', () => {
+    const stored = ['x'];
+    const first = call('acornWritten', { stored, working: ['x', 'y'], written: [] }) as string[];
+    expect(first).toEqual(['["x"]', '["x","y"]']);
+    // A subscription that reconciles its array in place cannot rewrite what was recorded.
+    stored.push('y');
+    expect(first).toEqual(['["x"]', '["x","y"]']);
+    // Unsettled (stored is still the replaced value): the next edit extends it.
+    expect(call('acornWritten', { stored: ['x'], working: ['x', 'y', 'z'], written: first })).toEqual([
+      '["x"]',
+      '["x","y"]',
+      '["x","y","z"]',
+    ]);
+    // Read back: the next edit's history holds only what it replaces and writes.
+    expect(call('acornWorking', { stored: ['x', 'y'], working: ['x', 'y'], written: first })).toEqual(['x', 'y']);
+    expect(call('acornWritten', { stored: ['x'], working: ['x', 'w'], written: first })).toEqual([
+      '["x"]',
+      '["x","w"]',
+    ]);
   });
   it("is the stored value when nothing was written, or the stored value is somebody else's", () => {
     expect(call('acornWorking', { stored: tasks, working: 'x', written: [] })).toBe(tasks);

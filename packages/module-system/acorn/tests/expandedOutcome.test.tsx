@@ -121,6 +121,8 @@ async function fixtureHost(options: HostOptions = {}) {
   const read = async (id: string) =>
     (await entity('AcornOutcome').findOne(handle, { where: { id } })) as Record<string, unknown> | null;
   const all = async (name: string) => (await entity(name).findAll(handle, {})) as Record<string, unknown>[];
+  /** Somebody else's write — stock Acorn's, say — reaching the store without passing this view. */
+  const remote = (name: string, id: string, fields: Record<string, unknown>) => entity(name).update(handle, id, fields);
 
   const errors: string[] = [];
   const stores = {
@@ -130,7 +132,7 @@ async function fixtureHost(options: HostOptions = {}) {
     $onError: (message: string) => errors.push(message),
     $modelsPending: () => false,
   };
-  return { stores, errors, writes, creates, read, all, flush, release };
+  return { stores, errors, writes, creates, read, all, flush, release, remote };
 }
 
 const Passthrough = (props: { children?: JSX.Element }) => props.children;
@@ -531,6 +533,42 @@ describe('the expanded outcome — children, tasks, comments', () => {
         ]),
       );
       expect(dialog(container)!.textContent).toContain('Tasks 1/3');
+    } finally {
+      unmount();
+    }
+  });
+
+  it("a task list reverted elsewhere after this view's write read back is drawn, and the next edit builds on it", async () => {
+    const { container, unmount, read, writes, remote } = await openList();
+    try {
+      const modal = await open(container, SMALL);
+      await waitFor(() => expect(checkboxNamed(modal, 'boots')).toBeTruthy());
+      type(labelled(modal, 'we-input', 'New task')!, 'a');
+      fireEvent.click(buttonNamed(modal, 'Add task')!);
+      await waitFor(async () =>
+        expect(await tasksOf(read, 'acorn-outcome-2')).toEqual([
+          { task: 'boots', complete: true },
+          { task: 'a', complete: false },
+        ]),
+      );
+      await waitFor(() => expect(checkboxNamed(dialog(container)!, 'a')).toBeTruthy());
+      // Read back. Then stock puts the list back as it was before this view's add.
+      await remote('AcornOutcome', 'acorn-outcome-2', {
+        taskList: JSON.stringify([{ task: 'boots', complete: true }]),
+      });
+      await waitFor(() => expect(checkboxNamed(dialog(container)!, 'a')).toBeUndefined());
+      type(labelled(dialog(container)!, 'we-input', 'New task')!, 'c');
+      await waitFor(() =>
+        expect((buttonNamed(dialog(container)!, 'Add task') as { disabled?: boolean }).disabled).toBe(false),
+      );
+      fireEvent.click(buttonNamed(dialog(container)!, 'Add task')!);
+      await waitFor(() => expect(writes).toHaveLength(2));
+      await waitFor(async () =>
+        expect(await tasksOf(read, 'acorn-outcome-2')).toEqual([
+          { task: 'boots', complete: true },
+          { task: 'c', complete: false },
+        ]),
+      );
     } finally {
       unmount();
     }
