@@ -101,6 +101,7 @@ export const EXECUTOR_CONFIG_KINDS: Readonly<Record<string, ExecutorConfigEntry[
   auto_permit_cap_requests: 'boolean',
   hc_admin_port: 'number',
   hc_app_port: 'number',
+  host: 'object',
   identity: 'object',
   local_ai_autostart: 'boolean',
   local_ai_device: 'text',
