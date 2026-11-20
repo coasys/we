@@ -277,4 +277,66 @@ describe('the Acorn projects dialog', () => {
     button(container, 'Show details').click();
     await vi.waitFor(() => expect(container.textContent).toContain('cell abc'));
   });
+
+  /*
+    Revealing one failure's details is not consent for the next one's: every
+    lifecycle call starts the disclosure collapsed again, so a second failure
+    opens with its raw cause hidden — unparked or on the parked card.
+  */
+  it('collapses the details again for the next failure — an unparked one after a revealed one', async () => {
+    const create = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('socket closed'))
+      .mockRejectedValueOnce(new Error('second wire text'));
+    const stores = fakeStores({ createAcornProject: create });
+    const { container } = render(() => (
+      <RenderSchema node={acornProjectsModalMount} stores={stores as never} registry={registry} />
+    ));
+
+    type(container, 'Project', 0);
+    type(container, 'a b c', 1);
+    button(container, 'Create project').click();
+    await vi.waitFor(() => expect(alertText(container)).toContain('That did not work'));
+    button(container, 'Show details').click();
+    await vi.waitFor(() => expect(container.textContent).toContain('socket closed'));
+
+    button(container, 'Create project').click();
+    await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect((button(container, 'Create project') as any).loading).toBe(false));
+    expect(container.textContent).not.toContain('second wire text');
+    const details = button(container, 'Show details');
+    expect((details as any).expanded).toBe(false);
+    details.click();
+    await vi.waitFor(() => expect(container.textContent).toContain('second wire text'));
+  });
+
+  it('collapses the details again for the next failure — a parked card after a revealed one', async () => {
+    const stores = fakeStores();
+    const { container } = render(() => (
+      <RenderSchema node={acornProjectsModalMount} stores={stores as never} registry={registry} />
+    ));
+    const failed = (cause: string): AcornOperationState => ({
+      phase: 'failed',
+      name: 'Rig Project',
+      datasetId: 'ds-1',
+      languageAddress: 'QmL',
+      failure: { stage: 'mount', cause, display: 'The executor stopped answering.', retryable: true },
+    });
+
+    stores.setPending(failed('first cause'));
+    await vi.waitFor(() => button(container, 'Show details'));
+    button(container, 'Show details').click();
+    await vi.waitFor(() => expect(container.textContent).toContain('first cause'));
+
+    // The Retry fails again, parking a new failure on the card.
+    (stores.spaceStore.retryAcornProject as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+      stores.setPending(failed('second cause'));
+      throw new Error('second cause');
+    });
+    button(container, 'Retry').click();
+    await vi.waitFor(() => expect(stores.spaceStore.retryAcornProject).toHaveBeenCalled());
+    await vi.waitFor(() => expect((button(container, 'Retry') as any).disabled).toBe(false));
+    expect(container.textContent).not.toContain('second cause');
+    expect((button(container, 'Show details') as any).expanded).toBe(false);
+  });
 });
