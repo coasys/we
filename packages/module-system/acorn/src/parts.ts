@@ -57,9 +57,9 @@ const CHILD_LINK = {
 
 /*
   The map's connections with its own moves drawn in before they read back (`acornPending`): a card
-  dragged or Shift+arrowed is drawn where it went at once, and the next move — or a connect, or a new
-  child's siblingOrder — starts from there rather than from the row as it was. A move refused by the
-  host drops them all; a move still in flight then reads back as somebody else's would.
+  dragged or Shift+arrowed is drawn where it went at once, and a new child's siblingOrder starts from
+  there rather than from the row as it was. No other move or connect starts until they read back
+  (MAP_WAITING). A move refused by the host drops them.
 */
 const MAP_CONNECTIONS = 'acornPending({ connections: local.connections, pending: local.moveWork })';
 
@@ -213,15 +213,32 @@ const DELETE_OUTCOME = [
   replaced on the way, the working set stands. Once the last line reads back — or a set this view
   never wrote arrives — the subscription is the truth again. A refused write drops the working set;
   a line still in flight then reads back unguarded, as somebody else's would.
+
+  The stored set is the subscription's own, without the map's moves drawn in: a move's optimistic
+  line is no value this history wrote, so counting it would settle the history at once.
 */
-const STORED_LINKS = `acornLinks({ connections: ${MAP_CONNECTIONS} })`;
+const STORED_LINKS = 'acornLinks({ connections: local.connections })';
 const LINKS = `acornWorking({ stored: ${STORED_LINKS}, working: local.linkWork, written: local.linkWritten })`;
+
+/*
+  Whether the map waits for its own writes to read back: a move's (in flight, or written and not yet
+  seen), or a connect's. A move plans from the lines as drawn, a connect is checked against the lines
+  as held, and each of those is the stored lines with that kind of write laid over them — so while
+  one kind waits, the other would plan from a set the first is about to change. Until the read-back,
+  no move starts, and no connect starts while a move waits; connects may follow connects, since their
+  history holds every line still in flight.
+*/
+const MOVE_WAITING =
+  'local.moving || count(acornPendingAdd({ connections: local.connections, pending: local.moveWork })) > 0';
+const LINK_WAITING = `acornWaiting({ stored: ${STORED_LINKS}, written: local.linkWritten })`;
+const MAP_WAITING = `${MOVE_WAITING} || ${LINK_WAITING}`;
 
 /*
   A move on the map (S2-9b) — a card dragged to another place in the tree, or Shift+←/→ on a selected
   card — is worked out whole by `acornArrange` / `acornSiblingMove` into `local.plan`, and carried out
-  here: at most two writes, since a handler runs a fixed list. One move at a time (`moving`), so a
-  second cannot start from a plan the first is still writing.
+  here: at most two writes, since a handler runs a fixed list. One move at a time, until it reads
+  back (MAP_WAITING), so a second cannot start from a plan the first is still writing or the
+  subscription has not caught up with.
 
   - Under another parent, the connection the card hangs from is moved: one `record.update` of its
     `parent` and `siblingOrder`. Stock deletes the old connection and creates a new one; here the
@@ -341,11 +358,14 @@ const RUN_MOVE = [
     },
   },
 ];
-const STILL_MOVING = { $setLocal: 'notice', value: 'Still saving the last move — try again in a moment.' };
+const STILL_MOVING = {
+  $setLocal: 'notice',
+  value: 'Still saving the last change — try again once the map shows it.',
+};
 const ARRANGE = [
   {
     $if: {
-      condition: { $: 'local.moving' },
+      condition: { $: MAP_WAITING },
       then: STILL_MOVING,
       else: [
         {
@@ -368,7 +388,7 @@ const SIBLING_KEYS = [
       },
       then: {
         $if: {
-          condition: { $: 'local.moving' },
+          condition: { $: MAP_WAITING },
           then: STILL_MOVING,
           else: [
             {
@@ -2083,7 +2103,7 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
                       {
                         $if: {
                           condition: {
-                            $: `acornConnectRefusal({ parent: event.sourceId, child: event.targetId, connections: ${LINKS} }) == ''`,
+                            $: `!(${MOVE_WAITING}) && acornConnectRefusal({ parent: event.sourceId, child: event.targetId, connections: ${LINKS} }) == ''`,
                           },
                           then: [
                             {
@@ -2113,9 +2133,15 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
                             },
                           ],
                           else: {
-                            $setLocal: 'notice',
-                            value: {
-                              $: `'Not connected. ' + acornConnectRefusal({ parent: event.sourceId, child: event.targetId, connections: ${LINKS} })`,
+                            $if: {
+                              condition: { $: MOVE_WAITING },
+                              then: STILL_MOVING,
+                              else: {
+                                $setLocal: 'notice',
+                                value: {
+                                  $: `'Not connected. ' + acornConnectRefusal({ parent: event.sourceId, child: event.targetId, connections: ${LINKS} })`,
+                                },
+                              },
                             },
                           },
                         },

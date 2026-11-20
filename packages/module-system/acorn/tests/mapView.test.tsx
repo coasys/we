@@ -733,7 +733,7 @@ describe('moving cards on the outcome map (S2-9b)', () => {
     }
   });
 
-  it('a second move before the first reads back starts from the first: the map draws it at once', async () => {
+  it('a move is drawn at once, and the next waits until it reads back', async () => {
     const { container, unmount, line, graph, updates, flush } = await moveMap({ lagUpdates: true });
     try {
       shiftArrow(container, graph(), 'acorn-outcome-2', 'ArrowLeft');
@@ -743,13 +743,98 @@ describe('moving cards on the outcome map (S2-9b)', () => {
       await waitFor(() =>
         expect(drawnUnder(graph(), 'acorn-outcome-1')).toEqual(['acorn-outcome-2', 'acorn-outcome-3']),
       );
-      // Already leftmost as written: a second Shift+← has nowhere to go, rather than swapping back.
-      shiftArrow(container, graph(), 'acorn-outcome-2', 'ArrowLeft');
+      // A second Shift+→ before the read-back is refused, rather than planned from the drawn row.
+      shiftArrow(container, graph(), 'acorn-outcome-2', 'ArrowRight');
       await new Promise((r) => setTimeout(r, 20));
       expect(updates).toHaveLength(2);
+      expect(container.textContent).toContain('Still saving');
       await flush();
       await waitFor(async () => expect((await line('acorn-outcome-2')).siblingOrder).toBe(1));
       expect(drawnUnder(graph(), 'acorn-outcome-1')).toEqual(['acorn-outcome-2', 'acorn-outcome-3']);
+      // Read back: it moves again.
+      shiftArrow(container, graph(), 'acorn-outcome-2', 'ArrowRight');
+      await waitFor(() => expect(updates).toHaveLength(4));
+    } finally {
+      unmount();
+    }
+  });
+
+  /*
+    Lal's two cases. A move or a connect holds the map until it reads back, not only until its write
+    returns: a second move of the same line would plan from the first's optimistic value, and a move
+    made while a connect waits would change the stored lines the connect's guard compares with.
+  */
+  it('a second move while the first waits for read-back is refused, so the first is not lost', async () => {
+    const { container, unmount, all, line, entity, handle, graph, updates, creates, flush } = await moveMap({
+      lagUpdates: true,
+    });
+    try {
+      // r = 1 over 3 (B), 2 (A) and X (C).
+      const x = (await entity('AcornOutcome').create(handle, { content: 'X', scopeType: 'Uncertain' })) as {
+        id: string;
+      };
+      await entity('AcornConnection').create(handle, { parent: 'acorn-outcome-1', child: x.id, siblingOrder: -1 });
+      await waitFor(() => expect(drawnUnder(graph(), 'acorn-outcome-1')).toHaveLength(3));
+      // A under B: the update returns, the read-back waits.
+      arrange(graph(), 'acorn-outcome-2', { into: 'child', target: 'acorn-outcome-3', order: ['acorn-outcome-2'] });
+      await waitFor(() => expect(updates).toHaveLength(1));
+      await waitFor(() => expect(drawnUnder(graph(), 'acorn-outcome-3')).toEqual(['acorn-outcome-2']));
+      // A under C before it reads back: refused, the first move still drawn.
+      arrange(graph(), 'acorn-outcome-2', { into: 'child', target: x.id, order: ['acorn-outcome-2'] });
+      await new Promise((r) => setTimeout(r, 20));
+      expect(updates).toHaveLength(1);
+      expect(container.textContent).toContain('Still saving');
+      expect(drawnUnder(graph(), 'acorn-outcome-3')).toEqual(['acorn-outcome-2']);
+      // A connect waits for it too.
+      connect(graph(), x.id, 'acorn-outcome-3');
+      await new Promise((r) => setTimeout(r, 20));
+      expect(creates.filter((c) => c.entity === 'AcornConnection')).toEqual([]);
+      await flush();
+      await waitFor(async () => expect((await line('acorn-outcome-2')).parent).toBe('acorn-outcome-3'));
+      // Read back: the map is free again, and B under A is the loop it is.
+      arrange(graph(), 'acorn-outcome-3', { into: 'child', target: 'acorn-outcome-2', order: ['acorn-outcome-3'] });
+      await waitFor(() => expect(container.textContent).toContain('loop'));
+      expect(updates).toHaveLength(1);
+      const lines = (await all()).map((c) => [c.parent, c.child]);
+      expect(lines).toContainEqual(['acorn-outcome-3', 'acorn-outcome-2']);
+      expect(lines).not.toContainEqual(['acorn-outcome-2', 'acorn-outcome-3']);
+    } finally {
+      unmount();
+    }
+  });
+
+  it('a move while a connect waits for read-back is refused, and the connect still guards its line', async () => {
+    const { container, unmount, all, entity, handle, graph, updates, creates, flush } = await moveMap({
+      lagUpdates: true,
+      lagConnections: true,
+    });
+    try {
+      const lines = () => creates.filter((c) => c.entity === 'AcornConnection');
+      const x = (await entity('AcornOutcome').create(handle, { content: 'X', scopeType: 'Uncertain' })) as {
+        id: string;
+      };
+      await entity('AcornConnection').create(handle, { parent: 'acorn-outcome-1', child: x.id, siblingOrder: -1 });
+      await waitFor(() => expect(drawnUnder(graph(), 'acorn-outcome-1')).toHaveLength(3));
+      connect(graph(), 'acorn-outcome-2', 'acorn-outcome-3');
+      await waitFor(() => expect(lines()).toHaveLength(1));
+      // An unrelated reparent before the line reads back: refused.
+      arrange(graph(), x.id, { into: 'child', target: 'acorn-outcome-2', order: [x.id] });
+      await new Promise((r) => setTimeout(r, 20));
+      expect(updates).toEqual([]);
+      expect(container.textContent).toContain('Still saving');
+      // The line in flight still guards: the reverse is a loop, the same again already under.
+      connect(graph(), 'acorn-outcome-3', 'acorn-outcome-2');
+      await waitFor(() => expect(container.textContent).toContain('loop'));
+      connect(graph(), 'acorn-outcome-2', 'acorn-outcome-3');
+      await waitFor(() => expect(container.textContent).toContain('already under'));
+      expect(lines()).toHaveLength(1);
+      await flush();
+      await waitFor(() => expect(graph().seeds?.edges).toHaveLength(4));
+      // Read back: the move goes through now.
+      arrange(graph(), x.id, { into: 'child', target: 'acorn-outcome-2', order: [x.id] });
+      await waitFor(() => expect(updates).toHaveLength(1));
+      const stored = (await all()).map((c) => [c.parent, c.child]);
+      expect(stored).not.toContainEqual(['acorn-outcome-3', 'acorn-outcome-2']);
     } finally {
       unmount();
     }

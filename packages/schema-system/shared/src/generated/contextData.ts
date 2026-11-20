@@ -5248,7 +5248,7 @@ export const contextData: ContextData = {
         {
           name: 'acornPendingAdd',
           params: ['connections', 'pending', 'add'],
-          doc: 'The pending move writes after one more move: those still standing (see acornPending), less any for a connection `add` writes again, then `add`.',
+          doc: 'The pending move writes after one more move: those still standing (see acornPending), less any for a connection `add` writes again, then `add`. Without `add`, the writes still standing — none once every one has read back.',
           example:
             'acornPendingAdd({ connections: local.connections, pending: local.moveWork, add: local.plan.pending })',
         },
@@ -5257,6 +5257,12 @@ export const contextData: ContextData = {
           params: ['stored', 'working', 'written'],
           doc: 'The whole-field value the next edit starts from. `stored` is the value as subscribed, `working` the last one this view wrote, `written` its history (acornWritten). While that write is unsettled — the stored value is one it replaced on the way — the working value stands, so an edit builds on the one before it. Once the stored value is the one written, or one this view never saw, the history is settled for good and the stored value is the truth again, so a later change elsewhere back to an earlier value is drawn.',
           example: 'acornWorking({ stored: outcome.taskList, working: local.taskWork, written: local.taskWritten })',
+        },
+        {
+          name: 'acornWaiting',
+          params: ['stored', 'written'],
+          doc: 'Whether a whole-field write is still waiting to read back: `written` (its history, acornWritten) is unsettled against `stored`, the value as subscribed — see acornWorking.',
+          example: 'acornWaiting({ stored: outcome.taskList, written: local.taskWritten })',
         },
         {
           name: 'acornWritten',

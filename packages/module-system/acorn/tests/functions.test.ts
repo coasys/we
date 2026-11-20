@@ -656,4 +656,21 @@ describe('acornPending', () => {
       call('acornPendingAdd', { connections: [edge('r', 'a', 1), edge('r', 'b', 9)], pending: p, add: [] }),
     ).toEqual([]);
   });
+
+  it('without `add`, acornPendingAdd is the writes still waiting — none for a write of the value already there', () => {
+    const p = pending.map((e) => ({ ...e }));
+    expect(call('acornPendingAdd', { connections: stored, pending: p })).toEqual(p);
+    const noop = [{ id: 'r>a', was: { parent: 'r', siblingOrder: 2 }, now: { parent: 'r', siblingOrder: 2 } }];
+    expect(call('acornPendingAdd', { connections: stored, pending: noop })).toEqual([]);
+  });
+});
+
+describe('acornWaiting', () => {
+  it('is true while a whole-field history is unsettled, false once it reads back or is overtaken', () => {
+    const written = call('acornWritten', { stored: 'a', working: 'b', written: [] });
+    expect(call('acornWaiting', { stored: 'a', written })).toBe(true);
+    expect(call('acornWaiting', { stored: 'b', written })).toBe(false);
+    expect(call('acornWaiting', { stored: 'a', written })).toBe(false);
+    expect(call('acornWaiting', { stored: 'a', written: [] })).toBe(false);
+  });
 });

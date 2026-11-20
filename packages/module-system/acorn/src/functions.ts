@@ -820,7 +820,9 @@ const standing = (connections: Record<string, unknown>[], value: unknown): Map<s
   for (const w of pendingWrites(value)) {
     const c = byId.get(w.id);
     if (settledWrites.has(w) || !c) continue;
-    if (refId(c.parent) === w.was.parent && num(c.siblingOrder) === w.was.siblingOrder) live.set(w.id, w);
+    // A write of the value already there has nothing to read back.
+    const same = w.now.parent === w.was.parent && w.now.siblingOrder === w.was.siblingOrder;
+    if (!same && refId(c.parent) === w.was.parent && num(c.siblingOrder) === w.was.siblingOrder) live.set(w.id, w);
     else settledWrites.add(w);
   }
   return live;
@@ -1147,7 +1149,7 @@ export const ACORN_FUNCTIONS: ModuleFunction[] = [
   {
     name: 'acornPendingAdd',
     params: ['connections', 'pending', 'add'],
-    doc: 'The pending move writes after one more move: those still standing (see acornPending), less any for a connection `add` writes again, then `add`.',
+    doc: 'The pending move writes after one more move: those still standing (see acornPending), less any for a connection `add` writes again, then `add`. Without `add`, the writes still standing — none once every one has read back.',
     example: 'acornPendingAdd({ connections: local.connections, pending: local.moveWork, add: local.plan.pending })',
     fn: (...args: never[]) => {
       const add = pendingWrites(option(args, 'add'));
@@ -1169,6 +1171,13 @@ export const ACORN_FUNCTIONS: ModuleFunction[] = [
       // Read back: the two are the same value, and the one this view holds keeps its form.
       return Array.isArray(written) && written.length && canonical(working) === canonical(stored) ? working : stored;
     },
+  },
+  {
+    name: 'acornWaiting',
+    params: ['stored', 'written'],
+    doc: 'Whether a whole-field write is still waiting to read back: `written` (its history, acornWritten) is unsettled against `stored`, the value as subscribed — see acornWorking.',
+    example: 'acornWaiting({ stored: outcome.taskList, written: local.taskWritten })',
+    fn: (...args: never[]) => pendingHistory(option(args, 'stored'), option(args, 'written')).length > 0,
   },
   {
     name: 'acornWritten',
