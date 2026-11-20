@@ -177,6 +177,30 @@ checkout run a local build path. \`pnpm dev:electron\` runs the same command wit
 \`[ad4m:executor]\` line rather than scrolling past it. Details:
 \`docs/contributing/ad4m-and-deploys.md\`, "The executor you run locally".
 
+### End-to-end tests: three kinds
+
+Beyond the jsdom suites, WE has three kinds of test that need a real browser or a real executor.
+\`pnpm e2e\` lists every suite; \`pnpm e2e <suite>\` builds what it needs, fetches the executor and runs
+it. The helpers they share (start an executor, sign up an account, serve a build under the
+production CSP, find Chrome, wait, keep artifacts) are \`@we/e2e\` (\`packages/e2e\`). The full map,
+env vars and CI homes: \`docs/testing/e2e.md\`.
+
+| Kind | Where | Runner · suffix | Run | CI |
+|---|---|---|---|---|
+| **Browser layout** — real Chrome, no executor | \`packages/app-shell/tests/browser/\`; \`3-primitives/src/*.browser.test.ts\` | own runner (\`run.mjs\`); vitest · \`.browser.test.ts\` | \`pnpm e2e browser-layout\`, \`pnpm e2e primitives-browser\` | \`build.yaml\` test job |
+| **Live contract** — one surface against a real executor | \`packages/backend-system/ad4m/tests/live/\`; \`crates/custody/tests/live.rs\` | vitest · \`.live.ts\`; cargo (\`CUSTODY_LIVE=1\`) | \`pnpm e2e backend-live\` (= \`pnpm verify:ad4m\`), \`pnpm e2e custody-live\` | \`ad4m-live.yaml\` \`live\`; custody: by hand |
+| **Journey** — the built app, a person's path through it | \`apps/we-web/e2e/\` (steps in \`e2e/steps/\`) | node:test · \`.e2e.mjs\` | \`pnpm e2e calls\`, \`pnpm e2e spaces [--tier stub\\|real] [--only v1,v2]\` | \`ad4m-live.yaml\` \`calls\` and \`spaces\` (stub); real tier: the ad4m nightly |
+
+Every live test runs a fresh **multi-user** executor from the same chooser, as a hosted node does, and
+signs up an account on it. The spaces suite is the coasys-spaces product suite (space, call and
+extraction, social DNA, two workflows, an agent over MCP, the canvas, the page and a theme) — a stub
+LLM by default, \`--tier real\` for a real model. Its Feed checks are \`it.todo\`, pending a product bug
+(the Feed does not read a class a bundle declares); its env vars and backlog are in
+\`apps/we-web/e2e/coasys-spaces/README.md\`. A failing journey step leaves a screenshot, the page's
+aria snapshot and the executor log in \`WE_E2E_ARTIFACTS\` (a temp dir otherwise). Selectors are roles
+and accessible names: when one is missing, add a \`label\` to the product node rather than reaching for
+a CSS selector.
+
 ### Building the AD4M Executor Binary
 
 Only when changing ad4m (see above). The ad4m repo has two artefacts with confusingly similar names:

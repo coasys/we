@@ -11,6 +11,9 @@
  *
  * - `switching` — another account was chosen and the app is restarting against it. Not a boot state:
  *   it can begin from signing in or from setting up, and looks the same either way.
+ * - `setUpAi` — a new account's identity is made and its profile published, and the person is asked
+ *   where its AI runs: this device, a model server, or nothing for now. Asked once per account, and
+ *   only where the node has no model and this connection may set one up (see `aiSetupStep.ts`).
  * - `settingUp` — a new account's identity is being made and its name and picture published. Spans
  *   two boot states (`createAgent` while the keys are made, then `finishing`), meaningless to whoever
  *   pressed the button.
@@ -22,7 +25,7 @@
  * - `ready` — signed in; the screen goes.
  */
 export type SignInStep =
-  'switching' | 'settingUp' | 'starting' | 'preparing' | 'unlock' | 'create' | 'failed' | 'ready';
+  'switching' | 'setUpAi' | 'settingUp' | 'starting' | 'preparing' | 'unlock' | 'create' | 'failed' | 'ready';
 
 export interface SignInFacts {
   bootState: 'initialising' | 'login' | 'createAgent' | 'finishing' | 'ready' | 'error';
@@ -32,11 +35,14 @@ export interface SignInFacts {
   switching: boolean;
   /** Room is being made for a new account. */
   creatingAccount: boolean;
+  /** A first run is holding the app back for the AI step. */
+  settingUpAi: boolean;
 }
 
 export function signInStep(facts: SignInFacts): SignInStep {
   if (facts.bootState === 'ready') return 'ready';
   if (facts.switching) return 'switching';
+  if (facts.settingUpAi && facts.bootState === 'finishing') return 'setUpAi';
   if (facts.createAgentLoading || facts.bootState === 'finishing') return 'settingUp';
   switch (facts.bootState) {
     case 'initialising':

@@ -182,6 +182,13 @@ export interface Fixture {
     enabledViews?: string[];
     /** The modules the community has on — `Space.enabledModules`. Absent means the default. */
     enabledModules?: string[];
+    /**
+     * The id of the {@link records} entry that is the space collection — `Space.root`, the one
+     * collection everything top-level hangs off. A real space gets it from `createSpace` before
+     * anything else; a fixture names it, because the canvases and feeds a template draws scope to
+     * it. Without it `spaceStore.root` is empty and every member-scoped query answers nothing.
+     */
+    root?: string;
   };
   agents: FixtureAgent[];
   signalTypes?: FixtureSignalType[];

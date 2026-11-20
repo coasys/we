@@ -7,6 +7,8 @@ import {
   createHeartbeatPresence,
   DEFAULT_THRESHOLDS,
   derivePeers,
+  isPresenceFarewell,
+  mergeClients,
   type Peer,
   peersInDataset,
   peersMatching,
@@ -260,7 +262,9 @@ describe('createHeartbeatPresence', () => {
 
   it('sends a hello on start so peers re-announce', () => {
     const { published } = start();
-    expect(published).toEqual([{ v: 1, state: expect.objectContaining({ agentId: 'me' }), hello: true }]);
+    expect(published).toEqual([
+      { v: 1, client: expect.any(String), state: expect.objectContaining({ agentId: 'me' }), hello: true },
+    ]);
   });
 
   it('repeats the handshake while nobody answers', () => {
@@ -445,7 +449,9 @@ describe('createHeartbeatPresence', () => {
 
     source.announce();
 
-    expect(published).toEqual([{ v: 1, state: expect.objectContaining({ agentId: 'me' }), hello: true }]);
+    expect(published).toEqual([
+      { v: 1, client: expect.any(String), state: expect.objectContaining({ agentId: 'me' }), hello: true },
+    ]);
   });
 
   it('ignores announce before start, so a host may register its callback first', () => {
@@ -640,5 +646,127 @@ describe('createHeartbeatPresence', () => {
 
     expect(published).toHaveLength(0);
     expect(source.peers()).toEqual([]);
+  });
+
+  describe('one agent on several clients — tabs, devices', () => {
+    function startAs(client: string, overrides: Partial<PresenceState> = {}) {
+      const fake = createFakeChannel();
+      const source = createHeartbeatPresence(fake.channel, { now, client });
+      source.start(state('me', overrides));
+      return { ...fake, source };
+    }
+    const call: Activity = { type: 'call', id: 'call-1' };
+
+    it('says which client it is in every message', () => {
+      const { published } = startAs('tab-a');
+      expect(published[0]).toMatchObject({ v: 1, client: 'tab-a' });
+    });
+
+    it('hears a sibling client of its own agent, and sees what it is doing', () => {
+      // The tab that is not in the call must see the call its sibling is in, or it offers to start
+      // a second one beside it.
+      const { deliver, source } = startAs('tab-b');
+      deliver('me', { v: 1, client: 'tab-a', state: state('me', { activities: [call] }) });
+
+      const me = source.peers().filter((p) => p.agentId === 'me');
+      expect(me).toHaveLength(1);
+      expect(me[0].activities).toEqual([call]);
+    });
+
+    it('still drops its own echo', () => {
+      const { deliver, source } = startAs('tab-a');
+      deliver('me', { v: 1, client: 'tab-a', state: state('me', { activities: [call] }) });
+      expect(source.peers().find((p) => p.agentId === 'me')?.activities ?? []).toEqual([]);
+    });
+
+    it('describes its own agent by itself, whatever a sibling is looking at', () => {
+      const { deliver, source } = startAs('tab-b', { focus: { datasetUri: SPACE, path: '/here' } });
+      clock = 1_000;
+      deliver('me', { v: 1, client: 'tab-a', state: state('me', { focus: { datasetUri: SPACE, path: '/there' } }) });
+      expect(source.peers().find((p) => p.agentId === 'me')?.focus?.path).toBe('/here');
+    });
+
+    it("shows another agent once, with every one of its clients' activities", () => {
+      // Two devices of one person, the laptop in the call and the phone not. Keyed by agent, each
+      // message overwrote the last, and the person flickered in and out of the call.
+      const { deliver, source } = startAs('mine');
+      deliver('anna', { v: 1, client: 'laptop', state: state('anna', { activities: [call] }) });
+      clock = 1_000;
+      deliver('anna', { v: 1, client: 'phone', state: state('anna', { activities: [] }) });
+
+      const anna = source.peers().filter((p) => p.agentId === 'anna');
+      expect(anna).toHaveLength(1);
+      expect(anna[0].activities).toEqual([call]);
+      expect(anna[0].updatedAt).toBe(1_000);
+    });
+
+    it('a bye from one client leaves the agent standing on the others', () => {
+      const { deliver, source } = startAs('mine');
+      deliver('anna', { v: 1, client: 'laptop', state: state('anna', { activities: [call] }) });
+      deliver('anna', { v: 1, client: 'phone', state: state('anna') });
+
+      deliver('anna', { v: 1, client: 'phone', state: state('anna'), bye: true });
+
+      const anna = source.peers().filter((p) => p.agentId === 'anna');
+      expect(anna).toHaveLength(1);
+      expect(anna[0].activities).toEqual([call]);
+    });
+
+    it('does not bring an offline client back to life through a live sibling', () => {
+      const { deliver, source } = startAs('mine');
+      deliver('anna', { v: 1, client: 'laptop', state: state('anna', { activities: [call] }) });
+      clock = DEFAULT_THRESHOLDS.offlineAfter + 1;
+      deliver('anna', { v: 1, client: 'phone', state: state('anna') });
+
+      expect(source.peers().find((p) => p.agentId === 'anna')?.activities).toEqual([]);
+    });
+
+    it('withdraw retracts what this client said and keeps listening', () => {
+      const { deliver, published, source } = startAs('tab-a');
+      published.length = 0;
+
+      source.withdraw();
+
+      expect(published).toEqual([expect.objectContaining({ v: 1, client: 'tab-a', bye: true })]);
+      deliver('anna', { v: 1, client: 'x', state: state('anna') });
+      expect(source.peers().map((p) => p.agentId)).toContain('anna');
+    });
+  });
+});
+
+describe('isPresenceFarewell', () => {
+  it('is true of a bye and of nothing else', () => {
+    expect(isPresenceFarewell({ v: 1, state: state('me'), bye: true })).toBe(true);
+    expect(isPresenceFarewell({ v: 1, state: state('me') })).toBe(false);
+    expect(isPresenceFarewell({ bye: true })).toBe(false);
+    expect(isPresenceFarewell(null)).toBe(false);
+  });
+});
+
+describe('mergeClients', () => {
+  it('leaves an agent with one client untouched', () => {
+    const only = state('anna', { updatedAt: 5 });
+    expect(mergeClients([only], 10)).toEqual([only]);
+  });
+
+  it('takes one activity per type and id, the freshest client winning', () => {
+    const merged = mergeClients(
+      [
+        state('anna', { updatedAt: 1, activities: [{ type: 'call', id: 'c', media: undefined }] }),
+        state('anna', {
+          updatedAt: 2,
+          activities: [
+            { type: 'call', id: 'c' },
+            { type: 'edit', nodeId: 'n' },
+          ],
+        }),
+      ],
+      3,
+    );
+    expect(merged).toHaveLength(1);
+    expect(merged[0].activities).toEqual([
+      { type: 'call', id: 'c' },
+      { type: 'edit', nodeId: 'n' },
+    ]);
   });
 });

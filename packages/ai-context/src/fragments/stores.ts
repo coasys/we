@@ -98,6 +98,10 @@ export const storeEntries: StoreEntry[] = [
       mcpEnabled: { type: 'boolean' },
       mcpPort: { type: 'number' },
       executorRestartPending: { type: 'boolean' },
+      executorConfigFile: { type: 'string' },
+      executorConfigRows: { type: 'array', properties: ['id', 'key', 'value', 'kind', 'choice', 'editable', 'note'] },
+      executorLogTail: { type: 'string' },
+      canRestartExecutor: { type: 'boolean' },
       canBackUp: { type: 'boolean' },
       logLevels: { type: 'array', properties: ['crate', 'level'] },
       backupStatus: { type: 'string' },
@@ -107,52 +111,100 @@ export const storeEntries: StoreEntry[] = [
           'id',
           'name',
           'kind',
-          'source',
+          'endpointId',
+          'remoteModel',
+          'status',
           'isDefault',
           'kindLabel',
-          'sourceLabel',
-          'detail',
+          'endpointName',
           'statusText',
           'ready',
         ],
       },
       aiTasks: { type: 'array', properties: ['id', 'name', 'modelId', 'systemPrompt'] },
-      aiForm: {
-        type: 'object',
+      aiForm: { type: 'object', properties: ['id', 'name', 'kind', 'endpointId', 'remoteModel'] },
+      aiFormComplete: { type: 'boolean' },
+      aiFormDirty: { type: 'boolean' },
+      aiEndpointOptions: { type: 'array', properties: ['label', 'value'] },
+      canDiscoverAiModels: { type: 'boolean' },
+      aiDiscoveredModelOptions: { type: 'array', properties: ['label', 'value'] },
+      aiDiscoveredModelHint: { type: 'string' },
+      aiRecommendedModel: { type: 'string' },
+      aiCanPull: { type: 'boolean' },
+      aiPullText: { type: 'string' },
+      canManageAiEndpoints: { type: 'boolean' },
+      aiEndpoints: {
+        type: 'array',
         properties: [
           'id',
           'name',
           'kind',
-          'sourceKind',
-          'presetName',
-          'apiService',
-          'apiProtocol',
-          'apiBaseUrl',
+          'baseUrl',
+          'hasApiKey',
+          'capabilities',
+          'health',
+          'kindLabel',
+          'healthText',
+          'healthy',
+          'modelCount',
+          'managed',
+          'editable',
+        ],
+      },
+      aiDetectedEndpoints: {
+        type: 'array',
+        properties: ['kind', 'baseUrl', 'capabilities', 'models', 'label', 'detail'],
+      },
+      aiInstallLinks: { type: 'array', properties: ['label', 'url'] },
+      aiEndpointForm: {
+        type: 'object',
+        properties: [
+          'id',
+          'name',
+          'service',
+          'kind',
+          'baseUrl',
           'apiKey',
           'apiKeyStored',
           'apiKeyBaseUrl',
           'apiKeyRemoved',
-          'apiModel',
-          'apiMaxContext',
-          'hfRepo',
-          'hfRevision',
-          'hfFileName',
-          'filePath',
-          'useTokenizer',
-          'tokenizerRepo',
-          'tokenizerRevision',
-          'tokenizerFileName',
+          'maxContext',
         ],
       },
-      aiPresetOptions: { type: 'array', properties: ['label', 'value'] },
-      aiFormComplete: { type: 'boolean' },
+      aiEndpointFormComplete: { type: 'boolean' },
+      aiEndpointFormDirty: { type: 'boolean' },
       aiMaxContextError: { type: 'string' },
       aiApiKeyError: { type: 'string' },
-      aiDiscoverNeedsKey: { type: 'boolean' },
-      aiFormDirty: { type: 'boolean' },
       aiServiceOptions: { type: 'array', properties: ['label', 'value'] },
-      canDiscoverAiModels: { type: 'boolean' },
-      aiDiscoveredModelOptions: { type: 'array', properties: ['label', 'value'] },
+      canUseLocalAi: { type: 'boolean' },
+      canConfigureLocalAi: { type: 'boolean' },
+      localAi: {
+        type: 'object',
+        properties: [
+          'loaded',
+          'device',
+          'gpus',
+          'compute',
+          'budget',
+          'notes',
+          'items',
+          'unavailable',
+          'reasons',
+          'fits',
+          'summary',
+          'installLabel',
+          'installed',
+          'incomplete',
+          'installing',
+          'running',
+          'anyRunning',
+          'canStart',
+          'runtimes',
+          'progress',
+          'canInstall',
+        ],
+      },
+      aiSetupOptions: { type: 'array' },
       languages: { type: 'array', properties: ['address', 'name', 'system'] },
       trustedAgents: { type: 'array' },
       authorizedApps: {
@@ -176,18 +228,36 @@ export const storeEntries: StoreEntry[] = [
       'exportDatabase',
       'importDatabase',
       'restartExecutor',
+      'setExecutorConfigValue',
+      'loadExecutorLogTail',
       'loadAiModels',
       'loadAiTasks',
       'newAiModel',
       'editAiModel',
       'setAiFormField',
-      'setAiService',
       'discoverAiModels',
+      'pullAiModel',
       'closeAiForm',
       'saveAiModel',
       'removeAiModel',
       'setDefaultAiModel',
       'removeAiTask',
+      'detectAiEndpoints',
+      'addDetectedEndpoint',
+      'newAiEndpoint',
+      'editAiEndpoint',
+      'setAiEndpointField',
+      'setAiService',
+      'closeAiEndpointForm',
+      'saveAiEndpoint',
+      'removeAiEndpoint',
+      'loadLocalAi',
+      'installLocalAi',
+      'startLocalAi',
+      'stopLocalAi',
+      'removeLocalAi',
+      'skipAiSetup',
+      'finishAiSetup',
       'loadLanguages',
       'installLanguage',
       'removeLanguage',
@@ -219,6 +289,7 @@ export const storeEntries: StoreEntry[] = [
       currentDataset: { type: 'object', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
       currentDatasetCid: { type: 'string' },
       currentDatasetEntities: { type: 'array' },
+      currentDatasetEntitiesLoaded: { type: 'boolean' },
       isWeSpace: { type: 'boolean' },
       joinedSpaceCids: { type: 'array' },
       datasetsLoaded: { type: 'boolean' },
@@ -362,6 +433,7 @@ export const storeEntries: StoreEntry[] = [
           'avatar',
           'kind',
           'isWeSpace',
+          'loading',
           'canAdminister',
           'modules',
           'shareLink',
@@ -419,6 +491,8 @@ export const storeEntries: StoreEntry[] = [
       },
       taskStatesLoaded: { type: 'boolean' },
       root: { type: 'string' },
+      rootLoaded: { type: 'boolean' },
+      firstScreenOpen: { type: 'boolean' },
       landmarks: { type: 'object' },
       landmarksLoaded: { type: 'boolean' },
       starterChoices: { type: 'array' },
@@ -535,6 +609,7 @@ export const storeEntries: StoreEntry[] = [
       generating: { type: 'boolean' },
       hintEntities: { type: 'array', properties: ['entity', 'source'] },
       extractionCandidates: { type: 'array' },
+      extractionCandidatesLoaded: { type: 'boolean' },
       extractionNeedsIdentity: { type: 'boolean' },
       relationshipTargets: { type: 'array', properties: ['label', 'value'] },
       identityOptions: { type: 'array', properties: ['label', 'value'] },
@@ -643,6 +718,14 @@ export const storeEntries: StoreEntry[] = [
     ],
   },
   {
+    name: 'chatStore',
+    state: {
+      sheet: { type: 'object' },
+      isNarrow: { type: 'boolean' },
+    },
+    actions: ['openChat', 'closeSheet'],
+  },
+  {
     name: 'appStore',
     state: {
       apps: { type: 'array', properties: ['id', 'name', 'image'] },
@@ -669,12 +752,28 @@ export const storeEntries: StoreEntry[] = [
       canEdit: { type: 'boolean' },
       workflows: {
         type: 'array',
-        properties: ['name', 'label', 'editable', 'records', 'managedBy', 'archived', 'steps', 'moves'],
+        properties: ['name', 'label', 'editable', 'records', 'running', 'managedBy', 'archived', 'steps', 'moves'],
       },
       startable: { type: 'array', properties: ['name', 'label', 'entities'] },
       open: { type: 'object' },
       draft: { type: 'object' },
       recordWorkflows: { type: 'object' },
+      active: {
+        type: 'array',
+        properties: [
+          'id',
+          'workflow',
+          'label',
+          'record',
+          'title',
+          'kind',
+          'state',
+          'stateLabel',
+          'lastActivity',
+          'waiting',
+          'stalled',
+        ],
+      },
     },
     actions: [
       'refreshWorkflows',
@@ -768,6 +867,19 @@ export const storeEntries: StoreEntry[] = [
  * {@link actionsNeedingArgs}.
  */
 const descriptions: Record<string, { state: Record<string, string>; actions: Record<string, string> }> = {
+  chatStore: {
+    state: {
+      sheet:
+        'the chat a narrow window is showing as a sheet — what it was asked for ({ perspectiveUuid?, spaceName?, draft? }) or null. Read by AgentChatSheet, not by templates',
+      isNarrow:
+        'true below the viewport width where a floating panel stops being usable — the point at which openChat sends a chat to the sheet instead of a panel',
+    },
+    actions: {
+      openChat:
+        "(input?: { perspectiveUuid?: string; spaceName?: string; draft?: string }): opens an AI chat — global with no perspectiveUuid (the session carries no capabilities, so it reaches everything the app's token does), or scoped to that one perspective with 'this space only'. `draft` is a question the chat opens a fresh conversation for and sends at once. A panel on desktop, the bottom sheet on a phone",
+      closeSheet: '(): puts the phone sheet away',
+    },
+  },
   clipboard: {
     state: {},
     actions: {
@@ -780,7 +892,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       me: 'Agent | undefined — the authenticated identity; prefer the $me token in schemas',
       bootState: "string — 'initialising' | 'login' | 'createAgent' | 'finishing' | 'ready' | 'error'",
       signInStep:
-        "string — which step of signing in the screen is on: 'switching' | 'settingUp' | 'starting' | 'preparing' | 'unlock' | 'create' | 'failed' | 'ready'. One answer, in that order of precedence — a sign-in screen draws the step this names rather than working it out from bootState and the account flags",
+        "string — which step of signing in the screen is on: 'switching' | 'setUpAi' | 'settingUp' | 'starting' | 'preparing' | 'unlock' | 'create' | 'failed' | 'ready'. One answer, in that order of precedence — a sign-in screen draws the step this names rather than working it out from bootState and the account flags",
       bootError: "string — why the boot failed, when bootState is 'error'. Empty otherwise",
       passwordError:
         'boolean — true after an unlock the backend refused. Not set when it merely timed out; see loginError',
@@ -802,6 +914,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         'boolean — whether this build has developer features at all: a dev server, or a deploy of work in progress (a preview). The ceiling devTools sits under. Gate the way to the developer switch on this',
       devTools:
         'boolean — whether developer affordances should be VISIBLE. True in a development build unless a developer has thrown the Settings → Developer switch to see what a shipped app looks like. Reactive, so a control gated on it appears and disappears on the press. Gate any developer-only control on this — a schema-test page, a fixture toggle — and wrap it in $if rather than hiding it, since a hidden row is still in the accessibility tree and still found by find-in-page. Never true in a production build, whatever the switch says',
+      testPeople:
+        'boolean — whether the test people are offered: fake participants and fake cursors in a call, pretend people on a weighed canvas. OFF until a developer turns it on in Settings → Developer, and never on while devTools is off. Gate any control that puts people on screen who are not there on this, not on devTools',
       credentialEntered:
         "boolean — something has been typed into the host's password field. The password itself is never readable from a template — see CredentialField — so gate a Sign in button on this",
       credentialConfirmed:
@@ -820,6 +934,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '(): starts the whole boot again from the failure screen, by reloading. A failed boot can have got anywhere before it threw, so retrying in place would race the remains of the first attempt',
       finishSetup: "(): leaves 'finishing' for the running app — sets bootState to 'ready'",
       logout: '(): locks the agent and returns to the login screen',
+      setTestPeople:
+        '(on: boolean): turns the test people on or off for this device. Takes the value a we-switch emits, so pass `event.detail` bare. While devTools is off the device keeps the choice, but testPeople stays false until devTools is on again',
       setDevTools:
         '(on: boolean): shows or hides developer affordances for this session. Takes the value the control shows, so a we-switch can pass `event.detail` bare. Cannot turn developer UI on in a production build',
     },
@@ -873,32 +989,67 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       mcpEnabled: 'boolean — whether the backend serves MCP on its next start',
       mcpPort: 'number — the port MCP is served on',
       executorRestartPending: 'boolean — settings were changed that the running backend has not picked up',
+      executorConfigFile:
+        'string — the path of the config file the backend started with, where this app may write it (the desktop app’s own executor); empty otherwise. Gate the config rows on it',
+      executorConfigRows:
+        '{ id, key, value, kind, choice, editable, note }[] — every key of that file: value ready to show (empty when the file leaves the key to its default, "Default" for a fixed one), kind the control it takes, from the key’s type rather than its value (boolean | number | text, or fixed for one only shown), choice for a boolean key’s three-way select (default | on | off, default while the file leaves it to the backend), editable, and note saying why one is not (a flag of this start sets it) or that it is changed only from this computer',
+      executorLogTail:
+        'string — the newest lines of this run’s backend log, oldest first. Empty until loadExecutorLogTail runs',
+      canRestartExecutor: 'boolean — the host starts the backend, so a restart can be offered',
       canBackUp:
         'boolean — a database export/import can be offered: the backend writes the file and the host can name one. False on web',
       logLevels:
         '{ crate, level }[] — per-crate log levels the user has set, sorted. Empty means the backend own defaults are in use',
       backupStatus: 'string — what the last export or import did, for display. Empty until one runs',
       aiModels:
-        'AiModelView[] — installed models, each carrying its display strings (kindLabel, sourceLabel, detail, statusText, ready) alongside id/name/kind/source/isDefault. Empty until loadAiModels() runs',
+        "AiModelView[] — the node's models, each a reference to a model a server (endpoint) serves: id, name, kind ('llm' | 'embedding' | 'transcription' | 'speech'), endpointId, remoteModel (the id the server knows it by), status ({ state: 'ready' | 'missing' | 'pulling' | 'endpoint-down' | 'unknown', progress, detail — the server's reason where it gave one }), isDefault, and its display strings kindLabel, endpointName, statusText, ready. Empty until loadAiModels() runs; statuses follow the backend's events while settings are open",
       aiTasks: 'AiTask[] — named prompts apps registered against a model (id, name, modelId, systemPrompt)',
       aiForm:
-        'AiModelForm | null — the model form while it is open, null when closed. One flat field per input; read with runtimeStore.aiForm.<field>. The backend never returns a stored key: apiKey is only a key typed to send (empty keeps the stored one), apiKeyStored says one is held, and apiKeyRemoved set true removes it on save',
-      aiPresetOptions: '{ label, value }[] — model names the backend can fetch itself, for the open form kind',
-      aiFormComplete: 'boolean — the open form has every field its chosen source needs',
-      aiMaxContextError:
-        "string — why the open form's context limit (aiForm.apiMaxContext) cannot be saved, or empty. Bind it to that field's error: a limit that does not parse holds Save disabled, and nothing else says which field is doing it",
-      aiApiKeyError:
-        "string — why the open form's key holds Save, or empty: the base URL moved away from the address the stored key was set for and no new key was typed. Bind it to the key field's error",
-      aiDiscoverNeedsKey:
-        'boolean — the open form keeps a key the backend holds, so "List models" needs the key typed again: the backend never hands a stored key back. Disable that control on it and say why',
+        "AiModelForm | null — the model form while it is open, null when closed: { id, name, kind, endpointId, remoteModel }. Read with runtimeStore.aiForm.<field>, write with setAiFormField. An empty name saves as the model's id",
+      aiFormComplete: 'boolean — the open model form names a server and a model on it',
       aiFormDirty:
-        "boolean — the open form has been edited since it opened. What a discard guard reads; compared against a snapshot taken on open, so looking at a model's settings and closing again asks nothing",
-      aiServiceOptions:
-        "{ label, value }[] — the remote services a model can be reached through (Anthropic, OpenAI, OpenRouter…) plus 'Custom endpoint', for a we-select bound to aiForm.apiService. Pass the value to setAiService. Show the protocol and base URL fields only while aiForm.apiService == 'custom'",
+        "boolean — the open model form has been edited since it opened. What a discard guard reads; compared against a snapshot taken on open, so looking at a model's settings and closing again asks nothing",
+      aiEndpointOptions:
+        "{ label, value }[] — the servers that can serve the open model form's kind — an Ollama for language and embedding models whether or not it has one yet, since it can download one — for a we-select bound to aiForm.endpointId. Empty means no added server can: say so, and point at adding one",
       canDiscoverAiModels:
-        'boolean — the backend can ask a remote endpoint which models it serves. Gate a "List models" control on it; where it is false, the model id is typed',
+        'boolean — the backend can ask a server which models it serves. Gate a refresh control on it; where it is false, the model id is typed',
       aiDiscoveredModelOptions:
-        "{ label, value }[] — the models the open form's endpoint said it serves, for a we-select. Empty until discoverAiModels() answers, and empty again once the protocol, URL or key changes",
+        "{ label, value }[] — the models the open form's server said it serves, of the form's kind only, for a Combobox (a model the server does not have yet can still be typed). Asked when the form opens and whenever its server changes",
+      aiDiscoveredModelHint:
+        "string — why aiDiscoveredModelOptions is empty when the server answered with models of other kinds only (“None of this server's models are embedding models”), or empty. Show it beside the model field",
+      aiRecommendedModel:
+        "string — the model the backend recommends for the open form's kind on its server's kind (an Ollama, a speech server), or empty. Worth saying beside the model field",
+      aiCanPull:
+        "boolean — the open form's model can be downloaded onto its server: an Ollama that does not list it. Offer pullAiModel on it",
+      aiPullText:
+        'string — a download onto a server in progress, in words ("Downloading qwen3:8b — 45%"), or empty. Moves with the backend’s events',
+      canManageAiEndpoints:
+        'boolean — the backend shows its model servers to this connection: the operator only, since a server carries an address and health. Gate the servers section on it',
+      aiEndpoints:
+        'AiEndpointView[] — the model servers: id, name, kind, baseUrl, hasApiKey (never the key), capabilities, health ({ state, detail, models }), managed, and the display strings kindLabel, healthText, healthy, modelCount, editable. A managed server is the one local AI runs ("This device"): editable is false, it cannot be edited or removed as a server, and it goes with removeLocalAi. Loaded with loadAiModels()',
+      canUseLocalAi:
+        'boolean — the backend can install and run models on its own machine, and shows this connection that machine and what an install would do. The operator only. Gate the "This device" section on it',
+      canConfigureLocalAi:
+        "boolean — local AI can be installed, started, stopped and removed from here: the connection holds the node's operator credential. A grant never does, whatever its capabilities, so WE web's app token reads false. Gate those controls on it",
+      localAi:
+        'LocalAiView — the "This device" section, already in words: device (processor and memory), gpus (string[]), compute (what the models would run on), budget, notes, items ({ key, label, name, sizeText, detail, done }[] — the models and server programs an install brings; detail is the licence and memory of a model, empty for a server program), unavailable and reasons (string[]), planNotes (string[] — how the plan was chosen where not by measurement: the kinds nothing was measured for on this class of device, which take the smallest model, and the backend the settings of the node hold it to), fits, summary ("Downloads 3.1 GB · fits this device"), installLabel ("Install (2.5 GB)", or "Install the rest (2.5 GB)" while incomplete), installed (something is installed, not necessarily the whole plan), incomplete (installed, and the plan still has something not downloaded: offer Install again, which fetches the rest), installing, running (every server runs), anyRunning (a server runs in any state — running, starting, restarting or failed — so there is something to stop), canStart (a server is never started, stopped or failed, so a start has something to start — a failed one is offered both), runtimes ({ key, label, stateText, ok, tone }[] — phase, on the GPU or not, restarts; tone is success, idle (never started or stopped on purpose) or warning), progress ({ percent, text, failed } while an install runs, and after one fails) and canInstall (never true where canConfigureLocalAi is false). loaded is false until the machine and the plan have been read',
+      aiSetupOptions:
+        "('local' | 'server' | 'skip')[] — the ways to get AI this connection can choose between, in order: 'local' where it may install local AI on the node's machine, 'server' where it may add model servers and models, and always 'skip'. Gate each card of a Set up AI choice on it, as 'local' in runtimeStore.aiSetupOptions. Only 'skip' means there is nothing this connection can set up",
+      aiDetectedEndpoints:
+        "{ kind, baseUrl, capabilities, models, label, detail }[] — model servers running on the node's machine that are not added yet, found when settings open or by detectAiEndpoints(). One press from use: addDetectedEndpoint(baseUrl)",
+      aiInstallLinks:
+        "{ label, url }[] — where to get a model server (Ollama, a speech server), for when none runs on the node's machine",
+      aiEndpointForm:
+        'AiEndpointForm | null — the server form while it is open: { id, name, service, kind, baseUrl, apiKey, apiKeyStored, apiKeyBaseUrl, apiKeyRemoved, maxContext }. The backend never returns a stored key: apiKey is only a key typed to send (empty keeps the stored one), apiKeyStored says one is held, and apiKeyRemoved set true removes it on save. An empty name saves as the kind and port',
+      aiEndpointFormComplete: 'boolean — the open server form has an address and nothing holding its save',
+      aiEndpointFormDirty:
+        'boolean — the open server form has been edited since it opened, so a pasted key is not thrown away by a click on the backdrop. What a discard guard reads',
+      aiMaxContextError:
+        "string — why the open server form's context limit (aiEndpointForm.maxContext) cannot be saved, or empty. Bind it to that field's error: a limit that does not parse holds Save disabled, and nothing else says which field is doing it",
+      aiApiKeyError:
+        "string — why the open server form's key holds Save, or empty: the address moved away from the one the stored key was set for and no new key was typed. Bind it to the key field's error",
+      aiServiceOptions:
+        "{ label, value }[] — the kinds of server an endpoint can be (Ollama, llama-server, vLLM, a speech server, Anthropic, OpenAI, OpenRouter…) plus 'custom', for a we-select bound to aiEndpointForm.service. Pass the value to setAiService, which sets the kind and a starting address",
       languages:
         'InstalledLanguage[] — language plugins installed in this backend (address, name, system). Empty until loadLanguages() runs',
       trustedAgents: 'string[] — trusted peer ids. Empty until loadTrustedAgents() runs',
@@ -927,22 +1078,51 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       removeLogLevel: '(crate: string): drops an override, returning that crate to the backend default',
       exportDatabase: '(): asks for a file, then has the backend write everything to it',
       importDatabase: '(): asks for a file, then has the backend read it back in',
-      restartExecutor: '(): starts the backend over so written settings take effect. Does not return',
-      loadAiModels: '(): fetches the installed AI models and their load status',
+      restartExecutor:
+        '(): starts the backend over so written settings take effect — where it keeps a config file, by asking it to restart, and the app starts it again with the same arguments and reloads. Does not return',
+      setExecutorConfigValue:
+        '(key: string, value): writes one key of the config file — a row’s key and the control’s value (event.detail); an empty value returns it to its default. Takes effect at the next start. A refused key lands in error with the backend’s reason',
+      loadExecutorLogTail: '(): reads the newest lines of the backend’s log into executorLogTail',
+      loadAiModels: '(): fetches the models and the servers they run on',
       loadAiTasks: '(): fetches the prompts apps registered against a model',
-      newAiModel: '(): opens the model form empty, for a new model',
+      newAiModel: '(): opens the model form empty, on the first server that can serve a language model',
       editAiModel: '(id: string): opens the model form on an existing model',
       setAiFormField:
-        '(field: string, value: string | boolean): sets one field of the open model form. Takes the field name so one action serves every input',
-      setAiService:
-        "(id: string): chooses the open form's service. A named one sets the protocol and base URL; 'custom' keeps what the form holds for editing",
+        '(field: string, value: string): sets one field of the open model form. Takes the field name so one action serves every input. Changing kind moves the form to a server that can serve it; changing endpointId asks that server what it has',
       discoverAiModels:
-        "(): asks the open form's endpoint which models it serves, through the node — also the check that the key works. A refusal lands in error; an empty model field takes the first model. Does nothing while aiDiscoverNeedsKey",
+        "(): asks the open form's server which models it serves. A refusal lands in error; an empty model field takes the recommended model, else the first that fits",
+      pullAiModel:
+        "(): downloads the open form's model onto its Ollama. Resolves when the server has all of it; aiPullText says how far meanwhile",
       closeAiForm: '(): closes the model form, discarding it',
-      saveAiModel: '(): saves the open form — adds or updates depending on whether it has an id',
-      removeAiModel: '(id: string): deletes a model',
+      saveAiModel: '(): saves the open model form — adds or updates depending on whether it has an id',
+      removeAiModel: '(id: string): deletes a model. The model on its server is left alone',
       setDefaultAiModel: '(id: string): makes this the model apps get when they ask for its kind',
       removeAiTask: '(id: string): deletes a registered prompt',
+      detectAiEndpoints: "(): looks for model servers running on the node's machine. Saves nothing",
+      addDetectedEndpoint:
+        '(baseUrl: string): adds a server detectAiEndpoints found, as it was found, and registers on it a model for each role nothing fills yet: the recommended model where the server serves it, else the first it serves for that role. The first model of a role becomes its default',
+      newAiEndpoint: '(): opens the server form empty, on Ollama at its default address',
+      editAiEndpoint: '(id: string): opens the server form on an existing server',
+      setAiEndpointField:
+        '(field: string, value: string | boolean): sets one field of the open server form. Takes the field name so one action serves every input',
+      setAiService:
+        "(id: string): chooses the open server form's service: sets its kind and a starting address, which stays editable. 'custom' is any other OpenAI-compatible server",
+      closeAiEndpointForm: '(): closes the server form, discarding it',
+      saveAiEndpoint:
+        '(): saves the open server form — adds or updates. The backend checks the server once and saves it whatever it answers',
+      removeAiEndpoint:
+        '(id: string): removes a server. Refused while models run on it, and for a managed server (local AI), which goes with removeLocalAi',
+      loadLocalAi: '(): reads the machine, the plan and how local AI runs. Done when the settings open',
+      installLocalAi:
+        '(): downloads, checks, starts and registers what the plan says, making its models the defaults. Gigabytes: resolves when done, with localAi.progress moving meanwhile',
+      startLocalAi: '(): starts the local model servers',
+      stopLocalAi: '(): stops them. Their models stay registered and answer again once started',
+      removeLocalAi:
+        '(deleteFiles: boolean): unregisters and stops local AI; deleteFiles true deletes the downloaded models and programs as well',
+      skipAiSetup:
+        "(): leaves a first run's AI step (sessionStore.signInStep 'setUpAi') with nothing set up, and keeps that answer so the step is not asked again for this account",
+      finishAiSetup:
+        "(): leaves a first run's AI step with what was set up on it, and keeps that answer. Offer it once something is set up: a model, or local AI installing or installed",
       loadLanguages: '(): fetches the installed languages',
       installLanguage: '(address: string): installs a language by content address, then reloads the list',
       removeLanguage: '(address: string): removes an installed language. Refuses the backend own system languages',
@@ -973,7 +1153,9 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       currentDataset: 'dataset handle | null (the dataset currently being viewed)',
       currentDatasetCid: 'string | undefined — the neighbourhood CID of the current dataset (prefix stripped)',
       currentDatasetEntities:
-        'EntityManifestEntry[] (non-WE SHACL models from the current dataset; injected as externalEntities into AI messages)',
+        'EntityManifestEntry[] (non-WE SHACL models from the current dataset, by name; injected as externalEntities into AI messages)',
+      currentDatasetEntitiesLoaded:
+        'boolean — currentDatasetEntities has been read for the dataset on screen. They arrive a few round trips after the switch, so until this is true an empty list means "not read yet" rather than "none"',
       isWeSpace:
         "boolean — true once the current dataset is confirmed to have WE's Space SDNA installed (false for a joined-but-foreign dataset, e.g. one synced in from Flux)",
       joinedSpaceCids: 'string[] — CIDs of every joined shared dataset',
@@ -1256,6 +1438,10 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       myMentions:
         '{ id, author, createdAt }[] — messages in this space that mention this agent — posts and transcript or Feed lines alike — newest first, the fifty most recent. createdAt is the backend’s comparable timestamp. Asked from the agent’s end through the backend’s references, one lookup per space',
       root: "string — the id of this space's collection: the one CollectionBlock (kind 'space') everything top-level hangs off — calls, loose messages, posts, channels, extracted items, the canvas. Scope a top-level read through it: { anchor: 'CollectionBlock', via: 'children', anchorId: spaceStore.root }. Empty outside a space, and in a space made before spaces had one",
+      rootLoaded:
+        "boolean — root has answered for the space on screen. Until then an empty root is not yet an answer, so gate anything that compares an address with root on it — { $: 'spaceStore.rootLoaded' } around an $if on `channel == spaceStore.root` — or the wrong branch mounts, reads, and is torn down when root arrives",
+      firstScreenOpen:
+        "boolean — the first screen after boot is up: the Feed's first page drawn, or the screen drawn with no Feed on it. True from then on. Put it as the `when` of a $queries read the opening screen does not draw (a sidebar's list) so the read starts after that screen rather than beside it — { when: { $: 'spaceStore.firstScreenOpen' } }",
       landmarks:
         "Record<name, id> — the records this space names as its landmarks, e.g. spaceStore.landmarks.canvas is the space's canvas. Written by the space's starter at creation. A landmark can be absent — a space can switch template and a template must never assume what another set up — so guard every read",
       landmarksLoaded:
@@ -1279,7 +1465,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       routeSpaceUnjoined:
         'boolean — the current route points at a space this agent has not joined, as a settled fact. What a join gate should read: `currentDataset` being null is also true for the first frames of a refresh, so gating on that flashes a join prompt at someone already inside. False while the answer is still unknown',
       spaceList:
-        "{ uuid, name, description, avatar, kind: 'shared' | 'personal' | 'foreign', isWeSpace, canAdminister }[] — one row per joined dataset the agent can act on, ordered like the sidebar and excluding the system datasets. Includes datasets that are not WE spaces (kind 'foreign', isWeSpace false), which are waiting to be initialized. `uuid` is the dataset id, so it keys navigation and settings whether or not a Space record exists. `sharing` is 'sharing' while a new shared space is still being shared (it is usable meanwhile), 'failed' when that did not work — `shareError` says why, and shareSpace tries again — and '' otherwise; a shared space has a `shareLink`",
+        "{ uuid, name, description, avatar, kind: 'shared' | 'personal' | 'foreign', isWeSpace, loading, canAdminister }[] — one row per joined dataset the agent can act on, ordered like the sidebar and excluding the system datasets. Includes datasets that are not WE spaces (kind 'foreign', isWeSpace false), which are waiting to be initialized. `loading` is true for the first seconds of a boot while a row's Space record has not been read yet — then `isWeSpace` is false without meaning the dataset is from another app, so show a placeholder rather than the initialize state. `uuid` is the dataset id, so it keys navigation and settings whether or not a Space record exists. `sharing` is 'sharing' while a new shared space is still being shared (it is usable meanwhile), 'failed' when that did not work — `shareError` says why, and shareSpace tries again — and '' otherwise; a shared space has a `shareLink`",
       creatingSpace: 'boolean (true while a new space is being created)',
       joiningSpace:
         "string — the shared id of the space a join is running for, '' when none is. The id rather than a flag so a list can spin only the row being joined; a gate compares it against its own route segment. Stays set for the whole join, which outlives the network call that starts it",
@@ -1521,6 +1707,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         "{ label, value, icon, hue, group, description, via }[] — the content a person can create here, each with the one-line `description` from its manifest (or the shape's), ready for a we-select: this space's own models first, then WE's built-in blocks. A built-in entity is here when it is a block there is a way to make — `authoring` fields (via 'form') or `composed` (via 'composer': a CollectionBlock, which is a note or a post, written in BlockComposer). Not blocks — spaces, templates, vocabulary entries, drawn Relationships — are never here. Filter by `via` for what a surface can host: a record form's type selector lists `recordStore.creatableEntities.filter(k, k.via == 'form')`; a canvas's 'add' chooser lists them all and opens the composer for 'composer'",
       kinds:
         "{ label, value, icon, hue, group }[] — every kind of record that can be shown here: what can be made, then every core block and the kinds read without being made (a drawn connection, the space's vocabulary). hue is the palette hue the kind is drawn in where the community has chosen no colour — WE's own kinds have one chosen for what they are, and any other takes one from its name, the same everywhere. For colouring cards by kind: the kit's kindColour reads the community's choice first",
+      plumbingClasses:
+        "string[] — WE's own structural classes by name (a Space, a setting, a placement, a community's vocabularies), which a list of a space's classes leaves out wherever their shape came from. What a template cannot name for itself: another app's classes are `datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses))`",
       displays:
         "Record<entity, RecordDisplay> — how to show an instance of each creatable model, every core block (a divider or a quote card included) and Relationship, keyed by entity name and derived from its declaration: { entity, label, icon, title, summary, media, mediaRelation, fields[] }, where title/summary/media name the properties playing those roles ('' when none does) and mediaRelation names a relation to an ImageBlock that pictures the record when no property does — look the image up by the ids it holds ({ entity: 'ImageBlock', where: { id: row[display.mediaRelation] } }) rather than drawing them and each field is { name, label, kind, role, options, vocabulary }. kind is one of text, longText, number, boolean, date, datetime, color, url, image, file, json, relation (with target, the model it points at); role is title, summary, media or detail. `options` is the values a field is allowed to hold where the model closes the set (a task's status), empty otherwise — count() it to tell a state worth drawing as a we-badge from free text, and map it into a we-select rather than offering a text box that accepts a word the model does not know. `vocabulary` names the community list a value is a slug of ('taskState' for a task's status, looked up in spaceStore.taskStates for its name and colour), empty otherwise. Index it by a row's type — { $: 'recordStore.displays[row.type]' } — and render the fields with $each; see \"A record of any type\" in the patterns",
       recordDraft:
@@ -1563,7 +1751,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       retargetOnCanvas:
         "(canvas: string, payload): moves one end of a connection onto a different record. Takes the graph's onEdgeRetarget payload as it arrives. Unlike anchorOnCanvas and rerouteOnCanvas this changes the CLAIM rather than how one canvas draws it — the relationship now says something different everywhere it is shown. That end's anchor is cleared; its waypoints stay",
       arrangeOnTree:
-        "(canvas: string, relationshipTypeId: string, payload): moves a card to another place in a tree. Takes the graph's onNodeArrange payload as it arrives, plus which kind of connection the tree follows — EMPTY meaning every kind, which mirrors what the layout does with the same answer and is the state a canvas starts in; a parent it has to create is then a connection with no kind, exactly as the canvas's own connect gesture writes one — the community's own vocabulary and the reader's chosen spine, neither of which the store can know. The counterpart of dragOnCanvas for a canvas read as a hierarchy: there a drag writes a coordinate, here it writes the structure the layout reads. A drop that makes a card a child writes the connection; one BESIDE a card reorders it there, writing ranks on the placements in the order the drop reports; one in the unconnected area takes it out of its tree. Undoable through undoCanvas, the connection and the ranks as one act. Three refusals, each with a toast: a card inside itself, a drop beside a tree's own root (which would detach it as a side effect — the unconnected area is where that is explicit), and taking out a connection people have commented on or reacted to, since that deletes the record and everything said about it — pass arrange-nodes the same rule as `keep` so the preview refuses first",
+        "(canvas: string, spine, payload): moves a card to another place in a tree. Takes the graph's onNodeArrange payload as it arrives, plus the tree's spine — pass treeSpine({ value: local.spine }), which reads the picker's spelling; a bare relationship kind id is taken too — for which kind of connection the tree follows — EMPTY meaning every kind, which mirrors what the layout does with the same answer and is the state a canvas starts in; a parent it has to create is then a connection with no kind, exactly as the canvas's own connect gesture writes one — the community's own vocabulary and the reader's chosen spine, neither of which the store can know. The counterpart of dragOnCanvas for a canvas read as a hierarchy: there a drag writes a coordinate, here it writes the structure the layout reads. A drop that makes a card a child writes the connection; one BESIDE a card reorders it there, writing ranks on the placements in the order the drop reports; one in the unconnected area takes it out of its tree. Undoable through undoCanvas, the connection and the ranks as one act. Three refusals, each with a toast: a card inside itself, a drop beside a tree's own root (which would detach it as a side effect — the unconnected area is where that is explicit), and taking out a connection people have commented on or reacted to, since that deletes the record and everything said about it — pass arrange-nodes the same rule as `keep` so the preview refuses first. A drop moves the link the card hangs by, which the payload's `edge` names: a card hanging by a relation the space's classes declare (an edge typed `relation`) has that model field rewritten — the child's to-one, or the parent's list — whatever the spine, and no connection is written. A card hanging by nothing follows the spine: one model relation writes that relation, all model relations the one joining the two classes; otherwise a connection. A parent the link cannot reach is refused with a toast, and so is clearing an installed model's to-one field, which AD4M cannot spell yet — an undo of a first attach on one says it could not be taken back",
       setCardStyle:
         "(canvas: string, node: string | string[], field: string, value): sets one presentation property of one card — or of a whole selection — on one canvas: 'color', 'cardShape', 'contentScale', 'rotation' (degrees clockwise) and 'z' (stacking order). Takes the field name so one action serves a swatch, a picker and a slider, and one id or a list so a selection is not a special case. 0 is unset for the numbers, so a card is un-rotated by writing 0. Undoable, each card keeping its own baseline — putting back a colour applied to nine cards restores nine different colours",
       previewCardStyle:
@@ -1631,6 +1819,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       generating: 'boolean — an AI generation is in flight',
       extractionCandidates:
         "string[] — entity names an extraction pass COULD write here: core vocabulary that declares itself extractable, plus every adopted shape that does. Candidacy, not a decision — which of these a collection actually looks for is two layers down (spaceStore.extractionTargets, the default a new collection copies, then the collection's own list). Read it to offer a choice, and to display findings: a card should show a record somebody extracted an hour ago even if the target has since been switched off",
+      extractionCandidatesLoaded:
+        "boolean — extractionCandidates is the whole list: the space's models and the classes it already had have both been read. Until then the list is missing members that are coming; wait for this before treating the list as decided",
       extractionNeedsIdentity:
         'boolean — the open draft would be extracted into and has no field to recognise what it already wrote, so every pass duplicates everything. A warning to put beside the switch, not a refusal: the wizard saves either way',
       hintEditorDirty:
@@ -2011,7 +2201,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       keyId: 'string — this device’s id in the key log (`d1`), or empty',
       thisDeviceRevoked: 'boolean — the key log revoked this device’s key: it no longer speaks for the person',
       keyLog:
-        '{ seq, op, keys, position, icon, title, detail, hash, hashShort, thisComputer }[] — the key log, newest first, with what each row says made from `op` and `keys` (reword from those where a template wants other words), already worded: `title` "Created your identity", "Added d2", "Revoked d2"; `detail` the keys it names with this computer’s marked "This computer"; `hashShort` the event’s hash for a monospace column',
+        '{ seq, op, keys, position, icon, title, detail, hash, hashShort, thisComputer }[] — the key log, newest first, with what each row says made from `op` and `keys` (reword from those where a template wants other words), already worded: `title` "Created identity", "Added d2", "Revoked d2"; `detail` the keys it names with this computer’s marked "This computer"; `hashShort` the event’s hash for a monospace column',
       keyLogLoaded: 'boolean — the log has been read once',
       forked: 'boolean — the backend found two different logs for this identity',
       fork: '{ seq, ours, theirs } | null — where they part',
@@ -2035,10 +2225,10 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
   deviceStore: {
     state: {
       devices:
-        "{ keyId, addedSeq, revokedSeq, label, subtitle, icon, thisDevice, revoked, status, canRevoke }[] — the device keys of the person's key log, valid first and this computer on top. `label` is 'This computer' or 'Device d2' (devices have no names yet); `status` 'Valid' or 'Revoked at #2'; `canRevoke` is a valid key that is not this computer's",
+        "{ keyId, addedSeq, revokedSeq, label, subtitle, icon, thisDevice, revoked, status, canRevoke }[] — the device keys of the person's key log, valid first and this computer on top. `label` is 'This computer' or 'Device d2' (devices have no names yet); `status` 'Active' or 'Removed at #2'; `canRevoke` is a valid key that is not this computer's",
       devicesLoaded: 'boolean — the list has been read once',
       validCount: 'number — how many keys are valid',
-      canManage: 'boolean — Add a device and Revoke can be offered: this computer keeps the master key of the identity',
+      canManage: 'boolean — Link a device or Remove can be offered: this computer keeps the master key of the identity',
       error: 'string — why the last read failed, or empty',
     },
     actions: {
@@ -2057,16 +2247,18 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         "{ requirements, enforcement, sealedEvidence, contention } | null — what this backend can do with workflows. `requirements` lists the kinds of rule it enforces ('approvals', 'evidence'); `enforcement` is 'server' (one authority applies every rule) or 'peers' (every member's software applies them, so a member running other software can write past one — say so beside a rule); `contention` is 'stall' when two moves out of one step both agreed leave a record stuck until somebody withdraws, or 'first' when the earlier wins",
       canEdit: 'boolean — the viewer may save, delete and archive workflows here: whoever administers the space',
       workflows:
-        "{ name, label, editable, records, managedBy, archived, steps, moves }[] — every workflow in the space, archived ones included. `editable` is false for one written by something that uses more than this editor shows, and for the task-state workflow; `managedBy` is 'task-states' for the workflow the board's task states write, which is edited in the space's settings and moved on the board, never here; `records` is how many records are going through it; `steps` ({ name, label, final }[]) and `moves` ({ from, to }[]) are its definition once read — what a map of the space's workflows draws",
+        "{ name, label, editable, records, running, managedBy, archived, steps, moves }[] — every workflow in the space, archived ones included. `running` is how many of its records are not at a final step, live from the watched records (0 for an archived or the task-state workflow). `editable` is false for one written by something that uses more than this editor shows, and for the task-state workflow; `managedBy` is 'task-states' for the workflow the board's task states write, which is edited in the space's settings and moved on the board, never here; `records` is how many records are going through it; `steps` ({ name, label, final }[]) and `moves` ({ from, to }[]) are its definition once read — what a map of the space's workflows draws",
       workflowsLoaded:
         'boolean — the backend has answered with this space\'s workflows. An empty `workflows` before then is not yet an answer: gate a "no workflows" sentence on it and draw the list as loading until it is true',
       startable:
         '{ name, label, entities }[] — workflows a record can be put through: not archived, not written by something else. `entities` are the entity names a workflow is for, empty for any record — filter with `card.__subjectClass in workflow.entities || !count(workflow.entities)`',
-      open: "{ name, label, hint, entities, rule, fits, editable, managedBy, archived, lanes, exceptions, steps, records, history } | null — the workflow opened with openWorkflow. `lanes` is the workflow as a main line and branches: each { index, main, leaves, leavesLabel, rejoins, rejoinsLabel, ends, steps }, every step { name, label, final, approvals, approverKind, approverLabel, evidence, requires, hint }, `requires` being each thing entering it takes as a short phrase. `rule` is 'next', 'next-and-back' or 'any'; `exceptions` the moves nothing else covers, { from, to, fromLabel, toLabel, name }. `records` are what is going through it, newest first: { record, title, startedAt, state, stateLabel, stalled, waiting, walk, next }, `startedAt` an ISO date for a we-timestamp (empty when unknown), `walk` its path as { name, label, at } with `at` 'done', 'current' or 'ahead' — a stepper — and `next` where it may be asked to go, `waiting` each move asked for { to, toLabel, approvers, needs, note, mine }. `recordsLoaded` says the records have been read — gate anything offered only for a workflow with none on it. `history[record]` is filled by loadHistory: { from, to, fromLabel, toLabel, approvers, at, when, evidence, note }[], `when` being `at` as an ISO date",
+      open: "{ name, label, hint, entities, rule, fits, editable, managedBy, archived, lanes, exceptions, steps, records, history } | null — the workflow opened with openWorkflow. `lanes` is the workflow as a main line and branches: each { index, main, leaves, leavesLabel, rejoins, rejoinsLabel, ends, steps }, every step { name, label, final, approvals, approverKind, approverLabel, evidence, requires, hint }, `requires` being each thing entering it takes as a short phrase. `rule` is 'next', 'next-and-back' or 'any'; `exceptions` the moves nothing else covers, { from, to, fromLabel, toLabel, name }. `records` are what is going through it, newest first: { id, record, title, kind, startedAt, state, stateLabel, stalled, waiting, walk, next }, `title` what the record is called (its name, else its kind and a short id, never empty), `kind` what kind of record it is ('Task', empty until read), `startedAt` an ISO date for a we-timestamp (empty when unknown), `walk` its path as { name, label, at } with `at` 'done', 'current' or 'ahead' — a stepper — and `next` where it may be asked to go, `waiting` each move asked for { to, toLabel, approvers, needs, note, mine }. `recordsLoaded` says the records have been read — gate anything offered only for a workflow with none on it. `history[record]` is filled by loadHistory: { from, to, fromLabel, toLabel, approvers, at, when, evidence, note }[], `when` being `at` as an ISO date",
       draft:
         '{ …the shape of open’s lanes, label, isNew, dirty, problems } | null — the workflow being written, after newWorkflow or editWorkflow. `problems` are sentences saying what saving would be refused for; saveDraft refuses while there are any, so show them beside the button',
       recordWorkflows:
         'Record<recordId, { workflow, label, state, stateLabel, waiting, stalled, next, asks }[]> — by record, every startable workflow it is going through and where it stands: what a chip on a card shows. `next` ({ name, label }[]) is where it may be asked to go, for moveRecord; `asks` ({ to, toLabel, approvers, needs, note, mine }[]) the moves waiting on agreement — offer withdrawRecord where `mine`, moveRecord to the same `to` to agree. Read as `workflowStore.recordWorkflows[card.id]`, which is undefined for a record in none',
+      active:
+        "{ id, workflow, label, record, title, kind, state, stateLabel, lastActivity, waiting, stalled }[] — what is going on: every record still going through a startable workflow (not at a final step), across all of them, the one with the latest activity first. A record in two workflows is two rows. `title` is what the record is called (its name, else its kind and a short id, never empty), `kind` what kind of record it is ('Task', empty until read), `lastActivity` an ISO date for a we-timestamp — when it started, or a move was last asked for or made — `waiting` how many moves are asked for and not made. `count(workflowStore.active)` is how many are running; take the first few with `slice` for a short list. Live, for this member's moves and anybody else's",
     },
     actions: {
       refreshWorkflows: '(): asks the backend for the workflow list again — after something another member did',

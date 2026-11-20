@@ -36,6 +36,8 @@ import { createComputed, createEffect, createMemo, createSignal, For, type JSX, 
 import { createStore, reconcile } from 'solid-js/store';
 
 import { toEntityShape } from '../../../shared/graphEntityShape';
+import { type GraphScope, inboundAsWhere } from '../../../shared/graphScope';
+import { followRead, idsOf, readKey } from '../../../shared/graphWatch';
 import {
   actAs,
   actingAs,
@@ -46,7 +48,7 @@ import {
 } from '../../../shared/pretendPeople';
 import { chromeBag } from '../../../shared/registries/templateBag';
 import { CANVAS_RECORD_CARD, type CanvasCard, canvasCard } from '../../../shared/shapes/canvasCard';
-import { componentRegistry } from '../registries/componentRegistry';
+import { chromeComponentRegistry } from '../registries/componentRegistry';
 import { useDatasetStore } from '../stores/DatasetStore';
 import { useProfileStore } from '../stores/ProfileStore';
 import { useRecordStore } from '../stores/RecordStore';
@@ -73,12 +75,7 @@ import { ReactionBadge } from './ReactionBadge';
  */
 const REVERSE_SCAN_LIMIT = 200;
 
-interface ScopeRequest {
-  anchor: string;
-  via: string;
-  anchorId: string;
-  direction?: 'in' | 'out';
-}
+type ScopeRequest = GraphScope;
 
 /**
  * A card that draws its own contents, rather than its first sixty characters.
@@ -371,7 +368,14 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
     if (limit !== undefined) options.limit = limit;
     if (offset !== undefined) options.offset = offset;
     if (include) options.include = include;
-    if (scope) {
+    /*
+      An inbound read through a child's own to-one is a filter on that field — native on both
+      backends, and watchable — rather than the scan `reverseLookup` falls back to. See `graphScope`.
+    */
+    const inbound = scope ? inboundAsWhere(manifest(), request.entity, scope) : undefined;
+    if (inbound) {
+      options.where = { ...(where ?? {}), ...inbound };
+    } else if (scope) {
       const parent = parentFor(scope);
       if (!parent) return undefined;
       (options as Record<string, unknown>).parent = parent;
@@ -381,6 +385,8 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
 
   /** A neutral drill-down as the parent a read narrows to — the relation by name, on its entity. */
   function parentFor(scope: ScopeRequest): ParentRef | undefined {
+    // One anchor: a list is asked anchor by anchor by `query`, and the scan answers an inbound read.
+    if (typeof scope.anchorId !== 'string' || scope.direction === 'in') return undefined;
     const entry = manifest().find((m) => m.name === scope.anchor);
     if (!entry?.properties.some((p) => p.name === scope.via)) return undefined;
     return { id: scope.anchorId, relation: scope.via, entity: scope.anchor };
@@ -403,6 +409,7 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
     if (!model || !handle) return [];
 
     warn(`reading what points at ${scope.anchor} by scanning up to ${REVERSE_SCAN_LIMIT} ${entity} records`);
+    const anchors = new Set(Array.isArray(scope.anchorId) ? scope.anchorId : [scope.anchorId]);
 
     const rows = await model.findAll(handle, {
       limit: REVERSE_SCAN_LIMIT,
@@ -414,8 +421,8 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
       const targets = Array.isArray(value) ? value : value == null ? [] : [value];
       return targets.some((target) =>
         typeof target === 'string'
-          ? target === scope.anchorId
-          : typeof target === 'object' && target !== null && (target as { id?: unknown }).id === scope.anchorId,
+          ? anchors.has(target)
+          : typeof target === 'object' && target !== null && anchors.has(String((target as { id?: unknown }).id)),
       );
     });
   }
@@ -481,7 +488,7 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
   const weighs = createMemo(() =>
     seedList().some((seed) => 'source' in seed && seed.source === 'canvas' && Boolean(seed.options?.weigh)),
   );
-  const pretending = () => pretendPeopleAvailable && sessionStore.devTools() && weighs();
+  const pretending = () => pretendPeopleAvailable && sessionStore.testPeople() && weighs();
   const seeds = createMemo(() => {
     const simulate = pretending() ? pretendSettings() : undefined;
     if (!simulate) return props.seeds;
@@ -492,13 +499,19 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
     );
   });
 
+  /**
+   * The ids each read last returned, by the question it asked — what a watch on the same question
+   * compares its subscription's first answer with. See `followRead`.
+   */
+  const lastReads = new Map<string, string[]>();
+
   const host: GraphViewProps['host'] = {
     nodeContent: { block: BlockCard, record: RecordCard, property: PropertyCard },
     // A card's score for the reaction a tree is ordered by, and the reader's own answer — see `ReactionBadge`.
     nodeBadges: { reaction: ReactionBadge },
     // The header controls a template may name — colour, shape, scale. See `graphControls`.
     nodeControls,
-    // Only while a canvas is weighed, in a development build with developer tools showing.
+    // Only while a canvas is weighed, in a development build with the test people turned on.
     ...(pretendPeopleAvailable ? { overlay: () => <Show when={pretending()}>{PretendControl()}</Show> } : {}),
 
     /**
@@ -521,7 +534,7 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
         // Passed through rather than defaulted here: only the producer knows the gap it is covering,
         // and the graph's own stylesheet owns what a mark that does not say gets.
         easeMs: mark.easeMs,
-        render: () => RenderSchema({ node: mark.node, stores: bag, registry: componentRegistry }),
+        render: () => RenderSchema({ node: mark.node, stores: bag, registry: chromeComponentRegistry }),
       }));
     },
 
@@ -598,7 +611,8 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
      *
      * So the engine hands over the read it made and this subscribes to exactly that. The rows are
      * still thrown away; what they are for is the fingerprint, and it now covers the same records
-     * the seed drew. Cost is one subscription per distinct read — four for a board — each paging
+     * the seed drew. The one exception is the first answer, whose ids are compared with that read's
+     * — see `followRead`. Cost is one subscription per distinct read — four for a board — each paging
      * exactly what the seed would have fetched anyway.
      */
     watch(request, onChange) {
@@ -621,44 +635,19 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
       if (!options) return () => undefined;
       trace('graph', 'watch', { entity: request.entity, parent: (options as { parent?: { id?: string } }).parent?.id });
 
-      let live = true;
-      /*
-        The first delivery is the current state, not a change.
-
-        `subscribe` resolves with the initial page *and* invokes the callback, so treating every
-        invocation as a change makes the graph refresh once per watched type immediately after
-        loading — re-running every seed query for a state it already has. `pending` covers the
-        genuine race: a write landing before the initial page resolves is a real change, and
-        dropping it would lose exactly the update that arrived while the graph was opening.
-      */
-      let primed = false;
-      let pending = false;
-
-      const subscription = model.query(handle, options);
-      subscription
-        .subscribe(() => {
-          if (!live) return;
-          if (!primed) {
-            pending = true;
-            return;
-          }
-          onChange();
-        })
-        .then(() => {
-          primed = true;
-          if (live && pending) onChange();
-        })
-        .catch((error: unknown) => {
-          // A type this backend will not subscribe to leaves the graph as loaded rather than
-          // taking it down — the same degradation every other read here makes.
+      const key = readKey(request.entity, request.dataset, options);
+      return followRead(model.query(handle, options), {
+        // The read the seed made just before this watch: a first answer that differs from it is a
+        // write that landed between the two, and no callback will ever report it.
+        seen: () => lastReads.get(key),
+        onChange,
+        // A type this backend will not subscribe to leaves the graph as loaded rather than
+        // taking it down — the same degradation every other read here makes.
+        onError: (error) => {
           const entities = Array.isArray(request.entity) ? request.entity.join(', ') : request.entity;
           console.warn(`[graph] cannot watch ${entities}:`, error);
-        });
-
-      return () => {
-        live = false;
-        subscription.dispose();
-      };
+        },
+      });
     },
 
     /*
@@ -693,7 +682,7 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
       const handle = datasetStore.currentDataset()?.handle;
       if (!handle) return [];
 
-      if (scope?.direction === 'in') {
+      if (scope?.direction === 'in' && !inboundAsWhere(manifest(), entity, scope)) {
         // The graph collects warnings through its own context; throwing here would take down the
         // whole expansion for a lookup that is legitimately unavailable on some backends.
         const warn = (message: string) => console.warn(`[graph] ${message}`);
@@ -702,6 +691,23 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
           return [];
         }
         return reverseLookup(entity, scope, dataset, warn);
+      }
+      /*
+        An outbound drill from several anchors: the model layer's `parent` names one, so each is asked
+        and the answers merged. Nothing in the app asks this today — a forward relation is read with
+        `include` — but the read type allows it and a silent empty answer would be the worst reply.
+      */
+      if (scope && scope.direction !== 'in' && Array.isArray(scope.anchorId)) {
+        const seen = new Set<string>();
+        const answers = await Promise.all(
+          scope.anchorId.map((anchorId) => host!.query({ ...request, scope: { ...scope, anchorId } })),
+        );
+        return answers.flat().filter((row) => {
+          const id = String(row.id);
+          if (seen.has(id)) return false;
+          seen.add(id);
+          return true;
+        });
       }
 
       const model = modelFor(entity, dataset);
@@ -726,6 +732,7 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
       }
 
       const rows = await model.findAll(handle, options);
+      lastReads.set(readKey(entity, dataset, options), idsOf(rows));
       trace('graph', 'read', {
         entity,
         rows: rows.length,

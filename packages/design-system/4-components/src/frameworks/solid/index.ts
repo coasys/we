@@ -47,6 +47,13 @@ export { Calendar, type CalendarEvent, type CalendarProps } from '../../componen
 
 // Feedback
 export {
+  AgentSteps,
+  type AgentStep,
+  type AgentStepsProps,
+  isWroteStep,
+  stepWords,
+} from '../../components/feedback/AgentSteps/AgentSteps.solid';
+export {
   ToastContainer,
   toastService,
   type ToastContainerProps,

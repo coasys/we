@@ -8,9 +8,17 @@
  */
 import { lineContent, threadLines } from '@we/messages';
 import type { RecordQuery } from '@we/module-shared';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { type FeedActivity, FeedReadStopped, groupActivity, markPending, nounFor, readFeedWindow } from './feed';
+import {
+  FEED_FIRST_PAGE,
+  type FeedActivity,
+  FeedReadStopped,
+  groupActivity,
+  markPending,
+  nounFor,
+  readFeedWindow,
+} from './feed';
 
 const ROOT = 'root';
 const t = (minute: number) => new Date(Date.UTC(2026, 9, 8, 10, minute)).toISOString();
@@ -28,6 +36,10 @@ function store(rows: StoredRow[]) {
     asked.push({ entity, query });
     let out = rows.filter((r) => r.entity === entity && (!query.within || r.in === query.within));
     if (query.where?.kind) out = out.filter((r) => r.kind === query.where?.kind);
+    if (query.where?.id !== undefined) {
+      const ids: unknown[] = [query.where.id].flat();
+      out = out.filter((r) => ids.includes(r.id));
+    }
     const dir = query.order?.createdAt === 'asc' ? 1 : -1;
     out = [...out].sort((a, b) => dir * (Date.parse(String(a.createdAt)) - Date.parse(String(b.createdAt))));
     const withThread = (r: StoredRow) =>
@@ -87,6 +99,15 @@ describe('the feed window', () => {
     expect(callPages()).toBe(1);
   });
 
+  it('reads the calls by the fields it draws of them, not whole calls', async () => {
+    const { find, asked } = store(rows);
+    await readFeedWindow(find, { root: ROOT, shown: 10, fromStart: false, activityTypes: [] });
+    // A whole call carries the id of every line said in it; the window draws its title and time.
+    const callList = asked.filter((a) => a.entity === 'CollectionBlock');
+    expect(callList).toHaveLength(1);
+    expect(callList[0].query.select).toEqual(['title', 'createdAt']);
+  });
+
   it('reads the same from the start, oldest first', async () => {
     const { find } = store(rows);
     const { rows: drawn } = await readFeedWindow(find, { root: ROOT, shown: 10, fromStart: true, activityTypes: [] });
@@ -107,6 +128,43 @@ describe('the feed window', () => {
     await readFeedWindow(find, { root: ROOT, shown: 1, fromStart: true, activityTypes: [] });
     // Monday's first line fills the window and Standup began after it, so Standup is never read.
     expect(asked.filter((a) => a.query.within === 'standup')).toEqual([]);
+  });
+
+  it('does not let hidden spoken lines use up the window', async () => {
+    /*
+      The schedule that emptied the feed: a call speaks more lines than the window holds after the
+      last typed message. Cut after the merge, those lines were the whole window — the feed said
+      "Nothing said here yet…" and never loaded more, because a list that does not overflow never
+      scrolls. Spoken lines go as they are read instead, so the cut lands on the rows that will be
+      drawn, and the typed history before the call is in it.
+    */
+    const spoken = Array.from({ length: 60 }, (_, i) => line(`said-${i}`, 10 + i, 'standup'));
+    const { find } = store([
+      ...calls,
+      ...spoken,
+      line('m1', 1, 'monday'),
+      line('s1', 6, 'standup'),
+      line('typed-1', 1, ROOT, { source: 'typed' }),
+      line('typed-2', 2, ROOT, { source: 'typed' }),
+      // A typed reply to a hidden spoken line still shows, quoting it.
+      {
+        ...line('reply-1', 40, '', { author: 'did:ben', text: 'answering', source: 'typed', respondsTo: 'said-30' }),
+        threadOf: 'said-30',
+      },
+    ]);
+    const options = { root: ROOT, shown: 50, fromStart: false, activityTypes: [] };
+
+    const hidden = await readFeedWindow(find, { ...options, spoken: false });
+    expect(hidden.rows.map((r) => r.id)).toEqual(['reply-1', 'typed-2', 'typed-1']);
+    expect(hidden.rows[0]).toMatchObject({ replyTo: { id: 'said-30' } });
+    // More is still out there: the call's unread lines, and whatever is older.
+    expect(hidden.hasMore).toBe(true);
+
+    const shown = await readFeedWindow(find, { ...options, spoken: true });
+    expect(shown.rows).toHaveLength(50);
+    expect(shown.rows[0]).toMatchObject({ id: 'said-59', source: 'spoken' });
+    // The call's lines fill the window, the typed reply among them.
+    expect(shown.rows.filter((r) => r.kind === 'line' && r.source === 'spoken')).toHaveLength(49);
   });
 
   it('draws a reply after the line it answers, in the order it was said, quoting it', async () => {
@@ -220,6 +278,185 @@ describe('the feed window', () => {
       expect(query).toEqual({ within: ROOT, order: { createdAt: 'desc' }, limit: 10 });
     }
     expect(drawn.find((r) => r.kind === 'activity')).toMatchObject({ origin: 'monday', originTitle: 'Monday sync' });
+  });
+
+  it('drops only the kind that cannot be read, rather than the whole window', async () => {
+    /*
+      A class the space lists as an extraction target can be one this client cannot resolve — a
+      space's own SHACL class before the records kernel learned those, or one the backend fails on.
+      The finds ran in one Promise.all, so one bad class rejected the whole read and the Feed drew
+      nothing at all.
+    */
+    const { find } = store([
+      ...calls,
+      line('m1', 1, 'monday'),
+      { entity: 'TaskBlock', id: 't1', in: ROOT, title: 'Brief', createdAt: t(2), author: 'did:ann' },
+    ]);
+    const failingFind = (entity: string, query: RecordQuery) =>
+      entity === 'Position' ? Promise.reject(new Error('Model "Position" not found in registry')) : find(entity, query);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const { rows: drawn } = await readFeedWindow(failingFind, {
+      root: ROOT,
+      shown: 10,
+      fromStart: true,
+      activityTypes: ['TaskBlock', 'Position'],
+    });
+
+    expect(drawn.map((r) => r.id)).toEqual(['m1', 'activity:t1']);
+    expect(warn).toHaveBeenCalledWith('[feed] could not read Position', expect.any(Error));
+    warn.mockRestore();
+  });
+
+  it('still fails the read when the messages or the calls cannot be read', async () => {
+    // The activity finds are the only tolerant ones: a window without its lines is wrong to draw.
+    const { find } = store(rows);
+    const failOn = (bad: string) => (entity: string, query: RecordQuery) =>
+      entity === bad ? Promise.reject(new Error('executor unreachable')) : find(entity, query);
+    await expect(
+      readFeedWindow(failOn('TextBlock'), { root: ROOT, shown: 10, fromStart: true, activityTypes: ['TaskBlock'] }),
+    ).rejects.toThrow('executor unreachable');
+    await expect(
+      readFeedWindow(failOn('CollectionBlock'), {
+        root: ROOT,
+        shown: 10,
+        fromStart: true,
+        activityTypes: ['TaskBlock'],
+      }),
+    ).rejects.toThrow('executor unreachable');
+  });
+});
+
+describe('the feed of one call', () => {
+  /*
+    The same read with a call as its root: a call holds every line said and typed in it, and no calls
+    of its own. What extraction found is kept in the space, so it is read there and kept by origin.
+  */
+  const callRows: StoredRow[] = [
+    // What its passes wrote, linked from the call — `extractedFrom` on each record read backwards.
+    {
+      entity: 'CollectionBlock',
+      id: 'standup',
+      in: ROOT,
+      kind: 'call',
+      title: 'Standup',
+      createdAt: t(0),
+      extracted: ['k1'],
+    },
+    {
+      entity: 'TextBlock',
+      id: 's1',
+      in: 'standup',
+      text: 'said',
+      source: 'spoken',
+      author: 'did:ann',
+      createdAt: t(1),
+    },
+    {
+      entity: 'TextBlock',
+      id: 'm1',
+      in: 'standup',
+      text: 'typed',
+      source: 'typed',
+      author: 'did:ben',
+      createdAt: t(2),
+    },
+    { entity: 'TextBlock', id: 'b1', in: 'standup', text: 'a bot', author: 'did:bot', createdAt: t(3) },
+    // Typed into the space, outside the call: not this call's.
+    { entity: 'TextBlock', id: 'loose', in: ROOT, text: 'elsewhere', source: 'typed', createdAt: t(4) },
+    { entity: 'TaskBlock', id: 'k1', in: ROOT, title: 'Ship', createdAt: t(5), extractedFrom: 'standup' },
+    { entity: 'TaskBlock', id: 'k2', in: ROOT, title: 'Other', createdAt: t(5), extractedFrom: 'monday' },
+  ];
+
+  it('draws every line said and typed in the call, and nothing typed outside it', async () => {
+    const { find } = store(callRows);
+    const { rows: drawn } = await readFeedWindow(find, {
+      root: 'standup',
+      activityRoot: ROOT,
+      rootTitle: 'this call',
+      shown: 10,
+      fromStart: true,
+      activityTypes: [],
+    });
+    expect(drawn.map((r) => r.id)).toEqual(['s1', 'm1', 'b1']);
+    expect(drawn.every((r) => r.kind === 'line' && r.call === '')).toBe(true);
+  });
+
+  it('draws what was found in this call, read in the space, and not what another call found', async () => {
+    const { find, asked } = store(callRows);
+    const { rows: drawn } = await readFeedWindow(find, {
+      root: 'standup',
+      activityRoot: ROOT,
+      rootTitle: 'this call',
+      shown: 10,
+      fromStart: true,
+      activityTypes: ['TaskBlock'],
+    });
+    const activity = drawn.filter((r): r is FeedActivity => r.kind === 'activity');
+    expect(activity).toHaveLength(1);
+    expect(activity[0]).toMatchObject({ origin: 'standup', originTitle: 'this call', summary: '1 task' });
+    expect(asked.find((a) => a.entity === 'TaskBlock')?.query.within).toBe(ROOT);
+  });
+
+  it('draws what an older call found when later calls have found a page of things since', async () => {
+    /*
+      Read as the space's newest page and kept by origin, this call's record was behind sixty newer
+      ones from a later call: the window read the space's newest fifty, kept none, and last week's
+      standup drew its lines with no row for what was found in it.
+    */
+    const later = Array.from({ length: 60 }, (_, i) => ({
+      entity: 'TaskBlock',
+      id: `later-${i}`,
+      in: ROOT,
+      title: `Later ${i}`,
+      createdAt: t(30 + (i % 20)),
+      extractedFrom: 'friday',
+    }));
+    const { find } = store([...callRows, ...later]);
+    const { rows: drawn } = await readFeedWindow(find, {
+      root: 'standup',
+      activityRoot: ROOT,
+      rootTitle: 'this call',
+      shown: FEED_FIRST_PAGE,
+      fromStart: false,
+      activityTypes: ['TaskBlock'],
+    });
+    const activity = drawn.filter((r): r is FeedActivity => r.kind === 'activity');
+    expect(activity.map((a) => a.items.map((i) => i.id))).toEqual([['k1']]);
+  });
+
+  it('says there is more while a kind of record filled its page, though it drew as one row', async () => {
+    /*
+      Six tasks found in one pass are one row, so a window of four reads four of them, draws three
+      lines and one row — and, counting rows, said it held everything. The other two were never read.
+    */
+    const found = ['k1', 'k3', 'k4', 'k5', 'k6', 'k7'];
+    const rows = callRows.map((row) => (row.id === 'standup' ? { ...row, extracted: found } : row));
+    const tasks = found.slice(1).map((id) => ({
+      entity: 'TaskBlock',
+      id,
+      in: ROOT,
+      title: id,
+      createdAt: t(5),
+      extractedFrom: 'standup',
+    }));
+    const { find } = store([...rows, ...tasks]);
+    const read = (shown: number) =>
+      readFeedWindow(find, {
+        root: 'standup',
+        activityRoot: ROOT,
+        rootTitle: 'this call',
+        shown,
+        fromStart: false,
+        activityTypes: ['TaskBlock'],
+      });
+    const first = await read(4);
+    expect(first.rows.map((r) => r.kind)).toEqual(['activity', 'line', 'line', 'line']);
+    expect(first.hasMore).toBe(true);
+    // A page more reads them all, and then there is nothing beyond.
+    const all = await read(10);
+    expect((all.rows[0] as FeedActivity).items).toHaveLength(6);
+    expect(all.hasMore).toBe(false);
   });
 });
 

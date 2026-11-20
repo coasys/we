@@ -22,6 +22,7 @@
  */
 import { hostSlot } from '@shared/hostSlot';
 import {
+  type DatasetHandle,
   type EntityManifest,
   extractableEntities,
   manifestEntries,
@@ -33,8 +34,9 @@ import {
   validateManifest,
 } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
-import { createJsonShapeStore, Shape } from '@we/entities';
+import { createJsonShapeStore, getRegisteredEntityNames, Shape } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
+import { latest } from '@we/module-shared';
 import type { BundleRecordType } from '@we/schema-shared';
 import {
   Accessor,
@@ -43,7 +45,6 @@ import {
   createEffect,
   createMemo,
   createSignal,
-  onCleanup,
   ParentProps,
   useContext,
 } from 'solid-js';
@@ -52,6 +53,7 @@ import {
   generateShapeDraft as runShapeGeneration,
   type ShapeGenerationTransport,
 } from '../../../shared/ai/shapeGeneration';
+import { foreignExtractionCandidates } from '../../../shared/shapes/extractionCandidates';
 import { hintToDisplay } from '../../../shared/shapes/hintEditor';
 import {
   additiveViolations,
@@ -195,6 +197,21 @@ export interface ShapeStore {
    * somebody extracted an hour ago even if the target has since been switched off.
    */
   extractionCandidates: Accessor<string[]>;
+  /**
+   * `extractionCandidates` is the whole list. Core vocabulary is in it at once; this space's models
+   * and the classes it already had arrive a few round trips later, so until this is true the list
+   * may be missing members that are coming.
+   */
+  extractionCandidatesLoaded: Accessor<boolean>;
+  /**
+   * The same candidacy, answered for a dataset that may not be the one on screen: its shapes and
+   * its foreign classes read through the handle, so a call asking about its own space while
+   * another is up narrows by the rule the live list does. Async — both are a read.
+   *
+   * `installed` names the foreign classes the dataset holds: present whether or not this session
+   * has registered them, which the read deliberately does not.
+   */
+  extractionCandidatesFor(dataset: DatasetHandle): Promise<{ candidates: string[]; installed: string[] }>;
   /** Options for the relationship target picker — `{ label, value }`, grouped and labelled. */
   relationshipTargets: Accessor<RelationshipTargetOption[]>;
   /**
@@ -227,8 +244,7 @@ export interface ShapeStore {
    * SpaceStore supplies "add this model to the space's default extraction targets".
    *
    * Injected upward rather than read, because SpaceStore owns the `Space` record and sits *below*
-   * this store in the provider tree — the same arrangement in the same direction as
-   * `datasetStore.provideAutoInterpretGate`, which SpaceStore also fills in.
+   * this store in the provider tree.
    *
    * Used on save and nowhere else, which is what makes the imported case behave: a shape that
    * arrives already marked extractable — copied, forked, synced from a peer — becomes a *candidate*
@@ -479,22 +495,93 @@ export function ShapeStoreProvider(props: ParentProps) {
     prefers the native class, so the two names resolve to one class and requesting it twice would
     put the same shape in the prompt twice at the community's expense.
   */
-  const extractionCandidates = createMemo<string[]>(() => {
-    const names = [
-      ...coreExtractionTargets,
-      ...spaceShapes().flatMap((shape) => (shape.manifest ? extractableEntities(shape.manifest) : [])),
-    ];
-    return [...new Set(names)];
+  /*
+    Then the classes the space already had: every SHACL class WE did not write, apart from WE's own
+    plumbing, those carrying an interpretation hint first — see `foreignExtractionCandidates`. Last,
+    so WE's own read first.
+
+    One rule for the list on screen and for `extractionCandidatesFor` below: candidacy is which
+    models may be extracted into, not which names the registry happens to resolve — an adopted
+    model whose manifest is not extractable resolves all the same.
+  */
+  const extractionCandidatesOf = (
+    shapes: readonly { name: string; manifest: EntityManifest | null }[],
+    foreign: readonly { name: string; interpretationHint?: string }[],
+  ): { candidates: string[]; shadowed: string[] } => {
+    const { offered, shadowed } = foreignExtractionCandidates(foreign, {
+      taken: [...Object.keys(CORE_MANIFEST.entities), ...getRegisteredEntityNames()],
+      adopted: shapes.map((shape) => shape.name),
+    });
+    return {
+      candidates: [
+        ...new Set([
+          ...coreExtractionTargets,
+          ...shapes.flatMap((shape) => (shape.manifest ? extractableEntities(shape.manifest) : [])),
+          ...offered,
+        ]),
+      ],
+      shadowed,
+    };
+  };
+
+  const candidatesRead = createMemo(() => extractionCandidatesOf(spaceShapes(), datasetStore.currentDatasetEntities()));
+  createEffect(() => {
+    const { shadowed } = candidatesRead();
+    if (shadowed.length)
+      console.warn(
+        `extraction: not offering ${shadowed.map((n) => `"${n}"`).join(', ')} from this space's own classes — ` +
+          `WE has a class of the same name, which the name would extract into instead`,
+      );
   });
 
-  /*
-    Lend the candidates downward, the way SpaceStore lends `autoInterpret`.
+  const extractionCandidates = createMemo<string[]>(() => candidatesRead().candidates);
 
-    DatasetStore publishes the interpretation surface modules reach, and sits *above* this store in
-    the provider tree, so it cannot read a shape. The accessor rather than the value, so it follows
-    a community defining a model without anything re-registering.
+  /*
+    The same rule read through a handle rather than the signals a switch fills — SpaceStore's
+    off-screen collection reads ask about the collection's own dataset, which may not be the one
+    on screen. Its shapes are listed and validated as `loadShapes` validates them — a manifest
+    that could not stand is no candidate — and `foreignEntries` answers the classes it already
+    had. The read is the pure one: `foreignSchemas` *registers* what it finds, which on AD4M
+    replaces the dataset's synthesised-class registry — adopted shapes' compiled classes
+    included — and an ask about a dataset nobody is adopting into must not take its classes
+    apart as the price of asking.
   */
-  onCleanup(datasetStore.provideExtractionCandidates(extractionCandidates));
+  async function extractionCandidatesFor(
+    dataset: DatasetHandle,
+  ): Promise<{ candidates: string[]; installed: string[] }> {
+    // `loadShapes` publishes no adopted shapes for a dataset that is not a WE space, so neither
+    // does this: a stored shape document there is no candidate on screen and none off it. The
+    // foreign read still answers a stored shape's class, though, so its name is kept out of the
+    // foreign candidates instead of being offered as though the space had brought it.
+    const weSpace = (await schemas()?.hasCoreSchema(dataset)) === true;
+    const [stored, allForeign] = await Promise.all([
+      storage().list(dataset),
+      schemas()?.foreignEntries(dataset) ?? Promise.resolve([]),
+    ]);
+    const records = weSpace ? stored : [];
+    const storedNames = new Set(stored.map((record) => record.name));
+    const foreign = weSpace ? allForeign : allForeign.filter((m) => !storedNames.has(m.name));
+    const shapes = records.map((record) => {
+      if (!record.manifest) return { name: record.name, manifest: null };
+      const gate = validateManifest(record.manifest, {
+        externalEntities: [
+          ...Object.keys(CORE_MANIFEST.entities),
+          ...foreign.map((m) => m.name),
+          ...records.map((r) => r.name).filter((n) => n !== record.name),
+        ],
+      });
+      return { name: record.name, manifest: gate.valid ? gate.manifest : null };
+    });
+    return { candidates: extractionCandidatesOf(shapes, foreign).candidates, installed: allForeign.map((m) => m.name) };
+  }
+
+  /*
+    Whether the candidates are whole. A picker shows the core classes at once; a standing watch
+    waits for the rest, because a watch registered from part of the list is removed and registered
+    again when the rest arrives — writes to the shared graph from every member, ending where they
+    started.
+  */
+  const extractionCandidatesLoaded = createMemo(() => shapesLoaded() && datasetStore.currentDatasetEntitiesLoaded());
 
   /**
    * What a relationship may point at here, grouped by where it comes from and labelled for the
@@ -617,10 +704,17 @@ export function ShapeStoreProvider(props: ParentProps) {
     });
   }
 
+  /** The newest `loadShapes` — see `current` inside it. */
+  const shapesLoad = latest();
+
   async function loadShapes(): Promise<void> {
     const ports = schemas();
     const dataset = handle();
     const uuid = datasetStore.currentDataset()?.id;
+    // Only the newest load publishes. Saving a model reloads while an earlier load can still be
+    // adopting, and that one finishing first showed the older list and called it whole.
+    const loadIsLatest = shapesLoad.begin();
+    const current = () => loadIsLatest() && datasetStore.currentDataset()?.id === uuid;
     if (!ports || !dataset || !datasetStore.isWeSpace()) {
       setSpaceShapes([]);
       setShapesLoaded(true);
@@ -638,7 +732,7 @@ export function ShapeStoreProvider(props: ParentProps) {
     try {
       const records = await storage().list(dataset);
       trace('shapes', 'records', { space: uuid, count: records.length, ms: lap() });
-      if (datasetStore.currentDataset()?.id !== uuid) return; // navigated away while loading
+      if (!current()) return; // navigated away, or reloaded, while loading
 
       const views: SpaceShapeView[] = [];
       const adopted = new Set<string>();
@@ -699,12 +793,12 @@ export function ShapeStoreProvider(props: ParentProps) {
         totalMs: Math.round(performance.now() - started),
         sincePageStartMs: Math.round(performance.now()),
       });
-      if (datasetStore.currentDataset()?.id === uuid) setSpaceShapes(views);
+      if (current()) setSpaceShapes(views);
     } catch (err) {
       console.error('ShapeStore: loading space shapes failed', err);
-      if (datasetStore.currentDataset()?.id === uuid) setSpaceShapes([]);
+      if (current()) setSpaceShapes([]);
     } finally {
-      if (datasetStore.currentDataset()?.id === uuid) setShapesLoaded(true);
+      if (current()) setShapesLoaded(true);
     }
   }
 
@@ -772,13 +866,8 @@ export function ShapeStoreProvider(props: ParentProps) {
     const draft = shapeDraft();
     if (!draft) return false;
     /*
-      Editing an existing model asks whether it *changed*, not whether it is filled in.
-
-      This used to answer `true` for every edit session on the reasoning that a stored model's
-      content came from the space and is therefore worth keeping — which is true of the model and
-      not of the *draft*, which has changed nothing yet. So opening a model to read it and pressing
-      Escape raised "discard this model?", every time, about nothing. That is the same failure the
-      new-model branch below goes out of its way to avoid.
+      Editing an existing model asks whether it *changed*, not whether it is filled in: opening a
+      model to read it and pressing Escape must not ask "discard this model?" about nothing.
 
       Compared against a snapshot taken when the wizard opened. Rows are mutated in place without
       touching the signal (see the note below `commitDraft`), so this has to be evaluated at close
@@ -1074,9 +1163,8 @@ export function ShapeStoreProvider(props: ParentProps) {
           classHint: authored.classHint || generated.classHint,
         };
         replaceDraft({ ...current, ...settled, members: generated.members, identityMember: generated.identityMember });
-        // Left closed. Generated hints are the part most worth reading before adopting, which is
-        // why every row used to be opened — but a collapsed row shows its hint now, so the reading
-        // is available without eight expanded cards standing between the author and the Save button.
+        // Left closed: a collapsed row shows its hint, so the generated hints can be read without
+        // eight expanded cards standing between the author and the Save button.
         setExpandedMembers([]);
         // '' for anything the author owns, so their words can never be mistaken for the machine's
         // on the next run — the record is of what generation contributed, not of what is on screen.
@@ -1409,6 +1497,8 @@ export function ShapeStoreProvider(props: ParentProps) {
     generating,
     hintEntities,
     extractionCandidates,
+    extractionCandidatesLoaded,
+    extractionCandidatesFor,
     provideExtractionEnroller: extractionEnroller.provide,
     relationshipTargets,
     identityOptions,

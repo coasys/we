@@ -21,15 +21,27 @@ import {
   NO_IDENTITY_CAPABILITIES,
   trace,
 } from '@we/backend-shared';
-import { DEV_FEATURES, devToolsEnabled, setDevToolsMuted } from '@we/module-shared';
-import { Accessor, createContext, createEffect, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
+import { DEV_FEATURES, devToolsEnabled, setDevToolsMuted, setTestPeopleOn, testPeopleEnabled } from '@we/module-shared';
+import {
+  Accessor,
+  batch,
+  createContext,
+  createEffect,
+  createMemo,
+  createSignal,
+  ParentProps,
+  useContext,
+} from 'solid-js';
 
 import type { BackendAccountInfo, BackendHostInfo } from '../../../shared/backend/types';
 import { type SignInStep, signInStep as stepOf } from '../../../shared/signInStep';
 import { credential } from '../credential';
+import { firstScreen } from '../firstScreen';
 import { useBackend, usePlatform } from '../providers/PlatformProvider';
 import { startAppBridge } from '../services/appBridge';
 import { useAccountStore } from './AccountStore';
+import { useChatStore } from './ChatStore';
+import { useShellStore } from './ShellStore';
 
 /**
  * Where boot has got to.
@@ -135,6 +147,14 @@ export interface SessionStore {
    */
   setDevTools: (on: boolean) => void;
   /**
+   * Whether the test people are offered: fake participants in a call, fake cursors, pretend people
+   * on a canvas. Off until a developer turns them on in Settings → Developer, and never on while
+   * `devTools` is off. See `testPeopleEnabled`.
+   */
+  testPeople: Accessor<boolean>;
+  /** Turn the test people on or off. Takes the value a `we-switch` emits. */
+  setTestPeople: (on: boolean) => void;
+  /**
    * The ephemeral transport, as a single shared instance. One port for the whole app because it
    * refcounts scopes per dataset — two ports would mean two executor signal handlers on the same
    * space. Both `PresenceStore` and the renderer's ephemeral binding use this one.
@@ -183,6 +203,11 @@ export interface SessionStore {
   clearPasswordError: () => void;
   /** Leave `finishing` for the running app, once the profile has been published (or failed to). */
   finishSetup: () => void;
+  /**
+   * Hold a first run on the AI step (`signInStep` is `setUpAi`) instead of leaving `finishing`.
+   * Decided by the runtime store, which knows whether there is anything to ask; left by `finishSetup`.
+   */
+  holdForAiSetup: () => void;
   logout: () => Promise<void>;
   /**
    * Start the whole boot again, from the failure screen.
@@ -212,6 +237,8 @@ const SessionContext = createContext<SessionStore>();
 export function SessionStoreProvider(props: ParentProps) {
   const platform = usePlatform();
   const backend = useBackend();
+  const shellStore = useShellStore();
+  const chatStore = useChatStore();
 
   const [bootState, setBootState] = createSignal<BootState>('initialising');
   const [bootError, setBootError] = createSignal('');
@@ -220,6 +247,8 @@ export function SessionStoreProvider(props: ParentProps) {
   const [loginLoading, setLoginLoading] = createSignal(false);
   const [createAgentError, setCreateAgentError] = createSignal('');
   const [createAgentLoading, setCreateAgentLoading] = createSignal(false);
+  /** A first run is holding the app back for the AI step — see `holdForAiSetup`. */
+  const [aiStepHeld, setAiStepHeld] = createSignal(false);
   const accounts = useAccountStore();
   const signInStep = createMemo(() =>
     stepOf({
@@ -227,6 +256,7 @@ export function SessionStoreProvider(props: ParentProps) {
       createAgentLoading: createAgentLoading(),
       switching: !!accounts.switchingTo(),
       creatingAccount: accounts.creating(),
+      settingUpAi: aiStepHeld(),
     }),
   );
 
@@ -244,6 +274,13 @@ export function SessionStoreProvider(props: ParentProps) {
   const [host, setHost] = createSignal<BackendHostInfo | undefined>(undefined);
   const [hostAccount, setHostAccount] = createSignal<BackendAccountInfo | undefined>(undefined);
 
+  // Whose kept panel instances the shell reads and writes — follows the signed-in agent, empty
+  // while nobody is, so a logout that does not reload drops the last agent's records from reach.
+  shellStore.provideAgentDid(() => me()?.did);
+  // Whose chats the store remembers — same DID, same reason: a remembered conversation or a
+  // pending question is one agent's, not the next sign-in's.
+  chatStore.provideAgentDid(() => me()?.did);
+
   const [backendPorts, setBackendPorts] = createSignal<BackendPorts | null>(null);
   // Supplied by connectors whose session is the connection rather than an unlocked keystore.
   let disconnectBackend: (() => Promise<void>) | null = null;
@@ -259,9 +296,16 @@ export function SessionStoreProvider(props: ParentProps) {
     `devToolsEnabled` ands with the build flag on the way back in.
   */
   const [devTools, setDevToolsSignal] = createSignal(devToolsEnabled(DEV_FEATURES));
+  // The test people need the developer tools on, so either switch re-asks the reader.
+  const [testPeople, setTestPeopleSignal] = createSignal(testPeopleEnabled(DEV_FEATURES));
   const setDevTools = (on: boolean) => {
     setDevToolsMuted(!on);
     setDevToolsSignal(devToolsEnabled(DEV_FEATURES));
+    setTestPeopleSignal(testPeopleEnabled(DEV_FEATURES));
+  };
+  const setTestPeople = (on: boolean) => {
+    setTestPeopleOn(on);
+    setTestPeopleSignal(testPeopleEnabled(DEV_FEATURES));
   };
 
   // EphemeralPort is a function (dataset → scope | null), so this stable delegate can exist
@@ -335,6 +379,12 @@ export function SessionStoreProvider(props: ParentProps) {
 
   async function initialise(): Promise<void> {
     const started = performance.now();
+    /*
+      From here until the first screen is drawn, the reads it does not need wait — see
+      `shared/firstScreen.ts`. Before the backend comes up, because the backend's own setup is among
+      them. Once per app: initialising again finds it already open.
+    */
+    firstScreen.hold();
     try {
       // The connector owns the entire connection choreography (spawn/attach, auth, credential
       // acquisition, settling delays) — the shell receives a ready backend and runs the session
@@ -347,7 +397,7 @@ export function SessionStoreProvider(props: ParentProps) {
         host: hostInfo,
         account,
         guest,
-      } = await backend.initialize({ selfId: () => me()?.did });
+      } = await backend.initialize({ selfId: () => me()?.did, afterFirstScreen: () => firstScreen.whenOpen() });
       disconnectBackend = disconnect ?? null;
       setHost(hostInfo);
       setHostAccount(account);
@@ -503,7 +553,19 @@ export function SessionStoreProvider(props: ParentProps) {
 
   function finishSetup(): void {
     settingUp = false;
-    setBootState('ready');
+    batch(() => {
+      setAiStepHeld(false);
+      setBootState('ready');
+    });
+  }
+
+  /**
+   * Keep the sign-in screen up on the AI step rather than leaving for the app. Only on a first run's
+   * `finishing`, where the session already answers and the app waits behind the screen; the step
+   * leaves through `finishSetup`, like the rest of setting up.
+   */
+  function holdForAiSetup(): void {
+    if (bootState() === 'finishing') setAiStepHeld(true);
   }
 
   /**
@@ -579,6 +641,8 @@ export function SessionStoreProvider(props: ParentProps) {
     devFeatures: () => DEV_FEATURES,
     devTools,
     setDevTools,
+    testPeople,
+    setTestPeople,
     ephemeralPort,
 
     credentialEntered: credential.entered,
@@ -590,6 +654,7 @@ export function SessionStoreProvider(props: ParentProps) {
     createAgent,
     clearPasswordError,
     finishSetup,
+    holdForAiSetup,
     retryBoot: () => window.location.reload(),
     logout,
 

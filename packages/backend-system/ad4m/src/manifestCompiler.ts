@@ -268,7 +268,7 @@ export function manifestToEntries(manifest: EntityManifest, opts: CompileManifes
           // AD4M's `@BelongsTo*` generates no `add`/`remove`/`set`, and an entry claiming otherwise
           // would build a runtime-adopted class that offers writes the hand-written one refuses.
           writable: !spec.reverseOf,
-          ...(spec.reverseOf ? { reverse: true } : {}),
+          ...(spec.reverseOf ? { reverse: true, reverseOf: spec.reverseOf } : {}),
           ...(spec.target ? { relatedEntity: spec.target } : {}),
           ...(spec.ordered ? { ordered: true } : {}),
           ...(resolvesPolymorphically(spec) ? { polymorphic: true } : {}),

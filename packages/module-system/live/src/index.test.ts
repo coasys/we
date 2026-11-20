@@ -52,10 +52,18 @@ const slots = () => liveModule.contributes?.slots ?? [];
 const into = (anchor: string) => slots().filter((slot) => slot.anchor === anchor);
 
 describe('what this module puts in the call bar', () => {
-  it('puts the pointer switch and the wheel among the controls', () => {
-    // Real controls, in the region for real controls, at every width — the bar keeps contributed
-    // chrome in the row rather than folding meanings it cannot read.
-    expect(into('call-controls')).toHaveLength(2);
+  it('puts the pointer switch and the wheel behind the More menu, as menu items', () => {
+    /*
+      They are the less-used actions the bar now keeps out of the row — "share your pointer" and the
+      wheel — so they go where the call module opened for them: `call-menu`, the region inside its
+      More menu. Contributed as `we-menu-item`s rather than buttons, which is what a menu can hold.
+    */
+    const items = into('call-menu');
+    expect(items).toHaveLength(2);
+    for (const { node } of items) {
+      expect(walk(node).some((child) => child.type === 'we-menu-item')).toBe(true);
+    }
+    expect(into('call-controls')).toHaveLength(0);
   });
 
   it('puts the synthetic cursors in the development region instead', () => {
@@ -98,15 +106,38 @@ describe('what this module puts in the call bar', () => {
     expect(lineage(node, number)?.some((step) => step.type === 'we-tooltip')).toBe(false);
   });
 
-  it('names the counter with the same glyph as its launcher', () => {
+  it('names the counter with the same glyph as the pointer line in the menu', () => {
     /*
-      The identical `−  N  +` next to it is what makes this necessary, and matching the rail button is
-      what makes the two readable as the same feature rather than as two unrelated dev toys.
+      The identical `−  N  +` next to it is what makes this necessary, and matching the More menu's
+      "Share your pointer" line is what makes the two readable as the same feature rather than as two
+      unrelated dev toys.
     */
-    const launcher = (liveModule.contributes?.launchers ?? []).find((entry) => entry.key === 'cursors');
+    const line = walk(into('call-menu')[0].node).find((node) => node.type === 'we-icon');
     const glyph = walk(into('call-dev')[0].node).find(
       (node) => node.type === 'we-icon' && props(node).name !== 'minus' && props(node).name !== 'plus',
     );
-    expect(props(glyph).name).toBe(launcher?.icon);
+    expect(props(glyph).name).toBe(props(line).name);
+  });
+});
+
+/**
+ * Sharing your pointer and taking the wheel live in one place: the call bar's More menu (Josh, #487).
+ *
+ * They were also rail launchers, so the same two controls showed twice on screen during a call. The
+ * rail keeps "Follow the driver", which is a different act and has no other home outside a call.
+ */
+describe('one home for the pointer and the wheel', () => {
+  it('offers neither as a rail launcher', () => {
+    const keys = (liveModule.contributes?.launchers ?? []).map((launcher) => launcher.key);
+    expect(keys).not.toContain('cursors');
+    expect(keys).not.toContain('wheel');
+    expect(JSON.stringify(liveModule.contributes?.launchers ?? [])).not.toMatch(/Share your pointer|Take the wheel/);
+  });
+
+  it('contributes both only to the More menu anchor', () => {
+    const anchors = (liveModule.contributes?.slots ?? [])
+      .filter((slot) => /toggleCursors|toggleWheel/.test(JSON.stringify(slot.node)))
+      .map((slot) => slot.anchor);
+    expect(anchors).toEqual(['call-menu', 'call-menu']);
   });
 });

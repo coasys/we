@@ -96,13 +96,18 @@ vi.mock('../src/frameworks/solid/stores/DatasetStore', () => ({
     currentDataset: () => ({ id: 'ds', handle: {}, name: 'Space' }),
     datasets: () => [],
     personalDataset: () => null,
+    currentDatasetEntities: () => [],
   }),
 }));
 vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
   useSessionStore: () => ({ me: () => ({ did: 'did:key:z6Mk' }) }),
 }));
 vi.mock('../src/frameworks/solid/stores/ShapeStore', () => ({
-  useShapeStore: () => ({ spaceShapes: () => [], extractionCandidates: () => [] }),
+  useShapeStore: () => ({
+    spaceShapes: () => [],
+    extractionCandidates: () => [],
+    extractionCandidatesLoaded: () => true,
+  }),
   BLOCK_ICONS: {},
 }));
 

@@ -83,9 +83,23 @@ describe('itemOf', () => {
       record: 'task',
       state: 'todo',
       since: 1,
+      lastActivity: 1,
       waiting: [],
       stalled: false,
     });
+  });
+
+  it('dates its last activity by the latest move asked for, settled or open, else by its start', () => {
+    const proposals = [
+      proposal({ id: 'p1', from: '_entry', to: 'todo', settled: true, proposedAt: 5 }),
+      proposal({ id: 'p2', from: 'todo', to: 'doing', settled: true, proposedAt: 30 }),
+      proposal({ id: 'p3', from: 'doing', to: 'done', proposedAt: 20 }),
+      // Another run's ask says nothing about this one.
+      proposal({ id: 'p4', run: 'r2', to: 'doing', proposedAt: 99 }),
+    ];
+    expect(itemOf(run('r1', 'task', 1, 'doing'), proposals, anybody()).lastActivity).toBe(30);
+    expect(itemOf(run('r1', 'task', 1), [], anybody()).lastActivity).toBe(1);
+    expect(itemOf(run('r1', 'task'), [], anybody())).not.toHaveProperty('lastActivity');
   });
 
   it('calls a record stalled when two moves out of its state each have their asks and neither happened', () => {

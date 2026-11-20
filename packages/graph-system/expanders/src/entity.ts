@@ -26,7 +26,8 @@ import type {
 import { parseAddress } from '@we/graph-protocol';
 
 import { edgeId, placeholder, rowToNode } from './nodes';
-import { endpointRelations, isReified, reifiedEdgeFrom, type ReifiedEdgeMap } from './reified';
+import { isReified, reifiedEdgeFrom, type ReifiedEdgeMap } from './reified';
+import { followedRelations, readRelations, reifiedEnds, type RelationFilter } from './relations';
 
 export interface EntityExpanderOptions {
   /** Relations to follow. Absent means all of them. */
@@ -64,12 +65,18 @@ export function entityExpander(options: EntityExpanderOptions = {}): Expander {
       const nodes: GraphNode[] = [];
       const edges: GraphEdge[] = [];
 
-      if (request.direction !== 'in') {
-        await expandForward({ request, context, address, dataset, shape, options, nodes, edges });
-      }
-      if (request.direction !== 'out') {
-        await expandBackward({ request, context, address, dataset, shapes, options, nodes, edges });
-      }
+      await expandAround({
+        request,
+        context,
+        address,
+        dataset,
+        shapes,
+        options,
+        nodes,
+        edges,
+        forward: request.direction !== 'in',
+        backward: request.direction !== 'out',
+      });
 
       return { nodes, edges, total: nodes.length };
     },
@@ -86,199 +93,111 @@ interface Work {
   edges: GraphEdge[];
 }
 
-function wanted(relation: string, request: ExpandRequest, options: EntityExpanderOptions): boolean {
-  if (options.exclude?.includes(relation)) return false;
-  if (options.relations && !options.relations.includes(relation)) return false;
-  if (request.edgeTypes && !request.edgeTypes.includes(relation)) return false;
-  return true;
+/** The relation names a request still allows — the options' list, narrowed by the request's own. */
+function filterFor(request: ExpandRequest, options: EntityExpanderOptions): RelationFilter {
+  const relations =
+    options.relations && request.edgeTypes
+      ? options.relations.filter((name) => request.edgeTypes!.includes(name))
+      : (options.relations ?? request.edgeTypes);
+  return { ...(relations ? { relations } : {}), ...(options.exclude ? { exclude: options.exclude } : {}) };
 }
 
 /**
- * Follow this instance's own relations.
+ * Follow this instance's own relations, and find what points at it.
  *
- * One query with every wanted relation included, rather than one per relation: the include path
- * batches, so this is a single round trip regardless of how many relations a class declares.
+ * Both through the shared relation reader, so a knowledge map and a canvas tree follow the same
+ * relations: typed only, and never into the host's bookkeeping. Forward is one read with every
+ * relation included; backward is one inbound read per relation pointing at this type.
+ *
+ * Forward, an untyped relation is never followed — that would mint an address for every comment,
+ * call and child of every node the walk touches, which is a different graph. Backward, an untyped
+ * relation is asked only where its class is reified (see `reifiedEnds`): that is how a drawn
+ * connection is found, standing on one of its ends.
  */
-async function expandForward({
-  request,
-  context,
-  address,
-  dataset,
-  shape,
-  options,
-  nodes,
-  edges,
-}: Work & { shape: EntityShape }): Promise<void> {
-  /*
-    Forward, only relations that name their target. An untyped one is followed *backwards* — that is
-    how a reified connection is found, standing on one of its ends — but following it forwards would
-    mean minting an address for every comment, call and child of every node the walk touches, which
-    is a different graph from the one this expander is for. The containment expander opens a
-    container deliberately, and does it with one polymorphic read.
-
-    Kept as an explicit filter rather than left to fall out of the shape, because untyped relations
-    were absent from `shape.relations` entirely until recently and their arrival must not silently
-    widen what a knowledge map draws.
-  */
-  const relations = shape.relations.filter((r) => r.target && wanted(r.name, request, options));
-  if (!relations.length) return;
-
-  const include: Record<string, unknown> = {};
-  for (const relation of relations) {
-    // Nesting the endpoints so a relation pointing *at* a reified class can be resolved through it in
-    // the same round trip, rather than drawing the relationship and stopping there.
-    const nested = isReified(relation.target, options.reified)
-      ? { include: Object.fromEntries(endpointRelations(relation.target, options.reified!).map((n) => [n, true])) }
-      : true;
-    include[relation.name] = nested;
-  }
-
-  const rows = await context.query({
-    entity: shape.name,
+async function expandAround(
+  work: Work & { shapes: EntityShape[]; forward: boolean; backward: boolean },
+): Promise<void> {
+  const { request, context, address, dataset, shapes, options, nodes, edges } = work;
+  const filter = filterFor(request, options);
+  const followed = followedRelations(shapes, filter);
+  const { rows, links } = await readRelations({
+    context,
     dataset,
-    where: { id: address.id },
-    include,
-    limit: 1,
+    type: address.type!,
+    ids: [address.id!],
+    forward: work.forward ? followed.filter((relation) => relation.holder === address.type) : [],
+    backward: work.backward
+      ? [
+          ...followed.filter((relation) => relation.target === address.type),
+          ...reifiedEnds(shapes, options.reified, filter),
+        ]
+      : [],
+    reified: options.reified,
+    limit: request.limit ?? 50,
     signal: request.signal,
   });
-  const row = rows[0];
-  if (!row) return;
+  const rowOf = new Map(rows.map((found) => [found.row.id, found]));
+  const forwardCount = new Map<string, number>();
 
-  for (const relation of relations) {
-    const value = row[relation.name];
-    const targets = Array.isArray(value) ? value : value === undefined || value === null ? [] : [value];
-    const targetShape = context.models(dataset).find((s) => s.name === relation.target);
-
-    for (const target of targets.slice(0, request.limit ?? 50)) {
-      if (isReified(relation.target, options.reified) && target && typeof target === 'object') {
-        const resolved = reifiedEdgeFrom(
-          target as Record<string, unknown>,
-          relation.target,
-          options.reified![relation.target],
-          dataset,
-          context.models(dataset),
-          ID,
-        );
-        // No warning on the skip here, unlike the backward pass: this one falls through to drawing
-        // the target as an ordinary node, which is a degradation rather than a failure.
-        if (!('reason' in resolved)) {
-          nodes.push(...resolved.nodes);
-          edges.push(resolved.edge);
-          continue;
-        }
-      }
-
-      // A relation comes back either hydrated (include worked) or as a bare id (it did not, or the
-      // instance has not synced). Both are legitimate; the bare case becomes a placeholder rather
-      // than being dropped, so the edge still tells you something is there.
-      const node =
-        typeof target === 'object' && target !== null
-          ? rowToNode(target as Record<string, unknown>, relation.target, dataset, targetShape, ID)
-          : typeof target === 'string'
-            ? placeholder(dataset, relation.target, target, ID)
-            : null;
-      if (!node) continue;
-      nodes.push(node);
-      edges.push({
-        id: edgeId(request.id, relation.name, node.id),
-        source: request.id,
-        target: node.id,
-        type: relation.name,
-      });
+  for (const link of links) {
+    const outward = link.holder === address.id && link.relation.holder === address.type;
+    if (outward) {
+      // A relation's values capped per relation, as the forward pass always has.
+      const taken = forwardCount.get(link.relation.name) ?? 0;
+      if (taken >= (request.limit ?? 50)) continue;
+      forwardCount.set(link.relation.name, taken + 1);
     }
-  }
-}
+    const otherId = outward ? link.value : link.holder;
+    const otherType = outward ? link.relation.target : link.relation.holder;
+    const found = rowOf.get(otherId);
 
-/**
- * Find what points at this instance.
- *
- * Asked per candidate shape — every type declaring a relation whose target is ours — through the
- * neutral `scope` drill-down with `direction: 'in'`. A host that cannot run that says so and this
- * degrades to the forward half rather than returning a graph that quietly omits half its edges.
- */
-async function expandBackward({
-  request,
-  context,
-  address,
-  dataset,
-  shapes,
-  options,
-  nodes,
-  edges,
-}: Work & { shapes: EntityShape[] }): Promise<void> {
-  /*
-    Which relations could be pointing at this node.
-
-    A declared target is the ordinary answer: a relation that names our type might hold us, and one
-    that names another type cannot. An **untyped** relation could hold anything, so it is always a
-    candidate — but only where the class is reified, and that restriction is doing real work.
-
-    Reification is a declaration: the template has said this class *is* an edge and named the two
-    relations that are its ends. Following those backwards is the only way a drawn connection is
-    ever found, since the whole point is that it can join any two records and so declares no target.
-
-    An untyped relation on an ordinary class carries no such statement. `CollectionBlock.children`
-    is untyped for its own reasons, and treating it as a candidate here would make every node in
-    the graph run a reverse scan for every container in the space — for an answer the `collection`
-    expander already gives, in the direction it was built for.
-  */
-  const candidates = shapes.flatMap((source) =>
-    source.relations
-      .filter((relation) => {
-        if (!wanted(relation.name, request, options)) return false;
-        if (relation.target) return relation.target === address.type;
-        return isReified(source.name, options.reified);
-      })
-      .map((relation) => ({ source, relation })),
-  );
-
-  for (const { source, relation } of candidates) {
-    const reifiedInclude = isReified(source.name, options.reified)
-      ? Object.fromEntries(endpointRelations(source.name, options.reified!).map((name) => [name, true]))
-      : undefined;
-
-    const rows = await context
-      .query({
-        entity: source.name,
-        dataset,
-        scope: { anchor: address.type!, via: relation.name, anchorId: address.id!, direction: 'in' },
-        limit: request.limit ?? 50,
-        include: reifiedInclude,
-        signal: request.signal,
-      })
-      .catch((error: unknown) => {
-        context.warn(
-          `cannot read what points at ${address.type} via ${source.name}.${relation.name}: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-        return [] as Record<string, unknown>[];
-      });
-
-    for (const row of rows) {
-      // A reified class reached backwards is the normal way an edge is found: you are standing on one
-      // endpoint and the relationship points at you. Collapse it rather than adding a dot.
-      if (isReified(source.name, options.reified)) {
-        const resolved = reifiedEdgeFrom(row, source.name, options.reified![source.name], dataset, shapes, ID);
-        if ('reason' in resolved) {
-          context.warn(`${source.name} ${String(row.id)} not drawn: ${resolved.reason}`);
-          continue;
-        }
+    // A reified class is an edge, not a dot: collapse it into the edge it stands for.
+    if (isReified(otherType, options.reified) && found) {
+      const resolved = reifiedEdgeFrom(found.row, otherType, options.reified![otherType], dataset, shapes, ID);
+      if (!('reason' in resolved)) {
         nodes.push(...resolved.nodes);
         edges.push(resolved.edge);
         continue;
       }
-
-      const node = rowToNode(row, source.name, dataset, source, ID);
-      if (!node) continue;
-      nodes.push(node);
-      edges.push({
-        id: edgeId(node.id, relation.name, request.id),
-        source: node.id,
-        target: request.id,
-        type: relation.name,
-      });
+      /*
+        Backward, a reified record is only ever the edge — standing on one end, the relationship points
+        at you — so one that cannot be resolved is reported and skipped. Forward it falls through to
+        an ordinary node, a degradation rather than a failure.
+      */
+      if (!outward) {
+        context.warn(`${otherType} ${otherId} not drawn: ${resolved.reason}`);
+        continue;
+      }
     }
+
+    /*
+      A relation comes back either hydrated (include worked) or as a bare id (it did not, or the
+      instance has not synced). Both are legitimate; the bare case becomes a placeholder rather than
+      being dropped, so the edge still tells you something is there.
+    */
+    const shape = shapes.find((s) => s.name === otherType);
+    const node = found
+      ? rowToNode(found.row, otherType, dataset, shape, ID)
+      : outward
+        ? placeholder(dataset, otherType, otherId, ID)
+        : null;
+    if (!node) continue;
+    nodes.push(node);
+    edges.push(
+      outward
+        ? {
+            id: edgeId(request.id, link.relation.name, node.id),
+            source: request.id,
+            target: node.id,
+            type: link.relation.name,
+          }
+        : {
+            id: edgeId(node.id, link.relation.name, request.id),
+            source: node.id,
+            target: request.id,
+            type: link.relation.name,
+          },
+    );
   }
 }
 

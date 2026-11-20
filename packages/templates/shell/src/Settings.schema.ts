@@ -25,6 +25,8 @@ import { languagesLocalState, languagesSection } from './LanguageSettings.schema
 import {
   backup,
   connectedApps,
+  executorSettings,
+  executorSettingsLocalState,
   executorSupport,
   logging,
   loggingLocalState,
@@ -1439,50 +1441,75 @@ const developerSection: SchemaNode = {
   props: { gap: '300' },
   children: [
     { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Developer'] },
-    {
-      type: 'Row',
-      props: {
-        ay: 'center',
-        ax: 'between',
-        gap: '300',
-        p: '300',
-        bg: 'surface',
-        r: '300',
-        border: '1px solid border',
-      },
-      children: [
-        {
-          type: 'Column',
-          props: { gap: '100', flex: '1' },
-          children: [
-            { type: 'we-text', props: { variant: 'label' }, children: ['Show developer tools'] },
-            {
-              type: 'we-text',
-              props: { variant: 'footnote', color: 'text-faint' },
-              children: [
-                'On, this build shows its developer affordances — the schema test pages, the fake-participant controls in a call, render logging. Off, it looks like a shipped app, which is the point: it is how you check what a user actually sees without building for production.',
-              ],
-            },
-            {
-              type: 'we-text',
-              props: { variant: 'footnote', color: 'text-faint' },
-              children: ['This page is only ever here in a development build. A shipped app has none of it.'],
-            },
-          ],
-        },
-        {
-          type: 'we-switch',
-          props: {
-            checked: { $: 'sessionStore.devTools' },
-            // Positive-phrased, so the switch's own value passes straight through — `$not` around it
-            // would resolve at render time and send a constant.
-            onChange: { $invoke: 'sessionStore.setDevTools', args: [{ $: 'event.detail' }] },
-          },
-        },
+    developerSwitch(
+      'Show developer tools',
+      [
+        'On, this build shows its developer affordances — the schema test pages, render logging. Off, it looks like a shipped app, which is the point: it is how you check what a user actually sees without building for production.',
+        'This page is only ever here in a development build. A shipped app has none of it.',
       ],
+      'devTools',
+    ),
+    /*
+      Off until turned on, unlike the switch above: each of these puts people on screen who are not
+      there. Gated on `devTools`, so the switch above still puts everything away.
+    */
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'sessionStore.devTools' },
+        then: developerSwitch(
+          'Test people',
+          [
+            'On, a call offers fake participants and fake cursors, and a weighed canvas offers pretend people. For testing layouts and answers without other people.',
+          ],
+          'testPeople',
+        ),
+      },
     },
   ],
 };
+
+/** One labelled switch on the Developer page, bound to a `sessionStore` member and its setter. */
+function developerSwitch(label: string, notes: string[], member: 'devTools' | 'testPeople'): SchemaNode {
+  const setter = member === 'devTools' ? 'setDevTools' : 'setTestPeople';
+  return {
+    type: 'Row',
+    props: {
+      ay: 'center',
+      ax: 'between',
+      gap: '300',
+      p: '300',
+      bg: 'surface',
+      r: '300',
+      border: '1px solid border',
+    },
+    children: [
+      {
+        type: 'Column',
+        props: { gap: '100', flex: '1' },
+        children: [
+          { type: 'we-text', props: { variant: 'label' }, children: [label] },
+          ...notes.map((note) => ({
+            type: 'we-text',
+            props: { variant: 'footnote', color: 'text-faint' },
+            children: [note],
+          })),
+        ],
+      },
+      {
+        type: 'we-switch',
+        props: {
+          // The switch's accessible name: the visible label beside it is a separate node.
+          label,
+          checked: { $: `sessionStore.${member}` },
+          // Positive-phrased, so the switch's own value passes straight through — `$not` around it
+          // would resolve at render time and send a constant.
+          onChange: { $invoke: `sessionStore.${setter}`, args: [{ $: 'event.detail' }] },
+        },
+      },
+    ],
+  };
+}
 
 /** A page's own column. Every route renders one, so they share spacing without repeating it. */
 function page(children: SchemaNode[]): SchemaNode {
@@ -1518,8 +1545,23 @@ export const settingsTemplate: TemplateSchema = {
       path: '/devices/this',
       // What runs underneath sits behind This device's Advanced switch: network, languages and logs
       // are what someone opens when the data layer misbehaves, and noise the rest of the time.
-      $localState: { ...networkLocalState, ...loggingLocalState, ...languagesLocalState },
-      ...page([thisDevicePage([runtimeError, executorSupport, trustedAgents, peerNetwork, logging, languagesSection])]),
+      $localState: {
+        ...networkLocalState,
+        ...loggingLocalState,
+        ...executorSettingsLocalState,
+        ...languagesLocalState,
+      },
+      ...page([
+        thisDevicePage([
+          runtimeError,
+          executorSupport,
+          trustedAgents,
+          peerNetwork,
+          logging,
+          executorSettings,
+          languagesSection,
+        ]),
+      ]),
     },
     { path: '/bots', ...page([botsPage]) },
     { path: '/connections', ...page([runtimeError, connectedApps]) },
@@ -1555,8 +1597,8 @@ export const settingsTemplate: TemplateSchema = {
     },
     {
       path: '/network',
-      $localState: { ...networkLocalState, ...loggingLocalState },
-      ...page([runtimeError, executorSupport, trustedAgents, peerNetwork, logging]),
+      $localState: { ...networkLocalState, ...loggingLocalState, ...executorSettingsLocalState },
+      ...page([runtimeError, executorSupport, trustedAgents, peerNetwork, logging, executorSettings]),
     },
     // No `$if` on the route itself: its nav entry is already gated, and a production build resolves
     // the switch to false whatever it is set to, so the page is inert rather than dangerous if
@@ -1641,7 +1683,9 @@ export const settingsTemplate: TemplateSchema = {
                 { type: 'Column', props: { pt: '300', borderTop: '1px solid border' }, children: [logOutAction] },
               ],
             },
-            { type: 'Column', props: { flex: '1', gap: '600' }, children: [{ type: '$routes' }] },
+            // `minWidth: '0'`: a flex child is at least as wide as its widest content, so without it
+            // one long line (an executor log line) widened every settings page past the window.
+            { type: 'Column', props: { flex: '1', gap: '600', minWidth: '0' }, children: [{ type: '$routes' }] },
           ],
         },
       ],

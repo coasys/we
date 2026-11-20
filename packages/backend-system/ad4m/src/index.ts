@@ -54,7 +54,12 @@ export {
   manifestToEntries,
   moduleOfModel,
 } from './manifestCompiler';
-export { type Ad4mLifecycleOptions, createAd4mAgentSession, createAd4mDatasetLifecycle } from './lifecycleAdapter';
+export {
+  type Ad4mAgentSessionOptions,
+  type Ad4mLifecycleOptions,
+  createAd4mAgentSession,
+  createAd4mDatasetLifecycle,
+} from './lifecycleAdapter';
 export { createAd4mModelAdmin } from './modelAdminAdapter';
 export { type Ad4mRuntimeOptions, createAd4mRuntimeAdmin } from './runtimeAdminAdapter';
 export {
@@ -81,7 +86,12 @@ export {
   runtimeSupportsInterpretation,
   transcriptScopeQuery,
 } from './interpretationAdapter';
-export { type Ad4mCapability, capabilitiesFromToken, createCapabilityCheck } from './capabilities';
+export {
+  type Ad4mCapability,
+  capabilitiesFromToken,
+  createCapabilityCheck,
+  holdsOperatorCredential,
+} from './capabilities';
 export {
   createAd4mCallPort,
   DEFAULT_CALL_CONFIG,

@@ -56,10 +56,11 @@ type FakeLink = { author: string; data: { source: string; predicate: string; tar
  * node in one call and answers whether there was anything, as `remove_processor` does — and leaves
  * the processor's `InterpretationRun` nodes, which point AT the node rather than from it.
  */
-function perspective(agent = 'did:me') {
+function perspective(agent = 'did:me', foreign: Record<string, string> = {}) {
   let links: FakeLink[] = [];
   const calls = { get: 0, add: 0, remove: 0, failedRemove: 0, removeProcessor: 0 };
   const order: string[] = [];
+  const listeners = new Map<string, (event: unknown) => void>();
   const register = (author: string, config: Record<string, unknown>) => {
     for (const [field, predicate] of Object.entries(SCALARS)) {
       if (config[field] === undefined) continue;
@@ -72,12 +73,17 @@ function perspective(agent = 'did:me') {
   };
   const handle = {
     uuid: 'p1',
-    on: () => () => {},
-    // The registry as the executor answers it: by name or by target class.
+    on: (event: string, cb: (e: unknown) => void) => {
+      listeners.set(event, cb);
+      return () => listeners.delete(event);
+    },
+    // The registry as the executor answers it: by name or by target class. WE's own classes come
+    // from their models; `foreign` holds the classes another app registered.
     shapes: async (keys?: string[]) =>
-      Object.keys(MODELS)
-        .map((name) => ({ name, shape: { targetClass: targetOf(name) }, hash: '' }))
-        .filter(({ name, shape }) => !keys || keys.includes(name) || keys.includes(shape.targetClass)),
+      [
+        ...Object.keys(MODELS).map((name) => ({ name, shape: { targetClass: targetOf(name) }, hash: '' })),
+        ...Object.entries(foreign).map(([name, targetClass]) => ({ name, shape: { targetClass }, hash: '' })),
+      ].filter(({ name, shape }) => !keys || keys.includes(name) || keys.includes(shape.targetClass)),
     get: async (query: { source?: string; predicate?: string }) => {
       calls.get += 1;
       // A real read yields the event loop; so does this one, so concurrent callers interleave.
@@ -114,10 +120,27 @@ function perspective(agent = 'did:me') {
       register(agent, config);
       return config.processorId;
     },
+    add: async (link: { data: FakeLink['data'] } | FakeLink['data']) => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      links.push({ author: agent, data: 'data' in link ? link.data : link });
+    },
+    setSingleTarget: async (link: FakeLink['data']) => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      links = links.filter((l) => !(l.data.source === link.source && l.data.predicate === link.predicate));
+      links.push({ author: agent, data: { source: link.source, predicate: link.predicate, target: link.target } });
+    },
+    getSingleTarget: async (query: { source: string; predicate: string }) =>
+      links.find((l) => l.data.source === query.source && l.data.predicate === query.predicate)?.data.target,
   };
   return {
     handle: handle as never,
     calls,
+    /** Emit an executor event the way the real stream does — the listener's work is async. */
+    emit: async (event: Record<string, unknown>) => {
+      listeners.get('auto-processor-event')?.(event);
+      // The listener parents in a promise chain of perspective calls; let it run.
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    },
     /** The processor calls in the order they were made. */
     order,
     /** A run the processor wrote: a node pointing at the config, which removal must not touch. */
@@ -251,5 +274,65 @@ describe('stopping a standing watch', () => {
 
     expect(p.calls.removeProcessor).toBe(2);
     expect(p.calls.remove).toBe(0);
+  });
+});
+
+describe('a pass that outlives its watch', () => {
+  const BASE = `we://interpreted/${encodeURIComponent('we://collection/root')}/a-record`;
+
+  it('still files what it minted when `processed` lands after `unwatch`', async () => {
+    /*
+      The last pass of a call very often settles after everybody has hung up. If `unwatch` drops
+      where the pass files, the `processed` event that lands next is dropped with it: a minted
+      record that no surface can reach by traversal.
+    */
+    const p = perspective();
+    const port = await registeredOnce(p);
+    await port.unwatch!(p.handle, WATCH);
+
+    await p.emit({ step: 'processed', processorId: WATCH, agentDid: 'did:me', bases: [BASE] });
+
+    // Containment under the watch's parent, and provenance back to the conversation.
+    expect(p.linksTo(BASE)).toBe(2);
+  });
+
+  it('still files when `processed` lands on a new session, after a reload', async () => {
+    const p = perspective();
+    await registeredOnce(p);
+
+    // A new port, as a reloaded page builds: its map is empty, the graph keeps the filing.
+    const reloaded = createAd4mInterpretationPort(() => 'did:me');
+    await reloaded.observe!(p.handle, () => {});
+    await p.emit({ step: 'processed', processorId: WATCH, agentDid: 'did:me', bases: [BASE] });
+
+    expect(p.linksTo(BASE)).toBe(2);
+  });
+
+  it('does not file another agent’s pass, whatever the graph says', async () => {
+    const p = perspective();
+    const port = await registeredOnce(p);
+    await port.unwatch!(p.handle, WATCH);
+
+    await p.emit({ step: 'processed', processorId: WATCH, agentDid: 'did:peer', bases: [BASE] });
+
+    expect(p.linksTo(BASE)).toBe(0);
+  });
+});
+
+describe('a class the space already had', () => {
+  it('watches it by the target class its SHACL names, with no WE model behind it', async () => {
+    const p = perspective('did:me', { DiscussionTopic: 'conv://DiscussionTopic' });
+    await createAd4mInterpretationPort(() => 'did:me').watch!(
+      p.handle,
+      request(['TaskBlock', 'DiscussionTopic']) as never,
+    );
+    expect(p.classes()).toEqual([`literal:string:${targetOf('TaskBlock')}`, 'literal:string:conv://DiscussionTopic']);
+  });
+
+  it('still refuses a name with neither a model nor a target class', async () => {
+    const p = perspective('did:me', { Broken: '' });
+    await expect(
+      createAd4mInterpretationPort(() => 'did:me').watch!(p.handle, request(['Broken']) as never),
+    ).rejects.toThrow('no schema named "Broken"');
   });
 });

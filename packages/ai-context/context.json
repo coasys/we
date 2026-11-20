@@ -1100,6 +1100,12 @@
           "default": "false"
         },
         {
+          "name": "dismiss",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
+        },
+        {
           "name": "label",
           "type": "unknown",
           "optional": false
@@ -3634,7 +3640,7 @@
         },
         {
           "name": "onNodeArrange",
-          "type": "((payload: { id: string; into: \"child\" | \"sibling\" | \"loose\"; recordId: string; recordType: string; targetId?: string; targetType?: string; before?: boolean; order?: string[]; x: number; y: number; }) => void)",
+          "type": "((payload: { id: string; into: \"child\" | \"sibling\" | \"loose\"; recordId: string; recordType: string; pending?: boolean; changed?: boolean; edge?: { id: string; type: string; data?: Record<string, GraphValue>; }; targetId?: string; targetType?: string; before?: boolean; order?: string[]; x: number; y: number; }) => void)",
           "optional": true
         },
         {
@@ -6326,6 +6332,19 @@
       "needsArgs": ["installFromFile", "toggleSpace", "openSetUp", "removeBundle"]
     },
     {
+      "name": "chatStore",
+      "state": {
+        "sheet": {
+          "type": "object"
+        },
+        "isNarrow": {
+          "type": "boolean"
+        }
+      },
+      "actions": ["openChat", "closeSheet"],
+      "ambient": ["closeSheet"]
+    },
+    {
       "name": "clockStore",
       "state": {
         "clocks": {
@@ -6359,6 +6378,9 @@
         },
         "currentDatasetEntities": {
           "type": "array"
+        },
+        "currentDatasetEntitiesLoaded": {
+          "type": "boolean"
         },
         "isWeSpace": {
           "type": "boolean"
@@ -6761,6 +6783,9 @@
         "displays": {
           "type": "object"
         },
+        "plumbingClasses": {
+          "type": "array"
+        },
         "kinds": {
           "type": "array"
         },
@@ -6953,11 +6978,12 @@
             "id",
             "name",
             "kind",
-            "source",
+            "endpointId",
+            "remoteModel",
+            "status",
             "isDefault",
             "kindLabel",
-            "sourceLabel",
-            "detail",
+            "endpointName",
             "statusText",
             "ready"
           ]
@@ -6968,48 +6994,15 @@
         },
         "aiForm": {
           "type": "object",
-          "properties": [
-            "id",
-            "name",
-            "kind",
-            "sourceKind",
-            "presetName",
-            "apiService",
-            "apiProtocol",
-            "apiBaseUrl",
-            "apiKey",
-            "apiKeyStored",
-            "apiKeyBaseUrl",
-            "apiKeyRemoved",
-            "apiModel",
-            "apiMaxContext",
-            "hfRepo",
-            "hfRevision",
-            "hfFileName",
-            "filePath",
-            "useTokenizer",
-            "tokenizerRepo",
-            "tokenizerRevision",
-            "tokenizerFileName"
-          ]
-        },
-        "aiPresetOptions": {
-          "type": "array",
-          "properties": ["label", "value"]
+          "properties": ["id", "name", "kind", "endpointId", "remoteModel"]
         },
         "aiFormComplete": {
           "type": "boolean"
         },
-        "aiMaxContextError": {
-          "type": "string"
-        },
-        "aiApiKeyError": {
-          "type": "string"
-        },
-        "aiDiscoverNeedsKey": {
+        "aiFormDirty": {
           "type": "boolean"
         },
-        "aiServiceOptions": {
+        "aiEndpointOptions": {
           "type": "array",
           "properties": ["label", "value"]
         },
@@ -7020,8 +7013,112 @@
           "type": "array",
           "properties": ["label", "value"]
         },
-        "aiFormDirty": {
+        "aiDiscoveredModelHint": {
+          "type": "string"
+        },
+        "aiRecommendedModel": {
+          "type": "string"
+        },
+        "aiCanPull": {
           "type": "boolean"
+        },
+        "aiPullText": {
+          "type": "string"
+        },
+        "canManageAiEndpoints": {
+          "type": "boolean"
+        },
+        "aiEndpoints": {
+          "type": "array",
+          "properties": [
+            "id",
+            "name",
+            "kind",
+            "baseUrl",
+            "hasApiKey",
+            "capabilities",
+            "health",
+            "kindLabel",
+            "healthText",
+            "healthy",
+            "modelCount",
+            "managed",
+            "editable"
+          ]
+        },
+        "aiDetectedEndpoints": {
+          "type": "array",
+          "properties": ["kind", "baseUrl", "capabilities", "models", "label", "detail"]
+        },
+        "aiInstallLinks": {
+          "type": "array",
+          "properties": ["label", "url"]
+        },
+        "aiEndpointForm": {
+          "type": "object",
+          "properties": [
+            "id",
+            "name",
+            "service",
+            "kind",
+            "baseUrl",
+            "apiKey",
+            "apiKeyStored",
+            "apiKeyBaseUrl",
+            "apiKeyRemoved",
+            "maxContext"
+          ]
+        },
+        "aiEndpointFormComplete": {
+          "type": "boolean"
+        },
+        "aiEndpointFormDirty": {
+          "type": "boolean"
+        },
+        "aiMaxContextError": {
+          "type": "string"
+        },
+        "aiApiKeyError": {
+          "type": "string"
+        },
+        "aiServiceOptions": {
+          "type": "array",
+          "properties": ["label", "value"]
+        },
+        "canUseLocalAi": {
+          "type": "boolean"
+        },
+        "canConfigureLocalAi": {
+          "type": "boolean"
+        },
+        "localAi": {
+          "type": "object",
+          "properties": [
+            "loaded",
+            "device",
+            "gpus",
+            "compute",
+            "budget",
+            "notes",
+            "items",
+            "unavailable",
+            "reasons",
+            "fits",
+            "summary",
+            "installLabel",
+            "installed",
+            "incomplete",
+            "installing",
+            "running",
+            "anyRunning",
+            "canStart",
+            "runtimes",
+            "progress",
+            "canInstall"
+          ]
+        },
+        "aiSetupOptions": {
+          "type": "array"
         },
         "languages": {
           "type": "array",
@@ -7071,6 +7168,19 @@
         "executorRestartPending": {
           "type": "boolean"
         },
+        "executorConfigFile": {
+          "type": "string"
+        },
+        "executorConfigRows": {
+          "type": "array",
+          "properties": ["id", "key", "value", "kind", "choice", "editable", "note"]
+        },
+        "executorLogTail": {
+          "type": "string"
+        },
+        "canRestartExecutor": {
+          "type": "boolean"
+        },
         "pendingConsent": {
           "type": "object",
           "properties": ["kind", "title", "message", "app", "peerId"]
@@ -7085,13 +7195,29 @@
         "newAiModel",
         "editAiModel",
         "setAiFormField",
-        "setAiService",
         "discoverAiModels",
+        "pullAiModel",
         "closeAiForm",
         "saveAiModel",
         "removeAiModel",
         "setDefaultAiModel",
         "removeAiTask",
+        "detectAiEndpoints",
+        "addDetectedEndpoint",
+        "newAiEndpoint",
+        "editAiEndpoint",
+        "setAiEndpointField",
+        "setAiService",
+        "closeAiEndpointForm",
+        "saveAiEndpoint",
+        "removeAiEndpoint",
+        "loadLocalAi",
+        "installLocalAi",
+        "startLocalAi",
+        "stopLocalAi",
+        "removeLocalAi",
+        "skipAiSetup",
+        "finishAiSetup",
         "loadLanguages",
         "installLanguage",
         "removeLanguage",
@@ -7114,6 +7240,8 @@
         "importDatabase",
         "setMcpPort",
         "restartExecutor",
+        "setExecutorConfigValue",
+        "loadExecutorLogTail",
         "approveConsent",
         "denyConsent",
         "dismissConsentSecret"
@@ -7124,18 +7252,26 @@
         "newAiModel",
         "editAiModel",
         "setAiFormField",
-        "setAiService",
         "closeAiForm",
+        "newAiEndpoint",
+        "editAiEndpoint",
+        "setAiEndpointField",
+        "setAiService",
+        "closeAiEndpointForm",
+        "loadLocalAi",
         "loadLanguages",
         "loadTrustedAgents",
         "loadAuthorizedApps",
         "loadNetworkMetrics",
         "loadPeerInfos",
+        "loadExecutorLogTail",
         "dismissConsentSecret"
       ],
       "destructive": [
         "removeAiModel",
         "removeAiTask",
+        "removeAiEndpoint",
+        "removeLocalAi",
         "removeLanguage",
         "trustAgent",
         "untrustAgent",
@@ -7149,10 +7285,15 @@
       "needsArgs": [
         "editAiModel",
         "setAiFormField",
-        "setAiService",
         "removeAiModel",
         "setDefaultAiModel",
         "removeAiTask",
+        "addDetectedEndpoint",
+        "editAiEndpoint",
+        "setAiEndpointField",
+        "setAiService",
+        "removeAiEndpoint",
+        "removeLocalAi",
         "installLanguage",
         "removeLanguage",
         "trustAgent",
@@ -7163,7 +7304,8 @@
         "setMcpEnabled",
         "setLogLevel",
         "removeLogLevel",
-        "setMcpPort"
+        "setMcpPort",
+        "setExecutorConfigValue"
       ]
     },
     {
@@ -7246,6 +7388,9 @@
         "devTools": {
           "type": "boolean"
         },
+        "testPeople": {
+          "type": "boolean"
+        },
         "credentialEntered": {
           "type": "boolean"
         },
@@ -7255,6 +7400,7 @@
       },
       "actions": [
         "setDevTools",
+        "setTestPeople",
         "unlock",
         "touchCredential",
         "clearPasswordError",
@@ -7263,7 +7409,7 @@
         "retryBoot"
       ],
       "ambient": ["touchCredential", "clearPasswordError"],
-      "needsArgs": ["setDevTools"]
+      "needsArgs": ["setDevTools", "setTestPeople"]
     },
     {
       "name": "shapeStore",
@@ -7310,6 +7456,9 @@
         },
         "extractionCandidates": {
           "type": "array"
+        },
+        "extractionCandidatesLoaded": {
+          "type": "boolean"
         },
         "relationshipTargets": {
           "type": "array",
@@ -7593,7 +7742,6 @@
         "endDockMove",
         "closeTemplatePanel",
         "openTemplatePanel",
-        "openPanel",
         "closePanel",
         "resetTemplateLayout",
         "toggleLane",
@@ -7689,6 +7837,7 @@
             "avatar",
             "kind",
             "isWeSpace",
+            "loading",
             "canAdminister",
             "modules",
             "shareLink",
@@ -7856,6 +8005,12 @@
           "type": "object"
         },
         "landmarksLoaded": {
+          "type": "boolean"
+        },
+        "rootLoaded": {
+          "type": "boolean"
+        },
+        "firstScreenOpen": {
           "type": "boolean"
         },
         "extractionTargets": {
@@ -8321,7 +8476,7 @@
         },
         "workflows": {
           "type": "array",
-          "properties": ["name", "label", "editable", "records", "managedBy", "archived", "steps", "moves"]
+          "properties": ["name", "label", "editable", "records", "running", "managedBy", "archived", "steps", "moves"]
         },
         "workflowsLoaded": {
           "type": "boolean"
@@ -8338,6 +8493,22 @@
         },
         "recordWorkflows": {
           "type": "object"
+        },
+        "active": {
+          "type": "array",
+          "properties": [
+            "id",
+            "workflow",
+            "label",
+            "record",
+            "title",
+            "kind",
+            "state",
+            "stateLabel",
+            "lastActivity",
+            "waiting",
+            "stalled"
+          ]
         }
       },
       "actions": [
@@ -8440,6 +8611,8 @@
     }
   ],
   "shellComponents": [
+    "AgentChat",
+    "AgentChatSheet",
     "AiPanel",
     "CredentialField",
     "EditingBar",
@@ -8549,6 +8722,18 @@
       "params": ["options"],
       "doc": "A JSON string indented for reading, or the text unchanged when it will not parse — which is the case worth showing rather than swallowing. Options: text. For displaying a stored blob (an extraction pass’s prompt and response); a schema has no JSON.stringify of its own.",
       "example": "formatJson({ text: pass.prompt })"
+    },
+    {
+      "name": "treeSpines",
+      "params": ["options"],
+      "doc": "The choices a tree-mode spine picker offers: the space's named connection kinds, then every typed relation the installed models declare, grouped under \"Model relations\" and spelled rel:Class.prop — plus rel:* for all of them. Pass kinds (a RelationshipType query), shapes (shapeStore.spaceShapes) and foreign (datasetStore.currentDatasetEntities).",
+      "example": "treeSpines({ kinds: local.relationshipKinds, shapes: shapeStore.spaceShapes, foreign: datasetStore.currentDatasetEntities })"
+    },
+    {
+      "name": "treeSpine",
+      "params": ["options"],
+      "doc": "A tree spine as the tree reads it, from the picker's value (local.spine): its kind — any, relationship (with id) or relation (with class and prop for one, without for all) — and selector (the forest layout's spine), offSpine (the when of a rule drawing the other lines faint; absent for any) and relations (whether the canvas seed should draw the models' relations). The one reader of the spelling, so pass this rather than local.spine to anything that needs the spine. Options: value.",
+      "example": "treeSpine({ value: local.spine }).selector"
     },
     {
       "name": "generatedRun",
@@ -9049,14 +9234,14 @@
           "ambient": true
         },
         {
+          "name": "canConnectServer",
+          "kind": "state",
+          "doc": "Whether a speech server was found on the node’s machine that this connection may connect in one step."
+        },
+        {
           "name": "canEditProposals",
           "kind": "state",
           "doc": "Whether an edited suggestion can be written back on accept."
-        },
-        {
-          "name": "canInstallModel",
-          "kind": "state",
-          "doc": "Whether this connection may install the model the backend offers."
         },
         {
           "name": "changedIds",
@@ -9084,6 +9269,26 @@
           "name": "confirmTiedDecision",
           "kind": "action",
           "doc": "Carries out the decision waiting in tiedDecision, with everything tied to it."
+        },
+        {
+          "name": "connectError",
+          "kind": "state",
+          "doc": "Why the last one-click setup failed; empty otherwise."
+        },
+        {
+          "name": "connectingServer",
+          "kind": "state",
+          "doc": "A one-click setup is registering the speech server and its model."
+        },
+        {
+          "name": "connectServer",
+          "kind": "action",
+          "doc": "Connects the speech server found on the node’s machine, makes its transcription model the default, and resumes recording that was waiting on one."
+        },
+        {
+          "name": "connectServerLabel",
+          "kind": "state",
+          "doc": "The connect button’s words, naming the server found — \"Use the speech server at localhost:8000\"; empty when none was found."
         },
         {
           "name": "dismissChange",
@@ -9187,26 +9392,6 @@
           "doc": "Whether this agent is in a call right now."
         },
         {
-          "name": "installError",
-          "kind": "state",
-          "doc": "Why the last model install failed; empty otherwise."
-        },
-        {
-          "name": "installingModel",
-          "kind": "state",
-          "doc": "A one-click model install is registering its model."
-        },
-        {
-          "name": "installModel",
-          "kind": "action",
-          "doc": "Installs the model the backend offers and resumes recording that was waiting on one."
-        },
-        {
-          "name": "installModelLabel",
-          "kind": "state",
-          "doc": "The install button’s words, naming the offered model and its size; empty when none is offered."
-        },
-        {
           "name": "invited",
           "kind": "state",
           "doc": "Somebody else in this call is recording and this agent is not, having not opted out."
@@ -9232,24 +9417,29 @@
           "doc": "True only while actually transcribing — what a record button highlights on."
         },
         {
+          "name": "liveCallRecords",
+          "kind": "state",
+          "doc": "The record of every call somebody is in right now."
+        },
+        {
           "name": "liveCollectionId",
           "kind": "state",
           "doc": "The record the call this agent is in is writing into, or empty when there is none."
         },
         {
-          "name": "modelDownloading",
-          "kind": "state",
-          "doc": "A transcription model is installed and its weights are still arriving."
-        },
-        {
-          "name": "modelDownloadText",
-          "kind": "state",
-          "doc": "The download line, ready to show — \"Downloading the speech model — 45%\"."
-        },
-        {
           "name": "modelMissing",
           "kind": "state",
           "doc": "No transcription model is installed on this node, as last read."
+        },
+        {
+          "name": "modelUnready",
+          "kind": "state",
+          "doc": "A transcription model is installed and cannot run yet — still downloading, or its server is not answering."
+        },
+        {
+          "name": "modelUnreadyText",
+          "kind": "state",
+          "doc": "Why the model cannot run yet, ready to show — \"Downloading the speech model — 45%\", \"The speech server is not answering\"."
         },
         {
           "name": "open",
@@ -9352,6 +9542,11 @@
           "doc": "The line a reply is being written to — { id, text, author, surface } — or null. `surface` is always 'transcript'."
         },
         {
+          "name": "serverInstallUrl",
+          "kind": "state",
+          "doc": "Where to get a speech server, for when none was found on the node’s machine; empty where this connection may not set one up."
+        },
+        {
           "name": "setProposalField",
           "kind": "action",
           "doc": "Sets one field of the open draft, by property name.",
@@ -9362,6 +9557,11 @@
           "kind": "action",
           "doc": "Loads one more page of the transcript, in whichever direction it is being read.",
           "ambient": true
+        },
+        {
+          "name": "skipped",
+          "kind": "state",
+          "doc": "Utterances let go in this session without a transcript: the speech model was too far behind or could not be reached."
         },
         {
           "name": "speaking",
@@ -9377,7 +9577,7 @@
         {
           "name": "status",
           "kind": "state",
-          "doc": "What the session is doing — idle, no-backend, no-model, no-audio, downloading, starting, listening or error."
+          "doc": "What the session is doing — idle, no-backend, no-model, no-audio, model-unready, starting, listening or error."
         },
         {
           "name": "thresholdPercent",
@@ -9542,6 +9742,31 @@
           "doc": "The authors of lines in the Feed’s window whose own profile says they are a bot, by id — for `row.author in modules.feed.botAuthors`."
         },
         {
+          "name": "callFeedFromStart",
+          "kind": "state",
+          "doc": "Whether the call’s Feed is read from the call’s beginning rather than its newest line."
+        },
+        {
+          "name": "callFeedHasMore",
+          "kind": "state",
+          "doc": "Whether there is more of the call beyond its Feed’s window."
+        },
+        {
+          "name": "callFeedLoaded",
+          "kind": "state",
+          "doc": "Whether the call’s Feed has answered for this call yet."
+        },
+        {
+          "name": "callFeedRoot",
+          "kind": "state",
+          "doc": "The call whose Feed is drawn — the one shown most recently — or empty."
+        },
+        {
+          "name": "callFeedRows",
+          "kind": "state",
+          "doc": "The Feed of the call on screen: every line said, typed or answered in it, and a row per group of things extracted from it, merged by time. Rows are shaped as `feedRows`' are; a line's `source` says how it arrived ('spoken', 'typed', 'corrected', or none for a bot or the system)."
+        },
+        {
           "name": "cancelReply",
           "kind": "action",
           "doc": "Puts a reply down without sending it.",
@@ -9595,6 +9820,18 @@
           "ambient": true
         },
         {
+          "name": "readCallFeedFromStart",
+          "kind": "action",
+          "doc": "Re-anchors the call’s Feed at its beginning.",
+          "ambient": true
+        },
+        {
+          "name": "readCallFeedLive",
+          "kind": "action",
+          "doc": "Re-anchors the call’s Feed at its newest line.",
+          "ambient": true
+        },
+        {
           "name": "readFeedFromStart",
           "kind": "action",
           "doc": "Re-anchors the Feed at the beginning of the space.",
@@ -9614,12 +9851,28 @@
         {
           "name": "replyingTo",
           "kind": "state",
-          "doc": "The line a reply is being written to — { id, text, author } — or null."
+          "doc": "The line a reply is being written to — { id, text, author, surface } — or null. `surface` is the list it was started from, 'feed' or 'callFeed', so only that list's composer answers it."
+        },
+        {
+          "name": "sendToCallFeed",
+          "kind": "action",
+          "doc": "Writes a typed message into the call on screen — with its marks, when the composer gave any. Nothing when no call is shown. Writing into a call does not put the writer on its roster."
         },
         {
           "name": "sendToFeed",
           "kind": "action",
           "doc": "Writes a message straight into the space, outside any call — with its marks, when the composer gave any."
+        },
+        {
+          "name": "showCallTranscripts",
+          "kind": "state",
+          "doc": "Whether this reader asked the Feed to draw the lines calls spoke — off until they do, in this space only."
+        },
+        {
+          "name": "showMoreCallFeed",
+          "kind": "action",
+          "doc": "Grows the call’s Feed by a page.",
+          "ambient": true
         },
         {
           "name": "showMoreFeed",
@@ -9630,7 +9883,7 @@
         {
           "name": "startReply",
           "kind": "action",
-          "doc": "Starts a reply to one line — pass { id, text, author } — which the Feed’s composer then sends as a reply.",
+          "doc": "Starts a reply to one line — pass { id, text, author, surface } — which the composer of that list ('feed', the default, or 'callFeed') then sends as a reply.",
           "ambient": true
         },
         {
@@ -9639,9 +9892,21 @@
           "doc": "Which way round this reader draws the Feed — 'newestBottom' or 'newestTop'. Their own setting."
         },
         {
+          "name": "unwatchCallFeed",
+          "kind": "action",
+          "doc": "One drawing of a call’s Feed was taken down.",
+          "ambient": true
+        },
+        {
           "name": "unwatchFeed",
           "kind": "action",
           "doc": "One drawing of the Feed was taken down.",
+          "ambient": true
+        },
+        {
+          "name": "watchCallFeed",
+          "kind": "action",
+          "doc": "A call’s Feed is drawn for this call: read it and keep it live.",
           "ambient": true
         },
         {
@@ -9654,6 +9919,10 @@
       "parts": [
         {
           "name": "feedView"
+        },
+        {
+          "name": "callFeed",
+          "subject": "routeStore.params.call"
         }
       ],
       "panels": [
@@ -9679,6 +9948,13 @@
           "description": "A notice when a bot writes in the space while you are not reading the Feed.",
           "type": "boolean",
           "levels": ["agent"]
+        },
+        {
+          "key": "showCallTranscripts",
+          "label": "Show call transcripts",
+          "description": "Draw the lines calls spoke in this space’s Feed, among the written ones.",
+          "type": "boolean",
+          "levels": ["agent-in-space"]
         }
       ],
       "activities": {},
@@ -9697,7 +9973,7 @@
       "requires": {
         "kernels": ["presence", "ephemeral", "view"]
       },
-      "capabilities": ["kernel:presence", "kernel:ephemeral", "kernel:view", "slot:call-controls", "slot:call-status"],
+      "capabilities": ["kernel:presence", "kernel:ephemeral", "kernel:view", "slot:call-menu", "slot:call-status"],
       "members": [
         {
           "name": "canDrive",
@@ -9814,14 +10090,6 @@
       ],
       "panels": [],
       "launchers": [
-        {
-          "key": "live:cursors",
-          "label": "Share your pointer"
-        },
-        {
-          "key": "live:wheel",
-          "label": "Take the wheel"
-        },
         {
           "key": "live:follow",
           "label": "Follow the driver"
