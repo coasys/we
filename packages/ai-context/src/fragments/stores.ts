@@ -935,7 +935,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       finishSetup: "(): leaves 'finishing' for the running app — sets bootState to 'ready'",
       logout: '(): locks the agent and returns to the login screen',
       setTestPeople:
-        '(on: boolean): turns the test people on or off for this device. Takes the value a we-switch emits, so pass `event.detail` bare. Has no effect while devTools is off',
+        '(on: boolean): turns the test people on or off for this device. Takes the value a we-switch emits, so pass `event.detail` bare. While devTools is off the device keeps the choice, but testPeople stays false until devTools is on again',
       setDevTools:
         '(on: boolean): shows or hides developer affordances for this session. Takes the value the control shows, so a we-switch can pass `event.detail` bare. Cannot turn developer UI on in a production build',
     },

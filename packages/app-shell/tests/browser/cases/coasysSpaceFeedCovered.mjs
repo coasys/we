@@ -32,6 +32,6 @@ export async function check({ evaluate, screenshot }) {
   await screenshot?.('coasys-space-feed-covered');
   await evaluate(() => document.documentElement.style.removeProperty('--we-covered-bottom'));
   if (gap === null) return ['no composer'];
-  // The page's bottom gap is `--we-space-500`; anything near the covered height is the old band.
-  return gap > 60 ? [`${gap}px of blank space under the composer with ${COVERED}px covered`] : [];
+  // The page's bottom gap is `--we-space-500` (24px), and nothing of the covered height on top of it.
+  return Math.abs(gap - 24) <= 2 ? [] : [`${gap}px under the composer with ${COVERED}px covered, wanted 24px`];
 }

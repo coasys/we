@@ -1499,6 +1499,8 @@ function developerSwitch(label: string, notes: string[], member: 'devTools' | 't
       {
         type: 'we-switch',
         props: {
+          // The switch's accessible name: the visible label beside it is a separate node.
+          label,
           checked: { $: `sessionStore.${member}` },
           // Positive-phrased, so the switch's own value passes straight through — `$not` around it
           // would resolve at render time and send a constant.

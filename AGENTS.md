@@ -3467,7 +3467,7 @@ SessionStore:
   - credentialConfirmed: boolean — a CredentialField with purpose 'new' holds a password typed twice and the same both times. Gate the call to profileStore.completeAccountSetup on it
 - Actions:
   - setDevTools(on: boolean): shows or hides developer affordances for this session. Takes the value the control shows, so a we-switch can pass `event.detail` bare. Cannot turn developer UI on in a production build
-  - setTestPeople(on: boolean): turns the test people on or off for this device. Takes the value a we-switch emits, so pass `event.detail` bare. Has no effect while devTools is off
+  - setTestPeople(on: boolean): turns the test people on or off for this device. Takes the value a we-switch emits, so pass `event.detail` bare. While devTools is off the device keeps the choice, but testPeople stays false until devTools is on again
   - unlock(): signs in with what was typed into the host's password field (a CredentialField with purpose 'unlock'), and loads user data. Takes no password, on purpose: nothing a template collected can be handed to it. Rejects when the unlock fails
   - touchCredential(): asks a CredentialField with purpose 'new' to show what is wrong with it — the $touch: '$all' for fields a template cannot reach. Put it beside $touch in a Create account button's handler
   - clearPasswordError(): clears the failed-unlock flag. Wire it to the CredentialField's onEdit — the verdict was on the submitted password, so editing that password retracts it and a stale "Incorrect password" should not sit over the correction
