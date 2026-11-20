@@ -11,6 +11,7 @@ import { comingSoon, confirmModal } from '@we/template-kit';
 
 import { accountSettings } from './AccountSettings.schema.ts';
 import { botsSection } from './BotSettingsPages.ts';
+import { cloudUsageCard, peopleCard, signupsCard } from './CloudSettingsPages.ts';
 import { earnWithItSection, findHostSection } from './HostingSettingsPages.ts';
 import { hostCredits, hostSection } from './HostSettings.schema.ts';
 import {
@@ -434,6 +435,32 @@ export const devicesPage: SchemaNode = {
     }),
     findHostSection,
     comingSoon({
+      available: { $: 'deviceStore.canAddCloudDevice' },
+      icon: 'cloud',
+      title: 'Add a cloud device',
+      description:
+        'Keep a copy of your identity on Coasys cloud, or on another host: choose it under Find a host, or add it by its address there.',
+      preview: [actions('Add a cloud device')],
+      children: [
+        {
+          type: 'Row',
+          children: [
+            {
+              type: 'we-button',
+              props: {
+                size: 'sm',
+                loading: { $: 'identityStore.busy' },
+                disabled: { $: 'identityStore.busy' },
+                onClick: { $invoke: 'deviceStore.addCloudDevice' },
+              },
+              children: ['Add Coasys cloud'],
+            },
+          ],
+        },
+      ],
+    }),
+    cloudUsageCard,
+    comingSoon({
       available: can('switchDevice'),
       icon: 'arrows-left-right',
       title: 'Where to keep your spaces',
@@ -458,6 +485,8 @@ export function thisDevicePage(advanced: SchemaNode[]): SchemaNode {
       heading('This device', "Settings for the computer or host you're using now."),
       hostSection,
       earnWithItSection,
+      signupsCard,
+      peopleCard,
       /*
         How this device keeps the data on its disk, in the backend's own terms and nothing more. Absent
         where the app does not start the backend, and while nothing true can be said yet.

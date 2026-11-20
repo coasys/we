@@ -21,31 +21,18 @@
  */
 import { Ad4mClient, type AgentStatus } from '@coasys/ad4m';
 import type { BackendConnector, BackendInitResult } from '@we/app-shell/shared';
-import { capabilitiesFromToken, createAd4mBackendPorts } from '@we/backend-ad4m';
+import {
+  capabilitiesFromToken,
+  createAd4mBackendPorts,
+  keepRenewed,
+  KEY_SESSION_APP,
+  loginWithDeviceKey,
+} from '@we/backend-ad4m';
 import weSeed from '@we/seed-file';
 
 import { type DeviceKeyPlugin, deviceKeyPlugin } from './deviceKey';
 import { readKeyHost, rememberKeyHost } from './keyHost';
-import { keepRenewed, type KeySessionApp, loginWithDeviceKey } from './keySession';
 import { browserNav, type PageNav, phoneCustodyHost } from './phoneCustody';
-
-const CAPABILITIES = [{ with: { domain: '*', pointers: ['*'] }, can: ['*'] }];
-
-const APP_INFO = {
-  name: 'WE',
-  description: 'Social media for the new internet',
-  url: 'ad4m.weco.io',
-  iconPath: 'https://avatars.githubusercontent.com/u/34165012',
-};
-
-/** The app a key session is granted to: the same app the connect UI asks for. */
-export const KEY_SESSION_APP: KeySessionApp = {
-  appName: APP_INFO.name,
-  appDesc: APP_INFO.description,
-  appDomain: APP_INFO.url,
-  appIconPath: APP_INFO.iconPath,
-  capabilities: CAPABILITIES,
-};
 
 /**
  * How a key session ended without the person logging out: the renewal ran out of time
@@ -360,7 +347,7 @@ export function createDeviceKeyConnector(deps: DeviceKeyConnectorDeps = defaultD
       };
 
       const renewal = keepRenewed({
-        plugin,
+        signer: plugin,
         agent: client.agent,
         url,
         session,

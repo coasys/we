@@ -5,8 +5,9 @@
  * "Another host", the hosts the index lists, then "Add by its address", an address typed in. The index
  * is a convenience and never the only way to a host, so the address field stays when the index does
  * not answer.
- * Choosing an entry calls `hostingStore.choose` (or `chooseAddress`); it ends there. Joining is
- * the cloud-device flow's to do, from `hostingStore.chosen`.
+ * Choosing an entry calls `hostingStore.choose` (or `chooseAddress`), which records it in
+ * `hostingStore.chosen` and starts "Add a cloud device" with that host (`deviceStore.addCloudDevice`).
+ * This is the one place an address is typed; the Add a cloud device card has none.
  *
  * **Earn with it** — for an operator's device: the text of its listing, List, Withdraw, and what the
  * index says about it now (listed, can't be reached, removed and why).
@@ -71,7 +72,7 @@ const hostRow: SchemaNode = {
           props: {
             variant: 'soft',
             size: 'sm',
-            disabled: { $: '!host.joinable' },
+            disabled: { $: '!host.joinable || !deviceStore.canAddCloudDevice' },
             onClick: { $invoke: 'hostingStore.choose', args: [{ $: 'host.id' }] },
           },
           children: ['Choose'],
@@ -114,7 +115,9 @@ const anotherHost: SchemaNode = card([
         props: {
           variant: 'soft',
           size: 'sm',
-          disabled: { $: "hostingStore.address == '' || hostingStore.addressProblem != ''" },
+          disabled: {
+            $: "hostingStore.address == '' || hostingStore.addressProblem != '' || !deviceStore.canAddCloudDevice",
+          },
           onClick: { $invoke: 'hostingStore.chooseAddress' },
         },
         children: ['Choose this host'],

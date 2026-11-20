@@ -6695,6 +6695,9 @@
         "canManage": {
           "type": "boolean"
         },
+        "canAddCloudDevice": {
+          "type": "boolean"
+        },
         "canShowCode": {
           "type": "boolean"
         },
@@ -6727,6 +6730,7 @@
       "actions": [
         "refresh",
         "addDevice",
+        "addCloudDevice",
         "scanDevice",
         "showCode",
         "takeMaster",
@@ -6975,6 +6979,78 @@
       ],
       "ambient": ["setAddress", "choose", "chooseAddress", "clearChoice", "setDraftField", "refresh"],
       "needsArgs": ["setAddress", "choose", "setDraftField"]
+    },
+    {
+      "name": "hostStore",
+      "state": {
+        "canViewHost": {
+          "type": "boolean"
+        },
+        "isCoasysCloud": {
+          "type": "boolean"
+        },
+        "usage": {
+          "type": "object",
+          "properties": ["host", "spend", "storage", "aiRuns", "spaces", "privateSpaces"]
+        },
+        "held": {
+          "type": "boolean"
+        },
+        "error": {
+          "type": "string"
+        },
+        "notice": {
+          "type": "string"
+        },
+        "busy": {
+          "type": "boolean"
+        },
+        "canOperate": {
+          "type": "boolean"
+        },
+        "policy": {
+          "type": "object",
+          "properties": ["signup", "maxTenants", "display", "choiceNeeded"]
+        },
+        "choiceNeeded": {
+          "type": "boolean"
+        },
+        "choiceNeededText": {
+          "type": "string"
+        },
+        "signupOptions": {
+          "type": "array",
+          "properties": ["value", "label"]
+        },
+        "invites": {
+          "type": "array",
+          "properties": ["id", "note", "status", "expires", "canRevoke"]
+        },
+        "people": {
+          "type": "array",
+          "properties": ["id", "label", "state", "canRemove", "since"]
+        },
+        "newInvite": {
+          "type": "string"
+        },
+        "operatorError": {
+          "type": "string"
+        },
+        "operatorBusy": {
+          "type": "boolean"
+        }
+      },
+      "actions": [
+        "openHost",
+        "leave",
+        "exportData",
+        "importData",
+        "setSignup",
+        "createInvite",
+        "revokeInvite",
+        "removePerson"
+      ],
+      "needsArgs": ["leave", "setSignup", "createInvite", "revokeInvite", "removePerson"]
     },
     {
       "name": "identityStore",

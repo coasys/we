@@ -5,8 +5,9 @@
  * **The list** is a public read of the platform API the deployment names (`platformApiUrl` in the
  * seed). It needs no backend. Coasys cloud comes first, then the hosts the index lists, then an
  * address typed in: the index is a convenience, never the only way to a host, so the address works
- * with the index down. Choosing an entry ends here, in {@link HostingStore.choose}: it records what
- * was chosen in `chosen`, and "Add a cloud device" takes it from there. This store does not join.
+ * with the index down. Choosing an entry ({@link HostingStore.choose}) records it in `chosen` and
+ * starts "Add a cloud device" with that host, in the one call `deviceStore.addCloudDevice(address)`.
+ * This store does not join: the device store and the custody service do.
  *
  * **The listing** is the backend's `hosting` port. The operator types a name, a place, a description
  * and an address; the backend adds the AI models and rates from its own state and signs in to the
@@ -41,6 +42,7 @@ import {
   useContext,
 } from 'solid-js';
 
+import { useDeviceStore } from './DeviceStore';
 import { useSessionStore } from './SessionStore';
 
 /** What a person chose to join: a host of the list, or an address typed in. */
@@ -76,10 +78,13 @@ export interface HostingStore {
   /** Why the typed address cannot be used; empty before anything is typed and when it can. */
   addressProblem: Accessor<string>;
   chosen: Accessor<HostChoice | null>;
-  /** Chooses a listed host by its id. */
-  choose: (id: string) => void;
-  /** Chooses the address typed. */
-  chooseAddress: () => void;
+  /**
+   * Chooses a listed host by its id, and starts "Add a cloud device" with it (`deviceStore.addCloudDevice`:
+   * Coasys cloud for the host Coasys runs, else the host's address) where this computer can add one.
+   */
+  choose: (id: string) => Promise<void>;
+  /** Chooses the address typed, and starts "Add a cloud device" with it, as `choose` does. */
+  chooseAddress: () => Promise<void>;
   clearChoice: () => void;
 
   // ── Earn with it ───────────────────────────────────────────────────────────
@@ -116,6 +121,7 @@ const EMPTY_DRAFT: ListingText = { name: '', description: '', location: '', url:
 
 export function HostingStoreProvider(props: ParentProps) {
   const session = useSessionStore();
+  const devices = useDeviceStore();
   const port = () => session.backendPorts()?.hosting ?? null;
   const indexUrl = hostIndexUrl(getSeed().platformApiUrl);
 
@@ -237,13 +243,18 @@ export function HostingStoreProvider(props: ParentProps) {
         : '',
     ),
     chosen,
-    choose: (id) => {
+    choose: async (id) => {
       const host = entries().find((h) => h.id === id);
-      if (host) setChosen({ kind: 'listed', host });
+      if (!host) return;
+      setChosen({ kind: 'listed', host });
+      // The host Coasys runs is "Coasys cloud", which the join names with no address.
+      if (devices.canAddCloudDevice()) await devices.addCloudDevice(host.runByCoasys ? '' : host.url);
     },
-    chooseAddress: () => {
+    chooseAddress: async () => {
       const url = normaliseHostAddress(address());
-      if (url) setChosen({ kind: 'address', url });
+      if (!url) return;
+      setChosen({ kind: 'address', url });
+      if (devices.canAddCloudDevice()) await devices.addCloudDevice(url);
     },
     clearChoice: () => setChosen(null),
 

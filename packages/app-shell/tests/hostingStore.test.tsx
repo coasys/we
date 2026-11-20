@@ -22,6 +22,12 @@ vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
   useSessionStore: () => ({ backendPorts: ports }),
 }));
 
+const [canAddCloud, setCanAddCloud] = createSignal(true);
+const addCloudDevice = vi.fn(async (_address?: string) => ({ ok: true }));
+vi.mock('../src/frameworks/solid/stores/DeviceStore', () => ({
+  useDeviceStore: () => ({ canAddCloudDevice: canAddCloud, addCloudDevice }),
+}));
+
 import { type HostingStore, HostingStoreProvider, useHostingStore } from '../src/frameworks/solid/stores/HostingStore';
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -153,6 +159,41 @@ describe('hostingStore: the host list', () => {
     expect(fetchFn).toHaveBeenCalledWith(`${INDEX}/hosts`, expect.anything());
     expect(store.hostListState()).toBe('ready');
     expect(store.hosts().map((h) => h.name)).toEqual(['Coasys cloud', 'Zed']);
+  });
+
+  it('starts Add a cloud device with the host chosen: Coasys cloud with no address, another host by its address', async () => {
+    setCanAddCloud(true);
+    addCloudDevice.mockClear();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true, status: 200, json: async () => hostBody }) as unknown as Response),
+    );
+    const store = mount();
+    await store.loadHosts();
+    const ids = store.hosts().map((h) => ({ id: h.id, name: h.name }));
+    await store.choose(ids.find((h) => h.name === 'Coasys cloud')!.id);
+    expect(addCloudDevice).toHaveBeenLastCalledWith('');
+    await store.choose('zed');
+    expect(addCloudDevice).toHaveBeenLastCalledWith('https://zed.example');
+    store.setAddress('riverbank.example');
+    await store.chooseAddress();
+    expect(addCloudDevice).toHaveBeenLastCalledWith('https://riverbank.example');
+    expect(addCloudDevice).toHaveBeenCalledTimes(3);
+  });
+
+  it('only records the choice where this computer cannot add a cloud device', async () => {
+    setCanAddCloud(false);
+    addCloudDevice.mockClear();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true, status: 200, json: async () => hostBody }) as unknown as Response),
+    );
+    const store = mount();
+    await store.loadHosts();
+    await store.choose('zed');
+    expect(store.chosen()).toMatchObject({ kind: 'listed' });
+    expect(addCloudDevice).not.toHaveBeenCalled();
+    setCanAddCloud(true);
   });
 
   it('says the index does not answer, lists no hosts, and still takes an address', async () => {

@@ -8,6 +8,7 @@ import type {
   DeviceStore,
   EditorStore,
   HostingStore,
+  HostStore,
   IdentityStore,
   InterpretationStore,
   PresenceStore,
@@ -82,6 +83,7 @@ export interface Stores extends RendererStores {
   workflowStore: WorkflowStore;
   identityStore: IdentityStore;
   deviceStore: DeviceStore;
+  hostStore: HostStore;
   botStore: BotStore;
   hostingStore: HostingStore;
   record?: RecordActions;

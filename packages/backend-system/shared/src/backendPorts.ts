@@ -12,6 +12,7 @@ import type { AgentPort } from './agents';
 import type { CallPort } from './call';
 import type { DatasetHandle, RendererDataBindings } from './dataSource';
 import type { EphemeralPort } from './ephemeral';
+import type { HostPort } from './host';
 import type { HostingPort } from './hosting';
 import type { IdentityPort } from './identity';
 import type { InterpretationPort } from './interpretation';
@@ -294,6 +295,11 @@ export interface BackendPorts {
    * index to list in (the in-memory one) omits it, and Settings offers no listing.
    */
   hosting?: HostingPort;
+  /**
+   * This computer's executor as a host, and the hosts the person is a tenant of. Optional: absent, the
+   * operator and tenant views are not offered; see {@link HostPort}.
+   */
+  hosts?: HostPort;
   /**
    * Who a signing key speaks for. Optional: absent, every key is its own person — see
    * {@link PersonPort} and `SELF_PERSONS`.

@@ -57,6 +57,7 @@ import {
   useDeviceStore,
   useEditorStore,
   useHostingStore,
+  useHostStore,
   useIdentityStore,
   useInterpretationStore,
   usePresenceStore,
@@ -132,6 +133,7 @@ export default function TemplateProvider() {
   const workflowStore = useWorkflowStore();
   const identityStore = useIdentityStore();
   const deviceStore = useDeviceStore();
+  const hostStore = useHostStore();
   const botStore = useBotStore();
   const hostingStore = useHostingStore();
 
@@ -444,6 +446,7 @@ export default function TemplateProvider() {
     workflowStore,
     identityStore,
     deviceStore,
+    hostStore,
     botStore,
     hostingStore,
     // Always present, even with no modules registered: a read of `modules.x` resolves through the
