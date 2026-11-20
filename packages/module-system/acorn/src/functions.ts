@@ -231,6 +231,77 @@ const tableRows = (options: Record<string, unknown>) => {
   return rows;
 };
 
+const STATUS_LABEL: Record<string, string> = {
+  Achieved: 'Achieved',
+  PartiallyAchieved: 'Partially achieved',
+  NotAchieved: 'Not achieved',
+};
+
+/**
+ * The map's graph, as a `GraphView` literal seed — one node per outcome, one edge per connection.
+ *
+ * A **projection**, not a seed the graph reads itself, for two reasons the stock wire forces. A
+ * connection's ends are untyped refs on the mount (`AcornConnection.parent`/`child` are `kind: ref`
+ * with no class), so there is no relation a `query` seed could hydrate; and what Acorn draws on a
+ * card — the computed scope and status — is the roll-up, which only these functions know.
+ *
+ * Sibling order lives on the connection, and the `forest` layout orders siblings by a field on the
+ * *card*. So each node carries `rank`: its place in a depth-first walk of Acorn's tree, roots in the
+ * order given, children in Acorn's sibling order (`childrenOf`). Under any one parent the ranks
+ * of its children are in that parent's order, which is what `sortBy: 'rank'` needs; and roots —
+ * isolated outcomes among them — keep the order the outcomes arrived in. A connection loop with no
+ * root is walked from its first outcome, and a node is ranked once, at its first visit.
+ *
+ * The card's values sit under the stored names (`scopeType`, `achievementStatus`) because those are
+ * the fields `content: 'record'` lists, but they hold the **computed** scope and status, which is
+ * what Acorn draws; `status` keeps the computed code for style rules.
+ */
+const mapGraph = (options: Record<string, unknown>) => {
+  const outcomes = list(options.outcomes).filter((o) => refId(o.id));
+  const connections = list(options.connections);
+  const ids = new Set(outcomes.map((o) => refId(o.id)));
+  const childIds = new Set(connections.filter((c) => ids.has(refId(c.parent))).map((c) => refId(c.child)));
+
+  const rank = new Map<string, number>();
+  const visit = (outcome: Record<string, unknown>) => {
+    const id = refId(outcome.id);
+    if (rank.has(id)) return;
+    rank.set(id, rank.size);
+    for (const child of childrenOf(id, outcomes, connections)) visit(child);
+  };
+  for (const root of outcomes.filter((o) => !childIds.has(refId(o.id)))) visit(root);
+  for (const outcome of outcomes) visit(outcome);
+
+  const nodes = outcomes.map((outcome) => {
+    const id = refId(outcome.id);
+    const r = rollup(outcome, outcomes, connections);
+    const content = text(outcome.content);
+    return {
+      id,
+      kind: 'entity',
+      type: 'AcornOutcome',
+      label: content,
+      data: {
+        content,
+        scopeType: r.scope,
+        achievementStatus: STATUS_LABEL[r.status] ?? r.status,
+        status: r.status,
+        rank: rank.get(id) ?? 0,
+      },
+    };
+  });
+  const seen = new Set<string>();
+  const edges = connections.flatMap((c) => {
+    const source = refId(c.parent);
+    const target = refId(c.child);
+    const id = refId(c.id) || `${source}>${target}`;
+    if (!ids.has(source) || !ids.has(target) || source === target || seen.has(id)) return [];
+    seen.add(id);
+    return [{ id, source, target, type: 'AcornConnection', data: { siblingOrder: num(c.siblingOrder) } }];
+  });
+  return { literal: true, nodes, edges };
+};
+
 /** The task list with one change, as the JSON text the record holds — what `record.update` writes. */
 const tasksText = (tasks: AcornTask[]): string => JSON.stringify(tasks);
 
@@ -429,6 +500,13 @@ export const ACORN_FUNCTIONS: ModuleFunction[] = [
     example:
       'acornTableRows({ outcomes: local.outcomes, connections: local.connections, tags: local.tags, priorities: first(local.meta).topPriorityOutcomes, collapsed: local.collapsed, filter: { keyword: local.keyword } })',
     fn: (...args: never[]) => tableRows(args[0] && typeof args[0] === 'object' ? args[0] : {}),
+  },
+  {
+    name: 'acornMapGraph',
+    params: ['outcomes', 'connections'],
+    doc: "The outcome map as a GraphView literal seed — { literal: true, nodes, edges }: a node per outcome (id the outcome's, type AcornOutcome, label its statement, data { content, scopeType and achievementStatus as Acorn computes them, status the computed code, rank its place in Acorn's tree for a forest's sortBy }) and an edge per connection between two drawn outcomes.",
+    example: 'acornMapGraph({ outcomes: local.outcomes, connections: local.connections })',
+    fn: (...args: never[]) => mapGraph(args[0] && typeof args[0] === 'object' ? args[0] : {}),
   },
   {
     name: 'acornPriorityOrder',

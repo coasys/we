@@ -10596,6 +10596,12 @@
           "example": "acornTableRows({ outcomes: local.outcomes, connections: local.connections, tags: local.tags, priorities: first(local.meta).topPriorityOutcomes, collapsed: local.collapsed, filter: { keyword: local.keyword } })"
         },
         {
+          "name": "acornMapGraph",
+          "params": ["outcomes", "connections"],
+          "doc": "The outcome map as a GraphView literal seed — { literal: true, nodes, edges }: a node per outcome (id the outcome's, type AcornOutcome, label its statement, data { content, scopeType and achievementStatus as Acorn computes them, status the computed code, rank its place in Acorn's tree for a forest's sortBy }) and an edge per connection between two drawn outcomes.",
+          "example": "acornMapGraph({ outcomes: local.outcomes, connections: local.connections })"
+        },
+        {
           "name": "acornPriorityOrder",
           "params": ["stored", "visible"],
           "doc": "The project's priority ids after a reorder of the drawn ones. `stored` is the list as kept, `visible` the drawn ids in their new order; each place a drawn id held takes the next of `visible`, and an id that is not drawn — its outcome not loaded, or gone — keeps its place. No stored id is dropped, and each is kept once.",

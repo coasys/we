@@ -1644,6 +1644,9 @@ importers:
       '@we/entities':
         specifier: workspace:*
         version: link:../../entities
+      '@we/graph-layouts':
+        specifier: workspace:*
+        version: link:../../graph-system/layouts
       '@we/module-shared':
         specifier: workspace:*
         version: link:../shared

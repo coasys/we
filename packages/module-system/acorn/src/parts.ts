@@ -1435,16 +1435,100 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
   },
   mapView: {
     label: 'Outcome map',
-    description: 'The outcome tree as a zoomable map — a stub until the canvas lands in S2-8',
+    description:
+      "The outcome tree as Acorn's map — parents above their children, siblings in sibling order, an outcome on no connection a tree of its own — each card its statement with the computed scope and status, each opening the expanded outcome. Read-only; pans and zooms",
     node: {
       type: 'Column',
       props: { gap: '300', width: '100%' },
+      /*
+        Acorn's Classic layout (`classicCoordinates.ts`) is a row of tidy trees, each parent over
+        its own children, siblings by `siblingOrder` — which is the graph's `forest`, not its
+        layered `tree`. `acornMapGraph` projects the outcomes and connections into its literal
+        seed: sibling order rides on each card as `rank`, the card's values are the roll-up.
+        `unattached: 'trees'` keeps an isolated outcome in line as a one-card tree, where Acorn puts
+        it, rather than in a zone labelled "Unconnected". `containment: []` because the only lines
+        are connections. No drag, no connect: editing is S2-9.
+      */
+      $localState: {
+        openOutcome: { type: 'string', initial: '' },
+      },
+      $queries: {
+        outcomes: { entity: 'AcornOutcome', order: { timestampCreated: 'asc' } },
+        connections: { entity: 'AcornConnection' },
+      },
       children: [
-        { type: 'we-text', props: { tone: 'secondary' }, children: ['The outcome-tree canvas lands in S2-8.'] },
         {
-          type: '$each',
-          props: { items: { $query: { entity: 'AcornOutcome', order: { timestampCreated: 'asc' } } }, as: 'outcome' },
-          children: [{ type: 'we-text', props: { fontWeight: 'medium' }, children: [{ $: 'outcome.content' }] }],
+          type: '$if',
+          props: {
+            condition: { $: 'local.outcomesLoaded && count(local.outcomes) == 0' },
+            then: {
+              type: 'we-text',
+              props: { tone: 'secondary', p: '300' },
+              children: ['No outcomes yet — the map draws them once there are some.'],
+            },
+            else: {
+              type: 'GraphView',
+              props: {
+                seeds: { $: 'acornMapGraph({ outcomes: local.outcomes, connections: local.connections })' },
+                layout: {
+                  type: 'forest',
+                  options: {
+                    sortBy: 'rank',
+                    unattached: 'trees',
+                    containment: [],
+                    card: { width: 240, height: 130 },
+                  },
+                },
+                nodeStyle: [
+                  {
+                    style: {
+                      shape: 'card',
+                      width: 240,
+                      height: 130,
+                      content: 'record',
+                      borderWidth: 3,
+                      borderColor: 'border',
+                      scaleLabelWithZoom: true,
+                    },
+                  },
+                  // Acorn's status ring: achieved, partly, not yet.
+                  { when: { 'data.status': 'Achieved' }, style: { borderColor: 'success-500' } },
+                  { when: { 'data.status': 'PartiallyAchieved' }, style: { borderColor: 'warning-500' } },
+                ],
+                edgeStyle: [
+                  {
+                    style: { curve: 'smooth', sourceAnchor: 's', targetAnchor: 'n', ignoreRoute: true, arrow: 'none' },
+                  },
+                ],
+                behaviours: ['pan-zoom', 'select'],
+                showControls: true,
+                height: '70vh',
+                empty: 'No outcomes yet.',
+                onNodeClick: { $setLocal: 'openOutcome', value: { $: "event.id ?? ''" } },
+              },
+            },
+          },
+        },
+        // A card opens the expanded outcome over the map, as a row does over the table.
+        {
+          type: '$if',
+          props: {
+            condition: { $: 'local.openOutcome' },
+            then: {
+              type: 'we-modal',
+              props: { size: 'lg', close: { $setLocal: 'openOutcome', value: '' } },
+              children: [
+                {
+                  type: '$single',
+                  props: {
+                    item: { $query: { entity: 'AcornOutcome', where: { id: { $: 'local.openOutcome' } } } },
+                    as: 'outcome',
+                  },
+                  children: [{ type: '$part', props: { id: 'acorn.expandedOutcome' } }],
+                },
+              ],
+            },
+          },
         },
       ],
     },
