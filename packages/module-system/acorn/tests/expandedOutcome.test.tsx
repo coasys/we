@@ -43,7 +43,19 @@ function expandParts(node: unknown): unknown {
   return out;
 }
 
-async function fixtureHost() {
+/**
+ * How the host's writes behave. `lag`: a write is acknowledged at once but reaches the store only
+ * on `flush()` — the subscription stays on the old record meanwhile, as a slow mount's does.
+ * `hold`: a write neither lands nor settles until `release()`. `failConnections`: that many
+ * AcornConnection creates are refused.
+ */
+interface HostOptions {
+  lag?: boolean;
+  hold?: boolean;
+  failConnections?: number;
+}
+
+async function fixtureHost(options: HostOptions = {}) {
   const ports = createInMemoryBackendPorts(
     { selfId: () => SELF },
     { datasets: [{ id: acornDatasetId, name: 'Acorn fixture' }] },
@@ -75,15 +87,36 @@ async function fixtureHost() {
   const writes: Array<{ entity: string; id: string; fields: Record<string, unknown> }> = [];
   // `record.create` likewise: the class's `.create(dataset, fields)`, resolving with the record.
   const creates: Array<{ entity: string; fields: Record<string, unknown> }> = [];
+  const deferred: Array<() => Promise<unknown>> = [];
+  const held: Array<() => void> = [];
+  let refusals = options.failConnections ?? 0;
   const record = {
     update: (name: string, id: string, fields: Record<string, unknown>) => {
       writes.push({ entity: name, id, fields });
-      return entity(name).update(handle, id, fields);
+      const land = () => entity(name).update(handle, id, fields);
+      if (options.lag) {
+        deferred.push(land);
+        return Promise.resolve();
+      }
+      if (options.hold) return new Promise((resolve) => held.push(() => resolve(land())));
+      return land();
     },
     create: (name: string, fields: Record<string, unknown>) => {
       creates.push({ entity: name, fields });
+      if (name === 'AcornConnection' && refusals > 0) {
+        refusals--;
+        return Promise.reject(new Error('connection refused'));
+      }
       return entity(name).create(handle, fields);
     },
+  };
+  /** The lagging writes, landed in the order they were made. */
+  const flush = async () => {
+    while (deferred.length) await deferred.shift()!();
+  };
+  /** The held writes, settled in the order they were made. */
+  const release = () => {
+    while (held.length) held.shift()!();
   };
   const read = async (id: string) =>
     (await entity('AcornOutcome').findOne(handle, { where: { id } })) as Record<string, unknown> | null;
@@ -97,7 +130,7 @@ async function fixtureHost() {
     $onError: (message: string) => errors.push(message),
     $modelsPending: () => false,
   };
-  return { stores, errors, writes, creates, read, all };
+  return { stores, errors, writes, creates, read, all, flush, release };
 }
 
 const Passthrough = (props: { children?: JSX.Element }) => props.children;
@@ -110,8 +143,8 @@ const buttonNamed = (root: HTMLElement, label: string) =>
 /** The dialog the list opens — the only `we-modal` it draws. */
 const dialog = (root: HTMLElement) => root.querySelector('we-modal') as HTMLElement | null;
 
-async function openList() {
-  const host = await fixtureHost();
+async function openList(options: HostOptions = {}) {
+  const host = await fixtureHost(options);
   const view = render(() => (
     <RenderSchema
       node={expandParts(ACORN_PARTS.outcomeList.node) as SchemaNode}
@@ -372,6 +405,42 @@ describe('the expanded outcome — children, tasks, comments', () => {
     }
   });
 
+  it('a child whose link is refused keeps its draft and is linked again — never made twice', async () => {
+    const { container, unmount, creates, all } = await openList({ failConnections: 1 });
+    try {
+      const modal = await open(container, BIG);
+      await waitFor(() => expect(labelled(modal, 'we-input', 'New child outcome')).toBeTruthy());
+      const before = (await all('AcornOutcome')).length;
+      type(labelled(modal, 'we-input', 'New child outcome')!, 'Map lands read-only');
+      fireEvent.click(buttonNamed(modal, 'Add child outcome')!);
+
+      // The outcome is made, its connection refused: the dialog says so, and keeps what was typed.
+      await waitFor(() => expect(dialog(container)!.textContent).toContain('Could not link the child'));
+      expect(creates.map((c) => c.entity)).toEqual(['AcornOutcome', 'AcornConnection']);
+      const child = (await all('AcornOutcome')).find((o) => o.content === 'Map lands read-only');
+      expect(child).toBeTruthy();
+      expect((labelled(dialog(container)!, 'we-input', 'New child outcome') as { value?: string }).value).toBe(
+        'Map lands read-only',
+      );
+      // Adding again would make a second outcome; it waits while the first is unlinked.
+      expect((buttonNamed(dialog(container)!, 'Add child outcome') as { disabled?: boolean }).disabled).toBe(true);
+
+      // "Link again" makes the missing connection for the outcome already made.
+      fireEvent.click(buttonNamed(dialog(container)!, 'Link again')!);
+      await waitFor(() => expect(creates).toHaveLength(3));
+      expect(creates[2]).toEqual({
+        entity: 'AcornConnection',
+        fields: { parent: 'acorn-outcome-1', child: child!.id, siblingOrder: 2 },
+      });
+      await waitFor(() => expect(buttonNamed(dialog(container)!, 'Open child Map lands read-only')).toBeTruthy());
+      expect((await all('AcornOutcome')).length).toBe(before + 1);
+      expect(buttonNamed(dialog(container)!, 'Link again')).toBeUndefined();
+      expect((labelled(dialog(container)!, 'we-input', 'New child outcome') as { value?: string }).value).toBe('');
+    } finally {
+      unmount();
+    }
+  });
+
   it("a Small outcome's tasks show their done state; add, tick and remove each write the whole list", async () => {
     const { container, unmount, writes, read } = await openList();
     try {
@@ -416,6 +485,75 @@ describe('the expanded outcome — children, tasks, comments', () => {
       );
       await waitFor(() => expect(checkboxNamed(dialog(container)!, 'boots')).toBeUndefined());
       expect(writes).toHaveLength(3);
+    } finally {
+      unmount();
+    }
+  });
+
+  it('task edits made before the last one reads back each build on the one before', async () => {
+    const { container, unmount, read, writes, flush } = await openList({ lag: true });
+    const tick = (label: string) =>
+      checkboxNamed(dialog(container)!, label)!.dispatchEvent(
+        new CustomEvent('change', { detail: true, bubbles: true, composed: true }),
+      );
+    try {
+      const modal = await open(container, SMALL);
+      await waitFor(() => expect(checkboxNamed(modal, 'boots')).toBeTruthy());
+      // Two adds, each acknowledged before the subscription has seen the one before it.
+      type(labelled(modal, 'we-input', 'New task')!, 'a');
+      fireEvent.click(buttonNamed(modal, 'Add task')!);
+      await waitFor(() => expect(writes).toHaveLength(1));
+      type(labelled(dialog(container)!, 'we-input', 'New task')!, 'b');
+      await waitFor(() =>
+        expect((buttonNamed(dialog(container)!, 'Add task') as { disabled?: boolean }).disabled).toBe(false),
+      );
+      fireEvent.click(buttonNamed(dialog(container)!, 'Add task')!);
+      await waitFor(() => expect(writes).toHaveLength(2));
+      await flush();
+      await waitFor(async () =>
+        expect(await tasksOf(read, 'acorn-outcome-2')).toEqual([
+          { task: 'boots', complete: true },
+          { task: 'a', complete: false },
+          { task: 'b', complete: false },
+        ]),
+      );
+      // Two ticks in different rows, the same way.
+      await waitFor(() => expect(checkboxNamed(dialog(container)!, 'b')).toBeTruthy());
+      tick('boots');
+      await waitFor(() => expect(checkboxNamed(dialog(container)!, 'boots')!.checked).toBe(false));
+      tick('a');
+      await waitFor(() => expect(checkboxNamed(dialog(container)!, 'a')!.checked).toBe(true));
+      await flush();
+      await waitFor(async () =>
+        expect(await tasksOf(read, 'acorn-outcome-2')).toEqual([
+          { task: 'boots', complete: false },
+          { task: 'a', complete: true },
+          { task: 'b', complete: false },
+        ]),
+      );
+      expect(dialog(container)!.textContent).toContain('Tasks 1/3');
+    } finally {
+      unmount();
+    }
+  });
+
+  it('a task edit waits while the one before it is unsettled; removing the last leaves an empty list', async () => {
+    const { container, unmount, read, writes, release } = await openList({ hold: true });
+    try {
+      const modal = await open(container, SMALL);
+      await waitFor(() => expect(iconButtonNamed(modal, 'Remove task boots')).toBeTruthy());
+      fireEvent.click(iconButtonNamed(modal, 'Remove task boots')!);
+      await waitFor(() => expect(writes).toHaveLength(1));
+      // In flight: no control can start a second write from the list the first is replacing.
+      type(labelled(dialog(container)!, 'we-input', 'New task')!, 'later');
+      expect((buttonNamed(dialog(container)!, 'Add task') as { disabled?: boolean }).disabled).toBe(true);
+      release();
+      await waitFor(async () => expect((await read('acorn-outcome-2'))?.taskList).toBe('[]'));
+      await waitFor(() =>
+        expect((buttonNamed(dialog(container)!, 'Add task') as { disabled?: boolean }).disabled).toBe(false),
+      );
+      expect(checkboxNamed(dialog(container)!, 'boots')).toBeUndefined();
+      expect(dialog(container)!.textContent).not.toContain('Tasks 0');
     } finally {
       unmount();
     }

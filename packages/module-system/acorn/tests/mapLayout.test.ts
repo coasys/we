@@ -131,6 +131,17 @@ describe('the outcome map — layout', () => {
     expect(new Set(graph.nodes.map((n) => n.data.rank)).size).toBe(3);
   });
 
+  it('a connection loop with no root is drawn as the table draws it: the same outcomes, the same order', () => {
+    // z on its own; a → b → c → a with no way in, and b's children in Acorn's order (e at 1 first).
+    const outcomes = ['z', 'a', 'b', 'c', 'd', 'e'].map((id) => outcome(id));
+    const connections = [edge('a', 'b'), edge('b', 'c'), edge('c', 'a'), edge('b', 'd'), edge('b', 'e', 1)];
+    const { graph } = layOut(outcomes, connections);
+    const byRank = [...graph.nodes].sort((x, y) => Number(x.data.rank) - Number(y.data.rank)).map((n) => n.id);
+    const rows = ACORN_FUNCTIONS.find((f) => f.name === 'acornTableRows')!.fn as (o: unknown) => Array<{ id: string }>;
+    expect(byRank).toEqual(['z', 'a', 'b', 'e', 'c', 'd']);
+    expect(rows({ outcomes, connections }).map((r) => r.id)).toEqual(byRank);
+  });
+
   it('a child under two parents is placed once, and both connections are drawn', () => {
     const { at, graph } = layOut([outcome('p'), outcome('q'), outcome('x')], [edge('p', 'x'), edge('q', 'x')]);
     expect(at('x').y).toBeGreaterThan(at('p').y);

@@ -58,12 +58,24 @@ async function drawTable() {
   const errors: string[] = [];
   const stores = { ...bindings, $sources, $onError: (m: string) => errors.push(m), $modelsPending: () => false };
 
-  const Passthrough = (props: { children?: JSX.Element }) => props.children;
+  /*
+    Row and Column as their DOM shows them to assistive technology: a box carrying the role and
+    accessible name it was given (the real components spread both onto their element).
+  */
+  const Box = (props: {
+    children?: JSX.Element;
+    role?: JSX.HTMLAttributes<HTMLDivElement>['role'];
+    'aria-label'?: string;
+  }) => (
+    <div role={props.role} aria-label={props['aria-label']}>
+      {props.children}
+    </div>
+  );
   const view = render(() => (
     <RenderSchema
       node={expandParts(ACORN_PARTS.outcomeTable.node) as SchemaNode}
       stores={stores as never}
-      registry={{ Column: Passthrough, Row: Passthrough }}
+      registry={{ Column: Box, Row: Box }}
       context={{}}
     />
   ));
@@ -83,6 +95,12 @@ const buttonNamed = (root: HTMLElement, label: string) =>
   [...root.querySelectorAll('we-button')].find(
     (b) => !b.closest('we-modal') && ((b.textContent ?? '').trim() === label || labelOf(b) === label),
   ) as HTMLElement | undefined;
+
+/** A filter choice toggled — a checkbox, as a person ticks it. */
+const choose = (root: HTMLElement, label: string) =>
+  [...root.querySelectorAll('we-checkbox')]
+    .find((c) => labelOf(c) === label)!
+    .dispatchEvent(new CustomEvent('change', { detail: true, bubbles: true, composed: true }));
 
 const type = (el: Element, value: string) =>
   el.dispatchEvent(new CustomEvent('input', { detail: value, bubbles: true, composed: true }));
@@ -150,22 +168,22 @@ describe('the outcome table', () => {
       // A filtered table draws matches even under a folded parent, as Acorn's does.
       fireEvent.click(buttonNamed(container, `Collapse ${BIG}`)!);
       await waitFor(() => expect(rows(container)).toEqual([BIG]));
-      fireEvent.click(buttonNamed(container, 'Small')!);
+      choose(container, 'Small');
       await waitFor(() => expect(rows(container)).toEqual([SMALL]));
       // Scope OR status lists AND together: Small and Not achieved matches nothing here.
-      fireEvent.click(buttonNamed(container, 'Not achieved')!);
+      choose(container, 'Not achieved');
       await waitFor(() => expect(rows(container)).toEqual([]));
       fireEvent.click(buttonNamed(container, 'Clear filters')!);
       await waitFor(() => expect(rows(container)).toEqual([BIG]));
 
-      fireEvent.click(buttonNamed(container, 'Only high priority')!);
+      choose(container, 'Only high priority');
       await waitFor(() => expect(rows(container)).toEqual([BIG]));
-      fireEvent.click(buttonNamed(container, 'Only high priority')!);
-      fireEvent.click(buttonNamed(container, 'Uncertain')!);
+      choose(container, 'Only high priority');
+      choose(container, 'Uncertain');
       // The root's computed scope is Uncertain too.
       await waitFor(() => expect(rows(container)).toEqual([BIG, UNCERTAIN]));
-      fireEvent.click(buttonNamed(container, 'Uncertain')!);
-      fireEvent.click(buttonNamed(container, 'frontend')!);
+      choose(container, 'Uncertain');
+      choose(container, 'frontend');
       await waitFor(() => expect(rows(container)).toEqual([BIG]));
     } finally {
       unmount();
@@ -178,6 +196,52 @@ describe('the outcome table', () => {
       fireEvent.click(buttonNamed(container, `Open ${UNCERTAIN}`)!);
       await waitFor(() => expect(container.querySelector('we-modal')?.textContent).toContain(UNCERTAIN));
       expect(container.querySelector('we-modal')?.textContent).toContain('Children 0');
+    } finally {
+      unmount();
+    }
+  });
+  it('is a table to assistive technology — rows, headers and cells; folds and filters say their state', async () => {
+    const { container, unmount } = await drawTable();
+    try {
+      const table = container.querySelector('[role="table"]')!;
+      expect(table).toBeTruthy();
+      expect(table.getAttribute('aria-label')).toBe('Outcomes');
+      const tableRows = [...table.querySelectorAll('[role="row"]')];
+      expect(tableRows).toHaveLength(4);
+      expect([...tableRows[0].querySelectorAll('[role="columnheader"]')].map((h) => h.textContent?.trim())).toEqual([
+        'ID#',
+        'Outcome',
+        'Scope',
+        'Status',
+        'Progress',
+        'Tags',
+      ]);
+      for (const row of tableRows.slice(1)) expect(row.querySelectorAll('[role="cell"]')).toHaveLength(6);
+
+      const fold = buttonNamed(container, `Collapse ${BIG}`) as HTMLElement & { expanded?: boolean };
+      expect(fold.expanded).toBe(true);
+      fireEvent.click(fold);
+      await waitFor(() =>
+        expect((buttonNamed(container, `Expand ${BIG}`) as { expanded?: boolean } | undefined)?.expanded).toBe(false),
+      );
+
+      // Each filter choice is a checkbox, so its chosen state is announced, not only drawn.
+      const choice = (label: string) =>
+        [...container.querySelectorAll('we-checkbox')].find((c) => labelOf(c) === label) as
+          (HTMLElement & { checked?: boolean }) | undefined;
+      for (const label of [
+        'Only high priority',
+        'Achieved',
+        'Partially achieved',
+        'Not achieved',
+        'Small',
+        'Uncertain',
+        'Other',
+        'frontend',
+      ])
+        expect(choice(label)?.checked).toBe(false);
+      choice('Small')!.dispatchEvent(new CustomEvent('change', { detail: true, bubbles: true, composed: true }));
+      await waitFor(() => expect(choice('Small')?.checked).toBe(true));
     } finally {
       unmount();
     }

@@ -825,7 +825,7 @@ describe('the outcome table on the live mount', () => {
     await page.getByRole('textbox', { name: 'Filter by keyword or ID number' }).fill(CHILD);
     await rowButton(PARENT).waitFor({ state: 'detached', timeout: 60_000 });
     await rowButton(CHILD).waitFor({ state: 'visible', timeout: 60_000 });
-    await page.getByRole('button', { name: 'Uncertain', exact: true }).click();
+    await page.getByRole('checkbox', { name: 'Uncertain', exact: true }).click();
     // The child is Small: keyword AND scope Uncertain matches nothing of ours.
     await rowButton(CHILD).waitFor({ state: 'detached', timeout: 60_000 });
     if (SHOTS) await page.screenshot({ path: join(SHOTS, 'outcome-table-filtered.png'), fullPage: true });

@@ -198,9 +198,68 @@ describe('the outcome table rows', () => {
     ).toEqual([['b', 1]]);
   });
 
-  it('a cycle with no root draws nothing rather than looping', () => {
-    const outcomes = [outcome('x', 'Small'), outcome('y', 'Small')];
-    expect(rowsOf({ outcomes, connections: [edge('x', 'y'), edge('y', 'x')] })).toEqual([]);
+  it('a cycle with no root is still drawn, from its first outcome, with what hangs below it', () => {
+    const outcomes = [
+      outcome('x', 'Uncertain', { content: 'ex' }),
+      outcome('y', 'Uncertain', { content: 'why' }),
+      outcome('leaf', 'Small', { content: 'leaf' }),
+    ];
+    const connections = [edge('x', 'y'), edge('y', 'x'), edge('y', 'leaf')];
+    expect(rowsOf({ outcomes, connections }).map((r) => [r.id, r.depth])).toEqual([
+      ['x', 0],
+      ['y', 1],
+      ['leaf', 2],
+    ]);
+    // A search finds the cycle's outcomes, as any other.
+    expect(rowsOf({ outcomes, connections, filter: { keyword: 'why' } }).map((r) => [r.id, r.depth])).toEqual([
+      ['y', 1],
+    ]);
+    expect(rowsOf({ outcomes, connections, filter: { keyword: 'leaf' } }).map((r) => r.id)).toEqual(['leaf']);
+  });
+});
+
+describe('the outcome table on a long chain', () => {
+  /** A chain r0 → r1 → … of Small leaves under Uncertain parents, each connection counting its reads. */
+  const chain = (n: number) => {
+    let reads = 0;
+    const outcomes = Array.from({ length: n }, (_, i) =>
+      outcome(`r${i}`, i === n - 1 ? 'Small' : 'Uncertain', { content: `step ${i}` }),
+    );
+    const connections = Array.from({ length: n - 1 }, (_, i) => {
+      const c = edge(`r${i}`, `r${i + 1}`);
+      return new Proxy(c, {
+        get: (target, key) => {
+          if (key === 'parent' || key === 'child') reads++;
+          return target[key as keyof typeof target];
+        },
+      });
+    });
+    return { outcomes, connections, reads: () => reads };
+  };
+
+  it('reads each connection a bounded number of times, however long the chain', () => {
+    const { outcomes, connections, reads } = chain(300);
+    const rows = call('acornTableRows', { outcomes, connections }) as Array<{ depth: number; scope: string }>;
+    expect(rows).toHaveLength(300);
+    expect(rows[299].depth).toBe(299);
+    expect(rows[0].scope).toBe('Big');
+    expect(reads()).toBeLessThan(300 * 10);
+  });
+
+  it('draws a 2000-outcome chain, filtered or not, fast', () => {
+    const { outcomes, connections } = chain(2000);
+    const started = performance.now();
+    const rows = call('acornTableRows', { outcomes, connections }) as Array<{ id: string; depth: number }>;
+    const found = call('acornTableRows', { outcomes, connections, filter: { keyword: 'step 1999' } }) as Array<{
+      id: string;
+      depth: number;
+    }>;
+    const folded = call('acornTableRows', { outcomes, connections, collapsed: ['r0'] }) as Array<{ id: string }>;
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(rows).toHaveLength(2000);
+    expect(rows[1999]).toMatchObject({ id: 'r1999', depth: 1999 });
+    expect(found).toEqual([expect.objectContaining({ id: 'r1999', depth: 1999 })]);
+    expect(folded.map((r) => r.id)).toEqual(['r0']);
   });
 });
 
@@ -211,5 +270,25 @@ describe('the outcome table filter', () => {
     expect(all[0].number).not.toBe(all[1].number);
     const hit = call('acornTableRows', { outcomes, filter: { keyword: all[1].number } }) as Array<{ id: string }>;
     expect(hit.map((r) => r.id)).toEqual(['QmL://uhCkkTwoDifferent']);
+  });
+});
+
+describe('the working value a whole-field edit starts from', () => {
+  const written = [tasks, JSON.stringify([{ task: 'a', complete: true }])];
+  it('is the last written while the stored value is one this view replaced or wrote', () => {
+    const working = JSON.stringify([{ task: 'a', complete: false }]);
+    expect(call('acornWorking', { stored: tasks, working, written })).toBe(working);
+    // The mount reads a list back with its keys in another order; it is still the same list.
+    expect(call('acornWorking', { stored: '[{"complete":true,"task":"a"}]', working, written })).toBe(working);
+    expect(call('acornWorking', { stored: ['x'], working: ['x', 'y'], written: [['x'], ['x', 'y']] })).toEqual([
+      'x',
+      'y',
+    ]);
+    expect(call('acornWorking', { stored: undefined, working: '[]', written: [undefined, '[]'] })).toBe('[]');
+  });
+  it("is the stored value when nothing was written, or the stored value is somebody else's", () => {
+    expect(call('acornWorking', { stored: tasks, working: 'x', written: [] })).toBe(tasks);
+    expect(call('acornWorking', { stored: '[]', working: 'x', written: [tasks] })).toBe('[]');
+    expect(call('acornWorking', { stored: ['z'], working: ['x'], written: 'nope' })).toEqual(['z']);
   });
 });

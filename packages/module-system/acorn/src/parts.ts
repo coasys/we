@@ -17,6 +17,84 @@ import type { ModulePart } from '@we/module-shared';
  * Everything else here reads `Acorn*` records through `$query` or declares its row as an
  * `input` — never a module store, which this module does not have.
  */
+/*
+  A new child is two generic writes — the outcome, then the connection naming its parent — so the
+  second can fail after the first landed. The outcome made is held (`orphan`, under
+  `orphanParent`) with the draft until its connection lands; only then is the draft cleared.
+*/
+const CHILD_LINKED = [
+  { $setLocal: 'newChild', value: '' },
+  { $setLocal: 'orphan', value: '' },
+  { $setLocal: 'orphanParent', value: '' },
+  { $setLocal: 'childBusy', value: false },
+];
+const CHILD_LINK = {
+  $invoke: 'record.create',
+  args: [
+    'AcornConnection',
+    {
+      $: '{ parent: local.orphanParent, child: local.orphan, siblingOrder: count(acornChildren({ outcome: local.orphanParent, outcomes: local.outcomes, connections: local.connections })) }',
+    },
+  ],
+  onSuccess: CHILD_LINKED,
+  onError: [
+    { $setLocal: 'childBusy', value: false },
+    { $setLocal: 'writeError', value: { $: "'Could not link the child: ' + result.message + ' — link it again.'" } },
+  ],
+};
+
+/*
+  The task list is one JSON field, so every edit is a whole-list replace — and an edit made before
+  the last one has read back would start from the list that one replaced, undoing it. So each edit
+  starts from the working list (`acornWorking`: the last list this view wrote, while the subscription
+  still holds one it replaced or wrote) and only one write per view is in flight (`taskBusy`
+  disables the task controls), so the writes land in the order they were made. A refused write
+  drops the working list, and the subscription's list is drawn and edited again.
+*/
+const TASKS =
+  'acornWorking({ stored: outcome.taskList, working: local.taskWork, written: local.taskFor == outcome.id ? local.taskWritten : [] })';
+const taskEdit = (next: string, onSuccess: unknown[] = []) => [
+  { $setLocal: 'taskWork', value: { $: next } },
+  {
+    $setLocal: 'taskWritten',
+    value: { $: 'distinct(local.taskFor == outcome.id ? local.taskWritten : [], [outcome.taskList, local.taskWork])' },
+  },
+  { $setLocal: 'taskFor', value: { $: 'outcome.id' } },
+  { $setLocal: 'taskBusy', value: true },
+  { $setLocal: 'writeError', value: '' },
+  {
+    $invoke: 'record.update',
+    args: ['AcornOutcome', { $: 'outcome.id' }, { $: '{ taskList: local.taskWork }' }],
+    onSuccess,
+    onError: [
+      { $setLocal: 'writeError', value: { $: "'Could not save: ' + result.message" } },
+      { $setLocal: 'taskFor', value: '' },
+      { $setLocal: 'taskWritten', value: [] },
+    ],
+    onFinally: [{ $setLocal: 'taskBusy', value: false }],
+  },
+];
+
+/*
+  The priority order is one field on the project meta, replaced whole by every add, remove and
+  reorder — the same hazard as the task list, on the same path: each edit starts from the working
+  list (the last this view wrote, while the meta still holds one it replaced or wrote), and one
+  write per project is in flight (`prioBusy`). The state sits on the meta's own row, so it is per
+  project.
+*/
+const PRIO = 'acornWorking({ stored: meta.topPriorityOutcomes, working: local.prioWork, written: local.prioWritten })';
+const prioEdit = (next: string) => [
+  { $setLocal: 'prioWork', value: { $: next } },
+  { $setLocal: 'prioWritten', value: { $: 'distinct(local.prioWritten, [meta.topPriorityOutcomes, local.prioWork])' } },
+  { $setLocal: 'prioBusy', value: true },
+  {
+    $invoke: 'record.update',
+    args: ['AcornProjectMeta', { $: 'meta.id' }, { $: '{ topPriorityOutcomes: local.prioWork }' }],
+    onError: [{ $setLocal: 'prioWritten', value: [] }],
+    onFinally: [{ $setLocal: 'prioBusy', value: false }],
+  },
+];
+
 export const ACORN_PARTS: Record<string, ModulePart> = {
   outcomeList: {
     label: 'Outcome list',
@@ -284,7 +362,16 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
         authors are named from. Comments are read whole and filtered per outcome, so the
         relation compare is the same client-side one on both hosts.
       */
-      $localState: { focus: { type: 'string', initial: '' } },
+      $localState: {
+        focus: { type: 'string', initial: '' },
+        orphan: { type: 'string', initial: '' },
+        orphanParent: { type: 'string', initial: '' },
+        childBusy: { type: 'boolean', initial: false },
+        taskWork: { type: 'string', initial: '' },
+        taskFor: { type: 'string', initial: '' },
+        taskWritten: { type: 'array', initial: [] },
+        taskBusy: { type: 'boolean', initial: false },
+      },
       $queries: {
         outcomes: { entity: 'AcornOutcome', order: { timestampCreated: 'asc' } },
         connections: { entity: 'AcornConnection' },
@@ -594,13 +681,13 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
                           props: { variant: 'label' },
                           children: [
                             {
-                              $: "'Tasks' + (acornTaskProgress({ taskList: outcome.taskList }) ? ' ' + acornTaskProgress({ taskList: outcome.taskList }) : '')",
+                              $: `'Tasks' + (acornTaskProgress({ taskList: ${TASKS} }) ? ' ' + acornTaskProgress({ taskList: ${TASKS} }) : '')`,
                             },
                           ],
                         },
                         {
                           type: '$each',
-                          props: { items: { $: 'acornTasks({ taskList: outcome.taskList })' }, as: 'task' },
+                          props: { items: { $: `acornTasks({ taskList: ${TASKS} })` }, as: 'task' },
                           children: [
                             {
                               type: 'Row',
@@ -611,23 +698,9 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
                                   props: {
                                     flex: '1 1 auto',
                                     checked: { $: 'task.complete' },
+                                    disabled: { $: 'local.taskBusy' },
                                     label: { $: 'task.task' },
-                                    onChange: {
-                                      $invoke: 'record.update',
-                                      args: [
-                                        'AcornOutcome',
-                                        { $: 'outcome.id' },
-                                        {
-                                          $: '{ taskList: acornTasksToggled({ taskList: outcome.taskList, index: index }) }',
-                                        },
-                                      ],
-                                      onError: [
-                                        {
-                                          $setLocal: 'writeError',
-                                          value: { $: "'Could not save: ' + result.message" },
-                                        },
-                                      ],
-                                    },
+                                    onChange: taskEdit(`acornTasksToggled({ taskList: ${TASKS}, index: index })`),
                                   },
                                   children: [{ $: 'task.task' }],
                                 },
@@ -636,23 +709,9 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
                                   props: {
                                     variant: 'ghost',
                                     size: 'sm',
+                                    disabled: { $: 'local.taskBusy' },
                                     label: { $: '`Remove task ${task.task}`' },
-                                    onClick: {
-                                      $invoke: 'record.update',
-                                      args: [
-                                        'AcornOutcome',
-                                        { $: 'outcome.id' },
-                                        {
-                                          $: '{ taskList: acornTasksRemoved({ taskList: outcome.taskList, index: index }) }',
-                                        },
-                                      ],
-                                      onError: [
-                                        {
-                                          $setLocal: 'writeError',
-                                          value: { $: "'Could not save: ' + result.message" },
-                                        },
-                                      ],
-                                    },
+                                    onClick: taskEdit(`acornTasksRemoved({ taskList: ${TASKS}, index: index })`),
                                   },
                                   children: [{ type: 'we-icon', props: { name: 'x' } }],
                                 },
@@ -678,21 +737,10 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
                               type: 'we-button',
                               props: {
                                 variant: 'soft',
-                                disabled: { $: '!trim(local.newTask)' },
-                                onClick: {
-                                  $invoke: 'record.update',
-                                  args: [
-                                    'AcornOutcome',
-                                    { $: 'outcome.id' },
-                                    {
-                                      $: '{ taskList: acornTasksAdded({ taskList: outcome.taskList, task: local.newTask }) }',
-                                    },
-                                  ],
-                                  onSuccess: [{ $setLocal: 'newTask', value: '' }],
-                                  onError: [
-                                    { $setLocal: 'writeError', value: { $: "'Could not save: ' + result.message" } },
-                                  ],
-                                },
+                                disabled: { $: '!trim(local.newTask) || local.taskBusy' },
+                                onClick: taskEdit(`acornTasksAdded({ taskList: ${TASKS}, task: local.newTask })`, [
+                                  { $setLocal: 'newTask', value: '' },
+                                ]),
                               },
                               children: ['Add task'],
                             },
@@ -782,39 +830,63 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
                               type: 'we-button',
                               props: {
                                 variant: 'soft',
-                                disabled: { $: '!trim(local.newChild)' },
-                                onClick: {
-                                  $invoke: 'record.create',
-                                  args: [
-                                    'AcornOutcome',
-                                    { $: "{ content: trim(local.newChild), scopeType: 'Uncertain' }" },
-                                  ],
-                                  onSuccess: [
-                                    { $setLocal: 'newChild', value: '' },
-                                    {
-                                      $invoke: 'record.create',
-                                      args: [
-                                        'AcornConnection',
-                                        {
-                                          $: '{ parent: outcome.id, child: result.id, siblingOrder: count(acornChildren({ outcome: outcome.id, outcomes: local.outcomes, connections: local.connections })) }',
-                                        },
-                                      ],
-                                      onError: [
-                                        {
-                                          $setLocal: 'writeError',
-                                          value: { $: "'Could not link the child: ' + result.message" },
-                                        },
-                                      ],
-                                    },
-                                  ],
-                                  onError: [
-                                    { $setLocal: 'writeError', value: { $: "'Could not save: ' + result.message" } },
-                                  ],
-                                },
+                                disabled: { $: "!trim(local.newChild) || local.childBusy || local.orphan != ''" },
+                                onClick: [
+                                  { $setLocal: 'childBusy', value: true },
+                                  { $setLocal: 'writeError', value: '' },
+                                  {
+                                    $invoke: 'record.create',
+                                    args: [
+                                      'AcornOutcome',
+                                      { $: "{ content: trim(local.newChild), scopeType: 'Uncertain' }" },
+                                    ],
+                                    onSuccess: [
+                                      { $setLocal: 'orphan', value: { $: 'result.id' } },
+                                      { $setLocal: 'orphanParent', value: { $: 'outcome.id' } },
+                                      CHILD_LINK,
+                                    ],
+                                    onError: [
+                                      { $setLocal: 'childBusy', value: false },
+                                      { $setLocal: 'writeError', value: { $: "'Could not save: ' + result.message" } },
+                                    ],
+                                  },
+                                ],
                               },
                               children: ['Add child outcome'],
                             },
                           ],
+                        },
+                        /*
+                          A child made but not linked — its connection was refused — is offered its
+                          link again, for the outcome already made, rather than a second outcome. A
+                          link that did land after all (the refusal was the reply, not the write) is
+                          seen in the connections and only cleared.
+                        */
+                        {
+                          type: '$if',
+                          props: {
+                            condition: { $: 'local.orphan' },
+                            then: {
+                              type: 'we-button',
+                              props: {
+                                variant: 'soft',
+                                disabled: { $: 'local.childBusy' },
+                                onClick: [
+                                  { $setLocal: 'writeError', value: '' },
+                                  {
+                                    $if: {
+                                      condition: {
+                                        $: 'acornChildren({ outcome: local.orphanParent, outcomes: local.outcomes, connections: local.connections }).exists(c, c.id == local.orphan)',
+                                      },
+                                      then: CHILD_LINKED,
+                                      else: [{ $setLocal: 'childBusy', value: true }, CHILD_LINK],
+                                    },
+                                  },
+                                ],
+                              },
+                              children: ['Link again'],
+                            },
+                          },
                         },
                       ],
                     },
@@ -959,11 +1031,12 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
           props: { gap: '200', ay: 'center', wrap: true, width: '100%' },
           children: [
             {
-              type: 'we-button',
+              type: 'we-checkbox',
               props: {
                 size: 'sm',
-                variant: { $: "local.highPriority ? 'solid' : 'soft'" },
-                onClick: { $toggleLocal: 'highPriority' },
+                label: 'Only high priority',
+                checked: { $: 'local.highPriority' },
+                onChange: { $toggleLocal: 'highPriority' },
               },
               children: ['Only high priority'],
             },
@@ -978,11 +1051,12 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
               },
               children: [
                 {
-                  type: 'we-button',
+                  type: 'we-checkbox',
                   props: {
                     size: 'sm',
-                    variant: { $: "choice.value in local.statuses ? 'solid' : 'soft'" },
-                    onClick: { $toggleLocalIn: 'statuses', value: { $: 'choice.value' } },
+                    label: { $: 'choice.label' },
+                    checked: { $: 'choice.value in local.statuses' },
+                    onChange: { $toggleLocalIn: 'statuses', value: { $: 'choice.value' } },
                   },
                   children: [{ $: 'choice.label' }],
                 },
@@ -999,11 +1073,12 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
               },
               children: [
                 {
-                  type: 'we-button',
+                  type: 'we-checkbox',
                   props: {
                     size: 'sm',
-                    variant: { $: "choice.value in local.scopes ? 'solid' : 'soft'" },
-                    onClick: { $toggleLocalIn: 'scopes', value: { $: 'choice.value' } },
+                    label: { $: 'choice.label' },
+                    checked: { $: 'choice.value in local.scopes' },
+                    onChange: { $toggleLocalIn: 'scopes', value: { $: 'choice.value' } },
                   },
                   children: [{ $: 'choice.label' }],
                 },
@@ -1021,11 +1096,12 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
               props: { items: { $: 'local.tags' }, as: 'tag' },
               children: [
                 {
-                  type: 'we-button',
+                  type: 'we-checkbox',
                   props: {
                     size: 'sm',
-                    variant: { $: "tag.id in local.tagFilter ? 'solid' : 'soft'" },
-                    onClick: { $toggleLocalIn: 'tagFilter', value: { $: 'tag.id' } },
+                    label: { $: 'tag.text' },
+                    checked: { $: 'tag.id in local.tagFilter' },
+                    onChange: { $toggleLocalIn: 'tagFilter', value: { $: 'tag.id' } },
                   },
                   children: [{ $: 'tag.text' }],
                 },
@@ -1056,117 +1132,161 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
             },
           ],
         },
+        /*
+          The table, as assistive technology reads it: a table of rows, a header row of column
+          headers and a cell per column — the layout stays the Rows' own.
+        */
         {
-          type: 'Row',
-          props: { gap: '400', p: '300', borderBottom: '1px solid border', width: '100%' },
-          children: [
-            {
-              type: 'we-text',
-              props: { fontWeight: 'semibold', width: '4.5rem', flex: '0 0 auto' },
-              children: ['ID#'],
-            },
-            { type: 'we-text', props: { fontWeight: 'semibold', flex: '4 1 0' }, children: ['Outcome'] },
-            { type: 'we-text', props: { fontWeight: 'semibold', flex: '1 1 0' }, children: ['Scope'] },
-            { type: 'we-text', props: { fontWeight: 'semibold', flex: '1.4 1 0' }, children: ['Status'] },
-            { type: 'we-text', props: { fontWeight: 'semibold', flex: '1 1 0' }, children: ['Progress'] },
-            { type: 'we-text', props: { fontWeight: 'semibold', flex: '2 1 0' }, children: ['Tags'] },
-          ],
-        },
-        {
-          type: '$each',
-          props: {
-            items: {
-              $: 'acornTableRows({ outcomes: local.outcomes, connections: local.connections, tags: local.tags, priorities: first(local.meta).topPriorityOutcomes, collapsed: local.collapsed, filter: { keyword: local.keyword, highPriority: local.highPriority, statuses: local.statuses, scopes: local.scopes, tags: local.tagFilter } })',
-            },
-            as: 'row',
-          },
+          type: 'Column',
+          props: { width: '100%', role: 'table', 'aria-label': 'Outcomes' },
           children: [
             {
               type: 'Row',
+              props: { role: 'row', gap: '400', p: '300', borderBottom: '1px solid border', width: '100%' },
+              children: [
+                {
+                  type: 'div',
+                  props: { role: 'columnheader', style: { flex: '0 0 auto', width: '4.5rem' } },
+                  children: [{ type: 'we-text', props: { fontWeight: 'semibold' }, children: ['ID#'] }],
+                },
+                {
+                  type: 'div',
+                  props: { role: 'columnheader', style: { flex: '4 1 0' } },
+                  children: [{ type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Outcome'] }],
+                },
+                {
+                  type: 'div',
+                  props: { role: 'columnheader', style: { flex: '1 1 0' } },
+                  children: [{ type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Scope'] }],
+                },
+                {
+                  type: 'div',
+                  props: { role: 'columnheader', style: { flex: '1.4 1 0' } },
+                  children: [{ type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Status'] }],
+                },
+                {
+                  type: 'div',
+                  props: { role: 'columnheader', style: { flex: '1 1 0' } },
+                  children: [{ type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Progress'] }],
+                },
+                {
+                  type: 'div',
+                  props: { role: 'columnheader', style: { flex: '2 1 0' } },
+                  children: [{ type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Tags'] }],
+                },
+              ],
+            },
+            {
+              type: '$each',
               props: {
-                gap: '400',
-                px: '300',
-                py: '200',
-                borderBottom: '1px solid border',
-                width: '100%',
-                ay: 'center',
+                items: {
+                  $: 'acornTableRows({ outcomes: local.outcomes, connections: local.connections, tags: local.tags, priorities: first(local.meta).topPriorityOutcomes, collapsed: local.collapsed, filter: { keyword: local.keyword, highPriority: local.highPriority, statuses: local.statuses, scopes: local.scopes, tags: local.tagFilter } })',
+                },
+                as: 'row',
               },
               children: [
                 {
-                  type: 'we-text',
-                  props: { tone: 'secondary', width: '4.5rem', flex: '0 0 auto' },
-                  children: [{ $: 'row.number' }],
-                },
-                {
                   type: 'Row',
-                  props: { gap: '100', ay: 'center', flex: '4 1 0', minWidth: '0' },
+                  props: {
+                    role: 'row',
+                    gap: '400',
+                    px: '300',
+                    py: '200',
+                    borderBottom: '1px solid border',
+                    width: '100%',
+                    ay: 'center',
+                  },
                   children: [
-                    // The tree's indent: a level per depth, as Acorn's table draws it.
-                    { type: 'div', props: { style: { $: "{ width: (row.depth * 1.5) + 'rem', flexShrink: '0' }" } } },
                     {
-                      type: '$if',
-                      props: {
-                        condition: { $: 'row.children > 0' },
-                        then: {
+                      type: 'div',
+                      props: { role: 'cell', style: { width: '4.5rem', flex: '0 0 auto' } },
+                      children: [{ type: 'we-text', props: { tone: 'secondary' }, children: [{ $: 'row.number' }] }],
+                    },
+                    {
+                      type: 'Row',
+                      props: { role: 'cell', gap: '100', ay: 'center', flex: '4 1 0', minWidth: '0' },
+                      children: [
+                        // The tree's indent: a level per depth, as Acorn's table draws it.
+                        {
+                          type: 'div',
+                          props: { style: { $: "{ width: (row.depth * 1.5) + 'rem', flexShrink: '0' }" } },
+                        },
+                        {
+                          type: '$if',
+                          props: {
+                            condition: { $: 'row.children > 0' },
+                            then: {
+                              type: 'we-button',
+                              props: {
+                                variant: 'bare',
+                                size: 'xs',
+                                label: { $: "(row.open ? 'Collapse ' : 'Expand ') + row.outcome.content" },
+                                expanded: { $: 'row.open' },
+                                onClick: { $toggleLocalIn: 'collapsed', value: { $: 'row.id' } },
+                              },
+                              children: [
+                                { type: 'we-icon', props: { name: { $: "row.open ? 'caret-down' : 'caret-right'" } } },
+                              ],
+                            },
+                            else: { type: 'div', props: { style: { width: '1.25rem', flexShrink: '0' } } },
+                          },
+                        },
+                        {
                           type: 'we-button',
                           props: {
                             variant: 'bare',
-                            size: 'xs',
-                            label: { $: "(row.open ? 'Collapse ' : 'Expand ') + row.outcome.content" },
-                            onClick: { $toggleLocalIn: 'collapsed', value: { $: 'row.id' } },
+                            label: { $: '`Open ${row.outcome.content}`' },
+                            onClick: { $setLocal: 'openOutcome', value: { $: 'row.id' } },
                           },
+                          children: [{ $: 'row.outcome.content' }],
+                        },
+                        {
+                          type: '$if',
+                          props: {
+                            condition: { $: 'row.priority' },
+                            then: {
+                              type: 'we-icon',
+                              props: { name: 'medal', color: 'warning', label: 'High priority' },
+                            },
+                          },
+                        },
+                      ],
+                    },
+                    {
+                      type: 'div',
+                      props: { role: 'cell', style: { flex: '1 1 0' } },
+                      children: [{ type: 'we-text', props: { tone: 'secondary' }, children: [{ $: 'row.scope' }] }],
+                    },
+                    {
+                      type: 'div',
+                      props: { role: 'cell', style: { flex: '1.4 1 0' } },
+                      children: [
+                        {
+                          type: 'we-text',
+                          props: { tone: 'secondary' },
                           children: [
-                            { type: 'we-icon', props: { name: { $: "row.open ? 'caret-down' : 'caret-right'" } } },
+                            {
+                              $: "row.status == 'PartiallyAchieved' ? 'Partially achieved' : row.status == 'NotAchieved' ? 'Not achieved' : 'Achieved'",
+                            },
                           ],
                         },
-                        else: { type: 'div', props: { style: { width: '1.25rem', flexShrink: '0' } } },
-                      },
+                      ],
                     },
                     {
-                      type: 'we-button',
-                      props: {
-                        variant: 'bare',
-                        label: { $: '`Open ${row.outcome.content}`' },
-                        onClick: { $setLocal: 'openOutcome', value: { $: 'row.id' } },
-                      },
-                      children: [{ $: 'row.outcome.content' }],
+                      type: 'div',
+                      props: { role: 'cell', style: { flex: '1 1 0' } },
+                      children: [{ type: 'we-text', props: { tone: 'secondary' }, children: [{ $: 'row.progress' }] }],
                     },
                     {
-                      type: '$if',
-                      props: {
-                        condition: { $: 'row.priority' },
-                        then: { type: 'we-icon', props: { name: 'medal', color: 'warning', label: 'High priority' } },
-                      },
-                    },
-                  ],
-                },
-                {
-                  type: 'we-text',
-                  props: { flex: '1 1 0', tone: 'secondary' },
-                  children: [{ $: 'row.scope' }],
-                },
-                {
-                  type: 'we-text',
-                  props: { flex: '1.4 1 0', tone: 'secondary' },
-                  children: [
-                    {
-                      $: "row.status == 'PartiallyAchieved' ? 'Partially achieved' : row.status == 'NotAchieved' ? 'Not achieved' : 'Achieved'",
-                    },
-                  ],
-                },
-                {
-                  type: 'we-text',
-                  props: { flex: '1 1 0', tone: 'secondary' },
-                  children: [{ $: 'row.progress' }],
-                },
-                {
-                  type: 'Row',
-                  props: { gap: '100', wrap: true, flex: '2 1 0', minWidth: '0' },
-                  children: [
-                    {
-                      type: '$each',
-                      props: { items: { $: 'row.tags' }, as: 'tag' },
-                      children: [{ type: 'we-tag', children: [{ $: 'tag.text' }] }],
+                      type: 'Row',
+                      props: { role: 'cell', gap: '100', wrap: true, flex: '2 1 0', minWidth: '0' },
+                      children: [
+                        {
+                          type: '$each',
+                          props: { items: { $: 'row.tags' }, as: 'tag' },
+                          children: [{ type: 'we-tag', children: [{ $: 'tag.text' }] }],
+                        },
+                      ],
                     },
                   ],
                 },
@@ -1229,6 +1349,11 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
             {
               type: 'Column',
               props: { gap: '400', width: '100%' },
+              $localState: {
+                prioWork: { type: 'array', initial: [] },
+                prioWritten: { type: 'array', initial: [] },
+                prioBusy: { type: 'boolean', initial: false },
+              },
               children: [
                 /*
                   The order is one field on the project meta, and every change to it — a drag, an
@@ -1246,28 +1371,20 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
                 {
                   type: '$if',
                   props: {
-                    condition: { $: 'count(meta.topPriorityOutcomes)' },
+                    condition: { $: `count(${PRIO})` },
                     then: {
                       type: 'we-sortable',
                       props: {
                         gap: '200',
-                        onReorder: {
-                          $invoke: 'record.update',
-                          args: [
-                            'AcornProjectMeta',
-                            { $: 'meta.id' },
-                            {
-                              $: '{ topPriorityOutcomes: acornPriorityOrder({ stored: meta.topPriorityOutcomes, visible: event.detail }) }',
-                            },
-                          ],
-                        },
+                        locked: { $: 'local.prioBusy' },
+                        onReorder: prioEdit(`acornPriorityOrder({ stored: ${PRIO}, visible: event.detail })`),
                       },
                       children: [
                         {
                           type: '$each',
                           props: {
                             items: {
-                              $: 'distinct(meta.topPriorityOutcomes).map(i, local.outcomes.find(o, o.id == i)).filter(o, o)',
+                              $: `distinct(${PRIO}).map(i, local.outcomes.find(o, o.id == i)).filter(o, o)`,
                             },
                             as: 'priority',
                           },
@@ -1321,16 +1438,8 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
                                       props: {
                                         variant: 'ghost',
                                         size: 'sm',
-                                        onClick: {
-                                          $invoke: 'record.update',
-                                          args: [
-                                            'AcornProjectMeta',
-                                            { $: 'meta.id' },
-                                            {
-                                              $: '{ topPriorityOutcomes: meta.topPriorityOutcomes.filter(i, i != priority.id) }',
-                                            },
-                                          ],
-                                        },
+                                        disabled: { $: 'local.prioBusy' },
+                                        onClick: prioEdit(`${PRIO}.filter(i, i != priority.id)`),
                                       },
                                       children: [{ $: '`Remove ${priority.content} from priority`' }],
                                     },
@@ -1362,7 +1471,7 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
                         {
                           type: '$if',
                           props: {
-                            condition: { $: '!(outcome.id in meta.topPriorityOutcomes)' },
+                            condition: { $: `!(outcome.id in ${PRIO})` },
                             then: {
                               type: 'Row',
                               props: { gap: '300', ay: 'center', px: '300', py: '200', width: '100%' },
@@ -1377,16 +1486,8 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
                                   props: {
                                     variant: 'soft',
                                     size: 'sm',
-                                    onClick: {
-                                      $invoke: 'record.update',
-                                      args: [
-                                        'AcornProjectMeta',
-                                        { $: 'meta.id' },
-                                        {
-                                          $: '{ topPriorityOutcomes: distinct(meta.topPriorityOutcomes, [outcome.id]) }',
-                                        },
-                                      ],
-                                    },
+                                    disabled: { $: 'local.prioBusy' },
+                                    onClick: prioEdit(`distinct(${PRIO}, [outcome.id])`),
                                   },
                                   children: [{ $: '`Prioritise ${outcome.content}`' }],
                                 },

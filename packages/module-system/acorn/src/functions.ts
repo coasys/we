@@ -59,20 +59,40 @@ const childrenOf = (
   id: string,
   outcomes: Record<string, unknown>[],
   connections: Record<string, unknown>[],
-): Record<string, unknown>[] => {
+): Record<string, unknown>[] => indexTree(outcomes, connections).kids(id);
+
+/**
+ * The tree, indexed once: each outcome by id, and each parent's children in Acorn's sibling order
+ * (`siblingOrder` descending, then statement, then id — see `childrenOf`). Every connection is read once here, so a projection that
+ * walks the whole tree costs what the tree has, not what it has squared.
+ */
+const indexTree = (outcomes: Record<string, unknown>[], connections: Record<string, unknown>[]) => {
   const byId = new Map(outcomes.map((o) => [refId(o.id), o]));
-  return connections
-    .filter((c) => refId(c.parent) === id)
-    .map((c) => ({ c, child: byId.get(refId(c.child)) }))
-    .filter((e): e is { c: Record<string, unknown>; child: Record<string, unknown> } => !!e.child)
-    .sort(
-      (a, b) =>
-        num(b.c.siblingOrder) - num(a.c.siblingOrder) ||
-        text(a.child.content).localeCompare(text(b.child.content)) ||
-        refId(a.child.id).localeCompare(refId(b.child.id)),
-    )
-    .map((e) => e.child);
+  const edges = new Map<string, Array<{ c: Record<string, unknown>; child: Record<string, unknown> }>>();
+  for (const c of connections) {
+    const child = byId.get(refId(c.child));
+    if (!child) continue;
+    const parent = refId(c.parent);
+    const list = edges.get(parent) ?? [];
+    list.push({ c, child });
+    edges.set(parent, list);
+  }
+  const kids = new Map<string, Record<string, unknown>[]>();
+  for (const [parent, list] of edges) {
+    list.sort(
+      (x, y) =>
+        num(y.c.siblingOrder) - num(x.c.siblingOrder) ||
+        text(x.child.content).localeCompare(text(y.child.content)) ||
+        refId(x.child.id).localeCompare(refId(y.child.id)),
+    );
+    kids.set(
+      parent,
+      list.map((e) => e.child),
+    );
+  }
+  return { byId, kids: (id: string) => kids.get(id) ?? [], parents: new Set(edges.keys()) };
 };
+type TreeIndex = ReturnType<typeof indexTree>;
 
 export interface AcornRollup {
   /** 'Small' | 'Uncertain' | 'Big' — Acorn's computed scope. */
@@ -90,56 +110,90 @@ export interface AcornRollup {
 /**
  * Acorn's roll-up, ported as it stands in `computedState.ts` (`computeAchievementStatus`,
  * `computeScope`): with children, an outcome counts its descendants' uncertains and smalls;
- * without, its own scope. Tasks are its own. A cycle in the connections stops at the repeat.
+ * without, its own scope. Tasks are its own. Each outcome's roll-up is
+ * computed once, children first; a connection back to an outcome still being computed (a cycle)
+ * is cut there, so a cyclic tree still answers, as if that edge were absent.
  */
+const rollups = (tree: TreeIndex): ((id: string) => AcornRollup) => {
+  const done = new Map<string, AcornRollup>();
+  const open = new Set<string>();
+  const finish = (id: string): AcornRollup => {
+    const outcome = tree.byId.get(id) ?? {};
+    const children = tree
+      .kids(id)
+      .map((c) => done.get(refId(c.id)))
+      .filter((r): r is AcornRollup => !!r);
+    const small = outcome.scopeType === 'Small';
+    const achievedSelf = small && outcome.achievementStatus === 'Achieved';
+    const has = children.length > 0;
+    const total = (key: 'uncertains' | 'smallsAchieved' | 'smallsTotal') => children.reduce((m, c) => m + c[key], 0);
+    const uncertains = has ? total('uncertains') : outcome.scopeType === 'Uncertain' ? 1 : 0;
+    const smallsAchieved = has ? total('smallsAchieved') : achievedSelf ? 1 : 0;
+    const smallsTotal = has ? total('smallsTotal') : small ? 1 : 0;
+    const tasks = small ? parseTasks(outcome.taskList) : [];
+    const tasksAchieved = tasks.filter((t) => t.complete).length;
+    const tasksTotal = tasks.length;
+
+    const partly =
+      uncertains === 0 &&
+      ((smallsTotal > 0 && smallsAchieved > 0 && smallsAchieved < smallsTotal) ||
+        (tasksTotal > 0 && tasksAchieved > 0 && tasksAchieved < tasksTotal));
+    const none =
+      !(uncertains === 0 && smallsTotal === 0 && achievedSelf) &&
+      (uncertains > 0 || (smallsTotal > 0 && smallsAchieved === 0) || (tasksTotal > 0 && tasksAchieved === 0));
+    const status = partly ? 'PartiallyAchieved' : none ? 'NotAchieved' : 'Achieved';
+
+    const scope = !has
+      ? small
+        ? 'Small'
+        : 'Uncertain'
+      : children.some((c) => c.scope === 'Uncertain')
+        ? 'Uncertain'
+        : 'Big';
+    return {
+      scope,
+      status,
+      uncertains,
+      smallsAchieved,
+      smallsTotal,
+      tasksAchieved,
+      tasksTotal,
+      children: children.length,
+    };
+  };
+  // Post-order without recursion, so a deep chain cannot overflow the stack.
+  return (root: string) => {
+    const stack = [root];
+    while (stack.length) {
+      const id = stack[stack.length - 1];
+      if (done.has(id)) {
+        stack.pop();
+      } else if (open.has(id)) {
+        done.set(id, finish(id));
+        open.delete(id);
+        stack.pop();
+      } else {
+        open.add(id);
+        for (const c of tree.kids(id)) {
+          const k = refId(c.id);
+          if (!done.has(k) && !open.has(k)) stack.push(k);
+        }
+      }
+    }
+    return done.get(root)!;
+  };
+};
+
+/** One outcome's roll-up — the outcome as given, over the tree its records make. */
 const rollup = (
   outcome: Record<string, unknown>,
   outcomes: Record<string, unknown>[],
   connections: Record<string, unknown>[],
-  seen: Set<string> = new Set(),
 ): AcornRollup => {
   const id = refId(outcome.id);
-  const inner = new Set(seen).add(id);
-  const children = childrenOf(id, outcomes, connections)
-    .filter((c) => !inner.has(refId(c.id)))
-    .map((c) => rollup(c, outcomes, connections, inner));
-  const small = outcome.scopeType === 'Small';
-  const achievedSelf = small && outcome.achievementStatus === 'Achieved';
-  const has = children.length > 0;
-  const total = (key: 'uncertains' | 'smallsAchieved' | 'smallsTotal') => children.reduce((m, c) => m + c[key], 0);
-  const uncertains = has ? total('uncertains') : outcome.scopeType === 'Uncertain' ? 1 : 0;
-  const smallsAchieved = has ? total('smallsAchieved') : achievedSelf ? 1 : 0;
-  const smallsTotal = has ? total('smallsTotal') : small ? 1 : 0;
-  const tasks = small ? parseTasks(outcome.taskList) : [];
-  const tasksAchieved = tasks.filter((t) => t.complete).length;
-  const tasksTotal = tasks.length;
-
-  const partly =
-    uncertains === 0 &&
-    ((smallsTotal > 0 && smallsAchieved > 0 && smallsAchieved < smallsTotal) ||
-      (tasksTotal > 0 && tasksAchieved > 0 && tasksAchieved < tasksTotal));
-  const none =
-    !(uncertains === 0 && smallsTotal === 0 && achievedSelf) &&
-    (uncertains > 0 || (smallsTotal > 0 && smallsAchieved === 0) || (tasksTotal > 0 && tasksAchieved === 0));
-  const status = partly ? 'PartiallyAchieved' : none ? 'NotAchieved' : 'Achieved';
-
-  const scope = !has
-    ? small
-      ? 'Small'
-      : 'Uncertain'
-    : children.some((c) => c.scope === 'Uncertain')
-      ? 'Uncertain'
-      : 'Big';
-  return {
-    scope,
-    status,
-    uncertains,
-    smallsAchieved,
-    smallsTotal,
-    tasksAchieved,
-    tasksTotal,
-    children: children.length,
-  };
+  const tree = indexTree(outcomes, connections);
+  tree.byId.set(id, outcome);
+  return rollups(tree)(id);
 };
 
 /** Acorn's "ID#" — `hashCodeId` (acorn-ad4m-ui `api/clientSideIdHash.ts`) of the action hash. */
@@ -158,8 +212,8 @@ const strings = (value: unknown): string[] => (Array.isArray(value) ? value.map(
 
 /**
  * The outcome table's rows, as Acorn's `OutcomeTable` draws them: every root outcome (one no
- * connection names as a child) and its descendants depth-first in sibling order, each row a level
- * deeper than its parent. Unfiltered, a row is drawn while every ancestor is open; filtered, every
+ * connection names as a child), then any outcome no root reaches, and their descendants
+ * depth-first in sibling order, each row a level deeper than its parent. Unfiltered, a row is drawn while every ancestor is open; filtered, every
  * outcome that matches is drawn at its own depth, as Acorn's `filterMatch` does — keyword or ID
  * number, high priority, computed status, computed scope and tags, each list an OR, all ANDed.
  */
@@ -180,54 +234,99 @@ const tableRows = (options: Record<string, unknown>) => {
   const filtering =
     !!keyword || filter.highPriority === true || !!statuses.length || !!scopes.length || !!tagFilter.length;
 
-  const ids = new Set(outcomes.map((o) => refId(o.id)));
-  const childIds = new Set(connections.filter((c) => ids.has(refId(c.parent))).map((c) => refId(c.child)));
+  const tree = indexTree(outcomes, connections);
+  const rollupOf = rollups(tree);
+  const childIds = new Set<string>();
+  for (const parent of tree.parents)
+    if (tree.byId.has(parent)) for (const c of tree.kids(parent)) childIds.add(refId(c.id));
   const tagsById = new Map(tags.map((t) => [refId(t.id), t]));
   const rows: Record<string, unknown>[] = [];
 
-  const visit = (outcome: Record<string, unknown>, depth: number, shown: boolean, seen: Set<string>) => {
-    const id = refId(outcome.id);
-    const inner = new Set(seen).add(id);
-    const r = rollup(outcome, outcomes, connections, seen);
-    const number = outcomeNumber(id);
-    const outcomeTags = strings(outcome.tags);
-    const matches =
-      (!keyword ||
-        (typeof outcome.content === 'string' ? outcome.content : '').toLowerCase().includes(keyword) ||
-        number.includes(keyword)) &&
-      (filter.highPriority !== true || priorities.has(id)) &&
-      (!statuses.length || statuses.includes(r.status)) &&
-      (!scopes.length || scopes.includes(r.scope)) &&
-      (!tagFilter.length || tagFilter.some((t) => outcomeTags.includes(t)));
-    const open = !collapsed.has(id);
-    if (filtering ? matches : shown) {
-      const progress =
-        r.scope === 'Big'
-          ? Math.round((r.smallsAchieved / (r.smallsTotal || 1)) * 100)
-          : r.scope === 'Small' && r.tasksTotal > 0
-            ? Math.round((r.tasksAchieved / r.tasksTotal) * 100)
-            : r.scope === 'Small' && r.status === 'Achieved'
-              ? 100
-              : 0;
-      rows.push({
-        id,
-        outcome,
-        depth,
-        number,
-        scope: r.scope,
-        status: r.status,
-        progress: r.scope === 'Uncertain' ? '' : `${progress}%`,
-        children: r.children,
-        open,
-        priority: priorities.has(id),
-        tags: outcomeTags.map((t) => tagsById.get(t)).filter(Boolean),
-      });
-    }
-    for (const child of childrenOf(id, outcomes, connections)) {
-      if (!inner.has(refId(child.id))) visit(child, depth + 1, shown && open, inner);
+  /*
+    Depth-first in sibling order, without recursion. An outcome under two parents is drawn under
+    each; one that is its own ancestor (a cycle) is not drawn again below itself. Unfiltered, a
+    folded row's subtree is not walked at all — nothing in it is drawn.
+  */
+  const walk = (root: Record<string, unknown>) => {
+    const path = new Set<string>();
+    const stack: Array<{ outcome: Record<string, unknown>; depth: number; shown: boolean } | { leave: string }> = [
+      { outcome: root, depth: 0, shown: true },
+    ];
+    while (stack.length) {
+      const frame = stack.pop()!;
+      if ('leave' in frame) {
+        path.delete(frame.leave);
+        continue;
+      }
+      const { outcome, depth, shown } = frame;
+      const id = refId(outcome.id);
+      if (path.has(id)) continue;
+      const r = rollupOf(id);
+      const number = outcomeNumber(id);
+      const outcomeTags = strings(outcome.tags);
+      const matches =
+        (!keyword ||
+          (typeof outcome.content === 'string' ? outcome.content : '').toLowerCase().includes(keyword) ||
+          number.includes(keyword)) &&
+        (filter.highPriority !== true || priorities.has(id)) &&
+        (!statuses.length || statuses.includes(r.status)) &&
+        (!scopes.length || scopes.includes(r.scope)) &&
+        (!tagFilter.length || tagFilter.some((t) => outcomeTags.includes(t)));
+      const open = !collapsed.has(id);
+      if (filtering ? matches : shown) {
+        const progress =
+          r.scope === 'Big'
+            ? Math.round((r.smallsAchieved / (r.smallsTotal || 1)) * 100)
+            : r.scope === 'Small' && r.tasksTotal > 0
+              ? Math.round((r.tasksAchieved / r.tasksTotal) * 100)
+              : r.scope === 'Small' && r.status === 'Achieved'
+                ? 100
+                : 0;
+        rows.push({
+          id,
+          outcome,
+          depth,
+          number,
+          scope: r.scope,
+          status: r.status,
+          progress: r.scope === 'Uncertain' ? '' : `${progress}%`,
+          children: r.children,
+          open,
+          priority: priorities.has(id),
+          tags: outcomeTags.map((t) => tagsById.get(t)).filter(Boolean),
+        });
+      }
+      if (!filtering && !(shown && open)) continue;
+      path.add(id);
+      stack.push({ leave: id });
+      const kids = tree.kids(id);
+      for (let i = kids.length - 1; i >= 0; i--)
+        stack.push({ outcome: kids[i], depth: depth + 1, shown: shown && open });
     }
   };
-  for (const root of outcomes.filter((o) => !childIds.has(refId(o.id)))) visit(root, 0, true, new Set());
+  /*
+    Every outcome is under some walk. The roots go first; an outcome no root reaches is in a cycle
+    with no way in (A → B → A), or under one, and is walked from its first outcome in list order —
+    so such a component is drawn, and searched, like any other.
+  */
+  const reached = new Set<string>();
+  const reach = (id: string) => {
+    const queue = [id];
+    while (queue.length) {
+      const next = queue.pop()!;
+      if (reached.has(next)) continue;
+      reached.add(next);
+      for (const c of tree.kids(next)) queue.push(refId(c.id));
+    }
+  };
+  const roots = outcomes.filter((o) => !childIds.has(refId(o.id)));
+  for (const root of roots) reach(refId(root.id));
+  for (const root of roots) walk(root);
+  for (const o of outcomes) {
+    if (reached.has(refId(o.id))) continue;
+    reach(refId(o.id));
+    walk(o);
+  }
   return rows;
 };
 
@@ -247,10 +346,11 @@ const STATUS_LABEL: Record<string, string> = {
  *
  * Sibling order lives on the connection, and the `forest` layout orders siblings by a field on the
  * *card*. So each node carries `rank`: its place in a depth-first walk of Acorn's tree, roots in the
- * order given, children in Acorn's sibling order (`childrenOf`). Under any one parent the ranks
+ * order given, children in Acorn's sibling order (`indexTree`). Under any one parent the ranks
  * of its children are in that parent's order, which is what `sortBy: 'rank'` needs; and roots —
  * isolated outcomes among them — keep the order the outcomes arrived in. A connection loop with no
- * root is walked from its first outcome, and a node is ranked once, at its first visit.
+ * root is walked from its first outcome in list order, as the table walks it, and a node is ranked
+ * once, at its first visit.
  *
  * The card's values sit under the stored names (`scopeType`, `achievementStatus`) because those are
  * the fields `content: 'record'` lists, but they hold the **computed** scope and status, which is
@@ -260,21 +360,29 @@ const mapGraph = (options: Record<string, unknown>) => {
   const outcomes = list(options.outcomes).filter((o) => refId(o.id));
   const connections = list(options.connections);
   const ids = new Set(outcomes.map((o) => refId(o.id)));
-  const childIds = new Set(connections.filter((c) => ids.has(refId(c.parent))).map((c) => refId(c.child)));
+  const tree = indexTree(outcomes, connections);
+  const rollupOf = rollups(tree);
+  const childIds = new Set<string>();
+  for (const parent of tree.parents) if (ids.has(parent)) for (const c of tree.kids(parent)) childIds.add(refId(c.id));
 
+  // Pre-order without recursion, children pushed last-first so the first sibling is ranked first.
   const rank = new Map<string, number>();
-  const visit = (outcome: Record<string, unknown>) => {
-    const id = refId(outcome.id);
-    if (rank.has(id)) return;
-    rank.set(id, rank.size);
-    for (const child of childrenOf(id, outcomes, connections)) visit(child);
+  const visit = (root: string) => {
+    const stack = [root];
+    while (stack.length) {
+      const id = stack.pop()!;
+      if (rank.has(id)) continue;
+      rank.set(id, rank.size);
+      const kids = tree.kids(id);
+      for (let i = kids.length - 1; i >= 0; i--) stack.push(refId(kids[i].id));
+    }
   };
-  for (const root of outcomes.filter((o) => !childIds.has(refId(o.id)))) visit(root);
-  for (const outcome of outcomes) visit(outcome);
+  for (const root of outcomes.filter((o) => !childIds.has(refId(o.id)))) visit(refId(root.id));
+  for (const outcome of outcomes) visit(refId(outcome.id));
 
   const nodes = outcomes.map((outcome) => {
     const id = refId(outcome.id);
-    const r = rollup(outcome, outcomes, connections);
+    const r = rollupOf(id);
     const content = text(outcome.content);
     return {
       id,
@@ -300,6 +408,34 @@ const mapGraph = (options: Record<string, unknown>) => {
     return [{ id, source, target, type: 'AcornConnection', data: { siblingOrder: num(c.siblingOrder) } }];
   });
   return { literal: true, nodes, edges };
+};
+
+/**
+ * A whole-field value in one canonical text, so a read-back compares equal to what was written:
+ * JSON text is parsed first (the mount hands a task list back with its keys in another order),
+ * object keys are sorted, and an absent value is the empty list the field means.
+ */
+const canonical = (value: unknown): string => {
+  let v = value;
+  if (typeof v === 'string') {
+    try {
+      v = JSON.parse(v);
+    } catch {
+      return JSON.stringify(v);
+    }
+  }
+  if (v === undefined || v === null || v === '') v = [];
+  const sorted = (x: unknown): unknown =>
+    Array.isArray(x)
+      ? x.map(sorted)
+      : x && typeof x === 'object'
+        ? Object.fromEntries(
+            Object.keys(x)
+              .sort()
+              .map((k) => [k, sorted((x as Record<string, unknown>)[k])]),
+          )
+        : x;
+  return JSON.stringify(sorted(v));
 };
 
 /** The task list with one change, as the JSON text the record holds — what `record.update` writes. */
@@ -507,6 +643,19 @@ export const ACORN_FUNCTIONS: ModuleFunction[] = [
     doc: "The outcome map as a GraphView literal seed — { literal: true, nodes, edges }: a node per outcome (id the outcome's, type AcornOutcome, label its statement, data { content, scopeType and achievementStatus as Acorn computes them, status the computed code, rank its place in Acorn's tree for a forest's sortBy }) and an edge per connection between two drawn outcomes.",
     example: 'acornMapGraph({ outcomes: local.outcomes, connections: local.connections })',
     fn: (...args: never[]) => mapGraph(args[0] && typeof args[0] === 'object' ? args[0] : {}),
+  },
+  {
+    name: 'acornWorking',
+    params: ['stored', 'working', 'written'],
+    doc: "The whole-field value the next edit starts from. `stored` is the value as subscribed, `working` the last one this view wrote, `written` every value this view has replaced or written. While the stored value is one of those — the write has not read back yet, or reads back as it went — the working value stands, so an edit builds on the one before it; a stored value this view never saw is somebody else's write, and wins.",
+    example: 'acornWorking({ stored: outcome.taskList, working: local.taskWork, written: local.taskWritten })',
+    fn: (...args: never[]) => {
+      const stored = option(args, 'stored');
+      const written = option(args, 'written');
+      if (!Array.isArray(written) || !written.length) return stored;
+      const seen = canonical(stored);
+      return written.some((w) => canonical(w) === seen) ? option(args, 'working') : stored;
+    },
   },
   {
     name: 'acornPriorityOrder',
