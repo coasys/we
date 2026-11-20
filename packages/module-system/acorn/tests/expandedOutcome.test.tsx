@@ -406,7 +406,7 @@ describe('the expanded outcome — children, tasks, comments', () => {
     }
   });
 
-  it('a child whose link is refused keeps its draft and is linked again — never made twice', async () => {
+  it('a child whose link is refused keeps its draft and is linked again — never made twice while the dialog is open', async () => {
     const { container, unmount, creates, all } = await openList({ failConnections: 1 });
     try {
       const modal = await open(container, BIG);
@@ -437,6 +437,29 @@ describe('the expanded outcome — children, tasks, comments', () => {
       expect((await all('AcornOutcome')).length).toBe(before + 1);
       expect(buttonNamed(dialog(container)!, 'Link again')).toBeUndefined();
       expect((labelled(dialog(container)!, 'we-input', 'New child outcome') as { value?: string }).value).toBe('');
+    } finally {
+      unmount();
+    }
+  });
+
+  it('a refused link says to link again before closing; closed, the child stays an outcome of its own', async () => {
+    const { container, unmount, creates } = await openList({ failConnections: 1 });
+    try {
+      const modal = await open(container, BIG);
+      await waitFor(() => expect(labelled(modal, 'we-input', 'New child outcome')).toBeTruthy());
+      type(labelled(modal, 'we-input', 'New child outcome')!, 'Map lands read-only');
+      fireEvent.click(buttonNamed(modal, 'Add child outcome')!);
+      await waitFor(() => expect(dialog(container)!.textContent).toContain('Could not link the child'));
+      expect(dialog(container)!.textContent).toContain('before closing');
+
+      // The retry is the dialog's own state: closed and reopened, there is nothing to link again.
+      (dialog(container) as unknown as { close: () => void }).close();
+      await waitFor(() => expect(dialog(container)).toBeNull());
+      await waitFor(() => expect(buttonNamed(container, 'Open Map lands read-only')).toBeTruthy());
+      const reopened = await open(container, BIG);
+      expect(buttonNamed(reopened, 'Link again')).toBeUndefined();
+      expect(buttonNamed(reopened, 'Open child Map lands read-only')).toBeUndefined();
+      expect(creates.map((c) => c.entity)).toEqual(['AcornOutcome', 'AcornConnection']);
     } finally {
       unmount();
     }

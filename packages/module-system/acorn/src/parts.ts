@@ -21,6 +21,13 @@ import type { ModulePart } from '@we/module-shared';
   A new child is two generic writes — the outcome, then the connection naming its parent — so the
   second can fail after the first landed. The outcome made is held (`orphan`, under
   `orphanParent`) with the draft until its connection lands; only then is the draft cleared.
+
+  That hold is the dialog's local state, so it lasts only while this dialog is open: closing it
+  drops the retry, and the outcome already made stays in the project unlinked, as an outcome of its
+  own (a root in the list). Reopening offers no "Link again", and adding the same draft again makes
+  a second outcome. The refusal therefore says to link again before closing. Recovering after a
+  close is by hand: delete the unlinked outcome from the list, or connect it in Acorn. A retry that
+  survives closing would need the pending link held somewhere durable, which this spike does not do.
 */
 const CHILD_LINKED = [
   { $setLocal: 'newChild', value: '' },
@@ -39,7 +46,12 @@ const CHILD_LINK = {
   onSuccess: CHILD_LINKED,
   onError: [
     { $setLocal: 'childBusy', value: false },
-    { $setLocal: 'writeError', value: { $: "'Could not link the child: ' + result.message + ' — link it again.'" } },
+    {
+      $setLocal: 'writeError',
+      value: {
+        $: "'Could not link the child: ' + result.message + ' — link it again before closing; once closed, it stays an outcome of its own.'",
+      },
+    },
   ],
 };
 
