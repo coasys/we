@@ -1,0 +1,4 @@
+# The channel the repo's other Rust crates pin (`crates/custody`, `apps/we-tauri/src-tauri`), so the
+# custody crate this app links resolves and builds alike here.
+[toolchain]
+channel = "1.96.1"

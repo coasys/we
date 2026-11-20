@@ -1,0 +1,30 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "preserve",
+    "jsxImportSource": "solid-js",
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "paths": {
+      "@we/seed-file": ["../../we-seed.json"],
+      "@/*": ["./src/*"],
+      "@shared/*": ["../../packages/app-shell/src/shared/*"],
+      "@solid/*": ["../../packages/app-shell/src/frameworks/solid/*"]
+    }
+  },
+  "references": [{ "path": "./tsconfig.node.json" }],
+  // Never `native/` — the Rust build's target directory holds vendored sources tsc would sweep.
+  "include": [
+    "src",
+    "identity",
+    "../../packages/app-shell/src/shared/global.d.ts",
+    "../../packages/identity-window/src/virtual.d.ts"
+  ]
+}

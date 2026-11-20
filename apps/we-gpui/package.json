@@ -1,0 +1,34 @@
+{
+  "private": true,
+  "name": "@we/app-gpui",
+  "version": "0.1.0-alpha.1",
+  "description": "WE - GPUI desktop shell (spike)",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && vite build -c vite.identity.config.ts",
+    "native:build": "cargo build --release --manifest-path native/Cargo.toml",
+    "native:test": "cargo test --manifest-path native/Cargo.toml",
+    "start": "cargo run --release --manifest-path native/Cargo.toml",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@coasys/ad4m": "*",
+    "@we/app-shell": "workspace:*",
+    "@we/backend-ad4m": "workspace:*",
+    "@we/identity-window": "workspace:*",
+    "solid-js": "^1.9.18"
+  },
+  "devDependencies": {
+    "@types/three": "^0.187.0",
+    "@we/csp": "workspace:*",
+    "@we/globe-layers": "workspace:*",
+    "@we/globe-widget": "workspace:*",
+    "typescript": "^6.0.3",
+    "vite": "^8.3.5",
+    "vite-plugin-solid": "^2.11.15",
+    "vitest": "^5.0.5"
+  }
+}
