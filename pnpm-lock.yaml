@@ -2664,7 +2664,7 @@ packages:
     version: 0.13.1-staging.9
 
   '@coasys/ad4m@file:.local/coasys-ad4m-0.13.1-staging.15-s2-0c.tgz':
-    resolution: {integrity: sha512-Oq293+72SSeo46AygwcSbbX3u/snv0Djcw+0td+LXHvYgxiua2lhioIjiQW+mR18+lxh0nQEJOUN+FPB1vKiMw==, tarball: file:.local/coasys-ad4m-0.13.1-staging.15-s2-0c.tgz}
+    resolution: {integrity: sha512-VI7fRh/iQ/XCpDi01evSp5csjgi0laOWbhIMNNQJFAcEcryCXFkydTPEDvjcr69MUqUVoF5//1INQl39Zzyb0A==, tarball: file:.local/coasys-ad4m-0.13.1-staging.15-s2-0c.tgz}
     version: 0.13.1-staging.15
     engines: {node: '>=22'}
 
