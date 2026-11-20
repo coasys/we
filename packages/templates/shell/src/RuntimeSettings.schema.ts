@@ -562,6 +562,9 @@ export const logging: SchemaNode = {
  * flag of this start sets it. A change takes effect at the next start, which "Restart now" asks the
  * executor for; the app starts it again with the same arguments. Below them, the newest lines of
  * this run's log.
+ *
+ * The same rows for a server the person runs and is served by (`runtimeStore.executorOnServer`):
+ * written through its own API, with what only its machine may change shown and not offered.
  */
 export const executorSettings: SchemaNode = {
   type: '$if',
@@ -586,7 +589,11 @@ export const executorSettings: SchemaNode = {
             {
               type: 'we-text',
               props: { variant: 'footnote', color: 'text-muted' },
-              children: [{ $: '`Changes apply when ${templateStore.brand.name} restarts.`' }],
+              children: [
+                {
+                  $: "runtimeStore.executorOnServer ? 'This file is on the host. Changes apply when the host restarts.' : `Changes apply when ${templateStore.brand.name} restarts.`",
+                },
+              ],
             },
             {
               type: 'we-text',

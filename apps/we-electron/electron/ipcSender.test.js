@@ -129,7 +129,15 @@ describe('the identity window’s channels', () => {
       expect(main).toMatch(new RegExp(`handleIdentity\\('${channel}'`));
       expect(main).not.toMatch(new RegExp(`\\bhandle\\('${channel}'`));
     }
-    for (const channel of ['identity-open', 'identity-public-state']) {
+    // The servers the account is served by are the main window's to change, and nobody else's.
+    for (const channel of [
+      'identity-open',
+      'identity-public-state',
+      'servers-list',
+      'servers-add',
+      'servers-remove',
+      'servers-choose',
+    ]) {
       expect(main).toMatch(new RegExp(`\\bhandle\\('${channel}'`));
       expect(main).not.toMatch(new RegExp(`handleIdentity\\('${channel}'`));
     }

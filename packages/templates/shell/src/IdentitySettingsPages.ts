@@ -340,3 +340,170 @@ export const deviceListFootnote: SchemaNode = footnote(
   'lock',
   'Your public key log lists only keys. Removing a device takes effect from that point in the log.',
 );
+
+// ─── Which device serves you ────────────────────────────────────────────────────
+
+/** This computer or a server, with Switch on the ones not serving now. */
+const servingRow: SchemaNode = listRow(
+  {
+    type: 'Row',
+    props: {
+      width: '40px',
+      height: '40px',
+      r: 'full',
+      bg: 'surface-sunken',
+      ax: 'center',
+      ay: 'center',
+      flexShrink: '0',
+    },
+    children: [{ type: 'we-icon', props: { name: { $: 'server.icon' } } }],
+  },
+  { type: 'we-text', children: [{ $: 'server.name' }] },
+  {
+    type: 'we-text',
+    props: { variant: 'footnote', color: 'text-muted', truncate: true },
+    children: [{ $: 'server.subtitle' }],
+  },
+  [
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'server.current' },
+        then: { type: 'we-badge', props: { tone: 'success', size: 'sm' }, children: ['In use'] },
+        else: {
+          type: 'Row',
+          props: { gap: '100', ay: 'center' },
+          children: [
+            {
+              type: '$if',
+              props: {
+                condition: { $: 'server.canRemove' },
+                then: {
+                  type: 'we-button',
+                  props: {
+                    variant: 'ghost',
+                    size: 'sm',
+                    disabled: { $: 'deviceStore.serverBusy' },
+                    onClick: { $invoke: 'deviceStore.removeServer', args: [{ $: 'server.id' }] },
+                  },
+                  children: ['Remove'],
+                },
+              },
+            },
+            {
+              type: 'we-button',
+              props: {
+                variant: 'soft',
+                size: 'sm',
+                disabled: { $: 'deviceStore.serverBusy' },
+                onClick: { $invoke: 'deviceStore.serveFrom', args: [{ $: 'server.id' }] },
+              },
+              children: ['Switch'],
+            },
+          ],
+        },
+      },
+    },
+  ],
+);
+
+/** The devices that can serve this session, the one serving now marked. */
+export const servingList: SchemaNode = {
+  type: 'Column',
+  props: { bg: 'surface', r: 'surface', border: '1px solid border', overflow: 'hidden' },
+  children: [{ type: '$each', props: { items: { $: 'deviceStore.servers' }, as: 'server' }, children: [servingRow] }],
+};
+
+/** An address, then a login there with this computer's key; the server is listed once it lets it in. */
+export const addServerForm: SchemaNode = {
+  type: 'Column',
+  props: { gap: '200' },
+  children: [
+    {
+      type: 'Row',
+      props: { gap: '200', ay: 'center' },
+      children: [
+        {
+          type: 'we-input',
+          props: {
+            flex: '1',
+            minWidth: '0',
+            label: 'Host address',
+            placeholder: 'https://host.example:12000',
+            value: { $: 'deviceStore.serverAddress' },
+            onInput: { $invoke: 'deviceStore.setServerAddress', args: [{ $: 'event.detail' }] },
+          },
+        },
+        {
+          type: 'we-button',
+          props: {
+            variant: 'solid',
+            loading: { $: 'deviceStore.serverBusy' },
+            disabled: { $: "deviceStore.serverBusy || deviceStore.serverAddress == ''" },
+            onClick: { $invoke: 'deviceStore.addServer' },
+          },
+          children: ['Add host'],
+        },
+      ],
+    },
+    {
+      type: 'we-text',
+      props: { variant: 'footnote', color: 'text-muted' },
+      children: ['Use an https:// address. http:// works only for a host on this computer.'],
+    },
+    {
+      type: '$if',
+      props: {
+        condition: { $: "deviceStore.serverError != ''" },
+        then: { type: 'we-alert', props: { tone: 'danger' }, children: [{ $: 'deviceStore.serverError' }] },
+      },
+    },
+  ],
+};
+
+/** The chosen server is not serving this session: this computer serves instead, and why. */
+export const servingProblem: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: "deviceStore.servingProblem != ''" },
+    then: { type: 'we-alert', props: { tone: 'warning' }, children: [{ $: 'deviceStore.servingProblem' }] },
+  },
+};
+
+/** The server ended this session — most often because this device was removed — and the way back. */
+export const sessionEndedNotice: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'deviceStore.sessionEnded' },
+    then: {
+      type: 'we-alert',
+      props: { tone: 'danger' },
+      children: [
+        {
+          type: 'Column',
+          props: { gap: '200' },
+          children: [
+            { type: 'we-text', children: [{ $: 'deviceStore.sessionEnded.message' }] },
+            {
+              type: 'Row',
+              children: [
+                {
+                  type: 'we-button',
+                  props: {
+                    variant: 'solid',
+                    size: 'sm',
+                    loading: { $: 'deviceStore.serverBusy' },
+                    onClick: { $invoke: 'deviceStore.serveFrom', args: ['this-computer'] },
+                  },
+                  children: ['Switch to this computer'],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
+export const servingFootnote: SchemaNode = footnote('key', 'If you remove this device, every host signs it out.');

@@ -13,11 +13,16 @@ import { accountSettings } from './AccountSettings.schema.ts';
 import { hostCredits, hostSection } from './HostSettings.schema.ts';
 import {
   addDeviceButton,
+  addServerForm,
   deviceList,
   deviceListFootnote,
   identityProblem,
   keyLogSummary,
   makeIdentityCard,
+  servingFootnote,
+  servingList,
+  servingProblem,
+  sessionEndedNotice,
 } from './IdentitySettingsPages.ts';
 import { profileEditor } from './Profile.schema.ts';
 import { mcpServer } from './RuntimeSettings.schema.ts';
@@ -325,6 +330,7 @@ export const devicesPage: SchemaNode = {
   children: [
     heading('Devices', 'This computer and the devices you link to it.'),
     identityProblem,
+    sessionEndedNotice,
     thisDeviceRow,
     comingSoon({
       available: can('devices'),
@@ -345,11 +351,13 @@ export const devicesPage: SchemaNode = {
       children: [{ type: 'Row', children: [addDeviceButton] }],
     }),
     comingSoon({
-      available: can('switchDevice'),
+      // The backend's `switchDevice` and a host that keeps the account's servers.
+      available: { $: 'deviceStore.canSwitch' },
       icon: 'arrows-left-right',
-      title: 'Where to keep your spaces',
+      title: 'Which device serves you',
       description: 'Open your spaces from this computer or from a host you run.',
       preview: [actions('Switch device')],
+      children: [servingProblem, servingList, addServerForm, servingFootnote],
     }),
   ],
 };
