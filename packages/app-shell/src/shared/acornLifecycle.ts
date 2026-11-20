@@ -24,14 +24,16 @@ import { ACORN_VIEWS } from '@we/template-acorn';
  * `language.publish`/`publishLocal` computes it (CIDv1 codec 0x00, sha2-256 of
  * the bundle).
  *
- * The hash names a build, not a thing: this is `acorn-ad4m` `b10-snapshot-deadline`
- * (`2904210f`) `language/build/bundle.js` — the build whose full-snapshot reads
- * carry the 15 s deadline the mount retry below is classified for. A rebuilt
- * bundle is a new hash, so the constant goes where the sequence that needs it
- * lives rather than where a caller might guess it — `createAcornProject` takes
- * a `sourceLanguageHash` override for a host holding a different build.
+ * The hash names a build, not a thing: this is `acorn-ad4m` `language/build/bundle.js`
+ * as built 2026-11-18 (head `165858c`, the D-series write fixes on the mount-aware
+ * zomes) — the build the S2-0 instance-write path requires, and the one
+ * `b10-snapshot-deadline`'s 15 s snapshot deadline the mount retry below is
+ * classified for still applies to. A rebuilt bundle is a new hash, so the constant
+ * goes where the sequence that needs it lives rather than where a caller might
+ * guess it — `createAcornProject` takes a `sourceLanguageHash` override for a host
+ * holding a different build.
  */
-export const ACORN_BASE_LANGUAGE = 'QmzSYwdbjRfaHPqqDwswtBgL13hX7hEZXyryep4JqYB53MRFJg7';
+export const ACORN_BASE_LANGUAGE = 'QmzSYwdfCQkVeBvQx1Ygx89h5L7P7ny5PTmj3J9VuwMPvfhb2B6';
 
 /** The template an opened Acorn project renders through — the space's `defaultTemplateId`. */
 export const ACORN_TEMPLATE_ID = 'acorn';
