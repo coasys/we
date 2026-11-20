@@ -277,8 +277,8 @@ export interface BackendPorts {
    */
   identity?: IdentityPort;
   /**
-   * This device's listing in the hosting index, for its operator. Optional: a backend that cannot
-   * list itself, or whose executor predates the index, omits it, and Settings offers no listing.
+   * This device's listing in the hosting index, for its operator. Optional: a backend that has no
+   * index to list in (the in-memory one) omits it, and Settings offers no listing.
    */
   hosting?: HostingPort;
   /**

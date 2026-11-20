@@ -2,8 +2,9 @@
  * Settings → Devices: the two halves of the hosting index.
  *
  * **Find a host** — the list a person reads before adding a cloud device: Coasys cloud first, then
- * the hosts the index lists, then "Another host", an address typed in. The index is a convenience
- * and never the only way to a host, so the address field stays when the index does not answer.
+ * "Another host", the hosts the index lists, then "Add by its address", an address typed in. The index
+ * is a convenience and never the only way to a host, so the address field stays when the index does
+ * not answer.
  * Choosing an entry calls `hostingStore.choose` (or `chooseAddress`); it ends there. Joining is
  * the cloud-device flow's to do, from `hostingStore.chosen`.
  *
@@ -92,7 +93,7 @@ const hostRow: SchemaNode = {
 };
 
 const anotherHost: SchemaNode = card([
-  { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Another host'] },
+  { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Add by its address'] },
   muted(['Enter the address of a host you know, like riverbank.example.']),
   {
     type: 'we-input',
@@ -155,12 +156,13 @@ export const findHostSection: SchemaNode = {
   type: 'Column',
   props: { gap: '300' },
   children: [
-    title('Find a host', 'Coasys cloud, hosts people run and list, or a host you know by its address.'),
+    title('Find a host', 'Coasys cloud, another host from the hosting index, or a host you add by its address.'),
+    { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Another host'] },
     {
       type: '$if',
       props: {
         condition: { $: "hostingStore.hostListState == 'unconfigured'" },
-        then: muted(['This app is not set up to read the hosting index. You can still enter an address.']),
+        then: muted(['This app is not set up to read the hosting index. "Add by its address" still works.']),
         else: {
           type: 'Column',
           props: { gap: '300' },

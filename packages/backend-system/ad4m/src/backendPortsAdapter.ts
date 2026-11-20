@@ -261,7 +261,7 @@ export function createAd4mBackendPorts(
     // The key log and the device list, as the executor's identity module holds them, and changes to
     // them through the host's custody service where it runs one.
     identity: createAd4mIdentityPort(backendClient, options.custody),
-    // This device's listing in the hosting index; absent on an SDK that predates the client.
+    // This device's listing in the hosting index.
     hosting: createAd4mHostingPort(backendClient),
     // Per-dataset like interpretation: every operation names the space the call is in.
     call: createAd4mCallPort(),

@@ -351,7 +351,7 @@ The origin of the platform API this deployment's environment talks to, for
 example `https://api.coasys.app` — an `https` address with no path. It is the one
 place the app learns it: the host list reads `<platformApiUrl>/v1/index/hosts`
 when a person asks for it. Leave it out and the app does not read the hosting
-index at all; "Find a host" still takes an address typed in. The value is public
+index at all; "Find a host" still takes an address ("Add by its address"). The value is public
 (the list needs no sign-in), and the platform must allow the app's origins to
 read it.
 

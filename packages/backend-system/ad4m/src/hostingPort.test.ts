@@ -1,14 +1,18 @@
 /**
  * The hosting port reads what the executor's `index.*` calls answer: the listing and its state, the
- * status while the index is down, and what to do with a listing it cannot read or a method an
- * executor lacks.
+ * status while the index is down, and what to do with a listing in a state this build does not know
+ * or a method an executor lacks.
  */
+import type { Ad4mClient, HostingIndexClient } from '@coasys/ad4m';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createAd4mHostingPort, readHostingStatus, readListing } from './hostingPort';
 import { missingExecutorMethods, resetMissingExecutorMethods } from './missingMethods';
 
-const listing = {
+type IndexStatus = Awaited<ReturnType<HostingIndexClient['status']>>;
+type OwnListing = Awaited<ReturnType<HostingIndexClient['publish']>>;
+
+const listing: OwnListing = {
   listingId: 'l1',
   name: 'Riverbank',
   description: 'A host for the river towns',
@@ -33,6 +37,16 @@ const listing = {
   reason: 'charging',
 };
 
+const off: IndexStatus = {
+  config: { url: '', enabled: false },
+  scid: null,
+  executorDid: null,
+  allowed: null,
+  listing: null,
+  local: null,
+  indexError: null,
+};
+
 describe('readListing', () => {
   it('reads the text, the state and its reason, and drops a model kind it does not know', () => {
     expect(readListing(listing)).toEqual({
@@ -48,10 +62,8 @@ describe('readListing', () => {
     });
   });
 
-  it('is null for a state this build does not know, and for anything that is not a listing', () => {
+  it('is null for a state this build does not know', () => {
     expect(readListing({ ...listing, state: 'banned' })).toBeNull();
-    expect(readListing(null)).toBeNull();
-    expect(readListing('listed')).toBeNull();
   });
 
   it('has no reason once the listing is listed', () => {
@@ -62,11 +74,10 @@ describe('readListing', () => {
 describe('readHostingStatus', () => {
   it('shows what the device remembers while the index did not answer', () => {
     const status = readHostingStatus({
+      ...off,
       config: { url: 'https://api.example/v1/index', enabled: true },
       scid: 'QmScid',
       executorDid: 'did:key:z6MkExec',
-      allowed: null,
-      listing: null,
       local: {
         listingId: 'l1',
         draft: { name: 'Riverbank', description: 'd', location: 'Lyon', url: 'https://riverbank.example' },
@@ -85,8 +96,8 @@ describe('readHostingStatus', () => {
     expect(status.indexError).toBe('the index did not answer');
   });
 
-  it('is off, with no operator and no listing, for an empty answer', () => {
-    expect(readHostingStatus({})).toEqual({
+  it('is off, with no operator and no listing, when the index is off', () => {
+    expect(readHostingStatus(off)).toEqual({
       config: { url: '', enabled: false },
       hasOperator: false,
       allowed: null,
@@ -98,30 +109,24 @@ describe('readHostingStatus', () => {
 });
 
 describe('createAd4mHostingPort', () => {
-  it('is absent on an SDK without the hosting client', () => {
-    expect(createAd4mHostingPort({})).toBeUndefined();
-  });
-
   function client() {
-    const handlers: ((value: unknown) => void)[] = [];
-    return {
-      handlers,
-      hostingIndex: {
-        configure: vi.fn(async (c: unknown) => c),
-        status: vi.fn(async () => ({ config: { url: '', enabled: false }, scid: null, allowed: null })),
-        publish: vi.fn(async (_text: unknown): Promise<unknown> => listing),
-        withdraw: vi.fn(async () => true),
-        onListingChanged: vi.fn((handler: (value: unknown) => void) => {
-          handlers.push(handler);
-          return () => handlers.splice(handlers.indexOf(handler), 1);
-        }),
-      },
+    const handlers: ((value: OwnListing) => void)[] = [];
+    const hostingIndex = {
+      configure: vi.fn(async (c: IndexStatus['config']) => c),
+      status: vi.fn(async (): Promise<IndexStatus> => off),
+      publish: vi.fn(async (_text: unknown): Promise<OwnListing> => listing),
+      withdraw: vi.fn(async () => true),
+      onListingChanged: vi.fn((handler: (value: OwnListing) => void) => {
+        handlers.push(handler);
+        return () => handlers.splice(handlers.indexOf(handler), 1);
+      }),
     };
+    return { handlers, hostingIndex, ad4m: { hostingIndex } as unknown as Ad4mClient };
   }
 
   it("sends the operator's text as typed and returns the listing as read", async () => {
     const c = client();
-    const port = createAd4mHostingPort(c)!;
+    const port = createAd4mHostingPort(c.ad4m);
     const text = { name: 'Riverbank', description: 'd', location: 'Lyon', url: 'https://riverbank.example' };
     const published = await port.publish(text);
     expect(c.hostingIndex.publish).toHaveBeenCalledWith(text);
@@ -134,20 +139,20 @@ describe('createAd4mHostingPort', () => {
     });
   });
 
-  it('refuses a published answer it cannot read', async () => {
+  it('refuses a published answer in a state it does not know', async () => {
     const c = client();
-    c.hostingIndex.publish = vi.fn(async (_text: unknown): Promise<unknown> => ({ state: 'banned' }));
+    c.hostingIndex.publish = vi.fn(async (_text: unknown): Promise<OwnListing> => ({ ...listing, state: 'banned' }));
     await expect(
-      createAd4mHostingPort(c)!.publish({ name: 'a', description: '', location: '', url: 'https://a.example' }),
+      createAd4mHostingPort(c.ad4m).publish({ name: 'a', description: '', location: '', url: 'https://a.example' }),
     ).rejects.toThrow(/cannot read/);
   });
 
-  it('passes on a listing change, and not one it cannot read', () => {
+  it('passes on a listing change, and not one in a state it does not know', () => {
     const c = client();
     const seen: string[] = [];
-    const stop = createAd4mHostingPort(c)!.onListingChanged((l) => seen.push(l.state));
+    const stop = createAd4mHostingPort(c.ad4m).onListingChanged((l) => seen.push(l.state));
     c.handlers[0](listing);
-    c.handlers[0]({ state: 'banned' });
+    c.handlers[0]({ ...listing, state: 'banned' });
     expect(seen).toEqual(['delisted']);
     stop();
     expect(c.handlers).toHaveLength(0);
@@ -156,10 +161,10 @@ describe('createAd4mHostingPort', () => {
   it('records an executor that predates the calls and throws the refusal as it came', async () => {
     resetMissingExecutorMethods();
     const c = client();
-    c.hostingIndex.status = vi.fn(async () => {
+    c.hostingIndex.status = vi.fn(async (): Promise<IndexStatus> => {
       throw new Error('Unknown type: index.status');
     });
-    await expect(createAd4mHostingPort(c)!.status()).rejects.toThrow(/Unknown type/);
+    await expect(createAd4mHostingPort(c.ad4m).status()).rejects.toThrow(/Unknown type/);
     expect(missingExecutorMethods().map((m) => m.method)).toContain('index.status');
   });
 });

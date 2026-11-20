@@ -70,7 +70,7 @@ export interface HostingStore {
   /** The line to show when the index did not answer; empty otherwise. */
   hostListError: Accessor<string>;
   loadHosts: () => Promise<void>;
-  /** The address typed under "Another host". */
+  /** The address typed under "Add by its address". */
   address: Accessor<string>;
   setAddress: (value: string) => void;
   /** Why the typed address cannot be used; empty before anything is typed and when it can. */

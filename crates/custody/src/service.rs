@@ -5381,6 +5381,8 @@ mod tests {
                     "bits": self.pow_bits.get(),
                     "previousBits": self.pow_bits.get(),
                     "changedAt": 0,
+                    // The store mints a one-use challenge the proof commits to (ad4m `PowChallenge`).
+                    "challenge": { "nonce": "challenge-1", "expires": 4_000_000_000u64 },
                 })),
                 "identity.attachNote" => {
                     if self.held.borrow().is_none() {

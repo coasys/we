@@ -2537,7 +2537,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       hostListState:
         "string — 'idle' (not read yet), 'loading', 'ready', 'down' (the index did not answer) or 'unconfigured' (the deployment names no platform API)",
       hostListError: 'string — the sentence to show when the index did not answer, or empty',
-      address: 'string — the address typed under "Another host"',
+      address: 'string — the address typed under "Add by its address"',
       addressProblem: 'string — why the typed address cannot be used, or empty (also empty before anything is typed)',
       chosen:
         "{ kind: 'listed', host } | { kind: 'address', url } | null — the host the person chose; \"Add a cloud device\" takes it from here",
@@ -2559,7 +2559,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
     actions: {
       loadHosts:
         '(): reads the host list from the platform API. Call it from a button: it reaches the network, so nothing may run it on mount',
-      setAddress: '(value: string): sets the address typed under "Another host"',
+      setAddress: '(value: string): sets the address typed under "Add by its address"',
       choose: '(id: string): chooses a listed host by its id',
       chooseAddress: '(): chooses the address typed, when it is a usable https address',
       clearChoice: '(): forgets the chosen host',
