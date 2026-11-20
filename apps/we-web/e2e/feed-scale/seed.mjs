@@ -315,12 +315,13 @@ export async function generateSeedFile({
     await pipeline(Readable.from(rows()), createWriteStream(filePath));
   } catch (error) {
     failed = true;
+    // A worker that failed to start leaves the ones started before it unawaited: handle their
+    // rejections first, so none is unhandled while the others terminate.
+    const settled = Promise.allSettled(tasks);
     // Whatever the surviving workers are still doing must end before cleanup removes their files:
     // a part created after its unlink would be left behind.
     await Promise.all(spawned.map((worker) => worker.terminate())).catch(() => {});
-    // A worker that failed to start leaves the ones started before it unawaited: settle them, so
-    // their rejections are not unhandled.
-    await Promise.allSettled(tasks);
+    await settled;
     throw error;
   } finally {
     // A half-written file is never a valid input for the import: drop it with the parts.
