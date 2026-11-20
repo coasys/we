@@ -1691,8 +1691,9 @@ const canvas: SchemaNode = {
           drawn and routed per canvas, the counts on each footer. See `canvasSeedOptions` in the kit.
         */
         ...canvasSeedOptions({ canvas: SPACE_CANVAS, members: { id: { $: 'spaceStore.root' }, via: 'children' } }),
-        // The lens, hiding: only what the conversation in scope produced. See `SCOPE_PARAM`.
-        onlyFrom: { $: `(${FROM_HIDE}) ? (${SCOPE_RECORD}) : ''` },
+        // The lens, hiding: only what the conversation in scope produced — the cards the dimming
+        // rule below names, put away instead. See `SCOPE_PARAM`.
+        hideWhere: { $: `(${FROM_HIDE}) ? { 'data.origin': { not: (${SCOPE_RECORD}) } } : null` },
         // Put away while the reader hides suggestions — the switch in the key, shared with the board
         // and the calendar through the address. Changed records are never hidden.
         hidden: { $: `(${SUGGESTIONS_HIDDEN}) ? ${UNCONFIRMED} : []` },

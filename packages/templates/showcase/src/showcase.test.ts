@@ -2343,7 +2343,7 @@ describe('the workshop’s space-wide views', () => {
     const canvas = route('/canvas');
     // Hiding leaves off what the conversation in scope did not produce; with no scope it asks for
     // nobody's cards.
-    expect(canvas).toContain(`"onlyFrom":{"$":"(${HIDE}) ? (${RECORD}) : ''"}`);
+    expect(canvas).toContain(`"hideWhere":{"$":"(${HIDE}) ? { 'data.origin': { not: (${RECORD}) } } : null"}`);
     // Dimming fades everything else — a card with no origin is in no scope. Under "hide" too, so the
     // cards stay faded while the canvas reloads without them rather than flashing back.
     expect(canvas).toContain(
