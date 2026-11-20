@@ -20,10 +20,17 @@ const MANIFEST: EntityManifest = {
       relations: { children: { target: 'Note', cardinality: 'many', ordered: true } },
     },
     Note: { properties: { text: { type: 'string' } }, relations: {} },
+    Task: {
+      properties: { title: { type: 'string' }, status: { type: 'string' } },
+      relations: {
+        comments: { target: 'Note', cardinality: 'many', ordered: true },
+        list: { target: 'Collection', cardinality: 'one' },
+      },
+    },
   },
 };
 
-const { Collection, Note } = compileEntities(MANIFEST, { selfId: () => 'did:test:me' });
+const { Collection, Note, Task } = compileEntities(MANIFEST, { selfId: () => 'did:test:me' });
 
 let dataset: { id: string; tables: Record<string, unknown[]> };
 let writes: EntityWrite[];
@@ -103,5 +110,69 @@ describe('the write check', () => {
     refuse = (w) => w.kind === 'remove';
     await expect(Collection.removeRelation(dataset, list.id, 'children', note.id)).rejects.toThrow();
     expect((await Collection.findOne(dataset, { where: { id: list.id } }))?.children).toEqual([note.id]);
+  });
+
+  /*
+    An update that names relations is one write, judged whole before anything lands — as AD4M's save
+    judges it: every changed field, relations included, goes to the edit check, and the relation
+    writes it makes for itself are not asked about again.
+  */
+  describe('an update naming relations', () => {
+    type Row = { title?: string; status?: string; comments?: string[]; list?: string; updatedAt?: string };
+    const read = async (id: string) => (await Task.findOne(dataset, { where: { id } })) as unknown as Row;
+
+    let task: { id: string };
+    let first: { id: string };
+    let second: { id: string };
+    let list: { id: string };
+    let before: Row;
+
+    beforeEach(async () => {
+      first = await Note.create(dataset, { text: 'one' });
+      second = await Note.create(dataset, { text: 'two' });
+      list = await Collection.create(dataset, { title: 'List' });
+      task = await Task.create(dataset, { title: 'Task', status: 'open', comments: [first.id], list: list.id });
+      before = { ...(await read(task.id)) };
+      writes = [];
+    });
+
+    it('is refused by an edit allowlist that names only the scalar it changes', async () => {
+      // A member who may edit a task's status and nothing else.
+      refuse = (w) => w.kind === 'edit' && Object.keys(w.data ?? {}).some((key) => key !== 'status');
+      await expect(Task.update(dataset, task.id, { status: 'done', comments: [first.id, second.id] })).rejects.toThrow(
+        'refused Task.edit',
+      );
+      expect(await read(task.id)).toEqual(before);
+    });
+
+    it('sends every changed field to the edit check, and asks nothing of its own relation writes', async () => {
+      await Task.update(dataset, task.id, { status: 'done', comments: [second.id], list: null });
+      expect(kinds()).toEqual(['Task.edit']);
+      expect(writes[0].data).toEqual({ status: 'done', comments: [second.id], list: null });
+      expect(await writes[0].record!()).toMatchObject({ status: 'open', comments: [first.id], list: list.id });
+      expect(await read(task.id)).toMatchObject({ status: 'done', comments: [second.id], list: '' });
+    });
+
+    it('leaves out a relation given as it already stands', async () => {
+      await Task.update(dataset, task.id, { status: 'done', comments: [first.id], list: list.id });
+      expect(writes[0].data).toEqual({ status: 'done' });
+    });
+
+    it('writes nothing when refused — no scalars, no relations, no timestamp', async () => {
+      refuse = (w) => w.kind === 'edit' && 'comments' in (w.data ?? {});
+      await expect(
+        Task.update(dataset, task.id, { title: 'Renamed', comments: [second.id], list: null }),
+      ).rejects.toThrow();
+      expect(await read(task.id)).toEqual(before);
+    });
+
+    it('refuses a relation it cannot read before writing anything', async () => {
+      await expect(Task.update(dataset, task.id, { title: 'Renamed', list: {} })).rejects.toThrow(/list/);
+      await expect(Task.update(dataset, task.id, { title: 'Renamed', comments: [first.id, 42] })).rejects.toThrow(
+        /comments/,
+      );
+      expect(await read(task.id)).toEqual(before);
+      expect(writes).toEqual([]);
+    });
   });
 });
