@@ -589,3 +589,183 @@ describe('the priority view on the live mount', () => {
     await page.getByRole('button', { name: `Prioritise ${P2}`, exact: true }).waitFor({ timeout: 120_000 });
   });
 });
+
+/*
+  S2-5: the expanded outcome's children, task list and comments. Each write the dialog makes —
+  a child (an outcome plus the connection naming its parent), a task added, ticked and removed
+  (whole-list replaces of the Small scope's `taskList`), a comment — must reach stock's own
+  fetches; and what the stock side writes (a child under the outcome, a comment) must show in the
+  open dialog.
+*/
+describe('children, tasks and comments on the live mount', () => {
+  const tag = Date.now().toString(36);
+  const PARENT = `CT parent ${tag}`;
+  const STOCK_CHILD = `CT stock child ${tag}`;
+  const WE_CHILD = `CT we child ${tag}`;
+  const SMALL = `CT small ${tag}`;
+  const TASK = `CT task ${tag}`;
+  const SECOND_TASK = `CT second task ${tag}`;
+  const WE_COMMENT = `A comment written in We ${tag}`;
+  const STOCK_COMMENT = `A comment the stock side wrote ${tag}`;
+  const SHOTS = process.env.ACORN_SHOTS;
+
+  let stockMod;
+  let stockH;
+  let page;
+  let parentSeed;
+
+  const hashText = (hash) => (typeof hash === 'string' ? hash : `u${Buffer.from(hash).toString('base64url')}`);
+  const FETCH_ALL = { input: { All: null }, local: true };
+  const fetchOutcomes = () => stockMod.stockCall(stockH, 'projects', 'fetch_outcomes', FETCH_ALL);
+  const fetchConnections = () => stockMod.stockCall(stockH, 'projects', 'fetch_connections', FETCH_ALL);
+  const fetchComments = () => stockMod.stockCall(stockH, 'projects', 'fetch_outcome_comments', FETCH_ALL);
+  /** Stock's task list as `{ task, complete }` — key order is the zome's, not ours. */
+  const stockTasks = async (content) =>
+    ((await fetchOutcomes()).find((r) => r.entry?.content === content)?.entry?.scope?.Small?.taskList ?? []).map(
+      (t) => ({ task: t.task, complete: t.complete }),
+    );
+
+  const dialog = () => page.locator('we-modal');
+
+  before(async () => {
+    stockMod = await import(rigFile('stock.mjs'));
+    stockH = await stockMod.connect();
+    // An Uncertain parent with one child the stock side made, and a Small outcome for tasks.
+    parentSeed = await stockMod.createOutcome(stockH, PARENT, {
+      scope: { Uncertain: { smallsEstimate: null, timeFrame: null, inBreakdown: false } },
+    });
+    await stockMod.createOutcomeUnder(stockH, parentSeed.actionHash, STOCK_CHILD);
+    await stockMod.createOutcome(stockH, SMALL);
+
+    const joined = await datasetNamed('Acorn project');
+    page = await tab('children');
+    await page.setViewportSize({ width: 1280, height: 1000 });
+    await page.goto(app.url);
+    await answerNamePrompt(page, 'Acorn Dev');
+    await page.goto(`${app.url}/space/${joined.uuid}`);
+    await page.waitForURL(/\/space\//, { timeout: 300_000 });
+  });
+
+  after(async () => {
+    if (stockH) await stockMod.closeStock(stockH).catch(() => {});
+  });
+
+  it('a child created in We writes through as an outcome and its connection', async () => {
+    await page.getByRole('button', { name: `Open ${PARENT}`, exact: true }).click({ timeout: 300_000 });
+    // The stock side's child is drawn under it — the stock → We direction for the tree.
+    await dialog()
+      .getByRole('button', { name: `Open child ${STOCK_CHILD}`, exact: true })
+      .waitFor({ state: 'visible', timeout: 300_000 });
+
+    await fillHeld([[dialog().getByRole('textbox', { name: 'New child outcome' }), WE_CHILD]]);
+    await dialog().getByRole('button', { name: 'Add child outcome', exact: true }).click();
+
+    const child = await h.until(
+      async () => (await fetchOutcomes()).find((r) => r.entry?.content === WE_CHILD),
+      (r) => !!r,
+      { timeout: 120_000, what: `stock fetch_outcomes to show "${WE_CHILD}"` },
+    );
+    assert.ok(
+      'Uncertain' in (child.entry.scope ?? {}),
+      `"${WE_CHILD}" should be Uncertain, as Acorn's add-child makes it`,
+    );
+    const parentHash = hashText(parentSeed.actionHash);
+    const childHash = hashText(child.actionHash);
+    await h.until(
+      fetchConnections,
+      (conns) =>
+        conns.some(
+          (c) => hashText(c.entry?.parentActionHash) === parentHash && hashText(c.entry?.childActionHash) === childHash,
+        ),
+      { timeout: 120_000, what: `stock fetch_connections to link "${PARENT}" → "${WE_CHILD}"` },
+    );
+    await dialog()
+      .getByRole('button', { name: `Open child ${WE_CHILD}`, exact: true })
+      .waitFor({ state: 'visible', timeout: 120_000 });
+  });
+
+  it('a comment written in We writes through', async () => {
+    await fillHeld([[dialog().getByRole('textbox', { name: 'Comment' }), WE_COMMENT]]);
+    await dialog().getByRole('button', { name: 'Add comment', exact: true }).click();
+    const parentHash = hashText(parentSeed.actionHash);
+    await h.until(
+      fetchComments,
+      (cs) => cs.some((c) => c.entry?.content === WE_COMMENT && hashText(c.entry?.outcomeActionHash) === parentHash),
+      { timeout: 120_000, what: `stock fetch_outcome_comments to show "${WE_COMMENT}" on "${PARENT}"` },
+    );
+    await dialog().getByText(WE_COMMENT).waitFor({ state: 'visible', timeout: 120_000 });
+  });
+
+  it('a stock-side comment shows in the open dialog', async () => {
+    await stockMod.createComment(stockH, parentSeed.actionHash, STOCK_COMMENT);
+    await dialog().getByText(STOCK_COMMENT).waitFor({ state: 'visible', timeout: 300_000 });
+    if (SHOTS) await page.screenshot({ path: join(SHOTS, 'expanded-outcome-children-comments.png') });
+  });
+
+  it('opening a child shows it in the same dialog', async () => {
+    await dialog()
+      .getByRole('button', { name: `Open child ${STOCK_CHILD}`, exact: true })
+      .click();
+    await dialog()
+      .getByRole('button', { name: `Back to ${PARENT}`, exact: true })
+      .waitFor({ state: 'visible', timeout: 60_000 });
+    // The stock child is Small: it has a task list where the parent had children.
+    await dialog()
+      .getByRole('button', { name: 'Add task', exact: true })
+      .waitFor({ state: 'visible', timeout: 60_000 });
+    await dialog()
+      .getByRole('button', { name: `Back to ${PARENT}`, exact: true })
+      .click();
+    await dialog().getByRole('button', { name: 'Add child outcome', exact: true }).waitFor({ timeout: 60_000 });
+    await page.keyboard.press('Escape');
+  });
+
+  it('tasks added, ticked and removed in We write through', async () => {
+    await page.getByRole('button', { name: `Open ${SMALL}`, exact: true }).click({ timeout: 300_000 });
+    const field = dialog().getByRole('textbox', { name: 'New task' });
+    await field.waitFor({ state: 'visible', timeout: 120_000 });
+
+    await fillHeld([[field, TASK]]);
+    await dialog().getByRole('button', { name: 'Add task', exact: true }).click();
+    await h.until(
+      () => stockTasks(SMALL),
+      (tasks) => JSON.stringify(tasks) === JSON.stringify([{ task: TASK, complete: false }]),
+      { timeout: 120_000, what: `stock taskList of "${SMALL}" to hold "${TASK}"` },
+    );
+    await dialog().getByRole('checkbox', { name: TASK }).waitFor({ state: 'visible', timeout: 120_000 });
+
+    await fillHeld([[field, SECOND_TASK]]);
+    await dialog().getByRole('button', { name: 'Add task', exact: true }).click();
+    await h.until(
+      () => stockTasks(SMALL),
+      (tasks) => tasks?.length === 2 && tasks[1].task === SECOND_TASK,
+      { timeout: 120_000, what: `stock taskList of "${SMALL}" to hold two tasks` },
+    );
+    await dialog().getByRole('checkbox', { name: SECOND_TASK }).waitFor({ state: 'visible', timeout: 120_000 });
+
+    await dialog().getByRole('checkbox', { name: TASK }).click();
+    await h.until(
+      () => stockTasks(SMALL),
+      (tasks) =>
+        JSON.stringify(tasks) ===
+        JSON.stringify([
+          { task: TASK, complete: true },
+          { task: SECOND_TASK, complete: false },
+        ]),
+      { timeout: 120_000, what: `stock to show "${TASK}" done` },
+    );
+    await dialog().getByText('Tasks 1/2').waitFor({ state: 'visible', timeout: 120_000 });
+    if (SHOTS) await page.screenshot({ path: join(SHOTS, 'expanded-outcome-tasks.png') });
+
+    await dialog()
+      .getByRole('button', { name: `Remove task ${SECOND_TASK}`, exact: true })
+      .click();
+    await h.until(
+      () => stockTasks(SMALL),
+      (tasks) => JSON.stringify(tasks) === JSON.stringify([{ task: TASK, complete: true }]),
+      { timeout: 120_000, what: `stock taskList of "${SMALL}" to drop "${SECOND_TASK}"` },
+    );
+    await dialog().getByRole('checkbox', { name: SECOND_TASK }).waitFor({ state: 'detached', timeout: 120_000 });
+    await page.keyboard.press('Escape');
+  });
+});
