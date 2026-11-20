@@ -62,7 +62,11 @@ async function drawTable() {
     Row and Column as their DOM shows them to assistive technology: a box carrying the role and
     accessible name it was given (the real components spread both onto their element).
   */
-  const Box = (props: { children?: JSX.Element; role?: string; 'aria-label'?: string }) => (
+  const Box = (props: {
+    children?: JSX.Element;
+    role?: JSX.HTMLAttributes<HTMLDivElement>['role'];
+    'aria-label'?: string;
+  }) => (
     <div role={props.role} aria-label={props['aria-label']}>
       {props.children}
     </div>
