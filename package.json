@@ -63,8 +63,8 @@
   },
   "pnpm": {
     "overrides": {
-      "@coasys/ad4m": "https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@8071deede897fbd4e63e15577ee681c5808deb6a",
-      "@coasys/connect": "https://pkg.pr.new/coasys/ad4m/@coasys/connect@8071deede897fbd4e63e15577ee681c5808deb6a",
+      "@coasys/ad4m": "https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@2189823af29280ecacf4e413ddda8baac90c01c1",
+      "@coasys/connect": "https://pkg.pr.new/coasys/ad4m/@coasys/connect@2189823af29280ecacf4e413ddda8baac90c01c1",
       "prettier": "3.9.10",
       "@xmldom/xmldom": ">=0.9.12",
       "plist": ">=3.1.1",
