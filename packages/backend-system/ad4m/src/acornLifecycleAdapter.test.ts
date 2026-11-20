@@ -1,234 +1,84 @@
 /**
- * The a9 socket — the second WebSocket the mount/template calls ride — unit tested
- * where it lives.
+ * The `acornLifecycle` port — delegation tested where it lives.
  *
- * Two obligations the first version missed, both from the review: a call the executor
- * never answers must not hang forever (one `setTimeout` per pending call, and one on the
- * open), and the socket belongs to the session that opened it — when the session ends,
- * or re-authorises into different credentials under it, the socket closes and every
- * pending call hears one answer rather than timing out one by one.
+ * On the a9 pin (`667d43e`) the mount/template calls rode a second, hand-rolled
+ * WebSocket because that SDK carried neither the client methods nor their
+ * `RpcMethods` entries. The pin now carries `perspective.mount`/`mounts`/
+ * `unmount` and `language.applyTemplateLocal` natively, so the port is what it
+ * was always meant to collapse into: thin delegates on the session's own
+ * `Ad4mClient`, with no second transport to bound, authenticate or dispose of.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { createAd4mAcornLifecycle } from './acornLifecycleAdapter';
-import type { Ad4mHttpConnection } from './languageModelPort';
 
-/** A WebSocket that never leaves the test: every instance is inspectable and drivable. */
-class FakeWS {
-  static instances: FakeWS[] = [];
-
-  onopen: (() => void) | null = null;
-  onmessage: ((ev: { data: unknown }) => void) | null = null;
-  onerror: (() => void) | null = null;
-  onclose: (() => void) | null = null;
-
-  readonly sent: string[] = [];
-  closed = false;
-
-  constructor(readonly url: string) {
-    FakeWS.instances.push(this);
-    queueMicrotask(() => {
-      // An open socket unless the test says otherwise — `quiet` keeps it in CONNECTING.
-      if (!FakeWS.quiet && !this.closed) this.onopen?.();
-    });
-  }
-
-  /** Set by a test before construction: sockets never open. */
-  static quiet = false;
-
-  send(data: string) {
-    this.sent.push(data);
-  }
-
-  close() {
-    this.closed = true;
-    this.onclose?.();
-  }
-
-  /** Deliver a reply frame for the most recently sent call id. */
-  reply(result: unknown, error?: { message: string }) {
-    const last = JSON.parse(this.sent[this.sent.length - 1]) as { id: string };
-    this.onmessage?.({ data: JSON.stringify(error ? { id: last.id, error } : { id: last.id, result }) });
-  }
+function fakeClient() {
+  return {
+    perspective: {
+      mount: vi.fn(async () => true),
+      mounts: vi.fn(async () => ['lang-a']),
+      unmount: vi.fn(async () => true),
+    },
+    languages: {
+      applyTemplateLocal: vi.fn(async () => ({ address: 'lang-templated' })),
+    },
+    expression: {
+      interact: vi.fn(async (_url: string, _call: { name: string; parameters?: unknown }) => '{"who":"me"}'),
+    },
+  };
 }
 
-/** Wait until `ws` has sent `n` frames — a reply before the send lands answers nothing. */
-const sent = (ws: FakeWS, n = 1) => vi.waitFor(() => expect(ws.sent).toHaveLength(n));
-
-const port = (conn?: Ad4mHttpConnection | null) =>
-  createAd4mAcornLifecycle(
-    { expression: { interact: vi.fn(async () => null) } },
-    () => conn ?? { url: 'http://127.0.0.1:12000', token: 'test-token' },
-  );
-
-beforeEach(() => {
-  vi.stubGlobal('WebSocket', FakeWS);
-  FakeWS.instances = [];
-  FakeWS.quiet = false;
-});
-
-afterEach(() => {
-  vi.useRealTimers();
-  vi.unstubAllGlobals();
-});
-
-describe('the a9 socket', () => {
-  it('opens lazily on the session url and token, and matches replies by id', async () => {
-    const p = port();
-    const call = p.mounts('dataset-1');
-    await vi.waitFor(() => expect(FakeWS.instances).toHaveLength(1));
-    const ws = FakeWS.instances[0];
-    expect(ws.url).toBe('ws://127.0.0.1:12000/api/v1/ws?token=test-token');
-    await sent(ws);
-    ws.reply(['lang-a']);
-    await expect(call).resolves.toEqual(['lang-a']);
+describe('the acorn lifecycle port on the session client', () => {
+  it('mounts through client.perspective.mount', async () => {
+    const client = fakeClient();
+    const port = createAd4mAcornLifecycle(client);
+    await expect(port.mount('dataset-1', 'lang-a')).resolves.toBe(true);
+    expect(client.perspective.mount).toHaveBeenCalledWith('dataset-1', 'lang-a');
   });
 
-  it('rejects a call the executor never answers', async () => {
-    vi.useFakeTimers();
-    const p = port();
-    const call = p.mounts('dataset-1');
-    const settled = call.then(
-      () => 'resolved',
-      (e: Error) => e.message,
-    );
-    await vi.advanceTimersByTimeAsync(31_000);
-    await expect(settled).resolves.toMatch(/nothing|timed? ?out/i);
+  it('lists through client.perspective.mounts', async () => {
+    const client = fakeClient();
+    const port = createAd4mAcornLifecycle(client);
+    await expect(port.mounts('dataset-1')).resolves.toEqual(['lang-a']);
+    expect(client.perspective.mounts).toHaveBeenCalledWith('dataset-1');
   });
 
-  it('lets go of an open that never completes, and the next call tries fresh', async () => {
-    vi.useFakeTimers();
-    FakeWS.quiet = true;
-    const p = port();
-    const settled = p.mounts('dataset-1').then(
-      () => 'resolved',
-      (e: Error) => e.message,
-    );
-    await vi.advanceTimersByTimeAsync(11_000);
-    await expect(settled).resolves.toMatch(/open/i);
-
-    FakeWS.quiet = false;
-    const retry = p.mounts('dataset-1');
-    await vi.advanceTimersByTimeAsync(0);
-    expect(FakeWS.instances).toHaveLength(2);
-    FakeWS.instances[1].reply([]);
-    await expect(retry).resolves.toEqual([]);
+  it('unmounts through client.perspective.unmount', async () => {
+    const client = fakeClient();
+    const port = createAd4mAcornLifecycle(client);
+    await expect(port.unmount('dataset-1', 'lang-a')).resolves.toBe(true);
+    expect(client.perspective.unmount).toHaveBeenCalledWith('dataset-1', 'lang-a');
   });
 
-  it('close with the session: dispose rejects what is in flight and refuses what follows', async () => {
-    const p = port();
-    const first = p.mounts('dataset-1');
-    await vi.waitFor(() => expect(FakeWS.instances).toHaveLength(1));
-    await sent(FakeWS.instances[0]);
-    FakeWS.instances[0].reply([]);
-    await first; // the socket is open and idle
-
-    const hanging = p.mount('dataset-1', 'lang-a');
-    await vi.waitFor(() => expect(FakeWS.instances[0].sent).toHaveLength(2));
-    const settled = hanging.then(
-      () => 'resolved',
-      (e: Error) => e.message,
-    );
-
-    const dispose = (p as { dispose?: () => void }).dispose;
-    expect(dispose, 'the port exposes dispose() — the session-close path').toBeInstanceOf(Function);
-    dispose!.call(p);
-
-    await expect(settled).resolves.toMatch(/ended|closed/i);
-    expect(FakeWS.instances[0].closed).toBe(true);
-    await expect(p.mounts('dataset-1')).rejects.toThrow(/ended|closed/i);
-    // Idempotent — a second dispose must not throw.
-    expect(() => (p as { dispose?: () => void }).dispose?.()).not.toThrow();
+  it('templates through client.languages.applyTemplateLocal, object not string', async () => {
+    const client = fakeClient();
+    const port = createAd4mAcornLifecycle(client);
+    const result = await port.applyTemplateLocal('Qm-base', { seed: 'uid-x' });
+    expect(result).toEqual({ address: 'lang-templated' });
+    // The client method does the JSON.stringify itself — the port hands the record over.
+    expect(client.languages.applyTemplateLocal).toHaveBeenCalledWith('Qm-base', { seed: 'uid-x' });
   });
 
-  /*
-    A caller still in `open()` has not entered `pending`, so `release()` cannot reach
-    it — and the close handler's stale-socket guard means the corpse's `onclose` will
-    not either. Disposal must settle the connect promise itself: the session ending
-    is the answer the caller waits on, not the connect timeout ten seconds later.
-  */
-  it('settles a still-connecting call on dispose — the session end, not the timeout', async () => {
-    FakeWS.quiet = true;
-    const p = port();
-    const settled = p.mounts('dataset-1').then(
-      () => 'resolved',
-      (e: Error) => e.message,
-    );
-    await vi.waitFor(() => expect(FakeWS.instances).toHaveLength(1));
-    (p as { dispose?: () => void }).dispose!();
-
-    const outcome = await Promise.race([settled, new Promise<string>((r) => setTimeout(() => r('unsettled'), 50))]);
-    expect(outcome).toMatch(/ended/i);
-    expect(FakeWS.instances[0].closed).toBe(true);
+  it('interacts through client.expression.interact and parses a JSON string', async () => {
+    const client = fakeClient();
+    const port = createAd4mAcornLifecycle(client);
+    const result = await port.interact('lang://project', { name: 'whoami', parameters: { a: 1 } });
+    expect(result).toEqual({ who: 'me' });
+    expect(client.expression.interact).toHaveBeenCalledOnce();
+    const [url, call] = client.expression.interact.mock.calls[0];
+    expect(url).toBe('lang://project');
+    expect(call).toMatchObject({ name: 'whoami', parameters: { a: 1 } });
   });
 
-  it('settles the still-connecting socket the session replaces — its caller is not left waiting', async () => {
-    FakeWS.quiet = true;
-    let conn: Ad4mHttpConnection = { url: 'http://127.0.0.1:12000', token: 'token-one' };
-    const p = createAd4mAcornLifecycle({ expression: { interact: vi.fn() } }, () => conn);
-    const first = p.mounts('dataset-1').then(
-      () => 'resolved',
-      (e: Error) => e.message,
-    );
-    await vi.waitFor(() => expect(FakeWS.instances).toHaveLength(1));
-
-    // The session re-authorises while the first socket is still CONNECTING.
-    conn = { url: 'http://127.0.0.1:12000', token: 'token-two' };
-    FakeWS.quiet = false;
-    const second = p.mounts('dataset-1');
-    await vi.waitFor(() => expect(FakeWS.instances).toHaveLength(2));
-
-    const outcome = await Promise.race([first, new Promise<string>((r) => setTimeout(() => r('unsettled'), 50))]);
-    expect(outcome).toMatch(/changed/i);
-    await sent(FakeWS.instances[1]);
-    FakeWS.instances[1].reply([]);
-    await expect(second).resolves.toEqual([]);
+  it('returns a non-JSON interact result as-is', async () => {
+    const client = fakeClient();
+    client.expression.interact.mockResolvedValue('plain text');
+    const port = createAd4mAcornLifecycle(client);
+    await expect(port.interact('lang://x', { name: 'info' })).resolves.toBe('plain text');
   });
 
-  it('closes the socket it was authenticated under when the session credentials change', async () => {
-    let conn: Ad4mHttpConnection = { url: 'http://127.0.0.1:12000', token: 'token-one' };
-    const p = createAd4mAcornLifecycle({ expression: { interact: vi.fn() } }, () => conn);
-    const first = p.mounts('dataset-1');
-    await vi.waitFor(() => expect(FakeWS.instances).toHaveLength(1));
-    await sent(FakeWS.instances[0]);
-    FakeWS.instances[0].reply([]);
-    await first;
-
-    conn = { url: 'http://127.0.0.1:12000', token: 'token-two' };
-    const second = p.mounts('dataset-1');
-    await vi.waitFor(() => expect(FakeWS.instances).toHaveLength(2));
-    expect(FakeWS.instances[0].closed).toBe(true);
-    expect(FakeWS.instances[1].url).toBe('ws://127.0.0.1:12000/api/v1/ws?token=token-two');
-    await sent(FakeWS.instances[1]);
-    FakeWS.instances[1].reply([]);
-    await expect(second).resolves.toEqual([]);
-  });
-
-  it('ignores frames that are not replies to a pending call', async () => {
-    const p = port();
-    const call = p.mounts('dataset-1');
-    await vi.waitFor(() => expect(FakeWS.instances).toHaveLength(1));
-    const ws = FakeWS.instances[0];
-    await sent(ws);
-    ws.onmessage?.({ data: 'not json at all' });
-    ws.onmessage?.({ data: JSON.stringify({ event: 'perspective-added', data: {} }) });
-    ws.onmessage?.({ data: JSON.stringify({ id: 'nobody-asked', result: [] }) });
-    ws.reply(['lang-a']);
-    await expect(call).resolves.toEqual(['lang-a']);
-  });
-
-  it('rejects every pending call when the socket closes mid-flight', async () => {
-    const p = port();
-    const call = p.mounts('dataset-1');
-    await vi.waitFor(() => expect(FakeWS.instances).toHaveLength(1));
-    await sent(FakeWS.instances[0]);
-    FakeWS.instances[0].onclose?.();
-    await expect(call).rejects.toThrow(/closed/i);
-    // The next call opens a fresh socket rather than reusing the corpse.
-    const retry = p.mounts('dataset-1');
-    await vi.waitFor(() => expect(FakeWS.instances).toHaveLength(2));
-    await sent(FakeWS.instances[1]);
-    FakeWS.instances[1].reply([]);
-    await expect(retry).resolves.toEqual([]);
+  it('opens no transport of its own — dispose is not part of the surface', () => {
+    const port = createAd4mAcornLifecycle(fakeClient());
+    expect((port as { dispose?: unknown }).dispose).toBeUndefined();
   });
 });
