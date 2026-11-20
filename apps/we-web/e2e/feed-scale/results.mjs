@@ -40,16 +40,21 @@ const round = (n, places = 1) => (n === null ? null : Math.round(n * 10 ** place
  * `queries` are the Feed's message window (`TextBlock`); `otherQueries` the rest of the same read
  * (calls, extracted kinds), which the page waits for as well.
  *
- * A run whose page never draws has no time to record: `attempted` counts the loads tried, the
- * `*Failures` lists why each did not draw (`feed-call-refused`, `timeout`, `page-closed`), and
- * `failedFeedCalls` how many of the run's feed calls the executor answered with an error.
+ * A run whose page never draws has no time to record: `attempted` counts the loads that reached an
+ * outcome, the `*Failures` lists why each did not draw (`feed-call-refused`, `timeout`,
+ * `page-closed`), and `failedFeedCalls` how many of the run's feed calls the executor answered with
+ * an error.
+ *
+ * The failure counts and `cpu.uiPhase` add up over the loads, so their `params` also hold `loads`
+ * (`run.loads`, the loads the run was set to make): a run of 1 load is not compared with one of 5.
  */
 export function metrics(run) {
   const params = { messages: run.messages };
+  const perLoads = { ...params, loads: run.loads };
   const out = [];
-  const add = (metric, value, unit, better) => {
+  const add = (metric, value, unit, better, p = params) => {
     if (value === null || value === undefined || !Number.isFinite(value)) return;
-    out.push({ metric, value: round(value, unit === 'ms' || unit === 'MiB' ? 1 : 3), unit, better, params });
+    out.push({ metric, value: round(value, unit === 'ms' || unit === 'MiB' ? 1 : 3), unit, better, params: p });
   };
   if (run.seed) {
     add('seed.generate_s', run.seed.generateSeconds, 's', 'lower');
@@ -69,13 +74,13 @@ export function metrics(run) {
   add('executor.feed_other_queries.max', max(run.otherQueries ?? []), 'ms', 'lower');
   // What never drew: recorded as a count, not absent — the page not loading is a result too.
   if (run.attempted) {
-    add('feed.newest_page.failures', run.newestFailures?.length ?? 0, 'count', 'lower');
-    add('executor.feed_query.failures', run.failedFeedCalls ?? 0, 'count', 'lower');
+    add('feed.newest_page.failures', run.newestFailures?.length ?? 0, 'count', 'lower', perLoads);
+    add('executor.feed_query.failures', run.failedFeedCalls ?? 0, 'count', 'lower', perLoads);
   }
   if (run.olderAttempted) {
-    add('feed.older_page.failures', run.olderFailures?.length ?? 0, 'count', 'lower');
+    add('feed.older_page.failures', run.olderFailures?.length ?? 0, 'count', 'lower', perLoads);
   }
-  add('executor.cpu_seconds.ui_phase', run.cpu?.uiPhase ?? null, 's', 'lower');
+  add('executor.cpu_seconds.ui_phase', run.cpu?.uiPhase ?? null, 's', 'lower', perLoads);
   add('executor.idle_cpu_percent.after_seed', run.cpu?.idleAfterSeed ?? null, '%', 'lower');
   add('executor.idle_cpu_percent.after_ui', run.cpu?.idleAfterUi ?? null, '%', 'lower');
   add('executor.rss.after_seed', run.rss?.afterSeed ?? null, 'MiB', 'lower');
@@ -91,6 +96,7 @@ export function summaryLine(run, status) {
   const older = run.older ?? [];
   const queries = run.queries ?? [];
   const failed = run.newestFailures ?? [];
+  const olderFailed = run.olderFailures ?? [];
   return [
     `feed-scale ${status}:`,
     `messages=${run.messages}`,
@@ -104,6 +110,7 @@ export function summaryLine(run, status) {
     `runs=${newest.length}`,
     // Why runs did not draw, when any did not — "a slow or refused load is a result".
     ...(failed.length ? [`notdrawn=${failed.length}:${[...new Set(failed)].join('+')}`] : []),
+    ...(olderFailed.length ? [`oldernotdrawn=${olderFailed.length}:${[...new Set(olderFailed)].join('+')}`] : []),
   ].join(' ');
 }
 
@@ -150,6 +157,8 @@ export function loadPhases(calls, marks = {}) {
   const first = (list, at) => (list.length ? Math.min(...list.map(at)) : null);
   const last = (list, at) => (list.length ? Math.max(...list.map(at)) : null);
   const feed = calls.filter((q) => q.feed && q.className === 'TextBlock');
+  // The newest window's call is the Feed's first: its ask and its answer, not another call's answer.
+  const newestCall = feed.length ? feed.reduce((a, b) => (b.sentAfterMs < a.sentAfterMs ? b : a)) : null;
   const space = calls.filter((q) => q.className === 'Space');
   const drawn = [marks.newestVisible, marks.lastAttached].filter((n) => typeof n === 'number');
   // Only the profiles asked before the page drew: what it could have been waiting on.
@@ -160,8 +169,8 @@ export function loadPhases(calls, marks = {}) {
   return {
     firstCall: first(calls, (q) => q.sentAfterMs),
     spaceAnswered: first(space, done),
-    feedAsked: first(feed, (q) => q.sentAfterMs),
-    feedAnswered: first(feed, done),
+    feedAsked: newestCall ? newestCall.sentAfterMs : null,
+    feedAnswered: newestCall ? done(newestCall) : null,
     profiles: profiles.length,
     profilesAnswered: last(profiles, done),
     watchRegistered: first(watch, done),

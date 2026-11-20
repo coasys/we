@@ -453,6 +453,36 @@ describe('results', () => {
     expect(by['feed.older_page.failures']).toBeUndefined();
   });
 
+  it('keys what adds up over the loads by the number of loads too', () => {
+    const run = {
+      messages: 1_000,
+      loads: 5,
+      attempted: 5,
+      newestFailures: ['timeout'],
+      olderAttempted: 4,
+      olderFailures: [],
+      failedFeedCalls: 0,
+      newest: [300],
+      cpu: { uiPhase: 12 },
+    };
+    const by = Object.fromEntries(metrics(run).map((m) => [m.metric, m]));
+    for (const name of [
+      'feed.newest_page.failures',
+      'feed.older_page.failures',
+      'executor.feed_query.failures',
+      'executor.cpu_seconds.ui_phase',
+    ]) {
+      expect(by[name].params).toEqual({ messages: 1_000, loads: 5 });
+    }
+    // A time does not add up over the loads: its key is the size alone.
+    expect(by['feed.newest_page.median'].params).toEqual({ messages: 1_000 });
+  });
+
+  it('says why the older page did not draw', () => {
+    const run = { messages: 10, newest: [300, 310], olderFailures: ['feed-call-refused', 'timeout'] };
+    expect(summaryLine(run, 'passed')).toContain('runs=2 oldernotdrawn=2:feed-call-refused+timeout');
+  });
+
   it('reads CPU seconds off /proc/<pid>/stat, whatever the command is called', () => {
     // pid (comm) state ppid pgrp session tty tpgid flags minflt cminflt majflt cmajflt utime stime …
     const stat = '4242 (ad4m exec) S 1 4242 4242 0 -1 4194560 100 0 0 0 1500 250 0 0 20 0 64 0';
@@ -484,6 +514,15 @@ describe('results', () => {
       lastAttached: 4050,
     });
     expect(loadPhases([])).toMatchObject({ firstCall: null, feedAsked: null, profiles: 0, newestVisible: null });
+  });
+
+  it("takes the Feed's ask and answer from the same call", () => {
+    // The newest window from 100 to 500 ms; an overlapping older window answered first, at 300.
+    const calls = [
+      { type: 'perspective.modelQuery', className: 'TextBlock', feed: true, limit: 50, sentAfterMs: 100, ms: 400 },
+      { type: 'perspective.modelQuery', className: 'TextBlock', feed: true, limit: 150, sentAfterMs: 200, ms: 100 },
+    ];
+    expect(loadPhases(calls)).toMatchObject({ feedAsked: 100, feedAnswered: 500 });
   });
 
   it('counts only a watch registration the executor accepted', () => {

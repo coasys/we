@@ -8,7 +8,7 @@ at a million messages (the nightly job in coasys/ad4m, `scripts/feed-scale.sh`).
 
 ```sh
 WE_SEED=seeds/coasys.seed.json pnpm build:web
-FEED_SCALE_MESSAGES=10000 AD4M_EXECUTOR=/path/to/ad4m-executor pnpm --filter @we/app-web test:feed-scale
+WE_SEED=seeds/coasys.seed.json FEED_SCALE_MESSAGES=10000 AD4M_EXECUTOR=/path/to/ad4m-executor pnpm --filter @we/app-web test:feed-scale
 ```
 
 (`pnpm e2e feed-scale` does the build itself.) The executor must include ad4m
@@ -43,15 +43,17 @@ out, and a warm reload's time is never reported in its place.
 The page times come from the page itself. An init script watches the DOM and writes a mark, with
 `Date.now()`, when the newest message is attached and visible, when the 49th is attached, and when
 message 150 is attached. The suite's own waits (Playwright polls a locator up to every 500 ms) are
-not in the numbers. The suite still waits for the same rows, so a row that never shows still fails
-the run.
+not in the numbers. The suite still waits for the same rows; a row that never shows is recorded as
+that load's outcome (below), not timed.
 
 The suite writes two files in `FEED_SCALE_ARTIFACTS`:
 
 - `metrics.json` holds the metrics alone, as `{"metrics": [...]}`. This is the input of ad4m's
   `scripts/perf/record`. When `PERF_RESULTS_DIR` is set, the suite also writes the same file there
   as `feed-scale.json`. Each record has the metric name, `value`, `unit`, `better`, and `params`
-  `{"messages": N}`.
+  `{"messages": N}`. The metrics that add up over the loads (the three failure counts and
+  `executor.cpu_seconds.ui_phase`) have `{"messages": N, "loads": L}`, so runs of a different
+  number of loads are not compared.
 - `results.json` holds the same metrics and a `detail` section. The detail has every run's Feed
   calls, where each load's time went (see below), the slowest other calls of each run, the space's
   auto-processors at each step, and the executor's answer to the Feed's query from outside the page.
@@ -59,10 +61,18 @@ The suite writes two files in `FEED_SCALE_ARTIFACTS`:
   answer.
 
 A load whose page never draws is a result, not a failure of the suite. The run is recorded with
-`detail.runs[].outcome` (`feed-call-refused`, `timeout`, `page-closed`) and the calls it made, and
-the counts land in the `feed.newest_page.failures`, `feed.older_page.failures` and
-`executor.feed_query.failures` metrics. Feed calls the executor did answer before the load gave up
-still count toward `executor.feed_query.*`. When the tab itself is what closed, the next load runs
+`detail.runs[].outcome` (`feed-call-refused`, `timeout`, `page-closed`) and the calls it made. The
+three failure metrics count different things:
+
+- `feed.newest_page.failures`: loads whose newest page did not draw, for any of those reasons.
+- `feed.older_page.failures`: loads whose newest page drew but whose older page did not. It is
+  left out when no load reached the older page.
+- `executor.feed_query.failures`: Feed calls the executor answered with an error, not loads. A load
+  that timed out with no refused call adds to the first count and not to this one.
+
+A passing run can therefore hold failures: read these counts, not the exit status. Feed calls the
+executor did answer before the load gave up still count toward `executor.feed_query.*`, and so
+does a reply that comes after its load gave up, before the next load starts (`detail.runs[].late`). When the tab itself is what closed, the next load runs
 in a fresh tab of the same device, so the loads after it are still measured. `feed-call-refused` is
 the executor declining to answer: its
 SPARQL eval deadline (`query_deadline_secs`, 30 s on `dev`, not configurable from outside) kills a

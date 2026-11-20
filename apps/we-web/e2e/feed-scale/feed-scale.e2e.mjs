@@ -122,7 +122,10 @@ function feedMarks({ newest, last, older }) {
   const untilVisible = (el) => {
     const step = () => {
       if (!el.isConnected) {
+        // Replaced before it was seen: look for the replacement now, which may already be in the
+        // document, rather than wait for a later mutation that may never come.
         found.newestVisible = null;
+        scan(document.body);
         return;
       }
       const r = el.getBoundingClientRect();
@@ -318,6 +321,7 @@ const peakOf = (now) => {
 
 const run = {
   messages: MESSAGES,
+  loads: RUNS,
   seed: null,
   newest: [],
   newestCold: null,
@@ -525,11 +529,16 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
       );
     }
 
-    if (seedRanWatchFree) {
+    // A probe that did not answer may still be running in the executor, so the spell would not be idle.
+    if (seedRanWatchFree && instances) {
       run.cpu.idleAfterSeed = await idleCpuPercent(executor.pid, IDLE_SECONDS);
       log(`executor idle after the seeding: ${run.cpu.idleAfterSeed?.toFixed(1)}% of a core over ${IDLE_SECONDS} s`);
     } else {
-      log('executor idle after the seeding not measured: an auto-processor is registered');
+      log(
+        `executor idle after the seeding not measured: ${
+          seedRanWatchFree ? 'the direct probe did not answer' : 'an auto-processor is registered'
+        }`,
+      );
     }
 
     // 4. The loads.
@@ -566,6 +575,8 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
       // What a run's answered feed calls measured: each reply's round trip joins the executor query
       // metrics, by class; a refused one counts as a failure and is not a latency sample. Runs once
       // per load, on either outcome — a load that never drew may still hold completed calls.
+      // The calls already in the numbers, as `watchFeedQueries` keeps them.
+      const counted = new WeakSet();
       const tally = (mine) => {
         for (const q of mine) {
           if (q.error) {
@@ -575,6 +586,23 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
           (q.className === 'TextBlock' ? run.queries : run.otherQueries).push(q.ms);
         }
       };
+      // The numbers of load `load` are taken: its calls answered so far are counted.
+      const taken = (load) => {
+        for (const q of queries) if (q.load === load) counted.add(q);
+      };
+      // A reply that came after its load gave up on it (before that tab's socket closed) is still that
+      // load's: counted once, with it, and listed in its detail as `late`. Run between loads, when
+      // every load of this tab so far is done. A replacement tab numbers its loads from 1 again, and
+      // this only reads the open tab's calls: their load is the newest entry with that number.
+      const tallyLate = () => {
+        const late = queries.filter((q) => q.feed && !counted.has(q) && q.load <= queries.load);
+        tally(late);
+        for (const q of late) {
+          counted.add(q);
+          const entry = detail.runs.findLast((r) => r.load === q.load);
+          if (entry) (entry.late ??= []).push({ ...q, sent: undefined });
+        }
+      };
       for (let k = 0; k < RUNS; k++) {
         const kind = k === 0 ? 'cold' : 'warm';
         current = null;
@@ -582,6 +610,7 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
         // loaded to reload, so it navigates as the first run did: `page-closed` stays a recorded
         // load outcome, not the end of the suite.
         const replacement = page.isClosed();
+        tallyLate();
         if (replacement) await openReaderPage();
         // A new load generation: a call still unanswered when the last load gave up answers into
         // the old generation, and never lands in this load's numbers.
@@ -589,7 +618,6 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
         const t0 = performance.now();
         const t0Epoch = Date.now();
         current = { run: k + 1, kind, load, t0 };
-        run.attempted = k + 1;
         // Navigation and the newest-page wait share the page's budget: a document whose load event
         // stalls until the budget is spent is the run's `timeout` outcome. A page that closes under
         // the navigation is a load outcome, as it is during the wait below; any other navigation
@@ -638,9 +666,12 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
         if (!drew.drawn) {
           const mine = calls().filter((q) => q.feed);
           tally(mine);
+          taken(load);
+          run.attempted = k + 1;
           run.newestFailures = [...(run.newestFailures ?? []), drew.kind];
           detail.runs.push({
             run: k + 1,
+            load,
             kind,
             outcome: drew.kind,
             error: drew.error ?? null,
@@ -682,7 +713,6 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
         let olderOutcome = 'drawn';
         let olderError = null;
         try {
-          run.olderAttempted = (run.olderAttempted ?? 0) + 1;
           await scrollToOlderEdge(row(page, MESSAGES - (FIRST_PAGE - 1)));
           // The whole run's calls: the Feed may already have asked for this window before the
           // scroll. A refusal of it is this window's failure, and only its (`limit`).
@@ -711,6 +741,7 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
           olderOutcome = 'page-closed';
           olderError = e.message;
         }
+        run.olderAttempted = (run.olderAttempted ?? 0) + 1;
         if (olderOutcome !== 'drawn') {
           run.olderFailures = [...(run.olderFailures ?? []), olderOutcome];
           log(
@@ -725,6 +756,8 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
         if (kind === 'cold') run.newestCold = newest;
         if (older !== null) run.older.push(older);
         tally(mine);
+        taken(load);
+        run.attempted = k + 1;
         // The slowest of the page's other calls: what it may have waited on before the Feed asked.
         const slowest = calls()
           .filter((q) => !q.feed)
@@ -733,6 +766,7 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
         const phases = { ...loadPhases(calls(), marks), ...marks, noticed };
         detail.runs.push({
           run: k + 1,
+          load,
           kind,
           outcome: 'drawn',
           newestMs: newest,
@@ -765,6 +799,7 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
           'the page made no Feed query this run',
         );
       }
+      tallyLate();
     } catch (error) {
       if (current) {
         // What the failed run asked, and what it was still waiting on when it gave up.
