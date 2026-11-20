@@ -1424,7 +1424,7 @@ export const seedBundles: Bundle[] = [
                                   $invoke: 'routeStore.navigate',
                                   args: [
                                     {
-                                      $: "(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (split(event.detail.value, '|')[1])) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (split(event.detail.value, '|')[1]), '?') ? '&' : '?') + 'view=canvas' : '')",
+                                      $: "(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (split(event.detail.value, '|')[1]) + '&call=' + (split(event.detail.value, '|')[1])) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (split(event.detail.value, '|')[1]) + '&call=' + (split(event.detail.value, '|')[1]), '?') ? '&' : '?') + 'view=canvas' : '')",
                                     },
                                   ],
                                 },
@@ -21271,6 +21271,60 @@ export const seedBundles: Bundle[] = [
                       },
                     },
                     {
+                      type: '$if',
+                      props: {
+                        condition: { $: "'transcribe' in spaceStore.activeModules" },
+                        then: {
+                          type: 'we-tooltip',
+                          props: { content: 'Interpretation', placement: 'bottom' },
+                          children: [
+                            {
+                              type: 'we-button',
+                              props: {
+                                variant: 'ghost',
+                                size: 'md',
+                                square: {
+                                  $: '!count(modules.transcribe.proposalsFor[routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : spaceStore.root)])',
+                                },
+                                label: {
+                                  $: "count(modules.transcribe.proposalsFor[routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : spaceStore.root)]) ? `Interpretation, ${count(modules.transcribe.proposalsFor[routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : spaceStore.root)])} ${plural(count(modules.transcribe.proposalsFor[routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : spaceStore.root)]), 'suggestion', 'suggestions')} to review` : 'Interpretation'",
+                                },
+                                expanded: { $: 'modules.transcribe.extractionOpen' },
+                                onClick: { $invoke: 'spaceStore.launchModule', args: ['transcribe:extraction'] },
+                              },
+                              children: [
+                                {
+                                  type: '$if',
+                                  props: {
+                                    condition: { $: 'modules.transcribe.passRunning' },
+                                    then: { type: 'we-animated-icon', props: { name: 'spinner' } },
+                                    else: { type: 'we-icon', props: { name: 'sparkle' } },
+                                  },
+                                },
+                                {
+                                  type: '$if',
+                                  props: {
+                                    condition: {
+                                      $: 'count(modules.transcribe.proposalsFor[routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : spaceStore.root)])',
+                                    },
+                                    then: {
+                                      type: 'we-badge',
+                                      props: { size: 'xs', variant: 'solid', tone: 'accent' },
+                                      children: [
+                                        {
+                                          $: 'count(modules.transcribe.proposalsFor[routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : spaceStore.root)])',
+                                        },
+                                      ],
+                                    },
+                                  },
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                      },
+                    },
+                    {
                       type: 'we-tooltip',
                       props: { content: 'Export the transcript', placement: 'bottom' },
                       children: [
@@ -28710,7 +28764,7 @@ export const seedBundles: Bundle[] = [
                                             $invoke: 'routeStore.navigate',
                                             args: [
                                               {
-                                                $: "(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (call.id)) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (call.id), '?') ? '&' : '?') + 'view=canvas' : '')",
+                                                $: "(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (call.id) + '&call=' + (call.id)) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (call.id) + '&call=' + (call.id), '?') ? '&' : '?') + 'view=canvas' : '')",
                                               },
                                             ],
                                           },
