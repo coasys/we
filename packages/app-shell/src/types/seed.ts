@@ -322,7 +322,7 @@ export interface WeSeedFile {
   marketplaceUrl?: string;
 
   /**
-   * The platform API this deployment's environment talks to, e.g. `https://api.coasys.org`: an
+   * The platform API this deployment's environment talks to, e.g. `https://api.coasys.app`: an
    * `https` origin, with no path. The app reads the hosting index's list of hosts from it
    * (`GET <platformApiUrl>/v1/index/hosts`), which the platform answers only to the Coasys app
    * origins. Unset, the host list shows no index hosts and a person can still add a host by its
