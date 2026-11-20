@@ -299,6 +299,11 @@ describe('the outcomes view on the live mount', () => {
   let stockMod;
   let stockH;
   let page;
+  /** The seeded tag's action hash, as text — what the outcome's `tags` must hold after Tag. */
+  let seedTagHash;
+
+  /** A Holochain hash as its `u…` base64url text, whichever form the zome answered in. */
+  const hashText = (hash) => (typeof hash === 'string' ? hash : `u${Buffer.from(hash).toString('base64url')}`);
 
   /** `fetch_outcomes` on the rig's setup cell — WireRecords `{actionHash, entry}`. */
   const fetchOutcomes = () =>
@@ -315,7 +320,7 @@ describe('the outcomes view on the live mount', () => {
     await stockMod.createOutcome(stockH, SEED_CLEAR, { description: SEED_DESC });
     await stockMod.createOutcome(stockH, SEED_TAG);
     await stockMod.createOutcome(stockH, SEED_DELETE);
-    await stockMod.createTag(stockH, SEED_TAG_TEXT);
+    seedTagHash = hashText((await stockMod.createTag(stockH, SEED_TAG_TEXT)).actionHash);
 
     // Open the project the join test mounted — by route, which is the same place the
     // modal's "Open" lands; the dataset persists on the executor for the suite's life.
@@ -389,8 +394,9 @@ describe('the outcomes view on the live mount', () => {
     await page.getByRole('button', { name: `Tag ${SEED_TAG_TEXT} → ${SEED_TAG}` }).click({ timeout: 120_000 });
     await h.until(
       async () => (await fetchOutcomes()).find((r) => r.entry?.content === SEED_TAG),
-      (r) => Array.isArray(r?.entry?.tags) && r.entry.tags.length === 1,
-      { timeout: 120_000, what: `stock to show "${SEED_TAG}" carrying exactly the new tag` },
+      // The tag the button names, not merely a tag: a write of the wrong hash is one tag too.
+      (r) => Array.isArray(r?.entry?.tags) && r.entry.tags.length === 1 && hashText(r.entry.tags[0]) === seedTagHash,
+      { timeout: 120_000, what: `stock to show "${SEED_TAG}" carrying exactly ${SEED_TAG_TEXT} (${seedTagHash})` },
     );
     await page.getByRole('button', { name: `Untag ${SEED_TAG}` }).click();
     await h.until(
