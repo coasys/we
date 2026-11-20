@@ -67,8 +67,13 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+// The first dynamic import of a connector transforms its module graph (later imports hit the
+// shared module cache). The guest one takes ~3.5 s on a CI runner, and over vitest's 5 s default
+// when several PRs run at once.
+const IMPORT_TIMEOUT = 30_000;
+
 describe('the WE web connector', () => {
-  it('connects as the registered app, through the endpoints of this build', async () => {
+  it('connects as the registered app, through the endpoints of this build', { timeout: IMPORT_TIMEOUT }, async () => {
     const { ad4mConnector } = await import('./ad4mConnector');
     const { APP_ENDPOINTS } = await import('./endpoints');
 
@@ -83,7 +88,7 @@ describe('the WE web connector', () => {
     });
   });
 
-  it('passes operator: holdsOperatorCredential(token)', async () => {
+  it('passes operator: holdsOperatorCredential(token)', { timeout: IMPORT_TIMEOUT }, async () => {
     const { holdsOperatorCredential } = await import('@we/backend-ad4m');
     const { ad4mConnector } = await import('./ad4mConnector');
 
@@ -98,7 +103,7 @@ describe('the WE web connector', () => {
 });
 
 describe('the guest connector', () => {
-  it('passes operator: false, whatever the token is', async () => {
+  it('passes operator: false, whatever the token is', { timeout: IMPORT_TIMEOUT }, async () => {
     const { createGuestConnector } = await import('./guestConnector');
 
     for (const token of [GRANT, OPERATOR]) {

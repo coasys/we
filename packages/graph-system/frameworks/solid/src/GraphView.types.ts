@@ -356,6 +356,19 @@ export interface GraphViewProps {
     into: 'child' | 'sibling' | 'loose';
     recordId: string;
     recordType: string;
+    /**
+     * What the seed marked on the dragged card, so a consumer can refuse to write on a record
+     * that is still a suggestion (`pending`) or carries a staged change (`changed`) — a drop
+     * rewrites the card's own field, which neither mark may be settled enough to allow.
+     */
+    pending?: boolean;
+    changed?: boolean;
+    /**
+     * The edge the card hung by before the drop — its parent edge in the tree — with the facts its
+     * seed stamped on it (`data.relation` for a model relation, the record a drawn connection stands
+     * for). A drop moves that same link; absent for a card that hung by nothing.
+     */
+    edge?: { id: string; type: string; data?: Record<string, GraphValue> };
     targetId?: string;
     targetType?: string;
     before?: boolean;

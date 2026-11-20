@@ -86,4 +86,17 @@ describe('Settings → Developer', () => {
     // development build.
     expect((gate?.props as Node).condition).toEqual({ $: 'sessionStore.devFeatures' });
   });
+
+  it('offers the test people as a switch of their own, shown with the developer tools', () => {
+    // Off until turned on, so the fake participants and pretend people appear only when asked for.
+    const testPeople = nodes.find((node) => {
+      const action = (node.props as Node | undefined)?.onChange as Node | undefined;
+      return action?.$invoke === 'sessionStore.setTestPeople';
+    });
+    expect((testPeople?.props as Node).checked).toEqual({ $: 'sessionStore.testPeople' });
+    const gate = nodes.find(
+      (node) => node.type === '$if' && walk((node.props as Node).then).includes(testPeople as Node),
+    );
+    expect((gate?.props as Node).condition).toEqual({ $: 'sessionStore.devTools' });
+  });
 });

@@ -56,6 +56,8 @@ export interface IdentityCapabilities {
   devices: boolean;
   /** Link another device by a code or a scan. */
   linkDevice: boolean;
+  /** Add a host (Coasys cloud, or one by its address) as a device that serves the person (`add-cloud-device`). */
+  cloudDevice: boolean;
   /** Choose which device serves this session. */
   switchDevice: boolean;
   /** Bots with keys of their own, acting for the person within what they were granted. */
@@ -78,6 +80,7 @@ export const NO_IDENTITY_CAPABILITIES: IdentityCapabilities = {
   deleteAccount: false,
   devices: false,
   linkDevice: false,
+  cloudDevice: false,
   switchDevice: false,
   bots: false,
   plan: false,
@@ -139,6 +142,9 @@ export interface IdentityPort {
  *   claims; the bot is made with `bots.create` from the offer.
  * - `check-email`: check an email address with the platform, and keep the vouch note it gives
  *   beside the identity's log, so `IdentityStatusView.vouched` turns `true`.
+ * - `add-cloud-device`: add a host as a device: the host's managed agent claims an offer the person
+ *   opens, and the person confirms the match code. `host` is Coasys cloud, or an address the person
+ *   typed (a host chosen in the cascade hands its address here).
  */
 export type IdentityChange =
   | { kind: 'create' }
@@ -154,7 +160,11 @@ export type IdentityChange =
   | { kind: 'restore' }
   | { kind: 'remove-master' }
   | { kind: 'add-bot' }
-  | { kind: 'check-email' };
+  | { kind: 'check-email' }
+  | { kind: 'add-cloud-device'; host: CloudHost };
+
+/** The host `add-cloud-device` adds. */
+export type CloudHost = { kind: 'coasys' } | { kind: 'address'; url: string };
 
 /** How a change ended: made, abandoned by the person, or refused along the way. */
 export type IdentityChangeOutcome = 'done' | 'cancelled' | 'failed';
@@ -208,6 +218,11 @@ export interface IdentityCustodyView {
    * again.
    */
   encMismatch: boolean;
+  /**
+   * Coasys cloud's address, as the custody service has it (one value, set once there). `null` (or
+   * absent) where there is none, so no view of Coasys cloud is offered.
+   */
+  cloudUrl?: string | null;
 }
 
 /** The device a custody service answers for, set apart from the backend it reaches. */

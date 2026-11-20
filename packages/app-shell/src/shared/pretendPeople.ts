@@ -21,8 +21,8 @@
  * ## Gates
  *
  * The build decides whether any of this exists — `DEV_FEATURES` (`@we/module-shared`) is false in
- * production, and the bundler drops the control with it. `sessionStore.devTools` decides whether it shows, so a developer
- * looking at what a user sees loses the pretend people along with every other developer affordance.
+ * production, and the bundler drops the control with it. `sessionStore.testPeople` decides whether it shows: off until a
+ * developer turns it on in Settings → Developer, and off whenever the developer tools are.
  * Mirrors the call module's synthetic participants (`module-system/call/src/devPeers.ts`).
  */
 import type { Pretend } from '@we/graph-expanders';

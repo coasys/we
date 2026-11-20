@@ -29,7 +29,9 @@ export {
   createBaseStore,
 } from './BaseStore';
 export { type DeviceStore, useDeviceStore, DeviceStoreProvider } from './DeviceStore';
+export { type HostStore, useHostStore, HostStoreProvider } from './HostStore';
 export { type BotStore, useBotStore, BotStoreProvider } from './BotStore';
+export { type HostingStore, useHostingStore, HostingStoreProvider } from './HostingStore';
 export {
   type InterpretationActivityView,
   type InterpretationStore,

@@ -466,6 +466,40 @@ describe('the identity window', () => {
     expect(isLast(refused)).toBe(false);
   });
 
+  it('adds a cloud device in four screens, each naming the host and never the master key as leaving the person', () => {
+    const host = 'cloud.example.org';
+    const invite = heading({ screen: 'cloud-invite', host, error: null });
+    expect(invite.title).toBe('cloud.example.org asks for an invite');
+    expect(invite.lead).toContain('invite link, or its code');
+
+    const joining = heading({ screen: 'cloud-joining', host });
+    expect(joining.title).toBe('Join cloud.example.org');
+
+    const match = heading({ screen: 'cloud-match', code: 'R7K Q2M', host });
+    expect(match.title).toBe('Add cloud.example.org?');
+    expect(match.lead).toContain('Your master key stays on your own devices');
+
+    // The host may still be setting up: the last screen says so and where it will show.
+    expect(heading({ screen: 'cloud-added', host, active: true }).lead).toBe('The host serves you now.');
+    const waiting = heading({ screen: 'cloud-added', host, active: false });
+    expect(waiting.title).toBe('cloud.example.org added');
+    expect(waiting.lead).toContain('Settings > Devices');
+
+    // Only the last of the four ends the step: the others wait for the host or for the person.
+    expect(isLast({ screen: 'cloud-added', host, active: true })).toBe(true);
+    for (const open of [
+      { screen: 'cloud-invite' as const, host, error: null },
+      { screen: 'cloud-joining' as const, host },
+      { screen: 'cloud-match' as const, code: '', host },
+    ]) {
+      expect(isLast(open), open.screen).toBe(false);
+    }
+    // Nothing here uses a word the copy rules refuse.
+    for (const text of [invite, joining, match, waiting].flatMap((h) => [h.title, h.lead])) {
+      expect(text).not.toMatch(/[—;]|please|sorry|server/i);
+    }
+  });
+
   it('ends on the screens that end a step', () => {
     expect(isLast({ screen: 'identity-ready', did: 'did:scid:coasys:1:Qm', keyId: 'd1', vouched: false })).toBe(true);
     expect(isLast({ screen: 'revoked', keyId: 'd2', seq: 2 })).toBe(true);

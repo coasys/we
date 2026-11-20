@@ -68,6 +68,7 @@ export const CAPABILITY_GROUPS = {
   keys: 'See your identity and its key log, and ask to make or change it — you confirm every change yourself',
   devices: 'See the devices that act as you, and ask to add or remove one — you confirm every change yourself',
   bots: 'See the bots that act for you and what they did, and change, pause or revoke what each may do',
+  hosting: 'Read the hosting index to find a host, and list or withdraw this device in it',
 } as const;
 
 export type CapabilityGroup = keyof typeof CAPABILITY_GROUPS;
@@ -143,6 +144,11 @@ export const CHROME_TIER: readonly CapabilityGroup[] = [
     person's own session. So no space template may name it, and revoking is marked destructive.
   */
   'bots',
+  /*
+    Chrome only. Listing a device tells the hosting index where it is and who runs it, and reading the
+    index is a request to the platform that a community's template could make on every page view.
+  */
+  'hosting',
 ];
 
 /** Host wiring: never in any template bag, at any tier. */
@@ -252,6 +258,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     devFeatures: state('session'),
     devTools: state('session'),
     setDevTools: action('session'),
+    testPeople: state('session'),
+    setTestPeople: action('session'),
     credentialEntered: state('session'),
     credentialConfirmed: state('session'),
     // Signs in with the host field's password. No argument, so nothing a template collected can be
@@ -480,6 +488,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       panels, which render at the chrome tier, have it.
     */
     personalDataset: state('agent'),
+    // The personal space's schema install, for the agent-data kernel to wait on. Not for templates.
+    whenPersonalDataset: WIRING,
     testDataset: WIRING,
     /*
       The global discovery space and the marketplace — shared neighbourhoods holding nothing of this
@@ -501,11 +511,6 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     updateAgentSettings: WIRING,
     clearCurrentDataset: WIRING,
     trackDataset: WIRING,
-    provideAutoInterpretGate: WIRING,
-    watchConversation: WIRING,
-    unwatchConversation: WIRING,
-    provideExtractionCandidates: WIRING,
-    provideCollectionExtraction: WIRING,
     onDatasetRemoved: WIRING,
     readDatasets: WIRING,
     initSystemDatasets: WIRING,
@@ -837,6 +842,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     */
     extractionCandidates: state('content'),
     extractionCandidatesLoaded: state('content'),
+    // Answers for a dataset that is not on screen — host plumbing, not a template's to aim.
+    extractionCandidatesFor: WIRING,
     provideExtractionEnroller: WIRING,
     extractionNeedsIdentity: state('space-settings'),
     relationshipTargets: state('space-settings'),
@@ -890,6 +897,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // in the tier every template can reach, beside `spaceStore.createPost`.
     creatableEntities: state('content'),
     kinds: state('content'),
+    plumbingClasses: state('content'),
     displays: state('content'),
     // SpaceStore fills this on the way past, with the lists a community owns — see `vocabulary` on
     // a property declaration. Wiring between two stores, never something a template names.
@@ -1313,6 +1321,9 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // Read by the sidebar, which opens from a menu button rather than under the pointer on a phone.
     // Chrome-tier like its neighbours: a template answers to its own surface, never to the window.
     narrowWindow: state('host-layout'),
+    // Read by a compact rail, which draws no bar while a cover holds the whole window — its own
+    // chrome's to answer, as `narrowWindow` is.
+    chromeCovered: state('host-layout'),
     /*
       Written by the host layout, which can see the editor's widths — never by a template.
 
@@ -1400,6 +1411,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     collapsedLanes: state('view-state'),
     toggleLane: ambient('view-state'),
     setLaneCollapsed: ambient('view-state'),
+    focusInLane: ambient('view-state'),
     laneWidth: WIRING,
     setLaneWidth: WIRING,
     customisingLayout: state('host-layout'),
@@ -1599,6 +1611,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     deviceNoun: state('devices'),
     validCount: state('devices'),
     canManage: state('devices'),
+    canAddCloudDevice: state('devices'),
     canShowCode: state('devices'),
     canAskMaster: state('devices'),
     canReplaceMaster: state('devices'),
@@ -1610,6 +1623,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     error: state('devices'),
     refresh: ambient('devices'),
     addDevice: action('devices'),
+    addCloudDevice: action('devices'),
     scanDevice: action('devices'),
     showCode: action('devices'),
     takeMaster: action('devices'),
@@ -1620,6 +1634,33 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     replaceMaster: action('devices'),
     restore: action('devices'),
     removeMaster: action('devices'),
+  },
+  hostStore: {
+    canViewHost: state('devices'),
+    isCoasysCloud: state('devices'),
+    usage: state('devices'),
+    held: state('devices'),
+    error: state('devices'),
+    notice: state('devices'),
+    busy: state('devices'),
+    openHost: action('devices'),
+    leave: action('devices'),
+    exportData: action('devices'),
+    importData: action('devices'),
+    canOperate: state('devices'),
+    policy: state('devices'),
+    choiceNeeded: state('devices'),
+    choiceNeededText: state('devices'),
+    signupOptions: state('devices'),
+    invites: state('devices'),
+    people: state('devices'),
+    newInvite: state('devices'),
+    operatorError: state('devices'),
+    operatorBusy: state('devices'),
+    setSignup: action('devices'),
+    createInvite: action('devices'),
+    revokeInvite: action('devices'),
+    removePerson: action('devices'),
   },
   botStore: {
     available: state('bots'),
@@ -1654,6 +1695,41 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     revoke: destructive('bots'),
     loadOlder: ambient('bots'),
   },
+  /*
+    Reading the index is a request to the platform, so `loadHosts` is not ambient: it runs from a
+    press ("Add a cloud device", "Try again"), never because a screen mounted. Choosing a host only
+    records the choice for the flow that joins it.
+  */
+  hostingStore: {
+    hosts: state('hosting'),
+    hostListState: state('hosting'),
+    hostListError: state('hosting'),
+    address: state('hosting'),
+    addressProblem: state('hosting'),
+    chosen: state('hosting'),
+    available: state('hosting'),
+    loaded: state('hosting'),
+    error: state('hosting'),
+    canOffer: state('hosting'),
+    notAllowed: state('hosting'),
+    noOperator: state('hosting'),
+    indexError: state('hosting'),
+    listing: state('hosting'),
+    isListed: state('hosting'),
+    draft: state('hosting'),
+    problem: state('hosting'),
+    publishing: state('hosting'),
+    withdrawing: state('hosting'),
+    loadHosts: action('hosting'),
+    setAddress: ambient('hosting'),
+    choose: ambient('hosting'),
+    chooseAddress: ambient('hosting'),
+    clearChoice: ambient('hosting'),
+    setDraftField: ambient('hosting'),
+    refresh: ambient('hosting'),
+    publish: action('hosting'),
+    withdraw: action('hosting'),
+  },
 
   /*
     A workflow's records and moves are the community's content, so reading them and asking for a move are
@@ -1671,6 +1747,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     open: state('content'),
     draft: state('view-state'),
     recordWorkflows: state('content'),
+    active: state('content'),
     refreshWorkflows: ambient('content'),
     openWorkflow: ambient('view-state'),
     closeWorkflow: ambient('view-state'),

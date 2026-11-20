@@ -435,6 +435,7 @@ export const storeEntries: StoreEntry[] = [
           'avatar',
           'kind',
           'isWeSpace',
+          'loading',
           'canAdminister',
           'modules',
           'shareLink',
@@ -715,6 +716,7 @@ export const storeEntries: StoreEntry[] = [
       'scrollToId',
       'toggleLane',
       'setLaneCollapsed',
+      'focusInLane',
       'toggleCustomiseLayout',
     ],
   },
@@ -753,12 +755,28 @@ export const storeEntries: StoreEntry[] = [
       canEdit: { type: 'boolean' },
       workflows: {
         type: 'array',
-        properties: ['name', 'label', 'editable', 'records', 'managedBy', 'archived', 'steps', 'moves'],
+        properties: ['name', 'label', 'editable', 'records', 'running', 'managedBy', 'archived', 'steps', 'moves'],
       },
       startable: { type: 'array', properties: ['name', 'label', 'entities'] },
       open: { type: 'object' },
       draft: { type: 'object' },
       recordWorkflows: { type: 'object' },
+      active: {
+        type: 'array',
+        properties: [
+          'id',
+          'workflow',
+          'label',
+          'record',
+          'title',
+          'kind',
+          'state',
+          'stateLabel',
+          'lastActivity',
+          'waiting',
+          'stalled',
+        ],
+      },
     },
     actions: [
       'refreshWorkflows',
@@ -893,6 +911,7 @@ export const storeEntries: StoreEntry[] = [
       deviceNoun: { type: 'string' },
       validCount: { type: 'number' },
       canManage: { type: 'boolean' },
+      canAddCloudDevice: { type: 'boolean' },
       canShowCode: { type: 'boolean' },
       canAskMaster: { type: 'boolean' },
       canReplaceMaster: { type: 'boolean' },
@@ -906,6 +925,7 @@ export const storeEntries: StoreEntry[] = [
     actions: [
       'refresh',
       'addDevice',
+      'addCloudDevice',
       'scanDevice',
       'showCode',
       'takeMaster',
@@ -916,6 +936,41 @@ export const storeEntries: StoreEntry[] = [
       'replaceMaster',
       'restore',
       'removeMaster',
+    ],
+  },
+  {
+    name: 'hostStore',
+    state: {
+      canViewHost: { type: 'boolean' },
+      isCoasysCloud: { type: 'boolean' },
+      usage: {
+        type: 'object',
+        properties: ['host', 'spend', 'storage', 'aiRuns', 'spaces', 'privateSpaces'],
+      },
+      held: { type: 'boolean' },
+      error: { type: 'string' },
+      notice: { type: 'string' },
+      busy: { type: 'boolean' },
+      canOperate: { type: 'boolean' },
+      policy: { type: 'object', properties: ['signup', 'maxTenants', 'display', 'choiceNeeded'] },
+      choiceNeeded: { type: 'boolean' },
+      choiceNeededText: { type: 'string' },
+      signupOptions: { type: 'array', properties: ['value', 'label'] },
+      invites: { type: 'array', properties: ['id', 'note', 'status', 'expires', 'canRevoke'] },
+      people: { type: 'array', properties: ['id', 'label', 'state', 'canRemove', 'since'] },
+      newInvite: { type: 'string' },
+      operatorError: { type: 'string' },
+      operatorBusy: { type: 'boolean' },
+    },
+    actions: [
+      'openHost',
+      'leave',
+      'exportData',
+      'importData',
+      'setSignup',
+      'createInvite',
+      'revokeInvite',
+      'removePerson',
     ],
   },
   {
@@ -989,6 +1044,47 @@ export const storeEntries: StoreEntry[] = [
     ],
   },
   {
+    name: 'hostingStore',
+    state: {
+      hosts: {
+        type: 'array',
+        properties: ['id', 'name', 'details', 'address', 'runByCoasys', 'signup', 'charge', 'models', 'joinable'],
+      },
+      hostListState: { type: 'string' },
+      hostListError: { type: 'string' },
+      address: { type: 'string' },
+      addressProblem: { type: 'string' },
+      chosen: { type: 'object', properties: ['kind', 'host', 'url'] },
+      available: { type: 'boolean' },
+      loaded: { type: 'boolean' },
+      error: { type: 'string' },
+      canOffer: { type: 'boolean' },
+      notAllowed: { type: 'boolean' },
+      noOperator: { type: 'boolean' },
+      indexError: { type: 'string' },
+      listing: {
+        type: 'object',
+        properties: ['name', 'address', 'label', 'tone', 'line', 'models', 'rates', 'confirmed'],
+      },
+      isListed: { type: 'boolean' },
+      draft: { type: 'object', properties: ['name', 'description', 'location', 'url'] },
+      problem: { type: 'string' },
+      publishing: { type: 'boolean' },
+      withdrawing: { type: 'boolean' },
+    },
+    actions: [
+      'loadHosts',
+      'setAddress',
+      'choose',
+      'chooseAddress',
+      'clearChoice',
+      'setDraftField',
+      'refresh',
+      'publish',
+      'withdraw',
+    ],
+  },
+  {
     name: 'clockStore',
     state: { clocks: { type: 'object' } },
     actions: ['play', 'pause', 'toggle', 'seek', 'seekProgress', 'setSpeed', 'setLoop', 'configure'],
@@ -1055,6 +1151,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         'boolean — whether this build has developer features at all: a dev server, or a deploy of work in progress (a preview). The ceiling devTools sits under. Gate the way to the developer switch on this',
       devTools:
         'boolean — whether developer affordances should be VISIBLE. True in a development build unless a developer has thrown the Settings → Developer switch to see what a shipped app looks like. Reactive, so a control gated on it appears and disappears on the press. Gate any developer-only control on this — a schema-test page, a fixture toggle — and wrap it in $if rather than hiding it, since a hidden row is still in the accessibility tree and still found by find-in-page. Never true in a production build, whatever the switch says',
+      testPeople:
+        'boolean — whether the test people are offered: fake participants and fake cursors in a call, pretend people on a weighed canvas. OFF until a developer turns it on in Settings → Developer, and never on while devTools is off. Gate any control that puts people on screen who are not there on this, not on devTools',
       credentialEntered:
         "boolean — something has been typed into the host's password field. The password itself is never readable from a template — see CredentialField — so gate a Sign in button on this",
       credentialConfirmed:
@@ -1073,6 +1171,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '(): starts the whole boot again from the failure screen, by reloading. A failed boot can have got anywhere before it threw, so retrying in place would race the remains of the first attempt',
       finishSetup: "(): leaves 'finishing' for the running app — sets bootState to 'ready'",
       logout: '(): locks the agent and returns to the login screen',
+      setTestPeople:
+        '(on: boolean): turns the test people on or off for this device. Takes the value a we-switch emits, so pass `event.detail` bare. While devTools is off the device keeps the choice, but testPeople stays false until devTools is on again',
       setDevTools:
         '(on: boolean): shows or hides developer affordances for this session. Takes the value the control shows, so a we-switch can pass `event.detail` bare. Cannot turn developer UI on in a production build',
     },
@@ -1292,7 +1392,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       currentDataset: 'dataset handle | null (the dataset currently being viewed)',
       currentDatasetCid: 'string | undefined — the neighbourhood CID of the current dataset (prefix stripped)',
       currentDatasetEntities:
-        'EntityManifestEntry[] (non-WE SHACL models from the current dataset; injected as externalEntities into AI messages)',
+        'EntityManifestEntry[] (non-WE SHACL models from the current dataset, by name; injected as externalEntities into AI messages)',
       currentDatasetEntitiesLoaded:
         'boolean — currentDatasetEntities has been read for the dataset on screen. They arrive a few round trips after the switch, so until this is true an empty list means "not read yet" rather than "none"',
       isWeSpace:
@@ -1606,7 +1706,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       routeSpaceUnjoined:
         'boolean — the current route points at a space this agent has not joined, as a settled fact. What a join gate should read: `currentDataset` being null is also true for the first frames of a refresh, so gating on that flashes a join prompt at someone already inside. False while the answer is still unknown',
       spaceList:
-        "{ uuid, name, description, avatar, kind: 'shared' | 'personal' | 'foreign', isWeSpace, canAdminister }[] — one row per joined dataset the agent can act on, ordered like the sidebar and excluding the system datasets. Includes datasets that are not WE spaces (kind 'foreign', isWeSpace false), which are waiting to be initialized. `uuid` is the dataset id, so it keys navigation and settings whether or not a Space record exists. `sharing` is 'sharing' while a new shared space is still being shared (it is usable meanwhile), 'failed' when that did not work — `shareError` says why, and shareSpace tries again — and '' otherwise; a shared space has a `shareLink`",
+        "{ uuid, name, description, avatar, kind: 'shared' | 'personal' | 'foreign', isWeSpace, loading, canAdminister }[] — one row per joined dataset the agent can act on, ordered like the sidebar and excluding the system datasets. Includes datasets that are not WE spaces (kind 'foreign', isWeSpace false), which are waiting to be initialized. `loading` is true for the first seconds of a boot while a row's Space record has not been read yet — then `isWeSpace` is false without meaning the dataset is from another app, so show a placeholder rather than the initialize state. `uuid` is the dataset id, so it keys navigation and settings whether or not a Space record exists. `sharing` is 'sharing' while a new shared space is still being shared (it is usable meanwhile), 'failed' when that did not work — `shareError` says why, and shareSpace tries again — and '' otherwise; a shared space has a `shareLink`",
       creatingSpace: 'boolean (true while a new space is being created)',
       joiningSpace:
         "string — the shared id of the space a join is running for, '' when none is. The id rather than a flag so a list can spin only the row being joined; a gate compares it against its own route segment. Stays set for the whole join, which outlives the network call that starts it",
@@ -1848,6 +1948,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         "{ label, value, icon, hue, group, description, via }[] — the content a person can create here, each with the one-line `description` from its manifest (or the shape's), ready for a we-select: this space's own models first, then WE's built-in blocks. A built-in entity is here when it is a block there is a way to make — `authoring` fields (via 'form') or `composed` (via 'composer': a CollectionBlock, which is a note or a post, written in BlockComposer). Not blocks — spaces, templates, vocabulary entries, drawn Relationships — are never here. Filter by `via` for what a surface can host: a record form's type selector lists `recordStore.creatableEntities.filter(k, k.via == 'form')`; a canvas's 'add' chooser lists them all and opens the composer for 'composer'",
       kinds:
         "{ label, value, icon, hue, group }[] — every kind of record that can be shown here: what can be made, then every core block and the kinds read without being made (a drawn connection, the space's vocabulary). hue is the palette hue the kind is drawn in where the community has chosen no colour — WE's own kinds have one chosen for what they are, and any other takes one from its name, the same everywhere. For colouring cards by kind: the kit's kindColour reads the community's choice first",
+      plumbingClasses:
+        "string[] — WE's own structural classes by name (a Space, a setting, a placement, a community's vocabularies), which a list of a space's classes leaves out wherever their shape came from. What a template cannot name for itself: another app's classes are `datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses))`",
       displays:
         "Record<entity, RecordDisplay> — how to show an instance of each creatable model, every core block (a divider or a quote card included) and Relationship, keyed by entity name and derived from its declaration: { entity, label, icon, title, summary, media, mediaRelation, fields[] }, where title/summary/media name the properties playing those roles ('' when none does) and mediaRelation names a relation to an ImageBlock that pictures the record when no property does — look the image up by the ids it holds ({ entity: 'ImageBlock', where: { id: row[display.mediaRelation] } }) rather than drawing them and each field is { name, label, kind, role, options, vocabulary }. kind is one of text, longText, number, boolean, date, datetime, color, url, image, file, json, relation (with target, the model it points at); role is title, summary, media or detail. `options` is the values a field is allowed to hold where the model closes the set (a task's status), empty otherwise — count() it to tell a state worth drawing as a we-badge from free text, and map it into a we-select rather than offering a text box that accepts a word the model does not know. `vocabulary` names the community list a value is a slug of ('taskState' for a task's status, looked up in spaceStore.taskStates for its name and colour), empty otherwise. Index it by a row's type — { $: 'recordStore.displays[row.type]' } — and render the fields with $each; see \"A record of any type\" in the patterns",
       recordDraft:
@@ -1890,7 +1992,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       retargetOnCanvas:
         "(canvas: string, payload): moves one end of a connection onto a different record. Takes the graph's onEdgeRetarget payload as it arrives. Unlike anchorOnCanvas and rerouteOnCanvas this changes the CLAIM rather than how one canvas draws it — the relationship now says something different everywhere it is shown. That end's anchor is cleared; its waypoints stay",
       arrangeOnTree:
-        "(canvas: string, relationshipTypeId: string, payload): moves a card to another place in a tree. Takes the graph's onNodeArrange payload as it arrives, plus which kind of connection the tree follows — EMPTY meaning every kind, which mirrors what the layout does with the same answer and is the state a canvas starts in; a parent it has to create is then a connection with no kind, exactly as the canvas's own connect gesture writes one — the community's own vocabulary and the reader's chosen spine, neither of which the store can know. The counterpart of dragOnCanvas for a canvas read as a hierarchy: there a drag writes a coordinate, here it writes the structure the layout reads. A drop that makes a card a child writes the connection; one BESIDE a card reorders it there, writing ranks on the placements in the order the drop reports; one in the unconnected area takes it out of its tree. Undoable through undoCanvas, the connection and the ranks as one act. Three refusals, each with a toast: a card inside itself, a drop beside a tree's own root (which would detach it as a side effect — the unconnected area is where that is explicit), and taking out a connection people have commented on or reacted to, since that deletes the record and everything said about it — pass arrange-nodes the same rule as `keep` so the preview refuses first",
+        "(canvas: string, spine, payload): moves a card to another place in a tree. Takes the graph's onNodeArrange payload as it arrives, plus the tree's spine — pass treeSpine({ value: local.spine }), which reads the picker's spelling; a bare relationship kind id is taken too — for which kind of connection the tree follows — EMPTY meaning every kind, which mirrors what the layout does with the same answer and is the state a canvas starts in; a parent it has to create is then a connection with no kind, exactly as the canvas's own connect gesture writes one — the community's own vocabulary and the reader's chosen spine, neither of which the store can know. The counterpart of dragOnCanvas for a canvas read as a hierarchy: there a drag writes a coordinate, here it writes the structure the layout reads. A drop that makes a card a child writes the connection; one BESIDE a card reorders it there, writing ranks on the placements in the order the drop reports; one in the unconnected area takes it out of its tree. Undoable through undoCanvas, the connection and the ranks as one act. Three refusals, each with a toast: a card inside itself, a drop beside a tree's own root (which would detach it as a side effect — the unconnected area is where that is explicit), and taking out a connection people have commented on or reacted to, since that deletes the record and everything said about it — pass arrange-nodes the same rule as `keep` so the preview refuses first. A drop moves the link the card hangs by, which the payload's `edge` names: a card hanging by a relation the space's classes declare (an edge typed `relation`) has that model field rewritten — the child's to-one, or the parent's list — whatever the spine, and no connection is written. A card hanging by nothing follows the spine: one model relation writes that relation, all model relations the one joining the two classes; otherwise a connection. A parent the link cannot reach is refused with a toast, and so is clearing an installed model's to-one field, which AD4M cannot spell yet — an undo of a first attach on one says it could not be taken back",
       setCardStyle:
         "(canvas: string, node: string | string[], field: string, value): sets one presentation property of one card — or of a whole selection — on one canvas: 'color', 'cardShape', 'contentScale', 'rotation' (degrees clockwise) and 'z' (stacking order). Takes the field name so one action serves a swatch, a picker and a slider, and one id or a list so a selection is not a special case. 0 is unset for the numbers, so a card is un-rotated by writing 0. Undoable, each card keeping its own baseline — putting back a colour applied to nine cards restores nine different colours",
       previewCardStyle:
@@ -2153,6 +2255,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         "boolean — some panel covers the whole window. The app's own chrome — sidebar, module rail — hides while it is true; a template's fixed chrome should too",
       narrowWindow:
         'boolean — the window is narrower than the sm breakpoint (640px): a phone held upright. Chrome only, because chrome sits outside every surface and has no surface.tier to read; while it is true the sidebar is a bar across the top whose Menu button switches between it and the page, and meta.frame.narrow replaces the app frame. A template answers to its own surface with smUpProps instead',
+      chromeCovered:
+        'boolean — an element marked data-we-covers-window="window" is the cover in front: something (a phone’s thread) has the WHOLE window, the app’s own chrome with the page. Chrome only, like narrowWindow — the app’s compact bar is not drawn while it is true, and the app frame holds no bands, so the cover has the window it asked for',
       panelInstances:
         '{ id, panel, inputs, title? }[] — the instances open in the interface on screen: which declared panel each is of, and what it was opened with. To list them, or to tell a control whether its record already has one',
       panelFrames:
@@ -2269,6 +2373,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         "(lane: string): folds a home lane (a `$panels` outlet) away, or brings it back — what a sidebar's collapse button calls. Its sections stay mounted and hidden, so a feed keeps its place. Kept per agent and per template, and undone by resetTemplateLayout",
       setLaneCollapsed:
         '(lane: string, collapsed: boolean): folds a lane away or brings it back, as said rather than flipped',
+      focusInLane:
+        '(lane: string): moves focus into a lane just brought back — its selected row, else its first focusable control. What a full-window thread\u2019s Back calls beside setLaneCollapsed, so the keyboard is left somewhere that is on screen',
       toggleCustomiseLayout:
         "(): shows every section's grip at once, or goes back to showing a grip only where the pointer or the keyboard is — the way to see what on a page can be moved",
       resetTemplateLayout:
@@ -2446,6 +2552,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       deviceNoun:
         "'phone' | 'computer' — what this device is, for the sentences about it: 'This ' + deviceStore.deviceNoun + ' does not keep your master key'",
       validCount: 'number — how many device keys are valid (neither revoked nor ended); bot keys are not counted',
+      canAddCloudDevice:
+        'boolean — a cloud device can be added: canManage, and the backend can sign in to a host. Gate the Add a cloud device card on this',
       canManage:
         'boolean — Link a device (scanDevice, addDevice), Rename, Remove and answering requests can be offered: this computer keeps the master key of the identity',
       canShowCode: 'boolean — "Show code" can be offered: this computer can join an identity and speaks for none yet',
@@ -2469,6 +2577,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       refresh: '(): reads the device list again',
       addDevice:
         '(): adds a server by an offer link — the backend asks the person wherever it keeps the master key (on the desktop: the offer link and QR code, then the match code, then the confirmation that signs it). Resolves with the outcome; the list is read again',
+      addCloudDevice:
+        '(address?): adds a cloud device: Coasys cloud, or the host at `address` when one is typed. The backend asks for an invite code where the host wants one, checks the email, shows the match code, and signs the new device into the key log. Resolves with the outcome; the list is read again',
       scanDevice:
         '(): "Enter code" — adds a device by the code it shows: the person pastes it, both show a match code, and the confirmation names the device and may let it keep the master key',
       showCode:
@@ -2487,6 +2597,87 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '(): "Restore with recovery phrase" — on a computer of no identity, asks for the words, lists the identity\'s devices to lock out, and makes this computer a device of it that keeps the new master key. Resolves with the outcome',
       removeMaster:
         "(): stops keeping the master key on this computer, once the person confirms it; refused, with the reason, when this computer keeps the only copy. Resolves 'done' only when it was removed",
+    },
+  },
+  hostingStore: {
+    state: {
+      hosts:
+        '{ id, name, details, address, runByCoasys, signup, charge, models, joinable }[] — the hosts the hosting index lists, Coasys cloud first, then by name, each worded for a row. Empty until loadHosts has answered. `joinable` is false for a full host or one taking no new people',
+      hostListState:
+        "string — 'idle' (not read yet), 'loading', 'ready', 'down' (the index did not answer) or 'unconfigured' (the deployment names no platform API)",
+      hostListError: 'string — the sentence to show when the index did not answer, or empty',
+      address: 'string — the address typed under "Add by its address"',
+      addressProblem: 'string — why the typed address cannot be used, or empty (also empty before anything is typed)',
+      chosen:
+        "{ kind: 'listed', host } | { kind: 'address', url } | null — the host the person chose; \"Add a cloud device\" takes it from here",
+      available: 'boolean — this backend can list its device on the index. Gate Earn with it on it',
+      loaded: 'boolean — the listing has been read once',
+      error: 'string — why the last read or change failed, or empty',
+      canOffer: 'boolean — the device has an operator and the index admits it: listing can be offered',
+      notAllowed: 'boolean — the index does not admit this operator',
+      noOperator: 'boolean — the device has no operator identity to list for',
+      indexError: 'string — the index did not answer; what shows is what the device remembers. Empty when it answered',
+      listing:
+        "{ name, address, label, tone, line, models, rates, confirmed } | null — this device's listing, worded. `label` and `tone` go in a badge; `line` says what the index says now, with the reason when it removed the listing; `confirmed` is false when it is only what the device remembers",
+      isListed: 'boolean — the listing is up (listed, or cannot be reached for now): Withdraw can be offered',
+      draft: '{ name, description, location, url } — the listing text being edited',
+      problem: 'string — what is missing or too long in the draft, or empty when it can be listed',
+      publishing: 'boolean — List is under way',
+      withdrawing: 'boolean — Withdraw is under way',
+    },
+    actions: {
+      loadHosts:
+        '(): reads the host list from the platform API. Call it from a button: it reaches the network, so nothing may run it on mount',
+      setAddress: '(value: string): sets the address typed under "Add by its address"',
+      choose:
+        '(id: string): chooses a listed host by its id and, where deviceStore.canAddCloudDevice, starts "Add a cloud device" with it (Coasys cloud for the host Coasys runs, else its address)',
+      chooseAddress:
+        '(): chooses the address typed, when it is a usable https address, and starts "Add a cloud device" with it as choose does. This is the one place an address is typed',
+      clearChoice: '(): forgets the chosen host',
+      setDraftField: "(field: 'name' | 'description' | 'location' | 'url', value: string): edits the listing text",
+      refresh: '(): reads the listing again',
+      publish:
+        '(): points the device at the index if it is not yet, then lists it with the draft. Resolves true when listed',
+      withdraw: '(): takes the listing off the index at once. Resolves true when withdrawn',
+    },
+  },
+  hostStore: {
+    state: {
+      canViewHost:
+        'boolean — the person can look at their own place on a host from here: this computer signs in to one as them. Gate the Cloud usage card on this',
+      isCoasysCloud: 'boolean — the host being looked at is Coasys cloud: show its welcome text',
+      usage:
+        "{ host, spend, storage, aiRuns, spaces, privateSpaces } | null — what the person uses on the host, worded: `spend` is 'Free during the closed beta' while the host takes no payment; `spaces` is { name, shared }[]. Null until read, and after leaving",
+      held: 'boolean — the host holds this person: only reading, exporting, usage and leaving work, and every other call is refused. Show that, and offer Export and Leave only',
+      error: 'string — why the last call to the host failed, or empty',
+      notice: 'string — what the last export, import or leave did, or empty',
+      busy: 'boolean — a call to the host is running',
+      canOperate: 'boolean — this computer runs a host that takes people: Sign-ups and People can be offered',
+      policy: '{ signup, maxTenants, display, choiceNeeded } | null — the host this computer runs: who may join',
+      choiceNeeded: 'boolean — the person who runs this host has never chosen who may join: show choiceNeededText',
+      choiceNeededText: 'string — the sentence to show while choiceNeeded',
+      signupOptions: '{ value, label }[] — the three answers to who may join, in order; `value` goes to setSignup',
+      invites:
+        "{ id, note, status, expires, canRevoke }[] — the invites sent, `status` 'Open', 'Used', 'Revoked' or 'Expired'",
+      people:
+        "{ id, label, state, canRemove, since }[] — the people on this host; `state` 'Joining', 'Active', 'On hold', 'Left', 'Deleted'; `canRemove` for one who left and kept their data here",
+      newInvite: 'string — the code of the invite just made, shown once; empty before',
+      operatorError: 'string — why the last Sign-ups or People call failed, or empty',
+      operatorBusy: 'boolean — a Sign-ups or People call is running',
+    },
+    actions: {
+      openHost:
+        "(address?): looks at the host at `address`, or at Coasys cloud when it is empty, and reads the usage. The session is opened on the first call, signed with the person's identity",
+      leave:
+        '(keepData: boolean, exportFirst: boolean): leaves the host. exportFirst saves everything to a file and leaves only once it is saved; keepData false destroys the data on the host at once and cannot be undone. Resolves true once left',
+      exportData:
+        '(): saves everything the host keeps for the person to a gzip file they choose. Resolves true once saved',
+      importData:
+        '(): asks for a file made by exportData and loads it into new private spaces. Resolves true once loaded',
+      setSignup: "(signup: 'anyone' | 'by_invite' | 'no_one'): sets who may join this host",
+      createInvite: '(note: string): makes an invite that lasts a week; its code is in newInvite',
+      revokeInvite: '(id: string): cancels an open invite',
+      removePerson: '(id: string): removes a person who left and kept their data here, and that data',
     },
   },
   botStore: {
@@ -2542,16 +2733,18 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         "{ requirements, enforcement, sealedEvidence, contention } | null — what this backend can do with workflows. `requirements` lists the kinds of rule it enforces ('approvals', 'evidence'); `enforcement` is 'server' (one authority applies every rule) or 'peers' (every member's software applies them, so a member running other software can write past one — say so beside a rule); `contention` is 'stall' when two moves out of one step both agreed leave a record stuck until somebody withdraws, or 'first' when the earlier wins",
       canEdit: 'boolean — the viewer may save, delete and archive workflows here: whoever administers the space',
       workflows:
-        "{ name, label, editable, records, managedBy, archived, steps, moves }[] — every workflow in the space, archived ones included. `editable` is false for one written by something that uses more than this editor shows, and for the task-state workflow; `managedBy` is 'task-states' for the workflow the board's task states write, which is edited in the space's settings and moved on the board, never here; `records` is how many records are going through it; `steps` ({ name, label, final }[]) and `moves` ({ from, to }[]) are its definition once read — what a map of the space's workflows draws",
+        "{ name, label, editable, records, running, managedBy, archived, steps, moves }[] — every workflow in the space, archived ones included. `running` is how many of its records are not at a final step, live from the watched records (0 for an archived or the task-state workflow). `editable` is false for one written by something that uses more than this editor shows, and for the task-state workflow; `managedBy` is 'task-states' for the workflow the board's task states write, which is edited in the space's settings and moved on the board, never here; `records` is how many records are going through it; `steps` ({ name, label, final }[]) and `moves` ({ from, to }[]) are its definition once read — what a map of the space's workflows draws",
       workflowsLoaded:
         'boolean — the backend has answered with this space\'s workflows. An empty `workflows` before then is not yet an answer: gate a "no workflows" sentence on it and draw the list as loading until it is true',
       startable:
         '{ name, label, entities }[] — workflows a record can be put through: not archived, not written by something else. `entities` are the entity names a workflow is for, empty for any record — filter with `card.__subjectClass in workflow.entities || !count(workflow.entities)`',
-      open: "{ name, label, hint, entities, rule, fits, editable, managedBy, archived, lanes, exceptions, steps, records, history } | null — the workflow opened with openWorkflow. `lanes` is the workflow as a main line and branches: each { index, main, leaves, leavesLabel, rejoins, rejoinsLabel, ends, steps }, every step { name, label, final, approvals, approverKind, approverLabel, evidence, requires, hint }, `requires` being each thing entering it takes as a short phrase. `rule` is 'next', 'next-and-back' or 'any'; `exceptions` the moves nothing else covers, { from, to, fromLabel, toLabel, name }. `records` are what is going through it, newest first: { record, title, startedAt, state, stateLabel, stalled, waiting, walk, next }, `startedAt` an ISO date for a we-timestamp (empty when unknown), `walk` its path as { name, label, at } with `at` 'done', 'current' or 'ahead' — a stepper — and `next` where it may be asked to go, `waiting` each move asked for { to, toLabel, approvers, needs, note, mine }. `recordsLoaded` says the records have been read — gate anything offered only for a workflow with none on it. `history[record]` is filled by loadHistory: { from, to, fromLabel, toLabel, approvers, at, when, evidence, note }[], `when` being `at` as an ISO date",
+      open: "{ name, label, hint, entities, rule, fits, editable, managedBy, archived, lanes, exceptions, steps, records, history } | null — the workflow opened with openWorkflow. `lanes` is the workflow as a main line and branches: each { index, main, leaves, leavesLabel, rejoins, rejoinsLabel, ends, steps }, every step { name, label, final, approvals, approverKind, approverLabel, evidence, requires, hint }, `requires` being each thing entering it takes as a short phrase. `rule` is 'next', 'next-and-back' or 'any'; `exceptions` the moves nothing else covers, { from, to, fromLabel, toLabel, name }. `records` are what is going through it, newest first: { id, record, title, kind, startedAt, state, stateLabel, stalled, waiting, walk, next }, `title` what the record is called (its name, else its kind and a short id, never empty), `kind` what kind of record it is ('Task', empty until read), `startedAt` an ISO date for a we-timestamp (empty when unknown), `walk` its path as { name, label, at } with `at` 'done', 'current' or 'ahead' — a stepper — and `next` where it may be asked to go, `waiting` each move asked for { to, toLabel, approvers, needs, note, mine }. `recordsLoaded` says the records have been read — gate anything offered only for a workflow with none on it. `history[record]` is filled by loadHistory: { from, to, fromLabel, toLabel, approvers, at, when, evidence, note }[], `when` being `at` as an ISO date",
       draft:
         '{ …the shape of open’s lanes, label, isNew, dirty, problems } | null — the workflow being written, after newWorkflow or editWorkflow. `problems` are sentences saying what saving would be refused for; saveDraft refuses while there are any, so show them beside the button',
       recordWorkflows:
         'Record<recordId, { workflow, label, state, stateLabel, waiting, stalled, next, asks }[]> — by record, every startable workflow it is going through and where it stands: what a chip on a card shows. `next` ({ name, label }[]) is where it may be asked to go, for moveRecord; `asks` ({ to, toLabel, approvers, needs, note, mine }[]) the moves waiting on agreement — offer withdrawRecord where `mine`, moveRecord to the same `to` to agree. Read as `workflowStore.recordWorkflows[card.id]`, which is undefined for a record in none',
+      active:
+        "{ id, workflow, label, record, title, kind, state, stateLabel, lastActivity, waiting, stalled }[] — what is going on: every record still going through a startable workflow (not at a final step), across all of them, the one with the latest activity first. A record in two workflows is two rows. `title` is what the record is called (its name, else its kind and a short id, never empty), `kind` what kind of record it is ('Task', empty until read), `lastActivity` an ISO date for a we-timestamp — when it started, or a move was last asked for or made — `waiting` how many moves are asked for and not made. `count(workflowStore.active)` is how many are running; take the first few with `slice` for a short list. Live, for this member's moves and anybody else's",
     },
     actions: {
       refreshWorkflows: '(): asks the backend for the workflow list again — after something another member did',

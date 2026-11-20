@@ -19,7 +19,7 @@
 import { isAppPanel } from '@shared/panelScope';
 import { resolveParts } from '@shared/registries/moduleParts';
 import { panelInstances } from '@shared/registries/panelInstances';
-import { templateBag } from '@shared/registries/templateBag';
+import { templateBag, templateSurface } from '@shared/registries/templateBag';
 import { onTemplatePanelsChanged, templatePanels } from '@shared/registries/templatePanels';
 import { chromeComponentRegistry, componentRegistry } from '@solid/registries/componentRegistry';
 import { EDIT_SURFACE_ATTR } from '@we/schema-shared';
@@ -94,8 +94,12 @@ export function TemplatePanelBody(props: { panelId?: string; moduleId?: string; 
     const bag = templateBag();
     if (!declared || !bag) return null;
     // Read here, so an instance opened again with new inputs draws them — the renderer takes its
-    // context once.
-    const context = { panel: { id: props.instance ?? props.panelId ?? '', inputs: instance()?.inputs ?? {} } };
+    // context once. `surface` is lent the way the bag is: this body draws under `PanelHost`, out of
+    // reach of the layout's `RouteSurface` — see `templateBag.ts`.
+    const context = {
+      panel: { id: props.instance ?? props.panelId ?? '', inputs: instance()?.inputs ?? {} },
+      ...(templateSurface() ? { surface: templateSurface() } : {}),
+    };
     return RenderSchema({ node: declared, stores: bag, registry: registryFor(), context });
   });
 

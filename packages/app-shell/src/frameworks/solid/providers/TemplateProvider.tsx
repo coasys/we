@@ -1,3 +1,4 @@
+import { agentDataKernel, documentAccess } from '@shared/agentData';
 import { boardOptimism } from '@shared/boardOptimism';
 import { datasetAddressedBy } from '@shared/datasetIdentity';
 import { collectionFacts } from '@shared/destructiveFacts';
@@ -55,6 +56,8 @@ import {
   useDatasetStore,
   useDeviceStore,
   useEditorStore,
+  useHostingStore,
+  useHostStore,
   useIdentityStore,
   useInterpretationStore,
   usePresenceStore,
@@ -72,14 +75,12 @@ import {
 } from '@solid/stores';
 import type { Stores } from '@solid/types';
 import { Route, Router } from '@solidjs/router';
-import { datasetKey, formatRef, manifestEntries, type RecordInstance } from '@we/backend-shared';
-import { type ContentInput, copyableContent, createBlocks, deleteBlocks, reconcileBlocks } from '@we/block-shared';
+import { manifestEntries, type RecordInstance } from '@we/backend-shared';
 import { BlockDisplayOverrides, BlockHostProvider, colorFor } from '@we/block-solid';
 import { toastService } from '@we/components/solid';
 import type { DatasetProxy } from '@we/entities';
-import { CollectionBlock, getEntity, Space } from '@we/entities';
+import { getEntity, Space } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
-import type { DocumentAccess } from '@we/module-shared';
 import { holdTopLayer, installTopLayerGuard } from '@we/primitives/top-layer';
 import type { TemplateSchema } from '@we/schema-shared';
 import {
@@ -132,7 +133,9 @@ export default function TemplateProvider() {
   const workflowStore = useWorkflowStore();
   const identityStore = useIdentityStore();
   const deviceStore = useDeviceStore();
+  const hostStore = useHostStore();
   const botStore = useBotStore();
+  const hostingStore = useHostingStore();
 
   // Set CSS custom properties on :root so position:fixed elements (e.g. CesiumGlobe canvas)
   // can consume the shell's own furniture without hard-coding it.
@@ -146,8 +149,12 @@ export default function TemplateProvider() {
   // publishes no rail width, so nothing keeps clear of a rail that is not there.
   // The bands the app's chrome holds, as it declares them — what panels dock against.
   // At phone width an app may hold different bands — its sidebar a bar across the top — so the frame
-  // follows the window across the `sm` breakpoint as well as the app template.
-  createEffect(() => declareAppFrame(templateStore.appTemplate().meta?.frame, shellStore.narrowWindow()));
+  // follows the window across the `sm` breakpoint as well as the app template. And while a cover
+  // asks for the whole window — a phone's thread — it holds none at all, so the surface the cover
+  // stands in reaches every edge and the cover has it (see `windowCover.ts`).
+  createEffect(() =>
+    declareAppFrame(templateStore.appTemplate().meta?.frame, shellStore.narrowWindow(), shellStore.chromeCovered()),
+  );
   // And how its edges frame the panels pushing the content aside there (`meta.edges`).
   createEffect(() => declareAppEdges(templateStore.appTemplate().meta?.edges));
 
@@ -169,17 +176,6 @@ export default function TemplateProvider() {
     error: (...args: unknown[]) => console.error(...args),
     info: (...args: unknown[]) => console.info(...args),
   };
-
-  /**
-   * Where a module's agent-scoped records live, named once.
-   *
-   * A literal in three call sites would be three chances to write a space's path by mistake, and the
-   * consequence of getting it wrong is one person's private collection synced to a community.
-   *
-   * The personal space rather than the root: what a module keeps for somebody is theirs, and the
-   * root is the app's configuration. See `systemDatasets.ts`.
-   */
-  const PERSONAL_DATASET = 'datasetStore.personalDataset';
 
   // Record mutations — one instance of an entity, written through the entity's registered class
   // with the dataset injected. Pass `{ dataset: 'store.path' }` in options to target a
@@ -285,47 +281,6 @@ export default function TemplateProvider() {
     return created;
   }
 
-  /**
-   * Composed documents in one dataset — what the records kernel and the agent-data kernel lend as
-   * `documents`, each pinned to its own dataset.
-   *
-   * The same writes the composer's own save makes (`SpaceStore.createPost` / `updatePost`), against
-   * whichever dataset the accessor names, which is the one thing those two cannot do: they are
-   * pinned to the space on screen, and a note lives in the personal space.
-   */
-  function documentAccess(
-    target: () => { id: string; sharedUri?: string | null; handle: DatasetProxy } | null,
-  ): DocumentAccess {
-    const collection = async (handle: DatasetProxy, id: string) => CollectionBlock.findOne(handle, { where: { id } });
-    return {
-      create: async (document, options) => {
-        const ds = target();
-        if (!ds) return null;
-        const root = await createBlocks(ds.handle, document as ContentInput, { kind: options?.kind ?? 'post' });
-        if (!root?.id) return null;
-        const key = datasetKey({ cid: ds.sharedUri, uuid: ds.id });
-        return { id: root.id, ref: formatRef({ datasetKey: key, entity: 'CollectionBlock', id: root.id }) };
-      },
-      update: async (id, document) => {
-        const ds = target();
-        const existing = ds && (await collection(ds.handle, id));
-        if (!ds || !existing) return;
-        await reconcileBlocks(ds.handle, existing, document as ContentInput);
-      },
-      remove: async (id) => {
-        const ds = target();
-        if (ds) await deleteBlocks(ds.handle, id);
-      },
-      read: async (id) => {
-        const ds = target();
-        const existing = ds && (await collection(ds.handle, id));
-        // Payloads rather than addresses, and no keys: a fresh composition, ready to be written into a
-        // dataset whose file storage and records have never seen it. See `copyableContent`.
-        return ds && existing ? copyableContent(ds.handle, existing.editorState) : null;
-      },
-    };
-  }
-
   /** The same, for `record.update` — `recordActions` resolves a store *path*, and a module has a handle. */
   function updateInDataset(entity: string, id: string, fields: Record<string, unknown>, perspective: DatasetProxy) {
     return recordModel(entity).update(perspective, id, fields);
@@ -379,40 +334,17 @@ export default function TemplateProvider() {
         This agent's own records, in their personal space — the write half of
         `entities: { scope: 'agent' }`.
 
-        Everything goes through `recordActions` with the personal dataset named, so there is one
-        place that knows how a dataset path is resolved and an agent-scoped module cannot reach a
-        space by accident: the path is fixed here rather than passed in.
+        Every write names the personal space's handle, never a store path, so an agent-scoped module
+        cannot reach a space by accident. See `agentDataKernel`.
       */
-      agentData: {
-        ready: () => !!datasetStore.personalDataset(),
-        refKey: () => {
-          const personal = datasetStore.personalDataset();
-          return personal ? datasetKey({ uuid: personal.id }) : '';
-        },
-        create: async (entity, fields, options) => {
-          if (!datasetStore.personalDataset()) return null;
-          const created = (await recordActions.create(entity, fields, {
-            ...options,
-            dataset: PERSONAL_DATASET,
-          })) as { id?: string } | undefined;
-          return created?.id ?? null;
-        },
-        find: async (entity, query) => {
-          if (!datasetStore.personalDataset()) return [];
-          const [Model, p] = resolve(entity, { dataset: PERSONAL_DATASET });
-          const rows = (await Model.findAll(p, query)) as unknown as Record<string, unknown>[];
-          return rows ?? [];
-        },
-        update: async (entity, id, fields) => {
-          if (!datasetStore.personalDataset()) return;
-          await recordActions.update(entity, id, fields, { dataset: PERSONAL_DATASET });
-        },
-        remove: async (entity, id) => {
-          if (!datasetStore.personalDataset()) return;
-          await recordActions.delete(entity, id, { dataset: PERSONAL_DATASET });
-        },
-        documents: documentAccess(() => datasetStore.personalDataset()),
-      },
+      agentData: agentDataKernel(datasetStore, {
+        create: (handle, entity, fields, options) =>
+          createInDataset(entity, fields, handle, options) as Promise<{ id?: string } | undefined>,
+        find: async (handle, entity, query) =>
+          (await recordModel(entity).findAll(handle, query)) as unknown as Record<string, unknown>[],
+        update: (handle, entity, id, fields) => updateInDataset(entity, id, fields, handle),
+        remove: (handle, entity, id) => recordModel(entity).delete(handle, id),
+      }),
 
       // Add-one on a to-many relation. An instance bound to an existing base expression is enough —
       // `addRelationValue` writes a single link and never reads the current set, which is what makes
@@ -514,7 +446,9 @@ export default function TemplateProvider() {
     workflowStore,
     identityStore,
     deviceStore,
+    hostStore,
     botStore,
+    hostingStore,
     // Always present, even with no modules registered: a read of `modules.x` resolves through the
     // single-segment path, which indexes the store object without a guard and would throw on a
     // missing `modules` key rather than returning undefined.
@@ -1080,7 +1014,7 @@ export default function TemplateProvider() {
     the app is inert behind it and Tab stays inside it. See `windowCover.ts`.
   */
   onMount(() => {
-    if (appLayer) onCleanup(installWindowCover(appLayer));
+    if (appLayer) onCleanup(installWindowCover(appLayer, shellStore.narrowWindow));
   });
   createEffect(() => {
     if (!asking() || !promptLayer) return;

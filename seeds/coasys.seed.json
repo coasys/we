@@ -12,6 +12,7 @@
     "icon": "packages/templates/cartridges/src/coasys/assets/icon.svg"
   },
   "bundles": ["coasys"],
+  "platformApiUrl": "https://api.coasys.app",
   "contentSecurity": {
     "images": ["https://coasys.org"],
     "media": ["https://coasys.org"]

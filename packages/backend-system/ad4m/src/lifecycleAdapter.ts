@@ -331,7 +331,7 @@ export function createAd4mDatasetLifecycle(
   }
 
   /**
-   * The link language templates `publish` can actually instantiate, peer-to-peer ones first.
+   * The link language templates `publish` can actually instantiate, server ones first.
    *
    * A template declaring a parameter `publish` cannot fill is left out rather than offered: it
    * would be published with that parameter still a placeholder and never sync. That is what hides
@@ -339,8 +339,9 @@ export function createAd4mDatasetLifecycle(
    * server template lists the servers it can be published with (see `serversFor`).
    *
    * The first entry is the default, and the node's own order says nothing: AD4M sorts known
-   * templates by address, which is a hash. So templates syncing through a server go last. Sending a
-   * community's links to a server should be something somebody chose, not what a hash decided.
+   * templates by address, which is a hash. So templates syncing through a server go first: a server
+   * link language syncs a new space as soon as it is shared, with no peer online. Peer-to-peer stays
+   * one choice away in the picker.
    */
   async function publishableTemplates(): Promise<SharingOption[]> {
     await registerDevServerTemplate();
@@ -352,7 +353,7 @@ export function createAd4mDatasetLifecycle(
           : { id: address, name, kind: 'peer-to-peer' as const };
       })
       .filter((t) => t !== null)
-      .sort((a, b) => Number(a.kind === 'server') - Number(b.kind === 'server'));
+      .sort((a, b) => Number(b.kind === 'server') - Number(a.kind === 'server'));
   }
 
   return {

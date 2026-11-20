@@ -321,6 +321,7 @@ export type {
 export type { ShapeInput, ShapeStore, StoredShape } from './shapes';
 export type { PersonPort } from './persons';
 export type {
+  CloudHost,
   CustodyDeviceView,
   DeviceKeyView,
   DeviceNameView,
@@ -338,6 +339,33 @@ export type {
   KeyLogStoreBehind,
   KeyLogView,
 } from './identity';
+export type {
+  DelistReason,
+  HostingIndexConfig,
+  HostingPort,
+  HostingStatusView,
+  ListedModel,
+  ListedRate,
+  ListingState,
+  ListingText,
+  OwnListingView,
+} from './hosting';
+export { isNotAdmitted } from './host';
+export type {
+  HostImportView,
+  HostInfoView,
+  HostInviteCreated,
+  HostInviteView,
+  HostLeaveView,
+  HostPolicyPatch,
+  HostPolicyView,
+  HostPort,
+  HostSignup,
+  HostTenantView,
+  OperatorHostPort,
+  TenantHostPort,
+  TenantUsageView,
+} from './host';
 export type { TranscriptionRecord, TranscriptionPort, TranscriptionSetup, TranscriptionStream } from './transcription';
 export type {
   InterpretationPort,

@@ -38,6 +38,14 @@ export type Screen =
   | { screen: 'enter-email-code'; email: string; error: string | null }
   /** The identity store keeps a vouch note for `did` now. */
   | { screen: 'email-checked'; did: string }
+  /** Adding a host as a device: it asks for an invite, and why the last one did not work. */
+  | { screen: 'cloud-invite'; host: string; error: string | null }
+  /** Nothing to ask: the window sends `wait-claim`, and the host is asked to claim the offer. */
+  | { screen: 'cloud-joining'; host: string }
+  /** The host claimed the offer; the code shows on both sides, and the person confirms. */
+  | { screen: 'cloud-match'; code: string; host: string }
+  /** The key log lists the host. `active`: it serves the person now. */
+  | { screen: 'cloud-added'; host: string; active: boolean }
   | { screen: 'offer'; link: string; qrSvg: string; expires: number }
   | { screen: 'match'; code: string; hint: string | null; canKeep: boolean; browser?: boolean; ownName: boolean }
   | { screen: 'linked'; seq: number; masterSent: boolean; note: string | null }
@@ -202,6 +210,8 @@ export type StepInput =
   | { kind: 'new-code' }
   /** On `enter-email-code`: go back and type another address. */
   | { kind: 'change-email' }
+  /** On `cloud-invite`: the invite link, or its code alone. */
+  | { kind: 'invite'; code: string }
   | { kind: 'confirm'; name?: string; keepMaster?: boolean; thisName?: string }
   | { kind: 'code'; code: string }
   /** The offer link or `coasys:offer:1:` string `enter-offer` was given. Not a custody step: only
@@ -351,6 +361,28 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
       return {
         title: 'Your email is checked',
         lead: 'The identity store now records that a person made this identity.',
+      };
+    case 'cloud-invite':
+      return {
+        title: `${screen.host} asks for an invite`,
+        lead: 'Paste the invite link, or its code, that the host gave you.',
+      };
+    case 'cloud-joining':
+      return {
+        title: `Join ${screen.host}`,
+        lead: 'The host sets up your space on its computer. This takes a moment.',
+      };
+    case 'cloud-match':
+      return {
+        title: `Add ${screen.host}?`,
+        lead: 'Check that the code matches the one the host shows. Your master key stays on your own devices.',
+      };
+    case 'cloud-added':
+      return {
+        title: `${screen.host} added`,
+        lead: screen.active
+          ? 'The host serves you now.'
+          : 'The host is still setting up. It shows in Settings > Devices when it is ready.',
       };
     case 'offer':
       return {
@@ -627,6 +659,7 @@ export function isLast(screen: Screen): boolean {
   return [
     'identity-ready',
     'email-checked',
+    'cloud-added',
     'linked',
     'revoked',
     'joined',

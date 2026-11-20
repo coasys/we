@@ -12,6 +12,8 @@ import type { AgentPort } from './agents';
 import type { CallPort } from './call';
 import type { DatasetHandle, RendererDataBindings } from './dataSource';
 import type { EphemeralPort } from './ephemeral';
+import type { HostPort } from './host';
+import type { HostingPort } from './hosting';
 import type { IdentityPort } from './identity';
 import type { InterpretationPort } from './interpretation';
 import type { LanguageModelPort } from './languageModel';
@@ -79,8 +81,21 @@ export interface SchemaPort {
   /**
    * Discover schemas foreign to the host (another app's entities synced into the dataset),
    * registering them for name-based query resolution and returning their manifest entries.
+   *
+   * Registering is the switch's to do: it replaces what the dataset's names resolve to, which on
+   * this backend means the whole synthesised-class registry — adopted shapes' compiled classes
+   * included. A caller that only needs the answer uses {@link foreignEntries}.
    */
   foreignSchemas(dataset: DatasetHandle): Promise<EntityManifestEntry[]>;
+  /**
+   * The read half of `foreignSchemas`: the same manifest entries, with nothing registered.
+   *
+   * An ask is not an adoption. Candidacy questions — what could a call in this space extract —
+   * answer from the entries alone, and one asked about a dataset somebody is merely *named in* (a
+   * watch for a call in another space, an export's settings) must not reach inside the dataset's
+   * registry as the price of asking.
+   */
+  foreignEntries(dataset: DatasetHandle): Promise<EntityManifestEntry[]>;
   /**
    * Compile a declared manifest into this backend's installable schema payloads, registered for
    * name-based query resolution. Keys are entity names. `resolveExternal` resolves relation
@@ -275,6 +290,16 @@ export interface BackendPorts {
    * {@link IdentityPort}.
    */
   identity?: IdentityPort;
+  /**
+   * This device's listing in the hosting index, for its operator. Optional: a backend that has no
+   * index to list in (the in-memory one) omits it, and Settings offers no listing.
+   */
+  hosting?: HostingPort;
+  /**
+   * This computer's executor as a host, and the hosts the person is a tenant of. Optional: absent, the
+   * operator and tenant views are not offered; see {@link HostPort}.
+   */
+  hosts?: HostPort;
   /**
    * Who a signing key speaks for. Optional: absent, every key is its own person — see
    * {@link PersonPort} and `SELF_PERSONS`.

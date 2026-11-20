@@ -13,8 +13,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   followStorage,
-  isFirstStart,
-  keyringFile,
   MIGRATION_FAILED_PASSPHRASE,
   passphraseStep,
   secretFromLine,
@@ -38,7 +36,14 @@ const SECRET_B = 'b2'.repeat(32);
  * secret its keyring was made with (the first secret makes it); `unlockingFor` status reads answer
  * `unlocking` after the unlock before `open`. Records every call.
  */
-function fakeExecutor({ keyringSecret = null, open = false, unlockingFor = 0, lastError = null, refuse = null } = {}) {
+function fakeExecutor({
+  keyringSecret = null,
+  open = false,
+  unlockingFor = 0,
+  lastError = null,
+  refuse = null,
+  keyringExists = true,
+} = {}) {
   const gate = { keyringSecret, open, unlockingFor, lastError };
   const calls = [];
   // A status read counts down the reads that answer `unlocking`; the unlock's own answer does not.
@@ -47,6 +52,7 @@ function fakeExecutor({ keyringSecret = null, open = false, unlockingFor = 0, la
     encryptedAtRest: false,
     stores: gate.open ? { database: 'encrypted', languageStorage: 'encrypted', links: 'plain' } : null,
     keyringId: KEYRING_ID,
+    keyringExists,
     secretSource: gate.open ? 'operator' : null,
     secretOnDataDisk: false,
     rootGeneration: gate.keyringSecret ? 1 : 0,
@@ -131,7 +137,6 @@ describe('unlockStorage', () => {
     const opened = await unlockStorage({
       call: executor.call,
       keystore,
-      firstStart: false,
       askPassphrase: () => {
         throw new Error('no passphrase is asked where the keyring keeps the secret');
       },
@@ -160,11 +165,10 @@ describe('unlockStorage', () => {
 
   it('makes the secret on the first start only, and reads the same one on every start after', async () => {
     const keystore = fakeKeystore();
-    const first = fakeExecutor();
+    const first = fakeExecutor({ keyringExists: false });
     await unlockStorage({
       call: first.call,
       keystore,
-      firstStart: true,
       askPassphrase: null,
       log: () => {},
       ...noWait,
@@ -179,7 +183,6 @@ describe('unlockStorage', () => {
     const opened = await unlockStorage({
       call: second.call,
       keystore,
-      firstStart: false,
       askPassphrase: null,
       log: () => {},
       ...noWait,
@@ -191,14 +194,14 @@ describe('unlockStorage', () => {
 
   it('asks nothing of an executor that is already open, and needs no keyring for it', async () => {
     const executor = fakeExecutor({ keyringSecret: SECRET_A, open: true });
-    const opened = await unlockStorage({ call: executor.call, keystore: null, firstStart: false, ...noWait });
+    const opened = await unlockStorage({ call: executor.call, keystore: null, ...noWait });
     expect(opened.how).toBe('already');
     expect(executor.calls.map((c) => c.method)).toEqual(['runtime.storageStatus']);
   });
 
   it('fails a sealed start in words where there is no custody helper', async () => {
     const executor = fakeExecutor({ keyringSecret: SECRET_A });
-    await expect(unlockStorage({ call: executor.call, keystore: null, firstStart: false, ...noWait })).rejects.toThrow(
+    await expect(unlockStorage({ call: executor.call, keystore: null, ...noWait })).rejects.toThrow(
       storageFailure('no-helper'),
     );
     expect(executor.calls.map((c) => c.method)).toEqual(['runtime.storageStatus']);
@@ -212,7 +215,6 @@ describe('unlockStorage', () => {
     const failed = unlockStorage({
       call: executor.call,
       keystore,
-      firstStart: false,
       askPassphrase: null,
       log,
       ...noWait,
@@ -236,9 +238,9 @@ describe('unlockStorage', () => {
     const executor = fakeExecutor({ refuse: code });
     const keystore = fakeKeystore({ secret: SECRET_A });
     const { log, text } = recordingLog();
-    await expect(
-      unlockStorage({ call: executor.call, keystore, firstStart: false, askPassphrase: null, log, ...noWait }),
-    ).rejects.toThrow(storageFailure(why));
+    await expect(unlockStorage({ call: executor.call, keystore, askPassphrase: null, log, ...noWait })).rejects.toThrow(
+      storageFailure(why),
+    );
     expect(text()).toContain(String(code));
     expect(text()).not.toContain(SECRET_A);
     expect(keystore.given[0].every((byte) => byte === 0)).toBe(true);
@@ -254,7 +256,6 @@ describe('unlockStorage', () => {
       unlockStorage({
         call: executor.call,
         keystore,
-        firstStart: false,
         askPassphrase: null,
         log: () => {},
         ...noWait,
@@ -278,7 +279,7 @@ describe('unlockStorage', () => {
   });
 
   it('with no keyring on a first start, asks for a new storage passphrase salted with the keyring id', async () => {
-    const executor = fakeExecutor();
+    const executor = fakeExecutor({ keyringExists: false });
     const keystore = fakeKeystore({ kind: 'absent' });
     const { log, text } = recordingLog();
     const screens = [];
@@ -287,7 +288,6 @@ describe('unlockStorage', () => {
     const opened = await unlockStorage({
       call: executor.call,
       keystore,
-      firstStart: true,
       log,
       ...noWait,
       async askPassphrase(step) {
@@ -328,7 +328,6 @@ describe('unlockStorage', () => {
     const opened = await unlockStorage({
       call: executor.call,
       keystore: made,
-      firstStart: false,
       log: () => {},
       ...noWait,
       async askPassphrase(step) {
@@ -358,7 +357,6 @@ describe('unlockStorage', () => {
       unlockStorage({
         call: executor.call,
         keystore,
-        firstStart: false,
         log: () => {},
         ...noWait,
         askPassphrase: async (step) => {
@@ -505,21 +503,6 @@ describe('storageKeystore, through a helper', () => {
   });
 });
 
-describe('isFirstStart', () => {
-  it('is a first start until the executor has written its keyring file', () => {
-    const root = mkdtempSync(join(tmpdir(), 'we-storage-first-'));
-    try {
-      expect(isFirstStart(root)).toBe(true);
-      mkdirSync(dirname(keyringFile(root)), { recursive: true });
-      writeFileSync(keyringFile(root), '{}');
-      expect(isFirstStart(root)).toBe(false);
-      expect(keyringFile(root)).toBe(join(root, 'ad4m', 'keyring.json'));
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-});
-
 describe('storageShown', () => {
   it('keeps the state and each store, and drops what only the operator is told', () => {
     const shown = storageShown({
@@ -598,18 +581,14 @@ describe('storageShown', () => {
 /**
  * A plaintext executor's storage, as the executor moves it under its keys at the first unlock:
  * `storage.unlock` takes any secret the first time (it makes the keyring) and the same one after,
- * then the storage is `migrating` through `total` stores, one per `advance()`, each sent as
- * `storage-migration-progress` to a socket that watched it, then `open` (`storage-state-changed`).
+ * then the storage is `migrating` through `total` stores, one per `advance()`, then `open`: what
+ * `runtime.storageStatus` answers at each poll.
  * The move fails at store `failAt` on the first `failures` runs: sealed again, `migration-failed`;
  * the next unlock goes on from the stores done.
  */
 function migratingExecutor({ total = 3, failAt = null, failures = 1 } = {}) {
-  const gate = { state: 'sealed', done: 0, lastError: null, secret: null, runs: 0, watched: null };
+  const gate = { state: 'sealed', done: 0, lastError: null, secret: null, runs: 0 };
   const calls = [];
-  const listeners = new Set();
-  const emit = (event) => {
-    for (const listener of listeners) listener(event);
-  };
   const migration = () =>
     gate.state === 'migrating'
       ? { step: 'database', storesDone: gate.done, storesTotal: total, store: gate.done < total ? 'executor' : null }
@@ -619,27 +598,19 @@ function migratingExecutor({ total = 3, failAt = null, failures = 1 } = {}) {
     encryptedAtRest: gate.state === 'open',
     stores: gate.state === 'open' ? { database: 'encrypted', languageStorage: 'encrypted', links: 'encrypted' } : null,
     keyringId: KEYRING_ID,
+    keyringExists: gate.secret !== null,
     secretSource: gate.state === 'sealed' ? null : 'operator',
     secretOnDataDisk: false,
     rootGeneration: gate.secret ? 1 : 0,
     lastError: gate.lastError,
     migration: migration(),
   });
-  const changed = () => emit({ type: 'storage-state-changed', ...status() });
   const refused = (code, message) => Object.assign(new Error(message), { refused: true, code });
   return {
     gate,
     calls,
-    onEvent(listener) {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
     async call(method, params = {}) {
       calls.push({ method, params });
-      if (method === 'events.watch') {
-        gate.watched = params;
-        return true;
-      }
       if (method === 'runtime.storageStatus') return status();
       if (method === 'storage.unlock') {
         if (gate.secret && gate.secret !== params.secret)
@@ -648,7 +619,6 @@ function migratingExecutor({ total = 3, failAt = null, failures = 1 } = {}) {
         gate.runs += 1;
         gate.lastError = null;
         gate.state = 'migrating';
-        changed();
         return { status: status(), fingerprint: 'f', created: gate.runs === 1 };
       }
       throw refused(503, 'storage-sealed');
@@ -660,20 +630,15 @@ function migratingExecutor({ total = 3, failAt = null, failures = 1 } = {}) {
         gate.done -= 1;
         gate.state = 'sealed';
         gate.lastError = 'migration-failed';
-        changed();
         return;
       }
-      emit({ type: 'storage-migration-progress', ...migration() });
-      if (gate.done === total) {
-        gate.state = 'open';
-        changed();
-      }
+      if (gate.done === total) gate.state = 'open';
     },
   };
 }
 
-/** Never resolves: nothing polls, so only the executor's events move the storage on. */
-const eventsOnly = { wait: () => new Promise(() => {}), now: () => 0 };
+/** One poll a macrotask apart, and a clock that never runs out: the test moves the storage on. */
+const polled = { wait: () => new Promise((resolve) => setTimeout(resolve, 0)), now: () => 0 };
 
 /** A `showMigration` that hands the test the step, and ends when the test says. */
 function migrationWindow() {
@@ -684,52 +649,39 @@ function migrationWindow() {
   return { show: (s) => (shown(s), ended), step, end };
 }
 
-describe('the storage followed by its events', () => {
-  it('watches the storage events, and takes each as the status, dropping a read an event overtook', async () => {
+describe('the storage followed by polling', () => {
+  it('takes each read as the status, tells its subscribers, and asks the executor for nothing else', async () => {
     const executor = migratingExecutor({ total: 2 });
-    let answerRead;
-    const call = async (method, params) => {
-      if (method !== 'runtime.storageStatus') return executor.call(method, params);
-      // A read that answers late, after an event the executor sent after it.
-      const answer = await executor.call(method, params);
-      await new Promise((resolve) => (answerRead = resolve));
-      return answer;
-    };
-    const follow = followStorage({ call, onEvent: executor.onEvent, ...eventsOnly });
-    await Promise.resolve();
-    expect(executor.gate.watched).toEqual({ 'storage-state-changed': null, 'storage-migration-progress': null });
-
-    const read = follow.read();
-    await vi.waitFor(() => expect(answerRead).toBeTypeOf('function'));
+    const follow = followStorage({ call: executor.call, ...polled });
+    expect((await follow.read()).state).toBe('sealed');
     await executor.call('storage.unlock', { secret: SECRET_A });
-    executor.advance();
-    answerRead();
-    // The sealed status the read carried is older than the progress the event brought.
-    expect((await read).state).toBe('migrating');
-    expect(follow.current().migration).toEqual({ step: 'database', storesDone: 1, storesTotal: 2, store: 'executor' });
 
     const heard = [];
     const unsubscribe = follow.subscribe((s) => heard.push(s.state));
     const next = follow.next();
     executor.advance();
-    // The last store's progress, then the open storage: `next` is the first of them.
-    expect((await next).state).toBe('migrating');
-    expect(follow.current().state).toBe('open');
+    expect((await next).migration).toEqual({ step: 'database', storesDone: 1, storesTotal: 2, store: 'executor' });
+    expect(follow.current().migration.storesDone).toBe(1);
+    executor.advance();
+    expect((await follow.next()).state).toBe('open');
     expect(heard).toEqual(['migrating', 'open']);
     unsubscribe();
     follow.close();
-    executor.advance();
+    await follow.read();
     expect(heard).toEqual(['migrating', 'open']);
+    expect([...new Set(executor.calls.map((c) => c.method))]).toEqual(['runtime.storageStatus', 'storage.unlock']);
   });
 
-  it('reads the status on the interval where the executor refuses the watch', async () => {
+  it('waits the interval between reads', async () => {
     const executor = fakeExecutor({ keyringSecret: SECRET_A, open: true });
-    const call = async (method, params) => {
-      if (method === 'events.watch') throw Object.assign(new Error('unknown'), { refused: true, code: 404 });
-      return executor.call(method, params);
-    };
-    const follow = followStorage({ call, onEvent: () => () => {}, wait: async () => {} });
+    const waits = [];
+    const follow = followStorage({
+      call: executor.call,
+      interval: 250,
+      wait: async (ms) => void waits.push(ms),
+    });
     expect((await follow.next()).state).toBe('open');
+    expect(waits).toEqual([250]);
     follow.close();
   });
 
@@ -738,15 +690,15 @@ describe('the storage followed by its events', () => {
     await executor.call('storage.unlock', { secret: SECRET_A });
     let clock = 0;
     const now = () => clock;
-    const follow = followStorage({ call: executor.call, onEvent: executor.onEvent, wait: eventsOnly.wait });
+    const follow = followStorage({ call: executor.call, wait: polled.wait });
     const waiting = waitUntilOpen(executor.call, { follow, now, timeoutMs: 1_000 });
     for (let i = 0; i < 2; i++) {
-      await vi.waitFor(() => expect(follow.current()).not.toBeNull());
+      await vi.waitFor(() => expect(follow.current()?.migration?.storesDone).toBe(i));
       // Each store takes longer than the whole timeout; none is stuck.
       clock += 900;
       executor.advance();
-      await Promise.resolve();
     }
+    await vi.waitFor(() => expect(follow.current().migration.storesDone).toBe(2));
     executor.advance();
     await expect(waiting).rejects.toThrow(storageFailure('migration-failed'));
     expect(STORAGE_WORDS['migration-failed']).toContain('Nothing was lost');
@@ -762,15 +714,13 @@ describe('moving a plaintext executor under its keys at its first unlock', () =>
     const { log, text } = recordingLog();
     const opened = unlockStorage({
       call: executor.call,
-      onEvent: executor.onEvent,
       keystore,
-      firstStart: true,
       askPassphrase: () => {
         throw new Error('no passphrase is asked where the keyring keeps the secret');
       },
       showMigration: window.show,
       log,
-      ...eventsOnly,
+      ...polled,
     });
     const step = await window.step;
     expect(step.first).toEqual({
@@ -806,13 +756,11 @@ describe('moving a plaintext executor under its keys at its first unlock', () =>
     const window = migrationWindow();
     const opened = unlockStorage({
       call: executor.call,
-      onEvent: executor.onEvent,
       keystore,
-      firstStart: true,
       askPassphrase: null,
       showMigration: window.show,
       log: () => {},
-      ...eventsOnly,
+      ...polled,
     });
     const step = await window.step;
     let next = step.submit({ kind: 'wait-storage' });
@@ -845,13 +793,11 @@ describe('moving a plaintext executor under its keys at its first unlock', () =>
     const window = migrationWindow();
     const opened = unlockStorage({
       call: executor.call,
-      onEvent: executor.onEvent,
       keystore: fakeKeystore(),
-      firstStart: true,
       askPassphrase: null,
       showMigration: window.show,
       log: () => {},
-      ...eventsOnly,
+      ...polled,
     });
     const step = await window.step;
     const next = step.submit({ kind: 'wait-storage' });
@@ -866,13 +812,11 @@ describe('moving a plaintext executor under its keys at its first unlock', () =>
     const window = migrationWindow();
     const opened = unlockStorage({
       call: executor.call,
-      onEvent: executor.onEvent,
       keystore: fakeKeystore(),
-      firstStart: true,
       askPassphrase: null,
       showMigration: window.show,
       log: () => {},
-      ...eventsOnly,
+      ...polled,
     });
     await window.step;
     window.end('cancelled');
@@ -889,12 +833,10 @@ describe('moving a plaintext executor under its keys at its first unlock', () =>
     const executor = migratingExecutor({ total: 2, failAt: 1 });
     const opened = unlockStorage({
       call: executor.call,
-      onEvent: executor.onEvent,
       keystore: fakeKeystore(),
-      firstStart: true,
       askPassphrase: null,
       log: () => {},
-      ...eventsOnly,
+      ...polled,
     });
     await vi.waitFor(() => expect(executor.gate.state).toBe('migrating'));
     await vi.waitFor(() =>
@@ -911,9 +853,7 @@ describe('moving a plaintext executor under its keys at its first unlock', () =>
     let ended;
     const opened = unlockStorage({
       call: executor.call,
-      onEvent: executor.onEvent,
       keystore,
-      firstStart: true,
       askPassphrase: async (step) => {
         expect(step.first.screen).toEqual({ screen: 'set-storage-passphrase', error: null });
         let answer = await step.submit({ kind: 'passphrase', passphrase, confirm: passphrase });
@@ -939,7 +879,7 @@ describe('moving a plaintext executor under its keys at its first unlock', () =>
         return ended.outcome;
       },
       log: () => {},
-      ...eventsOnly,
+      ...polled,
     });
     expect((await opened).how).toBe('passphrase');
     expect(ended).toEqual({ screen: { screen: 'storage-open' }, outcome: 'done' });

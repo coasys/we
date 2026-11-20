@@ -202,8 +202,11 @@ the solve ends. A cancel then shows the screen the create ended on, because a pu
 cannot be taken back. The resume of a pending incept (below) solves its proof too, with no
 `preparing` screen.
 
-The store's refusals are said in words: a cost too high, `429` with the wait its `retry after`
-gives, and `403 pow` (a refused proof, which the next try solves again). The incept is kept for
+The store's refusals are said in words: a cost too high, `429` with the wait its `data.retryAfter`
+gives, and `403` with `data.reason: "pow"` (a refused proof, which the next try solves again).
+They are read from the answer's code and its `error.data` (`{error, scope, retryAfter}`,
+`{error: "forbidden", reason}`, `{error: "already-vouched"}`, `{error: "no-identity"}`), never from the
+message's words; an answer without the data is quoted as it is said. The incept is kept for
 each of these, and the next try finishes the same identity.
 
 ## The email check
@@ -396,6 +399,36 @@ and a revoke does not change the master key, so the person is told to replace it
 request that also asks to replace the master key goes on, after the yes, to the 12 words, and the
 answer is one `rotate` that revokes the targets and replaces the key.
 
+## Cloud devices and hosts
+
+A host is an executor that takes tenants (AR-05). The `add-cloud-device` step adds one as a device of
+the identity, and the same identity then signs in to it as a tenant. The step is
+`{ kind: 'add-cloud-device', host: { kind: 'coasys' } }` for Coasys cloud, or
+`{ kind: 'add-cloud-device', host: { kind: 'address', url } }` for a host the person types. The
+identity window shows four screens for it: the invite (`cloud-invite`), the wait while the host sets
+up (`cloud-joining`), the match code the holder confirms (`cloud-match`) and the end (`cloud-added`).
+The master key stays on the person's own devices: the host gets a device key only.
+
+`host.info`, `host.join` and `host.joinStatus` go to the host with no credential, because each
+carries its own proof. The service reads an invite from a link or from its code alone, words every
+refusal of `host.join` for the person, and follows the join until the host serves them
+(`ACTIVATION_WAIT`). The Electron main process (`identityWindow.js`) refuses an `add-cloud-device`
+step whose `host` is neither of the two shapes, before any window opens.
+
+**Coasys cloud's address is one value.** `DEFAULT_CLOUD_URL` in `src/cloud.rs` is `https://cloud.coasys.app`
+today, and `coasys_url()` is the only place it is read. `WE_COASYS_CLOUD_URL` replaces it (a staging
+host, or one on this computer); a value that is not an address is an error, not a fall back to the
+default. The service passes the address to the app as `cloudUrl` in its public state, so the app
+holds no copy. The domain is under review (`coasys.app` and `api.coasys.app` for the cloud, `coasys.id`
+for the identity, and `coasys.org` is the DAO), so a change of domain is that one edit.
+
+**The tenant session is the app's, not the service's.** The app signs in to a host with its own
+executor's `agent.signSessionStatement` under `coasys:session`, through the same key-session code a
+browser tab uses (`keySession.ts` in `@we/backend-ad4m`). The token stays in the page's memory and
+never reaches a store or storage. Usage, leaving, export and import all go through that one session.
+A host that holds a tenant answers every call except reading, exporting, usage and leaving with
+`not-admitted`, and the app then shows the held state.
+
 ## Known limits
 
 - **A device's key is linkable to its identity.** The executor's `identity.keyOwner` answers which
@@ -442,11 +475,16 @@ A patched build rewrites `Cargo.lock`'s `source` lines; restore it before commit
 The end-to-end test runs the three flows against a real identity-store and real executors, and a
 desktop executor (`--custody-channel`, the custody credential on stdin, no `--operator`) whose first
 link records its operator, after which another identity's offer is refused `first-link`; see the
-header of `tests/live.rs` for what it needs:
+header of `tests/live.rs` for what it needs. The executors are the one every WE live test runs
+(`scripts/ad4m-executor.mjs --path`: `AD4M_EXECUTOR`, else the pinned download). `AD4M_REPO` names an
+ad4m checkout only for the identity-store binary and its `tests/js` language directories:
 
 ```sh
+pnpm e2e custody-live          # from the repository root
 CUSTODY_LIVE=1 AD4M_REPO=<ad4m> cargo test --features cheap-kdf --test live -- --nocapture
 ```
+
+It is a live contract test; `docs/testing/e2e.md` places it among the others.
 
 In the Tauri app build the generated `Cargo.toml` patches this crate's ad4m crates to the seed's
 checkout (`apps/we-tauri/src-tauri/Cargo.toml.template`), so there is one ad4m in the binary.

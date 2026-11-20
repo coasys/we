@@ -13,14 +13,21 @@ const alias = { '@shared': r('./src/shared'), '@solid': r('./src/frameworks/soli
 const SOLID_TESTS = [
   // Renders the template root through the real part expansion and edits it live.
   'tests/liveSchema.test.tsx',
+  // Mounts a part's frame and changes its subject under it: real Solid effects and cleanups.
+  'tests/partWhileShown.test.tsx',
   'tests/executorFreeBoot.test.tsx',
+  // The real template store, its sibling stores doubled: which space a late read may still answer for.
+  'tests/templateStoreSpaceSwitch.test.tsx',
   'tests/runtimeStore.test.tsx',
   'tests/accountStore.test.tsx',
   'tests/identityStore.test.tsx',
+  // The host store over a fake host port: real signals, and an effect that follows the backend.
+  'tests/hostStore.test.tsx',
   // The app before a session: memos over a host of fakes, and the hand-off rendering WE's app.
   'tests/baseStore.test.tsx',
   'tests/baseBoot.test.tsx',
   'tests/botStore.test.tsx',
+  'tests/hostingStore.test.tsx',
   'tests/profileStore.test.tsx',
   // Mounts the profile store and holds the app's first-screen gate: real signals and real promises.
   'tests/firstScreenDeferral.test.tsx',
@@ -101,6 +108,8 @@ const SOLID_TESTS = [
   // The subject is the mount itself: the body element must stay the same node while other panel
   // records come and go — only the browser build tracks the per-id memo finely enough to prove it.
   'tests/panelBodyRemount.test.tsx',
+  // The template's surface reaching a panel body: render context is what the test mounts.
+  'tests/panelBodySurface.test.tsx',
   // A panel drawn once and moved between places: needs the browser build's reactivity, as the lanes do.
   'tests/panelHost.test.tsx',
   // Mounts the real RecordStore over a stand-in data layer to drive a canvas's undo round trip.
@@ -109,6 +118,8 @@ const SOLID_TESTS = [
   'tests/workflowStoreProvider.test.tsx',
   // The same, for a card dragged to another place in a tree.
   'tests/treeUndo.test.tsx',
+  // And for a drag on a tree whose spine is a model relation rather than a connection kind.
+  'tests/treeRelation.test.tsx',
   // Mounts a card's reaction mark and presses it.
   'tests/reactionBadge.test.tsx',
   // Types into the host's password field through real primitives and watches where the value goes.

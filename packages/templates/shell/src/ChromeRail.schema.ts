@@ -352,8 +352,11 @@ export const chromeRail: SchemaNode = {
           un-maximise button that recover it. Hidden rather than dropped below the titlebar, which
           was the first answer: full screen means the app's own furniture is gone, and the way back
           is the panel's titlebar and the Escape key.
+
+          The same while a cover has the whole window (`data-we-covers-window="window"`, a phone's
+          thread): the frame's bands are the cover's then, and this rail's 56px is one of them.
         */
-        styles: { $: "shellStore.panelMaximised ? { display: 'none' } : null" },
+        styles: { $: "shellStore.panelMaximised || shellStore.chromeCovered ? { display: 'none' } : null" },
         transition: 'right var(--we-chrome-transition, 300ms) ease, top var(--we-chrome-transition, 300ms) ease',
       },
       /*

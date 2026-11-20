@@ -109,6 +109,7 @@ Glossary (these terms pervade stores, models, and `$query`/`perspective` in sche
 | `@we/app-shell` | packages/app-shell | App shell, stores, registries, built-in template schemas | Solid |
 | `@coasys/identity-portal` | packages/identity-portal | The desktop identity window's screens (make an identity, add or revoke a device) over an `IdentityTransport`; each desktop app supplies the transport to its custody service (`crates/custody`) | Vanilla DOM |
 | `@we/ai-context` | packages/ai-context | Generates this reference (CLAUDE.md et al.) from code + fragments | Build tool |
+| `@we/e2e` | packages/e2e | What every live test shares: a fresh multi-user executor and its accounts, a build served under the production CSP, Chrome, waits and failure artifacts (docs/testing/e2e.md) | Test tool |
 | `@we/agent-tools` | packages/agent-tools | What a model can do with WE: templates and themes as tools for any host, a space's records and WE's conventions for a conversation WE runs itself, and a single-file bundle for agent hosts | **Agnostic** |
 
 Apps (`apps/we-web`, `apps/we-electron`, `apps/we-tauri`) are thin hosts over `@we/app-shell`.
@@ -605,6 +606,8 @@ registers (listed last). Wrong-typed input answers with the empty value of its k
     voices(options) — Whose reactions a weighted score was made from, as a list a reader turns voices up and down in — { did, name, avatar, cards, mean, weight, share, mine, pretend }, the busiest first. `weight` is how much the voice counts (0–100) and `share` its part of everybody's say. Options: summary (what a GraphView's onSeedSummary reported — the canvas seed's `{ type, voices }`), param (the weights as the address holds them, `did=50,did=0`), profiles (profileStore.profiles), me (me.did).  e.g. voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did })
     voicesParam(options) — The weights address form with one voice changed — options param, did and weight (0–100) — or, with only (a DID) and voices (the listed rows), every voice at nothing but that one. A voice back at full is left out, so putting everything back leaves a clean address.  e.g. voicesParam({ param: local.voices, did: voice.did, weight: event.detail })
     formatJson(options) — A JSON string indented for reading, or the text unchanged when it will not parse — which is the case worth showing rather than swallowing. Options: text. For displaying a stored blob (an extraction pass’s prompt and response); a schema has no JSON.stringify of its own.  e.g. formatJson({ text: pass.prompt })
+    treeSpines(options) — The choices a tree-mode spine picker offers: the space's named connection kinds, then every typed relation the installed models declare, grouped under "Model relations" and spelled rel:Class.prop — plus rel:* for all of them. Pass kinds (a RelationshipType query), shapes (shapeStore.spaceShapes) and foreign (datasetStore.currentDatasetEntities).  e.g. treeSpines({ kinds: local.relationshipKinds, shapes: shapeStore.spaceShapes, foreign: datasetStore.currentDatasetEntities })
+    treeSpine(options) — A tree spine as the tree reads it, from the picker's value (local.spine): its kind — any, relationship (with id) or relation (with class and prop for one, without for all) — and selector (the forest layout's spine), offSpine (the when of a rule drawing the other lines faint; absent for any) and relations (whether the canvas seed should draw the models' relations). The one reader of the spelling, so pass this rather than local.spine to anything that needs the spine. Options: value.  e.g. treeSpine({ value: local.spine }).selector
     generatedRun(options) — Whether a model made a record: { by: "run", run } naming the run that wrote it (a transcribed line, a record an extraction pass or an agent made, a reply in the editor’s chat), or null for what a person made. Reads the record’s own generatedBy, as an id or an included record, so it needs no query. Ask this rather than reading the relation. Options: record.  e.g. generatedRun({ record: post }) ? 'Written by AI' : ''
 
 The where-object — one grammar shared by filter(), find(), and $query's where. Keys are field names;
@@ -1785,7 +1788,7 @@ the relations between them. Picks up model types added later with no template ch
 - **Static diagram** — `seeds: { literal: true, nodes: [...], edges: [...] }` and no expansion at all.
 - **A canvas with a grid** — `backdrop: { pattern: 'dots', gap: 24 }`, or `'lines'`; it pans and
 zooms with the canvas and is coloured from a role (`border` unless `color` says otherwise).
-  Props: seeds?: SeedSpec | SeedSpec[], expansion?: ExpansionSpec, revision?: string | number | boolean, live?: boolean, layout?: LayoutSpec, nodeStyle?: NodeStyleRules, edgeStyle?: EdgeStyleRules, behaviours?: BehaviourSpec[], reified?: Record<string, { source: string; target: string; type?: string; sourceType?: string; targetType?: string; }>, width?: string, height?: string, bg?: string, backdrop?: GraphBackdrop, showStatus?: boolean, empty?: string, emptyIcon?: string, emptyGradient?: string, emptyAction?: JSX.Element, showControls?: boolean, controls?: string[], onNodeClick?: ((node: GraphNode & { recordId?: string; recordType?: string; fields: { name: string; value: string; }[]; }) => void), expandRequest?: { id: string; expanders?: string[]; direction?: "in" | "out" | "both"; } | null, onNodeDoubleClick?: ((node: GraphNode & { recordId?: string; recordType?: string; }) => void), onEdgeClick?: ((edge: GraphEdge & { recordId?: string; recordType?: string; }) => void), onEdgeRetarget?: ((payload: { id: string; end: "source" | "target"; nodeId: string; nodeType: string; recordId?: string; recordType?: string; }) => void), onEdgeReroute?: ((payload: { id: string; points: EdgeWaypoint[]; recordId?: string; recordType?: string; }) => void), onEdgeAnchor?: ((payload: { id: string; end: "source" | "target"; side: "" | "n" | "e" | "s" | "w"; recordId?: string; recordType?: string; }) => void), onEdgeCreate?: ((payload: { source: GraphNode; target: GraphNode; sourceId: string; sourceType: string; targetId: string; targetType: string; sourceLabel: string; targetLabel: string; }) => void), onCanvasDoubleClick?: ((payload: { x: number; y: number; }) => void), onSelectionChange?: ((ids: string[]) => void), onNodeDragEnd?: ((payload: { id: string; x: number; y: number; recordId?: string; recordType?: string; opened?: boolean; carried?: { recordId: string; recordType: string; x: number; y: number; }[]; }) => void), onSeedSummary?: ((payload: { source: string; } & Record<string, unknown>) => void), onNodeArrange?: ((payload: { id: string; into: "child" | "sibling" | "loose"; recordId: string; recordType: string; targetId?: string; targetType?: string; before?: boolean; order?: string[]; x: number; y: number; }) => void), resizable?: boolean, onNodeResize?: ((payload: { id: string; x: number; y: number; width: number; height: number; recordId?: string; recordType?: string; }) => void), onDrop?: ((payload: { entity: string; id: string; dataset?: string; label: string; x: number; y: number; within?: { entity: string; id: string; }; preview?: { thumbnail?: string; author?: string; source?: string; }; }) => void), nodeActions?: NodeAction[], onNodeAction?: ((payload: { action: string; id: string; recordId?: string; recordType?: string; value?: unknown; preview?: boolean; x: number; y: number; }) => void), focus?: string, focusCentre?: boolean, folded?: string[], onNodeFold?: ((payload: { id: string; recordId?: string; recordType?: string; folded: boolean; count: number; }) => void), open?: string[], onNodeOpen?: ((payload: { id: string; recordId?: string; recordType?: string; open: boolean; }) => void), onDeleteSelection?: ((payload: { recordId?: string; recordType?: string; kind?: "node" | "edge"; count: number; records?: { recordId: string; recordType: string; }[]; }) => void), carry?: boolean, selectionActions?: NodeAction[], onSelectionAction?: ((payload: { action: string; records: { recordId: string; recordType: string; }[]; count: number; value?: unknown; preview?: boolean; }) => void), onUndo?: (() => void), onRedo?: (() => void), onPointerAt?: ((at: { x: number; y: number; } | null) => void), onViewport?: ((region: GraphRegion) => void), region?: GraphRegion | null, reframeOn?: string | number | boolean | null, host?: GraphHostBindings
+  Props: seeds?: SeedSpec | SeedSpec[], expansion?: ExpansionSpec, revision?: string | number | boolean, live?: boolean, layout?: LayoutSpec, nodeStyle?: NodeStyleRules, edgeStyle?: EdgeStyleRules, behaviours?: BehaviourSpec[], reified?: Record<string, { source: string; target: string; type?: string; sourceType?: string; targetType?: string; }>, width?: string, height?: string, bg?: string, backdrop?: GraphBackdrop, showStatus?: boolean, empty?: string, emptyIcon?: string, emptyGradient?: string, emptyAction?: JSX.Element, showControls?: boolean, controls?: string[], onNodeClick?: ((node: GraphNode & { recordId?: string; recordType?: string; fields: { name: string; value: string; }[]; }) => void), expandRequest?: { id: string; expanders?: string[]; direction?: "in" | "out" | "both"; } | null, onNodeDoubleClick?: ((node: GraphNode & { recordId?: string; recordType?: string; }) => void), onEdgeClick?: ((edge: GraphEdge & { recordId?: string; recordType?: string; }) => void), onEdgeRetarget?: ((payload: { id: string; end: "source" | "target"; nodeId: string; nodeType: string; recordId?: string; recordType?: string; }) => void), onEdgeReroute?: ((payload: { id: string; points: EdgeWaypoint[]; recordId?: string; recordType?: string; }) => void), onEdgeAnchor?: ((payload: { id: string; end: "source" | "target"; side: "" | "n" | "e" | "s" | "w"; recordId?: string; recordType?: string; }) => void), onEdgeCreate?: ((payload: { source: GraphNode; target: GraphNode; sourceId: string; sourceType: string; targetId: string; targetType: string; sourceLabel: string; targetLabel: string; }) => void), onCanvasDoubleClick?: ((payload: { x: number; y: number; }) => void), onSelectionChange?: ((ids: string[]) => void), onNodeDragEnd?: ((payload: { id: string; x: number; y: number; recordId?: string; recordType?: string; opened?: boolean; carried?: { recordId: string; recordType: string; x: number; y: number; }[]; }) => void), onSeedSummary?: ((payload: { source: string; } & Record<string, unknown>) => void), onNodeArrange?: ((payload: { id: string; into: "child" | "sibling" | "loose"; recordId: string; recordType: string; pending?: boolean; changed?: boolean; edge?: { id: string; type: string; data?: Record<string, GraphValue>; }; targetId?: string; targetType?: string; before?: boolean; order?: string[]; x: number; y: number; }) => void), resizable?: boolean, onNodeResize?: ((payload: { id: string; x: number; y: number; width: number; height: number; recordId?: string; recordType?: string; }) => void), onDrop?: ((payload: { entity: string; id: string; dataset?: string; label: string; x: number; y: number; within?: { entity: string; id: string; }; preview?: { thumbnail?: string; author?: string; source?: string; }; }) => void), nodeActions?: NodeAction[], onNodeAction?: ((payload: { action: string; id: string; recordId?: string; recordType?: string; value?: unknown; preview?: boolean; x: number; y: number; }) => void), focus?: string, focusCentre?: boolean, folded?: string[], onNodeFold?: ((payload: { id: string; recordId?: string; recordType?: string; folded: boolean; count: number; }) => void), open?: string[], onNodeOpen?: ((payload: { id: string; recordId?: string; recordType?: string; open: boolean; }) => void), onDeleteSelection?: ((payload: { recordId?: string; recordType?: string; kind?: "node" | "edge"; count: number; records?: { recordId: string; recordType: string; }[]; }) => void), carry?: boolean, selectionActions?: NodeAction[], onSelectionAction?: ((payload: { action: string; records: { recordId: string; recordType: string; }[]; count: number; value?: unknown; preview?: boolean; }) => void), onUndo?: (() => void), onRedo?: (() => void), onPointerAt?: ((at: { x: number; y: number; } | null) => void), onViewport?: ((region: GraphRegion) => void), region?: GraphRegion | null, reframeOn?: string | number | boolean | null, host?: GraphHostBindings
 
 ---
 
@@ -3173,7 +3176,7 @@ DatasetStore:
   - currentDataset: dataset handle | null (the dataset currently being viewed)
   - currentDatasetUri: string | undefined — the shared URL of the current dataset with its scheme (neighbourhood://…), or undefined for a personal one. Prefer currentDatasetCid for comparisons; this is the form a share link carries
   - currentDatasetCid: string | undefined — the neighbourhood CID of the current dataset (prefix stripped)
-  - currentDatasetEntities: EntityManifestEntry[] (non-WE SHACL models from the current dataset; injected as externalEntities into AI messages)
+  - currentDatasetEntities: EntityManifestEntry[] (non-WE SHACL models from the current dataset, by name; injected as externalEntities into AI messages)
   - currentDatasetEntitiesLoaded: boolean — currentDatasetEntities has been read for the dataset on screen. They arrive a few round trips after the switch, so until this is true an empty list means "not read yet" rather than "none"
   - isWeSpace: boolean — true once the current dataset is confirmed to have WE's Space SDNA installed (false for a joined-but-foreign dataset, e.g. one synced in from Flux)
   - joinedSpaceCids: string[] — CIDs of every joined shared dataset
@@ -3202,6 +3205,7 @@ DeviceStore:
   - deviceNoun: 'phone' | 'computer' — what this device is, for the sentences about it: 'This ' + deviceStore.deviceNoun + ' does not keep your master key'
   - validCount: number — how many device keys are valid (neither revoked nor ended); bot keys are not counted
   - canManage: boolean — Link a device (scanDevice, addDevice), Rename, Remove and answering requests can be offered: this computer keeps the master key of the identity
+  - canAddCloudDevice: boolean — a cloud device can be added: canManage, and the backend can sign in to a host. Gate the Add a cloud device card on this
   - canShowCode: boolean — "Show code" can be offered: this computer can join an identity and speaks for none yet
   - canAskMaster: boolean — "Ask for master key" can be offered: a device of the identity that does not keep the master key, has none waiting, and could open one (not encMismatch)
   - canReplaceMaster: boolean — "Replace master key" can be offered: a valid device of the identity where the 12 words can be typed. It need not keep the master key: replacing it shuts out a lost device that kept one
@@ -3214,6 +3218,7 @@ DeviceStore:
 - Actions:
   - refresh(): reads the device list again
   - addDevice(): adds a server by an offer link — the backend asks the person wherever it keeps the master key (on the desktop: the offer link and QR code, then the match code, then the confirmation that signs it). Resolves with the outcome; the list is read again
+  - addCloudDevice(address?): adds a cloud device: Coasys cloud, or the host at `address` when one is typed. The backend asks for an invite code where the host wants one, checks the email, shows the match code, and signs the new device into the key log. Resolves with the outcome; the list is read again
   - scanDevice(): "Enter code" — adds a device by the code it shows: the person pastes it, both show a match code, and the confirmation names the device and may let it keep the master key
   - showCode(): "Show code" — on a computer of no identity yet, shows its code (QR and link) until a device of the identity adds it
   - takeMaster(): "Accept master key" — keeps the master key another device sent here
@@ -3291,6 +3296,67 @@ EditorStore:
   - toggleThemeEditing(): enters or exits theme editing — what a single button in chrome should call
   - sendMessage(text: string): sends a message to the assistant. Patches it proposes are applied to the template and land in undo history; the reply streams into streamingContent
   - clearHistory(): deletes the active session's messages
+
+HostingStore:
+- State:
+  - hosts: { id, name, details, address, runByCoasys, signup, charge, models, joinable }[] — the hosts the hosting index lists, Coasys cloud first, then by name, each worded for a row. Empty until loadHosts has answered. `joinable` is false for a full host or one taking no new people
+  - hostListState: string — 'idle' (not read yet), 'loading', 'ready', 'down' (the index did not answer) or 'unconfigured' (the deployment names no platform API)
+  - hostListError: string — the sentence to show when the index did not answer, or empty
+  - address: string — the address typed under "Add by its address"
+  - addressProblem: string — why the typed address cannot be used, or empty (also empty before anything is typed)
+  - chosen: { kind: 'listed', host } | { kind: 'address', url } | null — the host the person chose; "Add a cloud device" takes it from here
+  - available: boolean — this backend can list its device on the index. Gate Earn with it on it
+  - loaded: boolean — the listing has been read once
+  - error: string — why the last read or change failed, or empty
+  - canOffer: boolean — the device has an operator and the index admits it: listing can be offered
+  - notAllowed: boolean — the index does not admit this operator
+  - noOperator: boolean — the device has no operator identity to list for
+  - indexError: string — the index did not answer; what shows is what the device remembers. Empty when it answered
+  - listing: { name, address, label, tone, line, models, rates, confirmed } | null — this device's listing, worded. `label` and `tone` go in a badge; `line` says what the index says now, with the reason when it removed the listing; `confirmed` is false when it is only what the device remembers
+  - isListed: boolean — the listing is up (listed, or cannot be reached for now): Withdraw can be offered
+  - draft: { name, description, location, url } — the listing text being edited
+  - problem: string — what is missing or too long in the draft, or empty when it can be listed
+  - publishing: boolean — List is under way
+  - withdrawing: boolean — Withdraw is under way
+- Actions:
+  - loadHosts(): reads the host list from the platform API. Call it from a button: it reaches the network, so nothing may run it on mount
+  - setAddress(value: string): sets the address typed under "Add by its address"
+  - choose(id: string): chooses a listed host by its id and, where deviceStore.canAddCloudDevice, starts "Add a cloud device" with it (Coasys cloud for the host Coasys runs, else its address)
+  - chooseAddress(): chooses the address typed, when it is a usable https address, and starts "Add a cloud device" with it as choose does. This is the one place an address is typed
+  - clearChoice(): forgets the chosen host
+  - setDraftField(field: 'name' | 'description' | 'location' | 'url', value: string): edits the listing text
+  - refresh(): reads the listing again
+  - publish(): points the device at the index if it is not yet, then lists it with the draft. Resolves true when listed
+  - withdraw(): takes the listing off the index at once. Resolves true when withdrawn
+
+HostStore:
+- State:
+  - canViewHost: boolean — the person can look at their own place on a host from here: this computer signs in to one as them. Gate the Cloud usage card on this
+  - isCoasysCloud: boolean — the host being looked at is Coasys cloud: show its welcome text
+  - usage: { host, spend, storage, aiRuns, spaces, privateSpaces } | null — what the person uses on the host, worded: `spend` is 'Free during the closed beta' while the host takes no payment; `spaces` is { name, shared }[]. Null until read, and after leaving
+  - held: boolean — the host holds this person: only reading, exporting, usage and leaving work, and every other call is refused. Show that, and offer Export and Leave only
+  - error: string — why the last call to the host failed, or empty
+  - notice: string — what the last export, import or leave did, or empty
+  - busy: boolean — a call to the host is running
+  - canOperate: boolean — this computer runs a host that takes people: Sign-ups and People can be offered
+  - policy: { signup, maxTenants, display, choiceNeeded } | null — the host this computer runs: who may join
+  - choiceNeeded: boolean — the person who runs this host has never chosen who may join: show choiceNeededText
+  - choiceNeededText: string — the sentence to show while choiceNeeded
+  - signupOptions: { value, label }[] — the three answers to who may join, in order; `value` goes to setSignup
+  - invites: { id, note, status, expires, canRevoke }[] — the invites sent, `status` 'Open', 'Used', 'Revoked' or 'Expired'
+  - people: { id, label, state, canRemove, since }[] — the people on this host; `state` 'Joining', 'Active', 'On hold', 'Left', 'Deleted'; `canRemove` for one who left and kept their data here
+  - newInvite: string — the code of the invite just made, shown once; empty before
+  - operatorError: string — why the last Sign-ups or People call failed, or empty
+  - operatorBusy: boolean — a Sign-ups or People call is running
+- Actions:
+  - openHost(address?): looks at the host at `address`, or at Coasys cloud when it is empty, and reads the usage. The session is opened on the first call, signed with the person's identity
+  - leave(keepData: boolean, exportFirst: boolean): leaves the host. exportFirst saves everything to a file and leaves only once it is saved; keepData false destroys the data on the host at once and cannot be undone. Resolves true once left
+  - exportData(): saves everything the host keeps for the person to a gzip file they choose. Resolves true once saved
+  - importData(): asks for a file made by exportData and loads it into new private spaces. Resolves true once loaded
+  - setSignup(signup: 'anyone' | 'by_invite' | 'no_one'): sets who may join this host
+  - createInvite(note: string): makes an invite that lasts a week; its code is in newInvite
+  - revokeInvite(id: string): cancels an open invite
+  - removePerson(id: string): removes a person who left and kept their data here, and that data
 
 IdentityStore:
 - State:
@@ -3370,6 +3436,7 @@ RecordStore:
   - recordDraft: the open form's draft ({ entity, label, icon, fields[] }) or null while closed — its non-nullness is what mounts the modal. Each field is { name, label, control, required, options, placeholder, value, accept, target, targetLabel, many, canCreate, canPick, entries }, derived from the model's own declaration, so a form exists for a model nobody wrote a form for. control 'file' is a we-file-upload (accept names the types); control 'relation' points at another record: entries are the chips ({ key, label }), canCreate offers openRelationForm, canPick offers a picker over existing target records, and inline ('location' | 'image' | '') names the in-place control a target is made with instead — see setRelationLocation and addRelationImage; an image entry carries preview, a data URI
   - recordDraftDirty: boolean — the open form holds something worth keeping. What a discard guard reads: the fields come from the model, so a shape this community defined has properties no schema was written against and there is no set of local names an expression could test. Pass it to discardGuard's `dirty`
   - displays: Record<entity, RecordDisplay> — how to show an instance of each creatable model, every core block (a divider or a quote card included) and Relationship, keyed by entity name and derived from its declaration: { entity, label, icon, title, summary, media, mediaRelation, fields[] }, where title/summary/media name the properties playing those roles ('' when none does) and mediaRelation names a relation to an ImageBlock that pictures the record when no property does — look the image up by the ids it holds ({ entity: 'ImageBlock', where: { id: row[display.mediaRelation] } }) rather than drawing them and each field is { name, label, kind, role, options, vocabulary }. kind is one of text, longText, number, boolean, date, datetime, color, url, image, file, json, relation (with target, the model it points at); role is title, summary, media or detail. `options` is the values a field is allowed to hold where the model closes the set (a task's status), empty otherwise — count() it to tell a state worth drawing as a we-badge from free text, and map it into a we-select rather than offering a text box that accepts a word the model does not know. `vocabulary` names the community list a value is a slug of ('taskState' for a task's status, looked up in spaceStore.taskStates for its name and colour), empty otherwise. Index it by a row's type — { $: 'recordStore.displays[row.type]' } — and render the fields with $each; see "A record of any type" in the patterns
+  - plumbingClasses: string[] — WE's own structural classes by name (a Space, a setting, a placement, a community's vocabularies), which a list of a space's classes leaves out wherever their shape came from. What a template cannot name for itself: another app's classes are `datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses))`
   - kinds: { label, value, icon, hue, group }[] — every kind of record that can be shown here: what can be made, then every core block and the kinds read without being made (a drawn connection, the space's vocabulary). hue is the palette hue the kind is drawn in where the community has chosen no colour — WE's own kinds have one chosen for what they are, and any other takes one from its name, the same everywhere. For colouring cards by kind: the kit's kindColour reads the community's choice first
   - recordErrors: string[] — validation errors from the last save attempt, plus any backend failure
   - savingRecord: boolean — a create is in flight
@@ -3412,7 +3479,7 @@ RecordStore:
   - anchorOnCanvas(canvas: string, payload): pins which SIDE of a card a connection leaves or arrives on, for this canvas. Takes the graph's onEdgeAnchor payload as it arrives; an empty side clears that end, and a route with neither end pinned and no bends is deleted. Bends survive a clear — one record holds both, and letting go of a side says nothing about the shape somebody drew. Per canvas, like a placement — the same connection on somebody else's canvas is unaffected
   - rerouteOnCanvas(canvas: string, payload): writes the shape of one connection's route on this canvas — the points it is bent through. Takes the graph's onEdgeReroute payload as it arrives; the whole list, in the edge's own frame, so a bend keeps its proportions when either card moves. An empty list straightens it, and a route with no points and no anchors is deleted
   - retargetOnCanvas(canvas: string, payload): moves one end of a connection onto a different record. Takes the graph's onEdgeRetarget payload as it arrives. Unlike anchorOnCanvas and rerouteOnCanvas this changes the CLAIM rather than how one canvas draws it — the relationship now says something different everywhere it is shown. That end's anchor is cleared; its waypoints stay
-  - arrangeOnTree(canvas: string, relationshipTypeId: string, payload): moves a card to another place in a tree. Takes the graph's onNodeArrange payload as it arrives, plus which kind of connection the tree follows — EMPTY meaning every kind, which mirrors what the layout does with the same answer and is the state a canvas starts in; a parent it has to create is then a connection with no kind, exactly as the canvas's own connect gesture writes one — the community's own vocabulary and the reader's chosen spine, neither of which the store can know. The counterpart of dragOnCanvas for a canvas read as a hierarchy: there a drag writes a coordinate, here it writes the structure the layout reads. A drop that makes a card a child writes the connection; one BESIDE a card reorders it there, writing ranks on the placements in the order the drop reports; one in the unconnected area takes it out of its tree. Undoable through undoCanvas, the connection and the ranks as one act. Three refusals, each with a toast: a card inside itself, a drop beside a tree's own root (which would detach it as a side effect — the unconnected area is where that is explicit), and taking out a connection people have commented on or reacted to, since that deletes the record and everything said about it — pass arrange-nodes the same rule as `keep` so the preview refuses first
+  - arrangeOnTree(canvas: string, spine, payload): moves a card to another place in a tree. Takes the graph's onNodeArrange payload as it arrives, plus the tree's spine — pass treeSpine({ value: local.spine }), which reads the picker's spelling; a bare relationship kind id is taken too — for which kind of connection the tree follows — EMPTY meaning every kind, which mirrors what the layout does with the same answer and is the state a canvas starts in; a parent it has to create is then a connection with no kind, exactly as the canvas's own connect gesture writes one — the community's own vocabulary and the reader's chosen spine, neither of which the store can know. The counterpart of dragOnCanvas for a canvas read as a hierarchy: there a drag writes a coordinate, here it writes the structure the layout reads. A drop that makes a card a child writes the connection; one BESIDE a card reorders it there, writing ranks on the placements in the order the drop reports; one in the unconnected area takes it out of its tree. Undoable through undoCanvas, the connection and the ranks as one act. Three refusals, each with a toast: a card inside itself, a drop beside a tree's own root (which would detach it as a side effect — the unconnected area is where that is explicit), and taking out a connection people have commented on or reacted to, since that deletes the record and everything said about it — pass arrange-nodes the same rule as `keep` so the preview refuses first. A drop moves the link the card hangs by, which the payload's `edge` names: a card hanging by a relation the space's classes declare (an edge typed `relation`) has that model field rewritten — the child's to-one, or the parent's list — whatever the spine, and no connection is written. A card hanging by nothing follows the spine: one model relation writes that relation, all model relations the one joining the two classes; otherwise a connection. A parent the link cannot reach is refused with a toast, and so is clearing an installed model's to-one field, which AD4M cannot spell yet — an undo of a first attach on one says it could not be taken back
   - setCardStyle(canvas: string, node: string | string[], field: string, value): sets one presentation property of one card — or of a whole selection — on one canvas: 'color', 'cardShape', 'contentScale', 'rotation' (degrees clockwise) and 'z' (stacking order). Takes the field name so one action serves a swatch, a picker and a slider, and one id or a list so a selection is not a special case. 0 is unset for the numbers, so a card is un-rotated by writing 0. Undoable, each card keeping its own baseline — putting back a colour applied to nine cards restores nine different colours
   - previewCardStyle(nodeId: string, field: string, value): shows a presentation change without writing it — for a slider that reports while it moves. Pair with setCardStyle on release; both go through the same pending map so the card never jumps
   - setTypeColor(canvas: string, nodeType: string, color): sets the colour every card of one type is drawn in, on one canvas — the canvas's key, made writable. An empty colour clears it
@@ -3569,10 +3636,12 @@ SessionStore:
   - isDevelopment: boolean — whether this is a development build. A fact about the build. Do NOT gate developer-only UI on it; gate on devTools
   - devFeatures: boolean — whether this build has developer features at all: a dev server, or a deploy of work in progress (a preview). The ceiling devTools sits under. Gate the way to the developer switch on this
   - devTools: boolean — whether developer affordances should be VISIBLE. True in a development build unless a developer has thrown the Settings → Developer switch to see what a shipped app looks like. Reactive, so a control gated on it appears and disappears on the press. Gate any developer-only control on this — a schema-test page, a fixture toggle — and wrap it in $if rather than hiding it, since a hidden row is still in the accessibility tree and still found by find-in-page. Never true in a production build, whatever the switch says
+  - testPeople: boolean — whether the test people are offered: fake participants and fake cursors in a call, pretend people on a weighed canvas. OFF until a developer turns it on in Settings → Developer, and never on while devTools is off. Gate any control that puts people on screen who are not there on this, not on devTools
   - credentialEntered: boolean — something has been typed into the host's password field. The password itself is never readable from a template — see CredentialField — so gate a Sign in button on this
   - credentialConfirmed: boolean — a CredentialField with purpose 'new' holds a password typed twice and the same both times. Gate the call to profileStore.completeAccountSetup on it
 - Actions:
   - setDevTools(on: boolean): shows or hides developer affordances for this session. Takes the value the control shows, so a we-switch can pass `event.detail` bare. Cannot turn developer UI on in a production build
+  - setTestPeople(on: boolean): turns the test people on or off for this device. Takes the value a we-switch emits, so pass `event.detail` bare. While devTools is off the device keeps the choice, but testPeople stays false until devTools is on again
   - unlock(): signs in with what was typed into the host's password field (a CredentialField with purpose 'unlock'), and loads user data. Takes no password, on purpose: nothing a template collected can be handed to it. Rejects when the unlock fails
   - touchCredential(): asks a CredentialField with purpose 'new' to show what is wrong with it — the $touch: '$all' for fields a template cannot reach. Put it beside $touch in a Create account button's handler
   - clearPasswordError(): clears the failed-unlock flag. Wire it to the CredentialField's onEdit — the verdict was on the submitted password, so editing that password retracts it and a stale "Incorrect password" should not sit over the correction
@@ -3651,6 +3720,7 @@ ShellStore:
   - dockResizing: boolean — a panel is being dragged or resized right now. Suspend transitions while it is true so the edge tracks the cursor
   - panelMaximised: boolean — some panel covers the whole window. The app's own chrome — sidebar, module rail — hides while it is true; a template's fixed chrome should too
   - narrowWindow: boolean — the window is narrower than the sm breakpoint (640px): a phone held upright. Chrome only, because chrome sits outside every surface and has no surface.tier to read; while it is true the sidebar is a bar across the top whose Menu button switches between it and the page, and meta.frame.narrow replaces the app frame. A template answers to its own surface with smUpProps instead
+  - chromeCovered: boolean — an element marked data-we-covers-window="window" is the cover in front: something (a phone’s thread) has the WHOLE window, the app’s own chrome with the page. Chrome only, like narrowWindow — the app’s compact bar is not drawn while it is true, and the app frame holds no bands, so the cover has the window it asked for
   - dockPlacement: Record<dockId, { snap, displace, canDisplace, … }> — where each panel is parked, for its frame to read: which of the eight snaps it is at, whether it displaces content, and whether it may. The state a position menu ticks; dockGeometry is the resulting box
   - panelFrames: Record<dockId, 'window' | 'flush' | 'none'> — how each panel is framed where it is not a window: its own declared frame, else — pushing the content aside at an edge — that edge's frame as the app template declares it (meta.edges); absent, a window's frame
   - movingDock: string | null — the id of the panel being dragged, or null. What mounts the snap-target overlay
@@ -3701,6 +3771,7 @@ ShellStore:
   - resetTemplateLayout(): puts every panel of the interface on screen back the way meta.panels declared them, and reopens the ones that were closed. The whole-arrangement counterpart of resetDockToLayout, and the only way back for a closed panel, which has no titlebar to reset itself from. Scoped to the template rather than the route, so a declaration that varies by route is reset once. Pair with layoutDirty
   - toggleLane(lane: string): folds a home lane (a `$panels` outlet) away, or brings it back — what a sidebar's collapse button calls. Its sections stay mounted and hidden, so a feed keeps its place. Kept per agent and per template, and undone by resetTemplateLayout
   - setLaneCollapsed(lane: string, collapsed: boolean): folds a lane away or brings it back, as said rather than flipped
+  - focusInLane(lane: string): moves focus into a lane just brought back — its selected row, else its first focusable control. What a full-window thread’s Back calls beside setLaneCollapsed, so the keyboard is left somewhere that is on screen
   - toggleCustomiseLayout(): shows every section's grip at once, or goes back to showing a grip only where the pointer or the keyboard is — the way to see what on a page can be moved
   - saveLayout(name: string): saves the arrangement on screen under a name — its panels’ placements, which tab of each seat is showing, and which panels are closed. Scoped to the template, as placements are. Replaces a layout of that name
   - applyLayout(name: string): puts the arrangement back to a saved layout. What the layout does not mention returns to what meta.panels declared, exactly as a reset would leave it
@@ -3732,7 +3803,7 @@ SpaceStore:
   - mySpaces: array of Space objects — every space the agent holds, across all joined datasets
   - personalSpaces: array of Space objects (local/personal spaces; all Space fields)
   - sharedSpaces: array of Space objects (shared/neighbourhood spaces; all Space fields)
-  - spaceList: { uuid, name, description, avatar, kind: 'shared' | 'personal' | 'foreign', isWeSpace, canAdminister }[] — one row per joined dataset the agent can act on, ordered like the sidebar and excluding the system datasets. Includes datasets that are not WE spaces (kind 'foreign', isWeSpace false), which are waiting to be initialized. `uuid` is the dataset id, so it keys navigation and settings whether or not a Space record exists. `sharing` is 'sharing' while a new shared space is still being shared (it is usable meanwhile), 'failed' when that did not work — `shareError` says why, and shareSpace tries again — and '' otherwise; a shared space has a `shareLink`
+  - spaceList: { uuid, name, description, avatar, kind: 'shared' | 'personal' | 'foreign', isWeSpace, loading, canAdminister }[] — one row per joined dataset the agent can act on, ordered like the sidebar and excluding the system datasets. Includes datasets that are not WE spaces (kind 'foreign', isWeSpace false), which are waiting to be initialized. `loading` is true for the first seconds of a boot while a row's Space record has not been read yet — then `isWeSpace` is false without meaning the dataset is from another app, so show a placeholder rather than the initialize state. `uuid` is the dataset id, so it keys navigation and settings whether or not a Space record exists. `sharing` is 'sharing' while a new shared space is still being shared (it is usable meanwhile), 'failed' when that did not work — `shareError` says why, and shareSpace tries again — and '' otherwise; a shared space has a `shareLink`
   - routeSpaceUnjoined: boolean — the current route points at a space this agent has not joined, as a settled fact. What a join gate should read: `currentDataset` being null is also true for the first frames of a refresh, so gating on that flashes a join prompt at someone already inside. False while the answer is still unknown
   - spacePath: string — the path a space's own pages hang off (`/space/<segment>`), empty outside a space. For a link that has to reach the space's own pages from any surface, the shell overlay included, whose '~/' is the overlay's own root: recordLink builds on it. Within a template, write '~/' instead. The segment is the neighbourhood CID for a shared space and the dataset id for a personal one — only the URL says which
   - creatingSpace: boolean (true while a new space is being created)
@@ -3979,12 +4050,13 @@ WorkflowStore:
   - available: boolean — this space has workflows at all: its backend offers them and it is a WE space. Gate a Workflows route or a "Start workflow" control on it
   - capabilities: { requirements, enforcement, sealedEvidence, contention } | null — what this backend can do with workflows. `requirements` lists the kinds of rule it enforces ('approvals', 'evidence'); `enforcement` is 'server' (one authority applies every rule) or 'peers' (every member's software applies them, so a member running other software can write past one — say so beside a rule); `contention` is 'stall' when two moves out of one step both agreed leave a record stuck until somebody withdraws, or 'first' when the earlier wins
   - canEdit: boolean — the viewer may save, delete and archive workflows here: whoever administers the space
-  - workflows: { name, label, editable, records, managedBy, archived, steps, moves }[] — every workflow in the space, archived ones included. `editable` is false for one written by something that uses more than this editor shows, and for the task-state workflow; `managedBy` is 'task-states' for the workflow the board's task states write, which is edited in the space's settings and moved on the board, never here; `records` is how many records are going through it; `steps` ({ name, label, final }[]) and `moves` ({ from, to }[]) are its definition once read — what a map of the space's workflows draws
+  - workflows: { name, label, editable, records, running, managedBy, archived, steps, moves }[] — every workflow in the space, archived ones included. `running` is how many of its records are not at a final step, live from the watched records (0 for an archived or the task-state workflow). `editable` is false for one written by something that uses more than this editor shows, and for the task-state workflow; `managedBy` is 'task-states' for the workflow the board's task states write, which is edited in the space's settings and moved on the board, never here; `records` is how many records are going through it; `steps` ({ name, label, final }[]) and `moves` ({ from, to }[]) are its definition once read — what a map of the space's workflows draws
   - workflowsLoaded: boolean — the backend has answered with this space's workflows. An empty `workflows` before then is not yet an answer: gate a "no workflows" sentence on it and draw the list as loading until it is true
   - startable: { name, label, entities }[] — workflows a record can be put through: not archived, not written by something else. `entities` are the entity names a workflow is for, empty for any record — filter with `card.__subjectClass in workflow.entities || !count(workflow.entities)`
-  - open: { name, label, hint, entities, rule, fits, editable, managedBy, archived, lanes, exceptions, steps, records, history } | null — the workflow opened with openWorkflow. `lanes` is the workflow as a main line and branches: each { index, main, leaves, leavesLabel, rejoins, rejoinsLabel, ends, steps }, every step { name, label, final, approvals, approverKind, approverLabel, evidence, requires, hint }, `requires` being each thing entering it takes as a short phrase. `rule` is 'next', 'next-and-back' or 'any'; `exceptions` the moves nothing else covers, { from, to, fromLabel, toLabel, name }. `records` are what is going through it, newest first: { record, title, startedAt, state, stateLabel, stalled, waiting, walk, next }, `startedAt` an ISO date for a we-timestamp (empty when unknown), `walk` its path as { name, label, at } with `at` 'done', 'current' or 'ahead' — a stepper — and `next` where it may be asked to go, `waiting` each move asked for { to, toLabel, approvers, needs, note, mine }. `recordsLoaded` says the records have been read — gate anything offered only for a workflow with none on it. `history[record]` is filled by loadHistory: { from, to, fromLabel, toLabel, approvers, at, when, evidence, note }[], `when` being `at` as an ISO date
+  - open: { name, label, hint, entities, rule, fits, editable, managedBy, archived, lanes, exceptions, steps, records, history } | null — the workflow opened with openWorkflow. `lanes` is the workflow as a main line and branches: each { index, main, leaves, leavesLabel, rejoins, rejoinsLabel, ends, steps }, every step { name, label, final, approvals, approverKind, approverLabel, evidence, requires, hint }, `requires` being each thing entering it takes as a short phrase. `rule` is 'next', 'next-and-back' or 'any'; `exceptions` the moves nothing else covers, { from, to, fromLabel, toLabel, name }. `records` are what is going through it, newest first: { id, record, title, kind, startedAt, state, stateLabel, stalled, waiting, walk, next }, `title` what the record is called (its name, else its kind and a short id, never empty), `kind` what kind of record it is ('Task', empty until read), `startedAt` an ISO date for a we-timestamp (empty when unknown), `walk` its path as { name, label, at } with `at` 'done', 'current' or 'ahead' — a stepper — and `next` where it may be asked to go, `waiting` each move asked for { to, toLabel, approvers, needs, note, mine }. `recordsLoaded` says the records have been read — gate anything offered only for a workflow with none on it. `history[record]` is filled by loadHistory: { from, to, fromLabel, toLabel, approvers, at, when, evidence, note }[], `when` being `at` as an ISO date
   - draft: { …the shape of open’s lanes, label, isNew, dirty, problems } | null — the workflow being written, after newWorkflow or editWorkflow. `problems` are sentences saying what saving would be refused for; saveDraft refuses while there are any, so show them beside the button
   - recordWorkflows: Record<recordId, { workflow, label, state, stateLabel, waiting, stalled, next, asks }[]> — by record, every startable workflow it is going through and where it stands: what a chip on a card shows. `next` ({ name, label }[]) is where it may be asked to go, for moveRecord; `asks` ({ to, toLabel, approvers, needs, note, mine }[]) the moves waiting on agreement — offer withdrawRecord where `mine`, moveRecord to the same `to` to agree. Read as `workflowStore.recordWorkflows[card.id]`, which is undefined for a record in none
+  - active: { id, workflow, label, record, title, kind, state, stateLabel, lastActivity, waiting, stalled }[] — what is going on: every record still going through a startable workflow (not at a final step), across all of them, the one with the latest activity first. A record in two workflows is two rows. `title` is what the record is called (its name, else its kind and a short id, never empty), `kind` what kind of record it is ('Task', empty until read), `lastActivity` an ISO date for a we-timestamp — when it started, or a move was last asked for or made — `waiting` how many moves are asked for and not made. `count(workflowStore.active)` is how many are running; take the first few with `slice` for a short list. Live, for this member's moves and anybody else's
 - Actions:
   - refreshWorkflows(): asks the backend for the workflow list again — after something another member did
   - openWorkflow(name: string): opens a workflow — its lanes and the records going through it fill `open`
@@ -4163,6 +4235,7 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - recordingCall — This agent’s recording of the call it is in, wherever the call is — { enabled, listening, available }. For the call bar; the other members answer for the space on screen.
   - replyingTo — The line a reply is being written to — { id, text, author, surface } — or null. `surface` is always 'transcript'.
   - serverInstallUrl — Where to get a speech server, for when none was found on the node’s machine; empty where this connection may not set one up.
+  - skipped — Utterances let go in this session without a transcript: the speech model was too far behind or could not be reached.
   - speaking — Whether the microphone level currently counts as speech.
   - status — What the session is doing — idle, no-backend, no-model, no-audio, model-unready, starting, listening or error.
   - thresholdPercent — The speech-onset threshold as a CSS width, to mark on the same meter.
@@ -4217,13 +4290,18 @@ Everything said and written in a space, and what was found in it, in one stream.
 Needs: kernels records, interpretation.
 - State (read in an expression as `modules.feed.<name>`):
   - botAuthors — The authors of lines in the Feed’s window whose own profile says they are a bot, by id — for `row.author in modules.feed.botAuthors`.
+  - callFeedFromStart — Whether the call’s Feed is read from the call’s beginning rather than its newest line.
+  - callFeedHasMore — Whether there is more of the call beyond its Feed’s window.
+  - callFeedLoaded — Whether the call’s Feed has answered for this call yet.
+  - callFeedRoot — The call whose Feed is drawn — the one shown most recently — or empty.
+  - callFeedRows — The Feed of the call on screen: every line said, typed or answered in it, and a row per group of things extracted from it, merged by time. Rows are shaped as `feedRows`' are; a line's `source` says how it arrived ('spoken', 'typed', 'corrected', or none for a bot or the system).
   - feedFromStart — Whether the Feed is read from the beginning rather than the live end.
   - feedHasMore — Whether there is more of the space beyond the Feed’s window.
   - feedLoaded — Whether the Feed has answered for this space yet.
   - feedOpen — Whether the Feed panel is open.
   - feedRoot — The space collection the Feed reads, and writes typed messages into.
   - feedRows — The Feed's window: every message in the space and a row per group of things extracted or made, merged by time — newest first while following the live end, oldest first from the start. A row is { kind: 'line', id, at, author, text, marks, source, call, callTitle, replyTo } or { kind: 'activity', id, at, author, origin, originTitle, summary, items, suggested }.
-  - replyingTo — The line a reply is being written to — { id, text, author } — or null.
+  - replyingTo — The line a reply is being written to — { id, text, author, surface } — or null. `surface` is the list it was started from, 'feed' or 'callFeed', so only that list's composer answers it.
   - showCallTranscripts — Whether this reader asked the Feed to draw the lines calls spoke — off until they do, in this space only.
   - timelineOrientation — Which way round this reader draws the Feed — 'newestBottom' or 'newestTop'. Their own setting.
 - Actions (`{ "$invoke": "modules.feed.<name>" }`):
@@ -4231,15 +4309,21 @@ Needs: kernels records, interpretation.
   - closeFeed — Closes the Feed panel.
   - editUtterance — Corrects the words on a line, marking a heard line as corrected.
   - openFeed — Opens the Feed panel.
+  - readCallFeedFromStart — Re-anchors the call’s Feed at its beginning.
+  - readCallFeedLive — Re-anchors the call’s Feed at its newest line.
   - readFeedFromStart — Re-anchors the Feed at the beginning of the space.
   - readFeedLive — Re-anchors the Feed at the newest message.
   - reply — Answers one line with a typed line of its own, linked from it as a reply.
+  - sendToCallFeed — Writes a typed message into the call on screen — with its marks, when the composer gave any. Nothing when no call is shown. Writing into a call does not put the writer on its roster.
   - sendToFeed — Writes a message straight into the space, outside any call — with its marks, when the composer gave any.
+  - showMoreCallFeed — Grows the call’s Feed by a page.
   - showMoreFeed — Grows the Feed’s window by a page.
-  - startReply — Starts a reply to one line — pass { id, text, author } — which the Feed’s composer then sends as a reply.
+  - startReply — Starts a reply to one line — pass { id, text, author, surface } — which the composer of that list ('feed', the default, or 'callFeed') then sends as a reply.
+  - unwatchCallFeed — One drawing of a call’s Feed was taken down.
   - unwatchFeed — One drawing of the Feed was taken down.
+  - watchCallFeed — A call’s Feed is drawn for this call: read it and keep it live.
   - watchFeed — The Feed is drawn somewhere: keep it live.
-- Parts: `feed.feedView`
+- Parts: `feed.feedView`, `feed.callFeed` (subject: routeStore.params.call)
 - Panels (`meta.panels[].dock`): `feed` "Feed" (module-owned openness)
 - Settings: `timelineOrder` (enum; agent) — Newest messages; `botNotices` (boolean; agent) — Tell me when a bot answers; `showCallTranscripts` (boolean; agent-in-space) — Show call transcripts
 
@@ -6201,17 +6285,29 @@ checkout run a local build path. `pnpm dev:electron` runs the same command witho
 `[ad4m:executor]` line rather than scrolling past it. Details:
 `docs/contributing/ad4m-and-deploys.md`, "The executor you run locally".
 
-### Live tests (real executor, real browser)
+### End-to-end tests: three kinds
 
-`apps/we-web/tests/live/` drives the built app (`pnpm build:web` first) in Chromium against a fresh
-multi-user executor from the same chooser. `pnpm --filter @we/app-web test:live` runs the call suite;
-`test:spaces` runs the coasys-spaces product suite (space, call and extraction, social DNA, two
-workflows, an agent over MCP, the canvas, the page and a theme) — a stub LLM by default,
-`COASYS_SPACES_TIER=real` for a real model. Its Feed checks are `it.todo`, pending a product bug (the
-Feed does not read a class a bundle declares). Its env vars, its `it.todo` backlog and the ad4m
-nightly job that will run it are in
-`apps/we-web/tests/live/coasys-spaces/README.md`. Selectors are roles and accessible names: when one
-is missing, add a `label` to the product node rather than reaching for a CSS selector.
+Beyond the jsdom suites, WE has three kinds of test that need a real browser or a real executor.
+`pnpm e2e` lists every suite; `pnpm e2e <suite>` builds what it needs, fetches the executor and runs
+it. The helpers they share (start an executor, sign up an account, serve a build under the
+production CSP, find Chrome, wait, keep artifacts) are `@we/e2e` (`packages/e2e`). The full map,
+env vars and CI homes: `docs/testing/e2e.md`.
+
+| Kind | Where | Runner · suffix | Run | CI |
+|---|---|---|---|---|
+| **Browser layout** — real Chrome, no executor | `packages/app-shell/tests/browser/`; `3-primitives/src/*.browser.test.ts` | own runner (`run.mjs`); vitest · `.browser.test.ts` | `pnpm e2e browser-layout`, `pnpm e2e primitives-browser` | `build.yaml` test job |
+| **Live contract** — one surface against a real executor | `packages/backend-system/ad4m/tests/live/`; `crates/custody/tests/live.rs` | vitest · `.live.ts`; cargo (`CUSTODY_LIVE=1`) | `pnpm e2e backend-live` (= `pnpm verify:ad4m`), `pnpm e2e custody-live` | `ad4m-live.yaml` `live`; custody: by hand |
+| **Journey** — the built app, a person's path through it | `apps/we-web/e2e/` (steps in `e2e/steps/`) | node:test · `.e2e.mjs` | `pnpm e2e calls`, `pnpm e2e spaces [--tier stub\|real] [--only v1,v2]` | `ad4m-live.yaml` `calls` and `spaces` (stub); real tier: the ad4m nightly |
+
+Every live test runs a fresh **multi-user** executor from the same chooser, as a hosted node does, and
+signs up an account on it. The spaces suite is the coasys-spaces product suite (space, call and
+extraction, social DNA, two workflows, an agent over MCP, the canvas, the page and a theme) — a stub
+LLM by default, `--tier real` for a real model. Its Feed checks are `it.todo`, pending a product bug
+(the Feed does not read a class a bundle declares); its env vars and backlog are in
+`apps/we-web/e2e/coasys-spaces/README.md`. A failing journey step leaves a screenshot, the page's
+aria snapshot and the executor log in `WE_E2E_ARTIFACTS` (a temp dir otherwise). Selectors are roles
+and accessible names: when one is missing, add a `label` to the product node rather than reaching for
+a CSS selector.
 
 ### Building the AD4M Executor Binary
 
@@ -6686,11 +6782,11 @@ reaches that path only when @coasys/connect republishes, so measure performance 
 copy. The desktop's local executor and the phone's key login open an `Ad4mClient` from the pinned
 `@coasys/ad4m` themselves.
 
-In that copy, `getAllShacl()` reads every shape one at a time — `getShaclNames()`, then `getShacl()`
-per shape at 3 + P calls for P properties — and it rejects outright when one shape carries a
-property transform a newer SDK encoded. For a question about many shapes, ask the executor
-once with SPARQL, and read a shape in full only when the answer needs it: `readShapeProperties` and
-`getForeignShacl` in `perspectiveHelpers.ts` show how.
+In that copy, `getAllShacl(options?: { names })` reads every shape — or the named ones — in one call,
+and skips a shape it cannot decode rather than rejecting. It still carries every link of every shape
+it returns. For a question about a few links of many shapes, ask the executor once with SPARQL, and
+read a shape in full only when the answer needs it: `readShapeProperties` and `getForeignShacl` in
+`perspectiveHelpers.ts` show how.
 
 ---
 

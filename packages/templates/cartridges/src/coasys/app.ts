@@ -157,6 +157,13 @@ const rail: SchemaNode = railShell({
   border: '1px solid border',
   compact: narrow,
   compactHeight: `${BAR}px`,
+  /*
+    Nor is the bar drawn while a page asks for the whole window — a phone's thread, marked
+    `data-we-covers-window="window"`. The frame's bands go the same moment (`meta.frame` is declared
+    no bands while one holds), so the thread's own bar — leading with Back — is the only bar there
+    is, and its way back is what gives the window up.
+  */
+  barHidden: { $: 'shellStore.chromeCovered' },
   localState: { confirmGuestLogout: { type: 'boolean', initial: false } },
   // The mark where the sign-in screen draws it, and the name beside it while the rail is open.
   header: {

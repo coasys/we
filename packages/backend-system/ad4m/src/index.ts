@@ -69,6 +69,24 @@ export {
 } from './backendPortsAdapter';
 export { type Ad4mHttpConnection, createAd4mLanguageModelPort } from './languageModelPort';
 export { type Ad4mCustodyHost, type Ad4mCustodyState, readCustody } from './identityPort';
+export { createAd4mHostPort, type HostPortDeps } from './hostPort';
+export {
+  executorSigner,
+  KEY_SESSION_APP,
+  keepRenewed,
+  type KeySession,
+  type KeySessionAgent,
+  type KeySessionApp,
+  type KeySigner,
+  loginWithDeviceKey,
+  originOf,
+  RENEW_BEFORE_MS,
+  type Renewal,
+  type RenewalClock,
+  RETRY_MS,
+  type SessionSignRequest,
+  type SignedKeyStatement,
+} from './keySession';
 export { connectToLocalExecutor, createLocalAd4mConnector, type LocalExecutorConnection } from './localExecutor';
 export { createAd4mTranscriptionPort } from './transcriptionAdapter';
 export {

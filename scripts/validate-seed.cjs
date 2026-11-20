@@ -104,6 +104,15 @@ function main() {
     }
   }
 
+  // The host list reads `<platformApiUrl>/v1/index/hosts`, so the value is an origin and nothing more.
+  if (seed.platformApiUrl !== undefined) {
+    if (typeof seed.platformApiUrl !== 'string' || !/^https:\/\/[^\s/]+$/.test(seed.platformApiUrl)) {
+      error(`platformApiUrl must be an https origin with no path, got: ${seed.platformApiUrl}`);
+    } else {
+      success(`platformApiUrl is ${seed.platformApiUrl} (the host list reads the hosting index there)`);
+    }
+  }
+
   if (seed.desktop !== undefined) {
     const desktop = seed.desktop;
     if (typeof desktop !== 'object' || desktop === null || Array.isArray(desktop)) {

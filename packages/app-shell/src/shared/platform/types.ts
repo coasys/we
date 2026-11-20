@@ -183,11 +183,6 @@ export interface ExecutorHost {
    * it; null while it is not running. Where the host does not start one, absent.
    */
   storageStatus?(): Promise<StorageStatus | null>;
-  /**
-   * Hears each change of that status the moment the backend reports it (null once it stops). Answers
-   * the unsubscribe. Absent where the host cannot follow it: `storageStatus` is then read when asked.
-   */
-  onStorageStatus?(listener: (status: StorageStatus | null) => void): () => void;
 }
 
 /** One store's state on disk: under its key, still being moved under it, or not. */

@@ -19,6 +19,8 @@ const [ports, setPorts] = createSignal<{ identity?: IdentityPort } | null>(null)
 const [bootState, setBootState] = createSignal('ready');
 /** Whether the host runs the email check: the desktop does, the phone does not. */
 const [emailCheck, setEmailCheck] = createSignal(true);
+/** Whether the backend can sign this identity in to a host as a device: the desktop can, the phone cannot. */
+const [cloudDevice, setCloudDevice] = createSignal(false);
 
 vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
   useSessionStore: () => ({
@@ -32,6 +34,7 @@ vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
       linkDevice: !!ports()?.identity?.change,
       recoveryWords: !!ports()?.identity?.change,
       emailCheck: !!ports()?.identity?.change && emailCheck(),
+      cloudDevice: !!ports()?.identity?.change && cloudDevice(),
     }),
   }),
 }));
@@ -165,6 +168,7 @@ beforeEach(() => {
   setPorts(null);
   setBootState('ready');
   setEmailCheck(true);
+  setCloudDevice(false);
   localStorage.clear();
 });
 
@@ -570,6 +574,42 @@ describe('deviceStore', () => {
     await flush();
     await deviceStore.addDevice();
     expect(c.changes).toEqual([{ kind: 'add-device' }]);
+  });
+
+  it('offers a cloud device only with the master key here and a backend that can sign in to a host', async () => {
+    const b = backend({ did: DID, events: [incept], devices: [devices[1]] });
+    const holding = custody(b.port, () => {}, true);
+    setPorts({ identity: holding.identity });
+    let stores = mount();
+    await flush();
+    await flush();
+    // The master key is here, the backend cannot sign in to a host.
+    expect(stores.devices.canManage()).toBe(true);
+    expect(stores.devices.canAddCloudDevice()).toBe(false);
+
+    setCloudDevice(true);
+    expect(stores.devices.canAddCloudDevice()).toBe(true);
+
+    // A backend that can, with no master key here.
+    setPorts({ identity: custody(b.port, () => {}, false).identity });
+    stores = mount();
+    await flush();
+    await flush();
+    expect(stores.devices.canAddCloudDevice()).toBe(false);
+  });
+
+  it('adds Coasys cloud when no address is typed, and the host at the address when one is', async () => {
+    setCloudDevice(true);
+    const c = custody(backend({ did: DID, events: [incept], devices: [devices[1]] }).port, () => {}, true);
+    setPorts({ identity: c.identity });
+    const { devices: deviceStore } = mount();
+    await flush();
+    await deviceStore.addCloudDevice();
+    await deviceStore.addCloudDevice('  cloud.example.org ');
+    expect(c.changes).toEqual([
+      { kind: 'add-cloud-device', host: { kind: 'coasys' } },
+      { kind: 'add-cloud-device', host: { kind: 'address', url: 'cloud.example.org' } },
+    ]);
   });
 
   it('names each device from the private record, says who keeps the master key, and lists requests', async () => {

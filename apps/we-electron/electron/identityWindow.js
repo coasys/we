@@ -57,7 +57,13 @@ export function identityFile(url, dir) {
 function isIdentityStep(step) {
   if (PLAIN_STEPS.has(step?.kind)) return true;
   if (step?.kind === 'answer-request') return typeof step.id === 'string';
+  if (step?.kind === 'add-cloud-device') return isCloudHost(step.host);
   return (step?.kind === 'revoke' || step?.kind === 'rename') && typeof step.keyId === 'string';
+}
+
+/** The host an `add-cloud-device` step names: Coasys cloud, or an address the person typed. */
+function isCloudHost(host) {
+  return host?.kind === 'coasys' || (host?.kind === 'address' && typeof host.url === 'string');
 }
 
 /** The steps that name nothing but their kind. */

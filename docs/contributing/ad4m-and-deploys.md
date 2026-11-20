@@ -40,11 +40,11 @@ re-resolves the snapshot can drop it: run `pnpm bump:ad4m <commit>` to put it ba
 
 ## Where WE deploys
 
-|                | Built from      | ad4m used                                           | URL                                         | For                           |
-| -------------- | --------------- | --------------------------------------------------- | ------------------------------------------- | ----------------------------- |
-| **Staging**    | `dev`           | a snapshot of ad4m `dev`                            | `staging.coasys.app` (Cloudflare Pages)     | the team, and invited testers |
-| **Production** | a `web-v*` tag  | a published version                                 | `coasys.app` (Cloudflare Pages)             | the public                    |
-| **Desktop**    | a release tag   | a published version, and an executor built to match | GitHub releases                             | people running WE locally     |
+|                | Built from     | ad4m used                                           | URL                                     | For                           |
+| -------------- | -------------- | --------------------------------------------------- | --------------------------------------- | ----------------------------- |
+| **Staging**    | `dev`          | a snapshot of ad4m `dev`                            | `staging.coasys.app` (Cloudflare Pages) | the team, and invited testers |
+| **Production** | a `web-v*` tag | a published version                                 | `coasys.app` (Cloudflare Pages)         | the public                    |
+| **Desktop**    | a release tag  | a published version, and an executor built to match | GitHub releases                         | people running WE locally     |
 
 Every web build writes `/build-info.json`: the WE version and branch, and which ad4m it was built
 against — the kind of pin, and its commit. The page logs the same line to the console.
@@ -236,10 +236,13 @@ writes to an agent it did not create: against an executor already running it onl
 profile, and its last case checks that the profile is as it found it.
 
 They share one executor in a temporary directory, on free ports, with MCP on and no network, removed
-afterwards. Which binary is chosen as for the app (see
+afterwards. It runs multi-user, as a hosted node does, and the tests run as an account signed up on
+it (`startExecutor` and `signUp` in `@we/e2e`; [End-to-end tests](../testing/e2e.md) has the rest of
+WE's live tests). Which binary is chosen as for the app (see
 [The executor you run locally](#the-executor-you-run-locally)): the pinned one by default, which
 `pnpm ad4m:executor` downloads. `AD4M_LIVE_URL` with `AD4M_LIVE_TOKEN` uses one already running
-instead, its agent unlocked, with `AD4M_LIVE_MCP_URL` naming its MCP endpoint for the waker test.
+instead, its agent unlocked, with `AD4M_LIVE_MCP_URL` naming its MCP endpoint for the waker test
+and `AD4M_LIVE_OPERATOR_TOKEN` the operator's credential for the calls an account may not make.
 
 It also runs in CI, as the `AD4M live` workflow (`.github/workflows/ad4m-live.yaml`): on a PR that
 touches the backend packages, the entities or the pin, on `dev` after such a merge, and on the bump
@@ -309,7 +312,7 @@ seed. Nothing checks that build against the pin; the command says so each time i
 | A PR needing an ad4m change pins its snapshot | The preview, CI and the live tests then all test the change the PR needs, through the ordinary build. There is no paired build, no description block, and no from-source workflow to keep. |
 | The merge gate reads the pin                  | Whether a PR waits on ad4m can be asked of GitHub — is the pinned commit on ad4m `dev` yet — rather than of the author. A branch in another repo still never decides what WE builds.       |
 | The pin cannot move backwards                 | A PR started on an older ad4m would otherwise quietly undo ad4m changes `dev` already has.                                                                                                 |
-| Core and connect from one commit              | The app's client comes from @coasys/connect's bundled SDK. A connect from another commit leaves the running client different from the SDK WE typechecks against.                              |
+| Core and connect from one commit              | The app's client comes from @coasys/connect's bundled SDK. A connect from another commit leaves the running client different from the SDK WE typechecks against.                           |
 | Integrity in the lockfile                     | pnpm records none for a tarball URL. Without it, changed bytes at the same URL would install silently.                                                                                     |
 | Bump through a PR                             | CI and a preview check every new ad4m before it reaches `dev`.                                                                                                                             |
 | Check capabilities with a script              | WE's declaration of what ad4m can do goes stale silently. One command at each bump catches that, and shows new capabilities too.                                                           |

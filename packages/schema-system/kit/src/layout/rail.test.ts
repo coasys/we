@@ -211,9 +211,46 @@ describe('a compact rail', () => {
     expect(rail.props?.onMouseEnter).toEqual({ $setLocal: 'expanded', value: true });
   });
 
+  it('draws not even its bar while something has the whole window', () => {
+    /*
+      `barHidden` — the caller's read of `shellStore.chromeCovered`, a store-free stand-in here —
+      takes the shut bar away while a cover holds the whole window, chrome and all. A bar left
+      drawn would stand over a cover it can no longer be cleared of.
+    */
+    const rail = railShell({
+      header,
+      children: [{ type: 'we-text', children: ['Row'] }],
+      compact,
+      barHidden: { $: 'win.covered' },
+    }) as Node;
+    const covered = { win: { narrow: true, covered: true }, local: { expanded: false } };
+    expect(value(rail.props?.display, covered)).toBe('none');
+    // Not a state it is in for any lesser reason: an ordinary shut bar, a wide window, an open rail.
+    expect(value(rail.props?.display, { win: { narrow: true, covered: false }, local: { expanded: false } })).toBe(
+      'flex',
+    );
+    expect(value(rail.props?.display, { win: { narrow: false, covered: true }, local: { expanded: false } })).toBe(
+      'flex',
+    );
+    expect(value(rail.props?.display, { win: { narrow: true, covered: true }, local: { expanded: true } })).toBe(
+      'flex',
+    );
+  });
+
+  it('has no bar to hide where nobody says one could be — `display` stays the children’s', () => {
+    expect(shell(compact).props?.display).toBeUndefined();
+    expect(shell().props?.display).toBeUndefined();
+  });
+
   it('shuts behind a press only while compact', () => {
     expect(closeWhenCompact(compact)).toEqual({
       $if: { condition: compact, then: { $setLocal: 'expanded', value: false } },
     });
+  });
+
+  it('shuts what a caller calls shut — a lane is not the rail’s local', () => {
+    // The Coasys tree is a PanelLane on a phone: its rows fold the lane, not `expanded`.
+    const fold = { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', true] };
+    expect(closeWhenCompact(compact, fold)).toEqual({ $if: { condition: compact, then: fold } });
   });
 });
