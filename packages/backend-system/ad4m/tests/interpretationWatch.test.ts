@@ -12,15 +12,17 @@
  *
  * Pinned here: copies from several authors read as one set; a config that already says what the
  * watch wants is left alone; a different one is still replaced; a changed setting is rewritten in
- * place rather than by deleting; two concurrent calls for one watch make one registration.
+ * place rather than by deleting; two concurrent calls for one watch make one registration; and a
+ * config the current engine cannot load — one stored before the source scope became a class and a
+ * property — is deleted and re-registered rather than read as present.
  */
 import { createAd4mInterpretationPort, registerEntity, unregisterEntity } from '@we/backend-ad4m';
 import { getEntity, getEntityTargetClass } from '@we/entities';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { EventBlock, Relationship, TaskBlock } from '../src/entities';
+import { EventBlock, Relationship, TaskBlock, TextBlock } from '../src/entities';
 
-const MODELS = { TaskBlock, EventBlock, Relationship };
+const MODELS = { TaskBlock, EventBlock, Relationship, TextBlock };
 beforeAll(() => {
   for (const [name, model] of Object.entries(MODELS)) registerEntity(name, model as never);
 });
@@ -34,7 +36,9 @@ const CLASS = 'ad4m://interpretation_class';
 
 /** The scalar paths `write_processor` writes through its setters, keyed by the field it takes. */
 const SCALARS: Record<string, string> = {
-  sourceScopeQuery: 'ad4m://source_scope_query',
+  sourceClass: 'ad4m://source_class',
+  sourceText: 'ad4m://source_text',
+  sourceQuery: 'ad4m://source_query',
   basePrefix: 'ad4m://base_prefix',
   debounceMs: 'ad4m://debounce_ms',
   batchMin: 'ad4m://batch_min',
@@ -43,6 +47,9 @@ const SCALARS: Record<string, string> = {
   claimTtlMs: 'ad4m://claim_ttl_ms',
   emitDebugEvents: 'ad4m://emit_debug_events',
 };
+
+/** The predicate a config from before the model scope carried its gather as — the loader no longer reads it. */
+const LEGACY_SCOPE_PREDICATE = 'ad4m://source_scope_query';
 
 const literal = (value: unknown) => `literal:string:${encodeURIComponent(String(value))}`;
 const targetOf = (name: string) => getEntityTargetClass(getEntity(name) as never) as string;
@@ -150,8 +157,18 @@ function perspective(agent = 'did:me', foreign: Record<string, string> = {}) {
     linksTo: (target: string) => links.filter((l) => l.data.target === target).length,
     /** Another member registering, as their own client would. */
     registerAs: register,
+    /** A raw link on the config node, for shapes no current field writes — a stale registration's. */
+    putLink: (predicate: string, target: string, author = agent) =>
+      links.push({ author, data: { source: NODE, predicate, target } }),
+    /** Whether the config node carries a link under a raw predicate — for one no field writes. */
+    hasLink: (predicate: string) => links.some((l) => l.data.source === NODE && l.data.predicate === predicate),
     classes: () => links.filter((l) => l.data.predicate === CLASS).map((l) => l.data.target),
     scalar: (field: string) => links.find((l) => l.data.predicate === SCALARS[field])?.data.target,
+    /** A stored scalar as the value it holds — what `sameRegistration` compares against. */
+    value: (field: string) => {
+      const stored = links.find((l) => l.data.predicate === SCALARS[field])?.data.target;
+      return stored ? decodeURIComponent(stored.slice('literal:string:'.length)) : undefined;
+    },
   };
 }
 
@@ -190,6 +207,59 @@ describe('a standing watch', () => {
     expect(p.calls.remove - before.remove).toBe(0);
     expect(p.calls.add - before.add).toBe(0);
     expect(p.classes()).toHaveLength(6);
+  });
+
+  it('registers the source as the text-block class, its text property, and the parent scope', async () => {
+    const p = perspective();
+    await registeredOnce(p);
+
+    // The class by its target-class IRI — two apps' classes can share the name "TextBlock".
+    expect(p.value('sourceClass')).toBe(targetOf('TextBlock'));
+    expect(p.value('sourceText')).toBe('text');
+    // The conversation's own children (`parent` in the request resolves `children` to `has_child`)
+    // and their thread replies, only the lines a person wrote.
+    expect(p.value('sourceQuery')).toBe(
+      JSON.stringify({
+        parent: { ids: 'we://collection/root', path: ['ad4m://has_child', 'we://thread'] },
+        where: { source: ['spoken', 'typed', 'corrected'] },
+      }),
+    );
+  });
+
+  it('reads a stored config without a source class as outdated, and replaces it whole', async () => {
+    const p = perspective();
+    // The shape a pre-model-scope registration left on the node: the same classes and settings,
+    // the gather as SPARQL, and none of the fields the loader now requires.
+    p.registerAs('did:peer', {
+      basePrefix: 'we://interpreted/we%3A%2F%2Fcollection%2Froot/',
+      debounceMs: 15_000,
+      batchMin: 3,
+      batchMax: 100,
+      maxWaitMs: 120_000,
+      claimTtlMs: 600_000,
+      emitDebugEvents: true,
+      interpretationClasses: ['TaskBlock', 'EventBlock', 'Relationship'].map(targetOf),
+    });
+    p.putLink(LEGACY_SCOPE_PREDICATE, literal('SELECT ?speaker ?text ?timestamp WHERE { ?m <we://text> ?text }'));
+    const before = { ...p.calls };
+
+    await createAd4mInterpretationPort(() => 'did:me').watch!(
+      p.handle,
+      request(['TaskBlock', 'EventBlock', 'Relationship']) as never,
+    );
+
+    // The whole node goes — rewriting over it would leave `ad4m://source_scope_query` behind.
+    expect(p.calls.removeProcessor - before.removeProcessor).toBe(1);
+    expect(p.calls.add - before.add).toBe(1);
+    expect(p.order.slice(-2)).toEqual(['removeAutoProcessor', 'addAutoProcessor']);
+    expect(p.hasLink(LEGACY_SCOPE_PREDICATE)).toBe(false);
+    expect(p.value('sourceClass')).toBe(targetOf('TextBlock'));
+    expect(p.value('sourceQuery')).toBe(
+      JSON.stringify({
+        parent: { ids: 'we://collection/root', path: ['ad4m://has_child', 'we://thread'] },
+        where: { source: ['spoken', 'typed', 'corrected'] },
+      }),
+    );
   });
 
   it('does nothing but read when the config already says what the watch wants', async () => {
