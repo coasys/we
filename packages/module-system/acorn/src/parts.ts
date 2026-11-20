@@ -1726,7 +1726,7 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
           port, so the child keeps any parent it has (re-parenting from the upper port is not here).
           `acornConnectRefusal` refuses what stock never offers: itself, a child already under it, a loop.
         - Delete: Delete or Backspace on a selected line deletes its connection; on one selected card,
-          or the card's Delete, the outcome. Stock's Delete key, unconfirmed. On the mount the outcome's
+          or the card's Delete, the outcome — stock's Delete key, though the host asks first, as it does for every `record.delete`. On the mount the outcome's
           delete is stock's `delete_outcome_fully`, which takes its connections with it; its children stay,
           as roots. The in-memory host leaves those connections behind, and the map draws no line to an
           outcome that is gone.
