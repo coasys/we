@@ -1256,6 +1256,27 @@ export function createCallStore(deps: ModuleStoreDeps) {
   let joiningSession = false;
 
   /**
+   * Join `session` with `media`'s devices, then send any device turned on while the join ran.
+   *
+   * `onTrackChanged` waits for `backendJoined`, and `join` takes the stream as it stands, so a
+   * device turned on in between would reach nobody. Calls start with both devices off, so a camera
+   * pressed straight after Join lands in this window.
+   */
+  async function joinSession(session: CallBackend, media: MediaController): Promise<void> {
+    const sending = () => {
+      const stream = media.displayStream() ?? media.localStream();
+      return { audio: stream?.getAudioTracks()[0] ?? null, video: stream?.getVideoTracks()[0] ?? null };
+    };
+    const joinedWith = sending();
+    await session.join(media.displayStream() ?? media.localStream() ?? new MediaStream());
+    if (backend !== session) return;
+    const now = sending();
+    for (const kind of ['audio', 'video'] as const) {
+      if (now[kind] !== joinedWith[kind]) void session.replaceTrack(kind, now[kind]);
+    }
+  }
+
+  /**
    * Build a session on `mode` for call `id` and join it with `media`'s devices. Resolves `true` once
    * it is the call's joined session, `false` when the call moved on meanwhile (and the session has
    * been let go). Rejects when it could not be built or joined — with nothing left behind: a
@@ -1271,7 +1292,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
     backend = next;
     const syncStreams = attachSession(next);
     try {
-      await next.join(media.displayStream() ?? media.localStream() ?? new MediaStream());
+      await joinSession(next, media);
     } catch (err) {
       if (backend === next) detachSession();
       next.destroy().catch((e) => console.error('call: backend destroy', e));
@@ -1812,8 +1833,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
       try {
         await acquire();
         if (controller !== started) return;
-        const localStream = started.displayStream() ?? started.localStream() ?? new MediaStream();
-        await session.join(localStream);
+        await joinSession(session, started);
       } finally {
         if (controller === started) joiningSession = false;
       }

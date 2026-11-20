@@ -1268,10 +1268,12 @@ describe('transport and device lifetime', () => {
         participants: [] as { participantId: string; agentDid: string; stream: MediaStream; hasVideo?: boolean }[],
         joinedWith: null as MediaStream | null,
         destroyed: false,
-        join: async (stream: MediaStream) => void (session.joinedWith = stream),
+        join: async (stream: MediaStream): Promise<void> => void (session.joinedWith = stream),
         leave: async () => {},
         destroy: async () => void (session.destroyed = true),
-        replaceTrack: async () => {},
+        /** Every track handed over after the join, as `[kind, track]`. */
+        sent: [] as [string, MediaStreamTrack | null][],
+        replaceTrack: async (kind: string, track: MediaStreamTrack | null) => void session.sent.push([kind, track]),
         setQualityPreference: async () => {},
         getState: () => 'active',
         on: (event: string, cb: (...args: unknown[]) => void) => {
@@ -1329,6 +1331,36 @@ describe('transport and device lifetime', () => {
       await Promise.resolve();
       expect(stateOf()?.retrying).toBe(false);
       expect(stateOf()?.transport, 'read from the session once the pair connects').toBe('relay');
+    });
+
+    it('sends a camera turned on while the session was still joining', async () => {
+      /*
+        Calls start with both devices off, so the session joins with an empty stream. A camera
+        pressed before the join finished changed nothing the session could see: track changes wait
+        for the join, and the join had taken the stream as it stood. The other side saw no video.
+      */
+      const fake = fakeSession();
+      let finishJoin = () => {};
+      fake.session.join = (stream: MediaStream) => {
+        fake.session.joinedWith = stream;
+        return new Promise<void>((resolve) => (finishJoin = resolve));
+      };
+      const camera = { kind: 'video', enabled: true, readyState: 'live', stop() {}, addEventListener() {} };
+      const { store } = callable({
+        backend: () => fake.session,
+        getUserMedia: async () => new MediaStream([camera as unknown as MediaStreamTrack]),
+      });
+      const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+      const starting = store.startCall();
+      await settle();
+      expect(fake.session.joinedWith?.getTracks(), 'joined with nothing on').toEqual([]);
+      await store.toggleVideo();
+      finishJoin();
+      await starting;
+      await settle();
+
+      expect(fake.session.sent).toEqual([['video', camera]]);
     });
 
     it('reconnects a peer through the session', async () => {
@@ -1646,7 +1678,7 @@ describe('transport and device lifetime', () => {
     */
     describe('the topology a call runs on', () => {
       const settle = async () => {
-        for (let i = 0; i < 6; i++) await Promise.resolve();
+        for (let i = 0; i < 10; i++) await Promise.resolve();
       };
       const lastTopology = (activities: Record<string, unknown>[]) => activities.at(-1)?.topology;
 
