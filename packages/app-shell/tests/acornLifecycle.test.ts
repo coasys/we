@@ -1169,6 +1169,78 @@ describe('mount retry — the fresh-cell stall', () => {
     await vi.advanceTimersByTimeAsync(0);
   });
 
+  /*
+    The phase's one clock starts before discovery, not at the first mount call:
+    a series of mounts reads that together outlive it is budget spent, and a
+    mounted target those reads find after expiry is not proceeded on.
+  */
+  it('bounds target discovery by the phase budget — a mount found after expiry does not enter setup', async () => {
+    vi.useFakeTimers();
+    const record: string[] = [];
+    const d = deps(record, { mountBudgetMs: 5_000 });
+    (d.lifecycle()!.list as ReturnType<typeof vi.fn>).mockResolvedValue([ref('acorn-1', 'Project one')]);
+    const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
+    let releaseMounts!: (mounted: string[]) => void;
+    (port.mounts as ReturnType<typeof vi.fn>).mockImplementation(async (uuid: string) => {
+      record.push(`mounts:${uuid}`);
+      return new Promise<string[]>((resolve) => (releaseMounts = resolve));
+    });
+    const acorn = createAcornLifecycle(d);
+
+    const out = acorn.createAcornProject('P', 'a b c', BASE).then(
+      (value) => ({ value, error: undefined as unknown }),
+      (error: unknown) => ({ value: undefined, error }),
+    );
+    await vi.waitFor(() => expect(record).toContain('mounts:acorn-1'));
+    await vi.advanceTimersByTimeAsync(6_000); // the budget lapses inside discovery
+    releaseMounts([LANG]); // …and the discovery read then finds the project mounted
+    await vi.advanceTimersByTimeAsync(0);
+
+    const done = await out;
+    expect(done.error).toBeInstanceOf(AcornLifecycleError);
+    expect((done.error as AcornLifecycleError).stage).toBe('mount');
+    expect(record.find((c) => c.startsWith('ensure:'))).toBeUndefined();
+    expect(record.find((c) => c.startsWith('navigate:'))).toBeUndefined();
+    expect(d.lifecycle()!.create).not.toHaveBeenCalled();
+    // A budget spent is not a refusal: the parked operation still offers Retry.
+    await expect(acorn.pendingAcornOperation()).resolves.toMatchObject({
+      phase: 'failed',
+      languageAddress: LANG,
+      failure: { stage: 'mount', retryable: true },
+    });
+  });
+
+  it('bounds allocation by the phase budget — a late perspective is kept as the target, not mounted on', async () => {
+    vi.useFakeTimers();
+    const record: string[] = [];
+    const d = deps(record, { mountBudgetMs: 5_000 });
+    let releaseCreate!: () => void;
+    (d.lifecycle()!.create as ReturnType<typeof vi.fn>).mockImplementation(async (name: string) => {
+      record.push(`create:${name}`);
+      await new Promise<void>((resolve) => (releaseCreate = resolve));
+      return ref('dataset-1', name);
+    });
+    const acorn = createAcornLifecycle(d);
+
+    const out = acorn.createAcornProject('P', 'a b c', BASE).then(
+      (value) => ({ value, error: undefined as unknown }),
+      (error: unknown) => ({ value: undefined, error }),
+    );
+    await vi.waitFor(() => expect(record).toContain('create:P'));
+    await vi.advanceTimersByTimeAsync(6_000);
+    const done = await out;
+    expect(done.error).toBeInstanceOf(AcornLifecycleError);
+    expect(record.find((c) => c.startsWith('mount:'))).toBeUndefined();
+
+    // The perspective arrives late: it is the operation's target now, and the
+    // Retry mounts that one rather than allocating a second beside it.
+    releaseCreate();
+    await vi.advanceTimersByTimeAsync(0);
+    await expect(acorn.resumeAcornOperation()).resolves.toBe('dataset-1');
+    expect(d.lifecycle()!.create).toHaveBeenCalledTimes(1);
+    expect(record).toContain(`mount:dataset-1:${LANG}`);
+  });
+
   it('stops after five attempts and parks the same target — a bounded failure, not a loop', async () => {
     vi.useFakeTimers();
     const record: string[] = [];

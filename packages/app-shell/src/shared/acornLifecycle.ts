@@ -579,6 +579,8 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
     const text = error instanceof Error ? error.message : String(error);
     if (MOUNT_INIT_FAILURES.some((signature) => text.includes(signature))) return 'init';
     if (text.includes(MOUNT_IN_FLIGHT)) return 'busy';
+    // The phase's own clock ran out — nothing answered, so nothing was refused.
+    if (/did not answer inside the \d+(\.\d+)? s budget/.test(text)) return 'unknown';
     if (/heard nothing|timed?\s*out|socket|connect|unreachable|handed no url/i.test(text)) return 'unknown';
     return 'permanent';
   };
@@ -594,7 +596,7 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
     if (MOUNT_INIT_FAILURES.some((signature) => cause.includes(signature))) {
       return 'The project’s cell did not start on the executor in time.';
     }
-    if (cause.includes(MOUNT_IN_FLIGHT) || /did not answer inside the \d+ s budget/.test(cause)) {
+    if (cause.includes(MOUNT_IN_FLIGHT) || /did not answer inside the \d+(\.\d+)? s budget/.test(cause)) {
       return 'The mount did not finish inside its time budget.';
     }
     if (/heard nothing|timed?\s*out|socket|connect|unreachable|handed no url/i.test(cause)) {
@@ -789,8 +791,41 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       phase awaits can outlive the budget that bounds it.
     */
     const deadline = Date.now() + mountBudgetMs;
-    const found = op.ref ? { ref: op.ref, mounted: false } : await targetFor(op.lang);
-    const ref = found?.ref ?? (await deps.lifecycle()!.create(op.name));
+    /*
+      Discovery and allocation spend the same budget as the mount: a series of
+      mounts reads that outlives it is the phase timing out, and a target they
+      find afterwards is not proceeded on — the next explicit Retry finds it.
+    */
+    const budgetSpent = () =>
+      new AcornLifecycleError({
+        stage: 'mount',
+        retryTarget: null,
+        cause: new Error(`the mount phase did not answer inside the ${mountBudgetMs / 1000} s budget`),
+      });
+    const found = op.ref
+      ? { ref: op.ref, mounted: false }
+      : await withinBudget(targetFor(op.lang), deadline - Date.now());
+    if (found === BUDGET_OUT) throw budgetSpent();
+    let ref = found?.ref;
+    if (!ref) {
+      const allocation = deps.lifecycle()!.create(op.name);
+      const allocated = await withinBudget(allocation, deadline - Date.now());
+      if (allocated === BUDGET_OUT) {
+        /*
+          The perspective may still arrive. It is this operation's target when
+          it does, so the Retry mounts it rather than allocating a second beside
+          it — unless a newer run already settled on one of its own.
+        */
+        void allocation.then(
+          (late) => {
+            op.ref ??= late;
+          },
+          () => {},
+        );
+        throw budgetSpent();
+      }
+      ref = allocated;
+    }
     op.ref = ref;
     /*
       The record's owed work beats this ask's: a resume inherits the debt the
@@ -941,9 +976,9 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
               retryTarget: op.ref ? { datasetId: op.ref.id, languageAddress: op.lang } : null,
               cause: error,
             });
-      const retryable =
-        Boolean(failure.retryTarget) ||
-        (!(error instanceof AcornLifecycleError) && mountFailureKind(error) !== 'permanent');
+      // A typed failure without a target is retryable only when its cause was
+      // never an answer — the budget running out before a target was settled.
+      const retryable = Boolean(failure.retryTarget) || mountFailureKind(failure.cause) !== 'permanent';
       park({ stage: failure.stage, cause: failure.message, retryable });
       /*
         The same failure parked when reporting is no longer ours: a run that
