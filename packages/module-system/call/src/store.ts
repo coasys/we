@@ -1710,9 +1710,13 @@ export function createCallStore(deps: ModuleStoreDeps) {
         // above: each on its own condition, so one recovery cannot swallow another's report.
         if (problem() === MIC_LOST && local?.getAudioTracks().length) setProblem(null);
         if (problem() === CAMERA_LOST && local?.getVideoTracks().length) setProblem(null);
-        // Fires once when devices are acquired, and on every mute after — the first is what tells a
-        // listener the microphone exists at all.
-        setLocalAudio(controller?.localStream() ?? null);
+        /*
+          Fires once when a microphone is acquired, and on every mute after — the first is what tells
+          a listener the microphone exists at all. Only a stream with a microphone in it: a call joins
+          with the microphone off and an empty stream, and a listener handed that stream would build
+          an audio graph from nothing and fail.
+        */
+        setLocalAudio(local?.getAudioTracks().length ? local : null);
         publishActivity();
         rebuildTiles();
       },

@@ -736,8 +736,13 @@ describe('transport and device lifetime', () => {
 
     await store.startCall();
     await Promise.resolve();
-    // Joined with the microphone off: the stream is there, with nothing in it.
-    expect((published.at(-1) as MediaStream).getTracks()).toEqual([]);
+    // Joined with the microphone off: nothing to hear, so nothing is published — a listener handed
+    // the empty stream would build an audio graph from nothing.
+    expect(published).toEqual([]);
+
+    // The camera alone still gives a listener nothing to hear.
+    await store.toggleVideo();
+    expect(published).toEqual([]);
 
     await store.toggleAudio();
     const opened = published.at(-1) as MediaStream;
@@ -1442,6 +1447,9 @@ describe('transport and device lifetime', () => {
         const { store, session, fire, published, cleared } = await inCallWith('did:someone');
         const id = store.callId();
         expect(id).toBeTruthy();
+        // A microphone on, so there is something to release.
+        await store.toggleAudio();
+        expect(published.at(-1)).not.toBeNull();
 
         fire('replaced', { participantId: 'session-this-tab' });
         await settle();
