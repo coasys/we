@@ -130,6 +130,95 @@ const rollup = (
   };
 };
 
+/** Acorn's "ID#" — `hashCodeId` (acorn-ad4m-ui `api/clientSideIdHash.ts`) of the action hash. */
+const outcomeNumber = (id: string): string => {
+  const at = id.lastIndexOf('://');
+  const hash = at < 0 ? id : id.slice(at + 3);
+  let h = 0;
+  for (let i = 0; i < hash.length; i++) {
+    h = (h << 5) - h + hash.charCodeAt(i);
+    h |= 0;
+  }
+  return Math.abs(h).toString().slice(0, 6);
+};
+
+const strings = (value: unknown): string[] => (Array.isArray(value) ? value.map(refId).filter(Boolean) : []);
+
+/**
+ * The outcome table's rows, as Acorn's `OutcomeTable` draws them: every root outcome (one no
+ * connection names as a child) and its descendants depth-first in sibling order, each row a level
+ * deeper than its parent. Unfiltered, a row is drawn while every ancestor is open; filtered, every
+ * outcome that matches is drawn at its own depth, as Acorn's `filterMatch` does — keyword or ID
+ * number, high priority, computed status, computed scope and tags, each list an OR, all ANDed.
+ */
+const tableRows = (options: Record<string, unknown>) => {
+  const outcomes = list(options.outcomes);
+  const connections = list(options.connections);
+  const tags = list(options.tags);
+  const priorities = new Set(strings(options.priorities));
+  const collapsed = new Set(strings(options.collapsed));
+  const filter = (options.filter && typeof options.filter === 'object' ? options.filter : {}) as Record<
+    string,
+    unknown
+  >;
+  const keyword = typeof filter.keyword === 'string' ? filter.keyword.trim().toLowerCase() : '';
+  const statuses = strings(filter.statuses);
+  const scopes = strings(filter.scopes);
+  const tagFilter = strings(filter.tags);
+  const filtering =
+    !!keyword || filter.highPriority === true || !!statuses.length || !!scopes.length || !!tagFilter.length;
+
+  const ids = new Set(outcomes.map((o) => refId(o.id)));
+  const childIds = new Set(connections.filter((c) => ids.has(refId(c.parent))).map((c) => refId(c.child)));
+  const tagsById = new Map(tags.map((t) => [refId(t.id), t]));
+  const rows: Record<string, unknown>[] = [];
+
+  const visit = (outcome: Record<string, unknown>, depth: number, shown: boolean, seen: Set<string>) => {
+    const id = refId(outcome.id);
+    const inner = new Set(seen).add(id);
+    const r = rollup(outcome, outcomes, connections, seen);
+    const number = outcomeNumber(id);
+    const outcomeTags = strings(outcome.tags);
+    const matches =
+      (!keyword ||
+        (typeof outcome.content === 'string' ? outcome.content : '').toLowerCase().includes(keyword) ||
+        number.includes(keyword)) &&
+      (filter.highPriority !== true || priorities.has(id)) &&
+      (!statuses.length || statuses.includes(r.status)) &&
+      (!scopes.length || scopes.includes(r.scope)) &&
+      (!tagFilter.length || tagFilter.some((t) => outcomeTags.includes(t)));
+    const open = !collapsed.has(id);
+    if (filtering ? matches : shown) {
+      const progress =
+        r.scope === 'Big'
+          ? Math.round((r.smallsAchieved / (r.smallsTotal || 1)) * 100)
+          : r.scope === 'Small' && r.tasksTotal > 0
+            ? Math.round((r.tasksAchieved / r.tasksTotal) * 100)
+            : r.scope === 'Small' && r.status === 'Achieved'
+              ? 100
+              : 0;
+      rows.push({
+        id,
+        outcome,
+        depth,
+        number,
+        scope: r.scope,
+        status: r.status,
+        progress: r.scope === 'Uncertain' ? '' : `${progress}%`,
+        children: r.children,
+        open,
+        priority: priorities.has(id),
+        tags: outcomeTags.map((t) => tagsById.get(t)).filter(Boolean),
+      });
+    }
+    for (const child of childrenOf(id, outcomes, connections)) {
+      if (!inner.has(refId(child.id))) visit(child, depth + 1, shown && open, inner);
+    }
+  };
+  for (const root of outcomes.filter((o) => !childIds.has(refId(o.id)))) visit(root, 0, true, new Set());
+  return rows;
+};
+
 /** The task list with one change, as the JSON text the record holds — what `record.update` writes. */
 const tasksText = (tasks: AcornTask[]): string => JSON.stringify(tasks);
 
@@ -320,5 +409,13 @@ export const ACORN_FUNCTIONS: ModuleFunction[] = [
       if (t <= 0) return '';
       return new Date(t < 1e12 ? t * 1000 : t).toISOString().slice(0, 16).replace('T', ' ');
     },
+  },
+  {
+    name: 'acornTableRows',
+    params: ['outcomes', 'connections', 'tags', 'priorities', 'collapsed', 'filter'],
+    doc: "The outcome table's rows — the tree depth-first, each { id, outcome, depth, number, scope, status, progress, children, open, priority, tags }; `filter` is { keyword, highPriority, statuses, scopes, tags }, and a filtered table draws every match at its depth, as Acorn's does.",
+    example:
+      'acornTableRows({ outcomes: local.outcomes, connections: local.connections, tags: local.tags, priorities: first(local.meta).topPriorityOutcomes, collapsed: local.collapsed, filter: { keyword: local.keyword } })',
+    fn: (...args: never[]) => tableRows(args[0] && typeof args[0] === 'object' ? args[0] : {}),
   },
 ];

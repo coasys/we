@@ -4235,6 +4235,7 @@ Project management over a mounted Acorn project — outcomes, the tree, prioriti
   - acornRollupLabel(rollup) — A roll-up as a person reads it — 'Partially achieved · 1/2 smalls · 1 uncertain'.  e.g. acornRollupLabel({ rollup: acornRollup({ outcome: outcome, outcomes: local.outcomes, connections: local.connections }) })
   - acornAuthor(did, profiles) — Who an agent DID is in the project — the AcornProfile's name, or the DID's short form when no profile names it.  e.g. acornAuthor({ did: comment.creator, profiles: local.profiles })
   - acornWhen(timestamp) — An Acorn timestamp — unix seconds, or milliseconds — as 'YYYY-MM-DD HH:mm' (UTC), or '' when unset.  e.g. acornWhen({ timestamp: comment.unixTimestamp })
+  - acornTableRows(outcomes, connections, tags, priorities, collapsed, filter) — The outcome table's rows — the tree depth-first, each { id, outcome, depth, number, scope, status, progress, children, open, priority, tags }; `filter` is { keyword, highPriority, statuses, scopes, tags }, and a filtered table draws every match at its depth, as Acorn's does.  e.g. acornTableRows({ outcomes: local.outcomes, connections: local.connections, tags: local.tags, priorities: first(local.meta).topPriorityOutcomes, collapsed: local.collapsed, filter: { keyword: local.keyword } })
 
 ### Polls (`polls`)
 Ask the space a question and watch the answer arrive.

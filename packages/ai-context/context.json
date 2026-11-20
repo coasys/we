@@ -10588,6 +10588,12 @@
           "params": ["timestamp"],
           "doc": "An Acorn timestamp — unix seconds, or milliseconds — as 'YYYY-MM-DD HH:mm' (UTC), or '' when unset.",
           "example": "acornWhen({ timestamp: comment.unixTimestamp })"
+        },
+        {
+          "name": "acornTableRows",
+          "params": ["outcomes", "connections", "tags", "priorities", "collapsed", "filter"],
+          "doc": "The outcome table's rows — the tree depth-first, each { id, outcome, depth, number, scope, status, progress, children, open, priority, tags }; `filter` is { keyword, highPriority, statuses, scopes, tags }, and a filtered table draws every match at its depth, as Acorn's does.",
+          "example": "acornTableRows({ outcomes: local.outcomes, connections: local.connections, tags: local.tags, priorities: first(local.meta).topPriorityOutcomes, collapsed: local.collapsed, filter: { keyword: local.keyword } })"
         }
       ],
       "views": [],

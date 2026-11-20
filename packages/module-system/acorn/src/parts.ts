@@ -915,38 +915,294 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
   },
   outcomeTable: {
     label: 'Outcome table',
-    description: 'Every outcome in the project as a row — content, scope, status, progress',
+    description:
+      "Every outcome as a row of Acorn's table — ID number, the statement in its tree, scope, status, progress and tags — with Acorn's filters, each row opening the expanded outcome",
     node: {
       type: 'Column',
-      props: { gap: '200', width: '100%' },
+      props: { gap: '300', width: '100%' },
+      /*
+        The filters are Acorn's table filters (`OutcomeTableFilterSelector`): keyword or ID
+        number, only high priority, achievement status, scope and tags, each list an OR and all
+        of them ANDed. Assignees are left out until S2-4's member-mapping question is decided.
+        `collapsed` holds the rows folded shut; everything starts open. The rows themselves are
+        `acornTableRows`, so the tree walk and the computed status are the same code the
+        expanded outcome's roll-up runs.
+      */
+      $localState: {
+        keyword: { type: 'string', initial: '' },
+        highPriority: { type: 'boolean', initial: false },
+        statuses: { type: 'array', initial: [] },
+        scopes: { type: 'array', initial: [] },
+        tagFilter: { type: 'array', initial: [] },
+        collapsed: { type: 'array', initial: [] },
+        openOutcome: { type: 'string', initial: '' },
+      },
+      $queries: {
+        outcomes: { entity: 'AcornOutcome', order: { timestampCreated: 'asc' } },
+        connections: { entity: 'AcornConnection' },
+        tags: { entity: 'AcornTag', order: { text: 'asc' } },
+        meta: { entity: 'AcornProjectMeta' },
+      },
       children: [
         {
+          type: 'we-input',
+          props: {
+            width: '100%',
+            label: 'Filter by keyword or ID number',
+            placeholder: 'Filter by keyword or ID number',
+            value: { $: 'local.keyword' },
+            onInput: { $setLocal: 'keyword', value: { $: 'event.detail' } },
+          },
+        },
+        {
+          type: 'Row',
+          props: { gap: '200', ay: 'center', wrap: true, width: '100%' },
+          children: [
+            {
+              type: 'we-button',
+              props: {
+                size: 'sm',
+                variant: { $: "local.highPriority ? 'solid' : 'soft'" },
+                onClick: { $toggleLocal: 'highPriority' },
+              },
+              children: ['Only high priority'],
+            },
+            { type: 'we-text', props: { variant: 'label', ml: '200' }, children: ['Status'] },
+            {
+              type: '$each',
+              props: {
+                items: {
+                  $: "[{ value: 'Achieved', label: 'Achieved' }, { value: 'PartiallyAchieved', label: 'Partially achieved' }, { value: 'NotAchieved', label: 'Not achieved' }]",
+                },
+                as: 'choice',
+              },
+              children: [
+                {
+                  type: 'we-button',
+                  props: {
+                    size: 'sm',
+                    variant: { $: "choice.value in local.statuses ? 'solid' : 'soft'" },
+                    onClick: { $toggleLocalIn: 'statuses', value: { $: 'choice.value' } },
+                  },
+                  children: [{ $: 'choice.label' }],
+                },
+              ],
+            },
+            { type: 'we-text', props: { variant: 'label', ml: '200' }, children: ['Scope'] },
+            {
+              type: '$each',
+              props: {
+                items: {
+                  $: "[{ value: 'Small', label: 'Small' }, { value: 'Uncertain', label: 'Uncertain' }, { value: 'Big', label: 'Other' }]",
+                },
+                as: 'choice',
+              },
+              children: [
+                {
+                  type: 'we-button',
+                  props: {
+                    size: 'sm',
+                    variant: { $: "choice.value in local.scopes ? 'solid' : 'soft'" },
+                    onClick: { $toggleLocalIn: 'scopes', value: { $: 'choice.value' } },
+                  },
+                  children: [{ $: 'choice.label' }],
+                },
+              ],
+            },
+            {
+              type: '$if',
+              props: {
+                condition: { $: 'count(local.tags) > 0' },
+                then: { type: 'we-text', props: { variant: 'label', ml: '200' }, children: ['Tags'] },
+              },
+            },
+            {
+              type: '$each',
+              props: { items: { $: 'local.tags' }, as: 'tag' },
+              children: [
+                {
+                  type: 'we-button',
+                  props: {
+                    size: 'sm',
+                    variant: { $: "tag.id in local.tagFilter ? 'solid' : 'soft'" },
+                    onClick: { $toggleLocalIn: 'tagFilter', value: { $: 'tag.id' } },
+                  },
+                  children: [{ $: 'tag.text' }],
+                },
+              ],
+            },
+            {
+              type: '$if',
+              props: {
+                condition: {
+                  $: "trim(local.keyword) != '' || local.highPriority || count(local.statuses) > 0 || count(local.scopes) > 0 || count(local.tagFilter) > 0",
+                },
+                then: {
+                  type: 'we-button',
+                  props: {
+                    size: 'sm',
+                    variant: 'ghost',
+                    onClick: [
+                      { $setLocal: 'keyword', value: '' },
+                      { $setLocal: 'highPriority', value: false },
+                      { $setLocal: 'statuses', value: [] },
+                      { $setLocal: 'scopes', value: [] },
+                      { $setLocal: 'tagFilter', value: [] },
+                    ],
+                  },
+                  children: ['Clear filters'],
+                },
+              },
+            },
+          ],
+        },
+        {
+          type: 'Row',
+          props: { gap: '400', p: '300', borderBottom: '1px solid border', width: '100%' },
+          children: [
+            {
+              type: 'we-text',
+              props: { fontWeight: 'semibold', width: '4.5rem', flex: '0 0 auto' },
+              children: ['ID#'],
+            },
+            { type: 'we-text', props: { fontWeight: 'semibold', flex: '4 1 0' }, children: ['Outcome'] },
+            { type: 'we-text', props: { fontWeight: 'semibold', flex: '1 1 0' }, children: ['Scope'] },
+            { type: 'we-text', props: { fontWeight: 'semibold', flex: '1.4 1 0' }, children: ['Status'] },
+            { type: 'we-text', props: { fontWeight: 'semibold', flex: '1 1 0' }, children: ['Progress'] },
+            { type: 'we-text', props: { fontWeight: 'semibold', flex: '2 1 0' }, children: ['Tags'] },
+          ],
+        },
+        {
           type: '$each',
-          props: { items: { $query: { entity: 'AcornOutcome', order: { content: 'asc' } } }, as: 'outcome' },
+          props: {
+            items: {
+              $: 'acornTableRows({ outcomes: local.outcomes, connections: local.connections, tags: local.tags, priorities: first(local.meta).topPriorityOutcomes, collapsed: local.collapsed, filter: { keyword: local.keyword, highPriority: local.highPriority, statuses: local.statuses, scopes: local.scopes, tags: local.tagFilter } })',
+            },
+            as: 'row',
+          },
           children: [
             {
               type: 'Row',
-              props: { gap: '400', p: '300', borderBottom: '1px solid border', width: '100%' },
+              props: {
+                gap: '400',
+                px: '300',
+                py: '200',
+                borderBottom: '1px solid border',
+                width: '100%',
+                ay: 'center',
+              },
               children: [
-                { type: 'we-text', props: { flex: '3 1 0' }, children: [{ $: 'outcome.content' }] },
                 {
                   type: 'we-text',
-                  props: { flex: '1 1 0', tone: 'secondary' },
-                  children: [{ $: 'acornScopeLabel({ scope: outcome.scopeType })' }],
+                  props: { tone: 'secondary', width: '4.5rem', flex: '0 0 auto' },
+                  children: [{ $: 'row.number' }],
+                },
+                {
+                  type: 'Row',
+                  props: { gap: '100', ay: 'center', flex: '4 1 0', minWidth: '0' },
+                  children: [
+                    // The tree's indent: a level per depth, as Acorn's table draws it.
+                    { type: 'div', props: { style: { $: "{ width: (row.depth * 1.5) + 'rem', flexShrink: '0' }" } } },
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: 'row.children > 0' },
+                        then: {
+                          type: 'we-button',
+                          props: {
+                            variant: 'bare',
+                            size: 'xs',
+                            label: { $: "(row.open ? 'Collapse ' : 'Expand ') + row.outcome.content" },
+                            onClick: { $toggleLocalIn: 'collapsed', value: { $: 'row.id' } },
+                          },
+                          children: [
+                            { type: 'we-icon', props: { name: { $: "row.open ? 'caret-down' : 'caret-right'" } } },
+                          ],
+                        },
+                        else: { type: 'div', props: { style: { width: '1.25rem', flexShrink: '0' } } },
+                      },
+                    },
+                    {
+                      type: 'we-button',
+                      props: {
+                        variant: 'bare',
+                        label: { $: '`Open ${row.outcome.content}`' },
+                        onClick: { $setLocal: 'openOutcome', value: { $: 'row.id' } },
+                      },
+                      children: [{ $: 'row.outcome.content' }],
+                    },
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: 'row.priority' },
+                        then: { type: 'we-icon', props: { name: 'medal', color: 'warning', label: 'High priority' } },
+                      },
+                    },
+                  ],
                 },
                 {
                   type: 'we-text',
                   props: { flex: '1 1 0', tone: 'secondary' },
-                  children: [{ $: 'acornStatusLabel({ status: outcome.achievementStatus })' }],
+                  children: [{ $: 'row.scope' }],
+                },
+                {
+                  type: 'we-text',
+                  props: { flex: '1.4 1 0', tone: 'secondary' },
+                  children: [
+                    {
+                      $: "row.status == 'PartiallyAchieved' ? 'Partially achieved' : row.status == 'NotAchieved' ? 'Not achieved' : 'Achieved'",
+                    },
+                  ],
                 },
                 {
                   type: 'we-text',
                   props: { flex: '1 1 0', tone: 'secondary' },
-                  children: [{ $: 'acornTaskProgress({ taskList: outcome.taskList })' }],
+                  children: [{ $: 'row.progress' }],
+                },
+                {
+                  type: 'Row',
+                  props: { gap: '100', wrap: true, flex: '2 1 0', minWidth: '0' },
+                  children: [
+                    {
+                      type: '$each',
+                      props: { items: { $: 'row.tags' }, as: 'tag' },
+                      children: [{ type: 'we-tag', children: [{ $: 'tag.text' }] }],
+                    },
+                  ],
                 },
               ],
             },
           ],
+        },
+        {
+          type: '$if',
+          props: {
+            condition: {
+              $: 'local.outcomesLoaded && count(acornTableRows({ outcomes: local.outcomes, connections: local.connections, tags: local.tags, priorities: first(local.meta).topPriorityOutcomes, collapsed: local.collapsed, filter: { keyword: local.keyword, highPriority: local.highPriority, statuses: local.statuses, scopes: local.scopes, tags: local.tagFilter } })) == 0',
+            },
+            then: { type: 'we-text', props: { tone: 'secondary', p: '300' }, children: ['No outcome matches.'] },
+          },
+        },
+        // A row opens the expanded outcome over the table, as the outcome list does.
+        {
+          type: '$if',
+          props: {
+            condition: { $: 'local.openOutcome' },
+            then: {
+              type: 'we-modal',
+              props: { size: 'lg', close: { $setLocal: 'openOutcome', value: '' } },
+              children: [
+                {
+                  type: '$single',
+                  props: {
+                    item: { $query: { entity: 'AcornOutcome', where: { id: { $: 'local.openOutcome' } } } },
+                    as: 'outcome',
+                  },
+                  children: [{ type: '$part', props: { id: 'acorn.expandedOutcome' } }],
+                },
+              ],
+            },
+          },
         },
       ],
     },

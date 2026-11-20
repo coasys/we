@@ -148,3 +148,52 @@ describe('authors and times', () => {
     expect(call('acornWhen', { timestamp: 0 })).toBe('');
   });
 });
+
+describe('the outcome table rows', () => {
+  const rowsOf = (options: Record<string, unknown>) =>
+    call('acornTableRows', options) as Array<{ id: string; depth: number; number: string; open: boolean }>;
+
+  it("numbers a row as Acorn does — hashCodeId of the action hash, not of the mount's URL", () => {
+    // acorn-ad4m-ui api/clientSideIdHash.ts, by hand for "uhCkkA".
+    let h = 0;
+    for (const ch of 'uhCkkA') h = ((h << 5) - h + ch.charCodeAt(0)) | 0;
+    const want = Math.abs(h).toString().slice(0, 6);
+    expect(rowsOf({ outcomes: [{ id: 'QmLang://uhCkkA' }] })[0].number).toBe(want);
+    expect(rowsOf({ outcomes: [{ id: 'uhCkkA' }] })[0].number).toBe(want);
+  });
+
+  it('walks roots depth-first; a folded row hides its subtree unless a filter is on', () => {
+    const outcomes = [
+      { id: 'r', content: 'root', scopeType: 'Uncertain' },
+      { id: 'a', content: 'alpha', scopeType: 'Small' },
+      { id: 'b', content: 'beta', scopeType: 'Small' },
+      { id: 'lone', content: 'lone', scopeType: 'Small' },
+    ];
+    const connections = [edge('r', 'b', 1), edge('r', 'a', 0)];
+    expect(rowsOf({ outcomes, connections }).map((r) => [r.id, r.depth])).toEqual([
+      ['r', 0],
+      ['a', 1],
+      ['b', 1],
+      ['lone', 0],
+    ]);
+    expect(rowsOf({ outcomes, connections, collapsed: ['r'] }).map((r) => r.id)).toEqual(['r', 'lone']);
+    expect(
+      rowsOf({ outcomes, connections, collapsed: ['r'], filter: { keyword: 'BETA' } }).map((r) => [r.id, r.depth]),
+    ).toEqual([['b', 1]]);
+  });
+
+  it('a cycle with no root draws nothing rather than looping', () => {
+    const outcomes = [outcome('x', 'Small'), outcome('y', 'Small')];
+    expect(rowsOf({ outcomes, connections: [edge('x', 'y'), edge('y', 'x')] })).toEqual([]);
+  });
+});
+
+describe('the outcome table filter', () => {
+  it('finds a row by its ID number', () => {
+    const outcomes = [outcome('QmL://uhCkkOne', 'Small'), outcome('QmL://uhCkkTwoDifferent', 'Small')];
+    const all = call('acornTableRows', { outcomes }) as Array<{ id: string; number: string }>;
+    expect(all[0].number).not.toBe(all[1].number);
+    const hit = call('acornTableRows', { outcomes, filter: { keyword: all[1].number } }) as Array<{ id: string }>;
+    expect(hit.map((r) => r.id)).toEqual(['QmL://uhCkkTwoDifferent']);
+  });
+});
