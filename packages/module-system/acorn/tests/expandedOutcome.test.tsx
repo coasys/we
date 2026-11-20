@@ -73,14 +73,21 @@ async function fixtureHost() {
   };
   // `record.update` as `TemplateProvider`'s `recordActions.update` runs it: the dataset's class.
   const writes: Array<{ entity: string; id: string; fields: Record<string, unknown> }> = [];
+  // `record.create` likewise: the class's `.create(dataset, fields)`, resolving with the record.
+  const creates: Array<{ entity: string; fields: Record<string, unknown> }> = [];
   const record = {
     update: (name: string, id: string, fields: Record<string, unknown>) => {
       writes.push({ entity: name, id, fields });
       return entity(name).update(handle, id, fields);
     },
+    create: (name: string, fields: Record<string, unknown>) => {
+      creates.push({ entity: name, fields });
+      return entity(name).create(handle, fields);
+    },
   };
   const read = async (id: string) =>
     (await entity('AcornOutcome').findOne(handle, { where: { id } })) as Record<string, unknown> | null;
+  const all = async (name: string) => (await entity(name).findAll(handle, {})) as Record<string, unknown>[];
 
   const errors: string[] = [];
   const stores = {
@@ -90,7 +97,7 @@ async function fixtureHost() {
     $onError: (message: string) => errors.push(message),
     $modelsPending: () => false,
   };
-  return { stores, errors, writes, read };
+  return { stores, errors, writes, creates, read, all };
 }
 
 const Passthrough = (props: { children?: JSX.Element }) => props.children;
@@ -281,6 +288,171 @@ describe('the expanded outcome', () => {
       expect(writes[0].fields).toEqual({ scopeType: 'Small' });
       await waitFor(async () => expect((await read('acorn-outcome-3'))?.scopeType).toBe('Small'));
       await waitFor(() => expect(selectLabelled(dialog(container)!, 'Status')).toBeTruthy());
+    } finally {
+      unmount();
+    }
+  });
+});
+
+/*
+  S2-5: the expanded outcome's tree, task list and comments. The fixture's tree is
+  acorn-outcome-1 (Big) → acorn-outcome-2 (Small, Achieved, one done task) and acorn-outcome-3
+  (Uncertain), joined by two AcornConnection records; acorn-outcome-1 carries Bob's comment.
+*/
+const checkboxNamed = (root: HTMLElement, label: string) =>
+  labelled(root, 'we-checkbox', label) as (HTMLElement & { checked?: boolean }) | undefined;
+const iconButtonNamed = (root: HTMLElement, label: string) =>
+  labelled(root, 'we-button', label) as HTMLElement | undefined;
+const tasksOf = async (read: (id: string) => Promise<Record<string, unknown> | null>, id: string) =>
+  JSON.parse(String((await read(id))?.taskList ?? '[]')) as Array<{ task: string; complete: boolean }>;
+
+describe('the expanded outcome — children, tasks, comments', () => {
+  it("lists an outcome's children in sibling order, with the roll-up Acorn computes from them", async () => {
+    const { container, unmount, errors } = await openList();
+    try {
+      const modal = await open(container, BIG);
+      await waitFor(() => expect(buttonNamed(modal, `Open child ${SMALL}`)).toBeTruthy());
+      const text = modal.textContent ?? '';
+      expect(text).toContain('Children 2');
+      expect(text.indexOf(`Open child ${SMALL}`)).toBeLessThan(text.indexOf(`Open child ${UNCERTAIN}`));
+      // One Small achieved, one Uncertain: Acorn's computed scope is Uncertain, its status not achieved.
+      expect(text).toContain('From its children: Uncertain · Not achieved · 1/1 smalls · 1 uncertain');
+      // A Big outcome has no task list of its own.
+      expect(buttonNamed(modal, 'Add task')).toBeUndefined();
+      expect(errors).toEqual([]);
+    } finally {
+      unmount();
+    }
+  });
+
+  it('opens a child in the same dialog, and goes back', async () => {
+    const { container, unmount } = await openList();
+    try {
+      const modal = await open(container, BIG);
+      await waitFor(() => expect(buttonNamed(modal, `Open child ${SMALL}`)).toBeTruthy());
+      fireEvent.click(buttonNamed(modal, `Open child ${SMALL}`)!);
+      // The Small child, drawn in place: its task list, and a way back to the outcome opened.
+      await waitFor(() => expect(checkboxNamed(dialog(container)!, 'boots')).toBeTruthy());
+      expect(buttonNamed(dialog(container)!, `Back to ${BIG}`)).toBeTruthy();
+      expect(dialog(container)!.textContent).not.toContain('Children 2');
+      fireEvent.click(buttonNamed(dialog(container)!, `Back to ${BIG}`)!);
+      await waitFor(() => expect(dialog(container)!.textContent).toContain('Children 2'));
+      expect(buttonNamed(dialog(container)!, `Back to ${BIG}`)).toBeUndefined();
+    } finally {
+      unmount();
+    }
+  });
+
+  it('a new child is an Uncertain outcome and the connection naming this one its parent', async () => {
+    const { container, unmount, creates, all } = await openList();
+    try {
+      const modal = await open(container, BIG);
+      await waitFor(() => expect(labelled(modal, 'we-input', 'New child outcome')).toBeTruthy());
+      type(labelled(modal, 'we-input', 'New child outcome')!, 'Map lands read-only');
+      fireEvent.click(buttonNamed(modal, 'Add child outcome')!);
+
+      await waitFor(() => expect(creates).toHaveLength(2));
+      expect(creates[0]).toEqual({
+        entity: 'AcornOutcome',
+        fields: { content: 'Map lands read-only', scopeType: 'Uncertain' },
+      });
+      const child = (await all('AcornOutcome')).find((o) => o.content === 'Map lands read-only');
+      expect(child).toBeTruthy();
+      expect(creates[1]).toEqual({
+        entity: 'AcornConnection',
+        fields: { parent: 'acorn-outcome-1', child: child!.id, siblingOrder: 2 },
+      });
+      // Drawn as the third child, and the roll-up counts it.
+      await waitFor(() => expect(buttonNamed(dialog(container)!, 'Open child Map lands read-only')).toBeTruthy());
+      expect(dialog(container)!.textContent).toContain('Children 3');
+      expect(dialog(container)!.textContent).toContain('1/1 smalls · 2 uncertain');
+    } finally {
+      unmount();
+    }
+  });
+
+  it("a Small outcome's tasks show their done state; add, tick and remove each write the whole list", async () => {
+    const { container, unmount, writes, read } = await openList();
+    try {
+      const modal = await open(container, SMALL);
+      await waitFor(() => expect(checkboxNamed(modal, 'boots')).toBeTruthy());
+      expect(checkboxNamed(modal, 'boots')!.checked).toBe(true);
+      expect(modal.textContent).toContain('Tasks 1/1');
+      // A Small outcome has tasks, not children.
+      expect(buttonNamed(modal, 'Add child outcome')).toBeUndefined();
+
+      type(labelled(modal, 'we-input', 'New task')!, 'renders the fixture');
+      fireEvent.click(buttonNamed(modal, 'Add task')!);
+      await waitFor(() => expect(writes).toHaveLength(1));
+      expect(writes[0]).toEqual({
+        entity: 'AcornOutcome',
+        id: 'acorn-outcome-2',
+        fields: {
+          taskList: JSON.stringify([
+            { task: 'boots', complete: true },
+            { task: 'renders the fixture', complete: false },
+          ]),
+        },
+      });
+      await waitFor(() => expect(checkboxNamed(dialog(container)!, 'renders the fixture')).toBeTruthy());
+      expect(checkboxNamed(dialog(container)!, 'renders the fixture')!.checked).toBe(false);
+      expect(dialog(container)!.textContent).toContain('Tasks 1/2');
+
+      checkboxNamed(dialog(container)!, 'renders the fixture')!.dispatchEvent(
+        new CustomEvent('change', { detail: true, bubbles: true, composed: true }),
+      );
+      await waitFor(async () =>
+        expect(await tasksOf(read, 'acorn-outcome-2')).toEqual([
+          { task: 'boots', complete: true },
+          { task: 'renders the fixture', complete: true },
+        ]),
+      );
+
+      await waitFor(() => expect(iconButtonNamed(dialog(container)!, 'Remove task boots')).toBeTruthy());
+      fireEvent.click(iconButtonNamed(dialog(container)!, 'Remove task boots')!);
+      await waitFor(async () =>
+        expect(await tasksOf(read, 'acorn-outcome-2')).toEqual([{ task: 'renders the fixture', complete: true }]),
+      );
+      await waitFor(() => expect(checkboxNamed(dialog(container)!, 'boots')).toBeUndefined());
+      expect(writes).toHaveLength(3);
+    } finally {
+      unmount();
+    }
+  });
+
+  it("shows an outcome's comments by their author's profile name, and adds one", async () => {
+    const { container, unmount, creates, all } = await openList();
+    try {
+      const modal = await open(container, BIG);
+      await waitFor(() => expect(modal.textContent).toContain('Looks good — the map can land next.'));
+      expect(modal.textContent).toContain('Comments 1');
+      // Bob's comment: `creator` is Bob's DID, and his AcornProfile's `agent` names it.
+      expect(modal.textContent).toContain('Bob Bakker');
+
+      type(labelled(modal, 'we-textarea', 'Comment')!, 'Children next.');
+      fireEvent.click(buttonNamed(modal, 'Add comment')!);
+      await waitFor(() => expect(creates).toHaveLength(1));
+      expect(creates[0]).toEqual({
+        entity: 'AcornOutcomeComment',
+        fields: { outcome: 'acorn-outcome-1', content: 'Children next.' },
+      });
+      await waitFor(async () =>
+        expect((await all('AcornOutcomeComment')).map((c) => c.content)).toContain('Children next.'),
+      );
+      await waitFor(() => expect(dialog(container)!.textContent).toContain('Comments 2'));
+      expect(dialog(container)!.textContent).toContain('Children next.');
+    } finally {
+      unmount();
+    }
+  });
+
+  it("an outcome without comments says none, and another outcome's comments stay off it", async () => {
+    const { container, unmount } = await openList();
+    try {
+      const modal = await open(container, UNCERTAIN);
+      await waitFor(() => expect(modal.textContent).toContain('Comments 0'));
+      expect(modal.textContent).not.toContain('Looks good');
+      expect(modal.textContent).toContain('Children 0');
     } finally {
       unmount();
     }

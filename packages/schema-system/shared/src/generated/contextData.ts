@@ -5091,7 +5091,8 @@ export const contextData: ContextData = {
           inputs: [
             {
               name: 'outcome',
-              description: 'the AcornOutcome record shown expanded, its `tags` included as AcornTag records',
+              description:
+                'the AcornOutcome record opened; the part reads it again by id, with its tags, and opens its children in its place',
             },
           ],
         },
