@@ -2211,7 +2211,7 @@ const coasysBar = (): Scenario => {
 /**
  * A running call's bar: Live and the transcript export at its end, beside Page and Canvas, in Glow.
  */
-const coasysCallBar = (): Scenario => {
+const coasysCallBar = (live = true): Scenario => {
   const glow = BUNDLE_LAB_THEMES.find((t) => t.label === 'coasys-glow')?.theme ?? {};
   return {
     node: {
@@ -2230,7 +2230,7 @@ const coasysCallBar = (): Scenario => {
     stores: {
       routeStore: { params: {}, templateSegments: [], setParam: () => {}, navigate: () => {} },
       shellStore: { collapsedLanes: [] },
-      modules: { call: { liveCalls: [{ recordId: 'call-1', count: 2 }] } },
+      modules: { call: { liveCalls: live ? [{ recordId: 'call-1', count: 2 }] : [] } },
       spaceStore: { exportCallTranscript: (id: string) => ((globalThis as { __exported?: string }).__exported = id) },
     },
   };
@@ -2673,7 +2673,8 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'feed:view-more': () => feedViewPage(true),
   'coasys:space-feed': coasysSpaceFeed,
   'coasys:bar': coasysBar,
-  'coasys:call-bar': coasysCallBar,
+  'coasys:call-bar': () => coasysCallBar(),
+  'coasys:call-bar-ended': () => coasysCallBar(false),
   'coasys:calls-page': coasysCallsPage,
   'coasys:flows-page': coasysFlowsPage,
   'border:with-hover': borderWithHover,

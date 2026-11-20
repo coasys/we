@@ -459,37 +459,16 @@ export function createCallStore(deps: ModuleStoreDeps) {
   }
 
   /**
-   * Named, because it is the one problem that can resolve itself.
+   * The camera, refused when the user asked for it.
    *
-   * Every other message here describes something structural — no space, no transport — that stays
-   * true until the user does something elsewhere. This one is about a permission, and a permission
-   * can be granted a moment later; leaving it on screen after the camera starts working is the
-   * app telling the user something it can plainly see is no longer so.
-   */
-  /*
-    Worded for every host, which the first version was not.
-
-    "Check this site's permissions in your browser" is good advice in `we-web` and nonsense in
-    Electron and Tauri, where there is no browser and no site — so on two of the three hosts it told
-    the user to do something impossible. It also named only one of the two common causes: a device
-    another application already has open fails the same way, and is at least as frequent.
-  */
-  const MEDIA_BLOCKED =
-    'WE could not reach your camera or microphone. Check that WE has permission to use them, and that no other app has them open.';
-
-  /**
-   * The camera specifically, refused when the user asked for it.
-   *
-   * Separate from `MEDIA_BLOCKED` because the two clear on different conditions: this one is still
-   * true while the microphone works perfectly well, so clearing it on "we have a stream" — which is
-   * what the other one wants — would make it flash and vanish in exactly the case it exists for.
+   * A permission can be granted a moment later, so this clears when a camera arrives; leaving it on
+   * screen after the camera starts working would tell the user something they can see is not so.
    */
   const CAMERA_BLOCKED =
     'WE could not turn your camera on. Check that WE has permission to use it, and that no other app has it open.';
 
   /**
-   * The microphone specifically — refused at join while the camera was granted, or refused again on
-   * unmute. Said out loud because, unlike a missing camera, a missing microphone is invisible to the
+   * The microphone, refused on unmute. Said out loud because, unlike a missing camera, a missing microphone is invisible to the
    * person it belongs to. Clears when a microphone arrives, on the same terms as `CAMERA_BLOCKED`.
    */
   const MIC_BLOCKED =
@@ -1725,7 +1704,6 @@ export function createCallStore(deps: ModuleStoreDeps) {
         // camera button. Each message clears on its own condition, and only its own, so neither a
         // structural problem nor the other media one is swallowed.
         const local = controller?.localStream();
-        if (problem() === MEDIA_BLOCKED && local) setProblem(null);
         if (problem() === CAMERA_BLOCKED && local?.getVideoTracks().length) setProblem(null);
         if (problem() === MIC_BLOCKED && local?.getAudioTracks().length) setProblem(null);
         // A lost device that has come back clears its own message, on the same terms as the two
@@ -1772,6 +1750,13 @@ export function createCallStore(deps: ModuleStoreDeps) {
     const acquire = async () => {
       await started.setDevice('audio', audioDevice());
       await started.setDevice('video', videoDevice());
+      /*
+        Microphone and camera start off: nobody is heard or seen until they turn one on. With both
+        off, `start` opens nothing, so there is no prompt and no camera light on joining; the first
+        unmute or camera press acquires that device.
+      */
+      await started.setAudioEnabled(false);
+      await started.setVideoEnabled(false);
       await started.start();
       setDevicesProbed(true);
       void refreshDevices();
@@ -1908,20 +1893,6 @@ export function createCallStore(deps: ModuleStoreDeps) {
       // created rather than against whatever is current.
       if (controller !== started) return;
     }
-
-    /*
-      Say why there is no picture, rather than showing an avatar and leaving them to guess.
-
-      `problem` is a dismissible alert over the call, not a replacement for it — which is the right
-      shape here: a blocked camera does not stop you watching and hearing everyone else, so the call
-      carries on and the reason is stated once. Checked on the stream rather than on an error,
-      because a refused camera that fell back to audio is a different outcome from a refused
-      *request*, and only the second one leaves nothing at all.
-    */
-    const local = started.localStream();
-    if (!local) setProblem(MEDIA_BLOCKED);
-    // The camera came through and the microphone did not: in the call, and heard by nobody.
-    else if (!local.getAudioTracks().length) setProblem(MIC_BLOCKED);
   }
 
   /*

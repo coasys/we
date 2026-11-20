@@ -299,25 +299,43 @@ export const spaceRoutes: RouteSchema[] = [
 
 /** The call on its own page is the record the address names. */
 const CALL_ID = 'routeStore.params.id';
-const MINE = `modules.call.callRecordId == ${CALL_ID}`;
 
 /**
- * The end of a call's bar: Live while it runs, and the transcript to take away.
+ * The end of a call's bar: the way into the call, Live while it runs, and the transcript to take away.
  *
- * The badge is `sm` so it stands the height of the Page / Canvas switch beside it rather than over
- * it. The export is offered whether the call is running or over, to everyone — see
- * `exportTranscriptButton`.
+ * The way in is for somebody not in the call: Join while it runs, Pick it back up once it has ended.
+ * Somebody in it has the call's own controls instead. The button and the badge are `sm` so they
+ * stand the height of the Page / Canvas switch beside them rather than over it. The export is
+ * offered whether the call is running or over, to everyone — see `exportTranscriptButton`.
  */
-export const callBarAside = (callId: string): SchemaNode[] => [
-  {
-    type: '$if',
-    props: {
-      condition: { $: `find(modules.call.liveCalls, { recordId: ${callId} })` },
-      then: { type: 'we-badge', props: { tone: 'success', size: 'sm' }, children: [liveDot, 'Live'] },
+export const callBarAside = (callId: string): SchemaNode[] => {
+  const live = `find(modules.call.liveCalls, { recordId: ${callId} })`;
+  return [
+    {
+      type: '$if',
+      props: {
+        condition: { $: `modules.call.callRecordId != ${callId}` },
+        then: {
+          type: 'we-button',
+          props: {
+            variant: 'solid',
+            size: 'sm',
+            onClick: { $invoke: 'modules.call.continueCall', args: [{ $: callId }] },
+          },
+          children: [{ type: 'we-icon', props: { name: 'phone' } }, { $: `${live} ? 'Join' : 'Pick it back up'` }],
+        },
+      },
     },
-  },
-  exportTranscriptButton(callId),
-];
+    {
+      type: '$if',
+      props: {
+        condition: { $: live },
+        then: { type: 'we-badge', props: { tone: 'success', size: 'sm' }, children: [liveDot, 'Live'] },
+      },
+    },
+    exportTranscriptButton(callId),
+  ];
+};
 
 /**
  * A call, as its own page: what is being said and written in it.
@@ -328,7 +346,7 @@ export const callBarAside = (callId: string): SchemaNode[] => [
  * Everything / Messages / Bots and its box, which writes into the call. Neither the controls nor the
  * people in the call are here: the call module's bar holds the controls on every page and its panel
  * draws everyone in the call, connecting and all, so a second set of either would be the same thing
- * twice. What the page adds, for somebody not in the call, is the way into it.
+ * twice. What the page adds, for somebody not in the call, is the way into it, in its bar.
  */
 export const callPage: SchemaNode = {
   type: 'Column',
@@ -349,37 +367,6 @@ export const callPage: SchemaNode = {
         { type: '$part', props: { id: 'call.renameCallButton', subject: { $: CALL_ID } } },
       ],
     ),
-    {
-      type: '$if',
-      props: {
-        // Somebody in the call has it in the call panel; somebody who is not has the way in here.
-        condition: { $: `!(${MINE})` },
-        then: {
-          type: 'Row',
-          // Wraps, so a phone puts the button under the sentence rather than squeezing the sentence.
-          props: { gap: '300', p: '500', ay: 'center', wrap: true },
-          children: [
-            {
-              type: 'we-text',
-              props: { color: 'text-muted', flex: '1', minWidth: '240px' },
-              children: [
-                {
-                  $: `find(modules.call.liveCalls, { recordId: ${CALL_ID} }) ? 'This call is happening now.' : 'This call has ended. Everything said and written in it is below.'`,
-                },
-              ],
-            },
-            {
-              type: 'we-button',
-              props: { variant: 'solid', onClick: { $invoke: 'modules.call.continueCall', args: [{ $: CALL_ID }] } },
-              children: [
-                { type: 'we-icon', props: { name: 'phone' } },
-                { $: `find(modules.call.liveCalls, { recordId: ${CALL_ID} }) ? 'Join' : 'Pick it back up'` },
-              ],
-            },
-          ],
-        },
-      },
-    },
     /*
       The call's Feed, pointed at the call the address names — the same for somebody in the call,
       somebody outside it and somebody reading it after it ended: anybody here can write into it.

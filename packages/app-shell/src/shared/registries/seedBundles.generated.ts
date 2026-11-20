@@ -21242,6 +21242,26 @@ export const seedBundles: Bundle[] = [
                     {
                       type: '$if',
                       props: {
+                        condition: { $: 'modules.call.callRecordId != routeStore.params.id' },
+                        then: {
+                          type: 'we-button',
+                          props: {
+                            variant: 'solid',
+                            size: 'sm',
+                            onClick: { $invoke: 'modules.call.continueCall', args: [{ $: 'routeStore.params.id' }] },
+                          },
+                          children: [
+                            { type: 'we-icon', props: { name: 'phone' } },
+                            {
+                              $: "find(modules.call.liveCalls, { recordId: routeStore.params.id }) ? 'Join' : 'Pick it back up'",
+                            },
+                          ],
+                        },
+                      },
+                    },
+                    {
+                      type: '$if',
+                      props: {
                         condition: { $: 'find(modules.call.liveCalls, { recordId: routeStore.params.id })' },
                         then: {
                           type: 'we-badge',
@@ -21309,40 +21329,6 @@ export const seedBundles: Bundle[] = [
                       ],
                     },
                   ],
-                },
-                {
-                  type: '$if',
-                  props: {
-                    condition: { $: '!(modules.call.callRecordId == routeStore.params.id)' },
-                    then: {
-                      type: 'Row',
-                      props: { gap: '300', p: '500', ay: 'center', wrap: true },
-                      children: [
-                        {
-                          type: 'we-text',
-                          props: { color: 'text-muted', flex: '1', minWidth: '240px' },
-                          children: [
-                            {
-                              $: "find(modules.call.liveCalls, { recordId: routeStore.params.id }) ? 'This call is happening now.' : 'This call has ended. Everything said and written in it is below.'",
-                            },
-                          ],
-                        },
-                        {
-                          type: 'we-button',
-                          props: {
-                            variant: 'solid',
-                            onClick: { $invoke: 'modules.call.continueCall', args: [{ $: 'routeStore.params.id' }] },
-                          },
-                          children: [
-                            { type: 'we-icon', props: { name: 'phone' } },
-                            {
-                              $: "find(modules.call.liveCalls, { recordId: routeStore.params.id }) ? 'Join' : 'Pick it back up'",
-                            },
-                          ],
-                        },
-                      ],
-                    },
-                  },
                 },
                 {
                   type: 'Column',

@@ -736,13 +736,19 @@ describe('transport and device lifetime', () => {
 
     await store.startCall();
     await Promise.resolve();
-    expect(published).toEqual([mic]);
+    // Joined with the microphone off: the stream is there, with nothing in it.
+    expect((published.at(-1) as MediaStream).getTracks()).toEqual([]);
 
-    store.toggleAudio();
-    expect(published).toEqual([mic]);
+    await store.toggleAudio();
+    const opened = published.at(-1) as MediaStream;
+    expect(opened.getAudioTracks()).toEqual(mic.getAudioTracks());
+
+    // Muting again keeps the same capture, so nothing new is published.
+    await store.toggleAudio();
+    expect(published.at(-1)).toBe(opened);
 
     store.leave();
-    expect(published).toEqual([mic, null]);
+    expect(published.at(-1)).toBeNull();
   });
 
   /*
@@ -765,15 +771,14 @@ describe('transport and device lifetime', () => {
       return { ...harness, grant: () => (allowAudio = true) };
     };
 
-    it('joins with the camera, muted, and says the microphone could not be reached', async () => {
+    it('joins with both off, asking for neither, so nothing is refused yet', async () => {
       const { store } = cameraOnly();
 
       await store.startCall();
       await Promise.resolve();
 
-      expect(store.media()).toMatchObject({ audioEnabled: false, videoEnabled: true });
-      expect(store.problem()).toMatch(/microphone/);
-      expect(store.problem()).not.toMatch(/camera/);
+      expect(store.media()).toMatchObject({ audioEnabled: false, videoEnabled: false });
+      expect(store.problem()).toBeNull();
     });
 
     it('says so again when unmuting is refused', async () => {
@@ -829,6 +834,8 @@ describe('transport and device lifetime', () => {
       store.leave();
       await store.startCall();
       await Promise.resolve();
+      // On, then muted again.
+      await store.toggleAudio();
       await store.toggleAudio();
       expect(store.media().audioEnabled).toBe(false);
       expect(store.problem()).toBeNull();
