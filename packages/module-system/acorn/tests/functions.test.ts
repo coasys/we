@@ -87,6 +87,20 @@ describe('children and the roll-up', () => {
     expect((kids as Array<{ id: string }>).map((k) => k.id)).toEqual(['y', 'x']);
   });
 
+  it("a new child's siblingOrder is one below its lowest sibling's, as stock appends on the right; 0 with none", () => {
+    const next = (connections: unknown) => call('acornNextSiblingOrder', { parent: 'root', connections });
+    // No siblings: 0, as stock's expanded view writes.
+    expect(next([])).toBe(0);
+    expect(next([edge('other', 's1', 5)])).toBe(0);
+    // Dense: below the lowest, never the count.
+    expect(next([edge('root', 's1', 0), edge('root', 's2', 1)])).toBe(-1);
+    // Sparse: the count (2) would land between them; one below the lowest does not.
+    expect(next([edge('root', 's1', 20), edge('root', 's2', 10), edge('other', 'u1', -50)])).toBe(9);
+    // Negative orders, and parents read as included records.
+    expect(next([edge('root', 's1', 5), { parent: { id: 'root' }, child: { id: 's2' }, siblingOrder: -3 }])).toBe(-4);
+    expect(call('acornNextSiblingOrder', {})).toBe(0);
+  });
+
   it('an Uncertain outcome over Smalls only is Big; partly achieved Smalls make it partially achieved', () => {
     const connections = [edge('root', 's1'), edge('root', 's2')];
     const r = call('acornRollup', { outcome: outcomes[0], outcomes, connections }) as Record<string, unknown>;
@@ -216,6 +230,44 @@ describe('the outcome table rows', () => {
     ]);
     expect(rowsOf({ outcomes, connections, filter: { keyword: 'leaf' } }).map((r) => r.id)).toEqual(['leaf']);
   });
+
+  it('a rootless cycle whose tail comes first in the list is drawn from the cycle, each outcome once', () => {
+    const outcomes = [
+      outcome('leaf', 'Small', { content: 'leaf' }),
+      outcome('x', 'Uncertain', { content: 'ex' }),
+      outcome('y', 'Uncertain', { content: 'why' }),
+    ];
+    const connections = [edge('x', 'y'), edge('y', 'x'), edge('y', 'leaf')];
+    expect(rowsOf({ outcomes, connections }).map((r) => [r.id, r.depth])).toEqual([
+      ['x', 0],
+      ['y', 1],
+      ['leaf', 2],
+    ]);
+    expect(rowsOf({ outcomes, connections, filter: { keyword: 'leaf' } }).map((r) => r.id)).toEqual(['leaf']);
+    // The tail is under its parent, so folding the cycle hides it.
+    expect(rowsOf({ outcomes, connections, collapsed: ['x'] }).map((r) => r.id)).toEqual(['x']);
+  });
+
+  it('a second rootless cycle that leads into one already drawn does not draw it again', () => {
+    const outcomes = [
+      outcome('a', 'Uncertain'),
+      outcome('b', 'Uncertain'),
+      outcome('c', 'Uncertain'),
+      outcome('d', 'Uncertain'),
+      outcome('leaf', 'Small'),
+    ];
+    // a ⇄ b → leaf, and c ⇄ d → a: the second cycle is upstream of the first.
+    const connections = [
+      edge('a', 'b'),
+      edge('b', 'a'),
+      edge('b', 'leaf'),
+      edge('c', 'd'),
+      edge('d', 'c'),
+      edge('d', 'a'),
+    ];
+    const ids = rowsOf({ outcomes, connections }).map((r) => r.id);
+    expect([...ids].sort()).toEqual(['a', 'b', 'c', 'd', 'leaf']);
+  });
 });
 
 describe('the outcome table on a long chain', () => {
@@ -274,9 +326,10 @@ describe('the outcome table filter', () => {
 });
 
 describe('the working value a whole-field edit starts from', () => {
-  const written = [tasks, JSON.stringify([{ task: 'a', complete: true }])];
-  it('is the last written while the stored value is one this view replaced or wrote', () => {
-    const working = JSON.stringify([{ task: 'a', complete: false }]);
+  // The history as acornWritten records it: what each edit replaced, ending with the value written last.
+  const working = JSON.stringify([{ task: 'a', complete: false }]);
+  const written = [tasks, JSON.stringify([{ task: 'a', complete: true }]), working];
+  it('is the last written while the stored value is one this view replaced on the way', () => {
     expect(call('acornWorking', { stored: tasks, working, written })).toBe(working);
     // The mount reads a list back with its keys in another order; it is still the same list.
     expect(call('acornWorking', { stored: '[{"complete":true,"task":"a"}]', working, written })).toBe(working);
@@ -285,6 +338,33 @@ describe('the working value a whole-field edit starts from', () => {
       'y',
     ]);
     expect(call('acornWorking', { stored: undefined, working: '[]', written: [undefined, '[]'] })).toBe('[]');
+  });
+  it('once the working value has read back, an earlier value stored again is drawn, not hidden', () => {
+    const history = [['x'], ['x', 'y']];
+    expect(call('acornWorking', { stored: ['x'], working: ['x', 'y'], written: history })).toEqual(['x', 'y']);
+    expect(call('acornWorking', { stored: ['x', 'y'], working: ['x', 'y'], written: history })).toEqual(['x', 'y']);
+    // Stock reverts after the read-back: no write is pending, so the revert is the list.
+    expect(call('acornWorking', { stored: ['x'], working: ['x', 'y'], written: history })).toEqual(['x']);
+  });
+  it('the history an edit records is text, extends an unsettled one, and starts afresh after a settled one', () => {
+    const stored = ['x'];
+    const first = call('acornWritten', { stored, working: ['x', 'y'], written: [] }) as string[];
+    expect(first).toEqual(['["x"]', '["x","y"]']);
+    // A subscription that reconciles its array in place cannot rewrite what was recorded.
+    stored.push('y');
+    expect(first).toEqual(['["x"]', '["x","y"]']);
+    // Unsettled (stored is still the replaced value): the next edit extends it.
+    expect(call('acornWritten', { stored: ['x'], working: ['x', 'y', 'z'], written: first })).toEqual([
+      '["x"]',
+      '["x","y"]',
+      '["x","y","z"]',
+    ]);
+    // Read back: the next edit's history holds only what it replaces and writes.
+    expect(call('acornWorking', { stored: ['x', 'y'], working: ['x', 'y'], written: first })).toEqual(['x', 'y']);
+    expect(call('acornWritten', { stored: ['x'], working: ['x', 'w'], written: first })).toEqual([
+      '["x"]',
+      '["x","w"]',
+    ]);
   });
   it("is the stored value when nothing was written, or the stored value is somebody else's", () => {
     expect(call('acornWorking', { stored: tasks, working: 'x', written: [] })).toBe(tasks);

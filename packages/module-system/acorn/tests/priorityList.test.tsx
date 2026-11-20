@@ -63,6 +63,8 @@ async function fixtureHost(options: { lag?: boolean } = {}) {
       return Promise.resolve();
     },
   };
+  /** Somebody else's write, reaching the store without passing this view. */
+  const remote = (name: string, id: string, fields: Record<string, unknown>) => entity(name).update(handle, id, fields);
   const flush = async () => {
     while (deferred.length) await deferred.shift()!();
   };
@@ -82,7 +84,7 @@ async function fixtureHost(options: { lag?: boolean } = {}) {
     $onError: (message: string) => errors.push(message),
     $modelsPending: () => false,
   };
-  return { stores, errors, writes, priorities, flush };
+  return { stores, errors, writes, priorities, flush, remote };
 }
 
 const Passthrough = (props: { children?: JSX.Element }) => props.children;
@@ -228,6 +230,24 @@ describe('the priority list', () => {
       await flush();
       await waitFor(async () => expect(await priorities()).toEqual(['acorn-outcome-2', 'acorn-outcome-3']));
       await waitFor(() => expect(ranked(container)).toEqual(['acorn-outcome-2', 'acorn-outcome-3']));
+    } finally {
+      unmount();
+    }
+  });
+
+  it("a list reverted elsewhere after this view's write read back is drawn, and the next edit builds on it", async () => {
+    const { container, unmount, writes, priorities, remote } = await drawList();
+    try {
+      fireEvent.click(buttonNamed(container, `Prioritise ${SECOND}`)!);
+      await waitFor(async () => expect(await priorities()).toEqual(['acorn-outcome-1', 'acorn-outcome-2']));
+      await waitFor(() => expect(ranked(container)).toEqual(['acorn-outcome-1', 'acorn-outcome-2']));
+      // Read back. Then stock removes the one this view added.
+      await remote('AcornProjectMeta', 'acorn-project-meta', { topPriorityOutcomes: ['acorn-outcome-1'] });
+      await waitFor(() => expect(ranked(container)).toEqual(['acorn-outcome-1']));
+      await ready(container, `Prioritise ${THIRD}`);
+      fireEvent.click(buttonNamed(container, `Prioritise ${THIRD}`)!);
+      await waitFor(() => expect(writes).toHaveLength(2));
+      await waitFor(async () => expect(await priorities()).toEqual(['acorn-outcome-1', 'acorn-outcome-3']));
     } finally {
       unmount();
     }

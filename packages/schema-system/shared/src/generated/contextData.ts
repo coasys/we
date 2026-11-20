@@ -5168,6 +5168,12 @@ export const contextData: ContextData = {
           example: 'acornChildren({ outcome: outcome.id, outcomes: local.outcomes, connections: local.connections })',
         },
         {
+          name: 'acornNextSiblingOrder',
+          params: ['parent', 'connections'],
+          doc: "The siblingOrder a new child of `parent` is written with — one below its lowest sibling's, so Acorn draws it on the right; 0 when it has none.",
+          example: 'acornNextSiblingOrder({ parent: outcome.id, connections: local.connections })',
+        },
+        {
           name: 'acornRollup',
           params: ['outcome', 'outcomes', 'connections'],
           doc: "Acorn's computed scope and status for an outcome from its descendants — { scope, status, uncertains, smallsAchieved, smallsTotal, tasksAchieved, tasksTotal, children }.",
@@ -5208,8 +5214,15 @@ export const contextData: ContextData = {
         {
           name: 'acornWorking',
           params: ['stored', 'working', 'written'],
-          doc: "The whole-field value the next edit starts from. `stored` is the value as subscribed, `working` the last one this view wrote, `written` every value this view has replaced or written. While the stored value is one of those — the write has not read back yet, or reads back as it went — the working value stands, so an edit builds on the one before it; a stored value this view never saw is somebody else's write, and wins.",
+          doc: 'The whole-field value the next edit starts from. `stored` is the value as subscribed, `working` the last one this view wrote, `written` its history (acornWritten). While that write is unsettled — the stored value is one it replaced on the way — the working value stands, so an edit builds on the one before it. Once the stored value is the one written, or one this view never saw, the history is settled for good and the stored value is the truth again, so a later change elsewhere back to an earlier value is drawn.',
           example: 'acornWorking({ stored: outcome.taskList, working: local.taskWork, written: local.taskWritten })',
+        },
+        {
+          name: 'acornWritten',
+          params: ['stored', 'working', 'written'],
+          doc: 'The history after a whole-field edit: what is still unsettled of `written` (the history before it — nothing, once the last write read back or was overtaken), then the stored value the edit replaces and `working`, the value it writes. Recorded as canonical text, for acornWorking to compare against.',
+          example:
+            'acornWritten({ stored: meta.topPriorityOutcomes, working: local.prioWork, written: local.prioWritten })',
         },
         {
           name: 'acornPriorityOrder',
