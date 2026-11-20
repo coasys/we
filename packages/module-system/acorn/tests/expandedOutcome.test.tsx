@@ -617,7 +617,9 @@ describe('the expanded outcome — children, tasks, comments', () => {
         ]),
       );
       // Settled: the task controls are enabled again.
-      await waitFor(() => expect(checkboxNamed(dialog(container)!, 'a')?.disabled).toBe(false));
+      await waitFor(() =>
+        expect((checkboxNamed(dialog(container)!, 'a') as { disabled?: boolean } | undefined)?.disabled).toBe(false),
+      );
       expect(field().value).toBe('b');
     } finally {
       unmount();
