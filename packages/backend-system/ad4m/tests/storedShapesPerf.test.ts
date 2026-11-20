@@ -1,12 +1,12 @@
 /**
  * Round-trip reduction in storedShapes and hasSubjectClassLink.
  *
- * The original `storedShapes` ran five sequential SPARQL queries per call.
+ * The original `storedShapes` ran its SPARQL queries (now six) sequentially on every call.
  * The original `ensureEntitiesRegistered` called `hasSubjectClassLink` once
  * per model.  Both multiplied wall-clock time by the number of round trips.
  *
  * The optimised versions:
- *   - run the five SPARQL queries concurrently (`Promise.all`),
+ *   - run the six SPARQL queries concurrently (`Promise.all`),
  *   - replace N `hasSubjectClassLink` calls with one `bulkHasSubjectClassLink`,
  *   - cache the `storedShapes` result so consecutive callers within one
  *     `switchDataset` do not repeat the queries — and drop that cache whenever
@@ -72,7 +72,7 @@ function writablePerspective(registeredClasses: string[]): MockProxy {
 
 const TARGET = 'we://TaskBlock';
 /** storedShapes issues exactly this many SPARQL queries per uncached read. */
-const QUERIES_PER_READ = 5;
+const QUERIES_PER_READ = 6;
 
 // ─── bulkHasSubjectClassLink ──────────────────────────────────────────────────
 

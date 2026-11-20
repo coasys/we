@@ -97,6 +97,7 @@ import {
   TREE_ON,
   TREE_QUERIES,
   TREE_REFRAME,
+  TREE_RELATIONS,
   TREE_VOICE_SUMMARY,
   TREE_WEIGH,
   TREE_WEIGHTS,
@@ -1697,6 +1698,8 @@ const canvas: SchemaNode = {
         hidden: { $: `(${SUGGESTIONS_HIDDEN}) ? ${UNCONFIRMED} : []` },
         // Kinds the reader put away from the key's eye — every card of each, and the lines to them.
         hiddenTypes: { $: HIDDEN_KINDS },
+        // The models' own declared relations, followed as tree edges in tree mode. See `TREE_RELATIONS`.
+        relations: TREE_RELATIONS,
         /*
           What each card weighs, whenever the tree is shown or the order is a reaction — see `TREE_WEIGH`
           in the kit's `canvasTree` for why both.
