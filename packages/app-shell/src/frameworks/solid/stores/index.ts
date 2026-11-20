@@ -30,6 +30,7 @@ export {
 } from './BaseStore';
 export { type DeviceStore, useDeviceStore, DeviceStoreProvider } from './DeviceStore';
 export { type BotStore, useBotStore, BotStoreProvider } from './BotStore';
+export { type HostingStore, useHostingStore, HostingStoreProvider } from './HostingStore';
 export {
   type InterpretationActivityView,
   type InterpretationStore,

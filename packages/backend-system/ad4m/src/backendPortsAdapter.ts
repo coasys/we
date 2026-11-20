@@ -39,6 +39,7 @@ import { createAd4mCallPort } from './callPort';
 import { installClearOnEmpty } from './clearOnEmpty';
 import { installContainmentPredicate } from './containment';
 import { Space } from './entities';
+import { createAd4mHostingPort } from './hostingPort';
 import { type Ad4mCustodyHost, createAd4mIdentityPort } from './identityPort';
 import { createAd4mInterpretationPort } from './interpretationAdapter';
 import { readInterpretationHints, resetInterpretationHints, writeInterpretationHints } from './interpretationHints';
@@ -260,6 +261,8 @@ export function createAd4mBackendPorts(
     // The key log and the device list, as the executor's identity module holds them, and changes to
     // them through the host's custody service where it runs one.
     identity: createAd4mIdentityPort(backendClient, options.custody),
+    // This device's listing in the hosting index; absent on an SDK that predates the client.
+    hosting: createAd4mHostingPort(backendClient),
     // Per-dataset like interpretation: every operation names the space the call is in.
     call: createAd4mCallPort(),
     ephemeral,

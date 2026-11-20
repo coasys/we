@@ -7,6 +7,7 @@ import type {
   DatasetStore,
   DeviceStore,
   EditorStore,
+  HostingStore,
   IdentityStore,
   InterpretationStore,
   PresenceStore,
@@ -82,6 +83,7 @@ export interface Stores extends RendererStores {
   identityStore: IdentityStore;
   deviceStore: DeviceStore;
   botStore: BotStore;
+  hostingStore: HostingStore;
   record?: RecordActions;
   /** Neutral identity — the current agent (templates read `$me.did`). Backed by `sessionStore.me`;
    *  typed `unknown` so the seam stays backend-agnostic. Host-specific: not part of the data contract. */

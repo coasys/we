@@ -11,6 +11,7 @@ import { comingSoon, confirmModal } from '@we/template-kit';
 
 import { accountSettings } from './AccountSettings.schema.ts';
 import { botsSection } from './BotSettingsPages.ts';
+import { earnWithItSection, findHostSection } from './HostingSettingsPages.ts';
 import { hostCredits, hostSection } from './HostSettings.schema.ts';
 import {
   addDeviceButton,
@@ -431,6 +432,7 @@ export const devicesPage: SchemaNode = {
       preview: [actions('Link a device')],
       children: [{ type: 'Row', children: [addDeviceButton] }],
     }),
+    findHostSection,
     comingSoon({
       available: can('switchDevice'),
       icon: 'arrows-left-right',
@@ -455,6 +457,7 @@ export function thisDevicePage(advanced: SchemaNode[]): SchemaNode {
       },
       heading('This device', "Settings for the computer or host you're using now."),
       hostSection,
+      earnWithItSection,
       /*
         How this device keeps the data on its disk, in the backend's own terms and nothing more. Absent
         where the app does not start the backend, and while nothing true can be said yet.

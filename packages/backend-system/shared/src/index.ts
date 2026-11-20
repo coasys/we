@@ -338,6 +338,17 @@ export type {
   KeyLogStoreBehind,
   KeyLogView,
 } from './identity';
+export type {
+  DelistReason,
+  HostingIndexConfig,
+  HostingPort,
+  HostingStatusView,
+  ListedModel,
+  ListedRate,
+  ListingState,
+  ListingText,
+  OwnListingView,
+} from './hosting';
 export type { TranscriptionRecord, TranscriptionPort, TranscriptionSetup, TranscriptionStream } from './transcription';
 export type {
   InterpretationPort,
