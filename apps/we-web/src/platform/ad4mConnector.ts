@@ -1,9 +1,9 @@
-import { Ad4mClient } from '@coasys/ad4m';
 import { getAd4mConnect } from '@coasys/ad4m-connect';
 import type { BackendConnector, BackendInitResult } from '@we/app-shell/shared';
 import { capabilitiesFromToken, createAd4mBackendPorts, holdsOperatorCredential } from '@we/backend-ad4m';
 import weSeed from '@we/seed-file';
 
+import { sessionClient } from './sessionClient';
 import { storedGuestHost } from './storedSession';
 
 export const ad4mConnector: BackendConnector = {
@@ -35,10 +35,11 @@ export const ad4mConnector: BackendConnector = {
     /*
       The client `connecting` answers is connect's own vendored copy of the SDK — a second,
       older Ad4mClient whose PerspectiveProxy carries no mount, no `shapes()` and no `instance*`
-      writes. The session's client is this bundle's own `@coasys/ad4m`, over the same url and
-      token — one SDK copy in the bundle, and every RPC the ports call is on it.
+      writes. The session's client is this bundle's own `@coasys/ad4m`, over the same transport
+      and token — one SDK copy in the bundle, and every RPC the ports call is on it. See
+      `sessionClient` for why that is not simply the url.
     */
-    const client = new Ad4mClient(core.baseUrl, core.token);
+    const client = sessionClient(core);
 
     // Whether this connection operates the node it reached. A host chosen from the connect UI is
     // somebody else's by definition; a multi-user executor is one where this agent is a user rather

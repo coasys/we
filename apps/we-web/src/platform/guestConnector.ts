@@ -12,12 +12,13 @@
  * `@we/app-shell/shared`'s `guestLink`, alongside the builder that writes one, so the two cannot
  * drift. This module is only the AD4M half.
  */
-import { Ad4mClient } from '@coasys/ad4m';
 import Ad4mConnect from '@coasys/ad4m-connect/core';
 import type { BackendConnector, BackendInitResult, GuestJoinTarget } from '@we/app-shell/shared';
 import { parseGuestLink } from '@we/app-shell/shared';
 import { capabilitiesFromToken, createAd4mBackendPorts } from '@we/backend-ad4m';
 import weSeed from '@we/seed-file';
+
+import { sessionClient } from './sessionClient';
 
 export type { GuestJoinTarget };
 export { hasStoredSession } from './storedSession';
@@ -64,7 +65,7 @@ export function createGuestConnector(hostUrl: string): BackendConnector {
       // `connectAsGuest` answers connect's vendored client — an older SDK copy with no mount,
       // `shapes()` or `instance*` writes. The session's client is this bundle's own.
       await core.connectAsGuest(hostUrl);
-      const client = new Ad4mClient(core.baseUrl, core.token);
+      const client = sessionClient(core);
       const capabilities = capabilitiesFromToken(core.token);
 
       const ports = createAd4mBackendPorts(client, ctx, {

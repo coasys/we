@@ -12,7 +12,28 @@ const created = vi.hoisted(() => ({
   options: [] as { operator?: boolean }[],
   token: '',
   client: undefined as unknown,
+  /** What each session client was constructed with, and whether it was closed. */
+  clients: [] as { args: unknown[]; closed: boolean }[],
+  /** connect's embedded-proxy transport, as `AD4M_CONFIG { proxy: true }` leaves it on the core. */
+  proxy: undefined as undefined | { baseUrl: string; options: Record<string, unknown> },
 }));
+
+vi.mock('@coasys/ad4m', async (importActual) => {
+  const actual = await importActual<typeof import('@coasys/ad4m')>();
+  class RecordingClient extends actual.Ad4mClient {
+    #record: { args: unknown[]; closed: boolean };
+    constructor(...args: ConstructorParameters<typeof actual.Ad4mClient>) {
+      super(...args);
+      this.#record = { args, closed: false };
+      created.clients.push(this.#record);
+    }
+    close() {
+      this.#record.closed = true;
+      super.close();
+    }
+  }
+  return { ...actual, Ad4mClient: RecordingClient };
+});
 
 vi.mock('@we/backend-ad4m', async (importActual) => ({
   ...(await importActual<typeof import('@we/backend-ad4m')>()),
@@ -35,6 +56,9 @@ function fakeCore() {
       return created.token;
     },
     baseUrl: 'http://localhost:12000',
+    get proxy() {
+      return created.proxy;
+    },
     port: 12000,
     userInfo: undefined,
     disconnect: () => {},
@@ -58,6 +82,8 @@ const OPERATOR = 'the-admin-credential';
 
 beforeEach(() => {
   created.options = [];
+  created.clients = [];
+  created.proxy = undefined;
   vi.stubGlobal('window', { location: { origin: 'https://we.example.test', href: 'https://we.example.test/' } });
 });
 
@@ -100,6 +126,36 @@ describe('the WE web connector', () => {
       expect(created.client).toBeInstanceOf(Ad4mClient);
     },
   );
+
+  it(
+    "keeps connect's embedded proxy transport rather than dialling the executor directly",
+    { timeout: IMPORT_TIMEOUT },
+    async () => {
+      const { ad4mConnector } = await import('./ad4mConnector');
+      class PostMessageWs {}
+      const fetchImpl = async () => new Response();
+      created.proxy = { baseUrl: 'http://proxy', options: { webSocketImpl: PostMessageWs, fetchImpl } };
+      created.token = GRANT;
+
+      await ad4mConnector.initialize({} as never);
+
+      // In proxy mode connect's own baseUrl names no reachable executor: frames go through the
+      // parent by postMessage. The session client has to ride the same transport.
+      expect(created.clients).toHaveLength(1);
+      const [url, token, options] = created.clients[0].args as [string, string, Record<string, unknown>];
+      expect(url).toBe('http://proxy');
+      expect(token).toBe(GRANT);
+      expect(options.webSocketImpl).toBe(PostMessageWs);
+      expect(options.fetchImpl).toBe(fetchImpl);
+    },
+  );
+
+  it('dials the executor at connect’s baseUrl when there is no proxy', { timeout: IMPORT_TIMEOUT }, async () => {
+    const { ad4mConnector } = await import('./ad4mConnector');
+    created.token = GRANT;
+    await ad4mConnector.initialize({} as never);
+    expect(created.clients.map((c) => c.args.slice(0, 2))).toEqual([['http://localhost:12000', GRANT]]);
+  });
 });
 
 describe('the guest connector', () => {
@@ -111,5 +167,16 @@ describe('the guest connector', () => {
       await createGuestConnector('https://node.example.org').initialize({} as never);
     }
     expect(created.options.map((o) => o.operator)).toEqual([false, false]);
+  });
+
+  it("keeps connect's embedded proxy transport", { timeout: IMPORT_TIMEOUT }, async () => {
+    const { createGuestConnector } = await import('./guestConnector');
+    class PostMessageWs {}
+    created.proxy = { baseUrl: 'http://proxy', options: { webSocketImpl: PostMessageWs } };
+    created.token = GRANT;
+    await createGuestConnector('https://node.example.org').initialize({} as never);
+    const [url, , options] = created.clients[0].args as [string, string, Record<string, unknown>];
+    expect(url).toBe('http://proxy');
+    expect(options.webSocketImpl).toBe(PostMessageWs);
   });
 });
