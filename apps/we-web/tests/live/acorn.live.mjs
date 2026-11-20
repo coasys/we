@@ -1275,6 +1275,12 @@ describe('editing the outcome map on the live mount', () => {
 
   it('Delete on a selected line deletes the stock connection; both outcomes stay', async () => {
     const madeRoot = await stockOutcome(ROOT);
+    // Only with the line there: a Delete aimed at nothing would take whatever is selected.
+    assert.equal(
+      linksBetween(await stockConnections(), spare.actionHash, madeRoot.actionHash).length,
+      1,
+      'the line to delete is there',
+    );
     const [from, to] = await frame([SPARE, ROOT]);
     // The line runs from the parent's lower edge to the child's upper edge; a smooth curve between
     // two vertical ends passes through the midpoint of the two.
