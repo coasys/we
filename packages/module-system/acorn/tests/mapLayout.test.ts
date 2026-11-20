@@ -147,6 +147,47 @@ describe('the outcome map — layout', () => {
     expect(at('x').y).toBeGreaterThan(at('p').y);
     expect(graph.edges.map((e) => e.id).sort()).toEqual(['p>x', 'q>x']);
   });
+
+  it('siblings keep their order under the parent forest places them under, whichever parent the walk met first', () => {
+    // q is listed first and reaches x first; forest still places x under p (p sorts before q), so
+    // p's children must be in p's order: y (siblingOrder 1) left of x (0).
+    const { at, result } = layOut(
+      [outcome('q', { scopeType: 'Uncertain' }), outcome('p', { scopeType: 'Uncertain' }), outcome('x'), outcome('y')],
+      [edge('q', 'x'), edge('p', 'y', 1), edge('p', 'x', 0)],
+    );
+    expect(result.hierarchy?.parents.get('x')).toBe('p');
+    expect(result.hierarchy?.parents.get('y')).toBe('p');
+    expect(at('y').x).toBeLessThan(at('x').x);
+  });
+
+  it("every parent's own children are in its connection order, on many shared-child graphs", () => {
+    // A small deterministic generator: ids out of order, several parents per child, loops allowed.
+    let seed = 7;
+    const rand = (n: number) => ((seed = (seed * 1103515245 + 12345) % 2147483648), seed % n);
+    for (let round = 0; round < 200; round++) {
+      const ids = Array.from(
+        { length: 3 + rand(6) },
+        (_, i) => `n${(i * 7) % 11}${String.fromCharCode(97 + rand(26))}`,
+      );
+      const outcomes = [...new Set(ids)].map((id) => outcome(id));
+      const connections = Array.from({ length: rand(10) }, () => {
+        const a = outcomes[rand(outcomes.length)].id;
+        const b = outcomes[rand(outcomes.length)].id;
+        return edge(a, b, rand(4) - 1);
+      });
+      const { at, result, graph } = layOut(outcomes, connections);
+      const parents = result.hierarchy?.parents ?? new Map<string, string>();
+      const kids = ACORN_FUNCTIONS.find((f) => f.name === 'acornChildren')!.fn as (o: unknown) => Array<{ id: string }>;
+      for (const parent of outcomes) {
+        const own = [...new Set(kids({ outcome: parent.id, outcomes, connections }).map((k) => k.id))].filter(
+          (k) => parents.get(k) === parent.id,
+        );
+        const drawn = [...own].sort((a, b) => at(a).x - at(b).x);
+        expect(drawn, JSON.stringify({ parent: parent.id, connections })).toEqual(own);
+      }
+      expect(new Set(graph.nodes.map((n) => n.data.rank)).size).toBe(outcomes.length);
+    }
+  });
 });
 
 describe('the outcome map — what a card holds', () => {

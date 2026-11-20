@@ -377,6 +377,43 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 /**
+ * The one parent each card is drawn under, exactly as `@we/graph-layouts` `forest` chooses it
+ * (`shapeOf` in `forest.ts`): breadth-first from the roots — cards on a line with no line into
+ * them — roots and each card's children walked in id order, a card taking the first parent that
+ * reaches it; a loop with no root opened at its lowest id. Restated here because a module imports
+ * nothing but the module contract (`portability.test.ts`). `mapLayout.test.ts` lays the projection
+ * out with the real layout and checks that every parent's own children are drawn in its order, so
+ * the two cannot drift apart unnoticed.
+ */
+const forestParents = (links: ReadonlyArray<{ source: string; target: string }>): Map<string, string> => {
+  const childrenOf = new Map<string, string[]>();
+  const hasParent = new Set<string>();
+  for (const { source, target } of links) {
+    (childrenOf.get(source) ?? childrenOf.set(source, []).get(source)!).push(target);
+    hasParent.add(target);
+  }
+  const onSpine = new Set<string>([...childrenOf.keys(), ...hasParent]);
+  const placed = new Set<string>();
+  const parent = new Map<string, string>();
+  const walk = (roots: string[]) => {
+    const queue = [...roots];
+    for (const root of roots) placed.add(root);
+    for (let head = 0; head < queue.length; head += 1) {
+      const id = queue[head];
+      for (const child of [...(childrenOf.get(id) ?? [])].sort()) {
+        if (placed.has(child)) continue;
+        placed.add(child);
+        parent.set(child, id);
+        queue.push(child);
+      }
+    }
+  };
+  walk([...onSpine].filter((id) => !hasParent.has(id)).sort());
+  for (const id of [...onSpine].sort()) if (!placed.has(id)) walk([id]);
+  return parent;
+};
+
+/**
  * The map's graph, as a `GraphView` literal seed — one node per outcome, one edge per connection.
  *
  * A **projection**, not a seed the graph reads itself, for two reasons the stock wire forces. A
@@ -385,12 +422,12 @@ const STATUS_LABEL: Record<string, string> = {
  * card — the computed scope and status — is the roll-up, which only these functions know.
  *
  * Sibling order lives on the connection, and the `forest` layout orders siblings by a field on the
- * *card*. So each node carries `rank`: its place in a depth-first walk of Acorn's tree, roots in the
- * order given, children in Acorn's sibling order (`indexTree`). Under any one parent the ranks
- * of its children are in that parent's order, which is what `sortBy: 'rank'` needs; and roots —
- * isolated outcomes among them — keep the order the outcomes arrived in. A connection loop with no
- * root is walked from its first outcome in list order, as the table walks it, and a node is ranked
- * once, at its first visit.
+ * *card*. So each node carries `rank`: its place in a depth-first walk of the tree forest draws —
+ * each card under the one parent forest places it under (`forestParents`), those children in that
+ * parent's Acorn order (`indexTree`). A child of two parents is drawn once, under one of them, so its
+ * rank only has to be right there; ranking it by whichever parent a walk reached first could reverse
+ * the siblings of the parent that actually draws it. Roots — isolated outcomes among them — keep the
+ * order the outcomes arrived in, and the card forest opens a rootless loop at comes after them.
  *
  * The card's values sit under the stored names (`scopeType`, `achievementStatus`) because those are
  * the fields `content: 'record'` lists, but they hold the **computed** scope and status, which is
@@ -402,10 +439,21 @@ const mapGraph = (options: Record<string, unknown>) => {
   const ids = new Set(outcomes.map((o) => refId(o.id)));
   const tree = indexTree(outcomes, connections);
   const rollupOf = rollups(tree);
-  const childIds = new Set<string>();
-  for (const parent of tree.parents) if (ids.has(parent)) for (const c of tree.kids(parent)) childIds.add(refId(c.id));
+  const seen = new Set<string>();
+  const edges = connections.flatMap((c) => {
+    const source = refId(c.parent);
+    const target = refId(c.child);
+    const id = refId(c.id) || `${source}>${target}`;
+    if (!ids.has(source) || !ids.has(target) || source === target || seen.has(id)) return [];
+    seen.add(id);
+    return [{ id, source, target, type: 'AcornConnection', data: { siblingOrder: num(c.siblingOrder) } }];
+  });
 
-  // Pre-order without recursion, children pushed last-first so the first sibling is ranked first.
+  // Rank in a pre-order walk of the tree forest draws: each card under the parent forest places
+  // it under, those children in that parent's order. Genuine roots first, then the cards forest
+  // opens a loop at, each group in the order the outcomes arrived. Without recursion, children
+  // pushed last-first so the first sibling is ranked first.
+  const owner = forestParents(edges);
   const rank = new Map<string, number>();
   const visit = (root: string) => {
     const stack = [root];
@@ -413,12 +461,17 @@ const mapGraph = (options: Record<string, unknown>) => {
       const id = stack.pop()!;
       if (rank.has(id)) continue;
       rank.set(id, rank.size);
-      const kids = tree.kids(id);
-      for (let i = kids.length - 1; i >= 0; i--) stack.push(refId(kids[i].id));
+      const kids = tree
+        .kids(id)
+        .map((k) => refId(k.id))
+        .filter((k) => owner.get(k) === id);
+      for (let i = kids.length - 1; i >= 0; i--) stack.push(kids[i]);
     }
   };
-  for (const root of outcomes.filter((o) => !childIds.has(refId(o.id)))) visit(refId(root.id));
-  for (const outcome of outcomes) visit(refId(outcome.id));
+  const unowned = outcomes.map((o) => refId(o.id)).filter((id) => !owner.has(id));
+  const targets = new Set(edges.map((e) => e.target));
+  for (const id of unowned) if (!targets.has(id)) visit(id);
+  for (const id of unowned) visit(id);
 
   const nodes = outcomes.map((outcome) => {
     const id = refId(outcome.id);
@@ -437,15 +490,6 @@ const mapGraph = (options: Record<string, unknown>) => {
         rank: rank.get(id) ?? 0,
       },
     };
-  });
-  const seen = new Set<string>();
-  const edges = connections.flatMap((c) => {
-    const source = refId(c.parent);
-    const target = refId(c.child);
-    const id = refId(c.id) || `${source}>${target}`;
-    if (!ids.has(source) || !ids.has(target) || source === target || seen.has(id)) return [];
-    seen.add(id);
-    return [{ id, source, target, type: 'AcornConnection', data: { siblingOrder: num(c.siblingOrder) } }];
   });
   return { literal: true, nodes, edges };
 };
@@ -709,7 +753,7 @@ export const ACORN_FUNCTIONS: ModuleFunction[] = [
   {
     name: 'acornMapGraph',
     params: ['outcomes', 'connections'],
-    doc: "The outcome map as a GraphView literal seed — { literal: true, nodes, edges }: a node per outcome (id the outcome's, type AcornOutcome, label its statement, data { content, scopeType and achievementStatus as Acorn computes them, status the computed code, rank its place in Acorn's tree for a forest's sortBy }) and an edge per connection between two drawn outcomes.",
+    doc: "The outcome map as a GraphView literal seed — { literal: true, nodes, edges }: a node per outcome (id the outcome's, type AcornOutcome, label its statement, data { content, scopeType and achievementStatus as Acorn computes them, status the computed code, rank its place in the tree a forest layout draws, each card under the parent forest places it under, for its sortBy }) and an edge per connection between two drawn outcomes.",
     example: 'acornMapGraph({ outcomes: local.outcomes, connections: local.connections })',
     fn: (...args: never[]) => mapGraph(args[0] && typeof args[0] === 'object' ? args[0] : {}),
   },

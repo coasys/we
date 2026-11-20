@@ -5208,7 +5208,7 @@ export const contextData: ContextData = {
         {
           name: 'acornMapGraph',
           params: ['outcomes', 'connections'],
-          doc: "The outcome map as a GraphView literal seed — { literal: true, nodes, edges }: a node per outcome (id the outcome's, type AcornOutcome, label its statement, data { content, scopeType and achievementStatus as Acorn computes them, status the computed code, rank its place in Acorn's tree for a forest's sortBy }) and an edge per connection between two drawn outcomes.",
+          doc: "The outcome map as a GraphView literal seed — { literal: true, nodes, edges }: a node per outcome (id the outcome's, type AcornOutcome, label its statement, data { content, scopeType and achievementStatus as Acorn computes them, status the computed code, rank its place in the tree a forest layout draws, each card under the parent forest places it under, for its sortBy }) and an edge per connection between two drawn outcomes.",
           example: 'acornMapGraph({ outcomes: local.outcomes, connections: local.connections })',
         },
         {
