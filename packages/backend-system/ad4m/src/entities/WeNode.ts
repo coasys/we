@@ -9,7 +9,9 @@ export class WeNode extends Ad4mModel {
     `polymorphic` on the relations that hold records, and deliberately absent from the two that hold
     DIDs — see WE_NODE_RELATIONS in @we/entities for why the split is not arbitrary. This class is
     hand-written rather than generated, so it is the one place the manifest's answer is repeated by
-    hand; `coreManifest.test.ts` holds the two in step, since SHACL does not carry the answer.
+    hand; `coreManifest.test.ts` holds the two in step. The declaration is also written into the shape
+    as `ad4m://polymorphic`, which is what the executor applies at every include depth — and what
+    `shapeIsStale` compares, so a space whose shape predates the flag is rewritten.
   */
   @HasMany({ through: 'we://response', polymorphic: true })
   responses: string[] = [];

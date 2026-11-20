@@ -36,18 +36,22 @@ export const DEV_TOOLS_KEY = 'we.devTools';
 /** The value that means off. Anything else — including absent — leaves the tools on. */
 const OFF = 'off';
 
+function muted(): boolean {
+  return stored(DEV_TOOLS_KEY) === OFF;
+}
+
 /**
- * Read the switch.
+ * Read a stored switch.
  *
  * Wrapped in a `try` because `localStorage` is not merely absent in some contexts, it *throws*:
  * a browser set to block site data, or a document rendered somewhere without an origin. The honest
- * fallback is "not muted", which lands on whatever `isDevBuild` already said.
+ * fallback is "nothing stored", which lands on each switch's default.
  */
-function muted(): boolean {
+function stored(key: string): string | null {
   try {
-    return globalThis.localStorage?.getItem(DEV_TOOLS_KEY) === OFF;
+    return globalThis.localStorage?.getItem(key) ?? null;
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -80,5 +84,32 @@ export function setDevToolsMuted(mute: boolean): void {
   } catch {
     // Storage that refuses writes is the same class of thing as storage that refuses reads: the
     // preference simply does not persist. The signal in the store still flips for this session.
+  }
+}
+
+/**
+ * The test people: fake participants in a call, fake cursors, pretend people on a canvas.
+ *
+ * Off until a developer turns them on, unlike every other developer affordance. Each one puts
+ * people on screen who are not there, so a developer who is not testing with them must not see
+ * them. They also need the developer tools on, so that switch still puts away everything.
+ */
+export const TEST_PEOPLE_KEY = 'we.testPeople';
+
+/** The value that means on. Anything else, absent included, leaves the test people off. */
+const ON = 'on';
+
+/** Whether to offer the test people, given what kind of build this is. */
+export function testPeopleEnabled(isDevBuild: boolean): boolean {
+  return devToolsEnabled(isDevBuild) && stored(TEST_PEOPLE_KEY) === ON;
+}
+
+/** Remember the choice, so it survives a reload. Removes the key to turn them off. */
+export function setTestPeopleOn(on: boolean): void {
+  try {
+    if (on) globalThis.localStorage?.setItem(TEST_PEOPLE_KEY, ON);
+    else globalThis.localStorage?.removeItem(TEST_PEOPLE_KEY);
+  } catch {
+    // Storage that refuses writes: the choice does not persist, as with `setDevToolsMuted`.
   }
 }

@@ -43,7 +43,7 @@
  */
 import { createHash } from 'node:crypto';
 import { execSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
@@ -316,31 +316,36 @@ writeFileSync(rootPath, JSON.stringify(root, null, 2) + '\n');
 console.log(`Pinned ${PACKAGES.join(' and ')} to ${describePin(next)}${commit ? ` (${commit})` : ''}.`);
 
 /*
-  The custody crate builds against the same ad4m, by commit (`crates/custody/tests/boundary.rs`
-  checks the two agree). Its revs move with the pin, and its lockfile with them; a bump that moved
-  only the JavaScript left the desktop app's Rust on the old ad4m, unnoticed until a release.
+  The Rust crates build against the same ad4m, by commit (`crates/custody/tests/boundary.rs`
+  checks the two agree). Every crate under `crates/` that names ad4m by rev (custody for the
+  desktop app, phone-custody for the phone) moves with the pin, and its lockfile with it; a bump
+  that moved only the JavaScript left the apps' Rust on the old ad4m, unnoticed until a release.
 */
-const custodyDir = join(ROOT, 'crates', 'custody');
-const custodyManifest = join(custodyDir, 'Cargo.toml');
-const custodyText = readFileSync(custodyManifest, 'utf8');
 const AD4M_REV = /(git = "https:\/\/github\.com\/coasys\/ad4m", rev = ")[0-9a-f]+(")/g;
-if (!to) {
-  console.warn(
-    `\nThe ad4m commit of ${describePin(next)} is unknown, so crates/custody/Cargo.toml still names the old one: move its revs by hand.`,
-  );
-} else if (custodyText.replace(AD4M_REV, `$1${to}$2`) !== custodyText) {
-  writeFileSync(custodyManifest, custodyText.replace(AD4M_REV, `$1${to}$2`));
-  console.log(`Moved crates/custody to ad4m ${to.slice(0, 9)}.`);
+const AD4M_CRATE = /^([\w-]+) = \{ git = "https:\/\/github\.com\/coasys\/ad4m"/gm;
+for (const crate of readdirSync(join(ROOT, 'crates'))) {
+  const crateDir = join(ROOT, 'crates', crate);
+  const manifest = join(crateDir, 'Cargo.toml');
+  if (!existsSync(manifest)) continue;
+  const text = readFileSync(manifest, 'utf8');
+  if (!text.match(AD4M_REV)) continue;
+  if (!to) {
+    console.warn(
+      `\nThe ad4m commit of ${describePin(next)} is unknown, so crates/${crate}/Cargo.toml still names the old one: move its revs by hand.`,
+    );
+    continue;
+  }
+  const moved = text.replace(AD4M_REV, `$1${to}$2`);
+  if (moved === text) continue;
+  writeFileSync(manifest, moved);
+  console.log(`Moved crates/${crate} to ad4m ${to.slice(0, 9)}.`);
+  const update = `cargo update ${[...new Set([...text.matchAll(AD4M_CRATE)].map((m) => `-p ${m[1]}`))].join(' ')}`;
   try {
     // From the crate's folder, so rustup takes the toolchain its `rust-toolchain.toml` pins.
-    execSync('cargo update -p ad4m-identity-client -p ad4m-identity-core -p ad4m-client -p ad4m-ldk', {
-      cwd: custodyDir,
-      stdio: 'inherit',
-    });
+    execSync(update, { cwd: crateDir, stdio: 'inherit' });
   } catch {
     fail(
-      'crates/custody/Cargo.lock could not be updated (is cargo installed?). From crates/custody, run:\n' +
-        '  cargo update -p ad4m-identity-client -p ad4m-identity-core -p ad4m-client -p ad4m-ldk',
+      `crates/${crate}/Cargo.lock could not be updated (is cargo installed?). From crates/${crate}, run:\n  ${update}`,
     );
   }
 }

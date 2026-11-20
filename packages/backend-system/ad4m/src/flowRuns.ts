@@ -107,6 +107,20 @@ export function openMoves(proposals: readonly EngineProposal[], run: Run): OpenM
 }
 
 /**
+ * When anything last happened to a run: it started, or a move out of any state was asked for, open or
+ * settled. A settled move is dated by its ask — the engine records no time for the settling — so a
+ * move agreed some time after it was asked dates from the ask. Undefined where nothing carries a time.
+ */
+export function lastActivityOf(proposals: readonly EngineProposal[], run: Run): number | undefined {
+  let last = run.startedAt;
+  for (const p of proposals) {
+    if (p.run !== run.id || p.proposedAt === undefined) continue;
+    if (last === undefined || p.proposedAt > last) last = p.proposedAt;
+  }
+  return last;
+}
+
+/**
  * A record as the contract reads it.
  *
  * `stalled` is inferred, because the engine reports contention only to whoever proposes into it: two
@@ -125,10 +139,12 @@ export function itemOf(
     const rule = needs(move.to);
     return !rule.restricted && move.approvers.length >= rule.count;
   });
+  const last = lastActivityOf(proposals, run);
   return {
     record: run.subject,
     state: stateOf(run),
     ...(run.startedAt !== undefined ? { since: run.startedAt } : {}),
+    ...(last !== undefined ? { lastActivity: last } : {}),
     waiting: open.map(({ proposals: _proposals, ...move }) => move),
     stalled: complete.length > 1,
   };
