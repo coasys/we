@@ -694,6 +694,72 @@ describe('openAcornProject', () => {
     });
   }
 
+  /*
+    A preflight failure on a dataset that already has a parked operation: the
+    Retry under the preflight card runs the Open again — not the older op on
+    its own — and its success clears the preflight entry, so a reopen offers
+    nothing stale for the project just repaired.
+  */
+  it('a preflight Retry on a dataset with an older parked op runs the Open, and success clears both', async () => {
+    const record: string[] = [];
+    let overrideFails = true;
+    const d = deps(record, {
+      setSpaceTemplateOverride: vi.fn(async (id: string, uuid?: string) => {
+        record.push(`override:${id}:${uuid}`);
+        if (overrideFails) throw new Error('zome unreachable');
+      }),
+    });
+    const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
+    port.mountsOf['dataset-1'] = [LANG];
+    const acorn = createAcornLifecycle(d);
+
+    // An older operation parks on its tail…
+    await expect(acorn.openAcornProject('dataset-1')).rejects.toThrow('zome unreachable');
+    await expect(acorn.pendingAcornOperation()).resolves.toMatchObject({ failure: { stage: 'setup' } });
+    // …then the same dataset's Open fails its preflight read.
+    (port.mounts as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('executor unreachable'));
+    await expect(acorn.openAcornProject('dataset-1')).rejects.toBeInstanceOf(AcornLifecycleError);
+    await expect(acorn.pendingAcornOperation()).resolves.toMatchObject({
+      datasetId: 'dataset-1',
+      failure: { stage: 'prepare' },
+    });
+
+    overrideFails = false;
+    const getsBefore = (d.lifecycle()!.get as ReturnType<typeof vi.fn>).mock.calls.length;
+    await expect(acorn.resumeAcornOperation('dataset-1')).resolves.toBe('dataset-1');
+    // The Open ran again — its preflight read was asked — and nothing is left parked.
+    expect((d.lifecycle()!.get as ReturnType<typeof vi.fn>).mock.calls.length).toBe(getsBefore + 1);
+    acorn.dismissAcornOperation();
+    await expect(acorn.pendingAcornOperation()).resolves.toBeNull();
+  });
+
+  /*
+    A preflight entry left from before the operation it names succeeded some
+    other way — the op's own Retry — goes with that success.
+  */
+  it('an operation that finishes on a dataset clears an older preflight failure for it', async () => {
+    const record: string[] = [];
+    let overrideFails = true;
+    const d = deps(record, {
+      setSpaceTemplateOverride: vi.fn(async (id: string, uuid?: string) => {
+        record.push(`override:${id}:${uuid}`);
+        if (overrideFails) throw new Error('zome unreachable');
+      }),
+    });
+    const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
+    port.mountsOf['dataset-1'] = [LANG];
+    const acorn = createAcornLifecycle(d);
+
+    await expect(acorn.openAcornProject('dataset-1')).rejects.toThrow('zome unreachable');
+    (port.mounts as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('executor unreachable'));
+    await expect(acorn.openAcornProject('dataset-1')).rejects.toBeInstanceOf(AcornLifecycleError);
+
+    overrideFails = false;
+    // The op's own card names its language: the op resumes, and its success clears the preflight too.
+    await expect(acorn.resumeAcornOperation('dataset-1', LANG)).resolves.toBe('dataset-1');
+    await expect(acorn.pendingAcornOperation()).resolves.toBeNull();
+  });
+
   it('parks an Open whose info read rejects — a rejection is not "not Acorn"', async () => {
     const record: string[] = [];
     const d = deps(record);

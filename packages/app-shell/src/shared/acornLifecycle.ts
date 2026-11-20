@@ -1085,6 +1085,8 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
         running on.
       */
       if (pendingOps.get(op.lang) === op) pendingOps.delete(op.lang);
+      // A preflight failure parked for this dataset earlier is answered by this success too.
+      preflightFailures.delete(prepared.ref.id);
       // The tail finished: the durable record of an unfinished setup goes with it.
       if (!owedFor(prepared.ref.id)) deps.setupIntent?.clear(prepared.ref.id);
       deps.progress?.(null);
@@ -1471,14 +1473,17 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       const lifecycle = deps.lifecycle();
       if (!port || !lifecycle || !deps.hasAcornTemplate()) return null;
       const nav = { generation: ++openGeneration, selection: deps.currentDatasetId() };
-      let op = languageAddress ? pendingOps.get(languageAddress) : undefined;
-      if (!op && datasetId) op = [...pendingOps.values()].find((entry) => entry.ref?.id === datasetId);
       /*
         An Open that failed before it had an operation is resumed by running
-        the Open again — on the dataset its failure names. With no identity at
-        all, the failure that happened last answers, whichever record holds it.
+        the Open again — on the dataset its failure names. A dataset-only Retry
+        is that card's, even when an older operation names the same dataset:
+        the Open re-reads what failed and then runs that operation itself. With
+        no identity at all, the failure that happened last answers, whichever
+        record holds it.
       */
-      let preflight = !op && !languageAddress && datasetId ? preflightFailures.get(datasetId)?.state : undefined;
+      let preflight = !languageAddress && datasetId ? preflightFailures.get(datasetId)?.state : undefined;
+      let op = languageAddress ? pendingOps.get(languageAddress) : undefined;
+      if (!op && !preflight && datasetId) op = [...pendingOps.values()].find((entry) => entry.ref?.id === datasetId);
       if (!op && !datasetId && !languageAddress) {
         const latest = latestFailure();
         if (latest && 'preflight' in latest) preflight = latest.preflight;
