@@ -43,7 +43,7 @@ reaches the executor only over its RPC with the custody credential. It is its ow
 it links the executor; `tests/boundary.rs` keeps it so. No Windows: the desktop apps start there
 without identity.
 
-Only the **identity window** runs a flow. Its front end is shared too (`packages/identity-window`);
+Only the **identity window** runs a flow. Its front end is shared too (`packages/identity-portal`);
 each app opens it, gates its calls to that window, and answers the main window with how a step
 ended — never a screen. See each app's `DEVELOPMENT.md`.
 

@@ -1,7 +1,9 @@
 {
-  "name": "@we/identity-window",
+  "name": "@coasys/identity-portal",
   "version": "0.1.0",
-  "description": "The desktop identity window, shared by the Tauri and Electron apps",
+  "description": "The identity screens, shared by the desktop and phone identity windows and the Connect frame on coasys.id: the custody flows, the device list and Link this browser",
+  "publishConfig": { "access": "public" },
+  "files": ["src", "!src/**/*.test.ts", "vite.js", "vite.d.ts", "csp.txt"],
   "license": "MIT",
   "type": "module",
   "scripts": {

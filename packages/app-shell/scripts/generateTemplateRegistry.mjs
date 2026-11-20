@@ -32,8 +32,8 @@ const outPath = seedFile.generatedPath(
  * Every template this monorepo can bundle: id → { module, export, dev? }.
  *
  * `dev: true` marks a template that is not ready to ship: it is compiled in only where the build has
- * developer features (`DEV_FEATURES` in `@we/module-shared` — a dev server, Netlify's `dev` and its
- * previews), whatever a seed asks for. Marked here, where the template is registered, rather than in
+ * developer features (`DEV_FEATURES` in `@we/module-shared` — a dev server, the staging
+ * build), whatever a seed asks for. Marked here, where the template is registered, rather than in
  * a seed, which would have to repeat it in every seed, or in its `meta`, which travels with a shared
  * template to somebody for whom it means nothing. Every showcase template is marked: they are
  * studies of what the template and theme systems can express, not yet things to ship, and only

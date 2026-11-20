@@ -1,9 +1,9 @@
 /**
- * The Tauri app's identity window: the shared window (`@we/identity-window`) over the four
+ * The Tauri app's identity window: the shared window (`@coasys/identity-portal`) over the four
  * `identity_flow_*` commands, which only this window's capability grants.
  */
 import { invoke } from '@tauri-apps/api/core';
-import { runIdentityWindow, type Screen, type StepInput } from '@we/identity-window';
+import { runIdentityWindow, type Screen, type StepInput } from '@coasys/identity-portal';
 
 runIdentityWindow({
   start: () => invoke<Screen>('identity_flow_start'),

@@ -40,7 +40,7 @@ export default defineConfig({
     // See apps/we-web/vite.config.ts: the chunks above the default are the on-demand viewers.
     chunkSizeWarningLimit: 3500,
   },
-  optimizeDeps: { exclude: ['@coasys/ad4m', '@coasys/ad4m-connect'] },
+  optimizeDeps: { exclude: ['@coasys/ad4m', '@coasys/connect'] },
   resolve: {
     alias: {
       '@shared': path.resolve(import.meta.dirname, '../../packages/app-shell/src/shared'),

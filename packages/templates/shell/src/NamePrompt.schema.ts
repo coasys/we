@@ -8,7 +8,7 @@ import { field, formModal } from '@we/template-kit';
  *
  * WE collects a name exactly once, on the setup screen, and that screen is only reached when WE
  * creates the agent itself. An identity made anywhere else — the ADAM Launcher, Flux, a hosted node,
- * anything reached through ad4m-connect — already exists by the time WE boots, so `SessionStore`
+ * anything reached through @coasys/connect — already exists by the time WE boots, so `SessionStore`
  * goes straight from `login` to `ready` and nobody is ever asked. The result was a real population
  * of members whose posts, comments and call tiles carried no name at all.
  *

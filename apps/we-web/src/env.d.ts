@@ -11,3 +11,6 @@
   same job and is what `triple-slash-reference` forbids, which is why this is configuration rather than
   a line of code.
 */
+
+/** The endpoints of the build's `COASYS_ENV`, defined by `vite.config.ts` from `config/<env>.json`. */
+declare const __APP_ENDPOINTS__: unknown;

@@ -57,7 +57,7 @@ This will:
 
 1. Build the app with Vite
 2. Output optimized static files to `dist/`
-3. The build can be served from any static hosting (Vercel, Netlify, etc.)
+3. The build can be served from any static hosting (Cloudflare Pages, etc.)
 
 ## Preview Production Build
 
@@ -134,7 +134,7 @@ Build the app and deploy the `dist/` folder to any static host:
 
 ```bash
 pnpm build
-# Upload dist/ to Vercel, Netlify, GitHub Pages, etc.
+# Upload dist/ to Cloudflare Pages, GitHub Pages, etc.
 ```
 
 ### Environment Variables

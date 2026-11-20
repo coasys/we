@@ -43,7 +43,7 @@ WE's data layer is **AD4M** — an agent-centric, local-first, peer-to-peer meta
 Data is yours, stored locally and synced P2P (via Holochain) with no central server. The Solid
 app (\`@we/app-shell\`, hosted by the web/electron/tauri targets) talks to an **AD4M executor**
 (the ad4m runtime, reached with \`@coasys/ad4m\`; the browser signs in to a remote one through
-\`ad4m-connect\`) that holds perspectives and syncs
+\`@coasys/connect\`) that holds perspectives and syncs
 neighbourhoods. Stores (\`sessionStore\`, \`datasetStore\`, \`spaceStore\`, …) expose reactive state to schemas.
 
 AD4M is reached through the **backend contract** rather than directly: \`@we/backend-shared\` declares
@@ -109,7 +109,7 @@ Glossary (these terms pervade stores, models, and \`$query\`/\`perspective\` in 
 | \`@we/drag\` | design-system/drag | The drag session and its payload — references, never DOM — plus the ghost, the zone registry and the press-to-drag threshold | Agnostic |
 | \`@we/entities\` | packages/entities | WE's domain models: the authored neutral manifest (src/manifest, the source of truth), the neutral type contract, and the entity proxies backends register into | **Agnostic** |
 | \`@we/app-shell\` | packages/app-shell | App shell, stores, registries, built-in template schemas | Solid |
-| \`@we/identity-window\` | packages/identity-window | The desktop identity window's screens (make an identity, add or revoke a device) over an \`IdentityTransport\`; each desktop app supplies the transport to its custody service (\`crates/custody\`) | Vanilla DOM |
+| \`@coasys/identity-portal\` | packages/identity-portal | The desktop identity window's screens (make an identity, add or revoke a device) over an \`IdentityTransport\`; each desktop app supplies the transport to its custody service (\`crates/custody\`) | Vanilla DOM |
 | \`@we/ai-context\` | packages/ai-context | Generates this reference (CLAUDE.md et al.) from code + fragments | Build tool |
 | \`@we/agent-tools\` | packages/agent-tools | What a model can do with WE: templates and themes as tools for any host, a space's records and WE's conventions for a conversation WE runs itself, and a single-file bundle for agent hosts | **Agnostic** |
 

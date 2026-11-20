@@ -18,7 +18,7 @@ breakage points at one cause.
 
 - **The type is lowercase**: `feat`, `fix`, `refactor`, `perf`, `docs`, `test`, `ci`, `chore`.
   That is the spec, and what the bots already write.
-- **The scope is optional**: the package or area, as in `fix(backend-ad4m)` or `ci(netlify)`.
+- **The scope is optional**: the package or area, as in `fix(backend-ad4m)` or `ci(web-deploy)`.
 - **The description names the change and stops**: lowercase, imperative, no full stop, and short
   enough that the title fits in the PR list, which cuts it off at about 70 characters — aim for
   under 60. The why belongs in the description, not the title. A stacked PR's title also carries
@@ -43,11 +43,11 @@ it does.
 conversation it came from. If there was a tempting alternative, say why it was not taken.
 
 **How.** Where a reviewer should start, and the route through the change: "the new rule is in
-`netlify-build.sh`; everything else follows from it". A table of files and what changed in each
+`web-build.sh`; everything else follows from it". A table of files and what changed in each
 helps when the change is wide. Explain the reason for a change the diff does not make obvious.
 
 **Test plan.** What you actually ran or checked, as ticked boxes, and what you did not, as unticked
-ones with the reason. "Not run on Netlify" is useful to a reviewer; a list of things that could be
+ones with the reason. "Not run on staging" is useful to a reviewer; a list of things that could be
 tested is not.
 
 **A checkbox is a thing that must be true before this merges, and nothing else is a checkbox.**

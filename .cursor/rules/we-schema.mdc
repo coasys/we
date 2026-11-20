@@ -41,7 +41,7 @@ WE's data layer is **AD4M** — an agent-centric, local-first, peer-to-peer meta
 Data is yours, stored locally and synced P2P (via Holochain) with no central server. The Solid
 app (`@we/app-shell`, hosted by the web/electron/tauri targets) talks to an **AD4M executor**
 (the ad4m runtime, reached with `@coasys/ad4m`; the browser signs in to a remote one through
-`ad4m-connect`) that holds perspectives and syncs
+`@coasys/connect`) that holds perspectives and syncs
 neighbourhoods. Stores (`sessionStore`, `datasetStore`, `spaceStore`, …) expose reactive state to schemas.
 
 AD4M is reached through the **backend contract** rather than directly: `@we/backend-shared` declares
@@ -107,7 +107,7 @@ Glossary (these terms pervade stores, models, and `$query`/`perspective` in sche
 | `@we/drag` | design-system/drag | The drag session and its payload — references, never DOM — plus the ghost, the zone registry and the press-to-drag threshold | Agnostic |
 | `@we/entities` | packages/entities | WE's domain models: the authored neutral manifest (src/manifest, the source of truth), the neutral type contract, and the entity proxies backends register into | **Agnostic** |
 | `@we/app-shell` | packages/app-shell | App shell, stores, registries, built-in template schemas | Solid |
-| `@we/identity-window` | packages/identity-window | The desktop identity window's screens (make an identity, add or revoke a device) over an `IdentityTransport`; each desktop app supplies the transport to its custody service (`crates/custody`) | Vanilla DOM |
+| `@coasys/identity-portal` | packages/identity-portal | The desktop identity window's screens (make an identity, add or revoke a device) over an `IdentityTransport`; each desktop app supplies the transport to its custody service (`crates/custody`) | Vanilla DOM |
 | `@we/ai-context` | packages/ai-context | Generates this reference (CLAUDE.md et al.) from code + fragments | Build tool |
 | `@we/agent-tools` | packages/agent-tools | What a model can do with WE: templates and themes as tools for any host, a space's records and WE's conventions for a conversation WE runs itself, and a single-file bundle for agent hosts | **Agnostic** |
 
@@ -6239,7 +6239,7 @@ strings target/release/ad4m-executor | grep "your log string"
 
 **After modifying `@coasys/ad4m` TypeScript (e.g. `core/src/model/Ad4mModel.ts`):**
 
-The root `package.json`'s pnpm `overrides` pin `@coasys/ad4m` and `@coasys/ad4m-connect` to one
+The root `package.json`'s pnpm `overrides` pin `@coasys/ad4m` and `@coasys/connect` to one
 **ad4m commit** — on `dev` and feature branches its pkg.pr.new snapshot
 (`https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@<full sha>`), on `main` a published npm version — and
 every WE build installs exactly that. Workspace packages declare `"*"`; never write a version into
@@ -6681,8 +6681,8 @@ What the SDK and executor do around a subscription, so a watch can rely on it:
 ### Reading shapes from `@we/backend-ad4m`
 
 Where the browser signs in through AD4M Connect, the `PerspectiveProxy` the app holds comes from the SDK
-copy bundled inside `@coasys/ad4m-connect`, not from the `@coasys/ad4m` this repo pins: an SDK fix
-reaches that path only when ad4m-connect republishes, so measure performance work there against that
+copy bundled inside `@coasys/connect`, not from the `@coasys/ad4m` this repo pins: an SDK fix
+reaches that path only when @coasys/connect republishes, so measure performance work there against that
 copy. The desktop's local executor and the phone's key login open an `Ad4mClient` from the pinned
 `@coasys/ad4m` themselves.
 

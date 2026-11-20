@@ -311,6 +311,9 @@ importers:
       '@coasys/ad4m':
         specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@31f4f739b9e0c67618a657b0842314e712b8db92
         version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@31f4f739b9e0c67618a657b0842314e712b8db92
+      '@coasys/identity-portal':
+        specifier: workspace:*
+        version: link:../../packages/identity-portal
       '@types/node':
         specifier: ^26.6.6
         version: 26.6.6
@@ -338,9 +341,6 @@ importers:
       '@we/globe-widget':
         specifier: workspace:*
         version: link:../../packages/module-system/globe/widget
-      '@we/identity-window':
-        specifier: workspace:*
-        version: link:../../packages/identity-window
       concurrently:
         specifier: ^10.0.6
         version: 10.0.6
@@ -383,9 +383,9 @@ importers:
       '@capacitor/ios':
         specifier: ^8.6.0
         version: 8.6.0(@capacitor/core@8.6.0)
-      '@we/identity-window':
+      '@coasys/identity-portal':
         specifier: workspace:*
-        version: link:../../packages/identity-window
+        version: link:../../packages/identity-portal
     devDependencies:
       '@capacitor/cli':
         specifier: ^8.6.0
@@ -466,6 +466,9 @@ importers:
       '@coasys/ad4m':
         specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@31f4f739b9e0c67618a657b0842314e712b8db92
         version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@31f4f739b9e0c67618a657b0842314e712b8db92
+      '@coasys/identity-portal':
+        specifier: workspace:*
+        version: link:../../packages/identity-portal
       '@tauri-apps/api':
         specifier: 2.12.4
         version: 2.12.4
@@ -478,9 +481,6 @@ importers:
       '@we/backend-ad4m':
         specifier: workspace:*
         version: link:../../packages/backend-system/ad4m
-      '@we/identity-window':
-        specifier: workspace:*
-        version: link:../../packages/identity-window
       solid-js:
         specifier: ^1.9.18
         version: 1.9.18
@@ -1688,7 +1688,7 @@ importers:
         specifier: ^5.0.5
         version: 5.0.5(@types/node@26.6.6)(@vitest/coverage-v8@5.0.5)(happy-dom@21.0.4)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.107.1)(tsx@4.23.15)(yaml@2.9.1))
 
-  packages/identity-window:
+  packages/identity-portal:
     dependencies:
       '@we/themes':
         specifier: workspace:*

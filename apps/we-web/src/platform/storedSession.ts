@@ -6,7 +6,7 @@
  * existing identity can be tested without an executor, a connect client or a DOM. It reads
  * localStorage and answers a question; that is the whole module.
  */
-import { getLocal } from '@coasys/ad4m-connect/utils';
+import { getLocal } from '@coasys/connect/utils';
 
 /*
   The three keys ad4m-connect writes, named without their prefix.

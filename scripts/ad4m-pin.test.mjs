@@ -81,7 +81,7 @@ describe('integrity in the lockfile', () => {
     `    resolution: {tarball: ${sdk}}`,
     '    version: 0.13.1-staging.2',
     '',
-    `  '@coasys/ad4m-connect@${connect}':`,
+    `  '@coasys/connect@${connect}':`,
     `    resolution: {tarball: ${connect}}`,
     '    version: 0.13.1-staging.2',
     '',

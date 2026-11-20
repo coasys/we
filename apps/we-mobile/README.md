@@ -131,7 +131,7 @@ answers their requests.
   store cannot serve the phone an older device list after a restart; a record that cannot be read
   is an error in Settings, never a list of unnamed devices.
 - **The identity page.** `/mobile/identity.html` (`src/identity/`) is the shared identity window
-  (`@we/identity-window`, the same screens the desktop opens) over the `DeviceKey` plugin. It is a
+  (`@coasys/identity-portal`, the same screens the desktop opens) over the `DeviceKey` plugin. It is a
   page of its own, so no template, module or store code runs beside it. It wears the Coasys app's
   theme, name and mark, worked into static CSS when `www/` is built. WE opens it in two cases:
   - on the first boot of a phone with no identity, to join one (`?join=`). "Not now" falls back to

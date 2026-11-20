@@ -5,7 +5,7 @@
  *   node scripts/ad4m-pin.mjs [--commit] [--from <package.json | ->]
  *   node scripts/ad4m-pin.mjs --check-lockfile [<pnpm-lock.yaml>]
  *
- * The pin is the root `pnpm.overrides` entry for @coasys/ad4m and @coasys/ad4m-connect, and it is
+ * The pin is the root `pnpm.overrides` entry for @coasys/ad4m and @coasys/connect, and it is
  * one of two kinds:
  *
  * - **A snapshot**: `https://pkg.pr.new/coasys/ad4m/<package>@<commit>`, which ad4m publishes for
@@ -21,7 +21,7 @@
  * Refused, rather than guessed at: a short sha (the cache key, the concurrency group and GitHub's
  * compare API all take the full one), a URL that is not exactly the snapshot form, the two packages
  * pinned to different commits or versions, and one package pinned by version and the other by
- * snapshot. The app's client comes from the SDK bundled inside ad4m-connect, so core and connect
+ * snapshot. The app's client comes from the SDK bundled inside @coasys/connect, so core and connect
  * from different ad4m commits is a combination nobody tested.
  *
  * Prints `kind=`, then `commit=` or `version=`, one per line, for a shell to read. With --commit,
@@ -37,7 +37,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-export const PACKAGES = ['@coasys/ad4m', '@coasys/ad4m-connect'];
+export const PACKAGES = ['@coasys/ad4m', '@coasys/connect'];
 export const AD4M_REPO = 'coasys/ad4m';
 export const SNAPSHOT_BASE = `https://pkg.pr.new/${AD4M_REPO}/`;
 const REGISTRY = 'https://registry.npmjs.org';

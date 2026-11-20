@@ -55,7 +55,7 @@ A seed says which deployment this is. Whether a build has **developer features**
 is a separate question, and it is the build's: the showcase templates that are
 not ready to ship, the pretend people on a canvas, the synthetic participants in
 a call, and Settings → Developer. They are in a build Vite serves, and in a build
-made with `WE_DEV_FEATURES=true`, which Netlify sets for the `dev` branch and pull
+made with `WE_DEV_FEATURES=true`, which `.github/workflows/web-deploy.yaml` sets for the staging build and pull
 request previews. A production build does not contain them at all.
 
 So a seed can list a template marked `dev` and a production build of that seed

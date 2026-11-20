@@ -144,7 +144,7 @@ async function resolveExpressionToDataUri(url: string, client: Ad4mClient): Prom
  * Fetch and parse an agent's profile from their public AD4M perspective.
  *
  * Three formats, tried in order, because an AD4M agent is not created by WE. Somebody who reaches
- * WE Web through ad4m-connect brought an identity made somewhere else — the ADAM Launcher, Flux, a
+ * WE Web through @coasys/connect brought an identity made somewhere else — the ADAM Launcher, Flux, a
  * hosted node — and whatever named them there is the only name they have. Reading one format meant
  * every such peer arrived nameless, and WE never asks for a name from an agent that already exists
  * (see `SessionStore.initialise`: an existing agent goes straight to `login`, skipping the setup

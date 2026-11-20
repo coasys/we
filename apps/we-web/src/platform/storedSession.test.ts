@@ -6,7 +6,7 @@
  * written against *prefixed* keys throughout, with the unprefixed spelling covered only as the
  * legacy case: a test built on the shape the bug assumed would have passed while the bug was live.
  */
-import { getLocal, setLocal } from '@coasys/ad4m-connect/utils';
+import { getLocal, setLocal } from '@coasys/connect/utils';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { hasStoredSession, rememberedSessionBase, storedGuestHost } from './storedSession';

@@ -10,7 +10,7 @@
  * import 404s and the panel shows `Failed to fetch dynamically imported module: …TemplatePanelBody-Cb6Ya6b5.js`,
  * which is what somebody reported and is not a sentence anybody can act on.
  *
- * Worse, on Netlify it does not 404 at all. The SPA rule in `apps/we-web/public/_redirects` catches
+ * Worse, on Cloudflare Pages it does not 404 at all. The SPA rule in `apps/we-web/public/_redirects` catches
  * the miss and answers `200 text/html` with `index.html`, so the browser rejects a *document* where
  * it wanted a module, nothing appears in the host's 404 log, and no retry can ever succeed because
  * the URL keeps answering. (That rule is now scoped so `/assets/*` 404s honestly — but a tab loaded

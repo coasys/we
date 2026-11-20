@@ -215,7 +215,7 @@ strings target/release/ad4m-executor | grep "your log string"
 
 **After modifying \`@coasys/ad4m\` TypeScript (e.g. \`core/src/model/Ad4mModel.ts\`):**
 
-The root \`package.json\`'s pnpm \`overrides\` pin \`@coasys/ad4m\` and \`@coasys/ad4m-connect\` to one
+The root \`package.json\`'s pnpm \`overrides\` pin \`@coasys/ad4m\` and \`@coasys/connect\` to one
 **ad4m commit** — on \`dev\` and feature branches its pkg.pr.new snapshot
 (\`https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@<full sha>\`), on \`main\` a published npm version — and
 every WE build installs exactly that. Workspace packages declare \`"*"\`; never write a version into
@@ -657,8 +657,8 @@ What the SDK and executor do around a subscription, so a watch can rely on it:
 ### Reading shapes from \`@we/backend-ad4m\`
 
 Where the browser signs in through AD4M Connect, the \`PerspectiveProxy\` the app holds comes from the SDK
-copy bundled inside \`@coasys/ad4m-connect\`, not from the \`@coasys/ad4m\` this repo pins: an SDK fix
-reaches that path only when ad4m-connect republishes, so measure performance work there against that
+copy bundled inside \`@coasys/connect\`, not from the \`@coasys/ad4m\` this repo pins: an SDK fix
+reaches that path only when @coasys/connect republishes, so measure performance work there against that
 copy. The desktop's local executor and the phone's key login open an \`Ad4mClient\` from the pinned
 \`@coasys/ad4m\` themselves.
 

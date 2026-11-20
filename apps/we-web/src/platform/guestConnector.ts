@@ -12,7 +12,7 @@
  * `@we/app-shell/shared`'s `guestLink`, alongside the builder that writes one, so the two cannot
  * drift. This module is only the AD4M half.
  */
-import Ad4mConnect from '@coasys/ad4m-connect/core';
+import Ad4mConnect from '@coasys/connect/core';
 import type { BackendConnector, BackendInitResult, GuestJoinTarget } from '@we/app-shell/shared';
 import { parseGuestLink } from '@we/app-shell/shared';
 import { capabilitiesFromToken, createAd4mBackendPorts } from '@we/backend-ad4m';

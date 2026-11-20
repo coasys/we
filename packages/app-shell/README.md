@@ -37,7 +37,7 @@ interface BackendConnector {
 ```
 
 Desktop hosts use `createLocalAd4mConnector(getConnection)` from
-`@we/backend-ad4m`; the web host connects through ad4m-connect. The `ports`
+`@we/backend-ad4m`; the web host connects through @coasys/connect. The `ports`
 bundle is the backend contract declared in `@we/backend-shared` — the shell
 never imports `@coasys/*` itself.
 

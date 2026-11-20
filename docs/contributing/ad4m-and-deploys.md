@@ -1,6 +1,6 @@
 # How WE builds against ad4m, and where it deploys
 
-WE depends on two ad4m packages: `@coasys/ad4m` (the SDK) and `@coasys/ad4m-connect` (the connection
+WE depends on two ad4m packages: `@coasys/ad4m` (the SDK) and `@coasys/connect` (the connection
 UI, which bundles its own copy of the SDK). This document explains which ad4m each WE build uses,
 where each build goes, and how a release is made.
 
@@ -14,7 +14,7 @@ is the confirmation.
 
 ## What the pin is
 
-The root `pnpm.overrides` entries for `@coasys/ad4m` and `@coasys/ad4m-connect`. Nothing else declares
+The root `pnpm.overrides` entries for `@coasys/ad4m` and `@coasys/connect`. Nothing else declares
 a version: workspace packages say `"*"`, and the override decides what every one of them installs.
 The pin is one of two kinds:
 
@@ -42,9 +42,8 @@ re-resolves the snapshot can drop it: run `pnpm bump:ad4m <commit>` to put it ba
 
 |                | Built from      | ad4m used                                           | URL                                         | For                           |
 | -------------- | --------------- | --------------------------------------------------- | ------------------------------------------- | ----------------------------- |
-| **Preview**    | the PR's branch | the PR's pin                                        | `deploy-preview-<N>--coasys-we.netlify.app` | reviewing a PR                |
-| **Dev**        | `dev`           | a snapshot of ad4m `dev`                            | `dev--coasys-we.netlify.app`                | the team, and invited testers |
-| **Production** | `main`          | a published version                                 | `coasys-we.netlify.app`                     | the public                    |
+| **Staging**    | `dev`           | a snapshot of ad4m `dev`                            | `staging.coasys.app` (Cloudflare Pages)     | the team, and invited testers |
+| **Production** | a `web-v*` tag  | a published version                                 | `coasys.app` (Cloudflare Pages)             | the public                    |
 | **Desktop**    | a release tag   | a published version, and an executor built to match | GitHub releases                             | people running WE locally     |
 
 Every web build writes `/build-info.json`: the WE version and branch, and which ad4m it was built
@@ -184,7 +183,7 @@ It refuses:
 
 - a target not published for **both** packages: a snapshot not there yet, or a version published for
   one and not the other, or for both from different commits. The app's client is the SDK inside
-  ad4m-connect, so an SDK from one commit and a connect from another is a combination nobody tested.
+  @coasys/connect, so an SDK from one commit and a connect from another is a combination nobody tested.
 - a target older than the current pin, unless given `--allow-older`: one whose commit adds nothing to
   the pin's, or a version published before the pinned one. The second catches a version from another
   branch, which carries a few commits of its own and so looks newer by commit however old it is.
@@ -310,7 +309,7 @@ seed. Nothing checks that build against the pin; the command says so each time i
 | A PR needing an ad4m change pins its snapshot | The preview, CI and the live tests then all test the change the PR needs, through the ordinary build. There is no paired build, no description block, and no from-source workflow to keep. |
 | The merge gate reads the pin                  | Whether a PR waits on ad4m can be asked of GitHub — is the pinned commit on ad4m `dev` yet — rather than of the author. A branch in another repo still never decides what WE builds.       |
 | The pin cannot move backwards                 | A PR started on an older ad4m would otherwise quietly undo ad4m changes `dev` already has.                                                                                                 |
-| Core and connect from one commit              | The app's client comes from ad4m-connect's bundled SDK. A connect from another commit leaves the running client different from the SDK WE typechecks against.                              |
+| Core and connect from one commit              | The app's client comes from @coasys/connect's bundled SDK. A connect from another commit leaves the running client different from the SDK WE typechecks against.                              |
 | Integrity in the lockfile                     | pnpm records none for a tarball URL. Without it, changed bytes at the same URL would install silently.                                                                                     |
 | Bump through a PR                             | CI and a preview check every new ad4m before it reaches `dev`.                                                                                                                             |
 | Check capabilities with a script              | WE's declaration of what ad4m can do goes stale silently. One command at each bump catches that, and shows new capabilities too.                                                           |

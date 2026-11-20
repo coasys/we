@@ -8,7 +8,11 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const created = vi.hoisted(() => ({ options: [] as { operator?: boolean }[], token: '' }));
+const created = vi.hoisted(() => ({
+  options: [] as { operator?: boolean }[],
+  connect: [] as Record<string, unknown>[],
+  token: '',
+}));
 
 vi.mock('@we/backend-ad4m', async (importActual) => ({
   ...(await importActual<typeof import('@we/backend-ad4m')>()),
@@ -39,11 +43,14 @@ function fakeCore() {
   };
 }
 
-vi.mock('@coasys/ad4m-connect', () => ({
-  getAd4mConnect: () => ({ core: fakeCore(), client: Promise.resolve({}) }),
+vi.mock('@coasys/connect', () => ({
+  getAd4mConnect: (options: Record<string, unknown>) => {
+    created.connect.push(options);
+    return { core: fakeCore(), client: Promise.resolve({}) };
+  },
 }));
 
-vi.mock('@coasys/ad4m-connect/core', () => ({
+vi.mock('@coasys/connect/core', () => ({
   default: function Ad4mConnect() {
     return fakeCore();
   },
@@ -64,6 +71,21 @@ afterEach(() => {
 });
 
 describe('the WE web connector', () => {
+  it('connects as the registered app, through the endpoints of this build', async () => {
+    const { ad4mConnector } = await import('./ad4mConnector');
+    const { APP_ENDPOINTS } = await import('./endpoints');
+
+    await ad4mConnector.initialize({} as never);
+    expect(created.connect.at(-1)).toMatchObject({
+      appId: 'coasys-app',
+      endpoints: {
+        authDomain: APP_ENDPOINTS.identityOrigin,
+        platform: APP_ENDPOINTS.apiOrigin,
+        store: APP_ENDPOINTS.storeOrigin,
+      },
+    });
+  });
+
   it('passes operator: holdsOperatorCredential(token)', async () => {
     const { holdsOperatorCredential } = await import('@we/backend-ad4m');
     const { ad4mConnector } = await import('./ad4mConnector');
@@ -87,25 +109,5 @@ describe('the guest connector', () => {
       await createGuestConnector('https://node.example.org').initialize({} as never);
     }
     expect(created.options.map((o) => o.operator)).toEqual([false, false]);
-  });
-});
-
-describe("AD4M Connect's settings button", () => {
-  it('is hidden while signed in and shows again when the session ends', async () => {
-    const element = { style: { display: '' } };
-    vi.stubGlobal('document', { querySelectorAll: () => [element] });
-    let onChange = () => {};
-    const core = {
-      authState: 'authenticated',
-      addEventListener: (_: string, listener: () => void) => {
-        onChange = listener;
-      },
-    };
-    const { hideWhileSignedIn } = await import('./ad4mConnector');
-    hideWhileSignedIn(core as never);
-    expect(element.style.display).toBe('none');
-    core.authState = 'unauthenticated';
-    onChange();
-    expect(element.style.display).toBe('');
   });
 });

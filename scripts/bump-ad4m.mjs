@@ -3,7 +3,7 @@
  * pnpm bump:ad4m [dev | <commit> | #<ad4m PR> | <ad4m PR URL> | <version> | <npm tag> | staging]
  *                [--no-install | --lockfile-only] [--allow-older] [--if-newer] [--pr-body <file>]
  *
- * Moves WE's pin of @coasys/ad4m and @coasys/ad4m-connect: the root `pnpm.overrides`, which decide
+ * Moves WE's pin of @coasys/ad4m and @coasys/connect: the root `pnpm.overrides`, which decide
  * what every workspace package installs. Nothing else declares a version (the packages say `*`), so
  * a bump is that and the lockfile — and the custody crate's ad4m revs and its Cargo.lock, which build
  * the desktop app's Rust against the same commit.

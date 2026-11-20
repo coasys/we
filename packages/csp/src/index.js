@@ -24,7 +24,7 @@
  *
  * Electron sets it as a header on its own documents, from a file its prebuild writes with this
  * builder. The web and Tauri builds get it as a `<meta>` tag from the Vite plugin in `./vite.js`, and
- * Netlify additionally as a header, for `frame-ancestors`, which a meta tag cannot carry. Three copies
+ * Cloudflare Pages additionally as a header, for `frame-ancestors`, which a meta tag cannot carry. Three copies
  * of a policy drift; one cannot.
  */
 
@@ -197,7 +197,8 @@ export function buildContentSecurityPolicy({ host = 'web', dev = false, seed = {
       // A Tauri dev server can be reached on a LAN address, and its HMR socket with it.
       dev ? ['ws:', 'http:'] : [],
     )}`,
-    `frame-src ${list("'self'", DEFAULT_SOURCES.frames, extra.frames, desktop ? 'http://localhost:*' : [])}`,
+    // The web app signs in through Connect's frame on the auth domain, in production and in staging.
+    `frame-src ${list("'self'", DEFAULT_SOURCES.frames, extra.frames, desktop ? 'http://localhost:*' : [], host === 'web' ? AUTH_DOMAINS : [])}`,
     "object-src 'none'",
     "base-uri 'self'",
     // A form posts only to us: one that submitted to another site would carry its fields there.
@@ -205,4 +206,26 @@ export function buildContentSecurityPolicy({ host = 'web', dev = false, seed = {
     // What stops WE itself being framed inside somebody else's page and click-jacked.
     ...(meta ? [] : ["frame-ancestors 'none'"]),
   ].join('; ');
+}
+
+/** The auth domains whose Connect frame the web app embeds (production and staging). */
+const AUTH_DOMAINS = Object.freeze(['https://coasys.id', 'https://staging.coasys.id']);
+
+/**
+ * The `_headers` file the web host serves on every response (Cloudflare Pages reads it as it is):
+ * the policy, and the headers a static host gives no other way. `same-origin-allow-popups` lets the
+ * app open the `coasys.id` popups and Connect's frame while no other site keeps a handle on it;
+ * `no-referrer` keeps a share link or an executor address from leaking to the sites a template links to.
+ */
+export function webHeadersFile(policy) {
+  return [
+    '/*',
+    `  Content-Security-Policy: ${policy}`,
+    '  Strict-Transport-Security: max-age=31536000; includeSubDomains',
+    '  Referrer-Policy: no-referrer',
+    '  X-Content-Type-Options: nosniff',
+    '  Permissions-Policy: camera=(self), microphone=(self), display-capture=(self), geolocation=()',
+    '  Cross-Origin-Opener-Policy: same-origin-allow-popups',
+    '',
+  ].join('\n');
 }

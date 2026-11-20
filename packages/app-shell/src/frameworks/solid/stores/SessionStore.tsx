@@ -128,7 +128,7 @@ export interface SessionStore {
   isDevelopment: Accessor<boolean>;
   /**
    * Whether this build has developer features: a dev server, or a deploy of work in progress
-   * (Netlify's `dev` and its previews). The ceiling for every developer affordance, and what shows
+   * (the staging build). The ceiling for every developer affordance, and what shows
    * Settings → Developer. Not `isDevelopment`, which a preview is not. See `DEV_FEATURES`.
    */
   devFeatures: Accessor<boolean>;

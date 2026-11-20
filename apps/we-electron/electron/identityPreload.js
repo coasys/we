@@ -1,5 +1,5 @@
 /*
-  The identity window's preload: its four calls to the custody service (`@we/identity-window`'s
+  The identity window's preload: its four calls to the custody service (`@coasys/identity-portal`'s
   transport), and nothing else of Electron. The main process answers them for this window only.
 */
 const { contextBridge, ipcRenderer } = require('electron');

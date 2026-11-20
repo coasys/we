@@ -5,7 +5,7 @@
  * Its own page, built apart from WE's, so no template, module or store code runs beside the screens
  * that add devices and send the master key.
  */
-import { runIdentityWindow } from '@we/identity-window';
+import { runIdentityWindow } from '@coasys/identity-portal';
 
 import { deviceKeyPlugin } from '../../../we-web/src/platform/deviceKey';
 import { JOIN_DECLINED_KEY, readKeyHost, rememberKeyHost } from '../../../we-web/src/platform/keyHost';

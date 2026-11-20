@@ -1,8 +1,9 @@
-import { getAd4mConnect } from '@coasys/ad4m-connect';
+import { getAd4mConnect } from '@coasys/connect';
 import type { BackendConnector, BackendInitResult } from '@we/app-shell/shared';
 import { capabilitiesFromToken, createAd4mBackendPorts, holdsOperatorCredential } from '@we/backend-ad4m';
 import weSeed from '@we/seed-file';
 
+import { APP_ENDPOINTS, APP_ID } from './endpoints';
 import { storedGuestHost } from './storedSession';
 
 export const ad4mConnector: BackendConnector = {
@@ -17,19 +18,19 @@ export const ad4mConnector: BackendConnector = {
     // embedded apps are handed. The first symptom was the whole app stopping on the boot screen
     // with no message, because the resulting TypeError landed in the session's own catch.
     const { core, client: connecting } = getAd4mConnect({
-      appInfo: {
-        name: 'WE',
-        description: 'Social media for the new internet',
-        url: 'ad4m.weco.io',
-        iconPath: 'https://avatars.githubusercontent.com/u/34165012',
+      // The platform registry knows the app by this id and lists the origins it may run on; the
+      // frame on the auth domain refuses any other page.
+      appId: APP_ID,
+      endpoints: {
+        authDomain: APP_ENDPOINTS.identityOrigin,
+        platform: APP_ENDPOINTS.apiOrigin,
+        store: APP_ENDPOINTS.storeOrigin,
       },
-      hosting: true,
       capabilities: [{ with: { domain: '*', pointers: ['*'] }, can: ['*'] }],
     });
-    hideWhileSignedIn(core);
 
-    // Resolves when the user has connected and authorised WE — the connect UI is up until then, so
-    // this is where a web boot waits.
+    // Resolves when the person has chosen one of their devices in Connect's frame and the frame has
+    // answered — the frame is up until then, so this is where a web boot waits.
     const client = await connecting;
 
     // Whether this connection operates the node it reached. A host chosen from the connect UI is
@@ -76,11 +77,11 @@ export const ad4mConnector: BackendConnector = {
         // executor keeps some calls (installing local AI, for one) to the operator alone.
         operator: holdsOperatorCredential(core.token),
         capabilities,
-        // ad4m-connect reaches 'authenticated' only after `agent.status` answered initialised and
+        // Connect reaches 'authenticated' only after `agent.status` answered initialised and
         // unlocked, and hands the client over only then — so the session's first status is known.
         unlockedAtConnect: core.authState === 'authenticated',
         linkServerUrl: (weSeed.ad4m as { linkServerUrl?: string }).linkServerUrl,
-        // Read on each use: ad4m-connect replaces the token when a session is re-authorised.
+        // Read on each use: Connect replaces the token when it renews the session.
         connection: () => (core.baseUrl ? { url: core.baseUrl, token: core.token } : null),
       }),
       ...(isGuest ? { guest: true as const } : {}),
@@ -123,17 +124,3 @@ export const ad4mConnector: BackendConnector = {
     };
   },
 };
-
-/**
- * AD4M Connect pins its settings button over the window's bottom-right corner once signed in. The app
- * manages the session itself (Settings), so the button only covers the UI: hide the element while the
- * session is signed in. Its sign-in screens still show when the session ends.
- */
-export function hideWhileSignedIn(core: ReturnType<typeof getAd4mConnect>['core']): void {
-  const elements = document.querySelectorAll<HTMLElement>('ad4m-connect');
-  const apply = () => {
-    for (const element of elements) element.style.display = core.authState === 'authenticated' ? 'none' : '';
-  };
-  core.addEventListener('authstatechange', apply);
-  apply();
-}
