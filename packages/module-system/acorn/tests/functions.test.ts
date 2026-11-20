@@ -61,15 +61,30 @@ describe('children and the roll-up', () => {
     outcome('s3', 'Small', { achievementStatus: 'Achieved' }),
   ];
 
-  it('children come from the connections, in sibling order, ids or included records alike', () => {
+  it("children come from the connections, in Acorn's sibling order, ids or included records alike", () => {
     const connections = [
       edge('root', 's2', 1),
       edge('root', 's1', 0),
       { parent: { id: 'root' }, child: { id: 'u1' }, siblingOrder: 2 },
     ];
     const kids = call('acornChildren', { outcome: 'root', outcomes, connections }) as Array<{ id: string }>;
-    expect(kids.map((k) => k.id)).toEqual(['s1', 's2', 'u1']);
+    // Highest siblingOrder first — stock's map and table draw it leftmost / topmost.
+    expect(kids.map((k) => k.id)).toEqual(['u1', 's2', 's1']);
     expect(call('acornChildren', { outcome: 's1', outcomes, connections })).toEqual([]);
+  });
+
+  it('siblings on the same siblingOrder are ordered by statement, as Acorn breaks the tie', () => {
+    const named = [
+      outcome('p', 'Uncertain'),
+      outcome('x', 'Small', { content: 'Beta' }),
+      outcome('y', 'Small', { content: 'Alpha' }),
+    ];
+    const kids = call('acornChildren', {
+      outcome: 'p',
+      outcomes: named,
+      connections: [edge('p', 'x'), edge('p', 'y')],
+    });
+    expect((kids as Array<{ id: string }>).map((k) => k.id)).toEqual(['y', 'x']);
   });
 
   it('an Uncertain outcome over Smalls only is Big; partly achieved Smalls make it partially achieved', () => {
@@ -170,10 +185,11 @@ describe('the outcome table rows', () => {
       { id: 'lone', content: 'lone', scopeType: 'Small' },
     ];
     const connections = [edge('r', 'b', 1), edge('r', 'a', 0)];
+    // Acorn's sibling order: the higher siblingOrder (b's 1) first.
     expect(rowsOf({ outcomes, connections }).map((r) => [r.id, r.depth])).toEqual([
       ['r', 0],
-      ['a', 1],
       ['b', 1],
+      ['a', 1],
       ['lone', 0],
     ]);
     expect(rowsOf({ outcomes, connections, collapsed: ['r'] }).map((r) => r.id)).toEqual(['r', 'lone']);

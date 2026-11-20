@@ -314,7 +314,8 @@ describe('the expanded outcome — children, tasks, comments', () => {
       await waitFor(() => expect(buttonNamed(modal, `Open child ${SMALL}`)).toBeTruthy());
       const text = modal.textContent ?? '';
       expect(text).toContain('Children 2');
-      expect(text.indexOf(`Open child ${SMALL}`)).toBeLessThan(text.indexOf(`Open child ${UNCERTAIN}`));
+      // Acorn's sibling order: the higher siblingOrder (the Uncertain's 1) first.
+      expect(text.indexOf(`Open child ${UNCERTAIN}`)).toBeLessThan(text.indexOf(`Open child ${SMALL}`));
       // One Small achieved, one Uncertain: Acorn's computed scope is Uncertain, its status not achieved.
       expect(text).toContain('From its children: Uncertain · Not achieved · 1/1 smalls · 1 uncertain');
       // A Big outcome has no task list of its own.

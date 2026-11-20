@@ -42,11 +42,18 @@ const refId = (value: unknown): string =>
 
 const num = (value: unknown): number => (typeof value === 'number' && Number.isFinite(value) ? value : 0);
 
+const text = (value: unknown): string => (typeof value === 'string' ? value : '');
+
 /**
  * An outcome's children, drawn from the `AcornConnection` records — the edges Acorn itself builds
  * its tree from (`outcomesAsGraph.ts`), present on both hosts. The mount's derived
  * `AcornOutcome.children` is not read: the in-memory host does not derive it, and a child created
  * here would not show there.
+ *
+ * In Acorn's sibling order: the **highest** `siblingOrder` first, ties by statement — the sort its
+ * map (`classicCoordinates.ts`) and its table (`OutcomeTableRow.tsx`) both apply, and why stock's
+ * "new sibling goes to the far right" writes one lower than the lowest (`connections/index.ts`).
+ * The id breaks what is left, so the same records always draw the same way.
  */
 const childrenOf = (
   id: string,
@@ -58,7 +65,12 @@ const childrenOf = (
     .filter((c) => refId(c.parent) === id)
     .map((c) => ({ c, child: byId.get(refId(c.child)) }))
     .filter((e): e is { c: Record<string, unknown>; child: Record<string, unknown> } => !!e.child)
-    .sort((a, b) => num(a.c.siblingOrder) - num(b.c.siblingOrder) || num(a.c.randomizer) - num(b.c.randomizer))
+    .sort(
+      (a, b) =>
+        num(b.c.siblingOrder) - num(a.c.siblingOrder) ||
+        text(a.child.content).localeCompare(text(b.child.content)) ||
+        refId(a.child.id).localeCompare(refId(b.child.id)),
+    )
     .map((e) => e.child);
 };
 

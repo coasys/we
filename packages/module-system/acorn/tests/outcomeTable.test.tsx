@@ -101,7 +101,7 @@ describe('the outcome table', () => {
   it("draws the tree depth-first with Acorn's ID numbers, computed scope and status, and tags", async () => {
     const { container, unmount, errors } = await drawTable();
     try {
-      expect(rows(container)).toEqual([BIG, SMALL, UNCERTAIN]);
+      expect(rows(container)).toEqual([BIG, UNCERTAIN, SMALL]);
       const text = container.textContent ?? '';
       for (const header of ['ID#', 'Outcome', 'Scope', 'Status', 'Progress', 'Tags']) expect(text).toContain(header);
       expect(text).toContain(idNumber('acorn-outcome-1'));
@@ -121,7 +121,7 @@ describe('the outcome table', () => {
       fireEvent.click(buttonNamed(container, `Collapse ${BIG}`)!);
       await waitFor(() => expect(rows(container)).toEqual([BIG]));
       fireEvent.click(buttonNamed(container, `Expand ${BIG}`)!);
-      await waitFor(() => expect(rows(container)).toEqual([BIG, SMALL, UNCERTAIN]));
+      await waitFor(() => expect(rows(container)).toEqual([BIG, UNCERTAIN, SMALL]));
     } finally {
       unmount();
     }
@@ -139,7 +139,7 @@ describe('the outcome table', () => {
       // number finds all three, none of whose statements holds a digit.
       expect(idNumber('acorn-outcome-1')).toBe(idNumber('acorn-outcome-3'));
       type(keyword, idNumber('acorn-outcome-3'));
-      await waitFor(() => expect(rows(container)).toEqual([BIG, SMALL, UNCERTAIN]));
+      await waitFor(() => expect(rows(container)).toEqual([BIG, UNCERTAIN, SMALL]));
       type(keyword, 'nothing like this');
       await waitFor(() => expect(rows(container)).toEqual([]));
       type(keyword, 'nothing like this');
