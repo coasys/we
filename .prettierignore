@@ -25,3 +25,9 @@ packages/ai-context/src/schemaContext.ts
 
 # Map data shipped as-is: minified on purpose, and formatting it would multiply its size.
 packages/module-system/globe/layers/assets/*.geojson
+
+# The phone app: www/ is WE's built web app copied in, and android/ and ios/ are Capacitor's native
+# projects, whose JSON and copied assets Capacitor rewrites on every `cap sync`.
+apps/we-phone/www
+apps/we-phone/android
+apps/we-phone/ios
