@@ -2516,6 +2516,7 @@ export const contextData: ContextData = {
         deviceNoun: { type: 'string' },
         validCount: { type: 'number' },
         canManage: { type: 'boolean' },
+        canAddCloudDevice: { type: 'boolean' },
         canShowCode: { type: 'boolean' },
         canAskMaster: { type: 'boolean' },
         canReplaceMaster: { type: 'boolean' },
@@ -2529,6 +2530,7 @@ export const contextData: ContextData = {
       actions: [
         'refresh',
         'addDevice',
+        'addCloudDevice',
         'scanDevice',
         'showCode',
         'takeMaster',

@@ -432,6 +432,46 @@ export const devicesPage: SchemaNode = {
       children: [{ type: 'Row', children: [addDeviceButton] }],
     }),
     comingSoon({
+      available: { $: 'deviceStore.canAddCloudDevice' },
+      icon: 'cloud',
+      title: 'Add a cloud device',
+      description:
+        'Keep a copy of your identity on Coasys cloud, or on a host you name. Leave the address empty for Coasys cloud.',
+      preview: [actions('Add a cloud device')],
+      children: [
+        {
+          type: 'Column',
+          props: { gap: '200' },
+          $localState: { cloudAddress: { type: 'string', initial: '' } },
+          children: [
+            {
+              type: 'we-input',
+              props: {
+                placeholder: 'Host address (optional)',
+                value: { $: 'cloudAddress' },
+                onInput: { $setLocal: 'cloudAddress', value: { $: 'event.detail' } },
+              },
+            },
+            {
+              type: 'Row',
+              children: [
+                {
+                  type: 'we-button',
+                  props: {
+                    size: 'sm',
+                    loading: { $: 'identityStore.busy' },
+                    disabled: { $: 'identityStore.busy' },
+                    onClick: { $invoke: 'deviceStore.addCloudDevice', args: [{ $: 'cloudAddress' }] },
+                  },
+                  children: ['Add a cloud device'],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    }),
+    comingSoon({
       available: can('switchDevice'),
       icon: 'arrows-left-right',
       title: 'Where to keep your spaces',

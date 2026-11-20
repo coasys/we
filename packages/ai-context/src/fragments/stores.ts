@@ -911,6 +911,7 @@ export const storeEntries: StoreEntry[] = [
       deviceNoun: { type: 'string' },
       validCount: { type: 'number' },
       canManage: { type: 'boolean' },
+      canAddCloudDevice: { type: 'boolean' },
       canShowCode: { type: 'boolean' },
       canAskMaster: { type: 'boolean' },
       canReplaceMaster: { type: 'boolean' },
@@ -924,6 +925,7 @@ export const storeEntries: StoreEntry[] = [
     actions: [
       'refresh',
       'addDevice',
+      'addCloudDevice',
       'scanDevice',
       'showCode',
       'takeMaster',
@@ -2474,6 +2476,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       deviceNoun:
         "'phone' | 'computer' — what this device is, for the sentences about it: 'This ' + deviceStore.deviceNoun + ' does not keep your master key'",
       validCount: 'number — how many device keys are valid (neither revoked nor ended); bot keys are not counted',
+      canAddCloudDevice:
+        'boolean — a cloud device can be added: canManage, and the backend can sign in to a host. Gate the Add a cloud device card on this',
       canManage:
         'boolean — Link a device (scanDevice, addDevice), Rename, Remove and answering requests can be offered: this computer keeps the master key of the identity',
       canShowCode: 'boolean — "Show code" can be offered: this computer can join an identity and speaks for none yet',
@@ -2497,6 +2501,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       refresh: '(): reads the device list again',
       addDevice:
         '(): adds a server by an offer link — the backend asks the person wherever it keeps the master key (on the desktop: the offer link and QR code, then the match code, then the confirmation that signs it). Resolves with the outcome; the list is read again',
+      addCloudDevice:
+        '(address?): adds a cloud device: Coasys cloud, or the host at `address` when one is typed. The backend asks for an invite code where the host wants one, checks the email, shows the match code, and signs the new device into the key log. Resolves with the outcome; the list is read again',
       scanDevice:
         '(): "Enter code" — adds a device by the code it shows: the person pastes it, both show a match code, and the confirmation names the device and may let it keep the master key',
       showCode:

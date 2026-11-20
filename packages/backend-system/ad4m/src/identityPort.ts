@@ -68,6 +68,11 @@ export interface Ad4mCustodyHost {
    * custody service does; a phone says `false`, and Settings then does not offer it.
    */
   checksEmail?: boolean;
+  /**
+   * Whether the host adds a host as a device (`add-cloud-device`). Absent means it does, as the
+   * desktop custody service does; a phone says `false`.
+   */
+  addsHost?: boolean;
 }
 
 /** The custody service's public state, as it answers `publicState`. */
@@ -288,6 +293,7 @@ export function createAd4mIdentityPort(backendClient: unknown, custody?: Ad4mCus
         recoveryWords: !!custody && custody.takesWords !== false,
         emailCheck: !!custody && custody.checksEmail !== false,
         linkDevice: !!custody,
+        cloudDevice: !!custody && custody.addsHost !== false,
       };
     },
 

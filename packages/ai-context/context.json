@@ -6695,6 +6695,9 @@
         "canManage": {
           "type": "boolean"
         },
+        "canAddCloudDevice": {
+          "type": "boolean"
+        },
         "canShowCode": {
           "type": "boolean"
         },
@@ -6727,6 +6730,7 @@
       "actions": [
         "refresh",
         "addDevice",
+        "addCloudDevice",
         "scanDevice",
         "showCode",
         "takeMaster",

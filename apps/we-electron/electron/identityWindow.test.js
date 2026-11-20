@@ -263,6 +263,8 @@ describe('the identity window', () => {
       { kind: 'remove-master' },
       { kind: 'add-bot' },
       { kind: 'check-email' },
+      { kind: 'add-cloud-device', host: { kind: 'coasys' } },
+      { kind: 'add-cloud-device', host: { kind: 'address', url: 'host.example.org' } },
       { kind: 'answer-request', id: 'r1' },
       { kind: 'rename', keyId: 'd2' },
     ]) {
