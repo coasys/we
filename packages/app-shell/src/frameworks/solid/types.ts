@@ -7,6 +7,7 @@ import type {
   DatasetStore,
   DeviceStore,
   EditorStore,
+  HostStore,
   IdentityStore,
   InterpretationStore,
   PresenceStore,
@@ -81,6 +82,7 @@ export interface Stores extends RendererStores {
   workflowStore: WorkflowStore;
   identityStore: IdentityStore;
   deviceStore: DeviceStore;
+  hostStore: HostStore;
   botStore: BotStore;
   record?: RecordActions;
   /** Neutral identity — the current agent (templates read `$me.did`). Backed by `sessionStore.me`;

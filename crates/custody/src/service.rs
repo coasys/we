@@ -622,6 +622,8 @@ pub struct CustodyPublic {
     /// again, so the person revokes this computer from a device that holds the master key and
     /// links it again ([`ENC_MISMATCH`]).
     pub enc_mismatch: bool,
+    /// Coasys cloud's address ([`crate::cloud::coasys_url`]), for the window's tenant view of it.
+    pub cloud_url: String,
 }
 
 /// What the person reads when [`CustodyPublic::enc_mismatch`] is set.
@@ -1402,6 +1404,8 @@ async fn public_state_on<R: ExecutorRpc>(
         requests,
         master_waiting,
         enc_mismatch,
+        // Empty when the override is not an address: the window then offers no Coasys cloud view.
+        cloud_url: crate::cloud::coasys_url().unwrap_or_default(),
     }
 }
 
@@ -1991,7 +1995,10 @@ struct CloudTarget<H> {
 
 /// Reaches the host at its address (Coasys cloud's is [`crate::cloud::DEFAULT_CLOUD_URL`]).
 async fn connect_host(host: &crate::cloud::CloudHost) -> Result<CloudTarget<WsRpcClient>, String> {
-    let url = host.url(std::env::var(crate::cloud::CLOUD_URL_VAR).ok().as_deref())?;
+    let url = match host {
+        crate::cloud::CloudHost::Coasys => crate::cloud::coasys_url()?,
+        address => address.url(None)?,
+    };
     let rpc = WsRpcClient::connect(&url, "").await.map_err(|e| {
         log::warn!("custody: the host at {url} did not answer: {e}");
         crate::cloud::UNREACHABLE.to_string()
@@ -6048,6 +6055,7 @@ mod tests {
             }],
             master_waiting: true,
             enc_mismatch: true,
+            cloud_url: "https://cloud.example.org".into(),
         })
         .unwrap();
         assert_eq!(public["devices"][0]["keyId"], "d1");
@@ -6057,6 +6065,7 @@ mod tests {
         assert_eq!(public["requests"][0]["keyIds"], json!([]));
         assert_eq!(public["masterWaiting"], true);
         assert_eq!(public["encMismatch"], true);
+        assert_eq!(public["cloudUrl"], "https://cloud.example.org");
         assert_eq!(public["revokedHolders"], json!(["d3"]));
         assert_eq!(public["holdsMaster"]["index"], 0);
         assert_eq!(public["blocked"], NO_STORE);

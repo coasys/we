@@ -218,6 +218,11 @@ export interface IdentityCustodyView {
    * again.
    */
   encMismatch: boolean;
+  /**
+   * Coasys cloud's address, as the custody service has it (one value, set once there). `null` (or
+   * absent) where there is none, so no view of Coasys cloud is offered.
+   */
+  cloudUrl?: string | null;
 }
 
 /** The device a custody service answers for, set apart from the backend it reaches. */

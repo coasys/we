@@ -3297,6 +3297,35 @@ EditorStore:
   - sendMessage(text: string): sends a message to the assistant. Patches it proposes are applied to the template and land in undo history; the reply streams into streamingContent
   - clearHistory(): deletes the active session's messages
 
+HostStore:
+- State:
+  - canViewHost: boolean — the person can look at their own place on a host from here: this computer signs in to one as them. Gate the Cloud usage card on this
+  - isCoasysCloud: boolean — the host being looked at is Coasys cloud: show its welcome text
+  - usage: { host, spend, storage, aiRuns, spaces, privateSpaces } | null — what the person uses on the host, worded: `spend` is 'Free during the closed beta' while the host takes no payment; `spaces` is { name, shared }[]. Null until read, and after leaving
+  - held: boolean — the host holds this person: only reading, exporting, usage and leaving work, and every other call is refused. Show that, and offer Export and Leave only
+  - error: string — why the last call to the host failed, or empty
+  - notice: string — what the last export, import or leave did, or empty
+  - busy: boolean — a call to the host is running
+  - canOperate: boolean — this computer runs a host that takes people: Sign-ups and People can be offered
+  - policy: { signup, maxTenants, display, choiceNeeded } | null — the host this computer runs: who may join
+  - choiceNeeded: boolean — the person who runs this host has never chosen who may join: show choiceNeededText
+  - choiceNeededText: string — the sentence to show while choiceNeeded
+  - signupOptions: { value, label }[] — the three answers to who may join, in order; `value` goes to setSignup
+  - invites: { id, note, status, expires, canRevoke }[] — the invites sent, `status` 'Open', 'Used', 'Revoked' or 'Expired'
+  - people: { id, label, state, canRemove, since }[] — the people on this host; `state` 'Joining', 'Active', 'On hold', 'Left', 'Deleted'; `canRemove` for one who left and kept their data here
+  - newInvite: string — the code of the invite just made, shown once; empty before
+  - operatorError: string — why the last Sign-ups or People call failed, or empty
+  - operatorBusy: boolean — a Sign-ups or People call is running
+- Actions:
+  - openHost(address?): looks at the host at `address`, or at Coasys cloud when it is empty, and reads the usage. The session is opened on the first call, signed with the person's identity
+  - leave(keepData: boolean, exportFirst: boolean): leaves the host. exportFirst saves everything to a file and leaves only once it is saved; keepData false destroys the data on the host at once and cannot be undone. Resolves true once left
+  - exportData(): saves everything the host keeps for the person to a gzip file they choose. Resolves true once saved
+  - importData(): asks for a file made by exportData and loads it into new private spaces. Resolves true once loaded
+  - setSignup(signup: 'anyone' | 'by_invite' | 'no_one'): sets who may join this host
+  - createInvite(note: string): makes an invite that lasts a week; its code is in newInvite
+  - revokeInvite(id: string): cancels an open invite
+  - removePerson(id: string): removes a person who left and kept their data here, and that data
+
 IdentityStore:
 - State:
   - available: boolean — the backend keeps a key log, so it can say who this device speaks for

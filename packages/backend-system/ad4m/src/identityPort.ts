@@ -108,6 +108,8 @@ export interface Ad4mCustodyState {
   thisDevice?: { keyId: string | null; kind: string } | null;
   /** The key log lists an enc key for this computer other than the one the custody service keeps. */
   encMismatch: boolean;
+  /** Coasys cloud's address; empty when its setting is not an address. */
+  cloudUrl?: string;
 }
 
 type Raw = Record<string, unknown>;
@@ -196,6 +198,7 @@ export function readCustody(value: Ad4mCustodyState): IdentityCustodyView {
     thisDevice: readCustodyDevice(value.thisDevice),
     pending: text(value.pending),
     encMismatch: value.encMismatch,
+    cloudUrl: value.cloudUrl || null,
   };
 }
 

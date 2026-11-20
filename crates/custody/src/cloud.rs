@@ -19,6 +19,12 @@ pub const DEFAULT_CLOUD_URL: &str = "https://cloud.coasys.org";
 /// The environment variable that sets Coasys cloud's address.
 pub const CLOUD_URL_VAR: &str = "WE_COASYS_CLOUD_URL";
 
+/// Coasys cloud's address: `WE_COASYS_CLOUD_URL` when it is set, else [`DEFAULT_CLOUD_URL`]; an error
+/// when that is not an address. The one place the address is read, so a change of domain is one edit.
+pub fn coasys_url() -> Result<String, String> {
+    CloudHost::Coasys.url(std::env::var(CLOUD_URL_VAR).ok().as_deref())
+}
+
 /// How long the host may take to activate a join after the holder confirmed: the host checks the
 /// key log every 5 seconds, and a pending join lasts 10 minutes at most (AR-05 4.4).
 pub const ACTIVATION_WAIT: Duration = Duration::from_secs(120);

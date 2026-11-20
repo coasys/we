@@ -339,6 +339,22 @@ export type {
   KeyLogStoreBehind,
   KeyLogView,
 } from './identity';
+export { isNotAdmitted } from './host';
+export type {
+  HostImportView,
+  HostInfoView,
+  HostInviteCreated,
+  HostInviteView,
+  HostLeaveView,
+  HostPolicyPatch,
+  HostPolicyView,
+  HostPort,
+  HostSignup,
+  HostTenantView,
+  OperatorHostPort,
+  TenantHostPort,
+  TenantUsageView,
+} from './host';
 export type { TranscriptionRecord, TranscriptionPort, TranscriptionSetup, TranscriptionStream } from './transcription';
 export type {
   InterpretationPort,
