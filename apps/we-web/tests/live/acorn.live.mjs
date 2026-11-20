@@ -992,11 +992,12 @@ describe('the outcome map on the live mount', () => {
     assert.ok(Math.abs(late.cy - left.cy) < 2, 'the new child joins its siblings on their rank');
   });
 
-  it('a card opens the expanded outcome with its children, in sibling order', async () => {
+  it('a double-clicked card opens the expanded outcome with its children, in sibling order', async () => {
     // A press where the card is drawn: the canvas surface takes the pointer and hit-tests it, so
-    // the card element itself never receives the click.
+    // the card element itself never receives the click. A double-click since S2-9, as in Acorn: a
+    // single click selects the card for editing.
     const [parent] = await settledBoxes([PARENT]);
-    await page.mouse.click(parent.cx, parent.cy);
+    await page.mouse.dblclick(parent.cx, parent.cy);
     const dialog = page.locator('we-modal');
     const child = (content) => dialog.getByRole('button', { name: `Open child ${content}`, exact: true });
     for (const content of [LATE, LEFT, RIGHT]) await child(content).waitFor({ state: 'visible', timeout: 120_000 });
@@ -1005,5 +1006,345 @@ describe('the outcome map on the live mount', () => {
     if (SHOTS) await page.screenshot({ path: join(SHOTS, 'map-node-opened.png') });
     await page.keyboard.press('Escape');
     await dialog.waitFor({ state: 'detached', timeout: 60_000 });
+  });
+});
+
+describe('editing the outcome map on the live mount', () => {
+  const tag = Date.now().toString(36);
+  const TOP = `EDIT top ${tag}`;
+  const KID_A = `EDIT kid a ${tag}`;
+  const KID_B = `EDIT kid b ${tag}`;
+  const SPARE = `EDIT spare ${tag}`;
+  const ROOT = `EDIT root made in We ${tag}`;
+  const CHILD = `EDIT child made in We ${tag}`;
+  const SHOTS = process.env.ACORN_SHOTS;
+
+  let stockMod;
+  let stockH;
+  let page;
+  let top;
+  let spare;
+
+  const FETCH_ALL = { input: { All: null }, local: true };
+  const hashText = (hash) => (typeof hash === 'string' ? hash : `u${Buffer.from(hash).toString('base64url')}`);
+  const stockOutcomes = () => stockMod.stockCall(stockH, 'projects', 'fetch_outcomes', FETCH_ALL);
+  const stockConnections = () => stockMod.stockCall(stockH, 'projects', 'fetch_connections', FETCH_ALL);
+  /** Stock's outcome with this statement, once it has one — the DHT carries We's write over. */
+  const stockOutcome = async (content, timeout = 300_000) => {
+    const end = Date.now() + timeout;
+    while (Date.now() < end) {
+      const found = (await stockOutcomes()).find((o) => o.entry.content === content);
+      if (found) return found;
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+    assert.fail(`stock never held "${content}"`);
+  };
+  /** Wait on stock's state until `test` holds, and hand back what it last read. */
+  const stockUntil = async (read, test, what, timeout = Number(process.env.ACORN_EDIT_WAIT ?? 300_000)) => {
+    const end = Date.now() + timeout;
+    let last;
+    while (Date.now() < end) {
+      last = await read();
+      if (test(last)) return last;
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+    assert.fail(`stock never ${what}: ${JSON.stringify(last)?.slice(0, 400)}`);
+  };
+  const linksBetween = (connections, parent, child) =>
+    connections.filter(
+      (c) =>
+        hashText(c.entry.parentActionHash) === hashText(parent) &&
+        hashText(c.entry.childActionHash) === hashText(child),
+    );
+
+  const cardFor = (content) => page.locator('.we-graph__node', { hasText: content }).locator('.we-graph__card');
+  const boxOf = async (content) => {
+    const box = await cardFor(content).boundingBox();
+    assert.ok(box, `no card drawn for "${content}"`);
+    return { ...box, cx: box.x + box.width / 2, cy: box.y + box.height / 2 };
+  };
+  const settledBoxes = async (contents) => {
+    let last = '';
+    for (let i = 0; i < 60; i++) {
+      const boxes = await Promise.all(contents.map(boxOf));
+      const now = JSON.stringify(boxes.map((b) => [Math.round(b.cx), Math.round(b.cy)]));
+      if (now === last) return boxes;
+      last = now;
+      await page.waitForTimeout(500);
+    }
+    assert.fail('the map never came to rest');
+  };
+  /**
+   * The given cards in view and big enough to aim at. The project holds every earlier suite's trees,
+   * so the whole map fitted is a row of small cards: zoom in about the cards' midpoint, and stop
+   * before any of them leaves the canvas.
+   */
+  const frame = async (contents) => {
+    await page.locator('we-button[title="Fit to view"]').first().click();
+    const canvas = await page.locator('.we-graph__surface').first().boundingBox();
+    const inside = (b) =>
+      b.x > canvas.x + 20 &&
+      b.y > canvas.y + 60 &&
+      b.x + b.width < canvas.x + canvas.width - 80 &&
+      b.y + b.height < canvas.y + canvas.height - 20;
+    let boxes = await settledBoxes(contents);
+    // Bring them to the middle first, with a drag on the empty canvas above the fitted row.
+    const mid = (bs) => ({
+      x: bs.reduce((n, b) => n + b.cx, 0) / bs.length,
+      y: bs.reduce((n, b) => n + b.cy, 0) / bs.length,
+    });
+    const from = { x: canvas.x + 40, y: canvas.y + 40 };
+    const at = mid(boxes);
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(from.x + canvas.x + canvas.width / 2 - at.x, from.y + canvas.y + canvas.height / 2 - at.y, {
+      steps: 10,
+    });
+    await page.mouse.up();
+    boxes = await settledBoxes(contents);
+    for (let i = 0; i < 30 && boxes[0].width < 200; i++) {
+      const cx = boxes.reduce((n, b) => n + b.cx, 0) / boxes.length;
+      const cy = boxes.reduce((n, b) => n + b.cy, 0) / boxes.length;
+      await page.mouse.move(cx, cy);
+      await page.mouse.wheel(0, -120);
+      await page.waitForTimeout(150);
+      const next = await settledBoxes(contents);
+      if (!next.every(inside)) {
+        // One step too far: back out, and aim from there.
+        await page.mouse.wheel(0, 120);
+        break;
+      }
+      boxes = next;
+    }
+    return settledBoxes(contents);
+  };
+  /**
+   * The host's own confirmation, which every `record.delete` raises (a protected piece: no template
+   * can skip it). Stock Acorn deletes on the key without asking.
+   */
+  const confirmDelete = () => page.getByRole('button', { name: 'Delete', exact: true }).click({ timeout: 60_000 });
+  /** A card selected with a click where it is drawn — the canvas hit-tests the press. */
+  const select = async (content) => {
+    const [box] = await settledBoxes([content]);
+    await page.mouse.click(box.cx, box.cy);
+    return box;
+  };
+
+  before(async () => {
+    stockMod = await import(rigFile('stock.mjs'));
+    stockH = await stockMod.connect();
+    // An Uncertain top with two stock-made children, and an outcome on its own.
+    top = await stockMod.createOutcome(stockH, TOP, {
+      scope: { Uncertain: { smallsEstimate: null, timeFrame: null, inBreakdown: false } },
+    });
+    await stockMod.createOutcomeUnder(stockH, top.actionHash, KID_A, 1);
+    await stockMod.createOutcomeUnder(stockH, top.actionHash, KID_B, 0);
+    spare = await stockMod.createOutcome(stockH, SPARE);
+
+    const joined = await datasetNamed('Acorn project');
+    page = await tab('map-edit');
+    await page.setViewportSize({ width: 1600, height: 1000 });
+    await page.goto(app.url);
+    await answerNamePrompt(page, 'Acorn Dev');
+    await page.goto(`${app.url}/space/${joined.uuid}`);
+    await page.waitForURL(/\/space\//, { timeout: 300_000 });
+    await page.getByRole('button', { name: 'Map', exact: true }).click({ timeout: 300_000 });
+    for (const content of [TOP, KID_A, KID_B, SPARE]) {
+      await cardFor(content).waitFor({ state: 'visible', timeout: 300_000 });
+    }
+    // The outcomes can arrive before the connections that place them: edit once both are drawn.
+    const end = Date.now() + 300_000;
+    for (;;) {
+      const [t, a, b] = await Promise.all([TOP, KID_A, KID_B].map(boxOf));
+      if (a.cy > t.cy && b.cy > t.cy) break;
+      assert.ok(Date.now() < end, "stock's connections never reached the map");
+      await page.waitForTimeout(1000);
+    }
+  });
+
+  after(async () => {
+    if (stockH) await stockMod.closeStock(stockH).catch(() => {});
+  });
+
+  it('a root outcome made on the map is a stock outcome, Uncertain, on no connection', async () => {
+    await page.getByRole('textbox', { name: 'New outcome', exact: true }).fill(ROOT);
+    await page.getByRole('button', { name: 'Add outcome', exact: true }).click();
+    const made = await stockOutcome(ROOT);
+    assert.ok('Uncertain' in made.entry.scope, `scope should be Uncertain: ${JSON.stringify(made.entry.scope)}`);
+    const connections = await stockConnections();
+    assert.equal(
+      connections.filter((c) => hashText(c.entry.childActionHash) === hashText(made.actionHash)).length,
+      0,
+      'a root has no parent',
+    );
+    await cardFor(ROOT).waitFor({ state: 'visible', timeout: 300_000 });
+  });
+
+  it("a child made from a card's action bar is a stock outcome under it, Uncertain", async () => {
+    await frame([TOP, KID_A, KID_B]);
+    await select(TOP);
+    const addChild = page.getByRole('button', { name: 'Add a child outcome', exact: true });
+    await addChild.waitFor({ timeout: 60_000 });
+    // The edit controls: the create row, and a selected card's action bar and connect dots.
+    if (SHOTS) await page.screenshot({ path: join(SHOTS, 'map-edit-controls.png') });
+    await addChild.click();
+    await page.getByText(`New child of “${TOP}”`).waitFor({ timeout: 60_000 });
+    await page.getByRole('textbox', { name: 'New child outcome', exact: true }).fill(CHILD);
+    await page.getByRole('button', { name: 'Add child', exact: true }).click();
+    const made = await stockOutcome(CHILD);
+    assert.ok('Uncertain' in made.entry.scope, 'a new child is Uncertain, as stock makes it');
+    await stockUntil(
+      stockConnections,
+      (cs) => linksBetween(cs, top.actionHash, made.actionHash).length === 1,
+      'linked the child',
+    );
+    await cardFor(CHILD).waitFor({ state: 'visible', timeout: 300_000 });
+    const [topBox, child] = await settledBoxes([TOP, CHILD]);
+    assert.ok(child.cy > topBox.cy, 'the new child is drawn under its parent');
+  });
+
+  it(
+    "the new child's siblingOrder reaches stock as one below its lowest sibling's",
+    {
+      todo:
+        'upstream: the mount shape gives AcornConnection.siblingOrder no datatype (acorn-ad4m shapes.ts:93), so the ' +
+        'executor writes -1 as the string "-1" and the mount reads any non-number as 0 (mapping.ts:322)',
+    },
+    async () => {
+      const made = await stockOutcome(CHILD);
+      const [link] = linksBetween(await stockConnections(), top.actionHash, made.actionHash);
+      assert.equal(link?.entry.siblingOrder, -1);
+    },
+  );
+
+  it('a line dragged from one card to another is a stock connection, the dragged-from the parent', async () => {
+    const madeRoot = await stockOutcome(ROOT);
+    const [from, to] = await frame([SPARE, ROOT]);
+    await select(SPARE);
+    // The selected card's lower connect dot, dragged onto the other card.
+    const dot = page.locator('.we-graph__connect--s').first();
+    await dot.waitFor({ state: 'visible', timeout: 60_000 });
+    const d = await dot.boundingBox();
+    await page.mouse.move(d.x + d.width / 2, d.y + d.height / 2);
+    await page.mouse.down();
+    await page.mouse.move((from.cx + to.cx) / 2, (from.cy + to.cy) / 2 + 40, { steps: 8 });
+    await page.mouse.move(to.cx, to.cy, { steps: 8 });
+    await page.mouse.up();
+    const connections = await stockUntil(
+      stockConnections,
+      (cs) => linksBetween(cs, spare.actionHash, madeRoot.actionHash).length === 1,
+      'held the dragged connection',
+    );
+    // On the right of the spare's children — it had none, so 0.
+    assert.equal(linksBetween(connections, spare.actionHash, madeRoot.actionHash)[0].entry.siblingOrder, 0);
+    const [spareBox, rootBox] = await settledBoxes([SPARE, ROOT]);
+    assert.ok(rootBox.cy > spareBox.cy, 'the connected outcome is drawn under its new parent');
+    if (SHOTS) {
+      // The graph re-fits after a write (the literal seed reloads), so frame the new pair again.
+      await frame([SPARE, ROOT]);
+      const zoomIn = page.locator('we-button[title="Zoom in"]').first();
+      for (let i = 0; i < 8 && (await boxOf(SPARE)).width < 200; i++) {
+        await zoomIn.click();
+        await page.waitForTimeout(400);
+      }
+      await page.mouse.move(5, 5);
+      await page.screenshot({ path: join(SHOTS, 'map-after-connect.png') });
+    }
+  });
+
+  it('refuses a line to a child already under it, and one that would close a loop — stock gets neither', async () => {
+    const before = (await stockConnections()).length;
+    const drag = async (fromContent, toContent) => {
+      const [, to] = await frame([fromContent, toContent]);
+      await select(fromContent);
+      const dot = page.locator('.we-graph__connect--s').first();
+      await dot.waitFor({ state: 'visible', timeout: 60_000 });
+      const d = await dot.boundingBox();
+      await page.mouse.move(d.x + d.width / 2, d.y + d.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(to.cx, to.cy, { steps: 10 });
+      await page.mouse.up();
+    };
+    await drag(TOP, KID_A);
+    await page.getByText(/Not connected\. That outcome is already under this one/).waitFor({ timeout: 60_000 });
+    await drag(KID_A, TOP);
+    await page.getByText(/Not connected\. That would make a loop/).waitFor({ timeout: 60_000 });
+    await page.waitForTimeout(5000);
+    assert.equal((await stockConnections()).length, before, 'no connection was written');
+  });
+
+  it('Delete on a selected line deletes the stock connection; both outcomes stay', async () => {
+    const madeRoot = await stockOutcome(ROOT);
+    const [from, to] = await frame([SPARE, ROOT]);
+    // The line runs from the parent's lower edge to the child's upper edge; a smooth curve between
+    // two vertical ends passes through the midpoint of the two.
+    const mid = { x: (from.cx + to.cx) / 2, y: (from.y + from.height + to.y) / 2 };
+    await page.mouse.click(mid.x, mid.y);
+    await page.keyboard.press('Delete');
+    await confirmDelete();
+    await stockUntil(
+      stockConnections,
+      (cs) => linksBetween(cs, spare.actionHash, madeRoot.actionHash).length === 0,
+      'dropped the deleted connection',
+    );
+    const outcomes = (await stockOutcomes()).map((o) => o.entry.content);
+    assert.ok(outcomes.includes(SPARE) && outcomes.includes(ROOT), 'deleting a line deletes no outcome');
+    const [spareBox, rootBox] = await settledBoxes([SPARE, ROOT]);
+    assert.ok(Math.abs(rootBox.cy - spareBox.cy) < 2, 'the outcome is a root again, on the top rank');
+  });
+
+  it('Delete on a selected card deletes the stock outcome and its connections; its children stay, as roots', async () => {
+    await frame([TOP, KID_A, KID_B]);
+    await select(TOP);
+    await page.keyboard.press('Delete');
+    await confirmDelete();
+    await stockUntil(stockOutcomes, (os) => !os.some((o) => o.entry.content === TOP), 'deleted the outcome');
+    await stockUntil(
+      stockConnections,
+      (cs) => !cs.some((c) => hashText(c.entry.parentActionHash) === hashText(top.actionHash)),
+      "dropped the outcome's connections",
+    );
+    const outcomes = (await stockOutcomes()).map((o) => o.entry.content);
+    for (const kid of [KID_A, KID_B, CHILD]) assert.ok(outcomes.includes(kid), `${kid} should survive its parent`);
+    await cardFor(TOP).waitFor({ state: 'detached', timeout: 300_000 });
+    const [a, b] = await settledBoxes([KID_A, KID_B]);
+    assert.ok(Math.abs(a.cy - b.cy) < 2, 'the orphaned children are roots, on one rank');
+  });
+
+  it("the card action bar's Delete deletes the stock outcome too", async () => {
+    await frame([ROOT]);
+    await select(ROOT);
+    await page.getByRole('button', { name: 'Delete this outcome', exact: true }).click({ timeout: 60_000 });
+    await confirmDelete();
+    await stockUntil(stockOutcomes, (os) => !os.some((o) => o.entry.content === ROOT), 'deleted the outcome');
+    await cardFor(ROOT).waitFor({ state: 'detached', timeout: 300_000 });
+  });
+
+  it('stock-side edits show on the map: a connection made, then deleted; an outcome deleted', async () => {
+    const kidA = await stockOutcome(KID_A);
+    const lines = () => page.locator('svg.we-graph__edges > g > path:not(.we-graph__edge-hover)').count();
+    const waitLines = async (want) => {
+      const end = Date.now() + 300_000;
+      while (Date.now() < end && (await lines()) !== want) await page.waitForTimeout(1000);
+      assert.equal(await lines(), want);
+    };
+    const before = await lines();
+    const made = await stockMod.stockCall(stockH, 'projects', 'create_connection', {
+      parentActionHash: spare.actionHash,
+      childActionHash: kidA.actionHash,
+      siblingOrder: 0,
+      randomizer: Date.now(),
+      isImported: false,
+    });
+    await waitLines(before + 1);
+    const [spareBox, kidBox] = await settledBoxes([SPARE, KID_A]);
+    assert.ok(kidBox.cy > spareBox.cy, "stock's new connection puts the child under the parent");
+    await stockMod.stockCall(stockH, 'projects', 'delete_connection', hashText(made.actionHash));
+    await waitLines(before);
+    await stockMod.stockCall(stockH, 'projects', 'delete_outcome_fully', {
+      input: hashText(spare.actionHash),
+      local: true,
+    });
+    await cardFor(SPARE).waitFor({ state: 'detached', timeout: 300_000 });
   });
 });
