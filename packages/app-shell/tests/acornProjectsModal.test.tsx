@@ -116,7 +116,7 @@ describe('the Acorn projects dialog', () => {
     });
   });
 
-  it('shows a resumable failure — the plain message up front, the raw cause in the details', async () => {
+  it('shows a resumable failure — the plain message up front, the raw cause behind a disclosure', async () => {
     const stores = fakeStores();
     const { container } = render(() => (
       <RenderSchema node={acornProjectsModalMount} stores={stores as never} registry={registry} />
@@ -139,9 +139,15 @@ describe('the Acorn projects dialog', () => {
       // The headline is the plain message — the conductor's wire text is not it.
       expect(alertText(container)).toContain('cell did not start');
       expect(alertText(container)).not.toContain('InitTimeout');
-      // The raw cause stays where a diagnosis looks for it — the details line.
-      expect(container.textContent).toContain('CellError(InitTimeout)');
     });
+    // The raw cause stays where a diagnosis looks for it — behind the details
+    // disclosure, collapsed until somebody asks for it.
+    expect(container.textContent).not.toContain('CellError(InitTimeout)');
+    const details = button(container, 'Show details');
+    expect((details as any).expanded).toBe(false);
+    details.click();
+    await vi.waitFor(() => expect(container.textContent).toContain('CellError(InitTimeout)'));
+    expect((button(container, 'Hide details') as any).expanded).toBe(true);
 
     // Retry resumes the retained target — no form values travel with it, only
     // the displayed failure's own identity. An unanswered (null) retry keeps
@@ -212,12 +218,14 @@ describe('the Acorn projects dialog', () => {
       },
     });
 
-    // The plain message is the alert; the refusal's own text stays in the details.
+    // The plain message is the alert; the refusal's own text stays behind the details disclosure.
     await vi.waitFor(() => {
       expect(alertText(container)).toContain('refused the mount');
       expect(alertText(container)).not.toContain('schema mirror');
-      expect(container.textContent).toContain('schema mirror');
     });
+    expect(container.textContent).not.toContain('schema mirror');
+    button(container, 'Show details').click();
+    await vi.waitFor(() => expect(container.textContent).toContain('schema mirror'));
     expect([...container.querySelectorAll('we-button')].some((el) => el.textContent?.trim() === 'Retry')).toBe(false);
     // Close still dismisses it.
     button(container, 'Close').click();
@@ -243,7 +251,30 @@ describe('the Acorn projects dialog', () => {
     release(new Error('socket closed'));
     await vi.waitFor(() => expect((create as any).loading).toBe(false));
     expect((create as any).disabled).toBe(false);
-    expect(alertText(container)).toContain('socket closed');
+    // An unparked failure is told in a plain sentence too — the wire text is
+    // behind the details disclosure, not the alert.
+    expect(alertText(container)).toContain('That did not work');
+    expect(alertText(container)).not.toContain('socket closed');
+    expect(container.textContent).not.toContain('socket closed');
+    button(container, 'Show details').click();
+    await vi.waitFor(() => expect(container.textContent).toContain('socket closed'));
     expect(stores.shellStore.setAcornProjectsOpen).not.toHaveBeenCalled();
+  });
+
+  it('leads an unparked lifecycle failure with its classified headline, never its raw text', async () => {
+    const failure = Object.assign(new Error('ConductorApiError: CellError(InitTimeout) on cell abc'), {
+      display: 'The project’s cell did not start on the executor in time.',
+    });
+    const stores = fakeStores({ joinAcornProject: vi.fn(async () => Promise.reject(failure)) });
+    const { container } = render(() => (
+      <RenderSchema node={acornProjectsModalMount} stores={stores as never} registry={registry} />
+    ));
+
+    type(container, 'a b c', 2);
+    button(container, 'Join project').click();
+    await vi.waitFor(() => expect(alertText(container)).toContain('cell did not start'));
+    expect(container.textContent).not.toContain('cell abc');
+    button(container, 'Show details').click();
+    await vi.waitFor(() => expect(container.textContent).toContain('cell abc'));
   });
 });

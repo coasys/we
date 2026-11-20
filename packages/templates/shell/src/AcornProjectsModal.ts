@@ -14,6 +14,7 @@ const close = { $invoke: 'shellStore.setAcornProjectsOpen', args: [false] };
 const lifecycleCall = (invoke: Record<string, unknown>): SchemaProp[] => [
   { $setLocal: 'busy', value: true },
   { $setLocal: 'error', value: '' },
+  { $setLocal: 'errorCause', value: '' },
   {
     ...invoke,
     onSuccess: [
@@ -30,19 +31,66 @@ const lifecycleCall = (invoke: Record<string, unknown>): SchemaProp[] => [
       },
     ],
     // A typed lifecycle failure is already telling its own story in the parked
-    // card below — its plain message and the raw cause in the details. Only a
-    // call that failed without parking a state gets the log line here.
+    // card below — its plain message, and the raw cause behind the details. A
+    // call that failed without parking a state is told the same way here: the
+    // lifecycle's classified sentence (`display`) up front, never the wire text,
+    // which waits behind the same disclosure.
     onError: [
       {
         $setLocal: 'error',
         value: {
-          $: "spaceStore.acornPending && spaceStore.acornPending.failure ? '' : (result && result.message ? result.message : 'That did not work')",
+          $: "spaceStore.acornPending && spaceStore.acornPending.failure ? '' : (result && result.display ? result.display : 'That did not work — no project was opened.')",
+        },
+      },
+      {
+        $setLocal: 'errorCause',
+        value: {
+          $: "spaceStore.acornPending && spaceStore.acornPending.failure ? '' : (result && result.message ? result.message : '')",
         },
       },
     ],
     onFinally: [{ $setLocal: 'busy', value: false }],
   },
 ];
+
+/**
+ * The raw cause behind a disclosure, collapsed until asked for: the executor's
+ * own text is for a diagnosis, never the headline, and never on screen by
+ * default — a wire string is not trusted not to carry something it should not.
+ */
+const causeDisclosure = (cause: string): SchemaNode => ({
+  type: '$if',
+  props: {
+    condition: { $: cause },
+    then: {
+      type: 'Column',
+      props: { gap: '100', width: '100%' },
+      children: [
+        {
+          type: 'we-button',
+          props: {
+            variant: 'ghost',
+            size: 'sm',
+            expanded: { $: 'local.showCause' },
+            onClick: { $toggleLocal: 'showCause' },
+          },
+          children: [{ $: "local.showCause ? 'Hide details' : 'Show details'" }],
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $: 'local.showCause' },
+            then: {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-faint' },
+              children: [{ $: cause }],
+            },
+          },
+        },
+      ],
+    },
+  },
+});
 
 /**
  * The Acorn projects dialog.
@@ -72,6 +120,8 @@ export const acornProjectsModal: SchemaNode = {
     joinAddress: { type: 'string', initial: '' },
     busy: { type: 'boolean', initial: false },
     error: { type: 'string', initial: '' },
+    errorCause: { type: 'string', initial: '' },
+    showCause: { type: 'boolean', initial: false },
   },
   children: [
     { type: 'we-text', props: { variant: 'heading-md' }, slot: 'header', children: ['Acorn projects'] },
@@ -294,23 +344,13 @@ export const acornProjectsModal: SchemaNode = {
                 },
                 /*
                   The details, not the headline: the executor's own text stays
-                  where a diagnosis looks for it — never splashed across the
-                  card, and never trusted with a wire string it could smuggle a
-                  seed through. `display` above is the classified sentence.
+                  where a diagnosis looks for it — collapsed behind a disclosure,
+                  never splashed across the card. `display` above is the
+                  classified sentence.
                 */
-                {
-                  type: '$if',
-                  props: {
-                    condition: {
-                      $: 'spaceStore.acornPending.failure && spaceStore.acornPending.failure.cause',
-                    },
-                    then: {
-                      type: 'we-text',
-                      props: { variant: 'footnote', color: 'text-faint' },
-                      children: [{ $: "'Details: ' + spaceStore.acornPending.failure.cause" }],
-                    },
-                  },
-                },
+                causeDisclosure(
+                  "spaceStore.acornPending.failure && spaceStore.acornPending.failure.cause ? spaceStore.acornPending.failure.cause : ''",
+                ),
                 {
                   type: 'Row',
                   props: { ax: 'end', gap: '200' },
@@ -383,9 +423,16 @@ export const acornProjectsModal: SchemaNode = {
       props: {
         condition: { $: 'local.error' },
         then: {
-          type: 'we-alert',
-          props: { variant: 'soft', tone: 'danger' },
-          children: [{ $: 'local.error' }],
+          type: 'Column',
+          props: { gap: '200', width: '100%' },
+          children: [
+            {
+              type: 'we-alert',
+              props: { variant: 'soft', tone: 'danger' },
+              children: [{ $: 'local.error' }],
+            },
+            causeDisclosure('local.errorCause'),
+          ],
         },
       },
     },

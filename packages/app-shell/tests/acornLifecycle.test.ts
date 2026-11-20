@@ -1047,6 +1047,29 @@ describe('mount retry — the fresh-cell stall', () => {
   });
 
   /*
+    Every rejection a dialog call can see carries its classified sentence — the
+    one a card leads with — so a failure that never parked a state still has a
+    headline that is not the wire text.
+  */
+  it('rejects with a classified display — before an operation exists, and after it parks', async () => {
+    vi.useFakeTimers();
+    const record: string[] = [];
+    const d = deps(record);
+    (d.port()!.applyTemplateLocal as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('socket closed'));
+    const acorn = createAcornLifecycle(d);
+
+    const early = await acorn.createAcornProject('P', 'a b c', BASE).catch((e: unknown) => e);
+    expect(early).toBeInstanceOf(AcornLifecycleError);
+    expect(early).toMatchObject({ stage: 'prepare', display: 'The executor stopped answering partway through.' });
+
+    mountFailing(record, d, 99, INIT_TIMEOUT);
+    const parked = (await settle(acorn.createAcornProject('P', 'a b c', BASE))).error;
+    const state = await acorn.pendingAcornOperation();
+    expect(parked).toMatchObject({ display: state!.failure!.display });
+    expect((parked as AcornLifecycleError).display).not.toContain('InitTimeout');
+  });
+
+  /*
     Ownership is the newest ask's from the moment it is made — not from when its
     language answer happens to arrive. A Close during templating bumps the
     generation; the call that was still waiting for `applyTemplateLocal` must
