@@ -17,6 +17,32 @@ import type { ModulePart } from '@we/module-shared';
  * Everything else here reads `Acorn*` records through `$query` or declares its row as an
  * `input` — never a module store, which this module does not have.
  */
+/*
+  A new child is two generic writes — the outcome, then the connection naming its parent — so the
+  second can fail after the first landed. The outcome made is held (`orphan`, under
+  `orphanParent`) with the draft until its connection lands; only then is the draft cleared.
+*/
+const CHILD_LINKED = [
+  { $setLocal: 'newChild', value: '' },
+  { $setLocal: 'orphan', value: '' },
+  { $setLocal: 'orphanParent', value: '' },
+  { $setLocal: 'childBusy', value: false },
+];
+const CHILD_LINK = {
+  $invoke: 'record.create',
+  args: [
+    'AcornConnection',
+    {
+      $: '{ parent: local.orphanParent, child: local.orphan, siblingOrder: count(acornChildren({ outcome: local.orphanParent, outcomes: local.outcomes, connections: local.connections })) }',
+    },
+  ],
+  onSuccess: CHILD_LINKED,
+  onError: [
+    { $setLocal: 'childBusy', value: false },
+    { $setLocal: 'writeError', value: { $: "'Could not link the child: ' + result.message + ' — link it again.'" } },
+  ],
+};
+
 export const ACORN_PARTS: Record<string, ModulePart> = {
   outcomeList: {
     label: 'Outcome list',
@@ -284,7 +310,12 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
         authors are named from. Comments are read whole and filtered per outcome, so the
         relation compare is the same client-side one on both hosts.
       */
-      $localState: { focus: { type: 'string', initial: '' } },
+      $localState: {
+        focus: { type: 'string', initial: '' },
+        orphan: { type: 'string', initial: '' },
+        orphanParent: { type: 'string', initial: '' },
+        childBusy: { type: 'boolean', initial: false },
+      },
       $queries: {
         outcomes: { entity: 'AcornOutcome', order: { timestampCreated: 'asc' } },
         connections: { entity: 'AcornConnection' },
@@ -782,39 +813,63 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
                               type: 'we-button',
                               props: {
                                 variant: 'soft',
-                                disabled: { $: '!trim(local.newChild)' },
-                                onClick: {
-                                  $invoke: 'record.create',
-                                  args: [
-                                    'AcornOutcome',
-                                    { $: "{ content: trim(local.newChild), scopeType: 'Uncertain' }" },
-                                  ],
-                                  onSuccess: [
-                                    { $setLocal: 'newChild', value: '' },
-                                    {
-                                      $invoke: 'record.create',
-                                      args: [
-                                        'AcornConnection',
-                                        {
-                                          $: '{ parent: outcome.id, child: result.id, siblingOrder: count(acornChildren({ outcome: outcome.id, outcomes: local.outcomes, connections: local.connections })) }',
-                                        },
-                                      ],
-                                      onError: [
-                                        {
-                                          $setLocal: 'writeError',
-                                          value: { $: "'Could not link the child: ' + result.message" },
-                                        },
-                                      ],
-                                    },
-                                  ],
-                                  onError: [
-                                    { $setLocal: 'writeError', value: { $: "'Could not save: ' + result.message" } },
-                                  ],
-                                },
+                                disabled: { $: "!trim(local.newChild) || local.childBusy || local.orphan != ''" },
+                                onClick: [
+                                  { $setLocal: 'childBusy', value: true },
+                                  { $setLocal: 'writeError', value: '' },
+                                  {
+                                    $invoke: 'record.create',
+                                    args: [
+                                      'AcornOutcome',
+                                      { $: "{ content: trim(local.newChild), scopeType: 'Uncertain' }" },
+                                    ],
+                                    onSuccess: [
+                                      { $setLocal: 'orphan', value: { $: 'result.id' } },
+                                      { $setLocal: 'orphanParent', value: { $: 'outcome.id' } },
+                                      CHILD_LINK,
+                                    ],
+                                    onError: [
+                                      { $setLocal: 'childBusy', value: false },
+                                      { $setLocal: 'writeError', value: { $: "'Could not save: ' + result.message" } },
+                                    ],
+                                  },
+                                ],
                               },
                               children: ['Add child outcome'],
                             },
                           ],
+                        },
+                        /*
+                          A child made but not linked — its connection was refused — is offered its
+                          link again, for the outcome already made, rather than a second outcome. A
+                          link that did land after all (the refusal was the reply, not the write) is
+                          seen in the connections and only cleared.
+                        */
+                        {
+                          type: '$if',
+                          props: {
+                            condition: { $: 'local.orphan' },
+                            then: {
+                              type: 'we-button',
+                              props: {
+                                variant: 'soft',
+                                disabled: { $: 'local.childBusy' },
+                                onClick: [
+                                  { $setLocal: 'writeError', value: '' },
+                                  {
+                                    $if: {
+                                      condition: {
+                                        $: 'acornChildren({ outcome: local.orphanParent, outcomes: local.outcomes, connections: local.connections }).exists(c, c.id == local.orphan)',
+                                      },
+                                      then: CHILD_LINKED,
+                                      else: [{ $setLocal: 'childBusy', value: true }, CHILD_LINK],
+                                    },
+                                  },
+                                ],
+                              },
+                              children: ['Link again'],
+                            },
+                          },
                         },
                       ],
                     },

@@ -43,7 +43,19 @@ function expandParts(node: unknown): unknown {
   return out;
 }
 
-async function fixtureHost() {
+/**
+ * How the host's writes behave. `lag`: a write is acknowledged at once but reaches the store only
+ * on `flush()` — the subscription stays on the old record meanwhile, as a slow mount's does.
+ * `hold`: a write neither lands nor settles until `release()`. `failConnections`: that many
+ * AcornConnection creates are refused.
+ */
+interface HostOptions {
+  lag?: boolean;
+  hold?: boolean;
+  failConnections?: number;
+}
+
+async function fixtureHost(options: HostOptions = {}) {
   const ports = createInMemoryBackendPorts(
     { selfId: () => SELF },
     { datasets: [{ id: acornDatasetId, name: 'Acorn fixture' }] },
@@ -75,15 +87,36 @@ async function fixtureHost() {
   const writes: Array<{ entity: string; id: string; fields: Record<string, unknown> }> = [];
   // `record.create` likewise: the class's `.create(dataset, fields)`, resolving with the record.
   const creates: Array<{ entity: string; fields: Record<string, unknown> }> = [];
+  const deferred: Array<() => Promise<unknown>> = [];
+  const held: Array<() => void> = [];
+  let refusals = options.failConnections ?? 0;
   const record = {
     update: (name: string, id: string, fields: Record<string, unknown>) => {
       writes.push({ entity: name, id, fields });
-      return entity(name).update(handle, id, fields);
+      const land = () => entity(name).update(handle, id, fields);
+      if (options.lag) {
+        deferred.push(land);
+        return Promise.resolve();
+      }
+      if (options.hold) return new Promise((resolve) => held.push(() => resolve(land())));
+      return land();
     },
     create: (name: string, fields: Record<string, unknown>) => {
       creates.push({ entity: name, fields });
+      if (name === 'AcornConnection' && refusals > 0) {
+        refusals--;
+        return Promise.reject(new Error('connection refused'));
+      }
       return entity(name).create(handle, fields);
     },
+  };
+  /** The lagging writes, landed in the order they were made. */
+  const flush = async () => {
+    while (deferred.length) await deferred.shift()!();
+  };
+  /** The held writes, settled in the order they were made. */
+  const release = () => {
+    while (held.length) held.shift()!();
   };
   const read = async (id: string) =>
     (await entity('AcornOutcome').findOne(handle, { where: { id } })) as Record<string, unknown> | null;
@@ -97,7 +130,7 @@ async function fixtureHost() {
     $onError: (message: string) => errors.push(message),
     $modelsPending: () => false,
   };
-  return { stores, errors, writes, creates, read, all };
+  return { stores, errors, writes, creates, read, all, flush, release };
 }
 
 const Passthrough = (props: { children?: JSX.Element }) => props.children;
@@ -110,8 +143,8 @@ const buttonNamed = (root: HTMLElement, label: string) =>
 /** The dialog the list opens — the only `we-modal` it draws. */
 const dialog = (root: HTMLElement) => root.querySelector('we-modal') as HTMLElement | null;
 
-async function openList() {
-  const host = await fixtureHost();
+async function openList(options: HostOptions = {}) {
+  const host = await fixtureHost(options);
   const view = render(() => (
     <RenderSchema
       node={expandParts(ACORN_PARTS.outcomeList.node) as SchemaNode}
@@ -366,6 +399,42 @@ describe('the expanded outcome — children, tasks, comments', () => {
       await waitFor(() => expect(buttonNamed(dialog(container)!, 'Open child Map lands read-only')).toBeTruthy());
       expect(dialog(container)!.textContent).toContain('Children 3');
       expect(dialog(container)!.textContent).toContain('1/1 smalls · 2 uncertain');
+    } finally {
+      unmount();
+    }
+  });
+
+  it('a child whose link is refused keeps its draft and is linked again — never made twice', async () => {
+    const { container, unmount, creates, all } = await openList({ failConnections: 1 });
+    try {
+      const modal = await open(container, BIG);
+      await waitFor(() => expect(labelled(modal, 'we-input', 'New child outcome')).toBeTruthy());
+      const before = (await all('AcornOutcome')).length;
+      type(labelled(modal, 'we-input', 'New child outcome')!, 'Map lands read-only');
+      fireEvent.click(buttonNamed(modal, 'Add child outcome')!);
+
+      // The outcome is made, its connection refused: the dialog says so, and keeps what was typed.
+      await waitFor(() => expect(dialog(container)!.textContent).toContain('Could not link the child'));
+      expect(creates.map((c) => c.entity)).toEqual(['AcornOutcome', 'AcornConnection']);
+      const child = (await all('AcornOutcome')).find((o) => o.content === 'Map lands read-only');
+      expect(child).toBeTruthy();
+      expect((labelled(dialog(container)!, 'we-input', 'New child outcome') as { value?: string }).value).toBe(
+        'Map lands read-only',
+      );
+      // Adding again would make a second outcome; it waits while the first is unlinked.
+      expect((buttonNamed(dialog(container)!, 'Add child outcome') as { disabled?: boolean }).disabled).toBe(true);
+
+      // "Link again" makes the missing connection for the outcome already made.
+      fireEvent.click(buttonNamed(dialog(container)!, 'Link again')!);
+      await waitFor(() => expect(creates).toHaveLength(3));
+      expect(creates[2]).toEqual({
+        entity: 'AcornConnection',
+        fields: { parent: 'acorn-outcome-1', child: child!.id, siblingOrder: 2 },
+      });
+      await waitFor(() => expect(buttonNamed(dialog(container)!, 'Open child Map lands read-only')).toBeTruthy());
+      expect((await all('AcornOutcome')).length).toBe(before + 1);
+      expect(buttonNamed(dialog(container)!, 'Link again')).toBeUndefined();
+      expect((labelled(dialog(container)!, 'we-input', 'New child outcome') as { value?: string }).value).toBe('');
     } finally {
       unmount();
     }
