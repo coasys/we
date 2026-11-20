@@ -175,27 +175,49 @@ const WATCH_DEFAULTS = {
 } as const;
 
 /**
- * Check that every requested class is a shape this perspective actually has.
+ * Check that every requested class is a shape this perspective actually has, and answer the classes
+ * by target class: that is how `runInterpretation` and `addAutoProcessor` are both given them.
  *
- * The executor matches on the **shape name** (`get_shape("TaskBlock")`), not on the `targetClass`
- * URI — a distinction worth stating because the two are one call apart and only one of them works.
- * Passing `we://TaskBlock` gets logged server-side as "skipping class" and, if it was the only one
- * requested, comes back as "perspective has no subject classes to extract into", which reads like a
- * broken space rather than a wrong argument. So names go through untouched and this only validates.
+ * By target class, because a name can be two classes'. WE's `Topic` is `we://Topic`, and a space that
+ * began in Flux also holds `flux://Topic`. The executor reads a bare name as the class of that name
+ * with the least IRI, so a pass asked for `Topic` by name could extract into Flux's class. Each entity
+ * name becomes the target class of the model WE registered under it, and `shapes()` is asked for
+ * exactly those. A class the space already had — registered by another app, or by hand — has no WE
+ * model, so `shapes()` is asked for it by name, and the least IRI of that name answers, as the
+ * executor resolves it.
  *
  * Validating at all, rather than letting the executor skip, is the same argument: a caller that
  * asked for TaskBlock and silently got nothing back cannot tell that from "nobody mentioned a task",
- * and would have no reason to go looking at its class list.
+ * and would have no reason to go looking at its class list. The executor logs a class it cannot
+ * resolve as "skipping class" and, if it was the only one requested, answers "perspective has no
+ * subject classes to extract into", which reads like a broken space rather than a wrong argument.
  */
-async function assertShapesInstalled(perspective: PerspectiveProxy, names: string[]): Promise<void> {
-  const installed = new Set(await perspective.getShaclNames());
-  const missing = names.filter((name) => !installed.has(name));
+async function assertShapesInstalled(perspective: PerspectiveProxy, names: string[]): Promise<string[]> {
+  const modelIris = names.map((name) => targetClassOfName(perspective, name));
+  const keys = names.map((name, i) => modelIris[i] ?? name);
+  const shapes = keys.length ? await perspective.shapes(keys) : [];
+  const installed = new Set(shapes.map((s) => s.shape.targetClass));
+  const byName = new Map<string, string>();
+  for (const {
+    name,
+    shape: { targetClass },
+  } of shapes) {
+    const held = byName.get(name);
+    if (targetClass && (held === undefined || targetClass < held)) byName.set(name, targetClass);
+  }
+  const iris = names.map((name, i) => {
+    const iri = modelIris[i];
+    return iri ? (installed.has(iri) ? iri : undefined) : byName.get(name);
+  });
+  const missing = names.filter((_, i) => !iris[i]);
   if (missing.length) {
+    const held = (await perspective.shapes()).map((s) => s.name);
     throw new Error(
       `interpretation: no schema named ${missing.map((n) => `"${n}"`).join(', ')} in this dataset — ` +
-        `it has ${[...installed].join(', ') || 'no shapes installed'}`,
+        `it has ${held.join(', ') || 'no shapes installed'}`,
     );
   }
+  return iris as string[];
 }
 
 /**
@@ -279,8 +301,8 @@ async function predicateNames(perspective: PerspectiveProxy): Promise<NameTables
 
 /**
  * The properties of every shape this perspective holds beyond the compiled-in registry. Every read
- * of `proposals()` and every per-field decision asks, and reading the shapes one at a time cost a
- * round trip per shape and per property — see `readShapeProperties` for what it costs instead.
+ * of `proposals()` and every per-field decision asks; `readShapeProperties` answers it in one
+ * `shapes()` call.
  *
  * A shape with a native model's name is skipped whatever its target class: the compiled-in shape
  * answers for that name, as it always has here.
@@ -1113,7 +1135,8 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
       // an empty transcript is a normal thing for a call with no speech in it.
       if (!turns.length) return { turns: 0, ids: [], proposed: [] };
 
-      await assertShapesInstalled(perspective, request.classes);
+      // By target class, never by name: see `assertShapesInstalled`.
+      const classes = await assertShapesInstalled(perspective, request.classes);
 
       // Confine what this pass mints to the node it belongs to, so two calls on one post do not
       // share a URI space and a later reader can tell where an instance came from.
@@ -1160,7 +1183,7 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
         */
         let ids: string[];
         try {
-          ids = await runObserved(perspective, withTime(turns), basePrefix, request.classes, passId);
+          ids = await runObserved(perspective, withTime(turns), basePrefix, classes, passId);
         } catch (error) {
           if (!recordMissingMethod(error)) throw error;
           executorSupports = false;
@@ -1354,8 +1377,14 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
 
       // Same validation the one-shot path does, and for the same reason: a class the perspective
       // does not have is skipped server-side, so a watch registered against one runs forever and
-      // finds nothing. The source class is a class the watch needs exactly as they are.
-      await assertShapesInstalled(perspective, [SOURCE_ENTITY, ...request.classes]);
+      // finds nothing. The source class is a class the watch needs exactly as they are. Each comes
+      // back by its target-class IRI, not its name — `sourceClass` resolves the way a model query
+      // resolves a class, and a bare "TextBlock" is one foreign shape away from meaning somebody
+      // else's.
+      const [sourceClass, ...interpretationClasses] = await assertShapesInstalled(perspective, [
+        SOURCE_ENTITY,
+        ...request.classes,
+      ]);
 
       const filing: WatchFiling = {
         ...request.parent,
@@ -1388,11 +1417,6 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
         parent: { ids: conversationOf(request)!, path: [request.parent.predicate, 'we://thread'] },
         where: { source: ['spoken', 'typed', 'corrected'] },
       });
-      const interpretationClasses = await targetClasses(perspective, request.classes);
-      // The source class by its target-class IRI too, not its name — `sourceClass` resolves the way
-      // a model query resolves a class, and a bare "TextBlock" is one foreign shape away from
-      // meaning somebody else's.
-      const [sourceClass] = await targetClasses(perspective, [SOURCE_ENTITY]);
       /*
         Both at debug, and the source scope included deliberately.
 
@@ -1720,16 +1744,12 @@ async function deleteProcessorConfig(perspective: PerspectiveProxy, watchId: str
 }
 
 /**
- * Entity names → SHACL target-class URIs.
+ * An entity name's SHACL target class, or `undefined` when no model is registered under it.
  *
- * `runInterpretation` matches on the shape *name*; `addAutoProcessor` takes target-class URIs. Two
- * entry points to one engine that disagree about how a class is named, which is exactly the shape
- * of the mistake that cost a day on the one-shot path — passing the wrong one is logged server-side
- * as "skipping class" and surfaces, if it was the only one, as "perspective has no subject classes
- * to extract into". A wrong argument reading as a broken space.
- *
- * So the conversion is explicit and it throws rather than dropping: a name with no registered model
- * behind it would otherwise silently narrow what a watch extracts.
+ * Both `runInterpretation` and `addAutoProcessor` are given target classes. They used to disagree:
+ * the one-shot path matched on the shape *name*, and passing it a target class was logged
+ * server-side as "skipping class". The executor now reads either, and a name there means the class
+ * of that name with the least IRI, which can be another app's. So WE sends the target class to both.
  *
  * **Resolved against the perspective, not the global registry.** A community's own shape is compiled
  * and registered *for its dataset only* (`mergeDynamicEntities`), so `getEntity` — which reads the
@@ -1737,22 +1757,9 @@ async function deleteProcessorConfig(perspective: PerspectiveProxy, watchId: str
  * with it. That was invisible while the target list was a constant naming two core classes; it is
  * the ordinary case the moment a space can add to it.
  */
-async function targetClasses(perspective: PerspectiveProxy, names: readonly string[]): Promise<string[]> {
-  return Promise.all(
-    names.map(async (name) => {
-      const model = getEntityForDataset(name, perspective);
-      /*
-        A class the space already had — registered by another app, or by hand — has no WE model
-        unless the foreign-schema read happened to register one for this dataset, so its target
-        class is read from its SHACL, the same place the executor resolves it from.
-      */
-      const targetClass = model
-        ? getEntityTargetClass(model as never)
-        : await perspective.getShaclTargetClass(name).catch(() => undefined);
-      if (!targetClass) throw new Error(`interpretation: no target class for "${name}" — is the model registered?`);
-      return targetClass;
-    }),
-  );
+function targetClassOfName(perspective: PerspectiveProxy, name: string): string | undefined {
+  const model = getEntityForDataset(name, perspective);
+  return model ? getEntityTargetClass(model as never) : undefined;
 }
 
 /**

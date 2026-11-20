@@ -279,6 +279,18 @@ export function manifestToEntries(manifest: EntityManifest, opts: CompileManifes
   });
 }
 
+/** The module each compiled class was declared by. See {@link moduleOfModel}. */
+const declaringModule = new WeakMap<typeof Ad4mModel, string>();
+
+/**
+ * The module that declared a class compiled by {@link compileManifest}, or `undefined` for a class
+ * written by hand. What lets `installModuleSdna` register each module's classes in a call of its
+ * own from the flat list the schema port is handed.
+ */
+export function moduleOfModel(model: typeof Ad4mModel): string | undefined {
+  return declaringModule.get(model);
+}
+
 /**
  * Compile a neutral manifest into ready-to-install AD4M model classes.
  *
@@ -299,6 +311,7 @@ export function compileManifest(
       classResolver: resolver,
       flag: { through: 'we://flag', value: `${prefix}${snakeCase(entry.name)}` },
     });
+    declaringModule.set(classes[entry.name], opts.moduleId);
   }
 
   return classes;

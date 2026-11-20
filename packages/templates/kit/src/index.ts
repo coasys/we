@@ -80,9 +80,10 @@ export {
   focusDim,
   focusDimWhere,
   PLACED_CARD_STYLE,
+  scopeLens,
   SUGGESTION_STYLES,
 } from './we/canvas.ts';
-export type { CanvasEditingOptions, CanvasSeedOptions } from './we/canvas.ts';
+export type { CanvasEditingOptions, CanvasSeedOptions, LensScope } from './we/canvas.ts';
 export {
   BY_SIGNAL,
   CANVAS_CARD,

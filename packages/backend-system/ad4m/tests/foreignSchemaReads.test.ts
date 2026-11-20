@@ -36,12 +36,7 @@ const foreignShape = {
 function mockPerspective(uuid: string) {
   return {
     uuid,
-    getShaclNames: async () => ['Foreign'],
-    querySparql: async (query: string) =>
-      query.includes('<ad4m://shacl_shape_uri>') && query.includes('<sh://targetClass>')
-        ? [{ name: 'literal:string:shacl://Foreign', shape: 'x://ForeignShape', targetClass: 'x://Foreign' }]
-        : [],
-    getShacl: async (name: string) => (name === 'Foreign' ? foreignShape : null),
+    shapes: async () => [{ name: 'Foreign', shape: foreignShape, hash: '' }],
   };
 }
 
