@@ -565,6 +565,38 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
         older: MESSAGES - (SECOND_WINDOW - 1),
       });
     };
+    // What a run's answered feed calls measured: each reply's round trip joins the executor query
+    // metrics, by class; a refused one counts as a failure and is not a latency sample. Runs once
+    // per load, on either outcome — a load that never drew may still hold completed calls.
+    const tally = (mine) => {
+      for (const q of mine) {
+        if (q.error) {
+          run.failedFeedCalls = (run.failedFeedCalls ?? 0) + 1;
+          continue;
+        }
+        (q.className === 'TextBlock' ? run.queries : run.otherQueries).push(q.ms);
+      }
+    };
+    // The calls already in the numbers, as `watchFeedQueries` keeps them.
+    const counted = new WeakSet();
+    // The numbers of load `load` are taken: its calls answered so far are counted.
+    const taken = (load) => {
+      for (const q of queries) if (q.load === load) counted.add(q);
+    };
+    // A reply that came after its load gave up on it (before that tab's socket closed) is still that
+    // load's: counted once, with it, and listed in its detail as `late`. Run between loads and after
+    // the reader closes, over the loads up to `upTo` that have an outcome. A replacement tab numbers
+    // its loads from 1 again, and this only reads the open tab's calls: their load is the newest
+    // entry with that number.
+    const tallyLate = (upTo = queries?.load ?? 0) => {
+      const late = (queries ?? []).filter((q) => q.feed && !counted.has(q) && q.load <= upTo);
+      tally(late);
+      for (const q of late) {
+        counted.add(q);
+        const entry = detail.runs.findLast((r) => r.load === q.load);
+        if (entry) (entry.late ??= []).push({ ...q, sent: undefined });
+      }
+    };
     try {
       await openReaderPage();
       cpuBefore = cpuOf(executor.pid);
@@ -572,37 +604,6 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
       // Each call as name:limit:time@when-sent, both in ms from the start of the load.
       const said = (q) =>
         `${q.className ?? q.type}${q.limit === null ? '' : `:${q.limit}`}:${q.ms.toFixed(0)}@${q.sentAfterMs.toFixed(0)}`;
-      // What a run's answered feed calls measured: each reply's round trip joins the executor query
-      // metrics, by class; a refused one counts as a failure and is not a latency sample. Runs once
-      // per load, on either outcome — a load that never drew may still hold completed calls.
-      // The calls already in the numbers, as `watchFeedQueries` keeps them.
-      const counted = new WeakSet();
-      const tally = (mine) => {
-        for (const q of mine) {
-          if (q.error) {
-            run.failedFeedCalls = (run.failedFeedCalls ?? 0) + 1;
-            continue;
-          }
-          (q.className === 'TextBlock' ? run.queries : run.otherQueries).push(q.ms);
-        }
-      };
-      // The numbers of load `load` are taken: its calls answered so far are counted.
-      const taken = (load) => {
-        for (const q of queries) if (q.load === load) counted.add(q);
-      };
-      // A reply that came after its load gave up on it (before that tab's socket closed) is still that
-      // load's: counted once, with it, and listed in its detail as `late`. Run between loads, when
-      // every load of this tab so far is done. A replacement tab numbers its loads from 1 again, and
-      // this only reads the open tab's calls: their load is the newest entry with that number.
-      const tallyLate = () => {
-        const late = queries.filter((q) => q.feed && !counted.has(q) && q.load <= queries.load);
-        tally(late);
-        for (const q of late) {
-          counted.add(q);
-          const entry = detail.runs.findLast((r) => r.load === q.load);
-          if (entry) (entry.late ??= []).push({ ...q, sent: undefined });
-        }
-      };
       for (let k = 0; k < RUNS; k++) {
         const kind = k === 0 ? 'cold' : 'warm';
         current = null;
@@ -799,7 +800,6 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
           'the page made no Feed query this run',
         );
       }
-      tallyLate();
     } catch (error) {
       if (current) {
         // What the failed run asked, and what it was still waiting on when it gave up.
@@ -821,10 +821,13 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
         );
       }
       await closing(reader, true);
+      // The load that failed has no outcome: only the ones before it take their late replies.
+      tallyLate(current ? current.load - 1 : undefined);
       throw error;
     }
     const cpuAfter = cpuOf(executor.pid);
     await closing(reader, false);
+    tallyLate();
     const afterUi = rssOf(executor.pid);
     run.rss.afterUi = afterUi.rss;
     run.rss.peak = peakOf(afterUi);
