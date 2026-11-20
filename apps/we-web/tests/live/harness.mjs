@@ -151,7 +151,7 @@ export async function startExecutor({ mcp = false } = {}) {
   }
 }
 
-/** An account on the executor, signed in: what ad4m-connect's email and password screen ends with. */
+/** An account on the executor, signed in: a user made on the node, and the token it logs in with. */
 export async function signUp(executor, email, password = 'test123') {
   await within(executor.admin.agent.createUser(email, password), 120_000, 'agent.createUser');
   await executor.admin.runtime.setUserFreeAccess?.(email, true);
@@ -248,30 +248,18 @@ export async function launchBrowser({ fakeAudio } = {}) {
 }
 
 /**
- * ad4m-connect keeps its session under its own version: `<version>/ad4m-url`, `<version>/ad4m-token`.
- * `WE_CONNECT_VERSION` names it when the build under test bundles an ad4m-connect other than the
- * installed one — a local ad4m checkout, before it is published.
- */
-function connectVersion() {
-  if (process.env.WE_CONNECT_VERSION) return process.env.WE_CONNECT_VERSION;
-  return JSON.parse(readFileSync(join(WEB, 'node_modules', '@coasys', 'ad4m-connect', 'package.json'), 'utf8')).version;
-}
-
-/**
- * One device: a browser profile signed in as `account`, as ad4m-connect leaves one after its
- * "Remote node" screen. Pages opened from it are that device's tabs.
+ * One device: a browser profile signed in as `account`, through the boot session an embedding host
+ * hands WE (`window.__WE_AD4M_SESSION`, read once and never stored). Pages opened from it are that
+ * device's tabs.
  */
 export async function device(browser, executor, account, { name } = {}) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 860 } });
   await context.grantPermissions(['camera', 'microphone']);
-  const version = connectVersion();
   await context.addInitScript(
-    ([version, url, token]) => {
-      if (localStorage.getItem(`${version}/ad4m-token`)) return;
-      localStorage.setItem(`${version}/ad4m-url`, url);
-      localStorage.setItem(`${version}/ad4m-token`, token);
+    ([url, token]) => {
+      window.__WE_AD4M_SESSION = { url, token };
     },
-    [version, executor.url, account.token],
+    [executor.url, account.token],
   );
   // Every peer connection a page makes, so a test can ask whether a tab still holds one.
   await context.addInitScript(() => {

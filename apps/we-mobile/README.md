@@ -9,7 +9,7 @@ The Coasys app boots before any session (`apps/coasys/README.md`). On the phone 
 `DeviceKey` plugin and uses the phone's host: the first run asks the person to link the phone to
 their identity (the phone joins one; making one and the 12 words are a computer's, and the screen
 says so), and the connection choice offers the key host the phone was given (`we-phone/key-host`)
-and AD4M Connect. With no network it shows the offline screen rather than a connect screen that
+and Coasys Connect. With no network it shows the offline screen rather than a connect screen that
 cannot answer. WE's app mounts in the same page once a connection is chosen.
 
 The app adds one page of its own: the page Capacitor opens when the phone's Android System WebView
@@ -20,16 +20,15 @@ tree, and `cap sync ios` works, but nothing builds it.
 
 ## How the phone connects (phase 1)
 
-Through ad4m-connect, as the web app does (`apps/we-web/src/platform/ad4mConnector.ts`), once
-"A host" is chosen on the connection choice. On a
-phone-sized screen it offers only **Remote Node**: pick a listed host or type a URL, then sign in or
-register with email and password on that executor (a multi-user executor: a host or Coasys cloud).
-The executor must be reachable over `https`/`wss` with a certificate the phone trusts. The release
+Through Coasys Connect, as the web app does (`apps/we-web/src/platform/ad4mConnector.ts`), once
+"Link this browser" is chosen on the connection choice: the phone's WebView links to an identity
+that another device of the person holds, and holds a device key of its own. The executor must be reachable over `https`/`wss` with a certificate the phone trusts. The release
 build allows no cleartext (`android/app/src/main/res/xml/network_security_config.xml`).
 
-The session is kept: a closed and reopened app is still signed in. The executor token lives in the
-WebView's storage, like the web app's: Android's app sandbox protects it, nothing seals it further,
-and the app opts out of backup and device transfer so it does not leave the phone.
+The token stays in the WebView's memory and is never stored, like the web app's: a closed and
+reopened app signs in again through Coasys Connect. The app opts out of backup and device transfer.
+The phone can also open a browser's device link (`https://coasys.id/link#coasys:device:1:…`) and
+show the match code: the browser is listed as a browser in Devices and never holds the master key.
 
 ## The device key and key login (phase 2a)
 
@@ -58,11 +57,11 @@ built for Android with uniffi bindings:
   computer signs an `add` listing the phone's keys, and `waitJoined()` sees it land.
 - **Key login.** Once the phone has joined and has an executor to log in to, the connection choice
   offers it, and WE logs in there with the device key (`user.sessionChallenge` → a signed statement →
-  `user.loginWithKey`), with no AD4M Connect involved, and renews the session five minutes before
+  `user.loginWithKey`), with no Coasys Connect involved, and renews the session five minutes before
   each expiry (`apps/we-web/src/platform/deviceKeyConnector.ts`, `keySession.ts`). The token is
-  never stored, and AD4M Connect's stored session is left as it was: every boot logs in afresh. A key
+  never stored: every boot logs in afresh. A key
   login the executor refuses (the key not known there, or revoked) goes back to the connection
-  choice with the reason, where AD4M Connect is still offered; it never opens by itself. A session
+  choice with the reason, where Coasys Connect is still offered; it never opens by itself. A session
   that ends by itself (no renewal succeeded before it expired, or the executor refused the token)
   starts WE again: the boot logs in afresh, or comes back to the connection choice when it cannot; a
   session that ended within a minute of opening skips the key login on the next boot, so it cannot

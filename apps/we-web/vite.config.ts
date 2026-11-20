@@ -1,23 +1,15 @@
 import { contentSecurityPolicy, rewriteKnockoutGlobalEval } from '@we/csp/vite';
 import { globeLayerAssets } from '@we/globe-layers/vite';
 import { cesiumAssets } from '@we/globe-widget/vite';
-import { readFileSync } from 'node:fs';
 import path from 'path';
 import { defineConfig } from 'vite';
 import solidPlugin from 'vite-plugin-solid';
 
 import { seedPath, weSeed } from '../../scripts/seed-vite.mjs';
+import { endpointsDefine } from './config/endpoints.mjs';
 
-/*
-  The endpoints this build serves, from `config/<COASYS_ENV>.json`. `staging` when it is unset: a
-  developer's build and a pull request preview must never point at production's identity or store.
-  Anything but the two names stops the build rather than falling back to one of them.
-*/
-const coasysEnv = process.env.COASYS_ENV ?? 'staging';
-if (coasysEnv !== 'production' && coasysEnv !== 'staging') {
-  throw new Error(`COASYS_ENV must be "production" or "staging", got "${coasysEnv}"`);
-}
-const endpoints = readFileSync(path.resolve(import.meta.dirname, 'config', `${coasysEnv}.json`), 'utf8');
+// The endpoints this build serves: `config/<COASYS_ENV>.json`, see `config/endpoints.mjs`.
+const endpoints = endpointsDefine();
 
 export default defineConfig({
   define: { __APP_ENDPOINTS__: endpoints },

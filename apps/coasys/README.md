@@ -25,8 +25,8 @@ A guest link skips the base and boots the guest connector, as `apps/we-web` does
 
 | File         | Host                                   | Identity                     | Places                                                       |
 | ------------ | -------------------------------------- | ---------------------------- | ------------------------------------------------------------ |
-| `web.ts`     | A browser                              | none                         | AD4M Connect                                                 |
-| `phone.ts`   | The phone app's WebView                | the `DeviceKey` plugin       | the executor the phone's key logs in to, AD4M Connect        |
+| `web.ts`     | A browser                              | none                         | Coasys Connect                                               |
+| `phone.ts`   | The phone app's WebView                | the `DeviceKey` plugin       | the executor the phone's key logs in to, Coasys Connect      |
 | `desktop.ts` | Electron and Tauri (their own entries) | the custody service          | this computer (the account's servers: listed, not wired yet) |
 | `choose.ts`  | Picks the phone's or the browser's     | the plugin answering decides |                                                              |
 

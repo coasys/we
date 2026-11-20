@@ -24,20 +24,17 @@ vi.mock('@we/backend-ad4m', async (importActual) => ({
 
 vi.mock('@we/seed-file', () => ({ default: { ad4m: {} } }));
 
-vi.mock('./storedSession', () => ({ storedGuestHost: () => null, hasStoredSession: () => false }));
+const client = { runtime: { multiUserEnabled: async () => false } };
 
 function fakeCore() {
   return {
-    connectedHost: undefined,
-    isMultiUser: async () => false,
     get token() {
       return created.token;
     },
     baseUrl: 'http://localhost:12000',
     port: 12000,
-    userInfo: undefined,
     disconnect: () => {},
-    connectAsGuest: async () => ({}),
+    connectAsGuest: async () => client,
     authState: 'authenticated',
     addEventListener: () => {},
   };
@@ -46,7 +43,7 @@ function fakeCore() {
 vi.mock('@coasys/connect', () => ({
   getAd4mConnect: (options: Record<string, unknown>) => {
     created.connect.push(options);
-    return { core: fakeCore(), client: Promise.resolve({}) };
+    return { core: fakeCore(), client: Promise.resolve(client) };
   },
 }));
 

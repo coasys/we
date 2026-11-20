@@ -2,7 +2,7 @@
 /**
  * Evaluates an expression in the app's WebView over the DevTools protocol and prints the result as
  * JSON. How the app is driven on an emulator or a USB phone without tapping: reading what WE shows,
- * or filling ad4m-connect's fields in a scripted run.
+ * or filling Connect's fields in a scripted run.
  *
  *   node scripts/cdp-eval.mjs "location.href"
  *   node scripts/cdp-eval.mjs --page error.html "document.body.innerText"

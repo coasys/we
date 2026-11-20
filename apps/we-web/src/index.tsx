@@ -12,7 +12,8 @@ import weSeed from '@we/seed-file';
 import { render } from 'solid-js/web';
 
 import { ad4mConnector } from './platform/ad4mConnector';
-import { createGuestConnector, hasStoredSession, parseGuestParams } from './platform/guestConnector';
+import { createSessionConnector, takeBootSession } from './platform/bootSession';
+import { createGuestConnector, parseGuestParams, storedGuestHost } from './platform/guestConnector';
 import { webPlatform } from './platform/webPlatform';
 
 // Detect a guest invite URL before anything renders.
@@ -20,22 +21,29 @@ import { webPlatform } from './platform/webPlatform';
 const guestTarget = parseGuestParams();
 
 /*
-  A guest link is for somebody who has no account, and it is only allowed to act like one for them.
+  Three ways in, in this order.
 
-  `connectAsGuest` writes the same localStorage keys every boot reads, so following it with a
-  session already stored would swap that identity for a throwaway one — silently, from a link
-  anybody can paste, with the original unreachable from inside the app afterwards. So an agent who
-  already has a session keeps their own connector; the link then behaves as the ordinary share link
-  does, taking them to the space's join gate to decide for themselves.
+  1. A host that embeds WE hands it a session (`window.__WE_AD4M_SESSION`, see `bootSession.ts`):
+     the person is already signed in there, and a guest link in the same page does not replace it —
+     it takes them to the space's join gate, as an ordinary share link does.
+  2. A guest link, or a tab that came in by one and was reloaded: the guest connector, with an
+     account made for the link. A guest link is for somebody who has no account.
+  3. Otherwise the browser links itself through Coasys Connect: the frame on the auth domain, where
+     the person picks one of their own devices. The token stays in this page's memory.
+
+  The phone app's key login is the Coasys base app's (`apps/coasys`), not this entry's.
 */
-const storedSession = hasStoredSession();
-// The browser signs in to a remote executor through AD4M Connect, until Coasys Connect replaces it.
-// The phone app's key login is the Coasys base app's (`apps/coasys`), not this entry's.
-const connector = guestTarget && !storedSession ? createGuestConnector(guestTarget.hostUrl) : ad4mConnector;
+const bootSession = takeBootSession();
+const guestHost = bootSession ? null : (guestTarget?.hostUrl ?? storedGuestHost());
+const connector = bootSession
+  ? createSessionConnector(bootSession)
+  : guestHost
+    ? createGuestConnector(guestHost)
+    : ad4mConnector;
 
 // The boot controller reads this to reach the target space once auth completes. Stored on the
 // global rather than in a store because it must survive the entire provider tree mounting.
-if (guestTarget) writeGuestBootTarget({ spaceId: guestTarget.spaceId, autoJoin: !storedSession });
+if (guestTarget) writeGuestBootTarget({ spaceId: guestTarget.spaceId, autoJoin: !bootSession });
 
 const root = document.getElementById('root');
 

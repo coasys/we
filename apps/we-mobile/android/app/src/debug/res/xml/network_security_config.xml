@@ -5,7 +5,7 @@
 
   It allows cleartext to the phone's own loopback and nothing else. That is how an emulator, or a
   phone on USB, reaches an executor on the development machine: `adb reverse tcp:12600 tcp:12600`,
-  then http://127.0.0.1:12600 in ad4m-connect's URL field. Every other host is still https/wss only,
+  then http://127.0.0.1:12600 as the node address in the guest link or the boot session. Every other host is still https/wss only,
   as in release.
 -->
 <network-security-config>

@@ -3069,7 +3069,7 @@ BaseStore:
   - blocked: string — why no identity change can be made here, ready to show; empty when one can
   - devices: { keyId, label, subtitle, icon, thisDevice, master }[] — the devices the identity's private record names, read-only before a session: `label` 'This computer' / 'This phone', the record's name, or 'Unnamed device'; `master` 'Has master key', 'Master key sent' or empty
   - doors: { make, link, words } each { open: boolean, note: string } — the three ways in as this device offers them: `open` the door runs a step here, else `note` says why not ('A phone joins an identity made on a computer'). Draw a closed door disabled with its note, never hide it
-  - connections: { id, kind, label, detail, icon, chosen }[] — where a session can be had from here. `kind` 'this-device' (the backend this computer runs), 'server' (one the person added; on the desktop it is listed but not wired yet, so choosing it ends on the connection choice with `error` saying so), 'key-host' (the computer this phone's key signs in to), 'connect' (the browser's AD4M Connect screen, which asks where). Coasys cloud and the hosting index are not in it until they exist: a template says so in its own words rather than listing them
+  - connections: { id, kind, label, detail, icon, chosen }[] — where a session can be had from here. `kind` 'this-device' (the backend this computer runs), 'server' (one the person added; on the desktop it is listed but not wired yet, so choosing it ends on the connection choice with `error` saying so), 'key-host' (the computer this phone's key signs in to), 'connect' (Coasys Connect in the browser: Link this browser, which a device the person owns confirms). Coasys cloud and the hosting index are not in it until they exist: a template says so in its own words rather than listing them
   - chosen: string — the id of the connection chosen last, remembered on this device; empty for none
   - busy: boolean — an identity step or a connection is under way
   - lastOutcome: 'done' | 'cancelled' | 'failed' | '' — how the last identity step ended
@@ -6680,7 +6680,7 @@ What the SDK and executor do around a subscription, so a watch can rely on it:
 
 ### Reading shapes from `@we/backend-ad4m`
 
-Where the browser signs in through AD4M Connect, the `PerspectiveProxy` the app holds comes from the SDK
+Where the browser signs in through Coasys Connect, the `PerspectiveProxy` the app holds comes from the SDK
 copy bundled inside `@coasys/connect`, not from the `@coasys/ad4m` this repo pins: an SDK fix
 reaches that path only when @coasys/connect republishes, so measure performance work there against that
 copy. The desktop's local executor and the phone's key login open an `Ad4mClient` from the pinned

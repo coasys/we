@@ -384,7 +384,7 @@ describe('baseStore, the connection', () => {
   /*
     Lal's P2 on #438: the host asks a remembered place first, so that a relaunch whose place is gone
     lands on the offline state. A person choosing a place from the list is not resuming, and the host
-    is told so (the browser's AD4M Connect then opens its own screen, where a new address goes).
+    is told so (a browser has no address to ask for: Coasys Connect links it to an identity).
   */
   it('tells the host a place was chosen by the person, and not when it resumes or tries again', async () => {
     const calls: [string, boolean][] = [];

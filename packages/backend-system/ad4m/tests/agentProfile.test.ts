@@ -1,7 +1,7 @@
 /**
  * Reading a profile that somebody else's app wrote.
  *
- * An AD4M agent is not created by WE. Somebody reaching WE Web through ad4m-connect brought an
+ * An AD4M agent is not created by WE. Somebody reaching WE Web through Coasys Connect brought an
  * identity made in the ADAM Launcher, in Flux, or on a hosted node, and whatever named them there is
  * the only name they have. Three formats, none of which agree on the link source, the predicates, or
  * even how a string is encoded into a target.

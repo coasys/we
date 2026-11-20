@@ -1,8 +1,8 @@
 /**
  * The executor this phone logs in to with its device key: a URL, kept in the app's localStorage.
  *
- * Under its own key, apart from ad4m-connect's: the connect UI's choice of node is about a
- * password session, and a key login must never be confused with it, or replace it. The phone's
+ * Under its own key, apart from the guest mark's (`storedSession`): a key login's choice of node
+ * must never be confused with a guest's, or replace it. The phone's
  * join screen (`apps/we-mobile/src/identity`) asks for it beside the offer.
  */
 export const KEY_HOST_KEY = 'we-phone/key-host';

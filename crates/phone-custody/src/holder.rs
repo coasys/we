@@ -72,13 +72,31 @@ impl Drop for SetOnDrop {
     }
 }
 
+/// The device string in what the person scanned, and whether it came from a browser's link
+/// (`https://<auth domain>/link#<device string>`) rather than as the bare string a computer or a
+/// phone shows. A browser is listed as one and never keeps the master key. The same rule as
+/// `crates/custody` (`check_code`): the two crates pin different ad4m revisions, so neither can
+/// call the other.
+pub(crate) fn browser_link(text: &str) -> (&str, bool) {
+    match text.trim().split_once('#') {
+        Some((origin, string))
+            if origin.starts_with("https://") || origin.starts_with("http://") =>
+        {
+            (string, true)
+        }
+        _ => (text.trim(), false),
+    }
+}
+
 impl HolderLink {
     /// Checks the code against the clock and the store, then starts the link's thread.
+    /// `browser`: the code came from a browser's link.
     pub(crate) fn start(
         parts: Parts,
         vault: Arc<PhoneVault>,
         did: String,
         device: DeviceString,
+        browser: bool,
     ) -> Result<Arc<HolderLink>, PhoneKeyError> {
         let store_url = parts.store_url();
         if SystemClock.now() >= device.exp {
@@ -111,6 +129,7 @@ impl HolderLink {
                     &did,
                     &device,
                     &store_url,
+                    browser,
                     &flag,
                     &step_tx,
                     &command_rx,
@@ -156,6 +175,7 @@ fn run(
     did: &str,
     device: &DeviceString,
     store_url: &str,
+    browser: bool,
     cancelled: &Arc<AtomicBool>,
     steps: &Sender<Result<LinkStep, PhoneKeyError>>,
     commands: &Receiver<Command>,
@@ -185,7 +205,7 @@ fn run(
             expires: device.exp,
         }));
         let claimed = flow.wait_for_claim().await.map_err(phone_error)?;
-        let can_keep = flow.may_keep(&claimed);
+        let can_keep = flow.may_keep(&claimed) && !browser;
         let _ = steps.send(Ok(LinkStep::Claimed {
             code: claimed.match_code.clone(),
             hint: claimed.hint.clone(),
@@ -201,19 +221,19 @@ fn run(
                 .map(|n| n.trim().to_string())
                 .filter(|n| !n.is_empty())
                 .or_else(|| claimed.hint.clone())
-                .unwrap_or_else(|| "Another device".into()),
-            kind: if can_keep {
-                DeviceKind::DesktopApp
-            } else {
-                DeviceKind::Server
+                .unwrap_or_else(|| if browser { "Browser" } else { "Another device" }.into()),
+            kind: match (browser, can_keep) {
+                (true, _) => DeviceKind::Browser,
+                (false, true) => DeviceKind::DesktopApp,
+                (false, false) => DeviceKind::Server,
             },
-            place: Some(if can_keep {
-                Place::Computer
-            } else {
-                Place::Server
-            }),
+            place: match (browser, can_keep) {
+                (true, _) => None,
+                (false, true) => Some(Place::Computer),
+                (false, false) => Some(Place::Server),
+            },
             address: None,
-            runs_executor: true,
+            runs_executor: !browser,
             holds_master: HoldsMaster::No,
             master_index: None,
             vault: None,
@@ -300,6 +320,20 @@ impl HolderLink {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_browsers_link_is_read_and_flagged() {
+        assert_eq!(
+            browser_link("  coasys:device:1:abc\n"),
+            ("coasys:device:1:abc", false)
+        );
+        assert_eq!(
+            browser_link("https://id.coasys.example/link#coasys:device:1:abc"),
+            ("coasys:device:1:abc", true)
+        );
+        // A fragment on something that is not a web address is no browser's link.
+        assert_eq!(browser_link("ftp://x/#coasys:device:1:abc").1, false);
+    }
 
     /// The confirm wait ends with the flow's unlock: past the deadline the link is `Ended` and
     /// the `LinkFlow` — the unlocked master it holds — is dropped with it, never kept until

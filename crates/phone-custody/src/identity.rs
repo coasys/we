@@ -678,14 +678,15 @@ impl PhoneIdentity {
         }))
     }
 
-    /// Adds the device whose `coasys:device:1:` code this phone scanned: puts its ticket in the
+    /// Adds the device whose `coasys:device:1:` code (or a browser's link to it) this phone scanned: puts its ticket in the
     /// device's inbox (after the biometric prompt) and waits for its claim, on a thread of the
     /// link's own.
     pub fn scan_device(&self, code: String) -> Result<Arc<HolderLink>, PhoneKeyError> {
         let (_, did) = self.parts.member()?;
-        let device = ad4m_identity_core::link::DeviceString::parse(code.trim())
+        let (string, browser) = crate::holder::browser_link(&code);
+        let device = ad4m_identity_core::link::DeviceString::parse(string)
             .map_err(|e| crate::invalid(format!("that is not a device code: {e}")))?;
-        HolderLink::start(self.parts.clone(), self.vault.clone(), did, device)
+        HolderLink::start(self.parts.clone(), self.vault.clone(), did, device, browser)
     }
 }
 

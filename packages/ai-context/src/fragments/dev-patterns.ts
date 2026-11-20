@@ -656,7 +656,7 @@ What the SDK and executor do around a subscription, so a watch can rely on it:
 
 ### Reading shapes from \`@we/backend-ad4m\`
 
-Where the browser signs in through AD4M Connect, the \`PerspectiveProxy\` the app holds comes from the SDK
+Where the browser signs in through Coasys Connect, the \`PerspectiveProxy\` the app holds comes from the SDK
 copy bundled inside \`@coasys/connect\`, not from the \`@coasys/ad4m\` this repo pins: an SDK fix
 reaches that path only when @coasys/connect republishes, so measure performance work there against that
 copy. The desktop's local executor and the phone's key login open an \`Ad4mClient\` from the pinned

@@ -6,14 +6,7 @@
  */
 
 /** The device kinds a record names (`ad4m_identity_core::record::DeviceKind`, kebab-case). */
-export type DeviceKind =
-  | 'desktop-app'
-  | 'phone-app'
-  | 'browser'
-  | 'server'
-  | 'community-host'
-  | 'coasys-cloud'
-  | 'bot';
+export type DeviceKind = 'desktop-app' | 'phone-app' | 'browser' | 'server' | 'community-host' | 'coasys-cloud' | 'bot';
 
 /** One device as the key log and the record list it. */
 export interface DeviceInfo {
@@ -75,7 +68,10 @@ export function deviceRows(devices: DeviceInfo[], nowSeconds: number): DeviceRow
 }
 
 export interface LinkBrowserOffer {
-  /** The browser's device link: `coasys:device:1:…`, as a link. */
+  /**
+   * The browser's device link: `https://<auth domain>/link#coasys:device:1:…`. A desktop or phone
+   * that opens it reads the string after `#` and lists the device as a browser.
+   */
   link: string;
   /** The same link as a QR code, SVG text. */
   qrSvg: string;
@@ -85,11 +81,7 @@ export const LINK_BROWSER_TITLE = 'Link this browser';
 export const LINK_BROWSER_LEAD =
   'Open this link, or scan the code, in an app that holds your identity. It shows a code to compare with the one here.';
 
-function node<K extends keyof HTMLElementTagNameMap>(
-  tag: K,
-  className: string,
-  text = '',
-): HTMLElementTagNameMap[K] {
+function node<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, text = ''): HTMLElementTagNameMap[K] {
   const element = document.createElement(tag);
   if (className) element.className = className;
   if (text) element.textContent = text;
@@ -118,11 +110,7 @@ export function drawDevices(
 }
 
 /** Draws "Link this browser": the QR code, the link with a copy button, and a cancel. */
-export function drawLinkBrowser(
-  parent: HTMLElement,
-  offer: LinkBrowserOffer,
-  onCancel: () => void,
-): void {
+export function drawLinkBrowser(parent: HTMLElement, offer: LinkBrowserOffer, onCancel: () => void): void {
   const qr = node('img', 'qr');
   qr.alt = 'QR code of this browser’s device link';
   qr.src = `data:image/svg+xml;utf8,${encodeURIComponent(offer.qrSvg)}`;

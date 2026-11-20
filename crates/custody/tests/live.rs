@@ -702,6 +702,7 @@ async fn make_link_and_revoke_through_the_custody_service() {
         hint,
         can_keep,
         own_name,
+        ..
     } = matched
     else {
         panic!("no match: {matched:?}")
