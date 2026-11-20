@@ -569,7 +569,7 @@
                                               "flexShrink": "0"
                                             },
                                             "children": [
-                                              { "type": "we-icon", "props": { "name": "squirrel", "size": "sm" } }
+                                              { "type": "we-icon", "props": { "name": "acorn", "size": "sm" } }
                                             ]
                                           },
                                           {

@@ -5073,7 +5073,7 @@ export const contextData: ContextData = {
       id: 'acorn',
       name: 'Acorn',
       description: 'Project management over a mounted Acorn project — outcomes, the tree, priorities, members',
-      icon: 'squirrel',
+      icon: 'acorn',
       scope: 'space',
       requires: {},
       capabilities: [],

@@ -223,7 +223,7 @@ const rail: SchemaNode = railShell({
               entry that opened nothing would be worse than none. The dialog is host chrome
               like its two siblings above, reached through the same shell-flag pattern.
             */
-            { id: 'acorn', label: 'Acorn projects', icon: 'squirrel', hidden: { $: '!spaceStore.acornAvailable' } },
+            { id: 'acorn', label: 'Acorn projects', icon: 'acorn', hidden: { $: '!spaceStore.acornAvailable' } },
           ],
           /*
             One handler over `arg.id`, rather than a handler per item: `DropdownMenu` reports which

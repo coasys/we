@@ -27,7 +27,7 @@ export const ACORN_MANIFEST: ModuleManifest = {
   id: 'acorn',
   name: 'Acorn',
   description: 'Project management over a mounted Acorn project — outcomes, the tree, priorities, members',
-  icon: 'squirrel',
+  icon: 'acorn',
 };
 
 export const acornModule: ModuleDefinition = defineModule({

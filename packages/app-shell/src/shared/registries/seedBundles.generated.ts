@@ -571,7 +571,7 @@ export const seedBundles: Bundle[] = [
                                                 ay: 'center',
                                                 flexShrink: '0',
                                               },
-                                              children: [{ type: 'we-icon', props: { name: 'squirrel', size: 'sm' } }],
+                                              children: [{ type: 'we-icon', props: { name: 'acorn', size: 'sm' } }],
                                             },
                                             {
                                               type: '$if',

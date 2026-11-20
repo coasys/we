@@ -108,7 +108,7 @@ const addSpace: SchemaNode[] = [
     props: {
       condition: { $: 'spaceStore.acornAvailable' },
       then: railItem({
-        icon: 'squirrel',
+        icon: 'acorn',
         label: 'Acorn projects',
         onClick: { $invoke: 'shellStore.setAcornProjectsOpen', args: [true] },
       }),

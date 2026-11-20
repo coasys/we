@@ -19,7 +19,7 @@ const acornNavBar: SchemaNode = {
     ay: 'center',
   },
   children: [
-    { type: 'we-icon', props: { name: 'squirrel' } },
+    { type: 'we-icon', props: { name: 'acorn' } },
     {
       type: 'we-text',
       props: { fontWeight: 'semibold', truncate: true },
@@ -64,7 +64,7 @@ export const acornTemplate: TemplateSchema = {
   meta: {
     name: 'Acorn',
     description: 'An Acorn project — its outcome tree, priorities and members — as a WE space',
-    icon: 'squirrel',
+    icon: 'acorn',
     role: 'shell',
     // The views call the acorn module's expression functions; a deployment without the module
     // sees the reason rather than a blank section.
