@@ -416,3 +416,95 @@ describe('the outcomes view on the live mount', () => {
     });
   });
 });
+
+/*
+  S2-4's gate: the expanded outcome on the live mount, both directions. An outcome opened from
+  the list and edited in its dialog lands on stock as one `update_outcome` — title and
+  description together — and a stock-side `update_outcome` redraws the open dialog, because
+  the dialog reads its outcome by id through the same subscription the list uses.
+
+  `ACORN_SHOTS=<dir>` also saves the dialog reading and editing, for the step's report.
+*/
+describe('the expanded outcome on the live mount', () => {
+  const tag = Date.now().toString(36);
+  const SEED_OPEN = `EO open ${tag}`;
+  const EDITED = `EO edited ${tag}`;
+  const EDITED_DESC = `A description written in the expanded outcome ${tag}`;
+  const SEED_STOCK = `EO stock ${tag}`;
+  const STOCK_EDITED = `EO stock-edited ${tag}`;
+  const STOCK_DESC = `A description the stock side wrote ${tag}`;
+  const SHOTS = process.env.ACORN_SHOTS;
+
+  let stockMod;
+  let stockH;
+  let page;
+  let stockSeed;
+
+  const fetchOutcomes = () =>
+    stockMod.stockCall(stockH, 'projects', 'fetch_outcomes', { input: { All: null }, local: true });
+
+  before(async () => {
+    stockMod = await import(rigFile('stock.mjs'));
+    stockH = await stockMod.connect();
+    await stockMod.createOutcome(stockH, SEED_OPEN, { description: 'seeded on the stock side' });
+    stockSeed = await stockMod.createOutcome(stockH, SEED_STOCK);
+
+    const joined = await datasetNamed('Acorn project');
+    page = await tab('expanded');
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(app.url);
+    await answerNamePrompt(page, 'Acorn Dev');
+    await page.goto(`${app.url}/space/${joined.uuid}`);
+    await page.waitForURL(/\/space\//, { timeout: 300_000 });
+  });
+
+  after(async () => {
+    if (stockH) await stockMod.closeStock(stockH).catch(() => {});
+  });
+
+  /** The open dialog — the one `we-modal` the outcome list draws. */
+  const dialog = () => page.locator('we-modal');
+
+  it('expanded outcome edit writes through', async () => {
+    await page.getByRole('button', { name: `Open ${SEED_OPEN}`, exact: true }).click({ timeout: 300_000 });
+    await dialog().getByText('seeded on the stock side').waitFor({ state: 'visible', timeout: 60_000 });
+    if (SHOTS) await page.screenshot({ path: join(SHOTS, 'expanded-outcome-view.png') });
+
+    await dialog().getByRole('button', { name: 'Edit outcome', exact: true }).click();
+    await fillHeld([
+      [dialog().getByRole('textbox', { name: 'Title' }), EDITED],
+      [dialog().getByRole('textbox', { name: 'Description' }), EDITED_DESC],
+    ]);
+    if (SHOTS) await page.screenshot({ path: join(SHOTS, 'expanded-outcome-editing.png') });
+    await dialog().getByRole('button', { name: 'Save', exact: true }).click();
+
+    await h.until(
+      async () => (await fetchOutcomes()).find((r) => r.entry?.content === EDITED),
+      (r) => r?.entry?.description === EDITED_DESC,
+      { timeout: 120_000, what: `stock fetch_outcomes to show "${EDITED}" with the new description` },
+    );
+    // Back to reading, drawn from the record the save wrote.
+    await dialog().getByRole('button', { name: 'Edit outcome', exact: true }).waitFor({ timeout: 60_000 });
+    await dialog().getByText(EDITED_DESC).waitFor({ state: 'visible', timeout: 60_000 });
+  });
+
+  it('stock-side edit shows in the expanded outcome', async () => {
+    // Close the last dialog and open the stock seed's.
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: `Open ${SEED_STOCK}`, exact: true }).click({ timeout: 300_000 });
+    await dialog().getByText('No description').waitFor({ state: 'visible', timeout: 60_000 });
+
+    const current = (await fetchOutcomes()).find((r) => r.entry?.content === SEED_STOCK);
+    assert.ok(current, `stock lost "${SEED_STOCK}"`);
+    await stockMod.updateOutcome(stockH, stockSeed.actionHash, {
+      ...current.entry,
+      content: STOCK_EDITED,
+      description: STOCK_DESC,
+      timestampUpdated: Math.floor(Date.now() / 1000),
+    });
+
+    // stock → AD4M is gossip plus the mount's resync: the suite's slow direction.
+    await dialog().getByText(STOCK_DESC).waitFor({ state: 'visible', timeout: 300_000 });
+    await dialog().getByText(STOCK_EDITED, { exact: true }).waitFor({ state: 'visible', timeout: 60_000 });
+  });
+});
