@@ -90,6 +90,13 @@ export function createAd4mSchemaPort(backendClient: unknown): SchemaPort {
     prepare: (dataset) => warmSchemaReads(proxy(dataset)),
     hasAnySchema: async (dataset) => (await proxy(dataset).getShaclNames()).length > 0,
 
+    async foreignEntries(dataset): Promise<EntityManifestEntry[]> {
+      // The read half of `foreignSchemas` — registering is the switch's to do, because it
+      // *replaces* the dataset's synthesised-class registry, adopted shapes' compiled classes
+      // included. A candidacy ask only reads.
+      return buildEntityManifest(await getForeignShacl(proxy(dataset)));
+    },
+
     async foreignSchemas(dataset): Promise<EntityManifestEntry[]> {
       const shapes = await getForeignShacl(proxy(dataset));
       registerDynamicEntities(proxy(dataset).uuid, buildEntityClasses(shapes));
