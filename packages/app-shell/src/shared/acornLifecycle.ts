@@ -466,6 +466,25 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
   };
 
   /**
+   * The Acorn mount among `mounted` for an Open — strict where the list row is
+   * forgiving: a mount whose `info` rejects has not answered, which is not the
+   * same as answering "not Acorn". An Acorn answer anywhere still wins; with
+   * none, a rejection is rethrown rather than read as "nothing to open".
+   */
+  const acornMountOf = async (mounted: string[]): Promise<string | null> => {
+    let unanswered: { error: unknown } | null = null;
+    for (const lang of mounted) {
+      try {
+        if (await acornInfo(lang)) return lang;
+      } catch (error) {
+        unanswered ??= { error };
+      }
+    }
+    if (unanswered) throw unanswered.error;
+    return null;
+  };
+
+  /**
    * Identify this agent to the project: `whoami` first (the mount answers null
    * until the member profile exists), the profile `create` when it does not.
    * The AcornProfile fields are the zome's `create_whoami` shape — the agent's
@@ -552,6 +571,15 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
     dep it is the only record.
   */
   const owedLedger = new Map<string, { name: string; writeMeta: boolean; announce: boolean }>();
+
+  /*
+    Open failures from before an operation exists — the dataset, its mounts or
+    the language's `info` could not be read, so there is no language to key an
+    op by. Keyed by dataset instead, parked the way a tail failure is, and
+    resumed by running the Open again. A preflight that gets through clears its
+    entry: from there on the op is the record.
+  */
+  const preflightFailures = new Map<string, AcornOperationState>();
 
   /** The debt a target still owes — the live ledger's answer, the durable intent's when the session has none. */
   const owedFor = (refId: string): { name: string; writeMeta: boolean; announce: boolean } | null => {
@@ -1170,7 +1198,7 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
     return stillWanted() ? ref.id : null;
   };
 
-  return {
+  const api = {
     /**
      * The agent's mounted Acorn projects: every dataset carrying a mount whose language
      * answers as one. `lifecycle.list` already excludes backend bookkeeping
@@ -1283,11 +1311,34 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       if (!port || !lifecycle || !deps.hasAcornTemplate()) return null;
       const nav = { generation: ++openGeneration, selection: deps.currentDatasetId() };
       const owns = () => nav.generation === openGeneration;
-      const ref = await lifecycle.get(datasetId);
-      if (!ref || !owns()) return null;
-      const lang = await firstAcornMount(await port.mounts(ref.id));
+      let ref: DatasetRef | null = null;
+      let lang: string | null;
+      try {
+        ref = await lifecycle.get(datasetId);
+        if (!owns()) return null;
+        lang = ref ? await acornMountOf(await port.mounts(ref.id)) : null;
+      } catch (error) {
+        /*
+          A preflight read that could not be made is a failure like the tail's:
+          parked with the dataset named and resumable — never a silent null the
+          dialog can only answer with "that did not work".
+        */
+        const failure = new AcornLifecycleError({ stage: 'prepare', retryTarget: null, cause: error });
+        if (owns()) {
+          const state: AcornOperationState = {
+            phase: 'failed',
+            name: ref?.name ?? owedFor(datasetId)?.name ?? 'Acorn project',
+            datasetId,
+            failure: makeFailure('prepare', failure.message, true),
+          };
+          preflightFailures.set(datasetId, state);
+          deps.progress?.(state);
+        }
+        throw failure;
+      }
       if (!owns()) return null;
-      if (!lang) {
+      preflightFailures.delete(datasetId);
+      if (!ref || !lang) {
         deps.progress?.(null);
         return null;
       }
@@ -1317,6 +1368,7 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
      */
     async pendingAcornOperation(): Promise<AcornOperationState | null> {
       for (const op of pendingOps.values()) if (op.state) return op.state;
+      for (const state of preflightFailures.values()) return state;
       const port = deps.port();
       const lifecycle = deps.lifecycle();
       if (!port || !lifecycle || !deps.setupIntent) return null;
@@ -1353,6 +1405,17 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       let op = languageAddress ? pendingOps.get(languageAddress) : undefined;
       if (!op && datasetId) op = [...pendingOps.values()].find((entry) => entry.ref?.id === datasetId);
       if (!op && !datasetId && !languageAddress) op = [...pendingOps.values()][0];
+      /*
+        An Open that failed before it had an operation is resumed by running
+        the Open again — on the dataset its failure names.
+      */
+      const preflight =
+        op || languageAddress
+          ? undefined
+          : datasetId
+            ? preflightFailures.get(datasetId)
+            : [...preflightFailures.values()][0];
+      if (preflight?.datasetId) return api.openAcornProject(preflight.datasetId);
       if (!op && deps.setupIntent) {
         for (const ref of await lifecycle.list()) {
           const intent = deps.setupIntent.get(ref.id);
@@ -1394,4 +1457,5 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       deps.progress?.(null);
     },
   };
+  return api;
 }

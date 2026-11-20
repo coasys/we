@@ -659,6 +659,67 @@ describe('openAcornProject', () => {
   });
 
   /*
+    Open's preflight — the dataset, its mounts, the language's `info` — fails the
+    way its tail does: parked as a resumable failure naming the dataset, with a
+    Retry that runs the open again. An `info` that rejects is not "not Acorn".
+  */
+  for (const [what, breakIt] of [
+    ['lifecycle.get', (d: AcornLifecycleDeps) => d.lifecycle()!.get as ReturnType<typeof vi.fn>],
+    ['mounts', (d: AcornLifecycleDeps) => d.port()!.mounts as ReturnType<typeof vi.fn>],
+  ] as const) {
+    it(`parks an Open whose ${what} read fails — resumable, and its Retry finishes the open`, async () => {
+      const record: string[] = [];
+      const d = deps(record);
+      const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
+      port.mountsOf['dataset-1'] = [LANG];
+      breakIt(d).mockRejectedValueOnce(new Error('executor unreachable'));
+      const acorn = createAcornLifecycle(d);
+
+      await expect(acorn.openAcornProject('dataset-1')).rejects.toBeInstanceOf(AcornLifecycleError);
+      await expect(acorn.pendingAcornOperation()).resolves.toMatchObject({
+        phase: 'failed',
+        datasetId: 'dataset-1',
+        failure: {
+          stage: 'prepare',
+          display: 'The executor stopped answering partway through.',
+          retryable: true,
+        },
+      });
+      // Close and reopen still offer it; Retry runs the open again.
+      acorn.dismissAcornOperation();
+      await expect(acorn.pendingAcornOperation()).resolves.toMatchObject({ datasetId: 'dataset-1' });
+      await expect(acorn.resumeAcornOperation('dataset-1')).resolves.toBe('dataset-1');
+      expect(record).toContain('navigate:dataset-1');
+      await expect(acorn.pendingAcornOperation()).resolves.toBeNull();
+    });
+  }
+
+  it('parks an Open whose info read rejects — a rejection is not "not Acorn"', async () => {
+    const record: string[] = [];
+    const d = deps(record);
+    const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
+    port.mountsOf['dataset-1'] = [LANG];
+    const answer = port.interact as ReturnType<typeof vi.fn>;
+    const normal = answer.getMockImplementation() as (url: string, call: { name: string }) => Promise<unknown>;
+    answer.mockImplementation(async (url: string, call: { name: string; parameters?: object }) => {
+      if (call.name === 'info') throw new Error('socket closed');
+      return normal(url, call);
+    });
+    const acorn = createAcornLifecycle(d);
+
+    await expect(acorn.openAcornProject('dataset-1')).rejects.toBeInstanceOf(AcornLifecycleError);
+    await expect(acorn.pendingAcornOperation()).resolves.toMatchObject({
+      phase: 'failed',
+      datasetId: 'dataset-1',
+      failure: { stage: 'prepare', retryable: true },
+    });
+
+    answer.mockImplementation(normal);
+    await expect(acorn.resumeAcornOperation('dataset-1')).resolves.toBe('dataset-1');
+    await expect(acorn.pendingAcornOperation()).resolves.toBeNull();
+  });
+
+  /*
     The same entry, repaired: a create that failed its mount leaves the op and
     the intent's owed meta; the list row's Open is the ask that finishes it —
     and a finished operation is removed, so a close/reopen does not offer a
