@@ -47,6 +47,14 @@ describe('plan', () => {
     assert.equal(steps.at(-1).args.at(-1), 'test:spaces');
   });
 
+  it('runs feed-scale with the Coasys seed on the build and the run step', () => {
+    const steps = plan(parseArgs(['feed-scale']));
+    const build = steps.find((s) => s.args.includes('build:web'));
+    assert.deepEqual(build.env, { WE_SEED: 'seeds/coasys.seed.json' });
+    assert.deepEqual(steps.at(-1).env, { WE_SEED: 'seeds/coasys.seed.json' });
+    assert.equal(steps.at(-1).args.at(-1), 'test:feed-scale');
+  });
+
   it('skips the build with --no-build, and the executor for a suite that runs none', () => {
     assert.deepEqual(shown(plan(parseArgs(['calls', '--no-build']))), [
       'executor pnpm ad4m:executor',
