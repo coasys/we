@@ -8,6 +8,8 @@
 import { type EntityManifestEntry, nameFromProperties } from '@we/backend-shared';
 import type { EntityShape } from '@we/graph-protocol';
 
+import { WE_PLUMBING_CLASSES } from './shapes/extractionCandidates';
+
 /** Translate a backend model manifest entry into the neutral shape the graph reads. */
 export function toEntityShape(entry: EntityManifestEntry): EntityShape {
   const properties: EntityShape['properties'] = [];
@@ -35,6 +37,9 @@ export function toEntityShape(entry: EntityManifestEntry): EntityShape {
         name: property.name,
         target: property.relatedEntity ?? '',
         cardinality: property.isCollection ? 'many' : 'one',
+        // A `belongsTo`/`reverseOf` reads a link its forward already gives, so a graph never follows
+        // it — the mark is what lets it tell the two apart.
+        ...(property.reverse ? { reverse: true } : {}),
       });
     } else {
       properties.push({
@@ -72,5 +77,16 @@ export function toEntityShape(entry: EntityManifestEntry): EntityShape {
         })),
     );
 
-  return { name: entry.name, properties, relations, ...(nameProperty ? { nameProperty } : {}) };
+  /*
+    WE's own structural classes — reactions, model runs, placements — marked so the graph's relation
+    walk can tell a space's declared structure from the furniture the host hangs on every record.
+    The same list the extraction candidates use, so "not the community's content" means one thing.
+  */
+  return {
+    name: entry.name,
+    properties,
+    relations,
+    ...(nameProperty ? { nameProperty } : {}),
+    ...(WE_PLUMBING_CLASSES.includes(entry.name) ? { bookkeeping: true } : {}),
+  };
 }

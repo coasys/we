@@ -84,6 +84,10 @@ const SOURCE_ENTITY = 'TextBlock';
 /** The `TextBlock` property the executor hydrates as a turn's text. */
 const SOURCE_TEXT = 'text';
 
+/** Where a standing watch keeps its filing: beside its processor config, never on it. */
+const FILING_PREDICATE = 'we://extraction_filing';
+const filingNode = (watchId: string) => `ad4m://autoprocessor/${watchId}/filing`;
+
 /**
  * The conversation a request is about: its provenance where it names one, else its parent.
  *
@@ -729,21 +733,36 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
     What each watch is hanging its results on, so the listener below can finish the job the engine
     does not do.
 
-    In memory, and therefore lost on reload — which is exactly what the reconciliation sweep exists
-    to cover. Persisting it would only move the problem: a pass can complete on a peer's node while
-    this client has never run at all, so *some* path has to repair unparented records after the
-    fact, and once that path exists this map is only an optimisation on the common case.
+    The executor debounces a pass, so the last pass of a call often settles after the call ended,
+    unwatched, or the page reloaded. So `watch` also writes the filing to the graph as a Local link
+    (`filingNode`), and the listener reads it back when this map has no entry. A pass that completes
+    while no client of this agent runs at all is still left to the reconciliation sweep.
   */
-  const watchParents = new Map<
-    string,
-    {
-      id: string;
-      predicate: string;
-      provenance?: Linked;
-      recognised?: Linked;
-      prefix: string;
+  type WatchFiling = {
+    id: string;
+    predicate: string;
+    provenance?: Linked;
+    recognised?: Linked;
+    prefix: string;
+  };
+  const watchParents = new Map<string, WatchFiling>();
+
+  /** The filing `watch` left in the graph for `watchId`, when this session's map has none. */
+  async function filingFor(perspective: PerspectiveProxy, watchId: string): Promise<WatchFiling | undefined> {
+    try {
+      const stored = await perspective.getSingleTarget(
+        new LinkQuery({ source: filingNode(watchId), predicate: FILING_PREDICATE }),
+      );
+      if (!stored) return undefined;
+      const filing = JSON.parse(String(Literal.fromUrl(stored).get())) as WatchFiling;
+      if (typeof filing?.id !== 'string' || typeof filing.predicate !== 'string') return undefined;
+      watchParents.set(watchId, filing);
+      return filing;
+    } catch (error) {
+      console.warn('[interpretation] could not read a watch filing', watchId, error);
+      return undefined;
     }
-  >();
+  }
 
   /**
    * The last registration step queued for each perspective and watch id.
@@ -1001,9 +1020,10 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
           }
 
           if (event.step !== 'processed') return;
-          const parent = watchParents.get(event.processorId);
           const me = selfId?.();
-          if (!parent || !me || event.agentDid !== me) return;
+          if (!me || event.agentDid !== me) return;
+          const parent = watchParents.get(event.processorId) ?? (await filingFor(perspective, event.processorId));
+          if (!parent) return;
 
           for (const base of event.bases ?? []) {
             try {
@@ -1337,13 +1357,28 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
       // finds nothing. The source class is a class the watch needs exactly as they are.
       await assertShapesInstalled(perspective, [SOURCE_ENTITY, ...request.classes]);
 
-      watchParents.set(request.watchId, {
+      const filing: WatchFiling = {
         ...request.parent,
         provenance: request.provenance,
         recognised: request.recognised,
         prefix: prefixFor(conversationOf(request)!),
-      });
+      };
+      watchParents.set(request.watchId, filing);
       attachListener(perspective);
+      // Local: only this agent's own listener files its passes, so peers need no copy. Best-effort:
+      // without it the map still files every pass that settles in this session.
+      try {
+        await perspective.setSingleTarget(
+          new Link({
+            source: filingNode(request.watchId),
+            predicate: FILING_PREDICATE,
+            target: Literal.from(JSON.stringify(filing)).toUrl(),
+          }),
+          'local',
+        );
+      } catch (error) {
+        console.warn('[interpretation] could not store a watch filing', request.watchId, error);
+      }
 
       // Read the conversation's own lines through the containment predicate the caller resolved,
       // and the thread replies under them, one `we://thread` hop further. Only lines a person
@@ -1543,7 +1578,8 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
       // up, and a call ending on a host that never registered anything is not a failure worth
       // throwing into a teardown path.
       if (!runtimeSupportsAutoProcessing(dataset)) return;
-      watchParents.delete(watchId);
+      // The filing stays, in `watchParents` and in the graph: a pass of this watch can still settle
+      // after it. A new `watch` with this id overwrites it.
       const perspective = proxy(dataset);
       await oneAtATime(perspective, watchId, () => deleteProcessorConfig(perspective, watchId));
     },

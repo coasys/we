@@ -40,11 +40,11 @@
  *
  * `import.meta.env.DEV` decides whether any of it exists — read once at module scope, so a production
  * build contributes no node and carries no callable action rather than an inert one. And
- * `devToolsEnabled` is the live switch, so somebody checking what a user sees loses these along with
- * every other developer affordance.
+ * `testPeopleEnabled` is the live switch: the Test people switch in Settings → Developer, off until a
+ * developer turns it on, and off whenever the developer tools are.
  */
 import type { LiveAnchor, LiveDecoration } from '@we/module-shared';
-import { devToolsEnabled } from '@we/module-shared';
+import { testPeopleEnabled } from '@we/module-shared';
 
 /** More than this is a stray keypress rather than a test. */
 const MAX = 24;
@@ -58,7 +58,7 @@ const DEV_BUILD = (import.meta as { env?: { DEV?: boolean } }).env?.DEV === true
  * Read once, at module scope, so the definition can decide whether to contribute the controls and the
  * actions — a decision made when the module is defined rather than per render.
  *
- * The **build flag only**, deliberately. `we.devTools` is a live switch, and folding it in here would
+ * The **build flag only**, deliberately. The Test people switch is live, and folding it in here would
  * have a module-scope read decide at boot what a switch is expected to change on the press: the
  * controls would vanish when it was thrown off and never come back.
  *
@@ -76,7 +76,7 @@ export const devCursorsAvailable = DEV_BUILD;
  * class of trap as the persisted count this file refuses to keep.
  */
 export function devCursorsVisible(): boolean {
-  return devToolsEnabled(DEV_BUILD);
+  return testPeopleEnabled(DEV_BUILD);
 }
 
 /** The count for this page, in memory — see the note above on why it does not persist. */

@@ -19,7 +19,14 @@ export type {
 } from './call';
 export { coalesceByKey } from './coalesce';
 export { DEV_FEATURES } from './devFeatures';
-export { DEV_TOOLS_KEY, devToolsEnabled, setDevToolsMuted } from './devTools';
+export {
+  DEV_TOOLS_KEY,
+  devToolsEnabled,
+  setDevToolsMuted,
+  setTestPeopleOn,
+  TEST_PEOPLE_KEY,
+  testPeopleEnabled,
+} from './devTools';
 export type { InterpretationActivitySummary, InterpretationKernel } from './interpretation';
 export { KERNEL_NAMES } from './kernels';
 export { latest } from './latest';
