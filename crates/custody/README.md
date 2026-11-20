@@ -415,7 +415,7 @@ refusal of `host.join` for the person, and follows the join until the host serve
 (`ACTIVATION_WAIT`). The Electron main process (`identityWindow.js`) refuses an `add-cloud-device`
 step whose `host` is neither of the two shapes, before any window opens.
 
-**Coasys cloud's address is one value.** `DEFAULT_CLOUD_URL` in `src/cloud.rs` is `https://cloud.coasys.org`
+**Coasys cloud's address is one value.** `DEFAULT_CLOUD_URL` in `src/cloud.rs` is `https://cloud.coasys.app`
 today, and `coasys_url()` is the only place it is read. `WE_COASYS_CLOUD_URL` replaces it (a staging
 host, or one on this computer); a value that is not an address is an error, not a fall back to the
 default. The service passes the address to the app as `cloudUrl` in its public state, so the app
