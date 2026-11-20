@@ -1,4 +1,4 @@
-import { Ad4mModel, Literal, type PerspectiveProxy, type SHACLShape } from '@coasys/ad4m';
+import { Ad4mModel, getRelationsMetadata, Literal, type PerspectiveProxy, type SHACLShape } from '@coasys/ad4m';
 import { type EntityClass, getEntity, getEntityTargetClass, getRegisteredEntityNames } from '@we/entities';
 
 import type { EntityManifestEntry, EntityManifestProperty } from './manifestTypes';
@@ -215,6 +215,14 @@ export function buildEntityClasses(shapes: ForeignShape[]): Record<string, Entit
   const classResolver = (localName: string) => result[localName] as typeof Ad4mModel | undefined;
   for (const { name, shape } of shapes) {
     const cls = Ad4mModel.fromSHACL(shape, name, classResolver) as unknown as EntityClass;
+    // `fromSHACL` records no `polymorphic` on a relation. A reference with no `sh:class` has no
+    // class to hydrate into, and the executor refuses to include it unless the read is
+    // polymorphic — the same rule `resolvesPolymorphically` applies to a declared manifest.
+    const relations = getRelationsMetadata(cls as never) as Record<string, { polymorphic?: boolean }>;
+    for (const prop of shape.properties) {
+      const relation = prop.name ? relations[prop.name] : undefined;
+      if (relation && (prop.polymorphic ?? (prop.nodeKind === 'IRI' && !prop.class))) relation.polymorphic = true;
+    }
     result[name] = cls;
     // Also register under nodeShapeUri-style name (e.g. "MessageShape") so that
     // sh:class URI local-names resolve even when they include the "Shape" suffix.
