@@ -31,18 +31,6 @@ const channelQueries = {
 };
 
 /**
- * The bottom of a view, kept clear of whatever chrome covers it.
- *
- * `--we-covered-bottom` is how much the host says is covered there — a band some other piece of
- * chrome may float along the bottom of the window, so whatever a view pins to its foot — the
- * composer, the end of a transcript — rises above it, and settles back as the chrome goes. Zero in
- * the ordinary case, which is most of the point: the call's controls ride inside the call's own
- * stage now rather than over every page.
- */
-const CLEAR_OF_THE_BAR = 'calc(var(--we-space-500) + var(--we-covered-bottom, 0px))';
-const LIFT = 'padding-bottom 300 ease';
-
-/**
  * Where to start, in a space with nothing in it yet: a card for each first thing worth doing, which
  * does it when pressed. Shown above the Feed until the space has held a call.
  *
@@ -167,7 +155,7 @@ const rootFeed: SchemaNode = {
     firstSteps,
     {
       type: 'Column',
-      props: { flex: '1', minHeight: '0', px: '500', pt: '300', pb: CLEAR_OF_THE_BAR, transition: LIFT },
+      props: { flex: '1', minHeight: '0', px: '500', pt: '300', pb: '500' },
       children: [{ type: '$part', props: { id: 'feed.feedView' } }],
     },
   ],
@@ -188,7 +176,7 @@ const subChannelChat: SchemaNode = {
     },
     {
       type: 'Column',
-      props: { px: '500', pb: CLEAR_OF_THE_BAR, pt: '200', gap: '100', transition: LIFT },
+      props: { px: '500', pb: '500', pt: '200', gap: '100' },
       children: [
         {
           type: '$if',
@@ -311,7 +299,6 @@ export const spaceRoutes: RouteSchema[] = [
 
 /** The call on its own page is the record the address names. */
 const CALL_ID = 'routeStore.params.id';
-const MINE = `modules.call.callRecordId == ${CALL_ID}`;
 
 /**
  * The conversation the interpretation panel shows — its own subject, written out as the panel writes
@@ -334,12 +321,13 @@ const TRANSCRIBE_ON = "'transcribe' in spaceStore.activeModules";
 const WAITING = `count(modules.transcribe.proposalsFor[${INTERPRETATION_SUBJECT}])`;
 
 /**
- * The end of a call's bar: Live while it runs, the way to the interpretation panel, and the
- * transcript to take away.
+ * The end of a call's bar: the way into the call, Live while it runs, the way to the interpretation
+ * panel, and the transcript to take away.
  *
- * The badge is `sm` so it stands the height of the Page / Canvas switch beside it rather than over
- * it. The export is offered whether the call is running or over, to everyone — see
- * `exportTranscriptButton`.
+ * The way in is for somebody not in the call: Join while it runs, Pick it back up once it has ended.
+ * Somebody in it has the call's own controls instead. The button and the badge are `sm` so they
+ * stand the height of the Page / Canvas switch beside them rather than over it. The export is
+ * offered whether the call is running or over, to everyone — see `exportTranscriptButton`.
  *
  * The Interpretation button does what the panel's rail entry does in WE — `launchModule` on the
  * panel's dock id, so a press toggles it and an open-but-hidden one is brought forward rather than
@@ -351,62 +339,80 @@ const WAITING = `count(modules.transcribe.proposalsFor[${INTERPRETATION_SUBJECT}
  * badge sits beside the glyph rather than over it, so the button gives up being square while it has
  * one rather than covering its own icon.
  */
-export const callBarAside = (callId: string): SchemaNode[] => [
-  {
-    type: '$if',
-    props: {
-      condition: { $: `find(modules.call.liveCalls, { recordId: ${callId} })` },
-      then: { type: 'we-badge', props: { tone: 'success', size: 'sm' }, children: [liveDot, 'Live'] },
-    },
-  },
-  {
-    type: '$if',
-    props: {
-      condition: { $: TRANSCRIBE_ON },
-      then: {
-        type: 'we-tooltip',
-        props: { content: 'Interpretation', placement: 'bottom' },
-        children: [
-          {
-            type: 'we-button',
-            props: {
-              variant: 'ghost',
-              size: 'md',
-              square: { $: `!${WAITING}` },
-              label: {
-                $: `${WAITING} ? \`Interpretation, \${${WAITING}} \${plural(${WAITING}, 'suggestion', 'suggestions')} to review\` : 'Interpretation'`,
-              },
-              expanded: { $: 'modules.transcribe.extractionOpen' },
-              onClick: { $invoke: 'spaceStore.launchModule', args: ['transcribe:extraction'] },
-            },
-            children: [
-              {
-                type: '$if',
-                props: {
-                  condition: { $: 'modules.transcribe.passRunning' },
-                  then: { type: 'we-animated-icon', props: { name: 'spinner' } },
-                  else: { type: 'we-icon', props: { name: 'sparkle' } },
-                },
-              },
-              {
-                type: '$if',
-                props: {
-                  condition: { $: WAITING },
-                  then: {
-                    type: 'we-badge',
-                    props: { size: 'xs', variant: 'solid', tone: 'accent' },
-                    children: [{ $: WAITING }],
-                  },
-                },
-              },
-            ],
+export const callBarAside = (callId: string): SchemaNode[] => {
+  const live = `find(modules.call.liveCalls, { recordId: ${callId} })`;
+  return [
+    {
+      type: '$if',
+      props: {
+        condition: { $: `modules.call.callRecordId != ${callId}` },
+        then: {
+          type: 'we-button',
+          props: {
+            variant: 'solid',
+            size: 'sm',
+            onClick: { $invoke: 'modules.call.continueCall', args: [{ $: callId }] },
           },
-        ],
+          children: [{ type: 'we-icon', props: { name: 'phone' } }, { $: `${live} ? 'Join' : 'Pick it back up'` }],
+        },
       },
     },
-  },
-  exportTranscriptButton(callId),
-];
+    {
+      type: '$if',
+      props: {
+        condition: { $: live },
+        then: { type: 'we-badge', props: { tone: 'success', size: 'sm' }, children: [liveDot, 'Live'] },
+      },
+    },
+    {
+      type: '$if',
+      props: {
+        condition: { $: TRANSCRIBE_ON },
+        then: {
+          type: 'we-tooltip',
+          props: { content: 'Interpretation', placement: 'bottom' },
+          children: [
+            {
+              type: 'we-button',
+              props: {
+                variant: 'ghost',
+                size: 'md',
+                square: { $: `!${WAITING}` },
+                label: {
+                  $: `${WAITING} ? \`Interpretation, \${${WAITING}} \${plural(${WAITING}, 'suggestion', 'suggestions')} to review\` : 'Interpretation'`,
+                },
+                expanded: { $: 'modules.transcribe.extractionOpen' },
+                onClick: { $invoke: 'spaceStore.launchModule', args: ['transcribe:extraction'] },
+              },
+              children: [
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: 'modules.transcribe.passRunning' },
+                    then: { type: 'we-animated-icon', props: { name: 'spinner' } },
+                    else: { type: 'we-icon', props: { name: 'sparkle' } },
+                  },
+                },
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: WAITING },
+                    then: {
+                      type: 'we-badge',
+                      props: { size: 'xs', variant: 'solid', tone: 'accent' },
+                      children: [{ $: WAITING }],
+                    },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      },
+    },
+    exportTranscriptButton(callId),
+  ];
+};
 
 /**
  * A call, as its own page: what is being said and written in it.
@@ -417,7 +423,7 @@ export const callBarAside = (callId: string): SchemaNode[] => [
  * Everything / Messages / Bots and its box, which writes into the call. Neither the controls nor the
  * people in the call are here: the call module's bar holds the controls on every page and its panel
  * draws everyone in the call, connecting and all, so a second set of either would be the same thing
- * twice. What the page adds, for somebody not in the call, is the way into it.
+ * twice. What the page adds, for somebody not in the call, is the way into it, in its bar.
  */
 export const callPage: SchemaNode = {
   type: 'Column',
@@ -438,37 +444,6 @@ export const callPage: SchemaNode = {
         { type: '$part', props: { id: 'call.renameCallButton', subject: { $: CALL_ID } } },
       ],
     ),
-    {
-      type: '$if',
-      props: {
-        // Somebody in the call has it in the call panel; somebody who is not has the way in here.
-        condition: { $: `!(${MINE})` },
-        then: {
-          type: 'Row',
-          // Wraps, so a phone puts the button under the sentence rather than squeezing the sentence.
-          props: { gap: '300', p: '500', ay: 'center', wrap: true },
-          children: [
-            {
-              type: 'we-text',
-              props: { color: 'text-muted', flex: '1', minWidth: '240px' },
-              children: [
-                {
-                  $: `find(modules.call.liveCalls, { recordId: ${CALL_ID} }) ? 'This call is happening now.' : 'This call has ended. Everything said and written in it is below.'`,
-                },
-              ],
-            },
-            {
-              type: 'we-button',
-              props: { variant: 'solid', onClick: { $invoke: 'modules.call.continueCall', args: [{ $: CALL_ID }] } },
-              children: [
-                { type: 'we-icon', props: { name: 'phone' } },
-                { $: `find(modules.call.liveCalls, { recordId: ${CALL_ID} }) ? 'Join' : 'Pick it back up'` },
-              ],
-            },
-          ],
-        },
-      },
-    },
     /*
       The call's Feed, pointed at the call the address names — the same for somebody in the call,
       somebody outside it and somebody reading it after it ended: anybody here can write into it.
@@ -476,7 +451,7 @@ export const callPage: SchemaNode = {
     */
     {
       type: 'Column',
-      props: { flex: '1', minHeight: '0', minWidth: '0', px: '500', pb: CLEAR_OF_THE_BAR, transition: LIFT },
+      props: { flex: '1', minHeight: '0', minWidth: '0', px: '500', pb: '500' },
       children: [{ type: '$part', props: { id: 'feed.callFeed', subject: { $: CALL_ID } } }],
     },
   ],

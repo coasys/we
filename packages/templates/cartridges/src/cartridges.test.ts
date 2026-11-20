@@ -350,11 +350,15 @@ describe('the Coasys cartridge', () => {
     expect(json).not.toContain('"22rem"');
   });
 
-  it('puts the way in under its sentence on a phone, rather than squeezing the sentence to a word a line', () => {
-    const row = findNode(callPage, (n) => n.type === 'Row' && JSON.stringify(n).includes('modules.call.continueCall'));
-    expect((row!.props as { wrap?: unknown }).wrap).toBe(true);
-    const sentence = findNode(row!, (n) => n.type === 'we-text');
-    expect((sentence!.props as { minWidth?: unknown }).minWidth).toBe('240px');
+  it('offers the way into the call in its bar, before Live and the transcript, to somebody not in it', () => {
+    const aside = callBarAside('id');
+    const way = aside[0] as SchemaNode;
+    expect((way.props as { condition?: unknown }).condition).toEqual({ $: 'modules.call.callRecordId != id' });
+    expect(JSON.stringify(way)).toContain('modules.call.continueCall');
+    expect(JSON.stringify(way)).toContain('Pick it back up');
+    expect(JSON.stringify(aside[1])).toContain('Live');
+    // No sentence about the call above the Feed: the bar's Live badge and the Feed say it.
+    expect(JSON.stringify(callPage)).not.toMatch(/This call (has ended|is happening now)/);
   });
 
   it('brings its own name, mark, sign-in screen and theme', () => {

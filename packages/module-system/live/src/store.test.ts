@@ -702,6 +702,13 @@ describe('following', () => {
 });
 
 describe('the synthetic cursors', () => {
+  // The Test people switch on, as a developer testing with fake cursors has it.
+  beforeEach(() => {
+    const stored = new Map([['we.testPeople', 'on']]);
+    vi.stubGlobal('localStorage', { getItem: (key: string) => stored.get(key) ?? null });
+    return () => vi.unstubAllGlobals();
+  });
+
   /** The harness members, present only in a development build — which vitest is. */
   const harness = (store: LiveStore) =>
     store as unknown as { fakeCursorCount: () => number; addFakeCursor: () => void; removeFakeCursor: () => void };

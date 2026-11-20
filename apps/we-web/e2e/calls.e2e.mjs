@@ -78,6 +78,10 @@ const waitVideos = (page, n, what) =>
 
 const leaveCall = (page) => page.locator('we-icon[name="phone-x"]').first().click();
 
+/** A call starts with the camera off; this turns it on from the call bar, as a person does. */
+const cameraOn = (page) =>
+  page.getByRole('button', { name: 'Turn camera on', exact: true }).first().click({ timeout: 30_000 });
+
 let executor;
 let app;
 let browser;
@@ -156,6 +160,7 @@ for (const [topology, mode] of [
     step('joining from the second tab moves the call there, and the first lets go', async () => {
       await joinFromTree(tabB);
       await waitInCall(tabB, 1, 'tab B in the call');
+      await cameraOn(tabB);
       await h.until(
         () => text(tabA),
         (t) => t.includes(REPLACED),
@@ -180,6 +185,7 @@ for (const [topology, mode] of [
       await openSpace(phoneTab, app, space);
       await liveCallRow(phoneTab).waitFor({ timeout: 60_000 });
       await joinFromTree(phoneTab);
+      await cameraOn(phoneTab);
       await waitInCall(phoneTab, 2, 'the second device to count both devices');
       await waitInCall(tabB, 2, 'the first device to count both devices');
       await waitVideos(phoneTab, 2, 'two tiles with moving video on the second device');

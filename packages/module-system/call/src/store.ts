@@ -459,37 +459,16 @@ export function createCallStore(deps: ModuleStoreDeps) {
   }
 
   /**
-   * Named, because it is the one problem that can resolve itself.
+   * The camera, refused when the user asked for it.
    *
-   * Every other message here describes something structural — no space, no transport — that stays
-   * true until the user does something elsewhere. This one is about a permission, and a permission
-   * can be granted a moment later; leaving it on screen after the camera starts working is the
-   * app telling the user something it can plainly see is no longer so.
-   */
-  /*
-    Worded for every host, which the first version was not.
-
-    "Check this site's permissions in your browser" is good advice in `we-web` and nonsense in
-    Electron and Tauri, where there is no browser and no site — so on two of the three hosts it told
-    the user to do something impossible. It also named only one of the two common causes: a device
-    another application already has open fails the same way, and is at least as frequent.
-  */
-  const MEDIA_BLOCKED =
-    'WE could not reach your camera or microphone. Check that WE has permission to use them, and that no other app has them open.';
-
-  /**
-   * The camera specifically, refused when the user asked for it.
-   *
-   * Separate from `MEDIA_BLOCKED` because the two clear on different conditions: this one is still
-   * true while the microphone works perfectly well, so clearing it on "we have a stream" — which is
-   * what the other one wants — would make it flash and vanish in exactly the case it exists for.
+   * A permission can be granted a moment later, so this clears when a camera arrives; leaving it on
+   * screen after the camera starts working would tell the user something they can see is not so.
    */
   const CAMERA_BLOCKED =
     'WE could not turn your camera on. Check that WE has permission to use it, and that no other app has it open.';
 
   /**
-   * The microphone specifically — refused at join while the camera was granted, or refused again on
-   * unmute. Said out loud because, unlike a missing camera, a missing microphone is invisible to the
+   * The microphone, refused on unmute. Said out loud because, unlike a missing camera, a missing microphone is invisible to the
    * person it belongs to. Clears when a microphone arrives, on the same terms as `CAMERA_BLOCKED`.
    */
   const MIC_BLOCKED =
@@ -1277,6 +1256,33 @@ export function createCallStore(deps: ModuleStoreDeps) {
   let joiningSession = false;
 
   /**
+   * Join `session` with `media`'s devices. Answers the step that sends any device turned on while the
+   * join ran; call it once `backendJoined` is set.
+   *
+   * `onTrackChanged` waits for `backendJoined`, and `join` takes the stream as it stands, so a
+   * device turned on in between would reach nobody. Calls start with both devices off, so a camera
+   * pressed straight after Join lands in this window. The step reads the devices when it runs, not
+   * when `join` ends, so a device that lands before the flag is set is still sent.
+   *
+   * The microphone is read from the local stream and the picture from the display stream, as
+   * `onTrackChanged` sends them: while sharing, the display stream is the screen, with no microphone.
+   */
+  async function joinSession(session: CallBackend, media: MediaController): Promise<() => void> {
+    const stream = media.displayStream() ?? media.localStream() ?? new MediaStream();
+    const joinedWith = { audio: stream.getAudioTracks()[0] ?? null, video: stream.getVideoTracks()[0] ?? null };
+    await session.join(stream);
+    return () => {
+      const now = {
+        audio: media.localStream()?.getAudioTracks()[0] ?? null,
+        video: media.displayStream()?.getVideoTracks()[0] ?? null,
+      };
+      for (const kind of ['audio', 'video'] as const) {
+        if (now[kind] !== joinedWith[kind]) void session.replaceTrack(kind, now[kind]);
+      }
+    };
+  }
+
+  /**
    * Build a session on `mode` for call `id` and join it with `media`'s devices. Resolves `true` once
    * it is the call's joined session, `false` when the call moved on meanwhile (and the session has
    * been let go). Rejects when it could not be built or joined — with nothing left behind: a
@@ -1291,8 +1297,9 @@ export function createCallStore(deps: ModuleStoreDeps) {
     }
     backend = next;
     const syncStreams = attachSession(next);
+    let sendLate: () => void;
     try {
-      await next.join(media.displayStream() ?? media.localStream() ?? new MediaStream());
+      sendLate = await joinSession(next, media);
     } catch (err) {
       if (backend === next) detachSession();
       next.destroy().catch((e) => console.error('call: backend destroy', e));
@@ -1300,6 +1307,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
     }
     if (backend !== next) return false;
     setBackendJoined(true);
+    sendLate();
     if (qualityIsManual) await next.setQualityPreference(qualityPreference());
     syncStreams();
     return true;
@@ -1725,16 +1733,19 @@ export function createCallStore(deps: ModuleStoreDeps) {
         // camera button. Each message clears on its own condition, and only its own, so neither a
         // structural problem nor the other media one is swallowed.
         const local = controller?.localStream();
-        if (problem() === MEDIA_BLOCKED && local) setProblem(null);
         if (problem() === CAMERA_BLOCKED && local?.getVideoTracks().length) setProblem(null);
         if (problem() === MIC_BLOCKED && local?.getAudioTracks().length) setProblem(null);
         // A lost device that has come back clears its own message, on the same terms as the two
         // above: each on its own condition, so one recovery cannot swallow another's report.
         if (problem() === MIC_LOST && local?.getAudioTracks().length) setProblem(null);
         if (problem() === CAMERA_LOST && local?.getVideoTracks().length) setProblem(null);
-        // Fires once when devices are acquired, and on every mute after — the first is what tells a
-        // listener the microphone exists at all.
-        setLocalAudio(controller?.localStream() ?? null);
+        /*
+          Fires once when a microphone is acquired, and on every mute after — the first is what tells
+          a listener the microphone exists at all. Only a stream with a microphone in it: a call joins
+          with the microphone off and an empty stream, and a listener handed that stream would build
+          an audio graph from nothing and fail.
+        */
+        setLocalAudio(local?.getAudioTracks().length ? local : null);
         publishActivity();
         rebuildTiles();
       },
@@ -1753,6 +1764,18 @@ export function createCallStore(deps: ModuleStoreDeps) {
     const started = controller;
 
     /*
+      Microphone and camera start off: nobody is heard or seen until they turn one on. With both
+      off, `start` opens nothing, so there is no prompt and no camera light on joining; the first
+      unmute or camera press acquires that device.
+
+      Set here, before the first wait, as are the devices below: a press made while the session is
+      still being built is kept, not turned off again or reopened on the chosen device. Turning a
+      device off and recording a choice both happen before the next line runs.
+    */
+    void started.setAudioEnabled(false);
+    void started.setVideoEnabled(false);
+
+    /*
       Told which devices to use before it opens anything.
 
       `setDevice` with nothing open only records the choice, which is exactly what is wanted here:
@@ -1769,9 +1792,9 @@ export function createCallStore(deps: ModuleStoreDeps) {
       Once permission has been answered, the list is asked for again: labels are empty until a
       capture has been granted at least once, so this is the first moment it can have names in it.
     */
+    void started.setDevice('audio', audioDevice());
+    void started.setDevice('video', videoDevice());
     const acquire = async () => {
-      await started.setDevice('audio', audioDevice());
-      await started.setDevice('video', videoDevice());
       await started.start();
       setDevicesProbed(true);
       void refreshDevices();
@@ -1820,11 +1843,11 @@ export function createCallStore(deps: ModuleStoreDeps) {
 
       // Acquire media, then join the backend with the local stream.
       joiningSession = true;
+      let sendLate: () => void;
       try {
         await acquire();
         if (controller !== started) return;
-        const localStream = started.displayStream() ?? started.localStream() ?? new MediaStream();
-        await session.join(localStream);
+        sendLate = await joinSession(session, started);
       } finally {
         if (controller === started) joiningSession = false;
       }
@@ -1832,6 +1855,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
       if (backend !== session) return;
       // Joined last, so the effect following a switch — which waits on this — sees a whole session.
       setBackendJoined(true);
+      sendLate();
 
       // Seed remote streams from anyone already in the room.
       syncStreams();
@@ -1908,20 +1932,6 @@ export function createCallStore(deps: ModuleStoreDeps) {
       // created rather than against whatever is current.
       if (controller !== started) return;
     }
-
-    /*
-      Say why there is no picture, rather than showing an avatar and leaving them to guess.
-
-      `problem` is a dismissible alert over the call, not a replacement for it — which is the right
-      shape here: a blocked camera does not stop you watching and hearing everyone else, so the call
-      carries on and the reason is stated once. Checked on the stream rather than on an error,
-      because a refused camera that fell back to audio is a different outcome from a refused
-      *request*, and only the second one leaves nothing at all.
-    */
-    const local = started.localStream();
-    if (!local) setProblem(MEDIA_BLOCKED);
-    // The camera came through and the microphone did not: in the call, and heard by nobody.
-    else if (!local.getAudioTracks().length) setProblem(MIC_BLOCKED);
   }
 
   /*
