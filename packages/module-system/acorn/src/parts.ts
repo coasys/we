@@ -251,6 +251,8 @@ const taskEdit = (next: string, onSuccess: unknown[] = []) => [
   flight (`prioBusy`). The state sits on the meta's own row, so it is per project.
 */
 const PRIO = 'acornWorking({ stored: meta.topPriorityOutcomes, working: local.prioWork, written: local.prioWritten })';
+// The priorities drawn: each stored id once, as its loaded outcome; an id with none is not drawn.
+const PRIO_ROWS = `distinct(${PRIO}).map(i, local.outcomes.find(o, o.id == i)).filter(o, o)`;
 const prioEdit = (next: string) => [
   { $setLocal: 'prioWork', value: { $: next } },
   {
@@ -1555,10 +1557,16 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
                   The drawn list is `distinct` first: two carriers sharing a `data-we-id` would
                   give the sortable one item under two rows.
                 */
+                /*
+                  Drawn when a stored priority resolves to a loaded outcome — not merely when one is
+                  stored: deleting an outcome leaves the meta naming it (stock's delete does not
+                  touch the project's priorities), so a list whose priorities are all gone says it
+                  is empty, and keeps the ids.
+                */
                 {
                   type: '$if',
                   props: {
-                    condition: { $: `count(${PRIO})` },
+                    condition: { $: `count(${PRIO_ROWS})` },
                     then: {
                       type: 'we-sortable',
                       props: {
@@ -1570,9 +1578,7 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
                         {
                           type: '$each',
                           props: {
-                            items: {
-                              $: `distinct(${PRIO}).map(i, local.outcomes.find(o, o.id == i)).filter(o, o)`,
-                            },
+                            items: { $: PRIO_ROWS },
                             as: 'priority',
                           },
                           children: [
@@ -1639,9 +1645,15 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
                       ],
                     },
                     else: {
-                      type: 'we-text',
-                      props: { color: 'text-faint' },
-                      children: ['Nothing is a priority yet — add outcomes from the list below.'],
+                      type: '$if',
+                      props: {
+                        condition: { $: 'local.outcomesLoaded' },
+                        then: {
+                          type: 'we-text',
+                          props: { color: 'text-faint' },
+                          children: ['Nothing is a priority yet — add outcomes from the list below.'],
+                        },
+                      },
                     },
                   },
                 },

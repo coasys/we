@@ -65,6 +65,8 @@ async function fixtureHost(options: { lag?: boolean } = {}) {
   };
   /** Somebody else's write, reaching the store without passing this view. */
   const remote = (name: string, id: string, fields: Record<string, unknown>) => entity(name).update(handle, id, fields);
+  /** An outcome deleted, as the mount's `delete_outcome_fully` does: the meta still names it. */
+  const deleteOutcome = (id: string) => entity('AcornOutcome').delete(handle, id);
   const flush = async () => {
     while (deferred.length) await deferred.shift()!();
   };
@@ -84,7 +86,7 @@ async function fixtureHost(options: { lag?: boolean } = {}) {
     $onError: (message: string) => errors.push(message),
     $modelsPending: () => false,
   };
-  return { stores, errors, writes, priorities, flush, remote };
+  return { stores, errors, writes, priorities, flush, remote, deleteOutcome };
 }
 
 const Passthrough = (props: { children?: JSX.Element }) => props.children;
@@ -175,6 +177,25 @@ describe('the priority list', () => {
       await waitFor(async () => expect(await priorities()).toEqual([]));
       await waitFor(() => expect(container.textContent).toContain('Nothing is a priority yet'));
       expect(buttonNamed(container, `Prioritise ${FIRST}`)).toBeTruthy();
+    } finally {
+      unmount();
+    }
+  });
+
+  /*
+    Deleting an outcome leaves the meta naming it — stock's delete_outcome_fully does not touch the
+    project's priorities. The last priority deleted leaves no row to draw, and the list says it is
+    empty rather than drawing nothing; the stored id is kept, as for any priority not drawn.
+  */
+  it('deleting the last priority outcome says the list is empty, and keeps the stored id', async () => {
+    const { container, unmount, writes, priorities, deleteOutcome } = await drawList();
+    try {
+      await waitFor(() => expect(ranked(container)).toEqual(['acorn-outcome-1']));
+      await deleteOutcome('acorn-outcome-1');
+      await waitFor(() => expect(ranked(container)).toEqual([]));
+      await waitFor(() => expect(container.textContent).toContain('Nothing is a priority yet'));
+      expect(await priorities()).toEqual(['acorn-outcome-1']);
+      expect(writes).toEqual([]);
     } finally {
       unmount();
     }
