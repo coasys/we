@@ -346,6 +346,28 @@ const canonical = (value: unknown): string => {
   return JSON.stringify(sorted(v));
 };
 
+/*
+  A view's write history: canonical snapshots of the values its edits replaced and wrote, the last
+  being the value it wrote last — text, so a subscription that reconciles its arrays in place cannot
+  change what was recorded. A template has no effect to clear its own state when the subscription
+  catches up, so the settling is recorded here, against the history list itself: once the stored
+  value is the one written last (it read back) or one this view never saw (somebody else's write,
+  adopted), that list suppresses nothing again — a value it holds that is stored later is a new
+  write, and is drawn. Keyed by identity: each edit writes a new list into local state, and starts
+  it afresh once the one before has settled (`acornWritten`).
+*/
+const settled = new WeakSet<object>();
+const pendingHistory = (stored: unknown, written: unknown): string[] => {
+  if (!Array.isArray(written) || !written.length || settled.has(written)) return [];
+  const history = written.map(canonical);
+  const seen = canonical(stored);
+  if (history[history.length - 1] === seen || !history.includes(seen)) {
+    settled.add(written);
+    return [];
+  }
+  return history;
+};
+
 /** The task list with one change, as the JSON text the record holds — what `record.update` writes. */
 const tasksText = (tasks: AcornTask[]): string => JSON.stringify(tasks);
 
@@ -548,14 +570,31 @@ export const ACORN_FUNCTIONS: ModuleFunction[] = [
   {
     name: 'acornWorking',
     params: ['stored', 'working', 'written'],
-    doc: "The whole-field value the next edit starts from. `stored` is the value as subscribed, `working` the last one this view wrote, `written` every value this view has replaced or written. While the stored value is one of those — the write has not read back yet, or reads back as it went — the working value stands, so an edit builds on the one before it; a stored value this view never saw is somebody else's write, and wins.",
+    doc: 'The whole-field value the next edit starts from. `stored` is the value as subscribed, `working` the last one this view wrote, `written` its history (acornWritten). While that write is unsettled — the stored value is one it replaced on the way — the working value stands, so an edit builds on the one before it. Once the stored value is the one written, or one this view never saw, the history is settled for good and the stored value is the truth again, so a later change elsewhere back to an earlier value is drawn.',
     example: 'acornWorking({ stored: outcome.taskList, working: local.taskWork, written: local.taskWritten })',
     fn: (...args: never[]) => {
       const stored = option(args, 'stored');
+      const working = option(args, 'working');
       const written = option(args, 'written');
-      if (!Array.isArray(written) || !written.length) return stored;
-      const seen = canonical(stored);
-      return written.some((w) => canonical(w) === seen) ? option(args, 'working') : stored;
+      if (pendingHistory(stored, written).length) return working;
+      // Read back: the two are the same value, and the one this view holds keeps its form.
+      return Array.isArray(written) && written.length && canonical(working) === canonical(stored) ? working : stored;
+    },
+  },
+  {
+    name: 'acornWritten',
+    params: ['stored', 'working', 'written'],
+    doc: 'The history after a whole-field edit: what is still unsettled of `written` (the history before it — nothing, once the last write read back or was overtaken), then the stored value the edit replaces and `working`, the value it writes. Recorded as canonical text, for acornWorking to compare against.',
+    example: 'acornWritten({ stored: meta.topPriorityOutcomes, working: local.prioWork, written: local.prioWritten })',
+    fn: (...args: never[]) => {
+      const stored = option(args, 'stored');
+      return [
+        ...new Set([
+          ...pendingHistory(stored, option(args, 'written')),
+          canonical(stored),
+          canonical(option(args, 'working')),
+        ]),
+      ];
     },
   },
   {

@@ -121,6 +121,8 @@ async function fixtureHost(options: HostOptions = {}) {
   const read = async (id: string) =>
     (await entity('AcornOutcome').findOne(handle, { where: { id } })) as Record<string, unknown> | null;
   const all = async (name: string) => (await entity(name).findAll(handle, {})) as Record<string, unknown>[];
+  /** Somebody else's write — stock Acorn's, say — reaching the store without passing this view. */
+  const remote = (name: string, id: string, fields: Record<string, unknown>) => entity(name).update(handle, id, fields);
 
   const errors: string[] = [];
   const stores = {
@@ -130,7 +132,7 @@ async function fixtureHost(options: HostOptions = {}) {
     $onError: (message: string) => errors.push(message),
     $modelsPending: () => false,
   };
-  return { stores, errors, writes, creates, read, all, flush, release };
+  return { stores, errors, writes, creates, read, all, flush, release, remote };
 }
 
 const Passthrough = (props: { children?: JSX.Element }) => props.children;
@@ -404,7 +406,7 @@ describe('the expanded outcome — children, tasks, comments', () => {
     }
   });
 
-  it('a child whose link is refused keeps its draft and is linked again — never made twice', async () => {
+  it('a child whose link is refused keeps its draft and is linked again — never made twice while the dialog is open', async () => {
     const { container, unmount, creates, all } = await openList({ failConnections: 1 });
     try {
       const modal = await open(container, BIG);
@@ -435,6 +437,29 @@ describe('the expanded outcome — children, tasks, comments', () => {
       expect((await all('AcornOutcome')).length).toBe(before + 1);
       expect(buttonNamed(dialog(container)!, 'Link again')).toBeUndefined();
       expect((labelled(dialog(container)!, 'we-input', 'New child outcome') as { value?: string }).value).toBe('');
+    } finally {
+      unmount();
+    }
+  });
+
+  it('a refused link says to link again before closing; closed, the child stays an outcome of its own', async () => {
+    const { container, unmount, creates } = await openList({ failConnections: 1 });
+    try {
+      const modal = await open(container, BIG);
+      await waitFor(() => expect(labelled(modal, 'we-input', 'New child outcome')).toBeTruthy());
+      type(labelled(modal, 'we-input', 'New child outcome')!, 'Map lands read-only');
+      fireEvent.click(buttonNamed(modal, 'Add child outcome')!);
+      await waitFor(() => expect(dialog(container)!.textContent).toContain('Could not link the child'));
+      expect(dialog(container)!.textContent).toContain('before closing');
+
+      // The retry is the dialog's own state: closed and reopened, there is nothing to link again.
+      (dialog(container) as unknown as { close: () => void }).close();
+      await waitFor(() => expect(dialog(container)).toBeNull());
+      await waitFor(() => expect(buttonNamed(container, 'Open Map lands read-only')).toBeTruthy());
+      const reopened = await open(container, BIG);
+      expect(buttonNamed(reopened, 'Link again')).toBeUndefined();
+      expect(buttonNamed(reopened, 'Open child Map lands read-only')).toBeUndefined();
+      expect(creates.map((c) => c.entity)).toEqual(['AcornOutcome', 'AcornConnection']);
     } finally {
       unmount();
     }
@@ -531,6 +556,69 @@ describe('the expanded outcome — children, tasks, comments', () => {
         ]),
       );
       expect(dialog(container)!.textContent).toContain('Tasks 1/3');
+    } finally {
+      unmount();
+    }
+  });
+
+  it("a task list reverted elsewhere after this view's write read back is drawn, and the next edit builds on it", async () => {
+    const { container, unmount, read, writes, remote } = await openList();
+    try {
+      const modal = await open(container, SMALL);
+      await waitFor(() => expect(checkboxNamed(modal, 'boots')).toBeTruthy());
+      type(labelled(modal, 'we-input', 'New task')!, 'a');
+      fireEvent.click(buttonNamed(modal, 'Add task')!);
+      await waitFor(async () =>
+        expect(await tasksOf(read, 'acorn-outcome-2')).toEqual([
+          { task: 'boots', complete: true },
+          { task: 'a', complete: false },
+        ]),
+      );
+      await waitFor(() => expect(checkboxNamed(dialog(container)!, 'a')).toBeTruthy());
+      // Read back. Then stock puts the list back as it was before this view's add.
+      await remote('AcornOutcome', 'acorn-outcome-2', {
+        taskList: JSON.stringify([{ task: 'boots', complete: true }]),
+      });
+      await waitFor(() => expect(checkboxNamed(dialog(container)!, 'a')).toBeUndefined());
+      type(labelled(dialog(container)!, 'we-input', 'New task')!, 'c');
+      await waitFor(() =>
+        expect((buttonNamed(dialog(container)!, 'Add task') as { disabled?: boolean }).disabled).toBe(false),
+      );
+      fireEvent.click(buttonNamed(dialog(container)!, 'Add task')!);
+      await waitFor(() => expect(writes).toHaveLength(2));
+      await waitFor(async () =>
+        expect(await tasksOf(read, 'acorn-outcome-2')).toEqual([
+          { task: 'boots', complete: true },
+          { task: 'c', complete: false },
+        ]),
+      );
+    } finally {
+      unmount();
+    }
+  });
+
+  it('a task typed while the add before it is in flight is kept when that add lands', async () => {
+    const { container, unmount, read, writes, release } = await openList({ hold: true });
+    const field = () => labelled(dialog(container)!, 'we-input', 'New task') as { value?: string } & Element;
+    try {
+      const modal = await open(container, SMALL);
+      await waitFor(() => expect(checkboxNamed(modal, 'boots')).toBeTruthy());
+      type(field(), 'a');
+      fireEvent.click(buttonNamed(modal, 'Add task')!);
+      await waitFor(() => expect(writes).toHaveLength(1));
+      // The next task, typed before the first add has landed.
+      type(field(), 'b');
+      await waitFor(() => expect(field().value).toBe('b'));
+      release();
+      await waitFor(async () =>
+        expect(await tasksOf(read, 'acorn-outcome-2')).toEqual([
+          { task: 'boots', complete: true },
+          { task: 'a', complete: false },
+        ]),
+      );
+      // Settled: the task controls are enabled again.
+      await waitFor(() => expect(checkboxNamed(dialog(container)!, 'a')?.disabled).toBe(false));
+      expect(field().value).toBe('b');
     } finally {
       unmount();
     }

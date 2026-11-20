@@ -21,6 +21,13 @@ import type { ModulePart } from '@we/module-shared';
   A new child is two generic writes — the outcome, then the connection naming its parent — so the
   second can fail after the first landed. The outcome made is held (`orphan`, under
   `orphanParent`) with the draft until its connection lands; only then is the draft cleared.
+
+  That hold is the dialog's local state, so it lasts only while this dialog is open: closing it
+  drops the retry, and the outcome already made stays in the project unlinked, as an outcome of its
+  own (a root in the list). Reopening offers no "Link again", and adding the same draft again makes
+  a second outcome. The refusal therefore says to link again before closing. Recovering after a
+  close is by hand: delete the unlinked outcome from the list, or connect it in Acorn. A retry that
+  survives closing would need the pending link held somewhere durable, which this spike does not do.
 */
 const CHILD_LINKED = [
   { $setLocal: 'newChild', value: '' },
@@ -39,7 +46,12 @@ const CHILD_LINK = {
   onSuccess: CHILD_LINKED,
   onError: [
     { $setLocal: 'childBusy', value: false },
-    { $setLocal: 'writeError', value: { $: "'Could not link the child: ' + result.message + ' — link it again.'" } },
+    {
+      $setLocal: 'writeError',
+      value: {
+        $: "'Could not link the child: ' + result.message + ' — link it again before closing; once closed, it stays an outcome of its own.'",
+      },
+    },
   ],
 };
 
@@ -47,17 +59,20 @@ const CHILD_LINK = {
   The task list is one JSON field, so every edit is a whole-list replace — and an edit made before
   the last one has read back would start from the list that one replaced, undoing it. So each edit
   starts from the working list (`acornWorking`: the last list this view wrote, while the subscription
-  still holds one it replaced or wrote) and only one write per view is in flight (`taskBusy`
-  disables the task controls), so the writes land in the order they were made. A refused write
-  drops the working list, and the subscription's list is drawn and edited again.
+  still holds one it replaced on the way) and only one write per view is in flight (`taskBusy`
+  disables the task controls), so the writes land in the order they were made. Once the write reads
+  back — or somebody else's list arrives — the history is settled and the subscription is the truth
+  again, so a later change elsewhere back to an earlier list is drawn and edited from; the next edit
+  starts a new history (`acornWritten`). A refused write drops the working list, and the
+  subscription's list is drawn and edited again.
 */
-const TASKS =
-  'acornWorking({ stored: outcome.taskList, working: local.taskWork, written: local.taskFor == outcome.id ? local.taskWritten : [] })';
+const TASK_HISTORY = 'local.taskFor == outcome.id ? local.taskWritten : []';
+const TASKS = `acornWorking({ stored: outcome.taskList, working: local.taskWork, written: ${TASK_HISTORY} })`;
 const taskEdit = (next: string, onSuccess: unknown[] = []) => [
   { $setLocal: 'taskWork', value: { $: next } },
   {
     $setLocal: 'taskWritten',
-    value: { $: 'distinct(local.taskFor == outcome.id ? local.taskWritten : [], [outcome.taskList, local.taskWork])' },
+    value: { $: `acornWritten({ stored: outcome.taskList, working: local.taskWork, written: ${TASK_HISTORY} })` },
   },
   { $setLocal: 'taskFor', value: { $: 'outcome.id' } },
   { $setLocal: 'taskBusy', value: true },
@@ -78,14 +93,18 @@ const taskEdit = (next: string, onSuccess: unknown[] = []) => [
 /*
   The priority order is one field on the project meta, replaced whole by every add, remove and
   reorder — the same hazard as the task list, on the same path: each edit starts from the working
-  list (the last this view wrote, while the meta still holds one it replaced or wrote), and one
-  write per project is in flight (`prioBusy`). The state sits on the meta's own row, so it is per
-  project.
+  list (the last this view wrote, while its write is unsettled), and one write per project is in
+  flight (`prioBusy`). The state sits on the meta's own row, so it is per project.
 */
 const PRIO = 'acornWorking({ stored: meta.topPriorityOutcomes, working: local.prioWork, written: local.prioWritten })';
 const prioEdit = (next: string) => [
   { $setLocal: 'prioWork', value: { $: next } },
-  { $setLocal: 'prioWritten', value: { $: 'distinct(local.prioWritten, [meta.topPriorityOutcomes, local.prioWork])' } },
+  {
+    $setLocal: 'prioWritten',
+    value: {
+      $: 'acornWritten({ stored: meta.topPriorityOutcomes, working: local.prioWork, written: local.prioWritten })',
+    },
+  },
   { $setLocal: 'prioBusy', value: true },
   {
     $invoke: 'record.update',
@@ -423,6 +442,7 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
                 saveError: { type: 'string', initial: '' },
                 newChild: { type: 'string', initial: '' },
                 newTask: { type: 'string', initial: '' },
+                addedTask: { type: 'string', initial: '' },
                 newComment: { type: 'string', initial: '' },
                 writeError: { type: 'string', initial: '' },
               },
@@ -738,9 +758,22 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
                               props: {
                                 variant: 'soft',
                                 disabled: { $: '!trim(local.newTask) || local.taskBusy' },
-                                onClick: taskEdit(`acornTasksAdded({ taskList: ${TASKS}, task: local.newTask })`, [
-                                  { $setLocal: 'newTask', value: '' },
-                                ]),
+                                /*
+                                  The field stays open while the add is in flight, so the next task
+                                  can be typed; the draft is cleared on success only if it is still
+                                  the one that was added.
+                                */
+                                onClick: [
+                                  { $setLocal: 'addedTask', value: { $: 'local.newTask' } },
+                                  ...taskEdit(`acornTasksAdded({ taskList: ${TASKS}, task: local.addedTask })`, [
+                                    {
+                                      $if: {
+                                        condition: { $: 'local.newTask == local.addedTask' },
+                                        then: { $setLocal: 'newTask', value: '' },
+                                      },
+                                    },
+                                  ]),
+                                ],
                               },
                               children: ['Add task'],
                             },
