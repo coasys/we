@@ -200,8 +200,8 @@ const strings = (value: unknown): string[] => (Array.isArray(value) ? value.map(
 
 /**
  * The outcome table's rows, as Acorn's `OutcomeTable` draws them: every root outcome (one no
- * connection names as a child), then any outcome no root reaches, and their descendants
- * depth-first in sibling order, each row a level deeper than its parent. Unfiltered, a row is drawn while every ancestor is open; filtered, every
+ * connection names as a child), then each rootless cycle from its first outcome, and their
+ * descendants depth-first in sibling order, each row a level deeper than its parent. Unfiltered, a row is drawn while every ancestor is open; filtered, every
  * outcome that matches is drawn at its own depth, as Acorn's `filterMatch` does — keyword or ID
  * number, high priority, computed status, computed scope and tags, each list an OR, all ANDed.
  */
@@ -227,15 +227,28 @@ const tableRows = (options: Record<string, unknown>) => {
   const childIds = new Set<string>();
   for (const parent of tree.parents)
     if (tree.byId.has(parent)) for (const c of tree.kids(parent)) childIds.add(refId(c.id));
+  // Each outcome's parents, in the order the outcomes are listed — for climbing out of a rootless tail.
+  const parentsOf = new Map<string, string[]>();
+  for (const o of outcomes) {
+    const parent = refId(o.id);
+    for (const c of tree.kids(parent)) {
+      const child = refId(c.id);
+      const parents = parentsOf.get(child);
+      if (parents) parents.push(parent);
+      else parentsOf.set(child, [parent]);
+    }
+  }
   const tagsById = new Map(tags.map((t) => [refId(t.id), t]));
   const rows: Record<string, unknown>[] = [];
 
   /*
     Depth-first in sibling order, without recursion. An outcome under two parents is drawn under
     each; one that is its own ancestor (a cycle) is not drawn again below itself. Unfiltered, a
-    folded row's subtree is not walked at all — nothing in it is drawn.
+    folded row's subtree is not walked at all — nothing in it is drawn. A walk from a rootless
+    cycle (`owner`, below) draws only the outcomes it reached first, so nothing an earlier walk
+    reached is drawn twice.
   */
-  const walk = (root: Record<string, unknown>) => {
+  const walk = (root: Record<string, unknown>, owner?: string) => {
     const path = new Set<string>();
     const stack: Array<{ outcome: Record<string, unknown>; depth: number; shown: boolean } | { leave: string }> = [
       { outcome: root, depth: 0, shown: true },
@@ -248,7 +261,7 @@ const tableRows = (options: Record<string, unknown>) => {
       }
       const { outcome, depth, shown } = frame;
       const id = refId(outcome.id);
-      if (path.has(id)) continue;
+      if (path.has(id) || (owner !== undefined && reachedBy.get(id) !== owner)) continue;
       const r = rollupOf(id);
       const number = outcomeNumber(id);
       const outcomeTags = strings(outcome.tags);
@@ -293,27 +306,43 @@ const tableRows = (options: Record<string, unknown>) => {
     }
   };
   /*
-    Every outcome is under some walk. The roots go first; an outcome no root reaches is in a cycle
-    with no way in (A → B → A), or under one, and is walked from its first outcome in list order —
-    so such a component is drawn, and searched, like any other.
+    Every outcome is under some walk, and each is owned by the first walk that reaches it. The
+    roots go first. An outcome no root reaches is in a cycle with no way in (A → B → A), or below
+    one: from the first such outcome in list order, its parents are climbed until they close a
+    cycle, and the walk starts from that cycle's first outcome in list order — so a tail is drawn
+    under its parent, and folds with it, wherever it sits in the list. That walk draws only what it
+    owns: an outcome another walk reached first is not drawn again.
   */
-  const reached = new Set<string>();
-  const reach = (id: string) => {
+  const reachedBy = new Map<string, string>();
+  const reach = (id: string, owner: string) => {
     const queue = [id];
     while (queue.length) {
       const next = queue.pop()!;
-      if (reached.has(next)) continue;
-      reached.add(next);
+      if (reachedBy.has(next)) continue;
+      reachedBy.set(next, owner);
       for (const c of tree.kids(next)) queue.push(refId(c.id));
     }
   };
+  const listed = new Map(outcomes.map((o, i) => [refId(o.id), i]));
+  const cycleAbove = (id: string) => {
+    const climbed = new Map<string, number>();
+    let at: string | undefined = id;
+    while (at !== undefined && !climbed.has(at)) {
+      climbed.set(at, climbed.size);
+      // Unreached, so every parent is unreached too; it has one, or it would be a root.
+      at = parentsOf.get(at)?.[0];
+    }
+    const cycle = at === undefined ? [id] : [...climbed.keys()].slice(climbed.get(at));
+    return cycle.reduce((a, b) => ((listed.get(b) ?? 0) < (listed.get(a) ?? 0) ? b : a));
+  };
   const roots = outcomes.filter((o) => !childIds.has(refId(o.id)));
-  for (const root of roots) reach(refId(root.id));
+  for (const root of roots) reach(refId(root.id), '');
   for (const root of roots) walk(root);
   for (const o of outcomes) {
-    if (reached.has(refId(o.id))) continue;
-    reach(refId(o.id));
-    walk(o);
+    if (reachedBy.has(refId(o.id))) continue;
+    const start = cycleAbove(refId(o.id));
+    reach(start, start);
+    walk(tree.byId.get(start)!, start);
   }
   return rows;
 };

@@ -200,6 +200,44 @@ describe('the outcome table rows', () => {
     ]);
     expect(rowsOf({ outcomes, connections, filter: { keyword: 'leaf' } }).map((r) => r.id)).toEqual(['leaf']);
   });
+
+  it('a rootless cycle whose tail comes first in the list is drawn from the cycle, each outcome once', () => {
+    const outcomes = [
+      outcome('leaf', 'Small', { content: 'leaf' }),
+      outcome('x', 'Uncertain', { content: 'ex' }),
+      outcome('y', 'Uncertain', { content: 'why' }),
+    ];
+    const connections = [edge('x', 'y'), edge('y', 'x'), edge('y', 'leaf')];
+    expect(rowsOf({ outcomes, connections }).map((r) => [r.id, r.depth])).toEqual([
+      ['x', 0],
+      ['y', 1],
+      ['leaf', 2],
+    ]);
+    expect(rowsOf({ outcomes, connections, filter: { keyword: 'leaf' } }).map((r) => r.id)).toEqual(['leaf']);
+    // The tail is under its parent, so folding the cycle hides it.
+    expect(rowsOf({ outcomes, connections, collapsed: ['x'] }).map((r) => r.id)).toEqual(['x']);
+  });
+
+  it('a second rootless cycle that leads into one already drawn does not draw it again', () => {
+    const outcomes = [
+      outcome('a', 'Uncertain'),
+      outcome('b', 'Uncertain'),
+      outcome('c', 'Uncertain'),
+      outcome('d', 'Uncertain'),
+      outcome('leaf', 'Small'),
+    ];
+    // a ⇄ b → leaf, and c ⇄ d → a: the second cycle is upstream of the first.
+    const connections = [
+      edge('a', 'b'),
+      edge('b', 'a'),
+      edge('b', 'leaf'),
+      edge('c', 'd'),
+      edge('d', 'c'),
+      edge('d', 'a'),
+    ];
+    const ids = rowsOf({ outcomes, connections }).map((r) => r.id);
+    expect([...ids].sort()).toEqual(['a', 'b', 'c', 'd', 'leaf']);
+  });
 });
 
 describe('the outcome table on a long chain', () => {
