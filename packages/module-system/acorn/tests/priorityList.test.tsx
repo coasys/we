@@ -84,12 +84,17 @@ const buttonNamed = (root: HTMLElement, label: string) =>
   [...root.querySelectorAll('we-button')].find((b) => (b.textContent ?? '').trim() === label) as
     HTMLElement | undefined;
 
-async function drawList() {
+/** The list drawn; `stored`, when given, replaces the meta's priority ids before it is. */
+async function drawList(stored?: string[]) {
   const host = await fixtureHost();
+  if (stored) {
+    await host.stores.record.update('AcornProjectMeta', 'acorn-project-meta', { topPriorityOutcomes: stored });
+    host.writes.length = 0;
+  }
   const view = render(() => (
     <RenderSchema node={ACORN_PARTS.priorityList.node} stores={host.stores as never} registry={registry} context={{}} />
   ));
-  await waitFor(() => expect(buttonNamed(view.container, `Prioritise ${SECOND}`)).toBeTruthy());
+  await waitFor(() => expect(buttonNamed(view.container, `Prioritise ${THIRD}`)).toBeTruthy());
   return { ...host, ...view };
 }
 
@@ -156,6 +161,43 @@ describe('the priority list', () => {
       await waitFor(async () => expect(await priorities()).toEqual([]));
       await waitFor(() => expect(container.textContent).toContain('Nothing is a priority yet'));
       expect(buttonNamed(container, `Prioritise ${FIRST}`)).toBeTruthy();
+    } finally {
+      unmount();
+    }
+  });
+
+  /*
+    The stored list can name an outcome the outcome query has not answered with — not yet arrived,
+    or gone. It is not drawn, but a reorder of what is drawn is not a remove: the drop moves the
+    drawn ids among the places drawn ids held, and the unresolved one stays where it was stored.
+  */
+  it('a reorder keeps a priority that does not resolve, where it was stored', async () => {
+    const stored = ['acorn-outcome-1', 'acorn-outcome-missing', 'acorn-outcome-2'];
+    const { container, unmount, writes, priorities } = await drawList(stored);
+    try {
+      await waitFor(() => expect(ranked(container)).toEqual(['acorn-outcome-1', 'acorn-outcome-2']));
+      // b moved above a.
+      container
+        .querySelector('we-sortable')!
+        .dispatchEvent(new CustomEvent('reorder', { detail: ['acorn-outcome-2', 'acorn-outcome-1'], bubbles: true }));
+      await waitFor(() => expect(writes).toHaveLength(1));
+      expect(writes[0].fields).toEqual({
+        topPriorityOutcomes: ['acorn-outcome-2', 'acorn-outcome-missing', 'acorn-outcome-1'],
+      });
+      await waitFor(async () =>
+        expect(await priorities()).toEqual(['acorn-outcome-2', 'acorn-outcome-missing', 'acorn-outcome-1']),
+      );
+      await waitFor(() => expect(ranked(container)).toEqual(['acorn-outcome-2', 'acorn-outcome-1']));
+    } finally {
+      unmount();
+    }
+  });
+
+  it('draws one carrier per priority when the stored list repeats one', async () => {
+    const { container, unmount, errors } = await drawList(['acorn-outcome-1', 'acorn-outcome-2', 'acorn-outcome-1']);
+    try {
+      await waitFor(() => expect(ranked(container)).toEqual(['acorn-outcome-1', 'acorn-outcome-2']));
+      expect(errors).toEqual([]);
     } finally {
       unmount();
     }

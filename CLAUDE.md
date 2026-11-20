@@ -4235,6 +4235,7 @@ Project management over a mounted Acorn project — outcomes, the tree, prioriti
   - acornRollupLabel(rollup) — A roll-up as a person reads it — 'Partially achieved · 1/2 smalls · 1 uncertain'.  e.g. acornRollupLabel({ rollup: acornRollup({ outcome: outcome, outcomes: local.outcomes, connections: local.connections }) })
   - acornAuthor(did, profiles) — Who an agent DID is in the project — the AcornProfile's name, or the DID's short form when no profile names it.  e.g. acornAuthor({ did: comment.creator, profiles: local.profiles })
   - acornWhen(timestamp) — An Acorn timestamp — unix seconds, or milliseconds — as 'YYYY-MM-DD HH:mm' (UTC), or '' when unset.  e.g. acornWhen({ timestamp: comment.unixTimestamp })
+  - acornPriorityOrder(stored, visible) — The project's priority ids after a reorder of the drawn ones. `stored` is the list as kept, `visible` the drawn ids in their new order; each place a drawn id held takes the next of `visible`, and an id that is not drawn — its outcome not loaded, or gone — keeps its place. No stored id is dropped, and each is kept once.  e.g. acornPriorityOrder({ stored: meta.topPriorityOutcomes, visible: event.detail })
 
 ### Polls (`polls`)
 Ask the space a question and watch the answer arrive.

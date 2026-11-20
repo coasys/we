@@ -321,4 +321,29 @@ export const ACORN_FUNCTIONS: ModuleFunction[] = [
       return new Date(t < 1e12 ? t * 1000 : t).toISOString().slice(0, 16).replace('T', ' ');
     },
   },
+  {
+    name: 'acornPriorityOrder',
+    params: ['stored', 'visible'],
+    doc: "The project's priority ids after a reorder of the drawn ones. `stored` is the list as kept, `visible` the drawn ids in their new order; each place a drawn id held takes the next of `visible`, and an id that is not drawn — its outcome not loaded, or gone — keeps its place. No stored id is dropped, and each is kept once.",
+    example: 'acornPriorityOrder({ stored: meta.topPriorityOutcomes, visible: event.detail })',
+    fn: (...args: never[]) => {
+      const ids = (value: unknown): string[] =>
+        Array.isArray(value)
+          ? [
+              ...new Set(
+                value
+                  .map((v: unknown) => (typeof v === 'string' ? v : (v as { id?: unknown } | null)?.id))
+                  .filter((v): v is string => typeof v === 'string' && v !== ''),
+              ),
+            ]
+          : [];
+      const stored = ids(option(args, 'stored'));
+      const visible = ids(option(args, 'visible'));
+      const drawn = new Set(visible.filter((id) => stored.includes(id)));
+      const moved = visible.filter((id) => drawn.has(id));
+      const merged = stored.map((id) => (drawn.has(id) ? moved.shift()! : id));
+      // An id the sortable reports that the list never held is added at the end rather than lost.
+      return [...merged, ...visible.filter((id) => !stored.includes(id))];
+    },
+  },
 ];
