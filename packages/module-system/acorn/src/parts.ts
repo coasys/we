@@ -526,28 +526,181 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
   },
   priorityList: {
     label: 'Priority list',
-    description: "The project's top-priority outcomes, in the order AcornProjectMeta left them",
+    description:
+      "The project's top-priority outcomes, in the order AcornProjectMeta keeps them — reorderable, with outcomes to add and remove",
     node: {
       type: 'Column',
-      props: { gap: '200', width: '100%' },
+      props: { gap: '400', width: '100%' },
+      /*
+        One subscription for every outcome, joined to the meta's id list below rather than
+        hydrated through `include`. The list's order is the record — the whole point of the
+        field — and the stored id list is what carries it; an included relation is drawn in
+        whatever order the backend hydrates (the in-memory one reads its table order).
+      */
+      $queries: { outcomes: { entity: 'AcornOutcome', order: { timestampCreated: 'asc' } } },
       children: [
         {
           type: '$each',
-          props: {
-            items: { $query: { entity: 'AcornProjectMeta', include: { topPriorityOutcomes: true } } },
-            as: 'meta',
-          },
+          props: { items: { $query: { entity: 'AcornProjectMeta' } }, as: 'meta' },
           children: [
             {
-              type: '$each',
-              props: { items: { $: 'meta.topPriorityOutcomes' }, as: 'priority' },
+              type: 'Column',
+              props: { gap: '400', width: '100%' },
               children: [
+                /*
+                  The order is one field on the project meta, and every change to it — a drag, an
+                  add, a remove — is a whole-list replace through `record.update`: the mount
+                  declares no adder or remover, so its `update` call takes the new list entire
+                  (design §2). `we-sortable` hands over exactly that, the zone's ids in their new
+                  order, so the drop writes what it reports and nothing is spliced here.
+                */
                 {
-                  type: 'Row',
-                  props: { gap: '300', p: '300', bg: 'surface', r: 'surface', width: '100%' },
+                  type: '$if',
+                  props: {
+                    condition: { $: 'count(meta.topPriorityOutcomes)' },
+                    then: {
+                      type: 'we-sortable',
+                      props: {
+                        gap: '200',
+                        onReorder: {
+                          $invoke: 'record.update',
+                          args: ['AcornProjectMeta', { $: 'meta.id' }, { $: '{ topPriorityOutcomes: event.detail }' }],
+                        },
+                      },
+                      children: [
+                        {
+                          type: '$each',
+                          props: {
+                            items: {
+                              $: 'meta.topPriorityOutcomes.map(i, local.outcomes.find(o, o.id == i)).filter(o, o)',
+                            },
+                            as: 'priority',
+                          },
+                          children: [
+                            {
+                              // A native carrier: `we-sortable` reads `data-we-id` off the DOM.
+                              type: 'div',
+                              props: { 'data-we-id': { $: 'priority.id' }, style: { width: '100%' } },
+                              children: [
+                                {
+                                  type: 'Row',
+                                  props: {
+                                    gap: '300',
+                                    ay: 'center',
+                                    p: '300',
+                                    bg: 'surface',
+                                    r: 'surface',
+                                    width: '100%',
+                                  },
+                                  children: [
+                                    {
+                                      // The grip — only a press here drags, and Space on it picks the row up.
+                                      type: 'div',
+                                      props: { 'data-we-handle': '', style: { display: 'flex' } },
+                                      children: [
+                                        {
+                                          type: 'we-button',
+                                          props: {
+                                            label: { $: '`Reorder ${priority.content}`' },
+                                            variant: 'bare',
+                                            cursor: 'grab',
+                                            activeProps: { cursor: 'grabbing' },
+                                          },
+                                          children: [
+                                            {
+                                              type: 'we-icon',
+                                              props: { name: 'dots-six-vertical', color: 'text-faint' },
+                                            },
+                                          ],
+                                        },
+                                      ],
+                                    },
+                                    { type: 'we-text', props: { color: 'text-faint' }, children: [{ $: 'index + 1' }] },
+                                    {
+                                      type: 'we-text',
+                                      props: { fontWeight: 'medium', flex: '1 1 auto', minWidth: '0' },
+                                      children: [{ $: 'priority.content' }],
+                                    },
+                                    {
+                                      type: 'we-button',
+                                      props: {
+                                        variant: 'ghost',
+                                        size: 'sm',
+                                        onClick: {
+                                          $invoke: 'record.update',
+                                          args: [
+                                            'AcornProjectMeta',
+                                            { $: 'meta.id' },
+                                            {
+                                              $: '{ topPriorityOutcomes: meta.topPriorityOutcomes.filter(i, i != priority.id) }',
+                                            },
+                                          ],
+                                        },
+                                      },
+                                      children: [{ $: '`Remove ${priority.content} from priority`' }],
+                                    },
+                                  ],
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                    else: {
+                      type: 'we-text',
+                      props: { color: 'text-faint' },
+                      children: ['Nothing is a priority yet — add outcomes from the list below.'],
+                    },
+                  },
+                },
+                // Every outcome not on the list, to add at its end.
+                {
+                  type: 'Column',
+                  props: { gap: '200', width: '100%' },
                   children: [
-                    { type: 'we-text', props: { tone: 'secondary' }, children: [{ $: 'index + 1' }] },
-                    { type: 'we-text', props: { fontWeight: 'medium' }, children: [{ $: 'priority.content' }] },
+                    { type: 'we-text', props: { variant: 'label' }, children: ['Other outcomes'] },
+                    {
+                      type: '$each',
+                      props: { items: { $: 'local.outcomes' }, as: 'outcome' },
+                      children: [
+                        {
+                          type: '$if',
+                          props: {
+                            condition: { $: '!(outcome.id in meta.topPriorityOutcomes)' },
+                            then: {
+                              type: 'Row',
+                              props: { gap: '300', ay: 'center', px: '300', py: '200', width: '100%' },
+                              children: [
+                                {
+                                  type: 'we-text',
+                                  props: { flex: '1 1 auto', minWidth: '0' },
+                                  children: [{ $: 'outcome.content' }],
+                                },
+                                {
+                                  type: 'we-button',
+                                  props: {
+                                    variant: 'soft',
+                                    size: 'sm',
+                                    onClick: {
+                                      $invoke: 'record.update',
+                                      args: [
+                                        'AcornProjectMeta',
+                                        { $: 'meta.id' },
+                                        {
+                                          $: '{ topPriorityOutcomes: distinct(meta.topPriorityOutcomes, [outcome.id]) }',
+                                        },
+                                      ],
+                                    },
+                                  },
+                                  children: [{ $: '`Prioritise ${outcome.content}`' }],
+                                },
+                              ],
+                            },
+                          },
+                        },
+                      ],
+                    },
                   ],
                 },
               ],
