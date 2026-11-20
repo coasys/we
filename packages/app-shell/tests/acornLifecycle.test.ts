@@ -1491,6 +1491,59 @@ describe('mount retry — the fresh-cell stall', () => {
     expect(record).toContain(`mount:dataset-1:${LANG}`);
   });
 
+  /*
+    The Retry pressed while the timed-out allocation is still out: the op holds
+    that one allocation, and the Retry waits on it rather than allocating a
+    second — whichever way the late create and the Retry's own discovery land.
+  */
+  for (const order of ['before', 'after'] as const) {
+    it(`a Retry while the timed-out allocation is out makes no second perspective — it lands ${order} the Retry's turn`, async () => {
+      vi.useFakeTimers();
+      const record: string[] = [];
+      const d = deps(record, { mountBudgetMs: 5_000 });
+      const releases: Array<() => void> = [];
+      (d.lifecycle()!.create as ReturnType<typeof vi.fn>).mockImplementation(async (name: string) => {
+        const n = releases.length + 1;
+        record.push(`create:${name}`);
+        await new Promise<void>((resolve) => releases.push(resolve));
+        return ref(`dataset-${n}`, name);
+      });
+      const acorn = createAcornLifecycle(d);
+
+      const out = acorn.createAcornProject('P', 'a b c', BASE).then(
+        (value) => ({ value, error: undefined as unknown }),
+        (error: unknown) => ({ value: undefined, error }),
+      );
+      await vi.waitFor(() => expect(releases).toHaveLength(1));
+      await vi.advanceTimersByTimeAsync(6_000);
+      expect((await out).error).toBeInstanceOf(AcornLifecycleError);
+
+      // The Retry's discovery read is held, so the late create can land inside it…
+      const list = d.lifecycle()!.list as ReturnType<typeof vi.fn>;
+      let releaseList: () => void = () => {};
+      list.mockImplementationOnce(() => new Promise<DatasetRef[]>((resolve) => (releaseList = () => resolve([]))));
+      const retry = acorn.resumeAcornOperation();
+      await vi.advanceTimersByTimeAsync(0);
+      if (order === 'before') {
+        releases[0]();
+        await vi.advanceTimersByTimeAsync(0);
+        releaseList();
+      } else {
+        // …or only after the Retry got past the point where it would allocate.
+        releaseList();
+        await vi.advanceTimersByTimeAsync(1_000);
+        releases[0]();
+      }
+      for (const release of releases.slice(1)) release();
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      await expect(retry).resolves.toBe('dataset-1');
+      expect(d.lifecycle()!.create).toHaveBeenCalledTimes(1);
+      expect(record).toContain(`mount:dataset-1:${LANG}`);
+      expect(record.find((c) => c.includes('dataset-2'))).toBeUndefined();
+    });
+  }
+
   it('stops after five attempts and parks the same target — a bounded failure, not a loop', async () => {
     vi.useFakeTimers();
     const record: string[] = [];

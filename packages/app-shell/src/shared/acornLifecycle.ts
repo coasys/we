@@ -88,6 +88,12 @@ interface PendingAcornOp {
   announce: boolean;
   /** The target once allocated or retained — the thing a failed mount cannot lose. */
   ref?: DatasetRef;
+  /**
+   * The allocation still out, when a run stopped waiting for it. Its answer is
+   * this op's target, so a Retry waits on it rather than allocating beside it;
+   * cleared once it settles — a rejection leaves a later run free to allocate.
+   */
+  allocation?: Promise<DatasetRef>;
   /** The state last reported for this op — what `pendingAcornOperation` hands the chrome. */
   state?: AcornOperationState;
   /**
@@ -887,6 +893,25 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
         retryTarget: null,
         cause: new Error(`the mount phase did not answer inside the ${mountBudgetMs / 1000} s budget`),
       });
+    /*
+      An earlier run's allocation still out is this op's target-to-be: waited
+      on from this run's budget, never allocated beside. Its rejection is an
+      answer — the perspective was not made — and lets this run allocate. Runs
+      on one language are serialized, so no other allocation can start while
+      this one discovers.
+    */
+    if (!op.ref && op.allocation) {
+      const earlier = await withinBudget(
+        op.allocation.then(
+          (made) => made,
+          () => null,
+        ),
+        deadline - Date.now(),
+      );
+      if (earlier === BUDGET_OUT) throw budgetSpent();
+      if (earlier) op.ref ??= earlier;
+      if (!owns()) return null;
+    }
     const found = op.ref
       ? { ref: op.ref, mounted: false }
       : await withinBudget(targetFor(op.lang, owns), deadline - Date.now());
@@ -895,22 +920,25 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
     if (!owns()) return null;
     let ref = found?.ref;
     if (!ref) {
+      /*
+        The one allocation for this op. Whoever is waiting when it lands — this
+        run, or a Retry after this run's budget ran out — takes its answer as
+        the target; a newer run that already settled on one keeps its own.
+      */
       const allocation = deps.lifecycle()!.create(op.name);
+      op.allocation = allocation;
+      void allocation.then(
+        (late) => {
+          op.ref ??= late;
+          if (op.allocation === allocation) op.allocation = undefined;
+        },
+        () => {
+          if (op.allocation === allocation) op.allocation = undefined;
+        },
+      );
       const allocated = await withinBudget(allocation, deadline - Date.now());
-      if (allocated === BUDGET_OUT) {
-        /*
-          The perspective may still arrive. It is this operation's target when
-          it does, so the Retry mounts it rather than allocating a second beside
-          it — unless a newer run already settled on one of its own.
-        */
-        void allocation.then(
-          (late) => {
-            op.ref ??= late;
-          },
-          () => {},
-        );
-        throw budgetSpent();
-      }
+      // The perspective may still arrive: it stays out on the op for the Retry to wait on.
+      if (allocated === BUDGET_OUT) throw budgetSpent();
       ref = allocated;
       /*
         Stood down while the perspective was being made: it is kept as the
