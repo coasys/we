@@ -449,7 +449,7 @@ export const devicesPage: SchemaNode = {
               type: 'we-input',
               props: {
                 placeholder: 'Host address (optional)',
-                value: { $: 'cloudAddress' },
+                value: { $: 'local.cloudAddress' },
                 onInput: { $setLocal: 'cloudAddress', value: { $: 'event.detail' } },
               },
             },
@@ -462,7 +462,7 @@ export const devicesPage: SchemaNode = {
                     size: 'sm',
                     loading: { $: 'identityStore.busy' },
                     disabled: { $: 'identityStore.busy' },
-                    onClick: { $invoke: 'deviceStore.addCloudDevice', args: [{ $: 'cloudAddress' }] },
+                    onClick: { $invoke: 'deviceStore.addCloudDevice', args: [{ $: 'local.cloudAddress' }] },
                   },
                   children: ['Add a cloud device'],
                 },
