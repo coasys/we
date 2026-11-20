@@ -418,6 +418,8 @@ describe('transport and device lifetime', () => {
       reactive?: boolean;
       /** What the machine answers when asked for devices; by default, a microphone every time. */
       getUserMedia?: (constraints: MediaStreamConstraints) => Promise<MediaStream>;
+      /** What the machine answers when asked for a screen; by default, a refusal. */
+      getDisplayMedia?: () => Promise<MediaStream>;
     } = {},
   ) {
     const tracked = options.reactive ? trackingReactivity() : null;
@@ -570,9 +572,11 @@ describe('transport and device lifetime', () => {
         },
         media: {
           getUserMedia: options.getUserMedia ?? (async () => mic),
-          getDisplayMedia: async () => {
-            throw new Error('no screen here');
-          },
+          getDisplayMedia:
+            options.getDisplayMedia ??
+            (async () => {
+              throw new Error('no screen here');
+            }),
           publish: (stream: MediaStream | null) => void publishedMedia.push(stream),
           input: () => publishedMedia.at(-1) ?? null,
           // A machine with nothing to choose between, which is one of the ordinary states the
@@ -1333,34 +1337,118 @@ describe('transport and device lifetime', () => {
       expect(stateOf()?.transport, 'read from the session once the pair connects').toBe('relay');
     });
 
-    it('sends a camera turned on while the session was still joining', async () => {
-      /*
-        Calls start with both devices off, so the session joins with an empty stream. A camera
-        pressed before the join finished changed nothing the session could see: track changes wait
-        for the join, and the join had taken the stream as it stood. The other side saw no video.
-      */
-      const fake = fakeSession();
-      let finishJoin = () => {};
-      fake.session.join = (stream: MediaStream) => {
-        fake.session.joinedWith = stream;
-        return new Promise<void>((resolve) => (finishJoin = resolve));
-      };
-      const camera = { kind: 'video', enabled: true, readyState: 'live', stop() {}, addEventListener() {} };
-      const { store } = callable({
-        backend: () => fake.session,
-        getUserMedia: async () => new MediaStream([camera as unknown as MediaStreamTrack]),
-      });
+    /*
+      Calls start with both devices off, so the session joins with an empty stream. A device turned
+      on before the join finished changed nothing the session could see: track changes wait for the
+      join, and the join had taken the stream as it stood. The other side saw no video.
+    */
+    describe('a device turned on while the session joins', () => {
+      const track = (kind: string) =>
+        ({ kind, enabled: true, readyState: 'live', stop() {}, addEventListener() {} }) as unknown as MediaStreamTrack;
       const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-      const starting = store.startCall();
-      await settle();
-      expect(fake.session.joinedWith?.getTracks(), 'joined with nothing on').toEqual([]);
-      await store.toggleVideo();
-      finishJoin();
-      await starting;
-      await settle();
+      /** A session built once `built` resolves, whose join waits for `finishJoin`. */
+      function joining(
+        options: {
+          built?: Promise<void>;
+          getUserMedia?: (constraints: MediaStreamConstraints) => Promise<MediaStream>;
+          getDisplayMedia?: () => Promise<MediaStream>;
+        } = {},
+      ) {
+        const fake = fakeSession();
+        let finish = () => {};
+        fake.session.join = (stream: MediaStream) => {
+          fake.session.joinedWith = stream;
+          return new Promise<void>((resolve) => (finish = resolve));
+        };
+        const camera = track('video');
+        const microphone = track('audio');
+        const harness = callable({
+          backend: async () => {
+            await options.built;
+            return fake.session;
+          },
+          getUserMedia: options.getUserMedia ?? (async (asked) => new MediaStream([asked.audio ? microphone : camera])),
+          ...(options.getDisplayMedia ? { getDisplayMedia: options.getDisplayMedia } : {}),
+        });
+        return { ...harness, fake, camera, microphone, finishJoin: () => finish() };
+      }
 
-      expect(fake.session.sent).toEqual([['video', camera]]);
+      it('sends a camera turned on during the join', async () => {
+        const { store, fake, camera, finishJoin } = joining();
+
+        const starting = store.startCall();
+        await settle();
+        expect(fake.session.joinedWith?.getTracks(), 'joined with nothing on').toEqual([]);
+        await store.toggleVideo();
+        finishJoin();
+        await starting;
+        await settle();
+
+        expect(fake.session.sent).toEqual([['video', camera]]);
+      });
+
+      it('sends a microphone that lands as the join ends', async () => {
+        // Read when the session counts as joined, not when `join` returns: between the two, a
+        // microphone that lands is dropped by `onTrackChanged` and missed by an earlier reading.
+        let grant = () => {};
+        const { store, fake, microphone, finishJoin } = joining({
+          getUserMedia: () => new Promise((resolve) => (grant = () => resolve(new MediaStream([microphone])))),
+        });
+
+        const starting = store.startCall();
+        await settle();
+        const unmuting = store.toggleAudio();
+        await settle();
+        finishJoin();
+        grant();
+        await Promise.all([starting, unmuting]);
+        await settle();
+
+        expect(fake.session.sent).toEqual([['audio', microphone]]);
+      });
+
+      it('sends the microphone, not the screen, when unmuted while sharing during the join', async () => {
+        // While sharing, the display stream is the screen: it holds no microphone.
+        const screen = track('video');
+        const { store, fake, microphone, finishJoin } = joining({
+          getDisplayMedia: async () => new MediaStream([screen]),
+        });
+
+        const starting = store.startCall();
+        await settle();
+        await store.toggleScreenShare();
+        await store.toggleAudio();
+        finishJoin();
+        await starting;
+        await settle();
+
+        expect(fake.session.sent).toEqual(
+          expect.arrayContaining([
+            ['audio', microphone],
+            ['video', screen],
+          ]),
+        );
+      });
+
+      it('keeps a camera pressed while the session was still being built', async () => {
+        let build = () => {};
+        const { store, fake, camera, finishJoin } = joining({
+          built: new Promise<void>((resolve) => (build = resolve)),
+        });
+
+        const starting = store.startCall();
+        await settle();
+        await store.toggleVideo();
+        build();
+        await settle();
+        finishJoin();
+        await starting;
+        await settle();
+
+        expect(store.media().videoEnabled, 'the press is not turned off again').toBe(true);
+        expect(fake.session.joinedWith?.getVideoTracks()).toEqual([camera]);
+      });
     });
 
     it('reconnects a peer through the session', async () => {

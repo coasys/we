@@ -190,7 +190,6 @@ describe('the More menu', () => {
   it('keeps mute, camera, screen share and hang-up directly in the row', () => {
     // They are the call. A menu between a person and their microphone is one step too many at the
     // moment they need it — so their buttons are row children, never menu items.
-    expect(items('modules.call.toggleScreenShare'), 'screen share is still a menu line').toHaveLength(0);
     for (const action of [
       'modules.call.toggleAudio',
       'modules.call.toggleVideo',
@@ -204,6 +203,21 @@ describe('the More menu', () => {
         `${action} ended up inside the menu`,
       ).toBe(false);
     }
+  });
+
+  it('folds screen share into the menu below `base` only, where its seat would cost Leave', () => {
+    // At 390px the row holds mute, camera, the contributed slot, More, the count and Leave. Exactly
+    // one of the square and the line exists at any width.
+    const tierGate = (node: SchemaNode) =>
+      lineage(chrome(), node)?.find(
+        (step) => step.type === '$if' && JSON.stringify(props(step).condition).includes('surface.tier'),
+      );
+    expect(JSON.stringify(props(tierGate(buttonFor('modules.call.toggleScreenShare'))!).condition)).toBe(
+      JSON.stringify({ $: "surface.tier != 'base'" }),
+    );
+    const line = items('modules.call.toggleScreenShare');
+    expect(line, 'one screen share line in the menu').toHaveLength(1);
+    expect(JSON.stringify(props(tierGate(line[0]!)!).condition)).toBe(JSON.stringify({ $: "surface.tier == 'base'" }));
   });
 
   it('keeps contributed controls in the row', () => {

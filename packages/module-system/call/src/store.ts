@@ -1256,24 +1256,30 @@ export function createCallStore(deps: ModuleStoreDeps) {
   let joiningSession = false;
 
   /**
-   * Join `session` with `media`'s devices, then send any device turned on while the join ran.
+   * Join `session` with `media`'s devices. Answers the step that sends any device turned on while the
+   * join ran; call it once `backendJoined` is set.
    *
    * `onTrackChanged` waits for `backendJoined`, and `join` takes the stream as it stands, so a
    * device turned on in between would reach nobody. Calls start with both devices off, so a camera
-   * pressed straight after Join lands in this window.
+   * pressed straight after Join lands in this window. The step reads the devices when it runs, not
+   * when `join` ends, so a device that lands before the flag is set is still sent.
+   *
+   * The microphone is read from the local stream and the picture from the display stream, as
+   * `onTrackChanged` sends them: while sharing, the display stream is the screen, with no microphone.
    */
-  async function joinSession(session: CallBackend, media: MediaController): Promise<void> {
-    const sending = () => {
-      const stream = media.displayStream() ?? media.localStream();
-      return { audio: stream?.getAudioTracks()[0] ?? null, video: stream?.getVideoTracks()[0] ?? null };
+  async function joinSession(session: CallBackend, media: MediaController): Promise<() => void> {
+    const stream = media.displayStream() ?? media.localStream() ?? new MediaStream();
+    const joinedWith = { audio: stream.getAudioTracks()[0] ?? null, video: stream.getVideoTracks()[0] ?? null };
+    await session.join(stream);
+    return () => {
+      const now = {
+        audio: media.localStream()?.getAudioTracks()[0] ?? null,
+        video: media.displayStream()?.getVideoTracks()[0] ?? null,
+      };
+      for (const kind of ['audio', 'video'] as const) {
+        if (now[kind] !== joinedWith[kind]) void session.replaceTrack(kind, now[kind]);
+      }
     };
-    const joinedWith = sending();
-    await session.join(media.displayStream() ?? media.localStream() ?? new MediaStream());
-    if (backend !== session) return;
-    const now = sending();
-    for (const kind of ['audio', 'video'] as const) {
-      if (now[kind] !== joinedWith[kind]) void session.replaceTrack(kind, now[kind]);
-    }
   }
 
   /**
@@ -1291,8 +1297,9 @@ export function createCallStore(deps: ModuleStoreDeps) {
     }
     backend = next;
     const syncStreams = attachSession(next);
+    let sendLate: () => void;
     try {
-      await joinSession(next, media);
+      sendLate = await joinSession(next, media);
     } catch (err) {
       if (backend === next) detachSession();
       next.destroy().catch((e) => console.error('call: backend destroy', e));
@@ -1300,6 +1307,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
     }
     if (backend !== next) return false;
     setBackendJoined(true);
+    sendLate();
     if (qualityIsManual) await next.setQualityPreference(qualityPreference());
     syncStreams();
     return true;
@@ -1756,6 +1764,18 @@ export function createCallStore(deps: ModuleStoreDeps) {
     const started = controller;
 
     /*
+      Microphone and camera start off: nobody is heard or seen until they turn one on. With both
+      off, `start` opens nothing, so there is no prompt and no camera light on joining; the first
+      unmute or camera press acquires that device.
+
+      Set here, before the first wait, as are the devices below: a press made while the session is
+      still being built is kept, not turned off again or reopened on the chosen device. Turning a
+      device off and recording a choice both happen before the next line runs.
+    */
+    void started.setAudioEnabled(false);
+    void started.setVideoEnabled(false);
+
+    /*
       Told which devices to use before it opens anything.
 
       `setDevice` with nothing open only records the choice, which is exactly what is wanted here:
@@ -1772,16 +1792,9 @@ export function createCallStore(deps: ModuleStoreDeps) {
       Once permission has been answered, the list is asked for again: labels are empty until a
       capture has been granted at least once, so this is the first moment it can have names in it.
     */
+    void started.setDevice('audio', audioDevice());
+    void started.setDevice('video', videoDevice());
     const acquire = async () => {
-      await started.setDevice('audio', audioDevice());
-      await started.setDevice('video', videoDevice());
-      /*
-        Microphone and camera start off: nobody is heard or seen until they turn one on. With both
-        off, `start` opens nothing, so there is no prompt and no camera light on joining; the first
-        unmute or camera press acquires that device.
-      */
-      await started.setAudioEnabled(false);
-      await started.setVideoEnabled(false);
       await started.start();
       setDevicesProbed(true);
       void refreshDevices();
@@ -1830,10 +1843,11 @@ export function createCallStore(deps: ModuleStoreDeps) {
 
       // Acquire media, then join the backend with the local stream.
       joiningSession = true;
+      let sendLate: () => void;
       try {
         await acquire();
         if (controller !== started) return;
-        await joinSession(session, started);
+        sendLate = await joinSession(session, started);
       } finally {
         if (controller === started) joiningSession = false;
       }
@@ -1841,6 +1855,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
       if (backend !== session) return;
       // Joined last, so the effect following a switch — which waits on this — sees a whole session.
       setBackendJoined(true);
+      sendLate();
 
       // Seed remote streams from anyone already in the room.
       syncStreams();

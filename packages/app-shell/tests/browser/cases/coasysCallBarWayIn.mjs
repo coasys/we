@@ -6,8 +6,8 @@ export const name = "a running call's bar: Join, left of Live and the transcript
 export const scenario = 'coasys:call-bar';
 export const widths = [900];
 
-/** The bar's controls left to right, and what follows the way in. Shared with the ended case. */
-export async function wayIn({ evaluate, screenshot }, shot, want) {
+/** The bar's way in, named `label`, and what follows it. Shared with the ended case. */
+export async function wayIn({ evaluate, screenshot }, shot, label, want) {
   await screenshot?.(shot);
   const order = await evaluate(() =>
     [...document.querySelectorAll('we-button, we-badge')]
@@ -18,8 +18,8 @@ export async function wayIn({ evaluate, screenshot }, shot, want) {
       .sort((a, b) => a.x - b.x)
       .map((el) => el.text),
   );
-  const at = order.findIndex((text) => /^(Join|Pick it back up)$/.test(text));
-  if (at < 0) return [`no way into the call in the bar (found ${JSON.stringify(order)})`];
+  const at = order.indexOf(label);
+  if (at < 0) return [`no ${label} in the bar (found ${JSON.stringify(order)})`];
   // Up to the Page / Canvas switch, which ends every view's bar.
   const end = order.indexOf('Page');
   const after = order
@@ -30,4 +30,4 @@ export async function wayIn({ evaluate, screenshot }, shot, want) {
     : [`after ${order[at]}: ${JSON.stringify(order.slice(at + 1))}, wanted ${JSON.stringify(want)}`];
 }
 
-export const check = (api) => wayIn(api, 'coasys-call-bar-live', ['Live', 'export']);
+export const check = (api) => wayIn(api, 'coasys-call-bar-live', 'Join', ['Live', 'export']);

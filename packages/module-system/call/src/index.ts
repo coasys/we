@@ -1113,8 +1113,9 @@ function menuAction(opts: { icon: string; label: string; action: string; args?: 
  *
  * What lives here is what the row no longer shows at any width — show/hide, solo — plus the two
  * lines that never had a square: choosing a device, and starting a second call from inside one.
- * Mute, camera, screen share and hang-up are not here: they are the call, and a menu between a
- * person and their microphone is a step too many at the moment they need it.
+ * Mute, camera and hang-up are not here: they are the call, and a menu between a person and their
+ * microphone is a step too many at the moment they need it. Screen share is here only below `base`,
+ * as the gear is, because its square would cost Leave at 390px.
  */
 const moreMenu: SchemaNode = {
   type: 'we-popover',
@@ -1138,6 +1139,8 @@ const moreMenu: SchemaNode = {
       slot: 'content',
       children: [
         menuToggle(STAGE),
+        // Screen share leaves the row below `base` — see the row.
+        { type: '$if', props: { condition: { $: "surface.tier == 'base'" }, then: menuToggle(SCREEN_SHARE) } },
         // Solo is only offered while something is focused — which is also the affordance: giving
         // somebody the stage reveals the option to give them all of it.
         { type: '$if', props: { condition: { $: 'modules.call.focusedId' }, then: menuToggle(SOLO) } },
@@ -1622,8 +1625,9 @@ const controls: SchemaNode = {
           action: 'modules.call.toggleVideo',
           tip: { on: 'Turn camera off', off: 'Turn camera on' },
         }),
-        // Beside the devices it sends with: sharing is reached for mid-call, not set and left.
-        mediaToggle(SCREEN_SHARE),
+        // Beside the devices it sends with: sharing is reached for mid-call, not set and left. Below
+        // `base` it folds into More, as the gear does: its seat would cost Leave at 390px.
+        whenRoomy(mediaToggle(SCREEN_SHARE)),
         {
           // Where other modules put their call controls — see `anchors` below. The marker is replaced
           // by whatever is contributed, or by nothing at all, so the bar has no gap when no module

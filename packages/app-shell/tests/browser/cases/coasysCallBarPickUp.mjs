@@ -8,4 +8,4 @@ export const name = "an ended call's bar: Pick it back up, left of the transcrip
 export const scenario = 'coasys:call-bar-ended';
 export const widths = [900];
 
-export const check = (api) => wayIn(api, 'coasys-call-bar-ended', ['export']);
+export const check = (api) => wayIn(api, 'coasys-call-bar-ended', 'Pick it back up', ['export']);
