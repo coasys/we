@@ -69,7 +69,6 @@ import {
   emptyState,
   field,
   FLOWS_LOCALS,
-  focusDim,
   formModal,
   inspectorPanel,
   kindGlyph,
@@ -83,6 +82,7 @@ import {
   peopleFilter,
   peopleRow,
   recordFormModal,
+  scopeLens,
   signalDisplay,
   suggestedChanges,
   SUGGESTION_STYLES,
@@ -217,6 +217,11 @@ const FROM_MODE = `routeStore.params.${FROM_PARAM}`;
 const FROM_DIM = `(${SCOPE_RECORD}) && ${FROM_MODE} == 'dim'`;
 const FROM_HIDE = `(${SCOPE_RECORD}) && ${FROM_MODE} == 'hide'`;
 const FROM_ON = `(${FROM_DIM}) || (${FROM_HIDE})`;
+/** The lens over the canvas: everything the conversation in scope did not produce, dimmed or hidden. */
+const FROM_LENS = scopeLens({
+  mode: FROM_MODE,
+  scopes: [{ on: SCOPE_RECORD, rest: [`{ 'data.origin': { not: (${SCOPE_RECORD}) } }`] }],
+});
 /** The scope's parameter, carried between pages beside `FROM_QUERY`. */
 const SCOPE_QUERY = `\${${SCOPE} ? '&${SCOPE_PARAM}=' + ${SCOPE} : ''}`;
 /** The lens parameter, carried between pages the way `LENS_QUERY` carries the colour lens. */
@@ -1691,8 +1696,9 @@ const canvas: SchemaNode = {
           drawn and routed per canvas, the counts on each footer. See `canvasSeedOptions` in the kit.
         */
         ...canvasSeedOptions({ canvas: SPACE_CANVAS, members: { id: { $: 'spaceStore.root' }, via: 'children' } }),
-        // The lens, hiding: only what the conversation in scope produced. See `SCOPE_PARAM`.
-        onlyFrom: { $: `(${FROM_HIDE}) ? (${SCOPE_RECORD}) : ''` },
+        // The lens, hiding: only what the conversation in scope produced — the cards the dimming
+        // rule below names, put away instead. See `SCOPE_PARAM`.
+        hideWhere: FROM_LENS.hideWhere,
         // Put away while the reader hides suggestions — the switch in the key, shared with the board
         // and the calendar through the address. Changed records are never hidden.
         hidden: { $: `(${SUGGESTIONS_HIDDEN}) ? ${UNCONFIRMED} : []` },
@@ -1792,7 +1798,7 @@ const canvas: SchemaNode = {
         moment, and with the fade switched off at the press they flashed back to full strength in
         between. Dimmer than a suggestion (0.5), so the two read as different things.
       */
-      focusDim(FROM_ON, 'data.origin', SCOPE_RECORD),
+      ...FROM_LENS.dimmed,
     ],
     /*
       No ARMED `connect-nodes`. Connecting is a handle on the card, not a mode.
