@@ -202,8 +202,11 @@ the solve ends. A cancel then shows the screen the create ended on, because a pu
 cannot be taken back. The resume of a pending incept (below) solves its proof too, with no
 `preparing` screen.
 
-The store's refusals are said in words: a cost too high, `429` with the wait its `retry after`
-gives, and `403 pow` (a refused proof, which the next try solves again). The incept is kept for
+The store's refusals are said in words: a cost too high, `429` with the wait its `data.retryAfter`
+gives, and `403` with `data.reason: "pow"` (a refused proof, which the next try solves again).
+They are read from the answer's code and its `error.data` (`{error, scope, retryAfter}`,
+`{error: "forbidden", reason}`, `{error: "already-vouched"}`, `{error: "no-identity"}`), never from the
+message's words; an answer without the data is quoted as it is said. The incept is kept for
 each of these, and the next try finishes the same identity.
 
 ## The email check

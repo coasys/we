@@ -889,10 +889,11 @@ fn words_refused(e: &ad4m_identity_core::words::WordsError) -> (String, Option<u
 
 /// A refusal the flow acts on, read from an executor answer.
 ///
-/// The identity client's `RpcError` is a code and a message and nothing else, so this is the one
-/// place that reads the message: the executor's reply names the refusal first
-/// (`rate-limited: Address, retry after 3600 s`, `forbidden: "pow"`, `already-vouched: …`,
-/// `no-identity: …`). When the client keeps the reply's structured data, match on that here.
+/// The identity client's `RpcError` carries the executor's `error.data` beside the code and the
+/// message, and `refusal` reads only that and the code, never the message's words:
+/// `{error: "rate-limited", scope, retryAfter}` on `429`, `{error: "forbidden", reason: "pow"}` on
+/// `403`, `{error: "already-vouched"}` and `{error: "no-identity"}` on `409`. An answer without
+/// that data is no refusal this flow acts on; it is quoted as the executor says it.
 #[derive(Debug, PartialEq, Eq)]
 enum Refusal {
     /// `429`: the wait in seconds.
@@ -907,20 +908,12 @@ enum Refusal {
 }
 
 fn refusal(e: &RpcError) -> Option<Refusal> {
-    let message = e.message.as_str();
-    match e.code {
-        429 => {
-            let (_, after) = message.split_once("retry after ")?;
-            after
-                .split_whitespace()
-                .next()?
-                .parse()
-                .ok()
-                .map(Refusal::Wait)
-        }
-        403 if message.starts_with("forbidden: \"pow\"") => Some(Refusal::Proof),
-        409 if message.starts_with("already-vouched") => Some(Refusal::AlreadyVouched),
-        409 if message.starts_with("no-identity") => Some(Refusal::NoIdentity),
+    let data = e.data.as_ref()?;
+    match (e.code, data["error"].as_str()?) {
+        (429, "rate-limited") => data["retryAfter"].as_u64().map(Refusal::Wait),
+        (403, "forbidden") if data["reason"].as_str() == Some("pow") => Some(Refusal::Proof),
+        (409, "already-vouched") => Some(Refusal::AlreadyVouched),
+        (409, "no-identity") => Some(Refusal::NoIdentity),
         _ => None,
     }
 }
@@ -5389,10 +5382,7 @@ mod tests {
                 self.canned.borrow_mut().insert(next, value);
             }
             if let Some((code, message)) = self.refusals.borrow().get(method) {
-                return Err(RpcError {
-                    code: *code,
-                    message: message.to_string(),
-                });
+                return Err(answered(*code, message));
             }
             if let Some(value) = self.canned.borrow().get(method) {
                 return Ok(value.clone());
@@ -5428,17 +5418,16 @@ mod tests {
                 })),
                 "identity.attachNote" => {
                     if self.held.borrow().is_none() {
-                        return Err(RpcError {
-                            code: 409,
-                            message: "no-identity: the agent speaks for no identity".into(),
-                        });
+                        return Err(answered(
+                            409,
+                            "no-identity: the agent speaks for no identity",
+                        ));
                     }
                     if self.vouched.replace(true) {
-                        return Err(RpcError {
-                            code: 409,
-                            message: "already-vouched: the store keeps a note for it already"
-                                .into(),
-                        });
+                        return Err(answered(
+                            409,
+                            "already-vouched: the store keeps a note for it already",
+                        ));
                     }
                     let held = self.held.borrow().clone().unwrap_or_default();
                     Ok(json!({
@@ -5451,6 +5440,7 @@ mod tests {
                         return Err(RpcError {
                             code: 500,
                             message: "the keystore is locked".into(),
+                            data: None,
                         });
                     }
                     let mut event = Event::from_json(&p["event"]).unwrap();
@@ -5498,12 +5488,13 @@ mod tests {
                 }
                 "identity.publish" => {
                     if let Some((code, message)) = self.refuse_for_good.borrow().clone() {
-                        return Err(RpcError { code, message });
+                        return Err(answered(code, &message));
                     }
                     if self.refuse_publish.replace(false) {
                         return Err(RpcError {
                             code: 503,
                             message: "the store did not answer".into(),
+                            data: None,
                         });
                     }
                     let event = Event::from_json(&p["events"][0]).unwrap();
@@ -5520,10 +5511,7 @@ mod tests {
                                 )
                         });
                         if !passes {
-                            return Err(RpcError {
-                                code: 403,
-                                message: "forbidden: \"pow\"".into(),
-                            });
+                            return Err(answered(403, "forbidden: \"pow\""));
                         }
                     }
                     self.publishes.set(self.publishes.get() + 1);
@@ -5547,6 +5535,7 @@ mod tests {
                 other => Err(RpcError {
                     code: 404,
                     message: format!("no {other}"),
+                    data: None,
                 }),
             }
         }
@@ -5971,42 +5960,72 @@ mod tests {
     /// The four answers of the executor this flow acts on are read in `refusal`, and nowhere else.
     #[test]
     fn a_refusal_is_read_from_the_executors_answer_in_one_place() {
-        let rpc = |code: u16, message: &str| RpcError {
+        let rpc = |code: u16, data: Value| RpcError {
             code,
-            message: message.into(),
+            message: "the words do not matter".into(),
+            data: Some(data),
         };
         assert_eq!(
-            refusal(&rpc(429, "rate-limited: Address, retry after 3600 s")),
+            refusal(&rpc(
+                429,
+                json!({ "error": "rate-limited", "scope": "address", "retryAfter": 3600 })
+            )),
             Some(Refusal::Wait(3600))
         );
-        assert_eq!(refusal(&rpc(429, "too many")), None);
+        // A rate limit that names no wait is none this flow can act on.
+        assert_eq!(refusal(&rpc(429, json!({ "error": "rate-limited" }))), None);
         assert_eq!(
-            refusal(&rpc(403, "forbidden: \"pow\"")),
+            refusal(&rpc(403, json!({ "error": "forbidden", "reason": "pow" }))),
             Some(Refusal::Proof)
         );
-        assert_eq!(refusal(&rpc(403, "forbidden: \"vouch\"")), None);
         assert_eq!(
             refusal(&rpc(
-                409,
-                "already-vouched: the store keeps a note for x already"
+                403,
+                json!({ "error": "forbidden", "reason": "vouch" })
             )),
+            None
+        );
+        assert_eq!(
+            refusal(&rpc(409, json!({ "error": "already-vouched" }))),
             Some(Refusal::AlreadyVouched)
         );
         assert_eq!(
-            refusal(&rpc(409, "no-identity: the agent speaks for no identity")),
+            refusal(&rpc(409, json!({ "error": "no-identity" }))),
             Some(Refusal::NoIdentity)
         );
-        // The same words under another code are another refusal.
-        assert_eq!(refusal(&rpc(500, "already-vouched")), None);
+        // The same data under another code is another refusal.
+        assert_eq!(
+            refusal(&rpc(500, json!({ "error": "already-vouched" }))),
+            None
+        );
+    }
+
+    /// The English message alone is no refusal: an answer without `error.data` (an executor from
+    /// before the data was sent) is quoted, never parsed.
+    #[test]
+    fn the_english_message_alone_is_no_refusal() {
+        for (code, message) in [
+            (429, "rate-limited: Address, retry after 3600 s"),
+            (403, "forbidden: \"pow\""),
+            (409, "already-vouched: the store keeps a note for x already"),
+            (409, "no-identity: the agent speaks for no identity"),
+        ] {
+            let bare = RpcError {
+                code,
+                message: message.into(),
+                data: None,
+            };
+            assert_eq!(refusal(&bare), None, "{message}");
+        }
     }
 
     #[test]
     fn a_rate_limit_says_how_long_to_wait_and_once() {
         let limited = |seconds: u64| {
-            ClientError::Rpc(RpcError {
-                code: 429,
-                message: format!("rate-limited: Address, retry after {seconds} s"),
-            })
+            ClientError::Rpc(answered(
+                429,
+                &format!("rate-limited: Address, retry after {seconds} s"),
+            ))
         };
         for (seconds, wait) in [
             (20, "1 minute"),
@@ -6029,10 +6048,8 @@ mod tests {
         assert!(message.contains("Try again in 10 minutes."), "{message}");
         assert!(!message.contains("in a moment"), "{message}");
         // A 429 that names no wait is quoted as the executor says it.
-        let Screen::Failed { message } = failed(&ClientError::Rpc(RpcError {
-            code: 429,
-            message: "too many".into(),
-        })) else {
+        let Screen::Failed { message } = failed(&ClientError::Rpc(answered(429, "too many")))
+        else {
             unreachable!()
         };
         assert!(message.ends_with("answered: too many."), "{message}");
@@ -6052,10 +6069,9 @@ mod tests {
             unreachable!()
         };
         assert!(!message.contains("in a moment"), "{message}");
-        let Screen::Failed { message } = failed(&ClientError::Rpc(RpcError {
-            code: 403,
-            message: "forbidden: \"pow\"".into(),
-        })) else {
+        let Screen::Failed { message } =
+            failed(&ClientError::Rpc(answered(403, "forbidden: \"pow\"")))
+        else {
             unreachable!()
         };
         assert_eq!(
@@ -6515,6 +6531,31 @@ mod tests {
     /// `identity.status` as an executor answered it before it reported its store.
     struct OldExecutor;
 
+    /// The executor's error answer as ad4m sends it: the code and the message, and, for the four
+    /// refusals the flow acts on, `error.data` (`IdentityService`'s `refusal` data). The message
+    /// here only chooses which refusal; `refusal` itself never reads it.
+    fn answered(code: u16, message: &str) -> RpcError {
+        let data = match (code, message) {
+            (429, m) => m
+                .split_once("retry after ")
+                .and_then(|(_, after)| after.split_whitespace().next()?.parse::<u64>().ok())
+                .map(|seconds| {
+                    json!({ "error": "rate-limited", "scope": "address", "retryAfter": seconds })
+                }),
+            (403, "forbidden: \"pow\"") => Some(json!({ "error": "forbidden", "reason": "pow" })),
+            (409, m) if m.starts_with("already-vouched") => {
+                Some(json!({ "error": "already-vouched" }))
+            }
+            (409, m) if m.starts_with("no-identity") => Some(json!({ "error": "no-identity" })),
+            _ => None,
+        };
+        RpcError {
+            code,
+            message: message.into(),
+            data,
+        }
+    }
+
     #[async_trait::async_trait(?Send)]
     impl ExecutorRpc for OldExecutor {
         async fn call(&self, _: &str, _: Value) -> Result<Value, RpcError> {
@@ -6700,6 +6741,7 @@ mod tests {
                       head from the identity store and cannot bind an agent to a log; set \
                       identity.storeKeys first"
                 .into(),
+            data: None,
         });
         let expected = Screen::Failed {
             message: NO_STORE.into(),
@@ -6712,12 +6754,7 @@ mod tests {
 
     #[test]
     fn only_refusals_that_retrying_cannot_fix_count_as_for_good() {
-        let rpc = |code, message: &str| {
-            ClientError::Rpc(RpcError {
-                code,
-                message: message.into(),
-            })
-        };
+        let rpc = |code, message: &str| ClientError::Rpc(answered(code, message));
         let did = "did:scid:coasys:1:Qm";
         for transient in [
             rpc(503, "unavailable: the store did not answer"),
@@ -9827,6 +9864,7 @@ mod tests {
         let answer = ClientError::Rpc(RpcError {
             code: 503,
             message: "unavailable: the agent language does not serve identity-append".into(),
+            data: None,
         });
         let Screen::Failed { message } = unfinished(&answer) else {
             unreachable!()
@@ -9844,6 +9882,7 @@ mod tests {
         let stopped = ClientError::Rpc(RpcError {
             code: 500,
             message: "The log is full!".into(),
+            data: None,
         });
         let Screen::Failed { message } = failed(&stopped) else {
             unreachable!()
@@ -10819,6 +10858,7 @@ mod tests {
             ClientError::Rpc(RpcError {
                 code: 503,
                 message: "no-store-keys".into(),
+                data: None,
             }),
         ];
         for e in &errors {
