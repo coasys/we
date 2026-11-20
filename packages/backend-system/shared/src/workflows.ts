@@ -177,6 +177,12 @@ export interface WorkflowItem {
   state: string | null;
   /** Milliseconds since the epoch, when the record entered the workflow. */
   since?: number;
+  /**
+   * Milliseconds since the epoch, when anything last happened to it here: it entered the workflow, a
+   * move was asked for, or a move was made. At least {@link since}; absent where the backend can say
+   * neither. A list of what is going on reads it to put the liveliest first.
+   */
+  lastActivity?: number;
   /** Moves asked for out of where it stands. */
   waiting: Proposal[];
   /** Two moves out of where it stands are both agreed and the backend will not choose: somebody has to withdraw. */

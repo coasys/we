@@ -17,7 +17,16 @@ export async function check({ click, count, type, hover, screenshot }) {
   const problems = [];
 
   await type('we-input input', 'Garden');
-  await click('we-switch');
+  // A new space starts shared, syncing through the server link language's default server.
+  if (!(await count('text=Shareable space'))) problems.push('a new space does not start shared');
+  if (!(await count('text=Link server'))) problems.push('a new space does not start on the server link language');
+  if (!(await count('we-select:has-text("link.ad4m.dev")')))
+    problems.push('the link server picker does not show the default, link.ad4m.dev');
+  await show('Not shown in global discovery');
+  await screenshot('create-space-server-default');
+
+  await click('we-select:has-text("Server")');
+  await click('[role="option"]:has-text("Peer-to-peer")');
   await show('How this space syncs');
   await screenshot('create-space-shared');
   if (await count('text=Link server')) problems.push('a peer-to-peer space is asked for a link server');
@@ -25,10 +34,6 @@ export async function check({ click, count, type, hover, screenshot }) {
   await click('we-select:has-text("Peer-to-peer")');
   await click('[role="option"]:has-text("Server")');
   if (!(await count('text=Link server'))) problems.push('a server-synced space is not asked which server');
-  if (!(await count('we-select:has-text("link.ad4m.dev")')))
-    problems.push('the link server picker does not show the default, link.ad4m.dev');
-  await show('Not shown in global discovery');
-  await screenshot('create-space-server-default');
 
   await click('we-select:has-text("link.ad4m.dev")');
   for (const choice of ['link.ad4m.dev', 'link-staging.ad4m.dev', 'Custom…']) {

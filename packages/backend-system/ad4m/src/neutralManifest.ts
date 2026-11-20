@@ -53,7 +53,19 @@ export function toNeutralManifest(entries: EntityManifestEntry[], opts?: { versi
     for (const p of entry.properties) {
       if (p.relatedEntity !== undefined) {
         if (!known.has(p.relatedEntity)) {
-          warnings.push(`dropped relation "${entry.name}.${p.name}" → unknown entity "${p.relatedEntity}"`);
+          /*
+            A relation whose target is outside this vocabulary is still a field the record
+            carries — kept as a plain `uri` scalar, the same shape an untyped edge takes. Dropped
+            outright it was simply gone from every consumer of the manifest.
+          */
+          warnings.push(
+            `relation "${entry.name}.${p.name}" → unknown entity "${p.relatedEntity}" — kept as a plain field`,
+          );
+          properties[p.name] = {
+            type: SCALAR[p.type],
+            ...(p.required ? { required: true } : {}),
+            ...(p.interpretationHint !== undefined ? { interpretationHint: p.interpretationHint } : {}),
+          };
           continue;
         }
         relations[p.name] = {

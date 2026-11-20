@@ -16,6 +16,8 @@ const SOLID_TESTS = [
   // Mounts a part's frame and changes its subject under it: real Solid effects and cleanups.
   'tests/partWhileShown.test.tsx',
   'tests/executorFreeBoot.test.tsx',
+  // The real template store, its sibling stores doubled: which space a late read may still answer for.
+  'tests/templateStoreSpaceSwitch.test.tsx',
   'tests/runtimeStore.test.tsx',
   'tests/accountStore.test.tsx',
   'tests/identityStore.test.tsx',
@@ -113,6 +115,8 @@ const SOLID_TESTS = [
   'tests/workflowStoreProvider.test.tsx',
   // The same, for a card dragged to another place in a tree.
   'tests/treeUndo.test.tsx',
+  // And for a drag on a tree whose spine is a model relation rather than a connection kind.
+  'tests/treeRelation.test.tsx',
   // Mounts a card's reaction mark and presses it.
   'tests/reactionBadge.test.tsx',
   // Types into the host's password field through real primitives and watches where the value goes.

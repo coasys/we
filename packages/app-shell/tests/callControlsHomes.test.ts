@@ -8,7 +8,7 @@
  *   another anchor, not the module rail.
  * - **The route a call takes and its quality** are words in Call settings. The bar once carried a
  *   broadcast glyph and a quality toggle beside the gear; nothing outside the popover may again.
- * - **Fake participants** exist only behind the developer-tools switch: with it off the section is
+ * - **Fake participants** exist only behind the Test people switch: with it off the section is
  *   not drawn at all, rather than drawn empty or disabled.
  *
  * Asked of every bundled module's contributions, and of every template, view and bundle built in,
@@ -128,11 +128,11 @@ describe('the route a call takes and its quality', () => {
 
 describe('fake participants', () => {
   const FAKE_PARTICIPANTS = /fakePeerCount|addFakePeer|removeFakePeer|Fake participants|fake participant/;
-  /** What draws with the developer-tools switch off: everything outside a `sessionStore.devTools` gate. */
+  /** What draws with the Test people switch off: everything outside a `sessionStore.testPeople` gate. */
   const withSwitchOff = (tree: unknown): unknown =>
-    without(tree, (record) => conditionIs(record, 'sessionStore.devTools'));
+    without(tree, (record) => conditionIs(record, 'sessionStore.testPeople'));
 
-  it('draws nothing with the developer-tools switch off — not an empty or a disabled section', () => {
+  it('draws nothing with the Test people switch off — not an empty or a disabled section', () => {
     for (const module of modules) {
       const contributes = module.contributes ?? {};
       const trees: [string, unknown][] = [
