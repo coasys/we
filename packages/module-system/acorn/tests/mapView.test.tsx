@@ -240,11 +240,11 @@ describe('the outcome map', () => {
       const rank = (id: string) => seeds?.nodes?.find((n) => rec(n.id).recordId === id)?.data.rank as number;
       expect(rank('acorn-outcome-1')).toBeLessThan(rank('acorn-outcome-3'));
       expect(rank('acorn-outcome-3')).toBeLessThan(rank('acorn-outcome-2'));
-      // Cards drawn by the host's record card, ringed by the computed status. A drag moves a card in the
-      // tree (S2-9b); a click selects, as in Acorn; a double-click opens; pan-zoom last, the background fallback.
+      // Cards drawn by the host's record card, ringed by the computed status. A click selects, as in
+      // Acorn; a drag moves a card in the tree (S2-9b); a double-click opens; pan-zoom last, the background fallback.
       expect(nodeStyle?.[0].style).toMatchObject({ shape: 'card', content: 'record' });
       expect(nodeStyle?.some((r) => r.when?.['data.status'] === 'Achieved')).toBe(true);
-      expect(behaviours).toEqual(['node-double-click', 'arrange-nodes', 'select', 'pan-zoom']);
+      expect(behaviours).toEqual(['node-double-click', 'select', 'arrange-nodes', 'pan-zoom']);
       expect(errors).toEqual([]);
     } finally {
       unmount();
@@ -649,12 +649,13 @@ describe('moving cards on the outcome map (S2-9b)', () => {
     return { ...map, all, line };
   }
 
-  it('lets a card be dragged: arrange-nodes ahead of select, and the keys heard around the graph', async () => {
+  it('lets a card be dragged: arrange-nodes after select, so a click still selects, and the keys heard around the graph', async () => {
     const { unmount, graph, container } = await moveMap();
     try {
       const behaviours = graph().behaviours ?? [];
       expect(behaviours).toContain('arrange-nodes');
-      expect(behaviours.indexOf('arrange-nodes')).toBeLessThan(behaviours.indexOf('select'));
+      // A press arrange-nodes claims never reaches what follows it; select claims nothing on the press.
+      expect(behaviours.indexOf('select')).toBeLessThan(behaviours.indexOf('arrange-nodes'));
       expect(typeof graph().onNodeArrange).toBe('function');
       expect(typeof graph().onSelectionChange).toBe('function');
       expect(container.querySelector('[data-graph]')!.closest('[data-column]')).toBeTruthy();

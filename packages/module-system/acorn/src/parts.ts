@@ -2040,8 +2040,12 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
                         },
                       },
                     ],
-                    // A card is dragged to another place in the tree (`arrange-nodes`); a press that goes nowhere falls through to select.
-                    behaviours: ['node-double-click', 'arrange-nodes', 'select', 'pan-zoom'],
+                    /*
+                      A card is dragged to another place in the tree (`arrange-nodes`). `select` ahead of it: a
+                      press claimed by `arrange-nodes` never reaches a behaviour listed after it, and `select`
+                      claims nothing on the press, so a click still selects and a drag does not.
+                    */
+                    behaviours: ['node-double-click', 'select', 'arrange-nodes', 'pan-zoom'],
                     onSelectionChange: { $setLocal: 'selected', value: { $: 'event' } },
                     onNodeArrange: ARRANGE,
                     showControls: true,
