@@ -1203,19 +1203,12 @@ describe('editing the outcome map on the live mount', () => {
     assert.ok(child.cy > topBox.cy, 'the new child is drawn under its parent');
   });
 
-  it(
-    "the new child's siblingOrder reaches stock as one below its lowest sibling's",
-    {
-      todo:
-        'upstream: the mount shape gives AcornConnection.siblingOrder no datatype (acorn-ad4m shapes.ts:93), so the ' +
-        'executor writes -1 as the string "-1" and the mount reads any non-number as 0 (mapping.ts:322)',
-    },
-    async () => {
-      const made = await stockOutcome(CHILD);
-      const [link] = linksBetween(await stockConnections(), top.actionHash, made.actionHash);
-      assert.equal(link?.entry.siblingOrder, -1);
-    },
-  );
+  // An integer on the wire since the b12 base language declares the mount's number datatypes.
+  it("the new child's siblingOrder reaches stock as one below its lowest sibling's", async () => {
+    const made = await stockOutcome(CHILD);
+    const [link] = linksBetween(await stockConnections(), top.actionHash, made.actionHash);
+    assert.equal(link?.entry.siblingOrder, -1);
+  });
 
   it('a line dragged from one card to another is a stock connection, the dragged-from the parent', async () => {
     const madeRoot = await stockOutcome(ROOT);
@@ -1352,5 +1345,242 @@ describe('editing the outcome map on the live mount', () => {
       local: true,
     });
     await cardFor(SPARE).waitFor({ state: 'detached', timeout: 300_000 });
+  });
+});
+
+/*
+  S2-9b: a card dragged to another place in the tree, and Shift+←/→ on a selected card, as writes
+  stock reads back with the siblingOrder values they mean — and a stock-side reorder redrawn.
+*/
+describe('moving cards on the live mount', () => {
+  const tag = Date.now().toString(36);
+  const P1 = `MOVE top one ${tag}`;
+  const K1 = `MOVE kid one ${tag}`;
+  const K2 = `MOVE kid two ${tag}`;
+  const K3 = `MOVE kid three ${tag}`;
+  const P2 = `MOVE top two ${tag}`;
+  const Q = `MOVE kid q ${tag}`;
+  const SHOTS = process.env.ACORN_SHOTS;
+
+  let stockMod;
+  let stockH;
+  let page;
+  const made = {};
+
+  const FETCH_ALL = { input: { All: null }, local: true };
+  const hashText = (hash) => (typeof hash === 'string' ? hash : `u${Buffer.from(hash).toString('base64url')}`);
+  const stockConnections = () => stockMod.stockCall(stockH, 'projects', 'fetch_connections', FETCH_ALL);
+  /** Stock's connections into `child`, as `[parent, siblingOrder]`, once `test` holds of them. */
+  const parentsOf = async (child, test, what) => {
+    const end = Date.now() + Number(process.env.ACORN_EDIT_WAIT ?? 300_000);
+    let last;
+    while (Date.now() < end) {
+      last = (await stockConnections())
+        .filter((c) => hashText(c.entry.childActionHash) === hashText(child))
+        .map((c) => [hashText(c.entry.parentActionHash), c.entry.siblingOrder, c]);
+      if (test(last)) return last;
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+    assert.fail(`stock never ${what}: ${JSON.stringify(last?.map(([p, o]) => [p, o]))}`);
+  };
+
+  const cardFor = (content) => page.locator('.we-graph__node', { hasText: content }).locator('.we-graph__card');
+  const boxOf = async (content) => {
+    const box = await cardFor(content).boundingBox();
+    assert.ok(box, `no card drawn for "${content}"`);
+    return { ...box, cx: box.x + box.width / 2, cy: box.y + box.height / 2 };
+  };
+  const settledBoxes = async (contents) => {
+    let last = '';
+    for (let i = 0; i < 60; i++) {
+      const boxes = await Promise.all(contents.map(boxOf));
+      const now = JSON.stringify(boxes.map((b) => [Math.round(b.cx), Math.round(b.cy)]));
+      if (now === last) return boxes;
+      last = now;
+      await page.waitForTimeout(500);
+    }
+    assert.fail('the map never came to rest');
+  };
+  /** Fit, centre the given cards and zoom in on them until they are big enough to aim at. */
+  const frame = async (contents) => {
+    await page.locator('we-button[title="Fit to view"]').first().click();
+    const canvas = await page.locator('.we-graph__surface').first().boundingBox();
+    const inside = (b) =>
+      b.x > canvas.x + 20 &&
+      b.y > canvas.y + 60 &&
+      b.x + b.width < canvas.x + canvas.width - 80 &&
+      b.y + b.height < canvas.y + canvas.height - 20;
+    let boxes = await settledBoxes(contents);
+    const mid = (bs) => ({
+      x: bs.reduce((n, b) => n + b.cx, 0) / bs.length,
+      y: bs.reduce((n, b) => n + b.cy, 0) / bs.length,
+    });
+    const from = { x: canvas.x + 40, y: canvas.y + 40 };
+    const at = mid(boxes);
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(from.x + canvas.x + canvas.width / 2 - at.x, from.y + canvas.y + canvas.height / 2 - at.y, {
+      steps: 10,
+    });
+    await page.mouse.up();
+    boxes = await settledBoxes(contents);
+    for (let i = 0; i < 30 && boxes[0].width < 200; i++) {
+      const m = mid(boxes);
+      await page.mouse.move(m.x, m.y);
+      await page.mouse.wheel(0, -120);
+      await page.waitForTimeout(150);
+      const next = await settledBoxes(contents);
+      if (!next.every(inside)) {
+        await page.mouse.wheel(0, 120);
+        break;
+      }
+      boxes = next;
+    }
+    return settledBoxes(contents);
+  };
+  /** A card picked up by its middle and carried to `to` — GraphView's arrange-nodes drag. */
+  const carry = async (content, to) => {
+    const [box] = await settledBoxes([content]);
+    await page.mouse.move(box.cx, box.cy);
+    await page.mouse.down();
+    await page.mouse.move((box.cx + to.x) / 2, (box.cy + to.y) / 2, { steps: 10 });
+    await page.mouse.move(to.x, to.y, { steps: 10 });
+    await page.waitForTimeout(400);
+    await page.mouse.up();
+  };
+  /**
+   * A card held and swept along a row until the preview shows the place `wanted` asks for, then let go
+   * there. The tree makes room as the card moves — another family's row can slide under the pointer —
+   * so the place is read off the ghost GraphView draws and the line to it from its would-be parent,
+   * not guessed from where the cards stood before the drag.
+   */
+  const carryUntil = async (content, y, xs, wanted) => {
+    const [box] = await settledBoxes([content]);
+    await page.mouse.move(box.cx, box.cy);
+    await page.mouse.down();
+    await page.mouse.move(box.cx, box.cy + 10, { steps: 4 });
+    for (const x of xs) {
+      await page.mouse.move(x, y, { steps: 6 });
+      await page.waitForTimeout(450);
+      const ghost = await page.locator('.we-graph__ghost-outline').first().boundingBox();
+      const line = await page.locator('.we-graph__ghost-line').first().boundingBox();
+      if (ghost && line && (await wanted(ghost, line))) {
+        await page.mouse.up();
+        return;
+      }
+    }
+    await page.mouse.move(box.cx, box.cy, { steps: 6 });
+    await page.mouse.up();
+    assert.fail(`no place along the row showed the drop wanted for "${content}"`);
+  };
+  /** The cards left to right, once they are drawn in that order. */
+  const drawnInOrder = async (contents, what) => {
+    const end = Date.now() + 300_000;
+    for (;;) {
+      const boxes = await settledBoxes(contents);
+      if (boxes.every((b, i) => i === 0 || boxes[i - 1].cx < b.cx)) return boxes;
+      assert.ok(Date.now() < end, `the map never drew ${what}`);
+      await page.waitForTimeout(1000);
+    }
+  };
+  const shot = async (name, contents) => {
+    if (!SHOTS) return;
+    // A click on empty canvas clears the selection, so no action bar covers the cards.
+    const canvas = await page.locator('.we-graph__surface').first().boundingBox();
+    await page.mouse.click(canvas.x + 30, canvas.y + 30);
+    // The graph re-fits after a write (the literal seed reloads): frame, then zoom until the cards read.
+    await frame(contents);
+    const zoomIn = page.locator('we-button[title="Zoom in"]').first();
+    for (let i = 0; i < 8 && (await boxOf(contents[0])).width < 200; i++) {
+      await zoomIn.click();
+      await page.waitForTimeout(400);
+    }
+    await page.mouse.move(5, 5);
+    await page.screenshot({ path: join(SHOTS, name) });
+  };
+
+  before(async () => {
+    stockMod = await import(rigFile('stock.mjs'));
+    stockH = await stockMod.connect();
+    // P1 over K1 (1), K2 (0), K3 (-1), drawn in that order; P2 over Q (0).
+    made.p1 = await stockMod.createOutcome(stockH, P1);
+    made.k1 = await stockMod.createOutcomeUnder(stockH, made.p1.actionHash, K1, 1);
+    made.k2 = await stockMod.createOutcomeUnder(stockH, made.p1.actionHash, K2, 0);
+    made.k3 = await stockMod.createOutcomeUnder(stockH, made.p1.actionHash, K3, -1);
+    made.p2 = await stockMod.createOutcome(stockH, P2);
+    made.q = await stockMod.createOutcomeUnder(stockH, made.p2.actionHash, Q, 0);
+
+    const joined = await datasetNamed('Acorn project');
+    page = await tab('map-move');
+    await page.setViewportSize({ width: 1600, height: 1000 });
+    await page.goto(app.url);
+    await answerNamePrompt(page, 'Acorn Dev');
+    await page.goto(`${app.url}/space/${joined.uuid}`);
+    await page.waitForURL(/\/space\//, { timeout: 300_000 });
+    await page.getByRole('button', { name: 'Map', exact: true }).click({ timeout: 300_000 });
+    for (const content of [P1, K1, K2, K3, P2, Q]) {
+      await cardFor(content).waitFor({ state: 'visible', timeout: 300_000 });
+    }
+    const end = Date.now() + 300_000;
+    for (;;) {
+      const [p1, k1, k2, k3, p2, q] = await Promise.all([P1, K1, K2, K3, P2, Q].map(boxOf));
+      if ([k1, k2, k3].every((k) => k.cy > p1.cy) && q.cy > p2.cy && k1.cx < k2.cx && k2.cx < k3.cx) break;
+      assert.ok(Date.now() < end, "stock's tree never reached the map in sibling order");
+      await page.waitForTimeout(1000);
+    }
+  });
+
+  after(async () => {
+    if (stockH) await stockMod.closeStock(stockH).catch(() => {});
+  });
+
+  it('a card dragged under another parent moves its stock connection there, one below its new siblings', async () => {
+    await shot('map-before-reparent.png', [P1, K1, K2, K3, P2, Q]);
+    const [, , q] = await frame([K2, P2, Q]);
+    const xs = Array.from({ length: 24 }, (_, i) => q.x - q.width + (i * q.width) / 6);
+    // The place on Q's right under P2: a line from P2's card down to a ghost right of Q.
+    await carryUntil(K2, q.cy, xs, async (ghost, line) => {
+      const [p2, qNow] = await Promise.all([boxOf(P2), boxOf(Q)]);
+      const fromP2 = Math.abs(line.x - p2.cx) < p2.width / 4 || Math.abs(line.x + line.width - p2.cx) < p2.width / 4;
+      return fromP2 && ghost.x + ghost.width / 2 > qNow.cx + qNow.width / 2;
+    });
+    const [[parent, order]] = await parentsOf(
+      made.k2.actionHash,
+      (cs) => cs.length === 1 && cs[0][0] === hashText(made.p2.actionHash),
+      'moved K2 under P2',
+    );
+    assert.equal(parent, hashText(made.p2.actionHash));
+    // stock's lowerThanLowestSiblingOrder under P2: Q is at 0. A real integer now (b12).
+    assert.equal(order, -1);
+    const [p2Box, k2Box] = await settledBoxes([P2, K2]);
+    assert.ok(k2Box.cy > p2Box.cy, 'K2 is drawn under P2');
+    await drawnInOrder([Q, K2], 'K2 right of Q');
+    await shot('map-after-reparent.png', [P1, K1, K3, P2, Q, K2]);
+  });
+
+  it('a card dragged to the far left of its row reaches stock with a siblingOrder above the leftmost', async () => {
+    const [k1] = await frame([K1, K3, P1]);
+    await carry(K3, { x: k1.cx - k1.width * 0.1, y: k1.cy });
+    await parentsOf(made.k3.actionHash, (cs) => cs.length === 1 && cs[0][1] === 2, 'reordered K3 to 2');
+    await drawnInOrder([K3, K1], 'K3 left of K1');
+  });
+
+  it("Shift+← on a selected card swaps it with its left neighbour on stock, as stock's own keys do", async () => {
+    const [, k1] = await frame([K3, K1, P1]);
+    await page.mouse.click(k1.cx, k1.cy);
+    await page.keyboard.press('Shift+ArrowLeft');
+    await parentsOf(made.k1.actionHash, (cs) => cs.length === 1 && cs[0][1] === 2, 'moved K1 to 2');
+    await parentsOf(made.k3.actionHash, (cs) => cs.length === 1 && cs[0][1] === 1, 'moved K3 to 1');
+    await drawnInOrder([K1, K3], 'K1 left of K3');
+    await shot('map-after-reorder.png', [P1, K1, K3]);
+  });
+
+  it('a stock-side reorder shows on the map', async () => {
+    const [[, , link]] = await parentsOf(made.k3.actionHash, (cs) => cs.length === 1, 'held K3');
+    await stockMod.stockCall(stockH, 'projects', 'update_connection', {
+      entry: { ...link.entry, siblingOrder: 5 },
+      actionHash: link.actionHash,
+    });
+    await drawnInOrder([K3, K1], 'K3 left of K1 after stock moved it');
   });
 });
