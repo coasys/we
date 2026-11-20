@@ -5170,7 +5170,7 @@ export const contextData: ContextData = {
         {
           name: 'acornNextSiblingOrder',
           params: ['parent', 'connections'],
-          doc: "The siblingOrder a new child of `parent` is written with — one below its lowest sibling's, so Acorn draws it on the right; 0 when it has none.",
+          doc: "The siblingOrder a new child of `parent` is written with — one below its lowest sibling's, so Acorn draws it on the right; 0 when it has none. Never below the zome's i32: a row already at the lowest order gets that order again.",
           example: 'acornNextSiblingOrder({ parent: outcome.id, connections: local.connections })',
         },
         {
@@ -5235,7 +5235,7 @@ export const contextData: ContextData = {
         {
           name: 'acornSiblingMove',
           params: ['selected', 'direction', 'outcomes', 'connections'],
-          doc: "Shift+← / Shift+→ on the map: the selected card (one card address or outcome id in `selected`) swapped with the sibling drawn on its `direction` ('left' or 'right') side, as stock's alterSiblingOrder — the same plan as acornArrange, with two `updates`; none at the end of a row or with no single selection, and a `refusal` for a root.",
+          doc: "Shift+← / Shift+→ on the map: the selected card (one card address or outcome id in `selected`) swapped with the sibling drawn on its `direction` ('left' or 'right') side — the same plan as acornArrange. Stock's alterSiblingOrder (two `updates`) where that draws the two swapped; in a tied group, or at the limits of the zome's i32, the one or two writes that do. None at the end of a row or with no single selection; a `refusal` for a root, or where two writes cannot.",
           example:
             "acornSiblingMove({ selected: local.selected, direction: 'left', outcomes: local.outcomes, connections: local.connections })",
         },

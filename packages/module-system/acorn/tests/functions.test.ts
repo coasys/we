@@ -611,6 +611,79 @@ describe('acornSiblingMove (Shift+←/→)', () => {
   it('takes a plain id as well as a card address', () => {
     expect(move(['b'], 'left').updates).toHaveLength(2);
   });
+
+  /** The row under r as Acorn draws it once the plan's updates are written. */
+  const drawnAfter = (plan: Record<string, unknown>, conns: Array<ReturnType<typeof edge>>) => {
+    const writes = new Map((plan.updates as Array<{ id: string; siblingOrder: number }>).map((u) => [u.id, u]));
+    const after = conns.map((c) => ({ ...c, siblingOrder: writes.get(c.id)?.siblingOrder ?? c.siblingOrder }));
+    return (call('acornChildren', { outcome: 'r', outcomes, connections: after }) as Array<{ id: string }>).map(
+      (k) => k.id,
+    );
+  };
+
+  it('moves one place among three tied siblings, not across the group', () => {
+    const tied = [edge('r', 'a', 0), edge('r', 'b', 0), edge('r', 'c', 0)];
+    const left = move([card('c')], 'left', tied);
+    expect(left.refusal).toBe('');
+    expect(drawnAfter(left, tied)).toEqual(['a', 'c', 'b']);
+    expect((left.updates as unknown[]).length).toBeLessThanOrEqual(2);
+    expect(drawnAfter(move([card('a')], 'right', tied), tied)).toEqual(['b', 'a', 'c']);
+    expect(drawnAfter(move([card('b')], 'left', tied), tied)).toEqual(['b', 'a', 'c']);
+    expect(drawnAfter(move([card('b')], 'right', tied), tied)).toEqual(['a', 'c', 'b']);
+  });
+
+  const I32_MAX = 2147483647;
+  const I32_MIN = -2147483648;
+  const inI32 = (plan: Record<string, unknown>) =>
+    (plan.updates as Array<{ siblingOrder: number }>).every(
+      (u) => Number.isInteger(u.siblingOrder) && u.siblingOrder >= I32_MIN && u.siblingOrder <= I32_MAX,
+    );
+
+  it("keeps every order within the zome's i32, at either limit", () => {
+    const top = [edge('r', 'a', I32_MAX), edge('r', 'b', I32_MAX), edge('r', 'c', 0)];
+    const up = move([card('b')], 'left', top);
+    expect(inI32(up)).toBe(true);
+    expect(drawnAfter(up, top)).toEqual(['b', 'a', 'c']);
+    const bottom = [edge('r', 'a', 0), edge('r', 'b', I32_MIN), edge('r', 'c', I32_MIN)];
+    const down = move([card('b')], 'right', bottom);
+    expect(inI32(down)).toBe(true);
+    expect(drawnAfter(down, bottom)).toEqual(['a', 'c', 'b']);
+  });
+});
+
+describe('sibling orders at the limits of i32', () => {
+  const o = (id: string) => ({ id, content: id, scopeType: 'Uncertain' });
+  const outcomes = ['r', 'a', 'b', 's', 'd'].map(o);
+  const I32_MAX = 2147483647;
+  const I32_MIN = -2147483648;
+  const values = (plan: Record<string, unknown>) => [
+    ...(plan.move || plan.create ? [plan.siblingOrder as number] : []),
+    ...(plan.updates as Array<{ siblingOrder: number }>).map((u) => u.siblingOrder),
+  ];
+  const arrange = (event: Record<string, unknown>, connections: unknown[]) =>
+    call('acornArrange', { ...event, outcomes, connections }) as Record<string, unknown>;
+
+  it('a new sibling under a row already at the lowest order gets the lowest, not one past it', () => {
+    expect(call('acornNextSiblingOrder', { parent: 'r', connections: [edge('r', 'a', I32_MIN)] })).toBe(I32_MIN);
+  });
+
+  it('a drop left of a sibling at the highest order is not written one above it', () => {
+    const conns = [edge('r', 'a', I32_MAX), edge('r', 'b', I32_MAX - 1), edge('s', 'd', 0)];
+    const reparent = arrange(
+      { outcome: 'd', into: 'sibling', target: 'a', before: true, order: ['d', 'a', 'b'] },
+      conns,
+    );
+    expect(values(reparent).every((v) => v >= I32_MIN && v <= I32_MAX)).toBe(true);
+    const reorder = arrange({ outcome: 'b', into: 'sibling', target: 'a', before: true, order: ['b', 'a'] }, conns);
+    expect(values(reorder).every((v) => v >= I32_MIN && v <= I32_MAX)).toBe(true);
+  });
+
+  it('a drop right of a sibling at the lowest order is refused, saying why, rather than written one below it', () => {
+    const conns = [edge('r', 'a', 0), edge('r', 'b', I32_MIN), edge('s', 'd', 0)];
+    const plan = arrange({ outcome: 'd', into: 'sibling', target: 'b', before: false, order: ['a', 'b', 'd'] }, conns);
+    expect(plan).toMatchObject({ move: '', create: false, updates: [] });
+    expect(plan.refusal).toMatch(/order/);
+  });
 });
 
 describe('acornPending', () => {

@@ -105,6 +105,11 @@ const nextSiblingOrder = (parent: string, connections: Record<string, unknown>[]
   return orders.length ? Math.min(...orders) - 1 : 0;
 };
 
+/** The zome holds siblingOrder as an i32: a value outside it is not one a write may carry. */
+const I32_MIN = -2147483648;
+const I32_MAX = 2147483647;
+const inI32 = (value: number) => Number.isInteger(value) && value >= I32_MIN && value <= I32_MAX;
+
 /**
  * Why a line from `parent` to `child` would not be a connection Acorn makes, or '' when it would.
  *
@@ -650,7 +655,7 @@ const orderFor = (
   else if (left === undefined) value = orderOf(right) + 1;
   else if (right === undefined) value = orderOf(left) - 1;
   else if (orderOf(left) - orderOf(right) >= 2) value = Math.floor((orderOf(left) + orderOf(right)) / 2);
-  if (value === undefined) return undefined;
+  if (value === undefined || !inI32(value)) return undefined;
   const v = value;
   const drawn = inSiblingOrder(order, (x) => (x === id ? v : orderOf(x)), byId);
   return drawn.join('\n') === order.join('\n') ? v : undefined;
@@ -681,6 +686,71 @@ const swap = (
   return { updates, pending };
 };
 
+/**
+ * At most two siblingOrder writes (outcome id → order) that make Acorn draw `row` in that order, each
+ * within i32 — `first` tried before any other, then one write, then two, each of the cards around
+ * where `row` is not drawn as it stands, at values next to its neighbours'. `undefined` where two
+ * writes cannot do it. What a tie draws (statement, then id) counts, so a card moves one place in
+ * a tied group rather than across it.
+ */
+const rowWrites = (
+  row: string[],
+  orderOf: (id: string) => number,
+  byId: Map<string, Record<string, unknown>>,
+  first: Map<string, number>[] = [],
+): Map<string, number> | undefined => {
+  // tie[i] < 0 where row[i] is drawn before row[i + 1] at equal orders.
+  const tie = row
+    .slice(1)
+    .map(
+      (y, i) => text(byId.get(row[i])?.content).localeCompare(text(byId.get(y)?.content)) || row[i].localeCompare(y),
+    );
+  const fits = (writes: Map<string, number>) =>
+    [...writes.values()].every(inI32) &&
+    tie.every((t, i) => {
+      const a = writes.get(row[i]) ?? orderOf(row[i]);
+      const b = writes.get(row[i + 1]) ?? orderOf(row[i + 1]);
+      return a > b || (a === b && t < 0);
+    });
+  for (const writes of first) if (fits(writes)) return writes;
+  // The neighbours drawn the wrong way round as the row stands; the writes go around them.
+  const wrong = tie.flatMap((t, i) => {
+    const a = orderOf(row[i]);
+    const b = orderOf(row[i + 1]);
+    return a > b || (a === b && t < 0) ? [] : [i];
+  });
+  if (!wrong.length) return new Map();
+  const cards = row.slice(Math.max(0, Math.min(...wrong) - 1), Math.max(...wrong) + 3);
+  if (cards.length > 8) return undefined;
+  const near = [
+    ...new Set(
+      cards.flatMap((k, i) => {
+        const at = orderOf(k);
+        const next = cards[i + 1];
+        return [at - 2, at - 1, at, at + 1, at + 2, ...(next ? [Math.floor((at + orderOf(next)) / 2)] : [])];
+      }),
+    ),
+  ].filter(inI32);
+  const options = (k: string) =>
+    near.filter((v) => v !== orderOf(k)).sort((x, y) => Math.abs(x - orderOf(k)) - Math.abs(y - orderOf(k)));
+  const tries = function* () {
+    for (const k of cards) for (const v of options(k)) yield new Map([[k, v]]);
+    for (const [i, k] of cards.entries())
+      for (const l of cards.slice(i + 1))
+        for (const v of options(k))
+          for (const w of options(l))
+            yield new Map([
+              [k, v],
+              [l, w],
+            ]);
+  };
+  for (const writes of tries()) if (fits(writes)) return writes;
+  return undefined;
+};
+
+const NO_ORDER_LEFT =
+  'Its new siblings already use the lowest sibling order there is, so it has no place on their right. Move the rightmost one left first.';
+const NO_ROOM_KEYS = 'It can’t move one place here without renumbering more of its row.';
 const NO_ROOM =
   'It can’t go there without renumbering the whole row. Select it and press Shift+← or Shift+→ to move it one place at a time.';
 
@@ -736,7 +806,7 @@ const arrangePlan = (options: Record<string, unknown>): MovePlan => {
         const swapped = swap(mine, theirs, to < from);
         const after = new Map(swapped.updates.map((u) => [u.id, u.siblingOrder]));
         const drawnAfter = inSiblingOrder(row, (x) => after.get(refId(lineUnder(x)?.id)) ?? orderOf(x), byId);
-        if (drawnAfter.join('\n') === row.join('\n')) return plan(swapped);
+        if (drawnAfter.join('\n') === row.join('\n') && [...after.values()].every(inI32)) return plan(swapped);
       }
     }
     return plan({ refusal: NO_ROOM });
@@ -751,6 +821,7 @@ const arrangePlan = (options: Record<string, unknown>): MovePlan => {
   const rightmost = row[row.length - 1] === id;
   // Stock's lowerThanLowestSiblingOrder for the right end; the drop's own place where one write keeps it.
   const siblingOrder = rightmost || placed === undefined ? nextSiblingOrder(parent, connections) : placed;
+  if (!inI32(siblingOrder)) return plan({ refusal: NO_ORDER_LEFT });
   const notice =
     placed === undefined && !rightmost
       ? 'Moved, and drawn on the right of its new siblings: its place there would need them renumbered. Shift+← moves it along.'
@@ -798,7 +869,30 @@ const siblingMovePlan = (options: Record<string, unknown>): MovePlan => {
     ? connections.find((c) => refId(c.parent) === home.parent && refId(c.child) === neighbour)
     : undefined;
   if (!home.connection || !theirs) return plan();
-  return plan(swap(home.connection, theirs, left));
+  // Stock's swap where it draws the two swapped; otherwise the fewest writes that do (a tied group).
+  const target = [...row];
+  const at = row.indexOf(id);
+  target[at] = neighbour;
+  target[at + (left ? -1 : 1)] = id;
+  const lineOf = (k: string) => connections.find((c) => refId(c.parent) === home.parent && refId(c.child) === k);
+  const orderOf = (k: string) => num(lineOf(k)?.siblingOrder);
+  const stock = swap(home.connection, theirs, left);
+  const stockWrites = new Map([
+    [id, stock.updates[0].siblingOrder],
+    [neighbour, stock.updates[1].siblingOrder],
+  ]);
+  const writes = rowWrites(target, orderOf, new Map(outcomes.map((o) => [refId(o.id), o])), [stockWrites]);
+  if (!writes) return plan({ refusal: NO_ROOM_KEYS });
+  if (writes === stockWrites) return plan(stock);
+  const entries = [...writes].map(([k, v]) => ({ line: lineOf(k)!, v }));
+  return plan({
+    updates: entries.map(({ line, v }) => ({ id: refId(line.id), siblingOrder: v })),
+    pending: entries.map(({ line, v }) => ({
+      id: refId(line.id),
+      was: { parent: home.parent, siblingOrder: num(line.siblingOrder) },
+      now: { parent: home.parent, siblingOrder: v },
+    })),
+  });
 };
 
 /*
@@ -1014,9 +1108,10 @@ export const ACORN_FUNCTIONS: ModuleFunction[] = [
   {
     name: 'acornNextSiblingOrder',
     params: ['parent', 'connections'],
-    doc: "The siblingOrder a new child of `parent` is written with — one below its lowest sibling's, so Acorn draws it on the right; 0 when it has none.",
+    doc: "The siblingOrder a new child of `parent` is written with — one below its lowest sibling's, so Acorn draws it on the right; 0 when it has none. Never below the zome's i32: a row already at the lowest order gets that order again.",
     example: 'acornNextSiblingOrder({ parent: outcome.id, connections: local.connections })',
-    fn: (...args: never[]) => nextSiblingOrder(refId(option(args, 'parent')), list(option(args, 'connections'))),
+    fn: (...args: never[]) =>
+      Math.max(I32_MIN, nextSiblingOrder(refId(option(args, 'parent')), list(option(args, 'connections')))),
   },
   {
     name: 'acornRollup',
@@ -1126,7 +1221,7 @@ export const ACORN_FUNCTIONS: ModuleFunction[] = [
   {
     name: 'acornSiblingMove',
     params: ['selected', 'direction', 'outcomes', 'connections'],
-    doc: "Shift+← / Shift+→ on the map: the selected card (one card address or outcome id in `selected`) swapped with the sibling drawn on its `direction` ('left' or 'right') side, as stock's alterSiblingOrder — the same plan as acornArrange, with two `updates`; none at the end of a row or with no single selection, and a `refusal` for a root.",
+    doc: "Shift+← / Shift+→ on the map: the selected card (one card address or outcome id in `selected`) swapped with the sibling drawn on its `direction` ('left' or 'right') side — the same plan as acornArrange. Stock's alterSiblingOrder (two `updates`) where that draws the two swapped; in a tied group, or at the limits of the zome's i32, the one or two writes that do. None at the end of a row or with no single selection; a `refusal` for a root, or where two writes cannot.",
     example:
       "acornSiblingMove({ selected: local.selected, direction: 'left', outcomes: local.outcomes, connections: local.connections })",
     fn: (...args: never[]) => siblingMovePlan(args[0] && typeof args[0] === 'object' ? args[0] : {}),
