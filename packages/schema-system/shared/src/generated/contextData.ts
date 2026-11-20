@@ -5168,6 +5168,12 @@ export const contextData: ContextData = {
           example: 'acornChildren({ outcome: outcome.id, outcomes: local.outcomes, connections: local.connections })',
         },
         {
+          name: 'acornNextSiblingOrder',
+          params: ['parent', 'connections'],
+          doc: "The siblingOrder a new child of `parent` is written with — one below its lowest sibling's, so Acorn draws it on the right; 0 when it has none.",
+          example: 'acornNextSiblingOrder({ parent: outcome.id, connections: local.connections })',
+        },
+        {
           name: 'acornRollup',
           params: ['outcome', 'outcomes', 'connections'],
           doc: "Acorn's computed scope and status for an outcome from its descendants — { scope, status, uncertains, smallsAchieved, smallsTotal, tasksAchieved, tasksTotal, children }.",

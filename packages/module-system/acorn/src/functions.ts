@@ -82,6 +82,17 @@ const indexTree = (outcomes: Record<string, unknown>[], connections: Record<stri
 };
 type TreeIndex = ReturnType<typeof indexTree>;
 
+/**
+ * The siblingOrder a new child of `parent` is written with: one below the lowest of its siblings,
+ * so it is drawn on the right (Acorn draws the highest leftmost), or 0 when it has none. This is
+ * stock's `lowerThanLowestSiblingOrder` (`connections/index.ts`), which its map uses for a new
+ * child; its expanded view writes 0 always, which equals this only when there are no siblings.
+ */
+const nextSiblingOrder = (parent: string, connections: Record<string, unknown>[]): number => {
+  const orders = connections.filter((c) => refId(c.parent) === parent).map((c) => num(c.siblingOrder));
+  return orders.length ? Math.min(...orders) - 1 : 0;
+};
+
 export interface AcornRollup {
   /** 'Small' | 'Uncertain' | 'Big' — Acorn's computed scope. */
   scope: string;
@@ -529,6 +540,13 @@ export const ACORN_FUNCTIONS: ModuleFunction[] = [
     example: 'acornChildren({ outcome: outcome.id, outcomes: local.outcomes, connections: local.connections })',
     fn: (...args: never[]) =>
       childrenOf(refId(option(args, 'outcome')), list(option(args, 'outcomes')), list(option(args, 'connections'))),
+  },
+  {
+    name: 'acornNextSiblingOrder',
+    params: ['parent', 'connections'],
+    doc: "The siblingOrder a new child of `parent` is written with — one below its lowest sibling's, so Acorn draws it on the right; 0 when it has none.",
+    example: 'acornNextSiblingOrder({ parent: outcome.id, connections: local.connections })',
+    fn: (...args: never[]) => nextSiblingOrder(refId(option(args, 'parent')), list(option(args, 'connections'))),
   },
   {
     name: 'acornRollup',
