@@ -139,12 +139,22 @@ const MAP_CREATE_ROW = {
               { $setLocal: 'busy', value: true },
               { $setLocal: 'notice', value: '' },
               { $setLocal: 'linkParent', value: { $: 'local.childOf' } },
+              { $setLocal: 'submitted', value: { $: 'local.newOutcome' } },
               {
                 $invoke: 'record.create',
                 // Uncertain, as stock's create form leaves a new outcome unless it is ticked Small.
-                args: ['AcornOutcome', { $: "{ content: trim(local.newOutcome), scopeType: 'Uncertain' }" }],
+                args: ['AcornOutcome', { $: "{ content: trim(local.submitted), scopeType: 'Uncertain' }" }],
                 onSuccess: [
-                  { $setLocal: 'newOutcome', value: '' },
+                  /*
+                    The field stays open while the create is in flight, so the next outcome can be
+                    typed; the draft is cleared only if it is still the one that was saved.
+                  */
+                  {
+                    $if: {
+                      condition: { $: 'local.newOutcome == local.submitted' },
+                      then: { $setLocal: 'newOutcome', value: '' },
+                    },
+                  },
                   { $setLocal: 'made', value: { $: 'result.id' } },
                   {
                     $if: {
@@ -1748,6 +1758,8 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
       $localState: {
         openOutcome: { type: 'string', initial: '' },
         newOutcome: { type: 'string', initial: '' },
+        // The draft as it was when Add was pressed, to clear only that one once it is saved.
+        submitted: { type: 'string', initial: '' },
         // The card a new outcome is made under; '' makes a root.
         childOf: { type: 'string', initial: '' },
         // Held from the click to the link, so a change of card meanwhile cannot move the child.

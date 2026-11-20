@@ -368,6 +368,31 @@ describe('editing the outcome map (S2-9)', () => {
     }
   });
 
+  it('a draft typed while the last outcome saves is kept; the one saved is cleared', async () => {
+    const { container, unmount, all, release } = await editMap({ holdCreates: true });
+    const value = () => (createField(container) as unknown as { value?: string }).value;
+    try {
+      type(createField(container)!, 'Saved first');
+      fireEvent.click(createButton(container)!);
+      // The field stays open while the create is in flight: the next outcome is typed meanwhile.
+      type(createField(container)!, 'Typed while saving');
+      await waitFor(() => expect(value()).toBe('Typed while saving'));
+      release();
+      await waitFor(async () =>
+        expect((await all('AcornOutcome')).some((o) => o.content === 'Saved first')).toBe(true),
+      );
+      await waitFor(() => expect(cards(container)).toContain('Saved first'));
+      expect(value()).toBe('Typed while saving');
+      // Unchanged since it was submitted: cleared on success.
+      fireEvent.click(createButton(container)!);
+      release();
+      await waitFor(() => expect(cards(container)).toContain('Typed while saving'));
+      await waitFor(() => expect(value()).toBe(''));
+    } finally {
+      unmount();
+    }
+  });
+
   it('a child under way can be called off, back to a root', async () => {
     const { container, unmount, graph } = await editMap();
     try {
