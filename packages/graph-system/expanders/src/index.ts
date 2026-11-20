@@ -8,6 +8,8 @@
  *
  * They divide by *how they find neighbours*, not by what the data means:
  * - {@link entityExpander} — typed relations, both directions, from the dataset's schema.
+ * - {@link readRelations} / {@link followedRelations} — the one reader of declared relations, which
+ *   the entity expander and the canvas seed both walk.
  * - {@link collectionExpander} — an untyped to-many relation, via the drill-down path.
  * - {@link propertyExpander} — the level below an entity: its own fields, and shared value nodes.
  * - {@link schemaExpander} — the level *above* an entity: a type node, opened into its instances.
@@ -20,6 +22,17 @@ export type { CollectionExpanderOptions } from './collection';
 export { entityExpander } from './entity';
 export type { EntityExpanderOptions } from './entity';
 export { edgeId, labelProperty, placeholder, rowToNode } from './nodes';
+export {
+  type FollowedRelation,
+  followedRelations,
+  idsAt,
+  readRelations,
+  type ReadRelationsRequest,
+  type RelatedRow,
+  type RelationFilter,
+  type RelationLink,
+  reifiedEnds,
+} from './relations';
 export { propertyExpander } from './property';
 export type { PropertyExpanderOptions } from './property';
 export { INSTANCES_TYPE, SCHEMA_TYPE, schemaExpander } from './schema';

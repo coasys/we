@@ -167,30 +167,35 @@ describe('the More menu', () => {
         node.type === 'we-button' && JSON.stringify(props(node).onClick) === JSON.stringify({ $invoke: action }),
     ) as SchemaNode;
 
-  it('holds screen share, show/hide and solo as menu items', () => {
+  it('holds show/hide and solo as menu items', () => {
     /*
       Behind the menu at every width, not only below `base` — the bar shows your own devices
       directly and puts everything else a press away. A toggle in the menu keeps the same action as
       the button it replaces, so choosing it there is indistinguishable from pressing the square.
     */
     expect(menu(), 'no we-menu in the bar').toBeDefined();
-    for (const action of ['modules.call.toggleScreenShare', 'modules.call.toggleStage', 'modules.call.toggleSolo']) {
+    for (const action of ['modules.call.toggleStage', 'modules.call.toggleSolo']) {
       expect(items(action), action).toHaveLength(1);
     }
   });
 
-  it('keeps those three out of the row entirely, so nothing is shown twice', () => {
+  it('keeps those two out of the row entirely, so nothing is shown twice', () => {
     // No width shows them as buttons any more — the old `whenRoomy` fold is gone with the split it
     // maintained: a control was either a square or a line at a given width, and a bug could lose it.
-    for (const action of ['modules.call.toggleScreenShare', 'modules.call.toggleStage', 'modules.call.toggleSolo']) {
+    for (const action of ['modules.call.toggleStage', 'modules.call.toggleSolo']) {
       expect(buttonFor(action), action).toBeUndefined();
     }
   });
 
-  it('keeps mute, camera and hang-up directly in the row', () => {
+  it('keeps mute, camera, screen share and hang-up directly in the row', () => {
     // They are the call. A menu between a person and their microphone is one step too many at the
     // moment they need it — so their buttons are row children, never menu items.
-    for (const action of ['modules.call.toggleAudio', 'modules.call.toggleVideo', 'modules.call.leave']) {
+    for (const action of [
+      'modules.call.toggleAudio',
+      'modules.call.toggleVideo',
+      'modules.call.toggleScreenShare',
+      'modules.call.leave',
+    ]) {
       const button = buttonFor(action);
       expect(button, action).toBeDefined();
       expect(
@@ -198,6 +203,21 @@ describe('the More menu', () => {
         `${action} ended up inside the menu`,
       ).toBe(false);
     }
+  });
+
+  it('folds screen share into the menu below `base` only, where its seat would cost Leave', () => {
+    // At 390px the row holds mute, camera, the contributed slot, More, the count and Leave. Exactly
+    // one of the square and the line exists at any width.
+    const tierGate = (node: SchemaNode) =>
+      lineage(chrome(), node)?.find(
+        (step) => step.type === '$if' && JSON.stringify(props(step).condition).includes('surface.tier'),
+      );
+    expect(JSON.stringify(props(tierGate(buttonFor('modules.call.toggleScreenShare'))!).condition)).toBe(
+      JSON.stringify({ $: "surface.tier != 'base'" }),
+    );
+    const line = items('modules.call.toggleScreenShare');
+    expect(line, 'one screen share line in the menu').toHaveLength(1);
+    expect(JSON.stringify(props(tierGate(line[0]!)!).condition)).toBe(JSON.stringify({ $: "surface.tier == 'base'" }));
   });
 
   it('keeps contributed controls in the row', () => {

@@ -137,26 +137,6 @@ const rowsOf = (scope: FeedScope) =>
   `local.feedShow == 'bots' ? (${scope.visible}).filter(r, r.kind == 'line' && r.author in modules.feed.botAuthors) ` +
   `: local.feedShow == 'messages' ? (${scope.visible}).filter(r, ${scope.message}) : (${scope.visible})`;
 
-const more = (scope: FeedScope, end: 'start' | 'end'): SchemaNode => ({
-  type: '$if',
-  props: {
-    condition: { $: `${scope.hasMore} && ${timelineMoreAt(end, scope.fromStart, TIMELINE_ORIENTATION)}` },
-    then: {
-      type: 'Row',
-      props: { 'data-we-more': end, ay: 'center', gap: '300', py: '200' },
-      children: [
-        { type: 'we-animated-icon', props: { name: 'spinner', size: 'xs', color: 'text-faint' } },
-        {
-          type: 'we-text',
-          props: { variant: 'footnote', color: 'text-faint' },
-          // Which way the window grows.
-          children: [{ $: `${scope.fromStart} ? 'Later in ${scope.of}…' : 'Earlier in ${scope.of}…'` }],
-        },
-      ],
-    },
-  },
-});
-
 /**
  * Where a line came from, beside its time: the call, which opens it, and whether a bot wrote it.
  *
@@ -359,9 +339,18 @@ const feedTimeline = (scope: FeedScope): SchemaNode => {
     children: [
       {
         type: 'Column',
-        props: { gap: '400' },
+        props: {
+          gap: '400',
+          /*
+            The end with rows beyond it that are not loaded, for the scroller's jump button there to ask
+            for them rather than scroll (see `data-we-more` on `we-scroll-area`). Only the edge away from
+            the anchor can have more, so one marker on the list says it, and nothing is drawn for it.
+          */
+          'data-we-more': {
+            $: `${scope.hasMore} ? (${timelineMoreAt('start', scope.fromStart, TIMELINE_ORIENTATION)} ? 'start' : 'end') : ''`,
+          },
+        },
         children: [
-          more(scope, 'start'),
           {
             type: '$if',
             props: {
@@ -394,7 +383,6 @@ const feedTimeline = (scope: FeedScope): SchemaNode => {
               },
             },
           },
-          more(scope, 'end'),
         ],
       },
     ],

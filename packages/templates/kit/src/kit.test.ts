@@ -27,6 +27,7 @@ import {
   formModal,
   gatePrompt,
   marketplaceList,
+  OTHER_APP_CLASS_NAMES,
   pageShell,
   peopleFilter,
   peopleRow,
@@ -43,6 +44,9 @@ import {
   TREE_LOCALS,
   TREE_QUERIES,
   treeStrip,
+  VOCABULARY_BUCKETS,
+  VOCABULARY_OPENS,
+  workflowsPage,
 } from './index.ts';
 
 /**
@@ -1476,5 +1480,64 @@ describe('Back through a discard guard', () => {
     });
     expect(nested(composer)).toBe(false);
     expect(nested(recordFormModal({ back }))).toBe(false);
+  });
+});
+
+/*
+  What a definition opens into on the vocabulary map is knowledge about one of WE's classes, so it is
+  a table by class name: a class from another app has no row, and the map shows it without uses.
+*/
+describe('the vocabulary map’s uses, by class', () => {
+  it('keys what a definition opens into by its class, and each bucket of that class reads it from there', () => {
+    expect(Object.keys(VOCABULARY_OPENS)).toEqual([
+      'SignalType',
+      'RelationshipType',
+      'TaskState',
+      'InvolvementType',
+      'Topic',
+    ]);
+    for (const [name, opens] of Object.entries(VOCABULARY_OPENS))
+      expect(VOCABULARY_BUCKETS).toContain(`entity: '${name}', opens: ${opens}`);
+    expect(VOCABULARY_OPENS.TaskState).toContain("entity: 'TaskBlock', field: 'status', key: 'slug'");
+  });
+});
+
+/*
+  Another app's classes are one expression, read by the vocabulary map's "From other apps" bucket and by
+  the tree alike — so a plumbing class WE's own older version wrote is on neither.
+*/
+describe('the vocabulary map’s classes from other apps', () => {
+  const roots = {
+    datasetStore: {
+      currentDatasetEntities: [
+        { name: 'Question', targetClass: 'conv://Question' },
+        { name: 'Space', targetClass: 'old://Space' },
+        { name: 'Sighting', targetClass: 'birds://Sighting' },
+        { name: 'Topic', targetClass: 'old://Topic' },
+        { name: 'Question', targetClass: 'conv://Question' },
+      ],
+    },
+    recordStore: {
+      creatableEntities: [{ value: 'Sighting', label: 'Sighting' }],
+      plumbingClasses: ['Space'],
+    },
+    workflowStore: { workflows: [] },
+    spaceStore: { policy: { sentences: [] } },
+  };
+
+  it('leaves plumbing, the space’s models and WE’s vocabulary out, and lists a name once', () => {
+    const buckets = evaluate(VOCABULARY_BUCKETS, roots) as { key: string; models?: { name: string }[] }[];
+    expect(buckets.find((b) => b.key === 'other')!.models).toEqual([{ name: 'Question' }]);
+    expect(evaluate(OTHER_APP_CLASS_NAMES, roots)).toEqual(['Question']);
+  });
+});
+
+describe('the flows page’s records', () => {
+  // A record chosen from the space tree opened the page at its flow with nothing to say which it was:
+  // choosing another record of the same flow changed nothing on screen.
+  it('marks the record chosen as a selection is marked everywhere else', () => {
+    const page = JSON.stringify(workflowsPage({}));
+    expect(page).toContain("(rec.record == routeStore.params.card) ? '1px solid accent' : '1px solid border'");
+    expect(page).toContain("(rec.record == routeStore.params.card) ? 'accent-soft' : 'surface'");
   });
 });

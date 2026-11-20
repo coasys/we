@@ -3533,6 +3533,24 @@ export const captureStatus: SchemaNode = {
         },
       },
     },
+    /*
+      Speech that was let go. The transcript has a gap there, and nothing else in it shows one.
+    */
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'modules.transcribe.skipped > 0' },
+        then: {
+          type: 'we-alert',
+          props: { tone: 'warning' },
+          children: [
+            {
+              $: '`${modules.transcribe.skipped} utterance(s) were not transcribed: the speech model was too far behind or could not be reached.`',
+            },
+          ],
+        },
+      },
+    },
     {
       type: '$if',
       props: {

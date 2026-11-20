@@ -71,7 +71,7 @@ type Child = NonNullable<SchemaNode['children']>[number];
 
 /**
  * One step of where a view is: Calls, then the call. `when` is an expression for a step that is only
- * sometimes there — the definition under a kind of Social DNA, the workflow open on the Workflows page.
+ * sometimes there — the definition under a kind of Social DNA, the workflow open on the flows page.
  * `onClick` goes there; the last step shown is where somebody already is, and is not a button.
  */
 export interface Crumb {

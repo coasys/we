@@ -257,6 +257,7 @@ export function createInMemorySchemaPort(runtime: EntityRuntime): SchemaPort {
     hasCoreSchema: () => Promise.resolve(true),
     hasAnySchema: () => Promise.resolve(true),
     foreignSchemas: () => Promise.resolve([]),
+    foreignEntries: () => Promise.resolve([]),
     declare: (manifest) => {
       seedDeclaredHints(manifest);
       const compiled = compileEntities(manifest, runtime);

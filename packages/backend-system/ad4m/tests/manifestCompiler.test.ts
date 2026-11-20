@@ -181,6 +181,29 @@ describe('compileManifest — module-declared entities', () => {
     expect(byName.attachments).toBe('we://module/notes/attachments');
   });
 
+  it('names the forward a reverse relation inverts, beside marking it reverse', () => {
+    // A `reverseOf` read has no setter of its own; the entry is where a caller moving the link learns
+    // which property the other end writes it through.
+    const entries = manifestToEntries(
+      {
+        version: '1',
+        entities: {
+          Book: {
+            properties: {},
+            relations: { chapters: { target: 'Chapter', cardinality: 'many' as const } },
+          },
+          Chapter: {
+            properties: {},
+            relations: { book: { target: 'Book', cardinality: 'one' as const, reverseOf: 'chapters' } },
+          },
+        },
+      },
+      { moduleId: 'notes' },
+    );
+    const book = entries.find((e) => e.name === 'Chapter')!.properties.find((p) => p.name === 'book');
+    expect(book).toMatchObject({ reverse: true, reverseOf: 'chapters', relatedEntity: 'Book' });
+  });
+
   it('stores a containment relation as the one containment predicate, whatever it would have minted', () => {
     // Containment is how anything reading the graph finds a record's context, so it cannot live in
     // a module's own subtree the way its other relations do.

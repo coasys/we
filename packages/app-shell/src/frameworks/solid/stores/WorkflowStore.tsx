@@ -25,6 +25,7 @@
  * take back their own ask.
  */
 import { evidenceSubjectOf } from '@shared/evidenceSubjects';
+import { modelLabel } from '@shared/shapes/recordDisplay';
 import { TASK_WORKFLOW } from '@shared/taskWorkflow';
 import * as draftEdits from '@shared/workflowDraft';
 import {
@@ -38,6 +39,7 @@ import {
   type WorkflowPreset,
 } from '@shared/workflowDraft';
 import { toLanes, type WorkflowSequenceRule } from '@shared/workflowLanes';
+import { subjectLabel, type SubjectName, subjectTitleOf } from '@shared/workflowSubjects';
 import {
   approvalsRule,
   editorView,
@@ -53,6 +55,7 @@ import {
 import { firstScreen } from '@solid/firstScreen';
 import { useDatasetStore } from '@solid/stores/DatasetStore';
 import { useSessionStore } from '@solid/stores/SessionStore';
+import { useShapeStore } from '@solid/stores/ShapeStore';
 import { useSpaceStore } from '@solid/stores/SpaceStore';
 import type {
   Requirement,
@@ -61,9 +64,10 @@ import type {
   WorkflowItem,
   WorkflowSummary,
 } from '@we/backend-shared';
-import { validateWorkflowDefinition } from '@we/backend-shared';
+import { nameFromProperties, namePropertyOf, validateWorkflowDefinition } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import { getEntityForDataset } from '@we/entities';
+import { CORE_MANIFEST } from '@we/entities/manifest';
 import {
   type Accessor,
   createContext,
@@ -84,6 +88,12 @@ export interface WorkflowSummaryView {
   editable: boolean;
   /** How many records are going through it. */
   records: number;
+  /**
+   * How many of them are still running: not at a final step (one with no move out of it). From the
+   * watched records, so it follows a run started or moved here or by anybody else; 0 for a workflow
+   * that is not watched (an archived one, the task-state one) or whose definition is not read yet.
+   */
+  running: number;
   /** What writes it, when something other than this editor does. Empty otherwise. */
   managedBy: '' | 'task-states';
   archived: boolean;
@@ -136,6 +146,30 @@ export interface RecordWorkflowChip {
   asks: RecordView['waiting'];
 }
 
+/** One record still going through one of the space's workflows: a row of what is going on. */
+export interface ActiveRunView {
+  /**
+   * `<workflow>|<record>`: one row for one record in one workflow. With an id each row keeps its place
+   * in a list as the rows are rebuilt, which they are on every move anybody makes.
+   */
+  id: string;
+  workflow: string;
+  /** The workflow's name as a person reads it. */
+  label: string;
+  record: string;
+  /** What the record is called: its name, else its kind and a short id. Never empty. */
+  title: string;
+  /** What kind of record it is ("Task"), or empty where that is not known yet. */
+  kind: string;
+  state: string | null;
+  stateLabel: string;
+  /** When anything last happened to it, as an ISO date; empty where the backend cannot say. */
+  lastActivity: string;
+  /** Moves asked for and not made. */
+  waiting: number;
+  stalled: boolean;
+}
+
 export interface WorkflowStore {
   /** This space has workflows at all: its backend offers them and it is a WE space. */
   available: Accessor<boolean>;
@@ -158,6 +192,11 @@ export interface WorkflowStore {
   draft: Accessor<WorkflowDraftView | null>;
   /** By record id: every startable workflow the record is going through. */
   recordWorkflows: Accessor<Record<string, RecordWorkflowChip[]>>;
+  /**
+   * Every record still going through a startable workflow — not at a final step — across all of them,
+   * the one with the latest activity first. A record in two workflows is two rows.
+   */
+  active: Accessor<ActiveRunView[]>;
 
   refreshWorkflows: () => Promise<void>;
   openWorkflow: (name: string) => Promise<void>;
@@ -218,25 +257,34 @@ function workflowLabelOf(name: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-/** The entities searched for a record's title, when a workflow names none. */
+/** WE's own entities a record may be, searched for its name when a workflow names none. */
 const ANY_RECORD = ['TaskBlock', 'TextBlock', 'CollectionBlock', 'EventBlock'];
 
-const titleOf = (row: Record<string, unknown>): string => {
-  // A post or a note is a collection with no title of its own: what it says is in `textContent`.
-  for (const key of ['title', 'name', 'textContent', 'text']) {
-    const value = row[key];
-    if (typeof value === 'string' && value.trim()) {
-      const plain = value.replace(/<[^>]*>/g, '').trim();
-      return plain.length > 80 ? `${plain.slice(0, 79)}…` : plain;
-    }
-  }
-  return '';
+/** A model a record's name is read from. */
+type Finder = { findAll(d: unknown, q: unknown): Promise<Record<string, unknown>[]> };
+
+/** A record not read yet: a row names it by a short id until it is. */
+const NO_SUBJECT: SubjectName = { title: '', entity: '' };
+
+/**
+ * Which of a workflow's records are still running: those not at a final step (one nothing leaves). A
+ * record the backend has not placed yet is running. Until the definition is read, which steps are
+ * final is not known, so nothing is running rather than everything.
+ */
+const stillRunning = (definition: WorkflowDefinition | undefined) => {
+  if (!definition) return () => false;
+  const leaving = new Set(definition.transitions.map((t) => t.from));
+  return (item: WorkflowItem) => !item.state || leaving.has(item.state);
 };
+
+/** A time from the backend as an ISO date, for a we-timestamp; empty where there is none. */
+const isoOf = (ms: number | undefined): string => (ms === undefined ? '' : new Date(ms).toISOString());
 
 export function WorkflowStoreProvider(props: ParentProps) {
   const session = useSessionStore();
   const datasetStore = useDatasetStore();
   const spaceStore = useSpaceStore();
+  const shapeStore = useShapeStore();
 
   const port = () => (datasetStore.isWeSpace() ? (session.backendPorts()?.workflows ?? null) : null);
   const handle = () => datasetStore.currentDataset()?.handle;
@@ -314,9 +362,13 @@ export function WorkflowStoreProvider(props: ParentProps) {
   // Declared before `workflows`, which reads them: a memo runs as soon as it is made, and a signal
   // declared below it does not exist yet at that moment.
   const [definitions, setDefinitions] = createSignal<Record<string, WorkflowDefinition>>({});
-  const definitionOfWorkflow = async (name: string): Promise<WorkflowDefinition | null> => {
+  /**
+   * A workflow's definition: the one already read, or — `fresh`, or none read yet — the backend's.
+   * A fresh read leaves the one held in place until it lands, so nothing reading it goes without.
+   */
+  const definitionOfWorkflow = async (name: string, fresh = false): Promise<WorkflowDefinition | null> => {
     const known = untrack(definitions)[name];
-    if (known) return known;
+    if (known && !fresh) return known;
     const p = port();
     const h = handle();
     if (!p || !h) return null;
@@ -329,9 +381,13 @@ export function WorkflowStoreProvider(props: ParentProps) {
     setDefinitions({});
   });
 
+  // Declared before `workflows` for the same reason: what each watched workflow holds, by its name.
+  const [items, setItems] = createSignal<Record<string, WorkflowItem[]>>({});
+
   const workflows = createMemo<WorkflowSummaryView[]>(() => {
     const archived = new Set(spaceStore.archivedWorkflows());
     const defs = definitions();
+    const watched = items();
     return summaries()
       .map((s) => {
         const managedBy = s.name === TASK_WORKFLOW ? ('task-states' as const) : ('' as const);
@@ -343,6 +399,7 @@ export function WorkflowStoreProvider(props: ParentProps) {
           label: workflowLabelOf(s.name),
           editable: s.editable && !managedBy,
           records: s.records,
+          running: (watched[s.name] ?? []).filter(stillRunning(definition)).length,
           managedBy,
           archived: archived.has(s.name),
           steps: (definition?.states ?? []).map((state) => ({
@@ -375,8 +432,6 @@ export function WorkflowStoreProvider(props: ParentProps) {
   });
 
   // ─── Watching ────────────────────────────────────────────────────────────────
-
-  const [items, setItems] = createSignal<Record<string, WorkflowItem[]>>({});
 
   /** Watch these workflows, and only these, for as long as the space is on screen. */
   function watchWorkflows(names: () => string[]) {
@@ -416,36 +471,116 @@ export function WorkflowStoreProvider(props: ParentProps) {
     setDraftState(null);
   });
 
-  // ─── Titles ──────────────────────────────────────────────────────────────────
+  // ─── Subjects ────────────────────────────────────────────────────────────────
 
-  const [titles, setTitles] = createSignal<Record<string, string>>({});
+  /**
+   * What each record going through a watched workflow is called, by record id — the open workflow's
+   * records and every running one the space lists. Only records that were found are kept: one not
+   * found yet — its model not registered for this space when it was looked for — is looked for again
+   * when the space's models arrive, rather than read as nameless for good.
+   */
+  const [subjects, setSubjects] = createSignal<Record<string, SubjectName>>({});
+  /**
+   * Which models each record was already looked for in and not found, so a run moving does not ask
+   * again. A read that failed is not kept, and opening a workflow forgets them all.
+   */
+  const searched = new Map<string, string>();
+
+  /**
+   * The property that names a record of each of the space's models. A model the space adopted is named
+   * as it declares (`namePropertyOf` reads `display.title` first), and wins over the foreign snapshot,
+   * which carries no declaration and so only ever gives the guess — the same precedence as
+   * `RecordStore.schemaFor`.
+   */
+  const nameProperties = createMemo(() => {
+    const out = new Map<string, string>();
+    for (const entry of datasetStore.currentDatasetEntities()) {
+      out.set(entry.name, nameFromProperties(entry.properties.filter((p) => !p.isCollection)));
+    }
+    for (const shape of shapeStore.spaceShapes()) {
+      const schema = shape.manifest?.entities[shape.name];
+      if (schema) out.set(shape.name, namePropertyOf(schema));
+      else if (!out.has(shape.name)) out.set(shape.name, '');
+    }
+    return out;
+  });
+  const namePropertyFor = (entity: string): string => {
+    const core = CORE_MANIFEST.entities[entity];
+    return nameProperties().get(entity) ?? (core ? namePropertyOf(core) : '');
+  };
 
   createEffect(() => {
+    datasetId();
+    setSubjects({});
+    searched.clear();
+  });
+
+  /*
+    Every watched workflow's records, looked for in the models each workflow names — or, naming none,
+    WE's own and the space's. Records of workflows that look in the same models are looked for together,
+    and every model is read at once rather than one after another: a workflow over any record asks a
+    dozen models on a space with a dozen of its own.
+  */
+  createEffect(() => {
     const h = handle();
-    const name = openName();
-    const list = items()[name] ?? [];
-    const definition = definitions()[name];
-    if (!h || !list.length) return;
-    const known = untrack(titles);
-    const missing = list.map((item) => item.record).filter((id) => !(id in known));
-    if (!missing.length) return;
-    const entities = definition?.entities.length ? definition.entities : ANY_RECORD;
-    void (async () => {
-      const found: Record<string, string> = Object.fromEntries(missing.map((id) => [id, '']));
-      for (const entity of entities) {
-        const Model = getEntityForDataset(entity, h) as
-          { findAll(d: unknown, q: unknown): Promise<Record<string, unknown>[]> } | undefined;
-        if (!Model) continue;
-        try {
-          for (const row of await Model.findAll(h, { where: { id: missing } })) {
-            if (typeof row.id === 'string' && !found[row.id]) found[row.id] = titleOf(row);
-          }
-        } catch {
-          // A type this space has never held reads as nothing to name.
-        }
+    const watched = items();
+    const defs = definitions();
+    // Tracked so a record whose model was not registered yet is looked for again once it is. The
+    // foreign snapshot is read on navigation; a model adopted since is only in the shape store's list.
+    const spaceModels = [...nameProperties().keys()];
+    if (!h) return;
+    const known = untrack(subjects);
+    const byModels = new Map<string, { models: { entity: string; Model: Finder }[]; missing: Set<string> }>();
+    for (const [name, list] of Object.entries(watched)) {
+      if (!list.length) continue;
+      const definition = defs[name];
+      const candidates = definition?.entities.length
+        ? definition.entities
+        : [...new Set([...ANY_RECORD, ...spaceModels])];
+      const models = candidates.flatMap((entity) => {
+        const Model = getEntityForDataset(entity, h) as Finder | undefined;
+        return Model ? [{ entity, Model }] : [];
+      });
+      const looking = models.map((m) => m.entity).join(',');
+      const group = byModels.get(looking) ?? { models, missing: new Set<string>() };
+      for (const { record } of list) {
+        if (!(record in known) && searched.get(record) !== looking) group.missing.add(record);
       }
-      setTitles((prev) => ({ ...prev, ...found }));
-    })();
+      if (group.missing.size) byModels.set(looking, group);
+    }
+    for (const [looking, { models, missing }] of byModels) {
+      const wanted = [...missing];
+      for (const id of wanted) searched.set(id, looking);
+      void (async () => {
+        const reads = await Promise.allSettled(
+          models.map(async ({ entity, Model }) => ({
+            entity,
+            rows: await Model.findAll(h, { where: { id: wanted } }),
+          })),
+        );
+        // In the order the models are listed, so a record two of them answer for is named by the first.
+        const found: Record<string, SubjectName> = {};
+        for (const read of reads) {
+          if (read.status !== 'fulfilled') continue;
+          for (const row of read.value.rows) {
+            if (typeof row.id !== 'string' || found[row.id]) continue;
+            found[row.id] = {
+              title: subjectTitleOf(row, namePropertyFor(read.value.entity)),
+              entity: read.value.entity,
+            };
+          }
+        }
+        /*
+          A record no model answered for while a read failed is not answered: forget it was looked for,
+          so the next change to the list — a run moving, the workflow reopened — asks again. Bounded by
+          those changes, not by renders.
+        */
+        if (reads.some((read) => read.status === 'rejected')) {
+          for (const id of wanted) if (!found[id] && searched.get(id) === looking) searched.delete(id);
+        }
+        if (Object.keys(found).length) setSubjects((prev) => ({ ...prev, ...found }));
+      })();
+    }
   });
 
   // ─── The open workflow ───────────────────────────────────────────────────────────
@@ -454,11 +589,17 @@ export function WorkflowStoreProvider(props: ParentProps) {
 
   async function openWorkflow(name: string): Promise<void> {
     if (!name) return closeWorkflow();
+    searched.clear();
     setOpenName(name);
     setHistory({});
-    setDefinitions(({ [name]: _stale, ...rest }) => rest);
+    /*
+      Read again, as somebody may have changed it, but over the one held rather than after dropping it.
+      Dropped, the workflow had no definition until the read landed: `open` went to null — the tree lit
+      the group above the record just chosen — and none of its records counted as running, so every
+      row of Active flows for it went and came back.
+    */
     try {
-      await definitionOfWorkflow(name);
+      await definitionOfWorkflow(name, true);
     } catch (error) {
       console.error('WorkflowStore: could not read that workflow', error);
       toastService.error('Could not open that workflow');
@@ -479,7 +620,7 @@ export function WorkflowStoreProvider(props: ParentProps) {
     const labels = labelsFor(name);
     const view = editorView(definition, labels);
     const { model } = toLanes(definition);
-    const named = titles();
+    const named = subjects();
     return {
       ...view,
       label: workflowLabelOf(name),
@@ -488,7 +629,7 @@ export function WorkflowStoreProvider(props: ParentProps) {
       archived: summary?.archived ?? false,
       records: [...(items()[name] ?? [])]
         .sort((a, b) => (b.since ?? 0) - (a.since ?? 0))
-        .map((item) => recordView(definition, model, item, named[item.record] ?? '', me(), labels)),
+        .map((item) => recordView(definition, model, item, named[item.record] ?? NO_SUBJECT, me(), labels)),
       recordsLoaded: name in items(),
       history: history(),
     };
@@ -520,7 +661,7 @@ export function WorkflowStoreProvider(props: ParentProps) {
       const model = definition ? toLanes(definition).model : null;
       const labels = labelsFor(name);
       for (const item of all[name] ?? []) {
-        const view = definition && model ? recordView(definition, model, item, '', me(), labels) : null;
+        const view = definition && model ? recordView(definition, model, item, NO_SUBJECT, me(), labels) : null;
         (out[item.record] ??= []).push({
           workflow: name,
           label: workflowLabelOf(name),
@@ -534,6 +675,42 @@ export function WorkflowStoreProvider(props: ParentProps) {
       }
     }
     return out;
+  });
+
+  /*
+    What is going on: every record still running through a startable workflow, the liveliest first. A
+    backend that cannot say when a record last saw activity is read by when it started; a tie goes to
+    the record's id, so two readers holding the same runs list them alike.
+  */
+  const active = createMemo<ActiveRunView[]>(() => {
+    const all = items();
+    const defs = definitions();
+    const named = subjects();
+    const rows: (ActiveRunView & { at: number })[] = [];
+    for (const name of startableNames()) {
+      const labels = labelsFor(name);
+      for (const item of (all[name] ?? []).filter(stillRunning(defs[name]))) {
+        const subject = named[item.record] ?? NO_SUBJECT;
+        const at = item.lastActivity ?? item.since;
+        rows.push({
+          id: `${name}|${item.record}`,
+          workflow: name,
+          label: workflowLabelOf(name),
+          record: item.record,
+          title: subjectLabel(subject, item.record),
+          kind: subject.entity ? modelLabel(subject.entity) : '',
+          state: item.state,
+          stateLabel: item.state ? labels.state(item.state) : '',
+          lastActivity: isoOf(at),
+          waiting: item.waiting.length,
+          stalled: item.stalled,
+          at: at ?? 0,
+        });
+      }
+    }
+    return rows
+      .sort((a, b) => b.at - a.at || (a.record < b.record ? -1 : a.record > b.record ? 1 : 0))
+      .map(({ at: _at, ...row }) => row);
   });
 
   const writable = (workflow: string) => {
@@ -717,6 +894,7 @@ export function WorkflowStoreProvider(props: ParentProps) {
     open,
     draft,
     recordWorkflows,
+    active,
     refreshWorkflows,
     openWorkflow,
     closeWorkflow,
