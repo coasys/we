@@ -508,3 +508,84 @@ describe('the expanded outcome on the live mount', () => {
     await dialog().getByText(STOCK_EDITED, { exact: true }).waitFor({ state: 'visible', timeout: 60_000 });
   });
 });
+
+/*
+  S2-7's gate: the priority view's order is `AcornProjectMeta.topPriorityOutcomes`, and every
+  change to it — add, reorder, remove — is a whole-list replace that stock's project meta must
+  show in the same order. The reorder is taken with the keyboard on the row's grip, which is the
+  same `reorder` event a drag ends in.
+*/
+describe('the priority view on the live mount', () => {
+  const tag = Date.now().toString(36);
+  const P1 = `PV one ${tag}`;
+  const P2 = `PV two ${tag}`;
+
+  let stockMod;
+  let stockH;
+  let page;
+  let h1;
+  let h2;
+
+  const hashText = (hash) => (typeof hash === 'string' ? hash : `u${Buffer.from(hash).toString('base64url')}`);
+  /** Stock's own priority list, as `u…` hash text, in its stored order. */
+  const stockPriorities = async () => {
+    const meta = await stockMod.stockCall(stockH, 'projects', 'fetch_project_meta', { input: null, local: true });
+    return (meta?.entry?.topPriorityOutcomes ?? []).map(hashText);
+  };
+  /** Ours only — other suites' outcomes may be on the list too. */
+  const ours = (list) => list.filter((x) => x === h1 || x === h2);
+
+  before(async () => {
+    stockMod = await import(rigFile('stock.mjs'));
+    stockH = await stockMod.connect();
+    h1 = hashText((await stockMod.createOutcome(stockH, P1)).actionHash);
+    h2 = hashText((await stockMod.createOutcome(stockH, P2)).actionHash);
+
+    const joined = await datasetNamed('Acorn project');
+    page = await tab('priority');
+    await page.goto(app.url);
+    await answerNamePrompt(page, 'Acorn Dev');
+    await page.goto(`${app.url}/space/${joined.uuid}`);
+    await page.waitForURL(/\/space\//, { timeout: 300_000 });
+    await page.getByRole('button', { name: 'Priority', exact: true }).click({ timeout: 300_000 });
+  });
+
+  after(async () => {
+    if (stockH) await stockMod.closeStock(stockH).catch(() => {});
+  });
+
+  it('prioritise writes through, in order', async () => {
+    await page.getByRole('button', { name: `Prioritise ${P1}`, exact: true }).click({ timeout: 300_000 });
+    await h.until(stockPriorities, (list) => ours(list).join() === [h1].join(), {
+      timeout: 120_000,
+      what: `stock topPriorityOutcomes to hold "${P1}"`,
+    });
+    await page.getByRole('button', { name: `Prioritise ${P2}`, exact: true }).click({ timeout: 120_000 });
+    await h.until(stockPriorities, (list) => ours(list).join() === [h1, h2].join(), {
+      timeout: 120_000,
+      what: `stock topPriorityOutcomes to hold "${P1}", "${P2}" in that order`,
+    });
+  });
+
+  it('reorder writes through', async () => {
+    const grip = page.getByRole('button', { name: `Reorder ${P2}`, exact: true });
+    await grip.waitFor({ state: 'visible', timeout: 120_000 });
+    await grip.focus();
+    await page.keyboard.press('Space');
+    await page.keyboard.press('ArrowUp');
+    await page.keyboard.press('Space');
+    await h.until(stockPriorities, (list) => ours(list).join() === [h2, h1].join(), {
+      timeout: 120_000,
+      what: `stock topPriorityOutcomes to hold "${P2}" before "${P1}"`,
+    });
+  });
+
+  it('remove writes through', async () => {
+    await page.getByRole('button', { name: `Remove ${P2} from priority`, exact: true }).click({ timeout: 120_000 });
+    await h.until(stockPriorities, (list) => ours(list).join() === [h1].join(), {
+      timeout: 120_000,
+      what: `stock topPriorityOutcomes to drop "${P2}" and keep "${P1}"`,
+    });
+    await page.getByRole('button', { name: `Prioritise ${P2}`, exact: true }).waitFor({ timeout: 120_000 });
+  });
+});
