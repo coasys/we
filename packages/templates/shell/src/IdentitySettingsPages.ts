@@ -354,5 +354,5 @@ export const addDeviceButton: SchemaNode = {
 
 export const deviceListFootnote: SchemaNode = footnote(
   'lock',
-  'Your public key log lists only keys. Unlinking or revoking a device takes effect from that point in the log.',
+  'Your public key log lists only keys. Unlinking a device takes effect from that entry in the log. Revoking one also stops trusting what arrives from it after the time you pick.',
 );

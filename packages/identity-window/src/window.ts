@@ -30,6 +30,12 @@ export interface IdentityTransport {
 let host: IdentityTransport;
 let root: HTMLElement;
 let offerTimer: number | undefined;
+/**
+ * The "missing since" the person last sent for a revoke, drawn again when the custody service
+ * answers with the same key's confirm screen (a wrong passphrase, a refused time): a retry without
+ * it would revoke from now, and a revocation cannot be redone.
+ */
+let picked: { keyId: string; value: string } | undefined;
 
 type Child = Node | string;
 
@@ -212,8 +218,14 @@ function body(screen: Screen): Child[] {
     case 'revoke-confirm': {
       const p = screen.passphrase ? secretField('Passphrase') : null;
       const since = el('input', { type: 'datetime-local' });
+      if (picked?.keyId === screen.keyId) since.value = picked.value;
       const go = () => {
-        const at = sinceMs(since.value);
+        const at = sinceMs(since.value, since.validity.badInput);
+        if (at === null) {
+          draw({ ...screen, error: 'Enter the whole date and time, or clear it to revoke from now.' });
+          return;
+        }
+        picked = { keyId: screen.keyId, value: since.value };
         void step(
           { kind: 'revoke', ...(p ? { passphrase: p.input.value } : {}), ...(at === undefined ? {} : { since: at }) },
           p ? [p.input] : [],

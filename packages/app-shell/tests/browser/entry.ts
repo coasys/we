@@ -102,7 +102,8 @@ let arriveProfile: ((profile: { did: string } & Record<string, unknown>) => void
 /** Store members every schema reads, whatever it is. A scenario overrides what it cares about. */
 function defaultStores(): Record<string, unknown> {
   return {
-    $me: { did: 'did:me' },
+    // As the session answers without a key log: the device is the person.
+    $me: { did: 'did:me', dids: ['did:me'], person: 'did:me' },
     $sources: hostSourceBag(),
     spaceStore: { mutedDids: [], currentSpace: { id: 'space-1' }, members: [] },
     profileStore: { profiles: [] },

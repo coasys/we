@@ -41,12 +41,16 @@ export function remaining(expires: number, nowSeconds: number): string {
 
 /**
  * The time a "lost or stolen" key stopped being trusted, in ms since the epoch, from the picker's
- * value (`2026-11-21T09:30`, the person's local time). Empty or unreadable means now, which the
- * custody service reads as no `since` at all.
+ * value (`2026-11-21T09:30`, the person's local time). `undefined` for an empty field: now, which
+ * the custody service reads as no `since` at all. `null` for a time the person did not finish
+ * (`badInput`: the picker then reports an empty value) or that does not parse: never sent as now,
+ * because a revocation cannot be redone.
  */
-export function sinceMs(picked: string): number | undefined {
-  const at = picked ? new Date(picked).getTime() : Number.NaN;
-  return Number.isFinite(at) ? at : undefined;
+export function sinceMs(picked: string, badInput = false): number | undefined | null {
+  if (badInput) return null;
+  if (!picked) return undefined;
+  const at = new Date(picked).getTime();
+  return Number.isFinite(at) ? at : null;
 }
 
 /** "01" … "12", as the words grid numbers them. */
@@ -97,14 +101,14 @@ export function heading(screen: Screen): { title: string; lead: string } {
     case 'unlink-confirm':
       return {
         title: `Unlink ${screen.keyId}?`,
-        lead: "Do this for a device you replaced or no longer use. It stops acting as you from now on, and what it did before stays yours. A computer that's offline learns this when it reconnects.",
+        lead: "Do this for a device you replaced or no longer use. It can't act as you after this entry in your key log, and what it did before stays yours. A computer that's offline learns this when it reconnects.",
       };
     case 'unlinked':
       return { title: `${screen.keyId} unlinked`, lead: `It's entry #${screen.seq} in your key log.` };
     case 'revoke-confirm':
       return {
         title: `Revoke ${screen.keyId}?`,
-        lead: "Do this for a device that was lost or stolen. It loses access to your identity and can't be linked again. Say since when it was missing: what it did from then on may no longer show as yours. A computer that's offline learns this when it reconnects.",
+        lead: "Do this for a device that was lost or stolen. It loses access to your identity and can't be linked again. Say since when it was missing: anything from it that arrives from then on may no longer show as yours, even if it was made earlier. A computer that's offline learns this when it reconnects.",
       };
     case 'revoked':
       return { title: `${screen.keyId} revoked`, lead: `It's entry #${screen.seq} in your key log.` };

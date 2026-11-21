@@ -1640,6 +1640,9 @@ importers:
         specifier: workspace:*
         version: link:../design-system/1-tokens
     devDependencies:
+      happy-dom:
+        specifier: 21.0.4
+        version: 21.0.4
       typescript:
         specifier: ^6.0.3
         version: 6.0.3

@@ -32,10 +32,12 @@ describe('the identity window', () => {
     expect(heading({ screen: 'unlinked', keyId: 'd2', seq: 2 }).title).toBe('d2 unlinked');
   });
 
-  it("reads the picked time as the person's local time, and an empty one as now", () => {
+  it("reads the picked time as the person's local time, an empty one as now, and never a half-filled one as now", () => {
     expect(sinceMs('2026-11-21T09:30')).toBe(new Date(2026, 10, 21, 9, 30).getTime());
     expect(sinceMs('')).toBeUndefined();
-    expect(sinceMs('not a time')).toBeUndefined();
+    // A half-filled picker reports an empty value with `badInput`.
+    expect(sinceMs('', true)).toBeNull();
+    expect(sinceMs('not a time')).toBeNull();
   });
 
   it('asks for the two words the custody service chose', () => {
