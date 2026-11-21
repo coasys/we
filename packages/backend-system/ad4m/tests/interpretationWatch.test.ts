@@ -77,9 +77,13 @@ function perspective(agent = 'did:me', foreign: Record<string, string> = {}) {
       listeners.set(event, cb);
       return () => listeners.delete(event);
     },
-    getShaclNames: async () => ['TaskBlock', 'EventBlock', 'Relationship', ...Object.keys(foreign)],
-    // Only the classes another app registered are asked for: WE's own resolve through their models.
-    getShaclTargetClass: async (name: string) => foreign[name],
+    // The registry as the executor answers it: by name or by target class. WE's own classes come
+    // from their models; `foreign` holds the classes another app registered.
+    shapes: async (keys?: string[]) =>
+      [
+        ...Object.keys(MODELS).map((name) => ({ name, shape: { targetClass: targetOf(name) }, hash: '' })),
+        ...Object.entries(foreign).map(([name, targetClass]) => ({ name, shape: { targetClass }, hash: '' })),
+      ].filter(({ name, shape }) => !keys || keys.includes(name) || keys.includes(shape.targetClass)),
     get: async (query: { source?: string; predicate?: string }) => {
       calls.get += 1;
       // A real read yields the event loop; so does this one, so concurrent callers interleave.
@@ -329,6 +333,6 @@ describe('a class the space already had', () => {
     const p = perspective('did:me', { Broken: '' });
     await expect(
       createAd4mInterpretationPort(() => 'did:me').watch!(p.handle, request(['Broken']) as never),
-    ).rejects.toThrow('no target class for "Broken"');
+    ).rejects.toThrow('no schema named "Broken"');
   });
 });

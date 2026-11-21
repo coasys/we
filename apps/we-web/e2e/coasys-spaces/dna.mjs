@@ -97,7 +97,7 @@ export async function linked(perspective, a, b) {
 
 /** The SHACL shape names the perspective holds. */
 export async function shaclNames(perspective) {
-  return ((await perspective.getShaclNames()) ?? []).map(String);
+  return (await perspective.shapes()).map((s) => s.name);
 }
 
 /**

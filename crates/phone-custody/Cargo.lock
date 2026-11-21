@@ -5,7 +5,7 @@ version = 4
 [[package]]
 name = "ad4m-hash-chain"
 version = "0.1.0"
-source = "git+https://github.com/coasys/ad4m?rev=a1e9dc908cfdcd9b414bae51cea4b20591b7080b#a1e9dc908cfdcd9b414bae51cea4b20591b7080b"
+source = "git+https://github.com/coasys/ad4m?rev=809d842fac5b4a7a232f40092dfd7bfd66b1f436#809d842fac5b4a7a232f40092dfd7bfd66b1f436"
 dependencies = [
  "async-trait",
  "bs58",
@@ -20,7 +20,7 @@ dependencies = [
 [[package]]
 name = "ad4m-identity-client"
 version = "0.1.0"
-source = "git+https://github.com/coasys/ad4m?rev=a1e9dc908cfdcd9b414bae51cea4b20591b7080b#a1e9dc908cfdcd9b414bae51cea4b20591b7080b"
+source = "git+https://github.com/coasys/ad4m?rev=809d842fac5b4a7a232f40092dfd7bfd66b1f436#809d842fac5b4a7a232f40092dfd7bfd66b1f436"
 dependencies = [
  "ad4m-hash-chain",
  "ad4m-identity-core",
@@ -39,7 +39,7 @@ dependencies = [
 [[package]]
 name = "ad4m-identity-core"
 version = "0.1.0"
-source = "git+https://github.com/coasys/ad4m?rev=a1e9dc908cfdcd9b414bae51cea4b20591b7080b#a1e9dc908cfdcd9b414bae51cea4b20591b7080b"
+source = "git+https://github.com/coasys/ad4m?rev=809d842fac5b4a7a232f40092dfd7bfd66b1f436#809d842fac5b4a7a232f40092dfd7bfd66b1f436"
 dependencies = [
  "ad4m-hash-chain",
  "base64 0.22.1",
@@ -63,7 +63,7 @@ dependencies = [
 [[package]]
 name = "ad4m-ldk"
 version = "0.13.0-test-1"
-source = "git+https://github.com/coasys/ad4m?rev=a1e9dc908cfdcd9b414bae51cea4b20591b7080b#a1e9dc908cfdcd9b414bae51cea4b20591b7080b"
+source = "git+https://github.com/coasys/ad4m?rev=809d842fac5b4a7a232f40092dfd7bfd66b1f436#809d842fac5b4a7a232f40092dfd7bfd66b1f436"
 dependencies = [
  "futures",
  "js-sys",
@@ -1085,7 +1085,7 @@ dependencies = [
 [[package]]
 name = "identity-store"
 version = "0.1.0"
-source = "git+https://github.com/coasys/ad4m?rev=a1e9dc908cfdcd9b414bae51cea4b20591b7080b#a1e9dc908cfdcd9b414bae51cea4b20591b7080b"
+source = "git+https://github.com/coasys/ad4m?rev=809d842fac5b4a7a232f40092dfd7bfd66b1f436#809d842fac5b4a7a232f40092dfd7bfd66b1f436"
 dependencies = [
  "ad4m-hash-chain",
  "ad4m-identity-core",

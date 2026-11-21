@@ -67,6 +67,7 @@ const incept: KeyLogView['events'][number] = {
   op: 'incept',
   hash: 'QmHash0',
   added: [{ id: 'd1', sign: 'z6MkOne' }],
+  unlinked: [],
   revoked: [],
 };
 const add: KeyLogView['events'][number] = {
@@ -74,11 +75,12 @@ const add: KeyLogView['events'][number] = {
   op: 'add',
   hash: 'QmHash1',
   added: [{ id: 'd2', sign: 'z6MkTwo' }],
+  unlinked: [],
   revoked: [],
 };
 const devices: DeviceKeyView[] = [
-  { keyId: 'd2', sign: 'z6MkTwo', thisDevice: false, addedSeq: 1, revokedSeq: null },
-  { keyId: 'd1', sign: 'z6MkOne', thisDevice: true, addedSeq: 0, revokedSeq: null },
+  { keyId: 'd2', sign: 'z6MkTwo', thisDevice: false, addedSeq: 1, unlinkedSeq: null, revokedSeq: null },
+  { keyId: 'd1', sign: 'z6MkOne', thisDevice: true, addedSeq: 0, unlinkedSeq: null, revokedSeq: null },
 ];
 
 /** A backend whose identity is whatever the test says, and which counts what it was asked. */
@@ -526,7 +528,7 @@ describe('deviceStore', () => {
         if (change.kind === 'revoke') {
           b.state.events = [
             ...b.state.events,
-            { seq: 2, op: 'revoke', hash: 'QmHash2', added: [], revoked: [change.keyId] },
+            { seq: 2, op: 'revoke', hash: 'QmHash2', added: [], unlinked: [], revoked: [change.keyId] },
           ];
           b.state.devices = b.state.devices.map((d) => (d.keyId === change.keyId ? { ...d, revokedSeq: 2 } : d));
         }
@@ -543,7 +545,7 @@ describe('deviceStore', () => {
     expect(c.changes).toEqual([{ kind: 'revoke', keyId: 'd2' }]);
     expect(deviceStore.devices().find((d) => d.keyId === 'd2')).toMatchObject({
       revoked: true,
-      status: 'Removed at #2',
+      status: 'Revoked',
     });
     expect(deviceStore.validCount()).toBe(1);
     expect(identity.keyLog()[0].title).toBe('Revoked d2');
@@ -555,6 +557,7 @@ describe('deviceStore', () => {
       sign: 'z6MkBot',
       thisDevice: false,
       addedSeq: 2,
+      unlinkedSeq: null,
       revokedSeq: null,
       bot: { can: ['read', 'write'], expires: 4_000_000_000 },
       expires: 4_000_000_000,
@@ -565,6 +568,38 @@ describe('deviceStore', () => {
     await flush();
     expect(deviceStore.devices().map((d) => d.keyId)).toEqual(['d1', 'd2']);
     expect(deviceStore.validCount()).toBe(2);
+  });
+
+  it('unlink asks for that key and the device reads Unlinked', async () => {
+    const b = backend({ did: DID, events: [incept, add], devices });
+    const c = custody(
+      b.port,
+      (change) => {
+        if (change.kind === 'unlink') {
+          b.state.events = [
+            ...b.state.events,
+            { seq: 2, op: 'unlink', hash: 'QmHash2', added: [], unlinked: [change.keyId], revoked: [] },
+          ];
+          b.state.devices = b.state.devices.map((d) => (d.keyId === change.keyId ? { ...d, unlinkedSeq: 2 } : d));
+        }
+      },
+      true,
+    );
+    setPorts({ identity: c.identity });
+    const { identity, devices: deviceStore } = mount();
+    await flush();
+    await flush();
+    expect(await deviceStore.unlink('d2')).toBe('done');
+    await flush();
+    await flush();
+    expect(c.changes).toEqual([{ kind: 'unlink', keyId: 'd2' }]);
+    expect(deviceStore.devices().find((d) => d.keyId === 'd2')).toMatchObject({
+      unlinked: true,
+      revoked: false,
+      status: 'Unlinked',
+    });
+    expect(deviceStore.validCount()).toBe(1);
+    expect(identity.keyLog()[0].title).toBe('Unlinked d2');
   });
 
   it('add asks for add-device', async () => {
@@ -729,7 +764,7 @@ describe('deviceStore', () => {
 
   it('on a computer that lost its enc key: still warns of a revoked holder from the key log, and offers the words', async () => {
     const revokedD2 = devices.map((d) => (d.keyId === 'd2' ? { ...d, revokedSeq: 2 } : d));
-    const revoke = { seq: 2, op: 'revoke', hash: 'QmHash2', added: [], revoked: ['d2'] };
+    const revoke = { seq: 2, op: 'revoke', hash: 'QmHash2', added: [], unlinked: [], revoked: ['d2'] };
     const b = backend({ did: DID, events: [incept, add, revoke], devices: revokedD2 });
     const state: IdentityCustodyView = {
       ...NO_CUSTODY,
@@ -823,7 +858,7 @@ describe('deviceStore', () => {
 
   it('replaces the master key on a device that does not keep it, and the revoked holder stops warning', async () => {
     const revokedD2 = devices.map((d) => (d.keyId === 'd2' ? { ...d, revokedSeq: 2 } : d));
-    const revoke = { seq: 2, op: 'revoke', hash: 'QmHash2', added: [], revoked: ['d2'] };
+    const revoke = { seq: 2, op: 'revoke', hash: 'QmHash2', added: [], unlinked: [], revoked: ['d2'] };
     const b = backend({ did: DID, events: [incept, add, revoke], devices: revokedD2 });
     let state: IdentityCustodyView = { ...NO_CUSTODY, did: DID, unlock: 'os', revokedHolders: ['d2'] };
     const changes: IdentityChange[] = [];
@@ -833,7 +868,10 @@ describe('deviceStore', () => {
         async change(change) {
           changes.push(change);
           if (change.kind === 'replace-master') {
-            b.state.events = [...b.state.events, { seq: 3, op: 'rotate', hash: 'QmHash3', added: [], revoked: [] }];
+            b.state.events = [
+              ...b.state.events,
+              { seq: 3, op: 'rotate', hash: 'QmHash3', added: [], unlinked: [], revoked: [] },
+            ];
             // The record may still list the old holder: the rotation, not the record, settles it.
             state = {
               ...state,
