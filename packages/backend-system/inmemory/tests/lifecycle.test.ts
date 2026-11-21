@@ -2,6 +2,7 @@
  * Contract behavior of the in-memory lifecycle + agent-session ports — the reference the app
  * shell's executor-free tests build on.
  */
+import { isAgentExists } from '@we/backend-shared';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createInMemoryAgentSession, createInMemoryLifecycle } from '../src/lifecycle';
@@ -95,5 +96,14 @@ describe('createInMemoryAgentSession', () => {
   it('models the first-run flow (no agent yet)', async () => {
     const session = createInMemoryAgentSession({ hasAgent: false });
     expect((await session.status()).hasAgent).toBe(false);
+  });
+
+  it("refuses to sign up over an agent that exists, with the contract's AgentExistsError", async () => {
+    const session = createInMemoryAgentSession({ password: 'theirs' });
+    const refusal = await session.signUp({ kind: 'password', password: 'mine' }).catch((err: unknown) => err);
+    expect(isAgentExists(refusal)).toBe(true);
+    // The agent and its password are untouched.
+    await expect(session.signIn({ kind: 'password', password: 'mine' })).rejects.toThrow();
+    await expect(session.signIn({ kind: 'password', password: 'theirs' })).resolves.toBeUndefined();
   });
 });

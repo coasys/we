@@ -156,12 +156,32 @@ export function isSessionTimeout(err: unknown): err is SessionTimeoutError {
 }
 
 /**
+ * Signing up was refused because this backend already has an agent.
+ *
+ * Its own type so the shell can send the person to sign in, rather than show a refusal they cannot
+ * act on. A backend must never make a new agent over one that exists: that would replace its keys.
+ * Adapters translate their own signal for it (AD4M's executor answers 409) into this.
+ */
+export class AgentExistsError extends Error {
+  constructor(message = 'An agent already exists on this backend') {
+    super(message);
+    this.name = 'AgentExistsError';
+  }
+}
+
+/** By name as well as by class, so a second copy of this package in a bundle still matches. */
+export function isAgentExists(err: unknown): err is AgentExistsError {
+  return err instanceof AgentExistsError || (err instanceof Error && err.name === 'AgentExistsError');
+}
+
+/**
  * The agent session — whether the backend's identity is present and usable, and signing up, in
  * and out around it. Connection *establishment* stays with the host-supplied connector (it
  * is platform-specific); this port is what the shell needs once a connection exists.
  *
  * `signUp` and `signIn` reject with {@link SessionTimeoutError} when the backend is still working
- * after the adapter has waited as long as it will, and with any other error when it refused.
+ * after the adapter has waited as long as it will, and with any other error when it refused. `signUp`
+ * rejects with {@link AgentExistsError} when an agent already exists, and changes nothing.
  */
 export interface AgentSessionPort {
   status(): Promise<AgentSessionStatus>;

@@ -53,6 +53,8 @@ export interface BundleJudgement {
     brand?: string;
     /** Whether it draws its own sign-in screen. */
     bootScreen?: boolean;
+    /** Whether it brings screens for before a session (`Bundle.base`). */
+    base?: boolean;
   };
   /** What it will be able to do, in the words a person reads. */
   capabilities: string[];
@@ -128,6 +130,13 @@ export function judgeBundle(bundle: Bundle, deps: BundleJudgeDeps): BundleJudgem
         "Its sign-in screen has no password field — neither the host's (CredentialField) nor WE's sign-in form (host.signIn.form)",
       );
   }
+  /*
+    The app before a session is chrome too, judged as the app is. It reaches `baseStore` alone — there
+    is no session for anything else to be about — and is drawn only where the seed builds the bundle
+    in, so an installed one changes nothing until a deployment ships it; it is judged all the same, so
+    what the person agrees to is the whole of what the file holds.
+  */
+  if (bundle.base) judge(bundle.base, CHROME_TIER, 'Its screens before sign-in');
   for (const template of [...shells, ...sections])
     judge(template, SPACE_TIER, `"${template.meta?.name ?? template.id}"`);
   // A page is the app's own, drawn above everything as the app's chrome is: the same tier.
@@ -164,6 +173,7 @@ export function judgeBundle(bundle: Bundle, deps: BundleJudgeDeps): BundleJudgem
       recordTypes: recordNames,
       ...(bundle.brand ? { brand: bundle.brand.name } : {}),
       ...(bundle.bootScreen ? { bootScreen: true } : {}),
+      ...(bundle.base ? { base: true } : {}),
     },
     capabilities: describeCapabilities([...groups]),
     groups: [...groups].sort(),

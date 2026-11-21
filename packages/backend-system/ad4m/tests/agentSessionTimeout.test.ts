@@ -7,7 +7,7 @@
  * "Incorrect password" about a password that had been accepted.
  */
 import { RpcError } from '@coasys/ad4m';
-import { isSessionTimeout } from '@we/backend-shared';
+import { isAgentExists, isSessionTimeout } from '@we/backend-shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createAd4mAgentSession } from '../src/lifecycleAdapter';
@@ -135,5 +135,40 @@ describe('AD4M agent session — signing out', () => {
     const { client, locks } = lockingClient();
     await expect(createAd4mAgentSession(client).signOut()).resolves.toBe(false);
     expect(locks).toEqual([]);
+  });
+});
+
+describe('AD4M agent session — signing up where an agent exists', () => {
+  function generatingClient(generate: () => Promise<unknown>) {
+    return { agent: { generate }, on: () => () => {} };
+  }
+
+  beforeEach(() => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it("answers the executor's 409 with an AgentExistsError, so the shell can ask for sign-in", async () => {
+    const refusal = new RpcError(409, 'the agent is already initialised; unlock it with agent.unlock instead');
+    const session = createAd4mAgentSession(generatingClient(() => Promise.reject(refusal)));
+
+    const err = await session.signUp({ kind: 'password', password: 'pw' }).catch((e: unknown) => e);
+    expect(isAgentExists(err)).toBe(true);
+    // Nothing was signed in, so there is nothing to sign out.
+    await expect(session.signOut()).resolves.toBe(false);
+  });
+
+  it("reads the 409 from the shape of the bundled SDK's error too", async () => {
+    const bundled = Object.assign(new Error('RPC error 409: already initialised'), { status: 409 });
+    const session = createAd4mAgentSession(generatingClient(() => Promise.reject(bundled)));
+    expect(isAgentExists(await session.signUp({ kind: 'password', password: 'pw' }).catch((e: unknown) => e))).toBe(
+      true,
+    );
+  });
+
+  it('rethrows any other refusal as it came', async () => {
+    const refusal = new RpcError(500, 'Failed to start Holochain');
+    const session = createAd4mAgentSession(generatingClient(() => Promise.reject(refusal)));
+    await expect(session.signUp({ kind: 'password', password: 'pw' })).rejects.toBe(refusal);
   });
 });

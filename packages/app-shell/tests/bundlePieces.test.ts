@@ -43,6 +43,16 @@ describe('the pieces a bundle lands as', () => {
     expect(pieces.themes.map((t) => t.id)).toEqual(['field-guide--moss']);
   });
 
+  it('lands the app before a session under the bundle’s id, and none where it brings none', () => {
+    const base = { id: 'base', type: 'Column', meta: meta('Before sign-in', 'base') };
+    const withBase = bundlePieces({ ...bundle, base } as unknown as Bundle);
+    expect(withBase.base?.id).toBe('field-guide--base');
+    expect(withBase.base?.source).toEqual({ bundle: 'field-guide', version: '1.2.0', piece: 'base' });
+    // Landed as a copy: the bundle itself is not changed.
+    expect(base.id).toBe('base');
+    expect(pieces.base).toBeUndefined();
+  });
+
   it('says where each template came from', () => {
     expect(pieces.sections[0].source).toEqual({ bundle: 'field-guide', version: '1.2.0', piece: 'species' });
   });

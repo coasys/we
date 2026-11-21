@@ -94,7 +94,7 @@ function door(options: {
  * on a build that cannot make an identity yet, why.
  */
 const keepsLine: OperatorToken = {
-  $: "identityStore.changeBlocked ? identityStore.changeBlocked : identityStore.custody.unlock == 'os' ? 'Your 12 words, no email needed. This computer keeps your master key behind its own sign-in' : 'Your 12 words, no email needed. This computer keeps your master key behind your passphrase'",
+  $: "identityStore.changeBlocked ? identityStore.changeBlocked : identityStore.custody.unlock == 'os' ? 'A recovery phrase, no email needed. This computer keeps your master key behind its own sign-in' : 'A recovery phrase, no email needed. This computer keeps your master key behind your passphrase'",
 };
 
 export const coasysFirstRun: SchemaNode = {
@@ -164,7 +164,7 @@ export const coasysFirstRun: SchemaNode = {
                   detail: 'From an app that holds your master key',
                   soon: true,
                 }),
-                door({ icon: 'key', title: 'Use my 12 words', soon: true }),
+                door({ icon: 'key', title: 'Use my recovery phrase', soon: true }),
               ],
             },
             {

@@ -69,6 +69,12 @@ export interface Ad4mCustodyHost {
 export interface Ad4mCustodyState {
   did: string | null;
   /**
+   * An identity made here whose publish has not gone through yet, by its DID: its master key is
+   * kept, and the custody service publishes it again each time it is asked. Absent from a custody
+   * service that predates it.
+   */
+  pending?: string | null;
+  /**
    * A master key is held here, with the index its item carries (`null` when the item does not say:
    * one kept before the index was kept with it).
    */
@@ -179,6 +185,7 @@ export function readCustody(value: Ad4mCustodyState): IdentityCustodyView {
     requests,
     masterWaiting: value.masterWaiting === true,
     thisDevice: readCustodyDevice(value.thisDevice),
+    pending: text(value.pending),
     encMismatch: value.encMismatch,
   };
 }

@@ -1505,3 +1505,182 @@ describe('the Coasys space’s lists of calls', () => {
     expect(treeSection.$queries?.calls).toMatchObject({ when: { $: 'spaceStore.firstScreenOpen' } });
   });
 });
+
+describe('the Coasys space on a phone', () => {
+  /*
+    On a phone the tree lane is the whole window, and a row that went somewhere used to leave the
+    page it went to underneath it — the person folded the lane by hand. Now a navigating row folds
+    the lane behind it (`closeWhenCompact`, the lane's fold passed as the "close"), a channel's chat
+    covers the window itself — over the app's bar — and its bar leads with Back, which opens the
+    lane again. The stores are faked as `evaluate` needs them; the shapes are asserted as written.
+  */
+  const chatRoute = spaceRoutes.find((route) => route.path === '/')!;
+  const tree = findNode(treeSection, (n) => n.type === 'we-tree')!;
+
+  const evaluate = (source: string, stores: Record<string, unknown>) =>
+    evaluateExpression(parseExpression(source), {
+      root: (name) => ({ bound: true, value: stores[name] }),
+      call: (name, args) =>
+        listFunctions()
+          .find((f) => f.name === name)
+          ?.impl(args, { context: {}, stores: {} }),
+    });
+
+  /** `closeWhenCompact` carrying the lane's fold — what a navigating row now also does, on a phone. */
+  const fold = {
+    $if: {
+      condition: { $: "surface.tier == 'base'" },
+      then: { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', true] },
+    },
+  };
+
+  /** Every action a press on a row runs: the `then` of each `onSelect` branch its value matches. */
+  const actionsFor = (value: string): unknown[] => {
+    const onSelect = (tree.props as { onSelect: { $if: { condition: { $: string }; then?: unknown } }[] }).onSelect;
+    const stores = {
+      routeStore: { params: {}, templateSegments: [] },
+      spaceStore: { root: 'ad4m://obj/feed', rootLoaded: true, spacePath: '/space/s1' },
+      surface: { tier: 'base' },
+      workflowStore: {},
+      local: { openRows: {} },
+      event: { detail: { value } },
+    };
+    return onSelect
+      .filter((branch) => Boolean(evaluate(branch.$if.condition.$, stores)))
+      .flatMap((branch) => (Array.isArray(branch.$if.then) ? branch.$if.then : [branch.$if.then]));
+  };
+
+  it.each([
+    'channel|ad4m://obj/feed',
+    'call|c1',
+    'workflow|w1',
+    'person|did:x',
+    'group|calls',
+    'group|workflows',
+    'group|dna',
+    'dna|signal|s1',
+    'dnakind|signal',
+    'dnaprop|policy|write',
+  ])('folds the sidebar behind "%s", which goes somewhere', (value) => {
+    expect(actionsFor(value)).toContainEqual(fold);
+  });
+
+  it.each(['group|templates', 'group|themes', 'template|t1', 'theme|t1'])(
+    'leaves the sidebar open behind "%s", which only opens or wears',
+    (value) => {
+      expect(actionsFor(value)).not.toContainEqual(fold);
+    },
+  );
+
+  // A phone is the template's own surface under `sm` — `surface.tier == 'base'` — the rule a space
+  // template answers to, `shellStore.narrowWindow` being chrome's.
+  const covers = (tier: string, collapsedLanes: string[]) =>
+    evaluate((chatRoute.props as Record<string, { $: string }>)['data-we-covers-window'].$, {
+      shellStore: { collapsedLanes },
+      surface: { tier },
+    });
+  const position = (tier: string, collapsedLanes: string[]) =>
+    evaluate((chatRoute.props as Record<string, { $: string }>).position.$, {
+      shellStore: { collapsedLanes },
+      surface: { tier },
+    });
+  // `collapsedLanes` is a list of lane ids — `'tree' in` is membership, as the bar's button reads it.
+  const folded = ['tree'];
+
+  it('has a channel’s chat cover the whole window while the sidebar is folded on a phone', () => {
+    expect(position('base', folded)).toBe('fixed');
+    // `"window"`: the chrome with the page — the ask the app's bar answers by going away.
+    expect(covers('base', folded)).toBe('window');
+    // Over the app's bar, and painted as the page it hides.
+    expect((chatRoute.props as { zIndex?: string }).zIndex).toBe('modal');
+    expect((chatRoute.props as { bg?: string }).bg).toBe('page');
+  });
+
+  it('is an ordinary view again on a phone while the sidebar is open', () => {
+    expect(position('base', [])).toBe('static');
+    expect(covers('base', [])).toBe('false');
+  });
+
+  it('is unchanged on a desktop, folded or not', () => {
+    expect(position('lg', folded)).toBe('static');
+    expect(covers('lg', folded)).toBe('false');
+    expect(position('lg', [])).toBe('static');
+    expect(covers('lg', [])).toBe('false');
+  });
+
+  /** The bar's leading node for one state of the shell: Back while covering, else the sidebar button. */
+  const leadOf = (tier: string, collapsedLanes: string[]) => {
+    const bar = (chatRoute.children as { children?: unknown[] }[])[0];
+    const lead = (
+      bar.children as { type: string; props: { condition: { $: string }; then: unknown; else: unknown } }[]
+    )[0];
+    return evaluate(lead.props.condition.$, { shellStore: { collapsedLanes }, surface: { tier } })
+      ? lead.props.then
+      : lead.props.else;
+  };
+
+  it('leads a covering thread’s bar with Back to the sidebar', () => {
+    const back = leadOf('base', folded);
+    const button = findNode(back, (n) => n.type === 'we-button')!;
+    expect((button.props as { label?: string }).label).toBe('Back');
+    expect((findNode(back, (n) => n.type === 'we-icon')!.props as { name?: string }).name).toBe('arrow-left');
+    expect((button.props as { onClick?: unknown }).onClick).toEqual([
+      { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', false] },
+      { $invoke: 'shellStore.focusInLane', args: ['tree'] },
+    ]);
+  });
+
+  it('keeps the sidebar button where the window is not covered', () => {
+    // A folded lane on a desktop: the sidebar button as ever, Back only while covering.
+    const side = leadOf('lg', folded) as { props?: { condition?: { $: string }; then?: unknown } };
+    expect(side.props?.condition).toEqual({ $: "'tree' in shellStore.collapsedLanes" });
+    const button = findNode(side.props?.then, (n) => n.type === 'we-button')!;
+    expect((button.props as { label?: string }).label).toBe('Show the sidebar');
+  });
+
+  it('leaves every other page’s bar as it was — only a thread has a Back', () => {
+    const back = (n: { type?: string; props?: unknown }) =>
+      n.type === 'we-button' && (n.props as { label?: string }).label === 'Back';
+    for (const route of spaceRoutes.filter((route) => route.path !== '/')) {
+      expect(findAll(route, back)).toEqual([]);
+    }
+    // The call's own page too — a record the bar is shared with, still under the app's bar.
+    expect(findAll(callPage, back)).toEqual([]);
+  });
+});
+
+describe('the Coasys app on a phone', () => {
+  /*
+    A thread marked `data-we-covers-window="window"` has the whole window — the app's chrome with
+    the page — and the host's part of the answer is that the frame holds no bands while one is in
+    front. The rail's own part is `barHidden`: the shut compact bar is not drawn, since a bar left
+    drawn would stand over a cover it can no longer be cleared of. Evaluated as the renderer does,
+    the rail being the node its own cover-mark names.
+  */
+  const evaluate = (source: string, stores: Record<string, unknown>) =>
+    evaluateExpression(parseExpression(source), {
+      root: (name) => ({ bound: true, value: stores[name] }),
+      call: (name, args) =>
+        listFunctions()
+          .find((f) => f.name === name)
+          ?.impl(args, { context: {}, stores: {} }),
+    });
+
+  it('draws no app bar while a cover has the whole window, and draws it again once it lets go', () => {
+    const rail = findNode(
+      coasys.app!,
+      (n) => (n.props as Record<string, unknown> | undefined)?.['data-we-covers-window'] !== undefined,
+    )!;
+    const display = (rail.props as Record<string, { $: string }>).display?.$;
+    expect(display, 'the app rail carries no barHidden answer').toBeDefined();
+    const at = (narrowWindow: boolean, chromeCovered: boolean, expanded: boolean) =>
+      evaluate(display, { shellStore: { narrowWindow, chromeCovered }, local: { expanded } });
+
+    // A phone, the rail shut, and the thread's cover in front: no bar.
+    expect(at(true, true, false)).toBe('none');
+    // The bar as ever for anything less — the cover letting go, a wide window, the rail open.
+    expect(at(true, false, false)).toBe('flex');
+    expect(at(false, true, false)).toBe('flex');
+    expect(at(true, true, true)).toBe('flex');
+  });
+});

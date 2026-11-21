@@ -40,7 +40,8 @@ ceiling on what every template above can express. A deployment is described by a
 WE's data layer is **AD4M** — an agent-centric, local-first, peer-to-peer meta-ontology.
 Data is yours, stored locally and synced P2P (via Holochain) with no central server. The Solid
 app (`@we/app-shell`, hosted by the web/electron/tauri targets) talks to an **AD4M executor**
-(the ad4m runtime; `@coasys/ad4m` + `ad4m-connect`) that holds perspectives and syncs
+(the ad4m runtime, reached with `@coasys/ad4m`; the browser signs in to a remote one through
+`ad4m-connect`) that holds perspectives and syncs
 neighbourhoods. Stores (`sessionStore`, `datasetStore`, `spaceStore`, …) expose reactive state to schemas.
 
 AD4M is reached through the **backend contract** rather than directly: `@we/backend-shared` declares
@@ -114,8 +115,13 @@ Glossary (these terms pervade stores, models, and `$query`/`perspective` in sche
 Apps (`apps/we-web`, `apps/we-electron`, `apps/we-tauri`) are thin hosts over `@we/app-shell`.
 Each supplies two things: a `PlatformAdapter` (where am I running) and a `BackendConnector`
 (how do I reach the data layer).
+`apps/coasys` is the Coasys app's web entry. It boots with no backend at all: `BaseBoot` draws the
+deployment's `base` template (first run, where to connect, offline) against `baseStore` alone, then
+mounts `App` in the same page with the connector for the place chosen. Its hosts (`src/hosts/`)
+say, per device, where the identity is and what can be connected to; the desktop entries render the
+same `BaseBoot` with its desktop host. See "Before a session" in docs/architecture/apps-as-data.md.
 The phone app (`apps/we-mobile`, Capacitor, `org.coasys.app`) is not a fourth host: it ships
-`apps/we-web`'s build unchanged inside a native WebView, with only a page of its own for a WebView too
+`apps/coasys`'s build unchanged inside a native WebView, with only a page of its own for a WebView too
 old to run WE (`android.minWebViewVersion`). Its README says how to build it and where the floor came from.
 
 **Dependency direction:** `templates → shell → backend-shared ← backend-ad4m`, and
@@ -1360,7 +1366,7 @@ turn rather than rise, and the spinner keeps turning, since a still spinner look
   Props: variant: 'soft' | 'solid' = 'soft', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-blockquote (DesignSystemElement)
 - we-button (DesignSystemElement)
-  Props: variant: 'solid' | 'soft' | 'outline' | 'ghost' | 'bare' = 'solid', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', text?: string | undefined, label: string = '', expanded?: boolean | undefined, href?: string | undefined, disabled: boolean = false, loading: boolean = false, gradient: boolean = false, square: boolean = false
+  Props: variant: 'solid' | 'soft' | 'outline' | 'ghost' | 'bare' = 'solid', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', text?: string | undefined, label: string = '', expanded?: boolean | undefined, href?: string | undefined, disabled: boolean = false, loading: boolean = false, gradient: boolean = false, square: boolean = false, autofocus: boolean = false
 - we-checkbox (DesignSystemElement)
   Props: checked: boolean = false, disabled: boolean = false, name: string = '', label: string = '', value: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-code (DesignSystemElement)
@@ -3046,6 +3052,50 @@ AppStore:
   - activateApp(id: string): activates an app and switches to its view
   - deactivateApp(): deactivates the current app and returns to the template view
 
+BaseStore:
+- State:
+  - stage: 'loading' | 'starting' | 'failed' | 'password' | 'first-run' | 'connect' | 'offline' | 'handing-off' | 'session' — which screen of the app before a session is due. Only a bundle's `base` template (role 'base') reads this store, and only before WE's app has a session: `starting`/`failed` while this device's own backend starts or after it failed to, `password` while its agent waits on the WE password because this computer has no keyring it can use (draw a CredentialField and Continue), `first-run` for the three doors, `connect` for the connection choice, `offline` when the chosen place cannot be reached, `handing-off` while it is reached, `session` once the app has it (nothing of the base is drawn then)
+  - page: '' | 'devices' | 'security' — a read-only page open over the stage
+  - hostKind: 'computer' | 'phone' | 'browser' — what this device is
+  - deviceNoun: 'computer' | 'phone' | 'browser' — the same, for a sentence: 'This ' + baseStore.deviceNoun + ' keeps no master key'
+  - brand: { name, mark } — the deployment’s name and mark (an image URL) for the header; templateStore is not there before a session
+  - executorPhase: 'none' | 'starting' | 'ready' | 'failed' — this device’s own backend: 'none' where it runs none (a browser, a phone)
+  - executorReason: string — why it failed to start, ready to show; empty otherwise. Offer retry beside it
+  - executorStopped: boolean — the failure is a backend that ran and then stopped (outside the app, from the tray), not one that never started: say it stopped, and offer to start it again with retry
+  - hasIdentity: boolean — this device keeps an identity of its own (a computer’s custody service, a phone’s key); false in a browser, which goes straight to the connection choice
+  - identityKnown: boolean — the identity source answered, so did / holdsMaster are facts, not defaults
+  - did: string — the identity this device speaks for, or empty. Test it (did != '') to know whether there is one; never draw it on an ordinary screen
+  - didShort: string — the same, shortened. Only for an advanced or diagnostic place a person opens on purpose; ordinary screens say "your identity", never an identifier
+  - unpublished: string — an identity a step made on this device whose publish has not gone through yet (its DID), or empty. Its master key is kept here and it is published again on the next attempt, so after `lastOutcome == 'failed'` say it was made, not that nothing changed. When it is empty a failed step still may have changed something: say it did not finish, never that nothing changed
+  - holdsMaster: boolean — this device keeps a master key of it
+  - keepsLine: string — 'This computer keeps your master key behind its own sign-in' / '… behind your passphrase' / 'This phone keeps no master key', ready to show
+  - blocked: string — why no identity change can be made here, ready to show; empty when one can
+  - devices: { keyId, label, subtitle, icon, thisDevice, master }[] — the devices the identity's private record names, read-only before a session: `label` 'This computer' / 'This phone', the record's name, or 'Unnamed device'; `master` 'Has master key', 'Master key sent' or empty
+  - doors: { make, link, words } each { open: boolean, note: string } — the three ways in as this device offers them: `open` the door runs a step here, else `note` says why not ('A phone joins an identity made on a computer'). Draw a closed door disabled with its note, never hide it
+  - connections: { id, kind, label, detail, icon, chosen }[] — where a session can be had from here. `kind` 'this-device' (the backend this computer runs), 'server' (one the person added; on the desktop it is listed but not wired yet, so choosing it ends on the connection choice with `error` saying so), 'key-host' (the computer this phone's key signs in to), 'connect' (the browser's AD4M Connect screen, which asks where). Coasys cloud and the hosting index are not in it until they exist: a template says so in its own words rather than listing them
+  - chosen: string — the id of the connection chosen last, remembered on this device; empty for none
+  - busy: boolean — an identity step or a connection is under way
+  - lastOutcome: 'done' | 'cancelled' | 'failed' | '' — how the last identity step ended
+  - error: string — why the last step, read or connection failed, ready to show; empty otherwise
+  - offlineReason: string — why the offline state is up: no network, or the place chosen could not be reached
+  - passwordIsNew: boolean — on the password stage, the password makes this computer's agent (a first start): ask for it twice, with CredentialField purpose 'new'; false: it unlocks one, purpose 'unlock'
+  - passwordWrong: boolean — the password last given did not unlock the agent: say so beside the field, and clear it with clearPasswordWrong as the field is typed in (onEdit)
+  - passwordEntered: boolean — something is typed in the password field (never what): gate Continue on it
+  - passwordConfirmed: boolean — a new password is typed twice, the same both times, and is at least 8 characters: gate Continue on it where passwordIsNew, and give the CredentialField minLength: 8 so it says when it is short. Typing it twice only catches a typo; it is not a strength check
+- Actions:
+  - refresh(): reads the identity and the connections again and works out the stage afresh
+  - makeIdentity(): "Make my identity here" — opens the host’s identity window on making one (the 12 words are shown there, never here); resolves with the outcome, and the stage moves on once the identity exists
+  - linkIdentity(): "Link to my identity" — opens the identity window on joining one another device keeps: on a computer it shows this computer’s code, on a phone it opens the join page
+  - useWords(): "Use my recovery phrase" — opens the identity window on bringing the identity back from it; the words are typed there only
+  - startNow(): "Start now" — no identity on this device for now; remembered here (and inside the session), and offered again from Settings
+  - choose(id): connects to one of `connections` and hands the session to the app; remembered for the next boot
+  - retry(): "Try again" — starts this device’s backend again after a failure, or reaches the chosen place again from offline
+  - showConnections(): back to the connection choice, from offline or after a first run
+  - openPage(page: 'devices' | 'security'): opens a read-only page over the stage
+  - closePage(): closes it
+  - submitPassword(): Continue on the password stage — gives what the host's CredentialField holds to this computer's backend, which makes or unlocks the agent with it, and clears the field. Takes no argument: the password is never in a template. Wire it to the field's onSubmit and to the button
+  - clearPasswordWrong(): takes back passwordWrong; wire it to the field’s onEdit
+
 BotStore:
 - State:
   - available: boolean — the backend runs bots. Gate the Bots page on it
@@ -3148,7 +3198,7 @@ DatasetStore:
 
 DeviceStore:
 - State:
-  - devices: { keyId, addedSeq, unlinkedSeq, revokedSeq, label, subtitle, icon, thisDevice, unlinked, revoked, valid, status, canUnlink, canRevoke, name, holdsMaster, master, replaceMaster }[] — the device keys of the person's key log, valid first and this computer on top (a bot's key, which the key log marks, is not listed: botStore manages it), named from the identity's private record (which only its devices read). `label` is the record's name, else 'This computer' (on a phone 'This phone': the phone's own key is this device, and the computer whose executor it reaches is listed like any other) or 'Device d2'; `name` the record's name or empty; `valid` is neither unlinked, revoked nor past its end; `status` 'Active', 'Unlinked' (retired: it signs nothing new, and what it signed before stays valid), 'Revoked' (lost or stolen) or 'Expired on 3 Dec 2026'; `canUnlink` is an active key that is not this computer's; `canRevoke` is a key not yet revoked, unlinked or not, that is not this computer's; `holdsMaster` 'yes', 'no' or 'offered' (sent, not yet taken), worded in `master` ('Has master key', 'Master key sent', or empty). A revoked key's `holdsMaster` is 'no', but its `master` warns when it took the master key or the key log let it ('Still has your master key. Replace it to lock this device out.', 'May still have your master key. Replace it to lock this device out.'): a revoke leaves a copy of the master key valid, until the master key is replaced: a rotation at or after the revoke clears the warning. `replaceMaster` is true on a row that warns: offer replaceMaster there, where canReplaceMaster. Draw 'yes' as a badge; 'offered' is pending, not a problem, so a muted line (a sentence, which a badge never wraps); and a revoked key's warning in a warning tone
+  - devices: { keyId, addedSeq, unlinkedSeq, revokedSeq, label, subtitle, icon, thisDevice, unlinked, revoked, valid, status, canUnlink, canRevoke, name, holdsMaster, master, replaceMaster }[] — the device keys of the person's key log, valid first and this computer on top (a bot's key, which the key log marks, is not listed: botStore manages it), named from the identity's private record (which only its devices read). `label` is the record's name, else 'This computer' (on a phone 'This phone': the phone's own key is this device, and the computer whose executor it reaches is listed like any other) or 'Unnamed device'; `name` the record's name or empty; `valid` is neither unlinked, revoked nor past its end; `status` 'Active', 'Unlinked' (retired: it signs nothing new, and what it signed before stays valid), 'Revoked' (lost or stolen) or 'Expired on 3 Dec 2026'; `canUnlink` is an active key that is not this computer's; `canRevoke` is a key not yet revoked, unlinked or not, that is not this computer's; `holdsMaster` 'yes', 'no' or 'offered' (sent, not yet taken), worded in `master` ('Has master key', 'Master key sent', or empty). A revoked key's `holdsMaster` is 'no', but its `master` warns when it took the master key or the key log let it ('Still has your master key. Replace it to lock this device out.', 'May still have your master key. Replace it to lock this device out.'): a revoke leaves a copy of the master key valid, until the master key is replaced: a rotation at or after the revoke clears the warning. `replaceMaster` is true on a row that warns: offer replaceMaster there, where canReplaceMaster. Draw 'yes' as a badge; 'offered' is pending, not a problem, so a muted line (a sentence, which a badge never wraps); and a revoked key's warning in a warning tone
   - devicesLoaded: boolean — the list has been read once
   - serving: { label, subtitle, icon } — the device serving this session, for the top of Devices: 'This computer' on the desktop; on a phone, the host it signs in to, by its name in the private record or 'Your host'
   - deviceNoun: 'phone' | 'computer' — what this device is, for the sentences about it: 'This ' + deviceStore.deviceNoun + ' does not keep your master key'
@@ -3602,7 +3652,8 @@ ShellStore:
   - coveredInset: { top, right, bottom, left } in pixels — what FLOATING panels and floating chrome (the call bar along the bottom) are covering. They take no room, so they leave contentInset at zero while still sitting over the content: this is the part of your own box the reader cannot see. Read it to keep something in the clear where contentInset would say there is nothing in the way. Chrome only; a space template reads the same numbers as CSS, `var(--we-covered-bottom, 0px)` and its three siblings — pad a composer pinned to the bottom of a view by it, and it rises above the call bar while one is up and settles when it goes
   - dockResizing: boolean — a panel is being dragged or resized right now. Suspend transitions while it is true so the edge tracks the cursor
   - panelMaximised: boolean — some panel covers the whole window. The app's own chrome — sidebar, module rail — hides while it is true; a template's fixed chrome should too
-  - narrowWindow: boolean — the window is narrower than the sm breakpoint (640px): a phone held upright. Chrome only, because chrome sits outside every surface and has no surface.tier to read; the sidebar opens from a menu button while it is true rather than under the pointer. A template answers to its own surface with smUpProps instead
+  - narrowWindow: boolean — the window is narrower than the sm breakpoint (640px): a phone held upright. Chrome only, because chrome sits outside every surface and has no surface.tier to read; while it is true the sidebar is a bar across the top whose Menu button switches between it and the page, and meta.frame.narrow replaces the app frame. A template answers to its own surface with smUpProps instead
+  - chromeCovered: boolean — an element marked data-we-covers-window="window" is the cover in front: something (a phone’s thread) has the WHOLE window, the app’s own chrome with the page. Chrome only, like narrowWindow — the app’s compact bar is not drawn while it is true, and the app frame holds no bands, so the cover has the window it asked for
   - dockPlacement: Record<dockId, { snap, displace, canDisplace, … }> — where each panel is parked, for its frame to read: which of the eight snaps it is at, whether it displaces content, and whether it may. The state a position menu ticks; dockGeometry is the resulting box
   - panelFrames: Record<dockId, 'window' | 'flush' | 'none'> — how each panel is framed where it is not a window: its own declared frame, else — pushing the content aside at an edge — that edge's frame as the app template declares it (meta.edges); absent, a window's frame
   - movingDock: string | null — the id of the panel being dragged, or null. What mounts the snap-target overlay
@@ -3653,6 +3704,7 @@ ShellStore:
   - resetTemplateLayout(): puts every panel of the interface on screen back the way meta.panels declared them, and reopens the ones that were closed. The whole-arrangement counterpart of resetDockToLayout, and the only way back for a closed panel, which has no titlebar to reset itself from. Scoped to the template rather than the route, so a declaration that varies by route is reset once. Pair with layoutDirty
   - toggleLane(lane: string): folds a home lane (a `$panels` outlet) away, or brings it back — what a sidebar's collapse button calls. Its sections stay mounted and hidden, so a feed keeps its place. Kept per agent and per template, and undone by resetTemplateLayout
   - setLaneCollapsed(lane: string, collapsed: boolean): folds a lane away or brings it back, as said rather than flipped
+  - focusInLane(lane: string): moves focus into a lane just brought back — its selected row, else its first focusable control. What a full-window thread’s Back calls beside setLaneCollapsed, so the keyboard is left somewhere that is on screen
   - toggleCustomiseLayout(): shows every section's grip at once, or goes back to showing a grip only where the pointer or the keyboard is — the way to see what on a page can be moved
   - saveLayout(name: string): saves the arrangement on screen under a name — its panels’ placements, which tab of each seat is showing, and which panels are closed. Scoped to the template, as placements are. Replaces a layout of that name
   - applyLayout(name: string): puts the arrangement back to a saved layout. What the layout does not mention returns to what meta.panels declared, exactly as a reset would leave it
@@ -5310,6 +5362,14 @@ The label is mounted only while the rail is open rather than narrowed to nothing
 there is no room for it, and a hidden-but-present label is still in the accessibility tree and still
 found by find-in-page.
 
+On a phone there is no hover: a tap reports the pointer arriving and nothing reports it leaving.
+Below `sm` (`shellStore.narrowWindow`) WE's rail is a bar across the top instead — the kit's
+`railShell({ compact })` draws it — whose mark is a `we-button` labelled "Menu"
+(`{ "$toggleLocal": "expanded" }`, `expanded` bound to `local.expanded`) that opens the rail over
+the whole window. `onMouseEnter` is gated on `!shellStore.narrowWindow`, and every row that goes
+somewhere also shuts the rail (`closeWhenCompact`), so the place chosen is what shows. The app's
+`meta.frame.narrow` gives the page the band under the bar rather than the column beside it.
+
 A group heading toggles its own id in the set, and its body reveals on the block axis:
 
 ```json
@@ -6649,9 +6709,11 @@ What the SDK and executor do around a subscription, so a watch can rely on it:
 
 ### Reading and registering shapes from `@we/backend-ad4m`
 
-The `PerspectiveProxy` the app holds comes from the SDK copy bundled inside `@coasys/ad4m-connect`,
-not from the `@coasys/ad4m` this repo pins. An SDK fix reaches the app only when ad4m-connect
-republishes, so measure performance work against that copy, not the workspace one.
+Where the browser signs in through AD4M Connect, the `PerspectiveProxy` the app holds comes from the SDK
+copy bundled inside `@coasys/ad4m-connect`, not from the `@coasys/ad4m` this repo pins: an SDK fix
+reaches that path only when ad4m-connect republishes, so measure performance work there against that
+copy. The desktop's local executor and the phone's key login open an `Ad4mClient` from the pinned
+`@coasys/ad4m` themselves.
 
 The executor holds a shape registry per perspective. Read it with `perspective.shapes(names?)`: one
 call, one record per registered class (`name` is the local name of the target class, sorted by

@@ -17,17 +17,19 @@ import '@we/primitives';
 // renderer measured without it is measured without its padding, its placeholder and its field.
 import '@we/block-solid/styles';
 
-import { edgeOfSnap } from '@shared/dockGeometry';
+import { edgeOfSnap, NARROW_WINDOW_PX } from '@shared/dockGeometry';
+import { appFrame, declareAppFrame } from '@shared/registries/appFrame';
 import {
   dockFrame,
   dockRegistry,
   registerHostDockStore,
   unregisterHostDockStore,
 } from '@shared/registries/dockRegistry';
-import { provideChromeBag } from '@shared/registries/templateBag';
+import { provideChromeBag, provideTemplateBag } from '@shared/registries/templateBag';
 import { setTemplatePanels } from '@shared/registries/templatePanels';
 import { buildTemplateBag, CHROME_TIER, SPACE_TIER } from '@shared/registries/templateSurface';
 import { hostSourceBag } from '@shared/sources';
+import { chromeCovered, COVER_ATTR, installWindowCover } from '@shared/windowCover';
 import { EdgeLanes } from '@solid/components/EdgeLanes';
 import { PanelHost } from '@solid/components/PanelHost';
 import PanelLane from '@solid/components/PanelLane';
@@ -67,10 +69,11 @@ import { applyThemeVars, clearThemeVars, setDisplayPreferences, setThemeLive } f
 import { RenderSchema } from '@we/schema-solid';
 import { VisualEditorProvider } from '@we/schema-solid';
 import { THEME_PRESETS } from '@we/themes/presets';
-import { createComponent, createEffect, createSignal } from 'solid-js';
+import { createComponent, createEffect, createSignal, onCleanup } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import { insert, render } from 'solid-js/web';
 
+import { CHAT_COVERS } from '../../../templates/cartridges/src/coasys/space/paths.ts';
 import { installLayoutCounter, profile } from './instrument';
 import { type Scenario, scenarios } from './scenarios';
 
@@ -179,7 +182,13 @@ function mount(name: string, width: number, scale?: number): void {
     const known = identityOf[did] as { name?: string; avatar?: string } | undefined;
     return known ? { name: known.name, avatar: known.avatar } : undefined;
   };
-  disposeMount = render(
+  /*
+    What the app's layer has (`TemplateProvider`): an element that covers the window — a phone's
+    menu, open — holds the rest inert and Tab inside it. Without it a case about that would be judging
+    a mount the app never draws.
+  */
+  const stopCover = installWindowCover(host, () => window.innerWidth < NARROW_WINDOW_PX);
+  const disposeRender = render(
     () =>
       createComponent(BlockHostProvider, {
         person,
@@ -189,6 +198,10 @@ function mount(name: string, width: number, scale?: number): void {
       }),
     host,
   );
+  disposeMount = () => {
+    stopCover();
+    disposeRender();
+  };
 }
 
 /** The box a schema node drew, and the handful of computed values a layout assertion reads. */
@@ -382,6 +395,22 @@ function focused(): string {
   while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
   if (!el || el === document.body) return '';
   return `${el.tagName.toLowerCase()}${el.className ? '.' + String(el.className).split(' ').join('.') : ''}`;
+}
+
+/**
+ * What a person would call the control that holds the cursor: its label, or else its words.
+ *
+ * `focused()` says a button has it, which every control in a menu is. A case asking whether focus
+ * went back to the one that opened something needs to know which — `we-button` keeps its real
+ * `<button>` in its shadow root, so the words are the host's and the label may be either's.
+ */
+function focusedName(): string {
+  let el: Element | null = document.activeElement;
+  while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
+  if (!el || el === document.body) return '';
+  const host = (el.getRootNode() as ShadowRoot).host ?? el;
+  const label = el.getAttribute('aria-label') ?? host.getAttribute('aria-label');
+  return (label ?? host.textContent ?? '').replace(/\s+/g, ' ').trim();
 }
 
 /** What the page is painted on, for a case asking whether a colour stands out from it. */
@@ -1315,6 +1344,253 @@ function dockProbeBoxes(): Record<
 }
 
 /**
+ * The cover–frame–surface triangle, mounted the way the app mounts it.
+ *
+ * A space like the Coasys one: a `tree` lane at home on the left, a view beside it whose thread is
+ * marked `data-we-covers-window` off `CHAT_COVERS` itself — under a `$surface` positioned as the
+ * app's own surface is, the window less the frame's bands and the dock's inset. The frame is
+ * declared by the same wiring `TemplateProvider` runs (`declareAppFrame` from `narrowWindow` and
+ * `chromeCovered`), the layer carries the window-cover machinery, and `dock` adds a displacing
+ * panel — the other thing that can put the surface at the tier the mark reads. Everything that
+ * could feed back into the mark is then the real code path, which is the point: the case is that
+ * it settles.
+ *
+ * The window's width is the case's to set first (`setViewport` — `narrowWindow` reads
+ * `window.innerWidth`, not the mount). Disposed by `editorProbeDispose`.
+ */
+let coverProbeShell: ReturnType<typeof useShellStore> | undefined;
+function coverProbe(dock = false): void {
+  for (const key of Object.keys(localStorage)) if (key.startsWith('we-local:shell.')) localStorage.removeItem(key);
+  const address = window.location.pathname;
+  window.history.replaceState({}, '', '/space/probe');
+  const entry = {
+    id: 'probe:dock',
+    moduleId: 'probe',
+    name: 'dock',
+    title: 'dock',
+    edge: 'edge:dock',
+    size: 'size:dock',
+    float: 'float:dock',
+    node: { type: 'Column' },
+  };
+  if (dock) {
+    registerHostDockStore('probe', {
+      'edge:dock': () => 'right',
+      'size:dock': () => 'md',
+      'float:dock': () => false,
+    });
+    dockRegistry.register(entry as never);
+  }
+  // As the Coasys space declares them: the tree at home on the left, the dock the `dock` asks for.
+  setTemplatePanels(
+    [
+      {
+        id: 'tree',
+        node: {
+          type: 'Column',
+          props: { p: '200' },
+          children: [
+            { type: 'button', children: ['Search'] },
+            { type: 'button', props: { 'aria-selected': 'true' }, children: ['Chosen'] },
+          ],
+        },
+        home: 'tree',
+        grow: 1,
+        fixed: true,
+      },
+      ...(dock
+        ? [{ id: 'dock', module: 'probe', dock: 'dock', snap: 'right' as const, displace: true, box: { width: 320 } }]
+        : []),
+    ],
+    'cover-probe',
+  );
+  const root = document.createElement('div');
+  document.body.append(root);
+  const Chrome = () => {
+    const shellStore = useShellStore();
+    coverProbeShell = shellStore;
+    const bag = buildTemplateBag({ shellStore } as never, { grants: SPACE_TIER }) as never;
+    // Panel frames draw with the chrome's bag (`PanelFrame`) and a template panel's body with the
+    // template's (`TemplatePanelBody`) — both provided, as the app provides them, or a lane's
+    // sections render nothing at all.
+    probeDisposers.push(provideChromeBag(bag) as () => void, provideTemplateBag(bag) as () => void);
+    // The frame's own wiring, as `TemplateProvider` has it — the bands a whole-window cover takes.
+    createEffect(() => declareAppFrame({ left: 72 }, shellStore.narrowWindow(), shellStore.chromeCovered()));
+    const app = document.createElement('div');
+    app.id = 'probe-app';
+    Object.assign(app.style, { position: 'fixed', inset: '0' });
+    onCleanup(installWindowCover(app, shellStore.narrowWindow));
+    // What the declared band draws: the chrome a "window" cover would hold inert over everything.
+    const band = document.createElement('button');
+    band.id = 'probe-band';
+    band.textContent = 'Rail';
+    Object.assign(band.style, {
+      position: 'fixed',
+      left: '0',
+      top: '0',
+      bottom: '0',
+      padding: '0',
+      border: '0',
+    });
+    createEffect(() => {
+      band.style.width = `${appFrame().left}px`;
+    });
+    const space = document.createElement('div');
+    space.id = 'probe-space';
+    space.style.position = 'fixed';
+    createEffect(() => {
+      const inset = shellStore.contentInset();
+      const frame = appFrame();
+      Object.assign(space.style, {
+        left: `${frame.left + inset.left}px`,
+        right: `${frame.right + inset.right}px`,
+        top: `${frame.top + inset.top}px`,
+        bottom: `${frame.bottom + inset.bottom}px`,
+      });
+    });
+    insert(
+      space,
+      RenderSchema({
+        node: {
+          type: '$surface',
+          children: [
+            {
+              type: 'Row',
+              props: { width: '100%', height: '100%' },
+              children: [
+                {
+                  type: 'PanelLane',
+                  props: { lane: 'tree', width: '280px', minWidth: '220px', resize: 'end' },
+                },
+                {
+                  type: 'Column',
+                  props: { id: 'probe-view', flex: '1', minWidth: '0', height: '100%', overflow: 'hidden' },
+                  children: [
+                    {
+                      // The chat route's mark, verbatim — see `views.ts`.
+                      type: 'Column',
+                      props: {
+                        id: 'probe-thread',
+                        width: '100%',
+                        height: '100%',
+                        position: { $: `${CHAT_COVERS} ? 'fixed' : 'static'` },
+                        top: '0',
+                        left: '0',
+                        right: '0',
+                        bottom: '0',
+                        zIndex: 'modal',
+                        bg: 'page',
+                        'data-we-covers-window': { $: `${CHAT_COVERS} ? 'window' : 'false'` },
+                      },
+                      children: [
+                        {
+                          type: 'we-button',
+                          props: {
+                            label: 'Back',
+                            onClick: [
+                              { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', false] },
+                              { $invoke: 'shellStore.focusInLane', args: ['tree'] },
+                            ],
+                          },
+                        },
+                        {
+                          type: 'we-text',
+                          props: { id: 'probe-tier' },
+                          children: [{ $: 'surface.tier' }],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        stores: bag,
+        registry: componentRegistry,
+      } as never) as never,
+    );
+    insert(app, band);
+    insert(app, space);
+    if (dock)
+      insert(
+        app,
+        RenderSchema({
+          node: dockFrame(entry as never, {
+            type: 'Column',
+            props: { id: 'content-dock', height: '100%' },
+            children: ['dock'],
+          }),
+          stores: bag,
+          registry: componentRegistry,
+        } as never) as never,
+      );
+    return [app, createComponent(EdgeLanes, {}), createComponent(PanelHost, {})];
+  };
+  const dispose = render(
+    () =>
+      createComponent(ShellStoreProvider, {
+        get children() {
+          return createComponent(Chrome, {});
+        },
+      }),
+    root,
+  );
+  probeDisposers.unshift(dispose);
+  probeDisposers.push(() => {
+    root.remove();
+    window.history.replaceState({}, '', address);
+    declareAppFrame(undefined);
+    setTemplatePanels(undefined);
+    if (dock) {
+      dockRegistry.remove(entry.id);
+      unregisterHostDockStore('probe');
+    }
+    coverProbeShell = undefined;
+  });
+}
+
+/** A shell store action on the cover probe's store — `setLaneCollapsed('tree', true)`, … */
+function coverProbeAct(action: string, ...args: unknown[]): unknown {
+  const fn = (coverProbeShell as unknown as Record<string, (...a: unknown[]) => unknown> | undefined)?.[action];
+  return fn?.(...args);
+}
+
+/**
+ * Every leg of the cover–frame–surface triangle as it stands: the band the frame declares, whether
+ * chrome is covered, the mark the thread wears, the tier the surface reads, what went inert, and
+ * the surface's width — enough to tell "settled on the right side" from "still moving".
+ */
+function coverProbeState(): {
+  frame: number;
+  covered: boolean;
+  mark: string | null;
+  tier: string;
+  spaceW: number;
+  bandInert: boolean;
+  bandW: number;
+  viewInert: boolean;
+} {
+  const band = document.getElementById('probe-band') as HTMLElement | null;
+  const view = document.getElementById('probe-view') as HTMLElement | null;
+  /*
+    `closest('[inert]')`, not `el.inert`: the lane puts the row's *wrappers* out of reach, and a
+    `display: contents` wrapper is not the view itself — the property reads only the element's own
+    flag, where a person is kept out by any inert above them.
+  */
+  return {
+    frame: appFrame().left,
+    covered: chromeCovered(),
+    mark: document.getElementById('probe-thread')?.getAttribute(COVER_ATTR) ?? null,
+    tier: (document.getElementById('probe-tier')?.textContent ?? '').trim(),
+    spaceW: Math.round(document.getElementById('probe-space')?.getBoundingClientRect().width ?? 0),
+    bandInert: band ? band.closest('[inert]') !== null : false,
+    bandW: Math.round(band?.getBoundingClientRect().width ?? 0),
+    viewInert: view ? view.closest('[inert]') !== null : false,
+  };
+}
+
+/**
  * A placed part that draws nothing right now — a microphone meter outside a call — mounted in the
  * real frame, with whether the template is being edited and whether the part draws anything driven
  * from the case.
@@ -1544,6 +1820,9 @@ function toastProbe(message: string, actionLabel = '', look?: ToastLook): string
   dockProbeMoving,
   dockProbeGrow,
   dockProbeOpen,
+  coverProbe,
+  coverProbeAct,
+  coverProbeState,
   // The theme pipeline itself, for a probe of how an apply behaves.
   themeApi: { applyThemeVars, clearThemeVars, setDisplayPreferences, setThemeLive },
   themeDrag,
@@ -1583,6 +1862,7 @@ function toastProbe(message: string, actionLabel = '', look?: ToastLook): string
   paintAt,
   probeColor,
   focused,
+  focusedName,
   html,
   scenarios: Object.keys(scenarios),
 };

@@ -148,7 +148,7 @@ export type {
   DatasetRef,
   SharingOption,
 } from './lifecycle';
-export { isSessionTimeout, parseServerUrl, SessionTimeoutError } from './lifecycle';
+export { AgentExistsError, isAgentExists, isSessionTimeout, parseServerUrl, SessionTimeoutError } from './lifecycle';
 export { manifestEntries } from './manifestEntry';
 export type { EntityManifestEntry, EntityManifestProperty } from './manifestEntry';
 export { NAME_CANDIDATES, nameFromProperties, namePropertyOf } from './recordName';

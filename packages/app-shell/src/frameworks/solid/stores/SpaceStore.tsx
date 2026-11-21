@@ -2521,6 +2521,15 @@ export function SpaceStoreProvider(props: ParentProps) {
   const heldSpace = (ds: AppDataset): Space | undefined => mySpaces().find((s) => isSpaceSelf(s, ds));
 
   /**
+   * The stored `Space` row, for a setter that builds its value from the one already there (a list or
+   * a settings map). Not the cached row: the live row of the space on screen is mirrored into the
+   * cache, and a row read before a write landed can arrive after it, so a list built from the cache
+   * drops what the write before it added (the second switch pressed under "What new calls look for").
+   */
+  const storedSpace = async (ds: AppDataset): Promise<Space | undefined> =>
+    (await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) }))[0] ?? heldSpace(ds);
+
+  /**
    * The `Space` row to write a default through: the cached one, else the stored one. The two default
    * setters show their value before they store it, so a space not held yet (its record not read or
    * not synced) must still be written, or the next member opens it with the old default.
@@ -4381,7 +4390,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     spaceUuid?: string,
   ): Promise<void> {
     const ds = targetDataset(spaceUuid);
-    const space = ds ? heldSpace(ds) : undefined;
+    const space = ds ? await storedSpace(ds) : undefined;
     if (!ds || !space) return;
     const raw = (space as unknown as { moduleSettings?: string }).moduleSettings;
     const next = value === undefined ? clearSetting(raw, group, key) : writeSetting(raw, group, key, value);
@@ -5619,7 +5628,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    */
   async function setExtractionTarget(entity: string, on: boolean, spaceUuid?: string) {
     const ds = targetDataset(spaceUuid);
-    const space = ds ? heldSpace(ds) : undefined;
+    const space = ds ? await storedSpace(ds) : undefined;
     if (!ds || !space) return;
     const current = parseEntityList(space.extractionTargets) ?? LEGACY_EXTRACTION_TARGETS;
     const next = new Set(current);
@@ -5630,9 +5639,9 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   async function setModuleEnabled(moduleId: string, enabled: boolean, spaceUuid?: string) {
     const ds = targetDataset(spaceUuid);
-    // Read the space from the cache rather than `currentSpace`, so this answers for a space being
+    // Read the space's own stored row rather than `currentSpace`, so this answers for a space being
     // configured from the spaces list as readily as for the one on screen.
-    const space = ds ? heldSpace(ds) : undefined;
+    const space = ds ? await storedSpace(ds) : undefined;
     if (!ds || !space) return;
     const next = new Set(resolveEnabledModules(space.enabledModules));
     if (enabled) next.add(moduleId);
@@ -5656,7 +5665,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    */
   async function setViewEnabled(viewId: string, enabled: boolean, spaceUuid?: string) {
     const ds = targetDataset(spaceUuid);
-    const space = ds ? heldSpace(ds) : undefined;
+    const space = ds ? await storedSpace(ds) : undefined;
     if (!ds || !space) return;
     const available = availableViews();
     const current = resolveEnabledViews(space.enabledViews, (id) => available.has(id), defaultViewOrder());

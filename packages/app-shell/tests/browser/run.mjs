@@ -185,6 +185,8 @@ async function main() {
 
   const browser = await chromium.launch({ executablePath: CHROME });
   const page = await browser.newPage();
+  // The window a case did not move is put back this way — see `setViewport` below.
+  const defaultViewport = page.viewportSize();
   const pageErrors = [];
   page.on('pageerror', (e) => pageErrors.push(e.stack ?? String(e)));
   page.on('console', (m) => {
@@ -232,6 +234,7 @@ async function main() {
       // last one pressed: a soft button under it draws its hover fill, not its own.
       const viewport = page.viewportSize();
       if (viewport) await page.mouse.move(viewport.width - 1, viewport.height - 1);
+      let viewportMoved = false;
       await page.evaluate(([s, w, n]) => window.__harness.mount(s, w, n), [mod.scenario, width, scale]);
       // One frame for the primitives to upgrade and lay out.
       await page.waitForTimeout(250);
@@ -257,6 +260,8 @@ async function main() {
         roleColor: (role) => page.evaluate((r) => window.__harness.roleColor(r), role),
         probeColor: (value) => page.evaluate((v) => window.__harness.probeColor(v), value),
         focused: () => page.evaluate(() => window.__harness.focused()),
+        /** What the focused control would be called — its label, or else its words. */
+        focusedName: () => page.evaluate(() => window.__harness.focusedName()),
         /*
           A picture of the page, for a case whose subject is how something looks — written only when
           `WE_BROWSER_SHOTS` names a directory, so an ordinary run stays a check rather than a camera.
@@ -474,6 +479,15 @@ async function main() {
         note: (text) => notes.push(text),
         /** Run a function in the page, for a probe no helper covers. */
         evaluate: (fn, arg) => page.evaluate(fn, arg),
+        /*
+          The window's own size — what `narrowWindow` and the phone's media queries read — for a
+          case about the window rather than the mount. Put back after every case, like the media
+          emulation below.
+        */
+        setViewport: async (w, h = 800) => {
+          viewportMoved = true;
+          await page.setViewportSize({ width: w, height: h });
+        },
         /**
           Ask the way an operating system asks: the reduced-motion media query, which a case cannot
           set from inside the page. The app's own Motion setting is the attribute on the document
@@ -509,6 +523,7 @@ async function main() {
       }
       const problems = (await mod.check(api, width, scale)) ?? [];
       await page.emulateMedia({ reducedMotion: 'no-preference' });
+      if (viewportMoved && defaultViewport) await page.setViewportSize(defaultViewport);
       if (cdp) {
         const { profile } = await cdp.send('Profiler.stop');
         const self = new Map();

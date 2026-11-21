@@ -149,6 +149,24 @@ describe('judging a bundle', () => {
     );
   });
 
+  it('judges the app before a session at the chrome tier, and says it brings one', () => {
+    const base = {
+      id: 'base',
+      type: 'Column',
+      meta: meta('Before sign-in', 'base'),
+      children: [{ type: 'we-text', children: [{ $: 'baseStore.stage' }] }],
+    };
+    const result = judgeBundle({ ...bundle(), base } as unknown as Bundle, deps);
+    expect(result.refusals).toEqual([]);
+    expect(result.adds.base).toBe(true);
+    expect(result.blocked).not.toContain('baseStore.stage');
+    // The same read from a space template is past its tier.
+    const asShell = { ...base, id: 'shell2', meta: meta('Shell 2') };
+    const shells = judgeBundle({ ...bundle(), templates: [asShell] } as unknown as Bundle, deps);
+    expect(shells.blocked).toContain('baseStore.stage');
+    expect(shells.adds.base).toBeUndefined();
+  });
+
   it('splits modules into those to turn on and those this build does not have', () => {
     expect(judged.modulesToTurnOn).toEqual([{ id: 'polls', name: 'Polls' }]);
     expect(judged.modulesNotInBuild).toEqual(['globe']);

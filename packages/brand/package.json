@@ -8,6 +8,7 @@
     "build:steps": "tsx src/generate.ts",
     "build": "we-build",
     "generate-icons": "tsx src/generate.ts",
+    "generate-seed-icons": "tsx src/generate.ts --seed-only",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

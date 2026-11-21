@@ -24,7 +24,8 @@ import { callPage, spaceRoutes } from './views.ts';
  * canvas, a definition chosen in the tree or on the vocabulary map — and the space's own settings,
  * which the gear in the tree's header opens. Whichever was opened last is in front. Both start
  * closed, and the lane folds while neither is open, so it slides in when one opens and out when the
- * last closes; there in Page mode too, beside whatever page is open.
+ * last closes; there in Page mode too, beside whatever page is open. On a phone it opens over the
+ * tree, the whole width, and its close puts the tree back (`PanelLane`'s `foldEmpty`).
  */
 
 /** Put the inspector away: nothing chosen, and its panel closed. */
@@ -111,7 +112,9 @@ export const coasysSpace: TemplateSchema & { id: string } = {
     },
     {
       type: 'Column',
-      props: { flex: '1', minWidth: '0', height: '100%' },
+      // Clipped: on a phone a lane covering the row squeezes the view to nothing, and its page must
+      // not draw over that lane. The full-window thread is fixed, so the clip does not reach it.
+      props: { flex: '1', minWidth: '0', height: '100%', overflow: 'hidden' },
       // Page or Canvas — see `canvas.ts`. The canvas is drawn here rather than as a route, so it stays
       // mounted while the tree's choice changes; the address still changes as the tree is used, and
       // the pages come back as they were when the mode does.

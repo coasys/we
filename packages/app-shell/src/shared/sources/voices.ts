@@ -39,8 +39,8 @@ export interface VoiceView {
   pretend: boolean;
 }
 
-/** A DID as something to call a person whose profile has not arrived. */
-const shortDid = (did: string) => (did.length > 16 ? `${did.slice(0, 12)}…${did.slice(-4)}` : did);
+/** What to call a person whose profile has not arrived: never their identifier. */
+const NO_PROFILE = 'Someone';
 
 /**
  * The voices from a seed's summary, each with its face, its weight from the address and its share of
@@ -69,7 +69,7 @@ export function voices(options: unknown): VoiceView[] {
       const pretend = typeof row.name === 'string' && !!row.name;
       return {
         did,
-        name: pretend ? (row.name as string) : profile?.name || shortDid(did),
+        name: pretend ? (row.name as string) : profile?.name || NO_PROFILE,
         avatar: pretend ? '' : profile?.avatar || '',
         cards: Number(row.cards) || 0,
         mean: Number(row.mean) || 0,

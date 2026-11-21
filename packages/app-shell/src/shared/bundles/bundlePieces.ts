@@ -40,6 +40,8 @@ export interface BundlePieces {
   display?: { spaces: 'ours' | 'theirs'; template?: string };
   brand?: BundleBrand;
   bootScreen?: SchemaNode;
+  /** The app before a session, under the bundle's id; drawn only by the base host. */
+  base?: TemplateSchema & { id: string };
   /** What a space made in its app starts with, with the template and theme it sets under the bundle's id. */
   starters: SpaceStarter[];
 }
@@ -100,6 +102,7 @@ export function bundlePieces(bundle: Bundle): BundlePieces {
         }
       : {}),
     ...(bundle.bootScreen ? { bootScreen: bundle.bootScreen } : {}),
+    ...(bundle.base ? { base: land(bundle.base) } : {}),
     starters: (bundle.starters ?? []).map(landStarter),
   };
 }

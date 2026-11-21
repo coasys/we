@@ -1,14 +1,12 @@
 /**
- * The phone's connector around ad4m-connect: what the key login leaves in storage, and which
- * token the client WE keeps on dials with after a renewal.
+ * The phone's key-login connector: what the key login leaves in storage, which token the client WE
+ * keeps on dials with after a renewal, and how a session the executor refuses ends.
  *
- * `@coasys/ad4m` and `@coasys/ad4m-connect/core` are replaced by small doubles that keep the
- * two facts under test true to the ad4m sources (checked at 95cefb35a): `Ad4mClient` takes its token at
- * construction and `setToken` replaces it for every later call and the next connection
- * (`core/src/Ad4mClient.ts:152-155`, `core/src/apiClient.ts:204`); `Ad4mConnect`'s constructor
- * restores the stored `ad4m-token` (`connect/src/core.ts:104`), `connect()` builds the client from
- * `this.token` and writes `ad4m-url` (`:197`, `:213`), and `disconnect()` removes the stored token
- * (`:344-345`). Storage keys are prefixed with the connect package's version (`connect/src/utils.ts`).
+ * `@coasys/ad4m` is replaced by a small double that keeps the facts under test true to the ad4m
+ * sources (checked at 95cefb35a): `Ad4mClient` takes its token at construction, `setToken` replaces
+ * it for every later call and the next connection (`core/src/Ad4mClient.ts:152-155`,
+ * `core/src/apiClient.ts:204`), and `onAuthFailed` calls back once when the executor refuses the
+ * token.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -16,12 +14,12 @@ import type { DeviceKeyPlugin, SignedSessionStatement } from './deviceKey';
 import { RENEW_BEFORE_MS } from './keySession';
 import { unusedPlugin } from './unusedPlugin.testing';
 
-const CONNECT_VERSION = '0.13.1-staging.6';
-const key = (name: string) => `${CONNECT_VERSION}/${name}`;
-
 /** A `localStorage` for the test, as the WebView's. */
 class MemoryStorage {
   private map = new Map<string, string>();
+  entries() {
+    return [...this.map.entries()];
+  }
   getItem(k: string) {
     return this.map.get(k) ?? null;
   }
@@ -54,71 +52,46 @@ const agent = {
     expiresAt: Math.floor(Date.now() / 1000) + 3600,
   })),
   logout: vi.fn(async () => {}),
+  /** The executor's answer for the session's agent: unlocked, unless a test says otherwise. */
+  status: vi.fn(async () => ({ isInitialized: true, isUnlocked: true })),
 };
+
+/** Every client built, the last one the one WE keeps; for a test to act as the executor on. */
+const clients: {
+  baseUrl: string;
+  token?: string;
+  closed: boolean;
+  refuseToken(reason: string): void;
+}[] = [];
 
 vi.mock('@coasys/ad4m', () => {
   class Ad4mClient {
     agent = agent;
+    closed = false;
+    private authFailed = new Set<(reason: string) => void>();
     constructor(
       public baseUrl: string,
       public token?: string,
-    ) {}
+    ) {
+      clients.push(this);
+    }
     /** What the real one dials with from here on (`core/src/Ad4mClient.ts:152-155`). */
     setToken(token: string) {
       this.token = token;
     }
-    close() {}
+    onAuthFailed(callback: (reason: string) => void) {
+      this.authFailed.add(callback);
+      return () => this.authFailed.delete(callback);
+    }
+    /** The executor refused the client's token: each callback hears it. */
+    refuseToken(reason: string) {
+      for (const callback of this.authFailed) callback(reason);
+    }
+    close() {
+      this.closed = true;
+    }
   }
   return { Ad4mClient };
-});
-
-vi.mock('@coasys/ad4m-connect/core', async () => {
-  const { Ad4mClient } = (await vi.importMock('@coasys/ad4m')) as {
-    Ad4mClient: new (u: string, t?: string) => unknown;
-  };
-  // An EventTarget, as the real one is: every auth state is dispatched as `authstatechange`
-  // (`connect/src/core.ts:803-805`).
-  class Ad4mConnect extends EventTarget {
-    /** The last one built, for a test to act as the executor on. */
-    static last: Ad4mConnect | undefined;
-    url: string;
-    token: string;
-    port = 12600;
-    authState = 'unauthenticated';
-    ad4mClient: unknown;
-    constructor(options: { url?: string }) {
-      super();
-      this.url = options.url ?? localStorage.getItem(key('ad4m-url')) ?? 'http://localhost:12600';
-      this.token = localStorage.getItem(key('ad4m-token')) ?? '';
-      Ad4mConnect.last = this;
-    }
-    get baseUrl() {
-      return this.url;
-    }
-    private notify(state: string) {
-      this.authState = state;
-      this.dispatchEvent(new CustomEvent('authstatechange', { detail: state }));
-    }
-    async connect() {
-      localStorage.setItem(key('ad4m-url'), this.url);
-      this.ad4mClient = new Ad4mClient(this.baseUrl, this.token);
-      this.notify('authenticated');
-      return this.ad4mClient;
-    }
-    async disconnect() {
-      this.ad4mClient = undefined;
-      this.token = '';
-      localStorage.removeItem(key('ad4m-token'));
-      this.notify('unauthenticated');
-    }
-    /** The executor refused the client's token: `watchAuth` → `discardToken` (`:252-268`). */
-    refuseToken() {
-      this.token = '';
-      localStorage.removeItem(key('ad4m-token'));
-      this.notify('unauthenticated');
-    }
-  }
-  return { default: Ad4mConnect };
 });
 
 vi.mock('@we/backend-ad4m', () => ({
@@ -163,7 +136,6 @@ function plugin(): DeviceKeyPlugin {
   };
 }
 
-const fallback = { initialize: vi.fn(async () => ({}) as never) };
 const ctx = {} as never;
 
 describe('createDeviceKeyConnector', () => {
@@ -182,23 +154,45 @@ describe('createDeviceKeyConnector', () => {
     vi.restoreAllMocks();
   });
 
-  it('leaves no password session behind when it logs in with the key', async () => {
-    // A password session on host A from before, as ad4m-connect keeps it.
-    localStorage.setItem(key('ad4m-token'), 'password-token-for-A');
-    localStorage.setItem(key('ad4m-url'), 'https://a.example');
+  it('opens its own client with the key session, and writes nothing to storage', async () => {
+    // A password session on host A from before, as the ordinary connector keeps it.
+    const storage = new MemoryStorage();
+    storage.setItem('0.13.1/ad4m-token', 'password-token-for-A');
+    storage.setItem('0.13.1/ad4m-url', 'https://a.example');
+    vi.stubGlobal('localStorage', storage);
+    const before = storage.entries();
     const { createDeviceKeyConnector } = await import('./deviceKeyConnector');
-    const connector = createDeviceKeyConnector(fallback, { plugin, keyHost: () => 'https://b.example' });
+    const connector = createDeviceKeyConnector({ plugin, keyHost: () => 'https://b.example' });
 
     const result = await connector.initialize(ctx);
-    expect(fallback.initialize).not.toHaveBeenCalled();
-    expect((result.client as { token?: string }).token).toBe('token-1');
-    expect(localStorage.getItem(key('ad4m-url'))).toBe('https://b.example');
-    // The ordinary connector, next time this boot falls back, restores the stored pair: A's
-    // token must not be there to be sent to B.
-    expect(localStorage.getItem(key('ad4m-token'))).toBeNull();
-    const Ad4mConnect = (await import('@coasys/ad4m-connect/core')).default;
-    const later = new Ad4mConnect({ appInfo: {} as never, capabilities: [] });
-    expect([later.url, later.token]).toEqual(['https://b.example', '']);
+    const client = result.client as { baseUrl: string; token?: string };
+    expect([client.baseUrl, client.token]).toEqual(['https://b.example', 'token-1']);
+    expect(result.connection).toEqual({ port: 443, token: 'token-1', url: 'https://b.example' });
+    // The ordinary connector's pair is A's token with A's URL, as it was: nothing of B is beside it.
+    expect(storage.entries()).toEqual(before);
+  });
+
+  it('refuses a key session whose agent is locked there, and closes the client', async () => {
+    const { createDeviceKeyConnector } = await import('./deviceKeyConnector');
+    agent.status.mockResolvedValueOnce({ isInitialized: true, isUnlocked: false });
+    const connector = createDeviceKeyConnector({ plugin, keyHost: () => 'https://b.example' });
+    await expect(connector.initialize(ctx)).rejects.toThrow(
+      'b.example didn’t accept this phone’s sign-in (its agent is locked).',
+    );
+    expect(clients.at(-1)?.closed).toBe(true);
+
+    agent.status.mockRejectedValueOnce(new Error('RPC error 401: unauthorized'));
+    await expect(connector.initialize(ctx)).rejects.toThrow(
+      'b.example didn’t accept this phone’s sign-in (RPC error 401: unauthorized).',
+    );
+    expect(clients.at(-1)?.closed).toBe(true);
+  });
+
+  it('hands the embedded-app handshake the port the URL names, or its scheme’s', async () => {
+    const { portOf } = await import('./deviceKeyConnector');
+    expect(portOf('https://b.example')).toBe(443);
+    expect(portOf('http://b.example')).toBe(80);
+    expect(portOf('http://127.0.0.1:12600')).toBe(12600);
   });
 
   describe('a key login that cannot reach the executor', () => {
@@ -221,11 +215,9 @@ describe('createDeviceKeyConnector', () => {
       vi.spyOn(console, 'warn').mockImplementation(() => {});
       agent.sessionChallenge.mockRejectedValueOnce(offline()).mockRejectedValueOnce(offline());
       const time = clock();
-      const ordinary = { initialize: vi.fn(async () => ({}) as never) };
-      const connector = createDeviceKeyConnector(ordinary, { plugin, keyHost: () => 'https://b.example', ...time });
+      const connector = createDeviceKeyConnector({ plugin, keyHost: () => 'https://b.example', ...time });
       const result = await connector.initialize(ctx);
       expect((result.client as { token?: string }).token).toBe('token-1');
-      expect(ordinary.initialize).not.toHaveBeenCalled();
       expect(time.waits).toEqual([1_000, 2_000]);
     });
 
@@ -236,13 +228,13 @@ describe('createDeviceKeyConnector', () => {
       agent.sessionChallenge.mockRejectedValue(offline());
       try {
         const time = clock();
-        const ordinary = { initialize: vi.fn(async () => ({}) as never) };
-        const connector = createDeviceKeyConnector(ordinary, { plugin, keyHost: () => 'https://b.example', ...time });
+        const connector = createDeviceKeyConnector({ plugin, keyHost: () => 'https://b.example', ...time });
         const failed = await connector.initialize(ctx).catch((e: unknown) => e);
         expect(failed).toBeInstanceOf(KeyLoginUnreachable);
         expect((failed as Error).message).toContain('b.example');
-        expect((failed as Error).message).toContain('online');
-        expect(ordinary.initialize).not.toHaveBeenCalled();
+        expect((failed as Error).message).toBe(
+          'Can’t reach b.example. Check that this phone is online, then try again. It stays signed in.',
+        );
         // Doubling waits, capped, for the minute and no longer.
         expect(time.waits.slice(0, 5)).toEqual([1_000, 2_000, 4_000, 8_000, 15_000]);
         expect(Math.max(...time.waits)).toBe(RETRY_MAX_MS);
@@ -257,14 +249,18 @@ describe('createDeviceKeyConnector', () => {
       }
     });
 
-    it('still falls back to the connect screen when the executor refuses', async () => {
-      const { createDeviceKeyConnector } = await import('./deviceKeyConnector');
-      vi.spyOn(console, 'error').mockImplementation(() => {});
-      agent.loginWithKey.mockRejectedValueOnce(new Error('RPC error 403: not-known'));
+    it('refuses at once, with the reason, when the executor refuses the key', async () => {
+      const { createDeviceKeyConnector, KeyLoginRefused } = await import('./deviceKeyConnector');
+      const refusal = new Error('RPC error 403: not-known');
+      agent.loginWithKey.mockRejectedValueOnce(refusal);
       const time = clock();
-      const ordinary = { initialize: vi.fn(async () => ({ client: 'fallback' }) as never) };
-      const connector = createDeviceKeyConnector(ordinary, { plugin, keyHost: () => 'https://b.example', ...time });
-      expect((await connector.initialize(ctx)).client).toBe('fallback');
+      const connector = createDeviceKeyConnector({ plugin, keyHost: () => 'https://b.example', ...time });
+      const failed = await connector.initialize(ctx).catch((e: unknown) => e);
+      expect(failed).toBeInstanceOf(KeyLoginRefused);
+      expect((failed as Error).message).toBe(
+        'b.example didn’t accept this phone’s sign-in (RPC error 403: not-known).',
+      );
+      expect((failed as Error).cause).toBe(refusal);
       expect(time.waits).toEqual([]);
     });
 
@@ -292,7 +288,7 @@ describe('createDeviceKeyConnector', () => {
   // dial after the original token expired went out with it. `onToken` now hands it the new one.
   it('dials with the renewed token after a renewal', async () => {
     const { createDeviceKeyConnector } = await import('./deviceKeyConnector');
-    const connector = createDeviceKeyConnector(fallback, { plugin, keyHost: () => 'https://b.example' });
+    const connector = createDeviceKeyConnector({ plugin, keyHost: () => 'https://b.example' });
     const result = await connector.initialize(ctx);
     const client = result.client as { token?: string };
     expect(client.token).toBe('token-1');
@@ -327,49 +323,31 @@ describe('a phone in no identity yet', () => {
     }),
   });
 
-  it('is sent to the identity page to join, and comes back where it was', async () => {
-    const { createDeviceKeyConnector } = await import('./deviceKeyConnector');
-    for (const pending of [false, true]) {
-      const nav = { here: () => '/', assign: vi.fn() };
-      const ordinary = { initialize: vi.fn(async () => ({}) as never) };
-      const connector = createDeviceKeyConnector(ordinary, {
-        plugin: unjoined(pending),
-        keyHost: () => null,
-        joinDeclined: () => false,
-        nav,
-      });
-      let booted = false;
-      void connector.initialize(ctx).then(() => (booted = true));
-      await vi.waitFor(() => expect(nav.assign).toHaveBeenCalledTimes(1));
-      expect(nav.assign).toHaveBeenCalledWith('/mobile/identity.html?join=&back=%2F');
-      // The page is left: nothing boots behind it.
-      expect(booted).toBe(false);
-      expect(ordinary.initialize).not.toHaveBeenCalled();
-    }
-  });
-
-  it('boots to the ordinary sign-in once the person said “Not now”, or where the plugin does not answer', async () => {
-    const { createDeviceKeyConnector } = await import('./deviceKeyConnector');
-    const { JOIN_DECLINED_KEY } = await import('./keyHost');
-    localStorage.setItem(JOIN_DECLINED_KEY, '1');
+  it('refuses, and leaves the page where it is, with no identity, no executor or no answer from the plugin', async () => {
+    const { createDeviceKeyConnector, KeyLoginRefused } = await import('./deviceKeyConnector');
     const nav = { here: () => '/', assign: vi.fn() };
-    const ordinary = { initialize: vi.fn(async () => ({ client: 'fallback' }) as never) };
-    // The default reads the note the join page left.
-    const declined = createDeviceKeyConnector(ordinary, { plugin: unjoined(false), keyHost: () => null, nav });
-    expect((await declined.initialize(ctx)).client).toBe('fallback');
-
-    const silent = createDeviceKeyConnector(ordinary, {
-      plugin: () => ({
-        ...plugin(),
-        status: async () => {
-          throw new Error('bridge gone');
-        },
-      }),
-      keyHost: () => null,
-      joinDeclined: () => false,
-      nav,
+    const silent = (): DeviceKeyPlugin => ({
+      ...plugin(),
+      status: async () => {
+        throw new Error('bridge gone');
+      },
     });
-    expect((await silent.initialize(ctx)).client).toBe('fallback');
+    const cases = [
+      { plugin: unjoined(false), keyHost: () => 'https://b.example' },
+      { plugin: unjoined(true), keyHost: () => 'https://b.example' },
+      { plugin, keyHost: () => null },
+      { plugin: () => null, keyHost: () => 'https://b.example' },
+      { plugin: silent, keyHost: () => 'https://b.example' },
+    ];
+    for (const deps of cases) {
+      const before = clients.length;
+      const failed = await createDeviceKeyConnector({ ...deps, nav })
+        .initialize(ctx)
+        .catch((e: unknown) => e);
+      expect(failed).toBeInstanceOf(KeyLoginRefused);
+      // Nothing was dialled, and the page was not left.
+      expect(clients.length).toBe(before);
+    }
     expect(nav.assign).not.toHaveBeenCalled();
   });
 
@@ -377,7 +355,7 @@ describe('a phone in no identity yet', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'info').mockImplementation(() => {});
     const { createDeviceKeyConnector } = await import('./deviceKeyConnector');
-    const connector = createDeviceKeyConnector(fallback, { plugin, keyHost: () => 'https://b.example' });
+    const connector = createDeviceKeyConnector({ plugin, keyHost: () => 'https://b.example' });
     const result = await connector.initialize(ctx);
     const options = (result.ports as unknown as { options: { custody?: { takesWords?: boolean } } }).options;
     expect(options.custody?.takesWords).toBe(false);
@@ -405,26 +383,23 @@ describe('a key session that ends by itself', () => {
 
   async function boot() {
     const { createDeviceKeyConnector } = await import('./deviceKeyConnector');
-    const Ad4mConnect = (await import('@coasys/ad4m-connect/core')).default as unknown as {
-      last: { refuseToken(): void };
-    };
     const onSessionEnded = vi.fn();
-    const connector = createDeviceKeyConnector(fallback, {
+    const connector = createDeviceKeyConnector({
       plugin,
       keyHost: () => 'https://b.example',
       onSessionEnded,
     });
     const result = await connector.initialize(ctx);
-    return { result, onSessionEnded, core: Ad4mConnect.last };
+    return { result, onSessionEnded, client: clients.at(-1)! };
   }
 
   it('is reported once when the executor refuses the token, and renewing stops', async () => {
-    const { onSessionEnded, core } = await boot();
+    const { onSessionEnded, client } = await boot();
     await vi.advanceTimersByTimeAsync(10_000);
-    core.refuseToken();
-    core.refuseToken();
+    client.refuseToken('expired');
+    client.refuseToken('expired');
     expect(onSessionEnded).toHaveBeenCalledTimes(1);
-    expect(onSessionEnded.mock.calls[0][0]).toMatchObject({ cause: 'refused' });
+    expect(onSessionEnded.mock.calls[0][0]).toMatchObject({ cause: 'refused', error: 'expired' });
     expect(onSessionEnded.mock.calls[0][0].endedAt - onSessionEnded.mock.calls[0][0].openedAt).toBe(10_000);
 
     await vi.advanceTimersByTimeAsync(2 * 3600_000);
@@ -449,14 +424,17 @@ describe('a key session that ends by itself', () => {
   });
 
   it('is not reported when the person logs out', async () => {
-    const { result, onSessionEnded } = await boot();
+    const { result, onSessionEnded, client } = await boot();
     await result.disconnect!();
     expect(agent.logout).toHaveBeenCalledTimes(1);
+    expect(client.closed).toBe(true);
+    // The token the logout ended is refused from then on; that is not a session ending by itself.
+    client.refuseToken('unauthorized');
     expect(onSessionEnded).not.toHaveBeenCalled();
   });
 
   it('starts WE again, and the boot after one that ended at once skips the key login', async () => {
-    const { createDeviceKeyConnector, startAgain, takeEndedTooSoon, TOO_SOON_MS } =
+    const { createDeviceKeyConnector, KeyLoginRefused, startAgain, takeEndedTooSoon, TOO_SOON_MS } =
       await import('./deviceKeyConnector');
     const storage = new MemoryStorage();
     const reload = vi.fn();
@@ -466,19 +444,21 @@ describe('a key session that ends by itself', () => {
     expect(reload).toHaveBeenCalledTimes(1);
     expect(takeEndedTooSoon(storage)).toBe(false);
 
-    // One refused as soon as it opened: the next boot shows the connect screen, once.
+    // One refused as soon as it opened: the next boot refuses the key login, once, and the base
+    // app hands the connection choice back.
     startAgain({ cause: 'refused', openedAt: Date.now() - TOO_SOON_MS + 1, endedAt: Date.now() }, storage, reload);
     expect(reload).toHaveBeenCalledTimes(2);
     vi.stubGlobal('sessionStorage', storage);
-    const ordinary = { initialize: vi.fn(async () => ({ client: 'fallback' }) as never) };
     const status = vi.fn(plugin().status);
-    const connector = createDeviceKeyConnector(ordinary, {
+    const connector = createDeviceKeyConnector({
       plugin: () => ({ ...plugin(), status }),
       keyHost: () => 'https://b.example',
     });
-    expect((await connector.initialize(ctx)).client).toBe('fallback');
+    await expect(connector.initialize(ctx)).rejects.toBeInstanceOf(KeyLoginRefused);
     expect(status).not.toHaveBeenCalled();
     expect(takeEndedTooSoon(storage)).toBe(false);
+    // And only once: the boot after that logs in.
+    expect((await connector.initialize(ctx)).client).toBe(clients.at(-1));
   });
 
   it('keeps its loop guard where there is no sessionStorage, and only for a while', async () => {

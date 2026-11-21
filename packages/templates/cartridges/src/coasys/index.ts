@@ -11,6 +11,7 @@
 import type { Cartridge } from '../cartridge.ts';
 import { coasysAbout } from './about.ts';
 import { coasysApp } from './app.ts';
+import { coasysBase } from './base.ts';
 import { coasysBootScreen } from './boot.ts';
 import { coasysBrand } from './brand.ts';
 import { coasysSpace } from './space/shell.ts';
@@ -31,6 +32,8 @@ export const coasys: Cartridge = {
   themes: [coasysTheme],
   brand: coasysBrand,
   bootScreen: coasysBootScreen,
+  // Before a session, on every platform: the first run, where to connect, offline.
+  base: coasysBase,
   shapes: [],
   modules: ['call', 'transcribe', 'feed', 'graph'],
   // Every space a member opens in Coasys is drawn as a Coasys space.

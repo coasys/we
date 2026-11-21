@@ -193,6 +193,12 @@ export interface IdentityCustodyView {
    */
   thisDevice?: CustodyDeviceView | null;
   /**
+   * An identity made on this device whose publish has not gone through yet, by its DID: its master
+   * key is kept here and it is published again on the next attempt, so a step that failed after
+   * making it did change something. `null` (or absent) once published, or when there is none.
+   */
+  pending?: string | null;
+  /**
    * The key log lets this computer keep the master key but lists an encryption key for it that this
    * computer no longer has. Nothing sent to it opens any more — no master key, no device list (so
    * `devices` is empty) — until it is revoked from a device that holds the master key and linked

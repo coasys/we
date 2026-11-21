@@ -22,6 +22,8 @@ const state = vi.hoisted(() => {
     quitDone: false,
     messageBoxes: [],
     errorBoxes: [],
+    // What the main process told the window of its executor (`executor-state`), in order.
+    executorStates: [],
     readyResolve: null,
     ready: null,
   };
@@ -57,7 +59,7 @@ vi.mock('electron', () => {
         mainFrame: { processId: 1, routingId: 1 },
         setWindowOpenHandler: () => {},
         on: () => {},
-        send: () => {},
+        send: (channel, payload) => channel === 'executor-state' && state.executorStates.push(payload),
         executeJavaScript: async () => 'rgb(0, 0, 0)',
         session: {
           setDisplayMediaRequestHandler: () => {},
@@ -170,13 +172,20 @@ describe.skipIf(process.platform === 'win32' || !existsSync(join(here, 'seed-csp
 
       await import('./main.js');
       state.readyResolve();
+      // The window opens before the executor starts; it is up once the window hears it is ready.
       await until(() => state.windows.length === 1 && state.windows[0].loads.length === 1);
+      await until(() => state.executorStates.at(-1)?.phase === 'ready');
     }, 60_000);
 
     afterAll(async () => {
       for (const pid of pids()) if (alive(pid)) process.kill(pid, 'SIGKILL');
       await sleep(200);
       rmSync(state.root, { recursive: true, force: true });
+    });
+
+    it('opens the window before the executor is up, and tells it the executor is starting', () => {
+      expect(state.executorStates[0]).toEqual({ phase: 'starting' });
+      expect(state.executorStates.filter((s) => s.phase === 'failed')).toEqual([]);
     });
 
     it('tries another port when the first start exits 80, and opens the window on it', async () => {

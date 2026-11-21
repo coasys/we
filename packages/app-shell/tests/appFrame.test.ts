@@ -38,6 +38,34 @@ describe('the app frame', () => {
     expect(appFrame()).toEqual(DEFAULT_APP_FRAME);
   });
 
+  it('takes the app’s narrow frame below the breakpoint, and the same frame where it declares none', () => {
+    const declared = { left: 72, narrow: { top: 56 } };
+    declareAppFrame(declared, true);
+    // The sidebar is a bar across the top on a phone: no band on the left, one on top.
+    expect(appFrame()).toEqual({ left: 0, right: 0, top: 56, bottom: 0 });
+    declareAppFrame(declared, false);
+    expect(appFrame()).toEqual({ left: 72, right: 0, top: 0, bottom: 0 });
+    declareAppFrame({ left: 64 }, true);
+    expect(appFrame()).toEqual({ left: 64, right: 0, top: 0, bottom: 0 });
+  });
+
+  it('holds no bands at all while a cover has the whole window, whatever the app declared', () => {
+    /*
+      `chromeCovered` — a phone's thread marked `data-we-covers-window="window"` — is the third
+      argument `TemplateProvider` passes. Then the surface the cover stands in must reach every
+      edge, so the app keeps nothing back for chrome it is not drawing.
+    */
+    const declared = { left: 72, narrow: { top: 56 } };
+    declareAppFrame(declared, true, true);
+    expect(appFrame()).toEqual({ left: 0, right: 0, top: 0, bottom: 0 });
+    // The cover letting go gives the narrow frame straight back.
+    declareAppFrame(declared, true, false);
+    expect(appFrame()).toEqual({ left: 0, right: 0, top: 56, bottom: 0 });
+    // And the ask is the cover's, not the width's — a wide window is as covered.
+    declareAppFrame(declared, false, true);
+    expect(appFrame()).toEqual({ left: 0, right: 0, top: 0, bottom: 0 });
+  });
+
   it('keeps the rail’s clearance to the rail the app has', () => {
     const bar = { height: 74, width: 2000 };
     const inset = { left: 0, right: 0, top: 0, bottom: 0 };

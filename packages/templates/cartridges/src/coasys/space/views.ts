@@ -4,7 +4,7 @@ import { FLOWS_LOCALS, lineComposer, workflowsPage } from '@we/template-kit';
 import { viewBar } from './bar.ts';
 import { groupRoutes } from './groups.ts';
 import { exportTranscriptButton, liveDot } from './marks.ts';
-import { CHANNEL, groupPath, IN_ROOT_EXPR, ROOT_KNOWN_EXPR } from './paths.ts';
+import { CHANNEL, CHAT_COVERS, groupPath, IN_ROOT_EXPR, ROOT_KNOWN_EXPR } from './paths.ts';
 import { personRoute } from './person.ts';
 import { dnaRoute } from './socialDna.ts';
 import { LATEST_CALLS } from './tree.ts';
@@ -214,7 +214,28 @@ const subChannelChat: SchemaNode = {
 const chatRoute: RouteSchema = {
   path: '/',
   type: 'Column',
-  props: { width: '100%', height: '100%' },
+  props: {
+    width: '100%',
+    height: '100%',
+    /*
+      A phone's thread is the whole window once the tree is folded — the app's bar included, so the
+      conversation has the whole screen. Marked `"window"` rather than `"true"`: that asks for the
+      chrome with the page, and the host answers by taking its own furniture away — the frame holds
+      no bands and the app's bar is not drawn — so the cover fills the window from inside the
+      surface that holds it. The rest of the cover's work is the host's either way: everything else
+      inert, Tab inside, focus back to the row that opened it. `position`/`zIndex` do the covering
+      and are dead properties while the column is static; the lane's fold, not this, says when — so
+      Back unfolding it is also what uncovers the window.
+    */
+    position: { $: `${CHAT_COVERS} ? 'fixed' : 'static'` },
+    top: '0',
+    left: '0',
+    right: '0',
+    bottom: '0',
+    zIndex: 'modal',
+    bg: 'page',
+    'data-we-covers-window': { $: `${CHAT_COVERS} ? 'window' : 'false'` },
+  },
   $queries: {
     ...channelQueries,
     // Whether the space has a call yet: the sidebar's question, so one subscription answers both.
@@ -238,6 +259,9 @@ const chatRoute: RouteSchema = {
         { label: { $: CHANNEL_TITLE } },
       ],
       { $: `!(${ROOT_KNOWN_EXPR}) ? '' : (${IN_ROOT_EXPR}) ? 'chats-circle' : 'hash'` },
+      [],
+      [],
+      { $: CHAT_COVERS },
     ),
     {
       // One mount: which of the two this channel is, is decided once the root is known — see
