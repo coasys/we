@@ -91,6 +91,9 @@ export interface AppDataset extends Omit<DatasetRef, 'handle'> {
 
 const toApp = (ref: DatasetRef): AppDataset => ref;
 
+/** How long a switch waits on the foreign-entity read before `$modelsPending` stops waiting on it. */
+const FOREIGN_SCHEMAS_WAIT_MS = 30_000;
+
 /**
  * The one segment a space is addressed by — its shared id when it has one, its local id otherwise.
  *
@@ -1347,15 +1350,29 @@ export function DatasetStoreProvider(props: ParentProps) {
       // this dataset) and publish their manifest — the port registers them for name-based query
       // resolution as part of the same pass.
       // Stale guard: if the user navigated away before this resolves, skip updates.
+      /*
+        Bounded: a read that never answers (a mounted language hanging on the network) would
+        otherwise hold `$modelsPending` — and every query on a model it has not registered — silent
+        forever. At the bound the flag settles and the failure is said once; an answer arriving
+        later still publishes, under the same read guard.
+      */
+      const bound = setTimeout(() => {
+        if (read !== entitiesRead || currentDataset()?.id !== uuid || entitiesReadFor() === uuid) return;
+        console.warn(`DatasetStore: foreignSchemas did not answer inside ${FOREIGN_SCHEMAS_WAIT_MS / 1000} s`);
+        setEntitiesReadFor(uuid);
+        toastService.error('Some of this space’s models did not load');
+      }, FOREIGN_SCHEMAS_WAIT_MS);
       void (async () => {
         try {
           const manifest = await schemas.foreignSchemas(handle);
+          clearTimeout(bound);
           if (read === entitiesRead && currentDataset()?.id === uuid)
             batch(() => {
               setCurrentDatasetEntities(manifest);
               setEntitiesReadFor(uuid);
             });
         } catch (err) {
+          clearTimeout(bound);
           console.warn('DatasetStore: foreignSchemas failed', err);
           // Read, and answered with nothing: a failed read must not hold back everything that waits on it.
           if (read === entitiesRead && currentDataset()?.id === uuid)

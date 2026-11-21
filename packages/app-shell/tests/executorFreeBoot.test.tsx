@@ -3022,6 +3022,34 @@ describe('what a collection extracts', () => {
     pending[1]();
   }, 15000);
 
+  /*
+    A read that never answers — a mounted language hanging on the network — must
+    not leave every query on an unregistered model waiting forever with no word.
+    The wait is bounded: the flag settles and the failure is said once.
+  */
+  it('settles a space’s models when the read for them hangs — and says so once', async () => {
+    const { stores, a, open, pending } = await twoSpacesWithHeldReads();
+    const refused = vi.spyOn(toastService, 'error');
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'], shouldAdvanceTime: true });
+    try {
+      await open(a);
+      await vi.waitFor(() => expect(pending).toHaveLength(1));
+      expect(stores.datasets.currentDatasetEntitiesLoaded()).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(31_000);
+      expect(stores.datasets.currentDatasetEntitiesLoaded()).toBe(true);
+      const said = refused.mock.calls.filter(([message]) => /models/.test(String(message)));
+      expect(said).toHaveLength(1);
+
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(refused.mock.calls.filter(([message]) => /models/.test(String(message)))).toHaveLength(1);
+    } finally {
+      pending.forEach((release) => release());
+      vi.useRealTimers();
+      refused.mockRestore();
+    }
+  }, 15000);
+
   it('does not let an older read of the same space finish the newer one', async () => {
     const { stores, a, b, open, pending } = await twoSpacesWithHeldReads();
     await open(a); // read 0 — A
