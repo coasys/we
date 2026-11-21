@@ -8,7 +8,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { toastService } from './toast.service';
+import { errorMuteSize, toastService } from './toast.service';
 
 describe('toastService', () => {
   beforeEach(() => {
@@ -141,6 +141,35 @@ describe('toastService', () => {
     toastService.error('First distinct failure');
     toastService.error('Second distinct failure');
     expect(toastService.toasts()).toHaveLength(2);
+  });
+
+  it('mutes by the key a caller passes — the same words for another space still show', () => {
+    toastService.error('Could not open that space', undefined, 'open:space-a');
+    vi.advanceTimersByTime(5000);
+    expect(toastService.toasts()).toHaveLength(0);
+
+    toastService.error('Could not open that space', undefined, 'open:space-b');
+    expect(toastService.toasts()).toHaveLength(1); // a separate failure, not a repeat
+    vi.advanceTimersByTime(5000);
+
+    toastService.error('Could not open that space', undefined, 'open:space-a');
+    expect(toastService.toasts()).toHaveLength(0); // space A's repeat is still held
+  });
+
+  it('answers a muted repeat with the id its first report got', () => {
+    const first = toastService.error('Held failure with an id');
+    const again = toastService.error('Held failure with an id');
+    expect(again).toBe(first);
+    toastService.remove(again);
+    expect(toastService.toasts()).toHaveLength(0);
+  });
+
+  it('forgets a muted error once its window has passed', () => {
+    vi.setSystemTime(new Date('2030-01-01T00:00:00Z')); // after every earlier test's reports
+    for (let i = 0; i < 5; i += 1) toastService.error(`Failure naming record ${i}`);
+    vi.advanceTimersByTime(30_000);
+    toastService.error('One more failure');
+    expect(errorMuteSize()).toBe(1);
   });
 
   it('carries who a toast is from and its own icon', () => {

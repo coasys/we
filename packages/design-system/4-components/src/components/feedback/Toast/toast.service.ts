@@ -107,14 +107,37 @@ function removeToast(id: string) {
 */
 const ERROR_REPEAT_MUTE_MS = 30_000;
 
-/** When each error message last reached the screen — the window `error()` enforces. */
-const errorShownAt = new Map<string, number>();
+/**
+ * When each error key last reached the screen, and the toast it showed — the window `error()`
+ * enforces. Entries past the window are pruned on every report, so a long session holds only the
+ * last thirty seconds of keys, not every distinct message it ever met.
+ */
+const errorShownAt = new Map<string, { at: number; id: string }>();
 
-function reportError(message: string, duration?: number): string {
+/** How many error keys are muted right now. For tests of the pruning. */
+export const errorMuteSize = (): number => errorShownAt.size;
+
+/**
+ * Show an error, unless the same failure reached the screen inside the mute window.
+ *
+ * `key` says what "the same failure" is. It defaults to the text, which is right for a background
+ * source repeating itself; a caller whose words are shared by independent failures — "Could not
+ * open that space" for space A and then space B — passes a key naming the subject, so the second
+ * is shown rather than read as a repeat of the first.
+ *
+ * Always answers with a toast id. A muted repeat answers with the id the key's report got, which
+ * may name a toast already dismissed: removing it is then a no-op.
+ */
+function reportError(message: string, duration?: number, key: string = message): string {
   const now = Date.now();
-  if (now - (errorShownAt.get(message) ?? -Infinity) < ERROR_REPEAT_MUTE_MS) return '';
-  errorShownAt.set(message, now);
-  return addToast(message, 'danger', duration);
+  for (const [held, shown] of errorShownAt) {
+    if (now - shown.at >= ERROR_REPEAT_MUTE_MS) errorShownAt.delete(held);
+  }
+  const shown = errorShownAt.get(key);
+  if (shown) return shown.id;
+  const id = addToast(message, 'danger', duration);
+  errorShownAt.set(key, { at: now, id });
+  return id;
 }
 
 export const toastService = {

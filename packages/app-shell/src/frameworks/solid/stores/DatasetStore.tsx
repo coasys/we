@@ -1360,7 +1360,7 @@ export function DatasetStoreProvider(props: ParentProps) {
         if (read !== entitiesRead || currentDataset()?.id !== uuid || entitiesReadFor() === uuid) return;
         console.warn(`DatasetStore: foreignSchemas did not answer inside ${FOREIGN_SCHEMAS_WAIT_MS / 1000} s`);
         setEntitiesReadFor(uuid);
-        toastService.error('Some of this space’s models did not load');
+        toastService.error('Some of this space’s models did not load', undefined, `models:${uuid}`);
       }, FOREIGN_SCHEMAS_WAIT_MS);
       void (async () => {
         try {
@@ -1387,7 +1387,8 @@ export function DatasetStoreProvider(props: ParentProps) {
       // Switching is a navigation, and a navigation that silently does not happen is the worst
       // failure a store can have: the sidebar highlights the space, the URL says the space, and the
       // content is the previous one's. Console-only, this looked like the app ignoring a click.
-      toastService.error('Could not open that space');
+      // Keyed by the space: failing to open B just after A is a second failure, not a repeat.
+      toastService.error('Could not open that space', undefined, `open-space:${uuid}`);
     }
   }
 

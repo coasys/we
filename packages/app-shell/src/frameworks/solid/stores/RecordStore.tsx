@@ -2326,7 +2326,8 @@ export function RecordStoreProvider(props: ParentProps) {
     } catch (error) {
       drop(nodeId, patch);
       console.error('RecordStore: styling a card on a canvas failed', error);
-      toastService.error('Could not save that.');
+      // Keyed by the card: another card's failure inside the mute window is its own news.
+      toastService.error('Could not save that.', undefined, `save:${nodeId}`);
       return undefined;
     }
   }
@@ -2377,7 +2378,7 @@ export function RecordStoreProvider(props: ParentProps) {
       await EdgeRoute.create(dataset.handle, { ...write.fields, connection: [event.recordId] }, { parent });
     } catch (error) {
       console.error('RecordStore: anchoring a connection on a canvas failed', error);
-      toastService.error('Could not save that.');
+      toastService.error('Could not save that.', undefined, `save:${event.recordId}`);
     }
   }
 
@@ -2520,7 +2521,7 @@ export function RecordStoreProvider(props: ParentProps) {
       await EdgeRoute.update(dataset.handle, already.id, { points });
     } catch (error) {
       console.error('RecordStore: rerouting a connection on a canvas failed', error);
-      toastService.error('Could not save that.');
+      toastService.error('Could not save that.', undefined, `save:${event.recordId}`);
     }
   }
 
