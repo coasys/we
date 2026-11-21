@@ -1744,6 +1744,60 @@ describe('dataset lifecycle through the real stores', () => {
     expect(stored?.threadMode).toBe('flat');
   }, 10000);
 
+  /*
+    A switch pressed after another reads the list the first one wrote. The live row of the space on
+    screen is mirrored into the cache, and a row read before a write landed can reach it after the
+    write published — so the next read-modify-write started from a list without the earlier class
+    and stored it away. The delivery is held and replayed late here, which is the window.
+  */
+  it('does not lose a class pressed earlier when a live row older than its write arrives late', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    await stores.spaces.createSpace('Targets Space', '', 'personal', 'hidden');
+    const ref = (await lifecycle.list()).find((d) => d.name === 'Targets Space')!;
+    const uuid = ref.id;
+
+    type Row = { uuid: string };
+    const Entity = getEntity('Space') as unknown as {
+      query: (
+        handle: unknown,
+        q?: { where?: { uuid?: string; url?: string } },
+      ) => {
+        subscribe: (cb: (rows: Row[]) => void) => Promise<Row[]>;
+        dispose: () => void;
+      };
+    };
+    const query = Entity.query.bind(Entity);
+    let deliver: ((rows: Row[]) => void) | undefined;
+    const spy = vi.spyOn(Entity, 'query').mockImplementation((handle, q) => {
+      const builder = query(handle, q);
+      if ((q?.where?.uuid ?? q?.where?.url) !== uuid) return builder;
+      return {
+        subscribe: (cb) => {
+          deliver = cb;
+          return builder.subscribe(cb);
+        },
+        dispose: () => builder.dispose(),
+      };
+    });
+    try {
+      await stores.datasets.switchDataset(uuid);
+      await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(uuid));
+      expect(deliver).toBeDefined();
+      // The row as it was read, before anything was pressed.
+      const older = stores.spaces.currentSpace() as unknown as Row;
+
+      await stores.spaces.setExtractionTarget('Tension', true, uuid);
+      deliver!([older]);
+      await stores.spaces.setExtractionTarget('Decision', true, uuid);
+
+      const [stored] = await Space.findAll(ref.handle as never);
+      expect(JSON.parse(stored?.extractionTargets ?? '[]')).toEqual(expect.arrayContaining(['Tension', 'Decision']));
+    } finally {
+      spy.mockRestore();
+    }
+  }, 10000);
+
   it('says so, and changes nothing on screen, when a space setting cannot be stored', async () => {
     const stores = mountShell();
     await ready(stores);
