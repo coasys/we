@@ -7,7 +7,9 @@
  * the address as `did=50,did=0`, whole percent, anyone not named in full. These two functions are the
  * joins a schema cannot write: the one to a face and a name, and the one back to that address form.
  */
-import { parseWeights } from '@we/graph-expanders';
+import { parseWeights, voiceSetting } from '@we/graph-expanders';
+
+import { byAnyDid, selfDids } from '../personProfile';
 
 interface ProfileRow {
   did?: string;
@@ -45,7 +47,8 @@ const shortDid = (did: string) => (did.length > 16 ? `${did.slice(0, 12)}…${di
 /**
  * The voices from a seed's summary, each with its face, its weight from the address and its share of
  * the say. Options: summary (what `onSeedSummary` reported), param (the address form), profiles
- * (profileStore.profiles), me (me.did).
+ * (profileStore.profiles — one entry per person, found by any of its device keys), me (me.dids, or
+ * me.did).
  */
 export function voices(options: unknown): VoiceView[] {
   const { summary, param, profiles, me } = (options ?? {}) as {
@@ -55,11 +58,10 @@ export function voices(options: unknown): VoiceView[] {
     me?: unknown;
   };
   const rows = Array.isArray(summary?.voices) ? (summary.voices as VoiceRow[]) : [];
-  const byDid = new Map(
-    (Array.isArray(profiles) ? (profiles as ProfileRow[]) : []).flatMap((profile) =>
-      profile?.did ? [[profile.did, profile] as const] : [],
-    ),
-  );
+  const byDid = byAnyDid<ProfileRow & { devices?: unknown }>(profiles);
+  const self = selfDids(me);
+  // The reader's own voice is listed under their person; its weight may be under any of their DIDs.
+  const selves = [...self];
   const weights = parseWeights(param);
   const listed = rows
     .filter((row) => typeof row.author === 'string' && row.author)
@@ -73,9 +75,9 @@ export function voices(options: unknown): VoiceView[] {
         avatar: pretend ? '' : profile?.avatar || '',
         cards: Number(row.cards) || 0,
         mean: Number(row.mean) || 0,
-        weight: Math.round((weights.get(did) ?? 1) * 100),
+        weight: Math.round((voiceSetting(weights, did, selves) ?? 1) * 100),
         share: 0,
-        mine: did === me,
+        mine: self.has(did),
         pretend,
       };
     });
@@ -88,7 +90,11 @@ export function voices(options: unknown): VoiceView[] {
  * The address form with one voice changed — or, with `only`, every listed voice at nothing but that one.
  * A voice back at full is left out, so a reader who puts everything back has a clean address. Options:
  * param (the address form now), did and weight (0–100), or only (a DID) with voices (the listed rows or
- * their DIDs).
+ * their DIDs), and me (me.dids).
+ *
+ * The reader's own voice is written under the DID it is listed by — their person, which reads the same
+ * on every computer of theirs — and whatever stood under their other DIDs goes, so a voice put back to
+ * full is not turned down again by an entry another device left.
  */
 export function voicesParam(options: unknown): string {
   const {
@@ -97,24 +103,29 @@ export function voicesParam(options: unknown): string {
     weight,
     only,
     voices: listed,
+    me,
   } = (options ?? {}) as {
     param?: unknown;
     did?: unknown;
     weight?: unknown;
     only?: unknown;
     voices?: unknown;
+    me?: unknown;
   };
   const weights = parseWeights(param);
+  const selves = [...selfDids(me)];
+  /** Every key one voice's weight may stand under — all of the reader's DIDs, for their own. */
+  const keysOf = (voice: string) => (selves.includes(voice) ? selves : [voice]);
   if (typeof only === 'string' && only) {
     const dids = (Array.isArray(listed) ? listed : []).map((entry) =>
       typeof entry === 'string' ? entry : (entry as { did?: unknown })?.did,
     );
     for (const other of dids) if (typeof other === 'string' && other) weights.set(other, 0);
-    weights.delete(only);
+    for (const key of keysOf(only)) weights.delete(key);
   } else if (typeof did === 'string' && did) {
     const share = Math.min(100, Math.max(0, Math.round(Number(weight))));
-    if (!Number.isFinite(share) || share >= 100) weights.delete(did);
-    else weights.set(did, share / 100);
+    for (const key of keysOf(did)) weights.delete(key);
+    if (Number.isFinite(share) && share < 100) weights.set(did, share / 100);
   }
   return [...weights].map(([who, share]) => `${who}=${Math.round(share * 100)}`).join(',');
 }

@@ -42,6 +42,7 @@ fn step_kind(step: &Option<IdentityStep>) -> &'static str {
     match step {
         Some(IdentityStep::Create) => "create",
         Some(IdentityStep::AddDevice) => "add-device",
+        Some(IdentityStep::Unlink { .. }) => "unlink",
         Some(IdentityStep::Revoke { .. }) => "revoke",
         None => "",
     }

@@ -157,12 +157,14 @@ export { ANONYMOUS_AGENT_NAME, displayName, isProfileEmpty } from './profileType
 export type { AgentProfileSummary, PublishProfileFields } from './profileTypes';
 export { ModuleSchemasRefused } from './backendPorts';
 export type {
+  AuthorVerdict,
   BackendPorts,
   BackendPortsContext,
   DataBindingDeps,
   EntityHintState,
   ProfileDirectoryPort,
   ReferencePort,
+  Referrer,
   SchemaPort,
   UploadFile,
 } from './backendPorts';

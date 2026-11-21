@@ -96,6 +96,44 @@ describe('who is on each record', () => {
     expect(view.answers).toEqual({ e1: 'going' });
   });
 
+  it("counts one person's newest answer only, whichever of their keys wrote each", () => {
+    const LAPTOP = 'did:key:ana-laptop';
+    const profiles = [{ did: 'did:scid:ana', devices: [ANA, LAPTOP] }];
+    const answered = [
+      { id: 'a1', node: 'e1', agent: LAPTOP, kind: 'going', createdAt: '2026-01-02T00:00:00.000Z' },
+      { id: 'a2', node: 'e1', agent: ANA, kind: 'not-going', createdAt: '2026-01-01T00:00:00.000Z' },
+    ];
+    const view = involvement({ rows: answered, types, profiles });
+    expect(view.byNode.e1.committed).toEqual([LAPTOP]);
+    expect(view.byNode.e1.declined).toEqual([]);
+    // Without profiles the two keys are two people, and each keeps their answer.
+    expect(involvement({ rows: answered, types }).byNode.e1.people).toHaveLength(2);
+    // An answer held before it is stored is the newest there is.
+    const held = involvement({
+      rows: answered,
+      types,
+      profiles,
+      pending: [{ node: 'e1', agent: ANA, kind: 'maybe', on: true }],
+    });
+    expect(held.byNode.e1.people.map((p) => p.kind)).toEqual(['maybe']);
+  });
+
+  it('picks the same answer of one person whatever order the rows came in, even written at one moment', () => {
+    const LAPTOP = 'did:key:ana-laptop';
+    const profiles = [{ did: 'did:scid:ana', devices: [ANA, LAPTOP] }];
+    const at = '2026-01-01T00:00:00.000Z';
+    const a = { id: 'a1', node: 'e1', agent: LAPTOP, kind: 'going', createdAt: at };
+    const b = { id: 'a2', node: 'e1', agent: ANA, kind: 'not-going', createdAt: at };
+    const untimed = [
+      { id: 'a1', node: 'e1', agent: LAPTOP, kind: 'going' },
+      { id: 'a2', node: 'e1', agent: ANA, kind: 'not-going' },
+    ];
+    for (const pair of [[a, b], [b, a], untimed, [...untimed].reverse()]) {
+      // The larger id wins a tie.
+      expect(involvement({ rows: pair, types, profiles }).byNode.e1.people.map((p) => p.kind)).toEqual(['not-going']);
+    }
+  });
+
   it('draws a duplicate left by two people pressing at once as one involvement', () => {
     const view = involvement({ rows: [...rows, { id: 'i5', node: 't1', agent: ANA, kind: 'assignee' }], types });
     expect(view.byNode.t1.people.filter((p) => p.did === ANA)).toHaveLength(1);
@@ -216,26 +254,54 @@ describe('the writes', () => {
     agent: string;
     kind: string;
     node: string;
+    createdAt: string;
     delete: (batch?: string) => Promise<void>;
   }
   let table: Row[];
   let notices: string[];
   let serial = 0;
+  /** Every write, in the order it reached the store. */
+  let writes: string[];
+  /** Authors whose records the space's policy will not let this device delete. */
+  let refused: Set<string>;
+  /** Every record written at one moment, so which is newer falls to the id. */
+  let sameTime: boolean;
+  /** Holds reads back until this many have arrived — two devices that each read before either writes. */
+  let gate: { size: number; arrived: number; open: () => void; opened: Promise<void> } | undefined;
+  const meet = (size: number) => {
+    let open = () => {};
+    const opened = new Promise<void>((resolve) => (open = resolve));
+    gate = { size, arrived: 0, open, opened };
+  };
 
   const Fake = {
-    findAll: async (_dataset: unknown, query?: { where?: { agent?: string } }) =>
-      table.filter((row) => !query?.where?.agent || row.agent === query.where.agent),
+    findAll: async (_dataset: unknown, query?: { where?: { agent?: string } }) => {
+      const waiting = gate;
+      if (waiting) {
+        if (++waiting.arrived >= waiting.size) {
+          gate = undefined;
+          waiting.open();
+        }
+        await waiting.opened;
+      }
+      return table.filter((row) => !query?.where?.agent || row.agent === query.where.agent);
+    },
     create: async (_dataset: unknown, fields: { agent: string; kind: string; node: string[] }) => {
       const row: Row = {
         id: `i${++serial}`,
         agent: fields.agent,
         kind: fields.kind,
         node: fields.node[0],
+        // A second apart, so which of two answers is newer is never a tie — unless the case asks.
+        createdAt: new Date(Date.UTC(2026, 0, 1, 0, 0, sameTime ? 0 : serial)).toISOString(),
         delete: async () => {
+          if (refused.has(row.agent)) throw new Error('Refused by this space: deleting what another key wrote');
           table = table.filter((r) => r !== row);
+          writes.push(`delete ${row.agent} ${row.kind}`);
         },
       };
       table.push(row);
+      writes.push(`create ${row.agent} ${row.kind}`);
       return row;
     },
   };
@@ -252,6 +318,10 @@ describe('the writes', () => {
   beforeEach(() => {
     table = [];
     notices = [];
+    writes = [];
+    refused = new Set();
+    sameTime = false;
+    gate = undefined;
     registerEntity('Involvement', Fake as unknown as EntityClass);
   });
   afterEach(() => unregisterEntity('Involvement'));
@@ -306,6 +376,172 @@ describe('the writes', () => {
     await actions().respond('e1', 'going');
     await actions().respond('e1', 'not-going');
     expect(table.map((r) => r.kind).sort()).toEqual(['not-going', 'reviewer']);
+  });
+
+  it('replaces an answer my other computer gave, so I keep one answer, not one per device', async () => {
+    const LAPTOP = 'did:key:my-laptop';
+    const mine = () =>
+      createInvolvementActions({
+        dataset: () => ({}),
+        me: () => ME,
+        mine: () => [ME, LAPTOP, 'did:scid:test:me'],
+        types: () => types,
+        notify: (message) => notices.push(message),
+      });
+    await Fake.create({}, { agent: LAPTOP, kind: 'maybe', node: ['e1'] });
+    await Fake.create({}, { agent: ANA, kind: 'maybe', node: ['e1'] });
+    await mine().respond('e1', 'going');
+    expect(table.map((r) => [r.agent, r.kind])).toEqual([
+      [ANA, 'maybe'],
+      [ME, 'going'],
+    ]);
+    // Withdrawing takes it off whichever of my computers gave it; Ana's stays.
+    await Fake.create({}, { agent: LAPTOP, kind: 'not-going', node: ['e1'] });
+    await mine().respond('e1', '');
+    expect(table.map((r) => [r.agent, r.kind])).toEqual([[ANA, 'maybe']]);
+    // And an answer is mine to give from either computer, but still nobody else's.
+    await mine().setInvolvement('e1', LAPTOP, 'going', true);
+    expect(table.map((r) => [r.agent, r.kind])).toEqual([
+      [ANA, 'maybe'],
+      [ME, 'going'],
+    ]);
+    await mine().setInvolvement('e1', ANA, 'going', true);
+    expect(notices).toHaveLength(1);
+  });
+
+  describe('when my other computer answered first', () => {
+    const LAPTOP = 'did:key:my-laptop';
+    const PERSON = 'did:scid:test:me';
+    let shown: string[];
+    const mine = () =>
+      createInvolvementActions({
+        dataset: () => ({}),
+        me: () => ME,
+        mine: () => [ME, LAPTOP, PERSON],
+        types: () => types,
+        notify: (message) => notices.push(message),
+        hold: (node, agent, kind, on) => shown.push(`hold ${node} ${agent} ${kind} ${on}`),
+        release: (node, agent, kind) => shown.push(`release ${node} ${agent} ${kind}`),
+        done: (node, agent, kind) => shown.push(`done ${node} ${agent} ${kind}`),
+      });
+    beforeEach(() => {
+      shown = [];
+    });
+
+    it('stores the new answer before removing the old one, and removes it when the space allows', async () => {
+      await Fake.create({}, { agent: LAPTOP, kind: 'maybe', node: ['e1'] });
+      writes = [];
+      await mine().respond('e1', 'going');
+      expect(writes).toEqual([`create ${ME} going`, `delete ${LAPTOP} maybe`]);
+      expect(table.map((r) => [r.agent, r.kind])).toEqual([[ME, 'going']]);
+      expect(notices).toEqual([]);
+      // The laptop's answer reads as gone from the press, and the hold ends once its removal returns.
+      expect(shown).toContain(`hold e1 ${LAPTOP} maybe false`);
+      expect(shown).toContain(`done e1 ${LAPTOP} maybe`);
+    });
+
+    it('keeps the new answer when the space refuses to delete the old one, and counts me once, as the newest', async () => {
+      await Fake.create({}, { agent: LAPTOP, kind: 'maybe', node: ['e1'] });
+      await Fake.create({}, { agent: ANA, kind: 'maybe', node: ['e1'] });
+      refused.add(LAPTOP);
+      await expect(mine().respond('e1', 'going')).resolves.toBeUndefined();
+
+      // Stored, and nothing told me my answer failed — it did not.
+      expect(table.map((r) => [r.agent, r.kind])).toEqual([
+        [LAPTOP, 'maybe'],
+        [ANA, 'maybe'],
+        [ME, 'going'],
+      ]);
+      expect(notices).toEqual([]);
+      // What is on screen goes back to the data for the one that stayed.
+      expect(shown).toContain(`release e1 ${LAPTOP} maybe`);
+
+      // Read by me: one answer, the one I gave last.
+      const asMe = involvement({ rows: table, types, me: [ME, LAPTOP, PERSON] });
+      expect(asMe.answers).toEqual({ e1: 'going' });
+      expect(asMe.byNode.e1.committed).toEqual([ME]);
+      expect(asMe.byNode.e1.interested).toEqual([ANA]);
+      expect(asMe.byNode.e1.people.filter((p) => p.did !== ANA)).toHaveLength(1);
+
+      // Read by Ana, who knows my two computers as one person: the same one answer.
+      const profiles = [{ did: PERSON, devices: [ME, LAPTOP] }, { did: ANA }];
+      const asAna = involvement({ rows: table, types, me: ANA, profiles });
+      expect(asAna.byNode.e1.people.filter((p) => p.person === PERSON).map((p) => p.kind)).toEqual(['going']);
+      expect(asAna.byNode.e1.dids).toEqual([ANA, PERSON]);
+      expect(asAna.answers).toEqual({ e1: 'maybe' });
+    });
+
+    it('says so when a withdrawal could not take back what the other computer answered', async () => {
+      await Fake.create({}, { agent: LAPTOP, kind: 'not-going', node: ['e1'] });
+      refused.add(LAPTOP);
+      await mine().respond('e1', '');
+      expect(table.map((r) => [r.agent, r.kind])).toEqual([[LAPTOP, 'not-going']]);
+      expect(notices).toEqual(['Could not withdraw the answer you gave on another device']);
+    });
+
+    /** One of my computers: `self` signs, and the rest of me is the other computer and the person. */
+    const device = (self: string) =>
+      createInvolvementActions({
+        dataset: () => ({}),
+        me: () => self,
+        mine: () => [self, ...[ME, LAPTOP].filter((did) => did !== self), PERSON],
+        types: () => types,
+        notify: (message) => notices.push(message),
+      });
+    const myAnswer = () => involvement({ rows: table, types, me: [ME, LAPTOP, PERSON] }).answers.e1;
+
+    it('writes an answer I gave before again, when a newer one from my other computer stands over it', async () => {
+      // The laptop says going; the desktop says maybe and may not remove the laptop's row.
+      await device(LAPTOP).respond('e1', 'going');
+      refused.add(LAPTOP);
+      await device(ME).respond('e1', 'maybe');
+      expect(myAnswer()).toBe('maybe');
+      // Back on the laptop, going again. Its old "going" is still there, but it is not what I answer.
+      refused.clear();
+      refused.add(ME);
+      await device(LAPTOP).respond('e1', 'going');
+      expect(myAnswer()).toBe('going');
+      expect(table.map((r) => [r.agent, r.kind])).toEqual([
+        [ME, 'maybe'],
+        [LAPTOP, 'going'],
+      ]);
+    });
+
+    it('keeps exactly one answer when both computers change it at once, the one every reader shows', async () => {
+      for (const same of [false, true]) {
+        table = [];
+        sameTime = same;
+        await device(ME).respond('e1', 'maybe');
+        await device(LAPTOP).respond('e1', 'not-going');
+        refused.add(LAPTOP);
+        await device(ME).respond('e1', 'maybe');
+        refused.clear();
+        // Both rows stand: the desktop's maybe and the laptop's not-going. Each computer now reads
+        // both before either writes, and each writes and cleans up.
+        expect(table).toHaveLength(2);
+        meet(6);
+        await Promise.all([device(ME).respond('e1', 'going'), device(LAPTOP).respond('e1', 'not-going')]);
+        expect(table, same ? 'at one moment' : 'a second apart').toHaveLength(1);
+        const [left] = table;
+        expect(myAnswer()).toBe(left.kind);
+        const profiles = [{ did: PERSON, devices: [ME, LAPTOP] }, { did: ANA }];
+        const asAna = involvement({ rows: table, types, me: ANA, profiles });
+        expect(asAna.byNode.e1.people.map((p) => p.kind)).toEqual([left.kind]);
+      }
+    });
+
+    it('never leaves no answer when one computer already shows what it asks and the other changes it', async () => {
+      // The laptop said going, then the desktop said maybe (refused removal) — both stand, maybe is mine.
+      await device(LAPTOP).respond('e1', 'going');
+      refused.add(LAPTOP);
+      await device(ME).respond('e1', 'maybe');
+      refused.clear();
+      // The desktop asks for maybe, which already stands; the laptop asks for going. Each sees the other's.
+      meet(6);
+      await Promise.all([device(ME).respond('e1', 'maybe'), device(LAPTOP).respond('e1', 'going')]);
+      expect(table.map((r) => [r.agent, r.kind])).toEqual([[LAPTOP, 'going']]);
+      expect(myAnswer()).toBe('going');
+    });
   });
 
   it('refuses an assignment given as an answer, and a kind the space does not have', async () => {
@@ -393,6 +629,82 @@ describe('the people on a card, as faces and as a picker', () => {
       me: ME,
     }) as { items?: { label: string; checked: boolean }[] }[];
     expect(entries[1].items![0]).toMatchObject({ label: 'Zed (left)', checked: true });
+  });
+});
+
+describe('one person across their computers', () => {
+  const types = SEEDED_INVOLVEMENT_TYPES;
+  const PERSON = 'did:scid:test:me';
+  const LAPTOP = 'did:key:my-laptop';
+  const ROBIN = 'did:scid:test:robin';
+  const ROBIN_PHONE = 'did:key:robin-phone';
+  const ROBIN_DESK = 'did:key:robin-desk';
+  const MY_DIDS = [ME, LAPTOP, PERSON];
+  // One entry per person, as `spaceStore.members` and `profileStore.profiles` now hold them.
+  const people = [
+    { did: PERSON, name: 'Me', devices: [ME, LAPTOP] },
+    { did: ROBIN, name: 'Robin', devices: [ROBIN_PHONE, ROBIN_DESK] },
+    { did: ANA, name: 'Ana' },
+  ];
+
+  it('folds holders to their person, keeps the key that holds, and leads with me from any computer', () => {
+    const rows = [
+      { node: 't1', agent: ROBIN_PHONE, kind: 'assignee' },
+      { node: 't1', agent: ROBIN_DESK, kind: 'reviewer' },
+      { node: 't1', agent: LAPTOP, kind: 'watcher' },
+      { node: 'e1', agent: LAPTOP, kind: 'going' },
+    ];
+    const view = involvement({ rows, types, me: MY_DIDS, profiles: people });
+    expect(view.byNode.t1.dids).toEqual([ROBIN, PERSON]);
+    expect(view.byNode.t1.people.map((p) => [p.did, p.person])).toEqual(
+      expect.arrayContaining([
+        [ROBIN_PHONE, ROBIN],
+        [ROBIN_DESK, ROBIN],
+        [LAPTOP, PERSON],
+      ]),
+    );
+    expect(view.byNode.t1.people).toHaveLength(3);
+    expect(view.dids).toEqual([PERSON, ROBIN]);
+    // My laptop's answer is my answer here on the desktop.
+    expect(view.answers).toEqual({ e1: 'going' });
+    // Without profiles each key stands for itself, as before.
+    expect(involvement({ rows, types, me: ME }).byNode.t1.dids).toEqual([ROBIN_PHONE, ROBIN_DESK, LAPTOP]);
+  });
+
+  it('ticks me when my laptop holds a part, unticks through the key that holds it, and offers no "Assign to me"', () => {
+    const rows = [{ node: 't1', agent: LAPTOP, kind: 'assignee' }];
+    const entries = involvementMenu({ node: 't1', entity: 'TaskBlock', rows, types, members: people, me: MY_DIDS }) as {
+      id: string;
+      label?: string;
+      items?: { id: string; label: string; checked: boolean }[];
+    }[];
+    expect(entries.some((e) => e.label === 'Assign to me')).toBe(false);
+    const assigned = entries.find((e) => e.id === 'assignee')!;
+    expect(assigned.items![0]).toMatchObject({ id: LAPTOP, label: 'Me (you)', checked: true });
+    // One row per person: Robin once, written as one of Robin's keys; Ana as herself.
+    expect(assigned.items!.filter((i) => i.label === 'Robin')).toEqual([
+      expect.objectContaining({ id: ROBIN_PHONE, checked: false }),
+    ]);
+    expect(assigned.items!.find((i) => i.label === 'Ana')).toMatchObject({ id: ANA, checked: false });
+  });
+
+  it('assigns me as this computer when none of mine holds it', () => {
+    const entries = involvementMenu({
+      node: 't1',
+      entity: 'TaskBlock',
+      rows: [],
+      types,
+      members: people,
+      me: MY_DIDS,
+    }) as {
+      id: string;
+      label?: string;
+      items?: { id: string; label: string }[];
+    }[];
+    expect(entries[0]).toMatchObject({ id: ME, label: 'Assign to me' });
+    expect(entries.find((e) => e.id === 'assignee')!.items!.find((i) => i.label === 'Me (you)')).toMatchObject({
+      id: ME,
+    });
   });
 });
 

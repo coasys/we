@@ -122,6 +122,43 @@ describe('a service published after the store was built', () => {
     expect(held.seen.at(-1)).toBe('did:test:me');
     held.disposer();
   });
+
+  it('forwards every id that is me beside this device’s, so a module can tell the two apart', async () => {
+    const held = createRoot((disposer) => {
+      const deps = solidDeps();
+      const seen: { self: string | null; selves: string[] }[] = [];
+      createEffect(() => void seen.push({ self: deps.selfId?.() ?? null, selves: deps.selfIds() }));
+      return { disposer, seen };
+    });
+    await settled();
+    // Before login: nobody, and an empty list rather than an absent one.
+    expect(held.seen.at(-1)).toEqual({ self: null, selves: [] });
+
+    provideModuleHostServices({
+      selfId: () => 'did:key:phone',
+      selfIds: () => ['did:key:phone', 'did:key:laptop', 'did:scid:me'],
+    });
+    await settled();
+    expect(held.seen.at(-1)).toEqual({
+      self: 'did:key:phone',
+      selves: ['did:key:phone', 'did:key:laptop', 'did:scid:me'],
+    });
+    held.disposer();
+  });
+
+  it('gives this device as the whole list when the host knows only this device', async () => {
+    // A poll reads my vote through `selfIds`: an empty list here would make every press a new vote.
+    const held = createRoot((disposer) => {
+      const deps = solidDeps();
+      const seen: string[][] = [];
+      createEffect(() => void seen.push(deps.selfIds()));
+      return { disposer, seen };
+    });
+    provideModuleHostServices({ selfId: () => 'did:key:phone' });
+    await settled();
+    expect(held.seen.at(-1)).toEqual(['did:key:phone']);
+    held.disposer();
+  });
 });
 
 describe('a module registering before any component exists', () => {

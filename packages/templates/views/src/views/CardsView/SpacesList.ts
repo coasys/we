@@ -74,7 +74,7 @@ export const spacesList: SchemaNode = cardList({
             {
               type: '$if',
               props: {
-                condition: { $: 'spaceStore.currentSpace.author == me.did' },
+                condition: { $: 'spaceStore.currentSpace.author in me.dids' },
                 then: {
                   type: 'Row',
                   props: { gap: '100' },

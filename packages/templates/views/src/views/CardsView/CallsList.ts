@@ -764,7 +764,7 @@ export const callsList: SchemaNode = {
                                 {
                                   type: '$if',
                                   props: {
-                                    condition: { $: 'call.author == me.did' },
+                                    condition: { $: 'call.author in me.dids' },
                                     then: {
                                       type: 'Row',
                                       props: { gap: '100' },

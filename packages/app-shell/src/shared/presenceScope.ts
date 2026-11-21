@@ -9,7 +9,7 @@
  * which spaces are wanted, what that means for the sources currently running, and how their
  * separate views of the world become one.
  */
-import type { Activity, Peer } from '@we/backend-shared';
+import type { Activity, AgentProfileSummary, Peer } from '@we/backend-shared';
 
 /**
  * A ceiling on how many spaces presence may beat into at once — a tripwire, not a limit.
@@ -131,4 +131,21 @@ function mergeReports(reports: Peer[]): Peer {
 
   if (!activities.size) return freshest;
   return { ...freshest, activities: [...activities.values()].map(({ activity }) => activity) };
+}
+
+/**
+ * A peer drawn as its person: the profile its device is answered with, `did` kept as the device that
+ * is present, and `person` the DID that device speaks for (the device itself when it speaks for
+ * nobody else).
+ *
+ * Presence stays per device — each computer beats on its own, so one person on two computers is two
+ * peers with one `person`. What a template does with that is `p.did in me.dids` to leave out every
+ * computer of the viewer's, and `p.person` to count or key people rather than computers.
+ */
+export function presentAs(
+  peer: Peer,
+  profileFor: (did: string) => AgentProfileSummary | undefined,
+): Peer & Partial<AgentProfileSummary> & { did: string; person: string } {
+  const profile = profileFor(peer.agentId);
+  return { ...peer, ...profile, did: peer.agentId, person: profile?.did ?? peer.agentId };
 }

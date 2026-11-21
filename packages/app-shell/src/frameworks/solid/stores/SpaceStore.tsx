@@ -5,7 +5,9 @@ import { callParamToWrite } from '@shared/callOnScreen';
 import {
   CONTAINER_ACTIVITY_QUERY,
   type ContainerActivity,
+  type MentionRow,
   mentionsOf,
+  mergeMentions,
   unreadContainerIds,
 } from '@shared/containerActivity';
 import { datasetAddressedBy } from '@shared/datasetIdentity';
@@ -31,6 +33,7 @@ import {
   type SettingValue,
   writeSetting,
 } from '@shared/moduleSettings';
+import { onePerPerson, selfDids } from '@shared/personProfile';
 import { resolveRecordRef } from '@shared/recordNavigation';
 import { withDerivedIds } from '@shared/registries/derivedIds';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
@@ -160,6 +163,7 @@ import {
   RelationshipType,
   Role,
   RoleGrant,
+  runEntityTransaction,
   Signal,
   SignalType,
   Space,
@@ -169,6 +173,7 @@ import {
   TaskState,
 } from '@we/entities';
 import { type Latest, latest } from '@we/module-shared';
+import { keepNewestAcrossDevices, replaceAcrossDevices } from '@we/optimism';
 import type { ResolvedView, TemplateSchema } from '@we/schema-shared';
 import {
   applyStarterRecords,
@@ -566,8 +571,13 @@ export interface SpaceStore {
    * most recent. A backend without references falls back to filtering the space's containers, which
    * misses lines.
    */
-  /** `createdAt` is the backend's comparable timestamp (epoch millis in the AD4M lane). */
-  myMentions: Accessor<{ id: string; author: string; createdAt: number }[]>;
+  /**
+   * `createdAt` is the backend's comparable timestamp (epoch millis in the AD4M lane). `author` is
+   * the device that signed. `verdict` is present only where the backend could not confirm that
+   * device spoke for its person — `cantCheck` or `flagged`, which a byline draws as a quiet mark
+   * (`agentByline({ verdict })`); a refused signature is never a row at all.
+   */
+  myMentions: Accessor<MentionRow[]>;
   /**
    * Put a file somewhere the space can reference, and return the URL that points at it.
    *
@@ -1020,7 +1030,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (uuid === datasetStore.currentDataset()?.id && rolesLoaded()) {
       return administers(roleViews(), mePerson() ?? me ?? null, authorPerson() ?? space.author ?? null);
     }
-    return Boolean(me && space.author === me);
+    // Made from any of my devices.
+    return Boolean(space.author && selfDids(session.me()?.dids ?? me).has(space.author));
   }
 
   /**
@@ -2101,11 +2112,11 @@ export function SpaceStoreProvider(props: ParentProps) {
       const globalDs = datasetStore.globalDataset();
       const myDid = session.me()?.did;
       if (globalDs && myDid) {
-        // Only remove from global discovery if the current user is the author of that
-        // space entry — a peer who joined and later deletes their local copy should not
+        // Only remove from global discovery if the current user (from any of their devices) is the
+        // author of that space entry — a peer who joined and later deletes their local copy should not
         // affect the global listing.
         const spaceInGlobal = await Space.findOne(globalDs.handle, { where: { uuid } }).catch(() => null);
-        if (spaceInGlobal && spaceInGlobal.author === myDid) {
+        if (spaceInGlobal?.author && selfDids(session.me()?.dids ?? myDid).has(spaceInGlobal.author)) {
           await removeSpaceFromParent(uuid, globalDs.handle).catch((err) =>
             console.error('SpaceStore: removeSpaceFromParent on delete error', err),
           );
@@ -2317,7 +2328,8 @@ export function SpaceStoreProvider(props: ParentProps) {
       const node = await CollectionBlock.findOne(p, { where: { id: nodeId } });
       if (!node) return;
       if (attending) await node.addParticipants(me);
-      else await node.removeParticipants(me);
+      // Leaving takes off the entry each of my devices made, or the one from my laptop keeps me going.
+      else for (const did of selfDids(session.me()?.dids ?? me)) await node.removeParticipants(did);
     } catch (error) {
       console.error('SpaceStore: could not update attendance', error);
       toastService.error('Could not update your RSVP');
@@ -2818,33 +2830,59 @@ export function SpaceStoreProvider(props: ParentProps) {
         At most one reaction per person per type is what "upsert" means here, so the write enforces
         it rather than assuming it.
       */
-      const mine = await Signal.findAll(p, {
-        parent: { id: nodeId, relation: 'signals' },
-        where: { signalTypeId, author: myDid },
-      });
+      /*
+        And mine from any of my computers (`me.dids`), since the control shows a reaction my laptop gave
+        as mine: a press here that saw only this device's record would add a second reaction where I
+        meant to change or take back the first. The other device's goes after this one is written — see
+        `replaceAcrossDevices`.
+      */
+      const dids = [...new Set([myDid, ...(session.me()?.dids ?? [])])];
+      const read = () =>
+        Signal.findAll(p, { parent: { id: nodeId, relation: 'signals' }, where: { signalTypeId, author: dids } });
+      const all = await read();
+      const mine = all.filter((signal) => signal.author === myDid);
+      const elsewhere = all.filter((signal) => signal.author !== myDid);
 
       /*
-        Withdrawing a reaction removes the record; changing one edits it in place.
+        Withdrawing a reaction removes the record; changing one writes a new record and removes the
+        old in the same transaction.
 
-        In place, so it keeps the record's id and `createdAt` for what is plainly the same person's
-        same reaction differently weighted, and in one write: a subscription follows what its query includes, so the edit is heard
-        without a remove-and-add flicker through "nobody has rated this".
+        New rather than edited in place, because which of one person's reactions counts is the newest
+        by `createdAt` (`compareWritten`), and an edit keeps the old time: a change on this computer
+        would lose to an older reaction my other one left, and two computers editing at once would
+        each delete the other's, leaving none. One transaction, so a reader sees the swap as one
+        change rather than "nobody has reacted" for a round trip — and the hold covers the press.
 
-        Any further reactions of mine on this type are removed, so a pair that was written twice
-        heals on the next change rather than staying doubled for good.
+        Any further reactions of mine on this type go in that transaction too, so a pair that was
+        written twice heals on the next change rather than staying doubled for good.
 
         A withdrawal — `null` — removes the record rather than storing anything, which is what keeps a
         withdrawn reaction absent everywhere instead of being a row every count has to remember to
         exclude. A zero is an ordinary value and is stored like any other.
       */
       try {
-        const kept = value === null ? undefined : mine[0];
-        for (const signal of mine) if (signal !== kept) await signal.delete();
-        if (kept) {
-          kept.value = value as number;
-          await kept.save();
-        } else if (value !== null) {
-          await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, relation: 'signals' } });
+        // Assigned inside the transaction, so typed past the `undefined` it starts as.
+        let written = undefined as Awaited<ReturnType<typeof Signal.create>> | undefined;
+        if (mine.length || value !== null) {
+          await runEntityTransaction(p, async (tx) => {
+            for (const signal of mine) await signal.delete(tx.batchId);
+            if (value !== null) {
+              written = await Signal.create(
+                p,
+                { signalTypeId, value },
+                { parent: { id: nodeId, relation: 'signals' }, batchId: tx.batchId },
+              );
+            }
+          });
+        }
+        const failure = 'SpaceStore: could not remove a reaction from your other device';
+        // A change removes what loses to it, read again so a reaction my other computer gave meanwhile
+        // is judged too; a withdrawal removes what was there when pressed.
+        // A changed reaction is stored whatever happened to the old one. A withdrawal that left one
+        // standing did not do what was pressed, and says so.
+        if (written) await keepNewestAcrossDevices(written, await read(), failure);
+        else if (await replaceAcrossDevices(elsewhere, failure)) {
+          toastService.error('Could not take back the reaction you gave on another device.');
         }
         // The write is back. Not a release — what retires a hold is the data moving — but it ends
         // the hold's exemption from what the next draw says. See `@we/optimism`.
@@ -3811,6 +3849,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   const involvements = createInvolvementActions({
     dataset: () => datasetStore.currentDataset()?.handle,
     me: () => session.me()?.did,
+    mine: () => session.me()?.dids,
     types: () => involvementTypes(),
     notify: (message) => toastService.error(message),
     ...involvementOptimism.ports,
@@ -5019,27 +5058,50 @@ export function SpaceStoreProvider(props: ParentProps) {
     the next. A backend that cannot answer falls back to filtering the container read, which is what
     this was.
   */
-  const [mentionRows, setMentionRows] = createSignal<{ id: string; author: string; createdAt: number }[] | null>(null);
+  /*
+    Every DID a mention of this agent can name: this device, the person's other devices (a mention
+    written before they were linked, or picked from a list keyed by device), and the person, which a
+    member list one entry per person now offers. One lookup each, merged.
+  */
+  const myMentionDids = createMemo(
+    () => {
+      const me = session.me();
+      return me?.dids?.length ? me.dids : me?.did ? [me.did] : [];
+    },
+    undefined,
+    { equals: (a, b) => a.join() === b.join() },
+  );
+  const [mentionRows, setMentionRows] = createSignal<MentionRow[] | null>(null);
   createEffect(() => {
     const ds = datasetStore.currentDataset();
-    const did = session.me()?.did;
+    const dids = myMentionDids();
     const references = session.backendPorts()?.references;
     void activityRows();
     setMentionRows(null);
-    if (!ds || !did || !references) return;
-    void references
-      .referrers(ds.handle, { relation: 'mentions' }, did, { limit: 50 })
-      .then((rows) => {
+    if (!ds || !dids.length || !references) return;
+    void Promise.all(dids.map((did) => references.referrers(ds.handle, { relation: 'mentions' }, did, { limit: 50 })))
+      .then((answers) => {
         if (datasetStore.currentDataset() !== ds) return;
-        setMentionRows(rows.map((row) => ({ id: row.id, author: row.author, createdAt: Date.parse(row.at) || 0 })));
+        setMentionRows(
+          mergeMentions(
+            answers.map((rows) =>
+              rows.map((row) => ({
+                id: row.id,
+                author: row.author,
+                createdAt: Date.parse(row.at) || 0,
+                ...(row.verdict ? { verdict: row.verdict } : {}),
+              })),
+            ),
+          ),
+        );
       })
       .catch((error: unknown) => console.warn('SpaceStore: could not read who mentions this agent', error));
   });
   const myMentions = createMemo(() => {
-    const did = session.me()?.did;
     const found = mentionRows();
     if (found) return found;
-    return did ? mentionsOf(activityRows(), did) : [];
+    const dids = myMentionDids();
+    return dids.length ? mentionsOf(activityRows(), dids) : [];
   });
 
   /**
@@ -6040,13 +6102,12 @@ export function SpaceStoreProvider(props: ParentProps) {
       });
   });
 
-  // Map memberDids to cached AgentProfileSummary entries
-  const members = createMemo<AgentProfileSummary[]>(() => {
-    const cached = profileStore.profiles();
-    return memberDids()
-      .map((did) => cached.find((a) => a.did === did))
-      .filter((a): a is AgentProfileSummary => a != null);
-  });
+  /*
+    The member keys as people: one entry per person, its `did` the person and its `devices` the keys
+    that joined for them, so somebody on two computers is one member. A key whose profile has not
+    arrived is left out until it does, as before.
+  */
+  const members = createMemo<AgentProfileSummary[]>(() => onePerPerson(memberDids(), profileStore.profileFor));
 
   /**
    * The space this route points at is one the agent has not joined — as a settled fact, not a

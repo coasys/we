@@ -202,7 +202,14 @@ describe('the identity window', () => {
 
   it('refuses a step it does not know, before any window opens', async () => {
     const { identity, windows } = setup();
-    for (const step of [undefined, { kind: 'export-key' }, { kind: 'revoke' }, { kind: 'revoke', keyId: 2 }]) {
+    for (const step of [
+      undefined,
+      { kind: 'export-key' },
+      { kind: 'revoke' },
+      { kind: 'revoke', keyId: 2 },
+      { kind: 'unlink' },
+      { kind: 'unlink', keyId: 2 },
+    ]) {
       await expect(identity.open(step)).rejects.toThrow('not an identity step');
     }
     expect(windows).toHaveLength(0);

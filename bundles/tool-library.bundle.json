@@ -1871,7 +1871,7 @@
       "$queries": {
         "loans": {
           "entity": "Loan",
-          "where": { "status": ["requested", "out", "overdue"], "borrower": { "$": "me.did" } },
+          "where": { "status": ["requested", "out", "overdue"], "borrower": { "$": "me.dids" } },
           "include": { "item": true },
           "limit": 500
         }

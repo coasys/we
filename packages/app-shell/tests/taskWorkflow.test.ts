@@ -151,6 +151,23 @@ describe('taskMoveCard', () => {
     expect(taskMoveCard(view, 'task', holders, ANA)).toMatchObject({ mine: true, canApprove: false });
   });
 
+  it('counts an approval from my other computer as mine, and asks whether this computer would count', () => {
+    const holders = (kind: string) => (kind === 'reviewer' ? [BEN, 'did:key:cat'] : []);
+    // Ana approved from her laptop; on her desktop it is still hers.
+    expect(taskMoveCard(view, 'task', holders, ['did:key:ana-desk', ANA, 'did:scid:test:ana'])).toMatchObject({
+      mine: true,
+      canApprove: false,
+    });
+    // Cat's desktop holds the reviewer part; her laptop does not, so the laptop cannot add one that counts.
+    expect(taskMoveCard(view, 'task', holders, ['did:key:cat', 'did:key:cat-laptop'])).toMatchObject({
+      mine: false,
+      canApprove: true,
+    });
+    expect(taskMoveCard(view, 'task', holders, ['did:key:cat-laptop', 'did:key:cat'])).toMatchObject({
+      canApprove: false,
+    });
+  });
+
   it('reads nothing where the workflow cannot say — the board goes on reading `status` there', () => {
     const unknown: TaskWorkflowView = {
       view: { workflow: TASK_WORKFLOW, items: [{ ...workflowView.items[0], state: null }] },

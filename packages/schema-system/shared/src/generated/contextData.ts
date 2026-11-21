@@ -1173,7 +1173,7 @@ export const contextData: ContextData = {
         { name: 'signalType', type: 'SignalTypeData', optional: false },
         { name: 'size', type: '"xs" | "sm" | "md"', optional: true },
         { name: 'signals', type: 'SignalData[]', optional: true },
-        { name: 'myDid', type: 'string', optional: true },
+        { name: 'myDids', type: 'readonly string[]', optional: true },
         { name: 'onSignal', type: '((value: number | null) => void)', optional: true },
         { name: 'disabled', type: 'boolean', optional: true },
         { name: 'preview', type: 'boolean', optional: true },
@@ -2362,16 +2362,27 @@ export const contextData: ContextData = {
       state: {
         devices: {
           type: 'array',
-          properties: ['keyId', 'label', 'subtitle', 'icon', 'thisDevice', 'revoked', 'status', 'canRevoke'],
+          properties: [
+            'keyId',
+            'label',
+            'subtitle',
+            'icon',
+            'thisDevice',
+            'unlinked',
+            'revoked',
+            'status',
+            'canUnlink',
+            'canRevoke',
+          ],
         },
         devicesLoaded: { type: 'boolean' },
         validCount: { type: 'number' },
         canManage: { type: 'boolean' },
         error: { type: 'string' },
       },
-      actions: ['refresh', 'addDevice', 'revoke'],
+      actions: ['refresh', 'addDevice', 'unlink', 'revoke'],
       ambient: ['refresh'],
-      needsArgs: ['revoke'],
+      needsArgs: ['unlink', 'revoke'],
     },
     {
       name: 'editorStore',
@@ -2522,7 +2533,7 @@ export const contextData: ContextData = {
       state: {
         profiles: {
           type: 'array',
-          properties: ['did', 'firstName', 'lastName', 'handle', 'bio', 'avatar', 'coverImage', 'location'],
+          properties: ['did', 'devices', 'firstName', 'lastName', 'handle', 'bio', 'avatar', 'coverImage', 'location'],
         },
         ownProfile: {
           type: 'object',
@@ -2955,7 +2966,7 @@ export const contextData: ContextData = {
         loginLoading: { type: 'boolean' },
         createAgentError: { type: 'string' },
         createAgentLoading: { type: 'boolean' },
-        me: { type: 'object', properties: ['did', 'perspective', 'directMessageLanguage'] },
+        me: { type: 'object', properties: ['did', 'person', 'dids', 'perspective', 'directMessageLanguage'] },
         host: {
           type: 'object',
           properties: ['id', 'name', 'description', 'imageUrl', 'location', 'url', 'computeSpecs', 'aiModels', 'rates'],
@@ -3279,7 +3290,7 @@ export const contextData: ContextData = {
         memberDids: { type: 'array', properties: ['did'] },
         members: {
           type: 'array',
-          properties: ['did', 'firstName', 'lastName', 'handle', 'bio', 'avatar', 'coverImage', 'location'],
+          properties: ['did', 'devices', 'firstName', 'lastName', 'handle', 'bio', 'avatar', 'coverImage', 'location'],
         },
         spaceDefaultTemplateId: { type: 'string' },
         spaceDefaultThemeId: { type: 'string' },
@@ -3364,7 +3375,7 @@ export const contextData: ContextData = {
         mutedAgents: { type: 'array' },
         readMarkers: { type: 'array' },
         unreadNodeIds: { type: 'array' },
-        myMentions: { type: 'array', properties: ['id', 'author', 'createdAt'] },
+        myMentions: { type: 'array', properties: ['id', 'author', 'createdAt', 'verdict'] },
         spaceModuleSettings: { type: 'array' },
         myModuleSettings: { type: 'array' },
         agentModuleSettings: { type: 'array' },
@@ -3893,23 +3904,23 @@ export const contextData: ContextData = {
     {
       name: 'arrangedBoard',
       params: ['options'],
-      doc: 'A board worked out from its three subscriptions — { ready, gathers, columns, contents, unplaced, unplacedStates, available, total, involved, filtering, show, dimmed, cardCount, matchedCount, unplacedTotal, rows, cells, rowCounts, workflow, awaiting, awaitingOnly }. columns are the caller’s own column records in the board’s order; contents[columnId] is { label, icon, color, lane, arranged, unarranged, count, shown, matched, order }; unplaced is work no column here shows. Options: board (the record with children hydrated), columns (its kind: "column" children), records (everything in scope), states (spaceStore.taskStates). To read it by who is on the work, also pass involvements (an Involvement query), kinds (spaceStore.involvementTypes), people (the chosen DIDs), me (me.did — involved is everyone on a card here, the viewer first) and show: "dim" lists the others in dimmed and moves nothing; "hide" drops them from arranged, unarranged and unplaced while count stays true and shown says how many are drawn; "rows" adds a row per person plus "nobody" — rows are keys, cells[row][columnId] is { arranged, unarranged, count }. A drag in a column showing only part of itself passes contents[columnId].order to arrangeColumn, so the hidden cards keep their places. Where the space’s states ask for agreement (spaceStore.taskWorkflowEnabled) a card is drawn where its run is, and three more fields answer: workflow[cardId] is { to, approvers, counted, needs, mine, canApprove, approverKind } for a card waiting on a move — counted is how many of approvers count toward needs; awaiting is the cards whose waiting move the viewer’s approval would help; pass awaitingMe: true to draw only those (awaitingOnly says it is on).',
+      doc: 'A board worked out from its three subscriptions — { ready, gathers, columns, contents, unplaced, unplacedStates, available, total, involved, filtering, show, dimmed, cardCount, matchedCount, unplacedTotal, rows, cells, rowCounts, workflow, awaiting, awaitingOnly }. columns are the caller’s own column records in the board’s order; contents[columnId] is { label, icon, color, lane, arranged, unarranged, count, shown, matched, order }; unplaced is work no column here shows. Options: board (the record with children hydrated), columns (its kind: "column" children), records (everything in scope), states (spaceStore.taskStates). To read it by who is on the work, also pass involvements (an Involvement query), kinds (spaceStore.involvementTypes), people (the chosen DIDs), profiles (profileStore.profiles — people, rows and involved are then persons, so somebody on two computers is one face), me (me.dids — involved is everyone on a card here, the viewer first) and show: "dim" lists the others in dimmed and moves nothing; "hide" drops them from arranged, unarranged and unplaced while count stays true and shown says how many are drawn; "rows" adds a row per person plus "nobody" — rows are keys, cells[row][columnId] is { arranged, unarranged, count }. A drag in a column showing only part of itself passes contents[columnId].order to arrangeColumn, so the hidden cards keep their places. Where the space’s states ask for agreement (spaceStore.taskWorkflowEnabled) a card is drawn where its run is, and three more fields answer: workflow[cardId] is { to, approvers, counted, needs, mine, canApprove, approverKind } for a card waiting on a move — counted is how many of approvers count toward needs; awaiting is the cards whose waiting move the viewer’s approval would help; pass awaitingMe: true to draw only those (awaitingOnly says it is on).',
       example:
         'arrangedBoard({ board: first(local.board), columns: local.columns, records: local.pool, states: spaceStore.taskStates }).columns',
     },
     {
       name: 'involvement',
       params: ['options'],
-      doc: 'Who is on each record, from the Involvement rows — { byNode, answers, dids }. byNode[recordId] is { people, dids, responsible, reviewing, committed, interested, declined, pairs }: people are { did, kind, name, semantic, reflexive, icon, color, tone }, assignees first then reviewers and so on, and tone is the avatar ring the part wears ("warning" for reviewing, empty otherwise) — pass it as an AvatarStack avatar’s tone; the five lists are DIDs grouped by what each kind means, so a renamed or added kind still lands in the right one; dids is everyone not declined; pairs is every "did|kind" present, for a menu tick with `in`. answers[recordId] is the viewer’s own reflexive answer (going, maybe, …). Options: rows (an Involvement query), types (spaceStore.involvementTypes), me (me.did, who then leads the top-level dids), nodes (record ids the top-level dids is limited to).',
+      doc: 'Who is on each record, from the Involvement rows — { byNode, answers, dids }. byNode[recordId] is { people, dids, responsible, reviewing, committed, interested, declined, pairs }: people are { did, person, kind, name, semantic, reflexive, icon, color, tone } (did is the key the involvement was written under, person who that key speaks for — look a face up by person), assignees first then reviewers and so on, and tone is the avatar ring the part wears ("warning" for reviewing, empty otherwise) — pass it as an AvatarStack avatar’s tone; the five lists are DIDs grouped by what each kind means, so a renamed or added kind still lands in the right one; dids is everyone not declined, as persons when profiles is given; pairs is every "did|kind" present, for a menu tick with `in`. answers[recordId] is the viewer’s own reflexive answer (going, maybe, …). Options: rows (an Involvement query), types (spaceStore.involvementTypes), profiles (profileStore.profiles, to fold each person’s device keys into one), me (me.dids — an answer from any of the viewer’s computers is theirs, and they lead the top-level dids), nodes (record ids the top-level dids is limited to).',
       example:
-        'involvement({ rows: local.involvements, types: spaceStore.involvementTypes, me: me.did }).byNode[card.id].responsible',
+        'involvement({ rows: local.involvements, types: spaceStore.involvementTypes, profiles: profileStore.profiles, me: me.dids }).byNode[card.id].responsible',
     },
     {
       name: 'involvementMenu',
       params: ['options'],
-      doc: 'The entries of a "who is on this" DropdownMenu for one record: the member a conversation named, when `said` matches exactly one and nobody is doing it yet; "Assign to me" while the viewer is not already on it, then a group per kind the entity is offered that anybody may give (the first open, the rest closed unless somebody holds them), each listing members with their faces — current holders ticked and first, then the viewer, then everyone by name. Every entry carries `kind`, and a toggle `checked`, so one handler serves all: setInvolvement(record, arg.id, arg.kind, !arg.checked). Options: node, entity, rows (an Involvement query), types (spaceStore.offeredInvolvementTypes), members (spaceStore.members), profiles (profileStore.profiles), me (me.did), said (a name somebody said — TaskBlock.assignee).',
+      doc: 'The entries of a "who is on this" DropdownMenu for one record: the member a conversation named, when `said` matches exactly one and nobody is doing it yet; "Assign to me" while the viewer is not already on it, then a group per kind the entity is offered that anybody may give (the first open, the rest closed unless somebody holds them), each listing members with their faces — current holders ticked and first, then the viewer, then everyone by name. Every entry carries `kind`, and a toggle `checked`, so one handler serves all: setInvolvement(record, arg.id, arg.kind, !arg.checked). Options: node, entity, rows (an Involvement query), types (spaceStore.offeredInvolvementTypes), members (spaceStore.members), profiles (profileStore.profiles), me (me.dids — a member on two computers is one row, ticked whichever computer took the part), said (a name somebody said — TaskBlock.assignee).',
       example:
-        "involvementMenu({ node: card.id, entity: 'TaskBlock', rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did })",
+        "involvementMenu({ node: card.id, entity: 'TaskBlock', rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.dids })",
     },
     {
       name: 'signalTally',
@@ -3920,16 +3931,16 @@ export const contextData: ContextData = {
     {
       name: 'reactions',
       params: ['options'],
-      doc: "A record's reactions with this agent's own newest answer in place, whether or not it has been read back yet. Every reaction surface draws through it: a press writes a record and the subscription answers about a second later, so without it the glyph stays unfilled and the count stays put and the press reads as having failed. The LIST rather than the count, because the tally, the mark and the control all read it — overlay the count alone and the heart sits unfilled beside a number that moved. Options: signals (the record's `signals`, hydrated), record (its id), type (the SignalType's id), me (me.did).",
+      doc: "A record's reactions with this agent's own newest answer in place, whether or not it has been read back yet. Every reaction surface draws through it: a press writes a record and the subscription answers about a second later, so without it the glyph stays unfilled and the count stays put and the press reads as having failed. The LIST rather than the count, because the tally, the mark and the control all read it — overlay the count alone and the heart sits unfilled beside a number that moved. Options: signals (the record's `signals`, hydrated), record (its id), type (the SignalType's id), me (me.dids — every computer the reader writes from, so a held reaction stands in for the one their other device gave; me.did works too).",
       example:
-        'reactions({ signals: filter(row.signals, { signalTypeId: sig.id }), record: row.id, type: sig.id, me: me.did })',
+        'reactions({ signals: filter(row.signals, { signalTypeId: sig.id }), record: row.id, type: sig.id, me: me.dids })',
     },
     {
       name: 'reactors',
       params: ['options'],
-      doc: 'Who reacted with one type and what each gave — { people, total, unresolved }. `people` are { did, name, avatar, value, mine }, the reader first and then by name; `total` counts everybody before any search, which is what "12 people" says. The record already carries this — `include: { signals: true }` hydrates each Signal\'s author and value — so nothing is fetched; what a schema cannot do is join a DID to a face and a name. `search` narrows by name, and `unresolved` says how many could not be judged because their profile has not arrived. Options: signals (one type\'s signals, hydrated), profiles (profileStore.profiles), me (me.did), search.',
+      doc: 'Who reacted with one type and what each gave — { people, total, unresolved }. `people` are { did, name, avatar, value, mine }, the reader first and then by name; `total` counts everybody before any search, which is what "12 people" says. The record already carries this — `include: { signals: true }` hydrates each Signal\'s author and value — so nothing is fetched; what a schema cannot do is join a DID to a face and a name. `search` narrows by name, and `unresolved` says how many could not be judged because their profile has not arrived. Options: signals (one type\'s signals, hydrated), profiles (profileStore.profiles), me (me.dids — every computer the reader writes from, so a reaction given on their other device is still `mine`; me.did works too), search.',
       example:
-        'reactors({ signals: filter(row.signals, { signalTypeId: sig.id }), profiles: profileStore.profiles, me: me.did })',
+        'reactors({ signals: filter(row.signals, { signalTypeId: sig.id }), profiles: profileStore.profiles, me: me.dids })',
     },
     {
       name: 'signalTypesByUse',
@@ -3941,15 +3952,15 @@ export const contextData: ContextData = {
     {
       name: 'voices',
       params: ['options'],
-      doc: "Whose reactions a weighted score was made from, as a list a reader turns voices up and down in — { did, name, avatar, cards, mean, weight, share, mine, pretend }, the busiest first. `weight` is how much the voice counts (0–100) and `share` its part of everybody's say. Options: summary (what a GraphView's onSeedSummary reported — the canvas seed's `{ type, voices }`), param (the weights as the address holds them, `did=50,did=0`), profiles (profileStore.profiles), me (me.did).",
+      doc: "Whose reactions a weighted score was made from, as a list a reader turns voices up and down in — { did, name, avatar, cards, mean, weight, share, mine, pretend }, the busiest first. `weight` is how much the voice counts (0–100) and `share` its part of everybody's say. Options: summary (what a GraphView's onSeedSummary reported — the canvas seed's `{ type, voices }`), param (the weights as the address holds them, `did=50,did=0`), profiles (profileStore.profiles), me (me.dids — a voice from any of the viewer’s computers is theirs).",
       example:
-        'voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did })',
+        'voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.dids })',
     },
     {
       name: 'voicesParam',
       params: ['options'],
-      doc: 'The weights address form with one voice changed — options param, did and weight (0–100) — or, with only (a DID) and voices (the listed rows), every voice at nothing but that one. A voice back at full is left out, so putting everything back leaves a clean address.',
-      example: 'voicesParam({ param: local.voices, did: voice.did, weight: event.detail })',
+      doc: 'The weights address form with one voice changed — options param, did and weight (0–100) — or, with only (a DID) and voices (the listed rows), every voice at nothing but that one. A voice back at full is left out, so putting everything back leaves a clean address. Pass me (me.dids) so the viewer’s own voice is written under the one key every computer of theirs reads, and what another of their computers left is cleared.',
+      example: 'voicesParam({ param: local.voices, did: voice.did, weight: event.detail, me: me.dids })',
     },
     {
       name: 'formatJson',
@@ -5152,7 +5163,7 @@ export const contextData: ContextData = {
         {
           name: 'pendingVote',
           kind: 'state',
-          doc: 'This agent’s vote on a poll, written and not yet read back — { author, option }, or nothing. Keyed by poll id.',
+          doc: 'This agent’s vote on a poll, written and not yet read back — { authors, option }, or nothing. Keyed by poll id.',
         },
         {
           name: 'revealBeforeVoting',
@@ -5187,9 +5198,9 @@ export const contextData: ContextData = {
         {
           name: 'tally',
           params: ['options'],
-          doc: 'Votes counted per choice — { option, count, share, leading }[] — one row per choice the poll offers, in its order, plus a row for any choice a vote names that the poll no longer does. Options: votes (a Vote query), options (the poll’s comma-separated choices), pending (modules.polls.pendingVote[<poll id>] — this agent’s vote written and not yet read back, counted in place of their stored one so the bars move on the press).',
+          doc: 'Votes counted per choice — { option, count, share, leading, mine }[] — one row per choice the poll offers, in its order, plus a row for any choice a vote names that the poll no longer does. Options: votes (a Vote query), options (the poll’s comma-separated choices), me (me.dids — the reader’s votes from any of their devices count once, as the newest, and that choice is the row marked mine), pending (modules.polls.pendingVote[<poll id>] — this agent’s vote written and not yet read back, counted in place of their stored ones so the bars move on the press).',
           example:
-            'tally({ votes: local.votes, options: block.options, pending: modules.polls.pendingVote[block.id] })',
+            'tally({ votes: local.votes, options: block.options, me: me.dids, pending: modules.polls.pendingVote[block.id] })',
         },
       ],
       views: [{ id: 'polls', name: 'Polls', segment: 'polls' }],

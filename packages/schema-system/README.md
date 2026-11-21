@@ -15,14 +15,14 @@ Anything computed — a condition, a label, a count, a filtered list — is one 
 `{ $: '…' }` token, with a closed grammar and an open function library
 (`shared/src/expressions/`):
 
-| Written as                                           | Answers                                  |
-| ---------------------------------------------------- | ---------------------------------------- |
-| `{ $: "spaceStore.members.count() > 0" }`            | a boolean                                |
-| `{ $: "` `` `/space/${item.uuid}` `` `" }`           | a string                                 |
-| `{ $: "item.author == me.did ? 'mine' : 'theirs'" }` | a value                                  |
-| `{ $: "filter(local.rows, { role: 'admin' }, 5)" }`  | a list — the where-object `$query` takes |
-| `{ $: "items.filter(x, x.done).map(x, x.title)" }`   | a list, by comprehension                 |
-| `{ $: "plural(count(local.rows), 'row', 'rows')" }`  | a library call                           |
+| Written as                                            | Answers                                  |
+| ----------------------------------------------------- | ---------------------------------------- |
+| `{ $: "spaceStore.members.count() > 0" }`             | a boolean                                |
+| `{ $: "` `` `/space/${item.uuid}` `` `" }`            | a string                                 |
+| `{ $: "item.author in me.dids ? 'mine' : 'theirs'" }` | a value                                  |
+| `{ $: "filter(local.rows, { role: 'admin' }, 5)" }`   | a list — the where-object `$query` takes |
+| `{ $: "items.filter(x, x.done).map(x, x.title)" }`    | a list, by comprehension                 |
+| `{ $: "plural(count(local.rows), 'row', 'rows')" }`   | a library call                           |
 
 References start from a store, `local`, a name `$each` bound, `me`, `surface`, or `event` inside a
 handler. Checked statically with a column; total and inert at paint. A plain string is always

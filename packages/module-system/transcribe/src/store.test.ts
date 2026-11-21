@@ -139,6 +139,7 @@ function harness(peers: Peer[] = [], extraDeps: HarnessDeps = {}) {
     state: markState,
     action: markAction,
     selfId: () => ME,
+    selfIds: () => [ME],
     notify: (tone: string, message: string) => notified.push({ tone, message }),
     kernels,
     ...core,

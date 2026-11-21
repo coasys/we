@@ -18,6 +18,13 @@
  *   kept, because a person's part in the work shown oddly beats a person silently missing from it.
  * - **Duplicates collapse.** Two members pressing the same toggle at the same instant can leave two
  *   records for one pair; to every reader here they are one involvement.
+ * - **One answer per person, the newest.** An answer is one per person, but a person writes from
+ *   several device keys, and replacing what my laptop answered deletes a record another key wrote —
+ *   which a space's policy may refuse (see `replaceAcrossDevices`). Of one person's reflexive answers
+ *   to one record only the latest written counts, so a refused removal never shows a person both
+ *   going and not, nor counts them twice. Which is newest is `compareWritten`'s order — later
+ *   `createdAt`, then the larger id — the same one `respond` cleans up by, so every reader and every
+ *   device agrees whatever order the rows were listed in. A held write is the newest of all.
  * - **`dids` leaves out anybody who declined.** It is what a people filter matches on, and somebody
  *   who said they are not going is exactly the person a "who is coming" filter must not surface the
  *   event for.
@@ -29,14 +36,18 @@
  * reason. See `involvementOptimism`.
  */
 import type { InvolvementSemantic } from '@we/entities';
+import { compareWritten } from '@we/optimism';
 
 import { relationId } from '../involvements';
+import { byAnyDid, selfDids } from '../personProfile';
 
 export interface InvolvementRowInput {
   id?: string;
   node?: unknown;
   agent?: string;
   kind?: string;
+  /** When it was written — which of one person's answers is their newest. */
+  createdAt?: string | number;
 }
 
 export interface InvolvementKindInput {
@@ -60,8 +71,19 @@ export interface InvolvementOptions {
   rows?: InvolvementRowInput[] | null;
   /** `spaceStore.involvementTypes` — withdrawn kinds included, since somebody may still hold one. */
   types?: InvolvementKindInput[] | null;
-  /** The viewer's DID, for `answers`, and to lead `dids` when they are in it. */
-  me?: string | null;
+  /**
+   * The viewer, for `answers`, and to lead `dids` when they are in it: `me.dids` (every device key
+   * and the person, so an answer given from my other computer is mine) or one DID.
+   */
+  me?: string | readonly string[] | null;
+  /**
+   * `profileStore.profiles` (or `spaceStore.members`) — one entry per person, carrying the device
+   * keys seen for them. Given, an involvement held by any of a person's keys counts as the person in
+   * every `dids` list and in each `PersonOn.person`, so somebody on two computers is one face and one
+   * filter chip. `people[].did`, `pairs` and the per-semantic lists keep the key each involvement was
+   * written under: that is what unticking removes and what a workflow judges.
+   */
+  profiles?: unknown;
   /**
    * Only these records count towards `dids` — the people on a board's cards, or a month's events.
    * `byNode` still answers for every record. Omit for everyone on anything.
@@ -72,7 +94,10 @@ export interface InvolvementOptions {
 
 /** One person's part in one record, resolved against the vocabulary. */
 export interface PersonOn {
+  /** The DID the involvement was written under — a device key, usually. */
   did: string;
+  /** The person that DID speaks for, given `profiles`; else `did`. What a face is looked up by. */
+  person: string;
   kind: string;
   name: string;
   semantic: string;
@@ -103,7 +128,7 @@ export const TONE_BY_SEMANTIC: Record<string, string> = { reviewing: 'warning' }
 
 export interface NodeInvolvement {
   people: PersonOn[];
-  /** Everyone on it who has not declined — what a people filter matches. */
+  /** Everyone on it who has not declined, as persons given `profiles` — what a people filter matches. */
   dids: string[];
   responsible: string[];
   reviewing: string[];
@@ -138,7 +163,10 @@ const SEMANTIC_KEYS: readonly InvolvementSemantic[] = [
 
 const asRows = <T>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : []);
 
-/** Held writes applied to observed rows: an `on` adds the pair if absent, an `off` removes every copy. */
+/**
+ * Held writes applied to observed rows: an `on` stands in for the pair, as the newest write, whether or
+ * not it is stored yet; an `off` removes every copy.
+ */
 export function applyPendingInvolvements(
   rows: readonly InvolvementRowInput[],
   pending: readonly PendingInvolvement[] | null | undefined,
@@ -146,9 +174,12 @@ export function applyPendingInvolvements(
   if (!pending?.length) return [...rows];
   const key = (node: string, agent: string, kind: string) => `${node}\u0000${agent}\u0000${kind}`;
   const held = new Map(pending.map((p) => [key(p.node, p.agent, p.kind), p]));
-  const out = rows.filter((row) => {
+  // An older stored row of a held pair would lose to my other computer's newer answer, and show that
+  // until the write came back; the held one is what I just said.
+  const out = rows.flatMap((row) => {
     const entry = held.get(key(relationId(row.node), row.agent ?? '', row.kind ?? ''));
-    return !entry || entry.on;
+    if (!entry) return [row];
+    return entry.on ? [{ node: entry.node, agent: entry.agent, kind: entry.kind }] : [];
   });
   const present = new Set(out.map((row) => key(relationId(row.node), row.agent ?? '', row.kind ?? '')));
   for (const entry of pending) {
@@ -161,6 +192,24 @@ export function applyPendingInvolvements(
   return out;
 }
 
+/** The one reflexive answer that counts for each person on each record — the newest written. */
+function newestAnswers(
+  rows: readonly InvolvementRowInput[],
+  bySlug: ReadonlyMap<string, InvolvementKindInput>,
+  personOf: (did: string) => string,
+): Set<InvolvementRowInput> {
+  // A held row carries no id and no time: it is the write just made, so `compareWritten` puts it newest.
+  const newest = new Map<string, InvolvementRowInput>();
+  for (const row of rows) {
+    const node = relationId(row.node);
+    if (!node || !row.agent || !bySlug.get(row.kind ?? '')?.reflexive) continue;
+    const key = `${node}\u0000${personOf(row.agent)}`;
+    const best = newest.get(key);
+    if (!best || compareWritten(row, best) > 0) newest.set(key, row);
+  }
+  return new Set(newest.values());
+}
+
 export function involvement(options: InvolvementOptions | null | undefined): InvolvementView {
   const types = asRows<InvolvementKindInput>(options?.types).filter((t) => t && t.slug);
   const bySlug = new Map(types.map((t) => [t.slug, t]));
@@ -168,8 +217,14 @@ export function involvement(options: InvolvementOptions | null | undefined): Inv
     asRows<InvolvementRowInput>(options?.rows).filter((r) => r && typeof r === 'object'),
     options?.pending,
   );
-  const me = options?.me ?? '';
+  const self = selfDids(options?.me);
+  const known = byAnyDid<{ did?: unknown; devices?: unknown }>(options?.profiles);
+  const personOf = (did: string) => {
+    const person = known.get(did)?.did;
+    return typeof person === 'string' && person ? person : did;
+  };
   const counted = Array.isArray(options?.nodes) ? new Set(options.nodes) : null;
+  const answer = newestAnswers(rows, bySlug, (did) => (self.has(did) ? '\u0000me' : personOf(did)));
 
   const byNode: Record<string, NodeInvolvement> = {};
   const answers: Record<string, string> = {};
@@ -181,6 +236,7 @@ export function involvement(options: InvolvementOptions | null | undefined): Inv
     const did = row.agent ?? '';
     const kind = row.kind ?? '';
     if (!node || !did || !kind) continue;
+    if (bySlug.get(kind)?.reflexive && !answer.has(row)) continue;
     const entry = (byNode[node] ??= {
       people: [],
       dids: [],
@@ -199,8 +255,10 @@ export function involvement(options: InvolvementOptions | null | undefined): Inv
     const semantic = (SEMANTIC_KEYS as readonly string[]).includes(type?.semantic ?? '')
       ? (type!.semantic as InvolvementSemantic)
       : 'responsible';
+    const person = personOf(did);
     entry.people.push({
       did,
+      person,
       kind,
       name: type?.name || kind,
       semantic,
@@ -211,13 +269,13 @@ export function involvement(options: InvolvementOptions | null | undefined): Inv
     });
     if (!entry[semantic].includes(did)) entry[semantic].push(did);
     if (semantic !== 'declined') {
-      if (!entry.dids.includes(did)) entry.dids.push(did);
-      if ((!counted || counted.has(node)) && !seenEveryone.has(did)) {
-        seenEveryone.add(did);
-        everyone.push(did);
+      if (!entry.dids.includes(person)) entry.dids.push(person);
+      if ((!counted || counted.has(node)) && !seenEveryone.has(person)) {
+        seenEveryone.add(person);
+        everyone.push(person);
       }
     }
-    if (did === me && type?.reflexive) answers[node] = kind;
+    if (self.has(did) && type?.reflexive) answers[node] = kind;
   }
 
   // People in reading order within each record — who is doing it before who is coming — so a stack
@@ -225,7 +283,7 @@ export function involvement(options: InvolvementOptions | null | undefined): Inv
   const rank = (semantic: string) => SEMANTIC_KEYS.indexOf(semantic as InvolvementSemantic);
   for (const entry of Object.values(byNode)) entry.people.sort((a, b) => rank(a.semantic) - rank(b.semantic));
 
-  const mine = everyone.indexOf(me);
-  if (mine > 0) everyone.unshift(...everyone.splice(mine, 1));
-  return { byNode, answers, dids: everyone };
+  // Every DID that is the viewer leads, in the order they appeared.
+  const ordered = [...everyone.filter((did) => self.has(did)), ...everyone.filter((did) => !self.has(did))];
+  return { byNode, answers, dids: ordered };
 }

@@ -82,7 +82,10 @@ export interface ModuleHostServices {
    * Forwarded to a module as `showCallOnScreen`; see there for when it writes.
    */
   showCallOnScreen?: (recordId: string, datasetUri: string | null) => void;
+  /** This device's key — `sessionStore.me.did`. Forwarded as `selfId`. */
   selfId?: () => string | null;
+  /** Every id that is this agent, this device first — `sessionStore.me.dids`. Forwarded as `selfIds`. */
+  selfIds?: () => string[];
   ephemeral?: EphemeralPort;
   presence?: {
     peers: () => Peer[];
@@ -695,6 +698,8 @@ export function createModuleStoreDeps(framework: {
     showCallOnScreen: (recordId, datasetUri) => services.showCallOnScreen?.(recordId, datasetUri),
     datasetRefKey: tracked(() => services.datasetRefKey?.() ?? ''),
     selfId: tracked(() => services.selfId?.() ?? null),
+    // A host that knows only this device still answers: the list starts with `selfId`.
+    selfIds: tracked(() => services.selfIds?.() ?? [services.selfId?.()].filter((id): id is string => !!id)),
     notify: (tone, message, options) => services.notify?.(tone, message, options),
     datasets: {
       get: (uri) => services.datasets?.get(uri),

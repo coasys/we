@@ -25,6 +25,15 @@ describe('voices', () => {
     ]);
   });
 
+  it("names a voice through its person entry, and counts my other computer's voice as mine", () => {
+    const persons = [
+      { did: 'did:scid:ana', name: 'Ana', avatar: 'ana.png', devices: ['did:key:ana', 'did:key:ana-laptop'] },
+    ];
+    const rows = voices({ summary, profiles: persons, me: ['did:key:ana-laptop', 'did:key:ana', 'did:scid:ana'] });
+    expect(rows[0]).toMatchObject({ name: 'Ana', mine: true });
+    expect(rows.filter((row) => row.mine)).toHaveLength(1);
+  });
+
   it('says nobody has a share when every voice is at nothing, rather than dividing by it', () => {
     const rows = voices({ summary, param: 'did:key:ana=0,did:key:ben=0,pretend:1=0' });
     expect(rows.every((row) => row.share === 0)).toBe(true);
@@ -48,5 +57,44 @@ describe('voicesParam', () => {
     expect(voicesParam({ param: 'did:key:ana=20', only: 'did:key:ben', voices: rows })).toBe(
       'did:key:ana=0,pretend:1=0',
     );
+  });
+});
+
+describe('my own voice across my computers', () => {
+  // My laptop, my desktop and me: `me.dids` puts whichever computer is reading first.
+  const L = 'did:key:ana-laptop';
+  const D = 'did:key:ana-desktop';
+  const P = 'did:scid:ana';
+  const mine = { type: 'rate', voices: [{ author: P, cards: 3, mean: 4 }] };
+  const orders = [
+    ['the laptop', [L, D, P]],
+    ['the desktop', [D, L, P]],
+  ] as const;
+
+  it.each(orders)('writes my weight under my person, and reads it back the same on %s', (_, me) => {
+    // Set on the laptop, over an entry the desktop left under its own key.
+    const param = voicesParam({ param: `${D}=10`, did: P, weight: 40, me: [L, D, P] });
+    expect(param).toBe(`${P}=40`);
+    expect(voices({ summary: mine, param, me })[0]).toMatchObject({ did: P, weight: 40, mine: true });
+  });
+
+  it.each(orders)('reads a weight left under one of my computers the same on %s', (_, me) => {
+    // From before voices were kept under the person: the laptop's key turned down.
+    expect(voices({ summary: mine, param: `${L}=0`, me })[0].weight).toBe(0);
+    // Two computers' entries: the same one wins whichever is reading.
+    expect(voices({ summary: mine, param: `${L}=20,${D}=60`, me })[0].weight).toBe(
+      voices({ summary: mine, param: `${L}=20,${D}=60`, me: [L, D, P] })[0].weight,
+    );
+  });
+
+  it('puts my voice back to full however many of my computers had turned it down', () => {
+    expect(voicesParam({ param: `${L}=0,${D}=30,did:key:ben=50`, did: P, weight: 100, me: [D, L, P] })).toBe(
+      'did:key:ben=50',
+    );
+  });
+
+  it('"only me" clears what my other computers left, and turns everyone else to nothing', () => {
+    const listed = [P, 'did:key:ben'];
+    expect(voicesParam({ param: `${L}=0`, only: P, voices: listed, me: [D, L, P] })).toBe('did:key:ben=0');
   });
 });

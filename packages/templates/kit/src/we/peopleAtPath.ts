@@ -40,16 +40,18 @@ export interface PeopleAtPathOptions {
  * ## Why this agent is left out
  *
  * The strip already says where *you* are, by marking the page you are on. A face for yourself beside
- * it is the same fact twice, and it makes an empty page look occupied.
+ * it is the same fact twice, and it makes an empty page look occupied. *You* is every computer you
+ * write from (`me.dids`): presence is per device, and your laptop left open on the same page is not
+ * somebody else looking at it.
  */
 export function peopleAtPath(opts: PeopleAtPathOptions): SchemaNode {
-  const here = expr`presenceStore.online.filter(p, p.did != me.did && startsWith(p.focus.path, ${opts.path}))`;
+  const here = expr`presenceStore.online.filter(p, !(p.did in me.dids) && startsWith(p.focus.path, ${opts.path}))`;
 
   const faces: SchemaNode = peopleTooltip({
     items: here,
     as: 'person',
     image: { $: 'person.avatar' },
-    hash: { $: 'person.did' },
+    hash: { $: 'person.person' },
     name: { $: 'person.name' },
     placement: 'bottom',
     children: [
@@ -58,7 +60,7 @@ export function peopleAtPath(opts: PeopleAtPathOptions): SchemaNode {
         props: {
           // `hash` unconditionally, never as a fallback for a missing picture: it is what keeps two
           // people whose profiles have not arrived from being two identical blank discs.
-          avatars: expr`${here}.map(p, { image: p.avatar, hash: p.did })`,
+          avatars: expr`${here}.map(p, { image: p.avatar, hash: p.person })`,
           max: opts.max ?? 3,
           size: opts.size ?? 'xs',
           ...(opts.edge ? { edge: opts.edge } : {}),

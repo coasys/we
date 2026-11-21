@@ -28,6 +28,9 @@ export interface SignalData {
   signalTypeId: string;
   value: number;
   author: string;
+  /** Which of one person's reactions is their newest — see `compareWritten`. */
+  id?: string;
+  createdAt?: string | number;
 }
 
 export interface SignalControlProps {
@@ -46,8 +49,13 @@ export interface SignalControlProps {
    * SignalControl computes myValue and aggregate internally from this array.
    */
   signals?: SignalData[];
-  /** DID of the current user — used to derive myValue from signals */
-  myDid?: string;
+  /**
+   * Every DID that is the current user — `me.dids`: this device first, then their other devices,
+   * then their person. A reaction given from their other computer is theirs, so the control shows it
+   * as their value; where two of their devices both reacted, the newest wins (`compareWritten`), the
+   * same one every reader and the next press's cleanup pick.
+   */
+  myDids?: readonly string[];
   /**
    * The reaction given, or `null` to withdraw one.
    *

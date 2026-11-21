@@ -56,6 +56,7 @@ export function createFeedStore(deps: ModuleStoreDeps) {
     spaceRoot: deps.spaceRoot,
     records,
     interpretation,
+    identities: deps.identities,
     firstScreen: deps.firstScreen,
     /*
       The same choice the list's filter draws — into the read, so lines it hides do not fill the

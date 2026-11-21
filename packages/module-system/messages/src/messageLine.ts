@@ -117,8 +117,10 @@ export function messageLine(opts: {
                   // Always alongside `image`, never instead of it: a stable
                   // generated avatar keeps somebody whose profile has not
                   // arrived visually distinct from everybody else whose
-                  // profile has not arrived.
-                  hash: { $: `${as}.author` },
+                  // profile has not arrived. The person's DID rather than the
+                  // line's author, which is the device that signed: one person
+                  // talking from two computers is one face.
+                  hash: { $: 'speaker.did' },
                 },
               },
               {

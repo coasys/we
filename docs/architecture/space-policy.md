@@ -121,5 +121,7 @@ closed names its actions.
   space's data, or by a version from before policies, is not judged. Counting only permitted writes
   when reading is the next step for the production adapter.
 - **One person, one key, wherever a backend cannot tell them apart.** Persons are resolved through
-  `PersonPort`. `can()` compares a record's author with the viewer directly, which is exact wherever a
-  person is one key.
+  `PersonPort`, which the AD4M adapter answers from the key log (`identity.resolve`), so a write from
+  a person's other computer is judged as theirs. `can()` compares a record's author with the viewer
+  directly, which is exact wherever a person is one key; a template's own "is this mine" reads
+  `author in me.dids` (see `packages/entities/CONVENTIONS.md`, "`author` is a device").

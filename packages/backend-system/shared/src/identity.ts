@@ -109,8 +109,13 @@ export interface IdentityPort {
   change?(change: IdentityChange): Promise<IdentityChangeOutcome>;
 }
 
-/** A change to the identity, signed by the master key. */
-export type IdentityChange = { kind: 'create' } | { kind: 'add-device' } | { kind: 'revoke'; keyId: string };
+/**
+ * A change to the identity, signed by the master key. `unlink` retires a device key: it signs nothing
+ * new, and what it signed before stays valid. `revoke` is for a key that was lost or stolen; the time
+ * it stops being trusted from is asked where the master key is kept.
+ */
+export type IdentityChange =
+  { kind: 'create' } | { kind: 'add-device' } | { kind: 'unlink'; keyId: string } | { kind: 'revoke'; keyId: string };
 
 /** How a change ended: made, abandoned by the person, or refused along the way. */
 export type IdentityChangeOutcome = 'done' | 'cancelled' | 'failed';
@@ -181,12 +186,14 @@ export interface KeyLogDevice {
 /** One event of a key log, in the words a screen needs. */
 export interface KeyLogEvent {
   seq: number;
-  /** `incept`, `add`, `revoke`, `rotate`, or whatever a later format adds. */
+  /** `incept`, `add`, `unlink`, `revoke`, `rotate`, or whatever a later format adds. */
   op: string;
   /** The event's hash in the log, the next event's `prev`, where the backend reports one. */
   hash: string | null;
   /** The device keys this event adds. */
   added: KeyLogDevice[];
+  /** The device key ids this event unlinks. */
+  unlinked: string[];
   /** The device key ids this event revokes. */
   revoked: string[];
 }
@@ -207,6 +214,8 @@ export interface DeviceKeyView {
   thisDevice: boolean;
   /** The seq of the event that added it. */
   addedSeq: number;
+  /** The seq of the event that unlinked it, or `null` while it is not. */
+  unlinkedSeq: number | null;
   /** The seq of the event that revoked it, or `null` while it is valid. */
   revokedSeq: number | null;
 }

@@ -268,15 +268,31 @@ const deviceRow: SchemaNode = listRow(
   },
   {
     type: 'we-text',
-    props: { color: { $: "device.revoked ? 'text-muted' : 'text'" } },
+    props: { color: { $: "device.revoked || device.unlinked ? 'text-muted' : 'text'" } },
     children: [{ $: 'device.label' }],
   },
   { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: [{ $: 'device.subtitle' }] },
   [
     {
       type: 'we-badge',
-      props: { tone: { $: "device.revoked ? 'danger' : 'success'" }, size: 'sm' },
+      props: { tone: { $: "device.revoked ? 'danger' : device.unlinked ? 'neutral' : 'success'" }, size: 'sm' },
       children: [{ $: 'device.status' }],
+    },
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'device.canUnlink && deviceStore.canManage' },
+        then: {
+          type: 'we-button',
+          props: {
+            variant: 'ghost',
+            size: 'sm',
+            disabled: { $: 'identityStore.busy' },
+            onClick: { $invoke: 'deviceStore.unlink', args: [{ $: 'device.keyId' }] },
+          },
+          children: ['Unlink device'],
+        },
+      },
     },
     {
       type: '$if',
@@ -291,7 +307,7 @@ const deviceRow: SchemaNode = listRow(
             disabled: { $: 'identityStore.busy' },
             onClick: { $invoke: 'deviceStore.revoke', args: [{ $: 'device.keyId' }] },
           },
-          children: ['Remove'],
+          children: ['Lost or stolen…'],
         },
       },
     },
@@ -338,5 +354,5 @@ export const addDeviceButton: SchemaNode = {
 
 export const deviceListFootnote: SchemaNode = footnote(
   'lock',
-  'Your public key log lists only keys. Removing a device takes effect from that point in the log.',
+  'Your public key log lists only keys. Unlinking a device takes effect from that entry in the log. Revoking one also stops trusting what arrives from it after the time you pick.',
 );

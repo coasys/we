@@ -73,6 +73,15 @@
  * what is being shown while the truth is in transit. Filed apart on purpose: in the contract it
  * would read as data, and sooner or later something would trust it.
  *
+ * ## Across devices
+ *
+ * `acrossDevices.ts` is the one rule here that does break a tie, and it is about the data rather than
+ * an overlay: which of one person's records — written from several device keys — is the one every
+ * reader shows (`compareWritten`), and the cleanup a device does after a write so that one is all
+ * that stands (`keepNewestAcrossDevices`). It lives here because a held write is part of that order —
+ * a row not yet stored counts newest — and because the host's stores, the design system's controls
+ * and a feature module all need it, and none of them may import the others.
+ *
  * ## When the backend does this itself
  *
  * AD4M may grow optimistic delivery, at which point every hold here retires on its first draw —
@@ -340,3 +349,12 @@ export function createOptimism<V>(signal: SignalFactory, rules: Rules<V>): Optim
     reset: () => setHolds({}),
   };
 }
+
+export {
+  compareWritten,
+  keepNewestAcrossDevices,
+  newestWritten,
+  type Removable,
+  replaceAcrossDevices,
+  type Written,
+} from './acrossDevices';

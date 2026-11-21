@@ -1900,7 +1900,8 @@ describe('the workshop inspector’s people', () => {
     expect(inspector).toContain('"$invoke":"spaceStore.setInvolvement"');
     // Your own answer is withdrawn, never somebody else's.
     expect(inspector).toContain('"$invoke":"spaceStore.respondTo","args":[{"$":"row.id"},""]');
-    expect(inspector).toContain('!holder.reflexive || holder.did == me.did');
+    // Mine from any of my computers: an answer my laptop gave is withdrawn from the desktop too.
+    expect(inspector).toContain('!holder.reflexive || holder.did in me.dids');
   });
 
   it('says where the record came from, which a card’s face no longer does', () => {
@@ -2228,7 +2229,8 @@ describe('the workshop’s tree', () => {
     expect(canvas).toContain(`aggregate: find(local.treeSignalTypes, { id: (${inForce}) }).aggregate`);
     // And the mode, which is what a stored aggregate that cannot express it is read through.
     expect(canvas).toContain(`mode: find(local.treeSignalTypes, { id: (${inForce}) }).mode`);
-    expect(canvas).toContain('me: me.did');
+    // Every DID that is the reader, so their devices are one voice and the mark finds what they gave.
+    expect(canvas).toContain('me: me.dids }');
     // Muted authors left out, as they are on every other reaction surface here.
     expect(canvas).toContain('excludeAuthors: spaceStore.mutedDids');
   });

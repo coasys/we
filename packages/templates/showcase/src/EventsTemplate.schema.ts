@@ -22,8 +22,8 @@ import { agentByline, collectionFeed, emptyState, peopleRow } from '@we/template
 
 import { composerModal, KIND } from './shared.ts';
 
-/** Am I on this roster? `in` over the DID list — membership, not a scan. */
-const isAttending = (as: string) => ({ $: `me.did in ${as}.participants` });
+/** Am I on this roster, from any of my devices? */
+const isAttending = (as: string) => ({ $: `${as}.participants.exists(p, p in me.dids)` });
 
 const rsvpButton = (as: string): SchemaNode => ({
   type: '$if',

@@ -13,16 +13,19 @@ const PENDING = 'modules.polls.pendingVote[block.id]';
  * A choice one has to pick, and the tally to draw it from — read once per card.
  *
  * The held vote goes in, so the bars move on the press rather than a round trip later. `tally`
- * counts it in place of this agent's stored vote, so changing a vote does not count twice.
+ * counts it in place of this agent's stored votes, so changing a vote does not count twice, and
+ * counts this agent once across all their devices — their newest vote, the row it marks `mine`.
  */
-const ROWS = { $: `tally({ votes: local.votes, options: block.options, pending: ${PENDING} })` };
+const ROWS = { $: `tally({ votes: local.votes, options: block.options, me: me.dids, pending: ${PENDING} })` };
 /**
- * This agent's own vote, if any — the held one first.
+ * This agent's own vote, if any — the held one first, then the newest from any of their devices.
  *
  * Both halves, or the press is half-drawn: the bars would move while the choice stayed unselected,
- * which reads as somebody else's vote arriving rather than as your own registering.
+ * which reads as somebody else's vote arriving rather than as your own registering. The stored half is
+ * `tally`'s `mine` rather than a `find` over the rows, which would take whichever of two of my votes
+ * the query listed first — not the one counted.
  */
-const MY_VOTE = `(${PENDING}.option ?? local.votes.find(v, v.author == me.did).option)`;
+const MY_VOTE = `(${PENDING}.option ?? find(tally({ votes: local.votes, me: me.dids }), { mine: true }).option)`;
 /** Whether counts are shown: the community says so, the agent has voted, or the poll is closed. */
 const REVEAL = `modules.polls.revealBeforeVoting || ${MY_VOTE} || block.closed`;
 

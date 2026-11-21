@@ -51,7 +51,12 @@ export function TemplateCard(props: Props) {
     return [a.firstName, a.lastName].filter(Boolean).join(' ');
   });
 
-  const isOwnTemplate = createMemo(() => props.template.author === identity.me()?.did);
+  // Published from any of my devices is mine.
+  const isOwnTemplate = createMemo(() => {
+    const me = identity.me();
+    const author = props.template.author;
+    return !!author && (me?.dids ?? [me?.did]).includes(author);
+  });
 
   const installedVersion = createMemo(() =>
     typeof props.installed === 'number' ? props.installed : props.installed ? 1 : 0,

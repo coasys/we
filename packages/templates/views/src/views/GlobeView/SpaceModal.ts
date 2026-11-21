@@ -100,7 +100,7 @@ export const spaceModal = {
                       props: {
                         signalType: { $: 'sig' },
                         signals: { $: 'filter(space.signals, { signalTypeId: sig.id })' },
-                        myDid: { $: 'me.did' },
+                        myDids: { $: 'me.dids' },
                         onSignal: {
                           $invoke: 'spaceStore.upsertSignal',
                           args: [{ $: 'space.id' }, { $: 'sig.id' }, { $: 'arg' }],

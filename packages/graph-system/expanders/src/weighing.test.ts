@@ -90,6 +90,90 @@ describe('readVotes', () => {
     // Rows that were never read are not the same as nobody having answered.
     expect(readVotes(undefined, 't')).toBeNull();
   });
+
+  it('settles a tie in time on the larger id, whatever order the rows came in', () => {
+    const at = '2026-01-01T00:00:00.000Z';
+    const a = { id: 's1', signalTypeId: 't', value: 1, author: 'did:a', createdAt: at };
+    const b = { id: 's2', signalTypeId: 't', value: 4, author: 'did:a', createdAt: at };
+    expect(readVotes([a, b], 't')).toEqual([['did:a', 4]]);
+    expect(readVotes([b, a], 't')).toEqual([['did:a', 4]]);
+  });
+
+  it('counts the reader once across their devices, as their newest, and reports it as theirs', () => {
+    const me = ['did:desktop', 'did:laptop', 'did:scid:me'];
+    const rows = [
+      { id: 's1', signalTypeId: 't', value: 1, author: 'did:laptop', createdAt: '2026-02-01' },
+      { id: 's2', signalTypeId: 't', value: 5, author: 'did:desktop', createdAt: '2026-01-01' },
+      { id: 's3', signalTypeId: 't', value: 1, author: 'did:b', createdAt: '2026-01-01' },
+    ];
+    const votes = readVotes(rows, 't', me);
+    expect(votes).toEqual([
+      ['did:scid:me', 1],
+      ['did:b', 1],
+    ]);
+    expect(weighVotes(votes ?? [], { signalTypeId: 't', me })).toMatchObject({ weight: 2, weightMine: 1 });
+  });
+
+  it('orders times written as numbers, numeric strings and dates as times, not as text', () => {
+    // As text, '9' sorts after '10' — and a date string after any number.
+    const rows = [
+      { id: 's1', signalTypeId: 't', value: 1, author: 'did:a', createdAt: '9' },
+      { id: 's2', signalTypeId: 't', value: 4, author: 'did:a', createdAt: '10' },
+      { id: 's3', signalTypeId: 't', value: 2, author: 'did:b', createdAt: '2026-01-01T00:00:00.000Z' },
+      { id: 's4', signalTypeId: 't', value: 3, author: 'did:b', createdAt: Date.parse('2026-02-01') },
+    ];
+    expect(readVotes(rows, 't')).toEqual([
+      ['did:a', 4],
+      ['did:b', 3],
+    ]);
+    expect(readVotes([...rows].reverse(), 't')).toEqual([
+      ['did:b', 3],
+      ['did:a', 4],
+    ]);
+  });
+});
+
+describe('my own voice, whichever of my computers is reading', () => {
+  const L = 'did:key:laptop';
+  const D = 'did:key:desktop';
+  const P = 'did:scid:me';
+  const rows = [
+    { id: 's1', signalTypeId: 't', value: 5, author: L, createdAt: 2 },
+    { id: 's2', signalTypeId: 't', value: 1, author: 'did:b', createdAt: 1 },
+  ];
+  const orders = [
+    ['the laptop', [L, D, P]],
+    ['the desktop', [D, L, P]],
+  ] as const;
+  const weigh = (me: readonly string[], extra: Partial<Parameters<typeof weighVotes>[1]>) =>
+    weighVotes(readVotes(rows, 't', me) ?? [], { signalTypeId: 't', aggregate: 'mean', me, ...extra });
+
+  it.each(orders)('is kept under my person on %s', (_, me) => {
+    expect(readVotes(rows, 't', me)).toEqual([
+      [P, 5],
+      ['did:b', 1],
+    ]);
+  });
+
+  it.each(orders)('keeps a weight set under my person on %s', (_, me) => {
+    // Mine at 50%: (5 × 0.5 + 1) / 1.5.
+    expect(weigh(me, { weights: `${P}=50` }).weight).toBeCloseTo(7 / 3);
+  });
+
+  it.each(orders)('keeps a weight left under one computer’s key on %s', (_, me) => {
+    expect(weigh(me, { weights: `${L}=0` })).toMatchObject({ weight: 1, weightAdjusted: true });
+    // Two of my computers' entries: the same one counts whichever is reading.
+    expect(weigh(me, { weights: `${L}=20,${D}=60` }).weight).toBe(
+      weigh([L, D, P], { weights: `${L}=20,${D}=60` }).weight,
+    );
+  });
+
+  it.each(orders)('keeps a mute set on the laptop on %s', (_, me) => {
+    expect(weigh(me, { excludeAuthors: [L] })).toMatchObject({ weight: 1, weightCount: 1 });
+    expect(voicesOf([readVotes(rows, 't', me) ?? []], [L], undefined, me)).toEqual([
+      { author: 'did:b', cards: 1, mean: 1 },
+    ]);
+  });
 });
 
 describe('pretend people', () => {

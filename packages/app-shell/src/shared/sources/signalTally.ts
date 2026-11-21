@@ -4,6 +4,9 @@
   without a document.
 */
 import { tallyEverything, tallySignals } from '@we/components/signals';
+import { newestWritten, type Written } from '@we/optimism';
+
+import { selfDids } from '../personProfile';
 
 /**
  * What a record's reactions say, as one number.
@@ -78,20 +81,30 @@ export function reactions(options: unknown): unknown[] {
     pending?: unknown;
   };
   const rows: unknown[] = Array.isArray(signals) ? signals : [];
-  if (!Array.isArray(pending) || typeof record !== 'string' || typeof type !== 'string' || typeof me !== 'string') {
-    return rows;
+  // `me.dids` (this device first) or one DID: a held reaction stands in for the one my other computer
+  // gave too, since `upsertSignal` replaces that one as well.
+  const selves = selfDids(me);
+  const self = [...selves][0];
+  const isMine = (row: unknown) => selves.has((row as { author?: unknown } | null)?.author as string);
+  // Two of my computers may each have left one, where a removal was refused or both changed at once:
+  // I count once, as my newest — the one `upsertSignal` keeps and the control shows.
+  const own = rows.filter(isMine);
+  const newest = newestWritten(own as Written[]);
+  const settled = own.length > 1 ? rows.filter((row) => !isMine(row) || row === newest) : rows;
+  if (!Array.isArray(pending) || typeof record !== 'string' || typeof type !== 'string' || !self) {
+    return settled;
   }
   const held = (pending as { record?: unknown; type?: unknown; value?: unknown }[]).find(
     (entry) => entry?.record === record && entry?.type === type,
   );
   // `null` is a held WITHDRAWAL and has to reach the branch below; only an entry holding neither a
   // number nor a withdrawal is nothing to apply.
-  if (!held || (typeof held.value !== 'number' && held.value !== null)) return rows;
+  if (!held || (typeof held.value !== 'number' && held.value !== null)) return settled;
 
   // This agent's stored reaction of this type goes, whatever it says — the held one stands in for
   // it, so changing a rating does not count twice and withdrawing one does not leave it behind.
-  const others = rows.filter((row) => (row as { author?: unknown } | null)?.author !== me);
+  const others = rows.filter((row) => !isMine(row));
   // A withdrawal is `null`, not a zero: a zero is an ordinary reaction and is put back like any
   // other. See `upsertSignal` for why the two stopped being the same thing.
-  return held.value === null ? others : [...others, { author: me, signalTypeId: type, value: held.value }];
+  return held.value === null ? others : [...others, { author: self, signalTypeId: type, value: held.value }];
 }

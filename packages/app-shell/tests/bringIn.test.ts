@@ -69,6 +69,14 @@ describe('bringing something into a space', () => {
     });
   });
 
+  it('copies the post you wrote on your other computer, given every DID that is you', async () => {
+    const { ctx, writes } = context({ 'post-1': { author: 'did:key:laptop' } });
+    const result = await bringIn(post('n:gardeners'), { ...ctx, me: [ME, 'did:key:laptop', 'did:scid:me'] });
+
+    expect(result?.mode).toBe('copy');
+    expect(writes).toHaveLength(1);
+  });
+
   it('quotes somebody else’s post rather than copying it under your name', async () => {
     const { ctx, writes } = context({ 'post-1': { author: THEM } });
     const result = await bringIn(post('n:gardeners'), ctx);
