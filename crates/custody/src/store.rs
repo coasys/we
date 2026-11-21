@@ -18,6 +18,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use ad4m_identity_client::VaultError;
+use zeroize::Zeroizing;
 
 /// Which kind of store holds an item, and so how the person unlocks it. Asked per item
 /// ([`SecretStore::kind_of`]): two identities on one computer can rest in different kinds.
@@ -55,6 +56,13 @@ pub trait SecretStore: Send + Sync {
     /// never leave the store.
     fn contains(&self, name: &str) -> Result<bool, VaultError>;
     fn delete(&self, name: &str) -> Result<(), VaultError>;
+    /// Keeps `bytes` under `name` unless an item is kept there already, and answers what is kept:
+    /// `bytes` when this call made the item, the item that was there when it did not. Two callers
+    /// racing get the same answer. The item asks for no unlock (no `.userPresence` on the keychain),
+    /// so it is for what the custody service reads on every use without the person — the custody
+    /// enc key ([`crate::enc`]), never a master key. The answer is a secret, wiped wherever it is
+    /// dropped, an error path included.
+    fn claim_secret(&self, name: &str, bytes: &[u8]) -> Result<Zeroizing<Vec<u8>>, VaultError>;
     /// Whether the store can be reached now, so a new item may go to it. Always, for a store that
     /// is not reached over a connection.
     fn reachable(&self) -> bool {
@@ -67,9 +75,18 @@ pub fn item_name(scid: &str) -> String {
     format!("coasys.identity/{scid}")
 }
 
+const ENC_PREFIX: &str = "coasys.custody.enc/";
+
+/// The custody enc key's name for the executor whose device key is `device_key` (its signing
+/// multikey, base58 like a scid).
+pub fn enc_item_name(device_key: &str) -> String {
+    format!("{ENC_PREFIX}{device_key}")
+}
+
 // ─── File ───────────────────────────────────────────────────────────────────────
 
-/// `<dir>/<scid>.bin`, mode 0600, written whole through a temp file so a crash leaves the old one.
+/// `<dir>/<scid>.bin` for a master key and `<dir>/<device key>.enc` for a custody enc key, mode
+/// 0600, written whole through a temp file so a crash leaves the old one.
 pub struct FileStore {
     dir: PathBuf,
 }
@@ -80,14 +97,96 @@ impl FileStore {
     }
 
     fn path(&self, name: &str) -> PathBuf {
-        // `coasys.identity/<scid>`: a scid is base58, so the file name is the part after the slash.
+        // `coasys.identity/<scid>`, `coasys.custody.enc/<device key>`: both base58, so the file
+        // name is the part after the slash.
         let file = name.rsplit('/').next().unwrap_or(name);
-        self.dir.join(format!("{file}.bin"))
+        let extension = if name.starts_with(ENC_PREFIX) {
+            "enc"
+        } else {
+            "bin"
+        };
+        self.dir.join(format!("{file}.{extension}"))
+    }
+
+    /// A 0600 file holding `bytes`, synced, under a name no other writer uses.
+    fn written_aside(&self, path: &std::path::Path, bytes: &[u8]) -> Result<PathBuf, VaultError> {
+        use std::io::Write;
+        let mut tag = [0u8; 8];
+        rand_core::RngCore::fill_bytes(&mut rand_core::OsRng, &mut tag);
+        let aside = path.with_extension(format!("{}.claim", bs58::encode(tag).into_string()));
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut file = options.open(&aside).map_err(io)?;
+        file.write_all(bytes)
+            .and_then(|_| file.sync_all())
+            .map_err(|e| {
+                let _ = std::fs::remove_file(&aside);
+                io(e)
+            })?;
+        Ok(aside)
     }
 }
 
 fn io(e: std::io::Error) -> VaultError {
     VaultError::Unavailable(format!("custody file: {e}"))
+}
+
+/// Makes the entries of `dir` durable: a file renamed into it or removed from it is renamed or
+/// removed after a crash too. Syncing the file before its rename makes its bytes durable, not the
+/// directory entry that names it; until the directory is synced, a power loss can leave the old
+/// name (POSIX `fsync(2)` of the directory; ext4 commits it with the journal, seconds later). A
+/// no-op where a directory cannot be opened to sync (Windows, whose `MoveFileEx` the rename is).
+pub(crate) fn sync_dir(dir: &std::path::Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    std::fs::File::open(dir)?.sync_all()?;
+    #[cfg(not(unix))]
+    let _ = dir;
+    Ok(())
+}
+
+/// The file in the custody folder whose exclusive lock a Secret Service claim holds.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+const CLAIM_LOCK: &str = "secret-service.lock";
+
+/// Runs `work` holding an exclusive `flock` on `path`, made 0600 if absent. The lock is the open
+/// file's, so it holds against another process and against another open of the same file in this
+/// one, and is released when the file closes — a claimer that dies mid-claim releases it too. The
+/// file is left in place: removing it would let a waiter lock an unlinked file while a newcomer
+/// locks a fresh one.
+fn holding_lock<T>(path: &std::path::Path, work: impl FnOnce() -> T) -> Result<T, VaultError> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(io)?;
+    }
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true).write(true).create(true).truncate(false);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let file = options.open(path).map_err(io)?;
+    file.lock().map_err(io)?;
+    let answer = work();
+    drop(file);
+    Ok(answer)
+}
+
+/// Of items found under one name, the one every claimer keeps: the earliest `Created`, the item
+/// path breaking a tie. Answered from what each item says of itself, never from the order a search
+/// lists them in or the shape of a path, so two claimers that each see the same items keep the
+/// same one. `None` for no items.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn chosen_item<'a>(items: impl IntoIterator<Item = (u64, &'a str)>) -> Option<usize> {
+    items
+        .into_iter()
+        .enumerate()
+        .min_by(|(_, a), (_, b)| a.cmp(b))
+        .map(|(i, _)| i)
 }
 
 impl SecretStore for FileStore {
@@ -137,6 +236,26 @@ impl SecretStore for FileStore {
         match std::fs::remove_file(self.path(name)) {
             Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(io(e)),
             _ => Ok(()),
+        }
+    }
+
+    fn claim_secret(&self, name: &str, bytes: &[u8]) -> Result<Zeroizing<Vec<u8>>, VaultError> {
+        // Written whole beside it, then linked to the name: a link fails when the name exists, so
+        // the first writer's file is the item, and no reader ever sees a half-written one.
+        std::fs::create_dir_all(&self.dir).map_err(io)?;
+        let path = self.path(name);
+        let aside = self.written_aside(&path, bytes)?;
+        let linked = std::fs::hard_link(&aside, &path);
+        let _ = std::fs::remove_file(&aside);
+        match linked {
+            Ok(()) => {
+                sync_dir(&self.dir).map_err(io)?;
+                Ok(Zeroizing::new(bytes.to_vec()))
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                std::fs::read(&path).map(Zeroizing::new).map_err(io)
+            }
+            Err(e) => Err(io(e)),
         }
     }
 }
@@ -207,6 +326,16 @@ impl SecretStore for MemoryStore {
             .remove(name);
         Ok(())
     }
+    fn claim_secret(&self, name: &str, bytes: &[u8]) -> Result<Zeroizing<Vec<u8>>, VaultError> {
+        Ok(Zeroizing::new(
+            self.items
+                .lock()
+                .map_err(|_| VaultError::Unavailable("poisoned".into()))?
+                .entry(name.into())
+                .or_insert_with(|| bytes.to_vec())
+                .clone(),
+        ))
+    }
 }
 
 // ─── Linux: the Secret Service ──────────────────────────────────────────────────
@@ -237,6 +366,8 @@ mod secret_service_store {
     /// there. `tests/secret_service.rs` checks this against a real Secret Service.
     pub struct SecretServiceStore {
         jobs: mpsc::Sender<Job>,
+        /// The custody folder's claim lock ([`CLAIM_LOCK`]).
+        claim_lock: std::path::PathBuf,
     }
 
     fn unavailable(e: secret_service::Error) -> VaultError {
@@ -255,8 +386,9 @@ mod secret_service_store {
     }
 
     impl SecretServiceStore {
-        /// Connects, or answers why not — the caller falls back to [`FileStore`].
-        pub fn connect() -> Result<Self, VaultError> {
+        /// Connects, or answers why not — the caller falls back to [`FileStore`]. `dir` is the
+        /// custody folder, where every custody process on this computer takes the claim lock.
+        pub fn connect(dir: &std::path::Path) -> Result<Self, VaultError> {
             let (jobs, inbox) = mpsc::channel::<Job>();
             let (opened, connected) = mpsc::channel();
             std::thread::Builder::new()
@@ -277,7 +409,10 @@ mod secret_service_store {
                 })
                 .map_err(|e| VaultError::Unavailable(format!("Secret Service thread: {e}")))?;
             connected.recv().map_err(|_| ended())??;
-            Ok(SecretServiceStore { jobs })
+            Ok(SecretServiceStore {
+                jobs,
+                claim_lock: dir.join(CLAIM_LOCK),
+            })
         }
 
         /// Runs `job` on the client's thread and waits for its answer.
@@ -370,6 +505,59 @@ mod secret_service_store {
                 Ok(())
             })
         }
+
+        fn claim_secret(&self, name: &str, bytes: &[u8]) -> Result<Zeroizing<Vec<u8>>, VaultError> {
+            // The Secret Service has no create-if-absent, so search-then-create is made whole by
+            // the custody folder's lock, which every custody process on this computer takes for
+            // the whole of lookup, create and read. Should duplicates exist anyway (a store
+            // written before the lock, or by a claimer in another custody folder), every claimer
+            // keeps the one created first and none is deleted: an item another claimer already
+            // answered with stays.
+            let (name, bytes) = (name.to_string(), Zeroizing::new(bytes.to_vec()));
+            holding_lock(&self.claim_lock, || {
+                self.run(move |service| {
+                    let attributes = HashMap::from([(ATTRIBUTE, name.as_str())]);
+                    let found = service
+                        .search_items(attributes.clone())
+                        .map_err(unavailable)?;
+                    if found.unlocked.is_empty() && found.locked.is_empty() {
+                        let collection = service.get_default_collection().map_err(unavailable)?;
+                        if collection.is_locked().map_err(unavailable)? {
+                            collection.unlock().map_err(unavailable)?;
+                        }
+                        collection
+                            .create_item(
+                                &name,
+                                attributes.clone(),
+                                &bytes,
+                                false,
+                                "application/octet-stream",
+                            )
+                            .map_err(unavailable)?;
+                    }
+                    let found = service.search_items(attributes).map_err(unavailable)?;
+                    let items: Vec<_> = found.unlocked.into_iter().chain(found.locked).collect();
+                    let created = items
+                        .iter()
+                        .map(|item| item.get_created().map_err(unavailable))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    let pick = chosen_item(
+                        created
+                            .iter()
+                            .zip(&items)
+                            .map(|(at, item)| (*at, item.item_path.as_str())),
+                    )
+                    .ok_or_else(|| {
+                        VaultError::Unavailable("Secret Service: item vanished".into())
+                    })?;
+                    let item = &items[pick];
+                    if item.is_locked().map_err(unavailable)? {
+                        item.unlock().map_err(unavailable)?;
+                    }
+                    item.get_secret().map(Zeroizing::new).map_err(unavailable)
+                })
+            })?
+        }
     }
 }
 
@@ -382,6 +570,7 @@ pub use keychain_store::KeychainStore;
 mod keychain_store {
     use core_foundation::base::{CFType, CFTypeRef, TCFType};
     use core_foundation::boolean::CFBoolean;
+    use core_foundation::data::CFData;
     use core_foundation::dictionary::CFDictionary;
     use core_foundation::number::CFNumber;
     use core_foundation::string::{CFString, CFStringRef};
@@ -393,8 +582,9 @@ mod keychain_store {
     use security_framework_sys::item::{
         kSecAttrAccount, kSecAttrService, kSecClass, kSecClassGenericPassword, kSecMatchLimit,
         kSecReturnAttributes, kSecUseAuthenticationUI, kSecUseDataProtectionKeychain,
+        kSecValueData,
     };
-    use security_framework_sys::keychain_item::SecItemCopyMatching;
+    use security_framework_sys::keychain_item::{SecItemAdd, SecItemCopyMatching};
 
     use super::*;
 
@@ -420,6 +610,7 @@ mod keychain_store {
     const ERR_SEC_USER_CANCELED: i32 = -128;
     const ERR_SEC_ITEM_NOT_FOUND: i32 = -25300;
     const ERR_SEC_INTERACTION_NOT_ALLOWED: i32 = -25308;
+    const ERR_SEC_DUPLICATE_ITEM: i32 = -25299;
 
     fn unavailable(e: Error) -> VaultError {
         if e.code() == ERR_SEC_USER_CANCELED {
@@ -481,6 +672,44 @@ mod keychain_store {
             match delete_generic_password_options(item(name)) {
                 Err(e) if e.code() != ERR_SEC_ITEM_NOT_FOUND => Err(unavailable(e)),
                 _ => Ok(()),
+            }
+        }
+
+        fn claim_secret(&self, name: &str, bytes: &[u8]) -> Result<Zeroizing<Vec<u8>>, VaultError> {
+            // A bare `SecItemAdd`, no access control: it fails with errSecDuplicateItem when the
+            // item exists, where `set_generic_password_options` would overwrite it.
+            let pairs: Vec<(CFString, CFType)> = unsafe {
+                vec![
+                    (
+                        CFString::wrap_under_get_rule(kSecClass),
+                        CFString::wrap_under_get_rule(kSecClassGenericPassword).into_CFType(),
+                    ),
+                    (
+                        CFString::wrap_under_get_rule(kSecAttrService),
+                        CFString::new(SERVICE).into_CFType(),
+                    ),
+                    (
+                        CFString::wrap_under_get_rule(kSecAttrAccount),
+                        CFString::new(name).into_CFType(),
+                    ),
+                    (
+                        CFString::wrap_under_get_rule(kSecUseDataProtectionKeychain),
+                        CFBoolean::true_value().into_CFType(),
+                    ),
+                    (
+                        CFString::wrap_under_get_rule(kSecValueData),
+                        CFData::from_buffer(bytes).into_CFType(),
+                    ),
+                ]
+            };
+            let query = CFDictionary::from_CFType_pairs(&pairs);
+            let mut added: CFTypeRef = std::ptr::null();
+            match unsafe { SecItemAdd(query.as_concrete_TypeRef(), &mut added) } {
+                0 => Ok(Zeroizing::new(bytes.to_vec())),
+                ERR_SEC_DUPLICATE_ITEM => self.get(name)?.map(Zeroizing::new).ok_or_else(|| {
+                    VaultError::Unavailable("keychain: the enc key vanished".into())
+                }),
+                code => Err(unavailable(Error::from_code(code))),
             }
         }
     }
@@ -583,10 +812,20 @@ fn keychain_usable(probe_status: i32) -> bool {
 /// If either side cannot answer, the call is refused rather than taken to mean the item is not
 /// there: falling through to the other side would hide a key, or put a second one beside it.
 /// Nothing is ever moved from one side to the other.
+///
+/// A claim holds the custody folder's placement lock ([`PLACEMENT_LOCK`]) from asking both sides
+/// to its item being kept, so a claimer that sees the platform down and one that sees it back
+/// cannot each make the item on a different side.
 pub struct PlacedStore {
     file: Box<dyn SecretStore>,
     platform: Option<Box<dyn SecretStore>>,
+    claim_lock: PathBuf,
 }
+
+/// The file in the custody folder whose exclusive lock a [`PlacedStore`] claim holds. Not
+/// [`CLAIM_LOCK`], which the Secret Service claim takes inside it: a second lock on one file,
+/// through another open of it, would wait on the first forever.
+const PLACEMENT_LOCK: &str = "claim.lock";
 
 fn unanswered(side: &str, e: VaultError) -> VaultError {
     VaultError::Unavailable(format!(
@@ -596,9 +835,18 @@ fn unanswered(side: &str, e: VaultError) -> VaultError {
 
 impl PlacedStore {
     /// `file` is the sealed-file side; `platform` the keychain or Secret Service, `None` when this
-    /// build or session cannot use one.
-    pub fn new(file: Box<dyn SecretStore>, platform: Option<Box<dyn SecretStore>>) -> Self {
-        PlacedStore { file, platform }
+    /// build or session cannot use one; `claim_lock` the file every process sharing these two
+    /// sides locks around a claim — `claim.lock` in the custody folder ([`system_store`]).
+    pub fn new(
+        file: Box<dyn SecretStore>,
+        platform: Option<Box<dyn SecretStore>>,
+        claim_lock: impl Into<PathBuf>,
+    ) -> Self {
+        PlacedStore {
+            file,
+            platform,
+            claim_lock: claim_lock.into(),
+        }
     }
 
     /// The side that holds `name`, `None` when neither does.
@@ -668,6 +916,14 @@ impl SecretStore for PlacedStore {
             Some(side) => side.delete(name),
             None => Ok(()),
         }
+    }
+
+    fn claim_secret(&self, name: &str, bytes: &[u8]) -> Result<Zeroizing<Vec<u8>>, VaultError> {
+        // Where it is, or where it goes, is decided again inside the lock: a claimer that waited
+        // finds the item the one before it made, on the side it made it.
+        holding_lock(&self.claim_lock, || {
+            self.side(name)?.claim_secret(name, bytes)
+        })?
     }
 }
 
@@ -796,6 +1052,15 @@ impl SecretStore for Reconnecting {
         }
     }
 
+    fn claim_secret(&self, name: &str, bytes: &[u8]) -> Result<Zeroizing<Vec<u8>>, VaultError> {
+        // Wiped if the marker below cannot be written: the answer is the secret itself.
+        let connected = self.reach()?;
+        let kept = self.on(&connected, |store| store.claim_secret(name, bytes))?;
+        std::fs::create_dir_all(&self.markers).map_err(io)?;
+        std::fs::write(self.marker(name), b"").map_err(io)?;
+        Ok(kept)
+    }
+
     fn reachable(&self) -> bool {
         self.reach().is_ok()
     }
@@ -808,9 +1073,11 @@ impl SecretStore for Reconnecting {
 /// Service, else to that file.
 pub fn system_store(fallback_dir: PathBuf) -> Box<dyn SecretStore> {
     let platform = platform_store(&fallback_dir);
+    let claim_lock = fallback_dir.join(PLACEMENT_LOCK);
     Box::new(PlacedStore::new(
         Box::new(FileStore::new(fallback_dir)),
         platform,
+        claim_lock,
     ))
 }
 
@@ -830,7 +1097,7 @@ fn platform_store(dir: &std::path::Path) -> Option<Box<dyn SecretStore>> {
     }
     #[cfg(target_os = "linux")]
     {
-        if let Err(e) = SecretServiceStore::connect() {
+        if let Err(e) = SecretServiceStore::connect(dir) {
             log::warn!(
                 "custody: no Secret Service yet ({e}); a new key goes to a sealed file until one \
                  answers"
@@ -839,8 +1106,12 @@ fn platform_store(dir: &std::path::Path) -> Option<Box<dyn SecretStore>> {
         return Some(Box::new(Reconnecting::new(
             StoreKind::SecretService,
             dir.to_path_buf(),
-            Box::new(|| {
-                SecretServiceStore::connect().map(|store| Box::new(store) as Box<dyn SecretStore>)
+            Box::new({
+                let dir = dir.to_path_buf();
+                move || {
+                    SecretServiceStore::connect(&dir)
+                        .map(|store| Box::new(store) as Box<dyn SecretStore>)
+                }
             }),
         )));
     }
@@ -851,6 +1122,75 @@ fn platform_store(dir: &std::path::Path) -> Option<Box<dyn SecretStore>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_claim_lock_lets_one_claimer_through_at_a_time() {
+        // Check-then-create with a gap between, as a Secret Service claim is: without the lock,
+        // every claimer sees nothing there and creates. Each claimer opens the lock file itself,
+        // as each custody process does, so this is the `flock` serialising them, not a mutex.
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("custody").join(CLAIM_LOCK);
+        let items = Mutex::new(Vec::<u8>::new());
+        let (inside, most_inside) = (AtomicUsize::new(0), AtomicUsize::new(0));
+        let answers: Vec<u8> = std::thread::scope(|scope| {
+            let claimers: Vec<_> = (0..8u8)
+                .map(|i| {
+                    let (path, items, inside, most_inside) = (&path, &items, &inside, &most_inside);
+                    scope.spawn(move || {
+                        holding_lock(path, || {
+                            let now = inside.fetch_add(1, Ordering::SeqCst) + 1;
+                            most_inside.fetch_max(now, Ordering::SeqCst);
+                            let none = items.lock().unwrap().is_empty();
+                            std::thread::sleep(std::time::Duration::from_millis(20));
+                            if none {
+                                items.lock().unwrap().push(i);
+                            }
+                            let kept = items.lock().unwrap()[0];
+                            inside.fetch_sub(1, Ordering::SeqCst);
+                            kept
+                        })
+                        .unwrap()
+                    })
+                })
+                .collect();
+            claimers.into_iter().map(|c| c.join().unwrap()).collect()
+        });
+        assert_eq!(most_inside.load(Ordering::SeqCst), 1);
+        assert_eq!(items.lock().unwrap().len(), 1, "one item made");
+        assert!(
+            answers.iter().all(|a| *a == answers[0]),
+            "every claimer got it"
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
+    }
+
+    #[test]
+    fn duplicates_are_settled_by_the_earliest_created_never_by_path_order() {
+        // The path the old rule kept (shortest, then lowest) is the later item here.
+        let items = [
+            (1_700_000_050, "/org/freedesktop/secrets/collection/login/9"),
+            (
+                1_700_000_000,
+                "/org/freedesktop/secrets/collection/login/10",
+            ),
+            (1_700_000_100, "/org/freedesktop/secrets/collection/login/2"),
+        ];
+        assert_eq!(chosen_item(items), Some(1));
+        // Listed in another order, the same item.
+        let mut reversed = items;
+        reversed.reverse();
+        assert_eq!(reversed[chosen_item(reversed).unwrap()], items[1]);
+        // Created in the same second: the path decides, the same way for every claimer.
+        let tied = [(5, "/b"), (5, "/a"), (6, "/0")];
+        assert_eq!(chosen_item(tied), Some(1));
+        assert_eq!(chosen_item(std::iter::empty()), None);
+    }
 
     #[test]
     fn a_file_store_keeps_one_item_per_identity_readable_only_by_its_owner() {
@@ -958,6 +1298,9 @@ mod tests {
         fn delete(&self, name: &str) -> Result<(), VaultError> {
             self.0.delete(name)
         }
+        fn claim_secret(&self, name: &str, bytes: &[u8]) -> Result<Zeroizing<Vec<u8>>, VaultError> {
+            self.0.claim_secret(name, bytes)
+        }
     }
 
     impl Keyring {
@@ -993,6 +1336,7 @@ mod tests {
         let placed = PlacedStore::new(
             Box::new(FileStore::new(dir.path())),
             Some(Box::new(keyring.store(dir.path()))),
+            dir.path().join(PLACEMENT_LOCK),
         );
         // Down: a new item would go to the file.
         assert_eq!(placed.kind(), StoreKind::File);
@@ -1013,6 +1357,7 @@ mod tests {
         let placed = PlacedStore::new(
             Box::new(FileStore::new(dir.path())),
             Some(Box::new(keyring.store(dir.path()))),
+            dir.path().join(PLACEMENT_LOCK),
         );
         let name = item_name("QmScid");
         placed.put(&name, b"sealed").unwrap();
@@ -1023,6 +1368,7 @@ mod tests {
         let later = PlacedStore::new(
             Box::new(FileStore::new(dir.path())),
             Some(Box::new(keyring.store(dir.path()))),
+            dir.path().join(PLACEMENT_LOCK),
         );
         assert!(matches!(
             later.contains(&name),
@@ -1038,5 +1384,107 @@ mod tests {
         later.delete(&name).unwrap();
         keyring.set_up(false);
         assert!(!later.contains(&name).unwrap());
+    }
+
+    /// Where both claimers meet: each waits, up to a bound, for the other to arrive. Without the
+    /// placement lock both arrive before either claims; with it the second cannot arrive until the
+    /// first has claimed, so the first goes on alone once the bound passes.
+    struct Meeting {
+        arrived: Mutex<usize>,
+        all: std::sync::Condvar,
+    }
+
+    impl Meeting {
+        fn arrive(&self) {
+            let mut arrived = self.arrived.lock().unwrap();
+            *arrived += 1;
+            self.all.notify_all();
+            let _ = self
+                .all
+                .wait_timeout_while(arrived, std::time::Duration::from_millis(500), |n| *n < 2)
+                .unwrap();
+        }
+    }
+
+    /// One process's view of a shared platform store: reachable or not as that process saw it,
+    /// and asked whether it holds an item only at the meeting.
+    struct Seen {
+        items: Arc<MemoryStore>,
+        reachable: bool,
+        meeting: Arc<Meeting>,
+    }
+
+    impl SecretStore for Seen {
+        fn kind(&self) -> StoreKind {
+            StoreKind::SecretService
+        }
+        fn kind_of(&self, _: &str) -> Result<StoreKind, VaultError> {
+            Ok(StoreKind::SecretService)
+        }
+        fn put(&self, name: &str, bytes: &[u8]) -> Result<(), VaultError> {
+            self.items.put(name, bytes)
+        }
+        fn get(&self, name: &str) -> Result<Option<Vec<u8>>, VaultError> {
+            self.items.get(name)
+        }
+        fn contains(&self, name: &str) -> Result<bool, VaultError> {
+            let held = self.items.contains(name);
+            self.meeting.arrive();
+            held
+        }
+        fn delete(&self, name: &str) -> Result<(), VaultError> {
+            self.items.delete(name)
+        }
+        fn claim_secret(&self, name: &str, bytes: &[u8]) -> Result<Zeroizing<Vec<u8>>, VaultError> {
+            self.items.claim_secret(name, bytes)
+        }
+        fn reachable(&self) -> bool {
+            self.reachable
+        }
+    }
+
+    #[test]
+    fn two_claimers_that_see_the_platform_differently_make_one_item_on_one_side() {
+        // One claimer saw the Secret Service down, the other saw it back. Each process has its own
+        // `PlacedStore` over the same folder and the same keyring, and both ask where the item is
+        // before either claims it — unless the placement lock keeps the second out until the first
+        // has claimed.
+        let dir = tempfile::tempdir().unwrap();
+        let custody = dir.path().join("custody");
+        let keyring = Arc::new(MemoryStore::as_kind(StoreKind::SecretService));
+        let meeting = Arc::new(Meeting {
+            arrived: Mutex::new(0),
+            all: std::sync::Condvar::new(),
+        });
+        let process = |reachable: bool| {
+            PlacedStore::new(
+                Box::new(FileStore::new(&custody)),
+                Some(Box::new(Seen {
+                    items: keyring.clone(),
+                    reachable,
+                    meeting: meeting.clone(),
+                })),
+                custody.join(PLACEMENT_LOCK),
+            )
+        };
+        let (down, back) = (process(false), process(true));
+        let name = enc_item_name("z6MkDevice");
+        let (a, b) = std::thread::scope(|scope| {
+            let a = scope.spawn(|| down.claim_secret(&name, b"claimed in the file").unwrap());
+            let b = scope.spawn(|| back.claim_secret(&name, b"claimed in the keyring").unwrap());
+            (a.join().unwrap(), b.join().unwrap())
+        });
+        let in_file = FileStore::new(&custody).contains(&name).unwrap();
+        let in_keyring = keyring.contains(&name).unwrap();
+        assert!(in_file != in_keyring, "one item, on one side");
+        assert_eq!(*a, *b, "both claimers hold the same bytes");
+        let kept = if in_file {
+            FileStore::new(&custody).get(&name).unwrap()
+        } else {
+            keyring.get(&name).unwrap()
+        };
+        assert_eq!(kept.as_deref(), Some(&a[..]));
+        // And the store still answers for it afterwards, rather than refusing two copies.
+        assert!(down.contains(&name).unwrap());
     }
 }

@@ -106,7 +106,7 @@ Glossary (these terms pervade stores, models, and `$query`/`perspective` in sche
 | `@we/drag` | design-system/drag | The drag session and its payload — references, never DOM — plus the ghost, the zone registry and the press-to-drag threshold | Agnostic |
 | `@we/entities` | packages/entities | WE's domain models: the authored neutral manifest (src/manifest, the source of truth), the neutral type contract, and the entity proxies backends register into | **Agnostic** |
 | `@we/app-shell` | packages/app-shell | App shell, stores, registries, built-in template schemas | Solid |
-| `@we/identity-window` | packages/identity-window | The desktop identity window's screens (make an identity, add or revoke a device) over an `IdentityTransport`; each desktop app supplies the transport to its custody service (`crates/custody`) | Vanilla DOM |
+| `@we/identity-window` | packages/identity-window | The desktop identity window's screens (make an identity, add, unlink or revoke a device) over an `IdentityTransport`; each desktop app supplies the transport to its custody service (`crates/custody`) | Vanilla DOM |
 | `@we/ai-context` | packages/ai-context | Generates this reference (CLAUDE.md et al.) from code + fragments | Build tool |
 | `@we/e2e` | packages/e2e | What every live test shares: a fresh multi-user executor and its accounts, a build served under the production CSP, Chrome, waits and failure artifacts (docs/testing/e2e.md) | Test tool |
 | `@we/agent-tools` | packages/agent-tools | What a model can do with WE: templates and themes as tools for any host, a space's records and WE's conventions for a conversation WE runs itself, and a single-file bundle for agent hosts | **Agnostic** |
@@ -3110,15 +3110,27 @@ DatasetStore:
 
 DeviceStore:
 - State:
-  - devices: { keyId, addedSeq, revokedSeq, label, subtitle, icon, thisDevice, revoked, status, canRevoke }[] — the device keys of the person's key log, valid first and this computer on top. `label` is 'This computer' or 'Device d2' (devices have no names yet); `status` 'Active' or 'Removed at #2'; `canRevoke` is a valid key that is not this computer's
+  - devices: { keyId, addedSeq, unlinkedSeq, revokedSeq, label, subtitle, icon, thisDevice, unlinked, revoked, status, canUnlink, canRevoke, name, holdsMaster, master }[] — the device keys of the person's key log, active first and this computer on top, named from the identity's private record (which only its devices read). `label` is the record's name, else 'This computer' or 'Device d2'; `name` the record's name or empty; `status` 'Active', 'Unlinked' (retired: it signs nothing new, and what it signed before stays valid) or 'Revoked' (lost or stolen); `canUnlink` is an active key that is not this computer's; `canRevoke` is a key not yet revoked, unlinked or not, that is not this computer's; `holdsMaster` 'yes', 'no' or 'offered' (sent, not yet taken), worded in `master` ('Has master key', 'Master key sent', or empty). A revoked or unlinked key's `holdsMaster` is 'no', but its `master` warns when it took the master key or the key log let it (revoked: 'Still has your master key. Replace it to lock this device out.', 'May still have your master key. Replace it to lock this device out.'; unlinked: 'Still has your master key. Replace it if you don't have this device any more.', 'May still have your master key. Replace it if you don't have this device any more.'): neither a revoke nor an unlink replaces the master key, so a copy stays valid. Draw `master` in a warning tone unless `holdsMaster` is 'yes'
   - devicesLoaded: boolean — the list has been read once
-  - validCount: number — how many keys are valid
-  - canManage: boolean — Link a device or Remove can be offered: this computer keeps the master key of the identity
+  - validCount: number — how many keys are active: neither unlinked nor revoked
+  - canManage: boolean — Link a device (scanDevice, addDevice), Rename, Unlink, Revoke and answering requests can be offered: this computer keeps the master key of the identity
+  - canShowCode: boolean — "Show code" can be offered: this computer can join an identity and speaks for none yet
+  - canAskMaster: boolean — "Ask for master key" can be offered: a device of the identity that does not keep the master key, has none waiting, and could open one (not encMismatch)
+  - masterWaiting: boolean — a master key another device sent waits here and this computer can open it: offer "Accept master key"
+  - encMismatch: boolean — this computer lost the key that opens what is sent to it: no master key and no device names reach it (`devices` carries no names or master-key words then). Show a warning that says to revoke this computer from a device that holds the master key, then link it again
+  - requests: { id, kind, title, detail }[] — what the person's other devices asked and is waiting for an answer, while this computer keeps the master key; empty otherwise. `kind` is 'send-master' or 'confirm-revoke'; `title` names the device that asked ('Laptop asks for the master key')
   - error: string — why the last read failed, or empty
 - Actions:
   - refresh(): reads the device list again
-  - addDevice(): adds a device — the backend asks the person wherever it keeps the master key (on the desktop: the offer link and QR code, then the match code, then the confirmation that signs it). Resolves with the outcome; the list is read again
-  - revoke(keyId: string): revokes that device key, once the person confirms it where the master key is kept. Resolves with the outcome
+  - addDevice(): adds a server by an offer link — the backend asks the person wherever it keeps the master key (on the desktop: the offer link and QR code, then the match code, then the confirmation that signs it). Resolves with the outcome; the list is read again
+  - scanDevice(): "Enter code" — adds a device by the code it shows: the person pastes it, both show a match code, and the confirmation names the device and may let it keep the master key
+  - showCode(): "Show code" — on a computer of no identity yet, shows its code (QR and link) until a device of the identity adds it
+  - takeMaster(): "Accept master key" — keeps the master key another device sent here
+  - askMaster(): "Ask for master key" — asks the devices that keep it to send it here; one answers from its own requests
+  - answerRequest(id: string): answers that request of another device, once the person says yes where the master key is kept (send the master key, or revoke the devices it names)
+  - rename(keyId: string): names that device, in the private record only the identity’s devices read
+  - unlink(keyId: string): unlinks that device key — retired: it signs nothing new, and what it signed before stays valid — once the person confirms it where the master key is kept. Resolves with the outcome
+  - revoke(keyId: string): revokes that device key, lost or stolen, once the person confirms it where the master key is kept and says since when it was missing. Resolves with the outcome
 
 EditorStore:
 - State:
@@ -3201,14 +3213,14 @@ IdentityStore:
   - keyLogLoaded: boolean — the log has been read once
   - forked: boolean — the backend found two different logs for this identity
   - fork: { seq, ours, theirs } | null — where they part
-  - custody: { did, holdsMaster, unlock, blocked } | null — whether this computer can sign changes, as public facts: whether it keeps a master key (`holdsMaster`, a boolean), how that key unlocks ('os' for the computer's own prompt, or 'passphrase'), and why no change can run, if one cannot (`blocked`). Null where the backend cannot change an identity from here
+  - custody: { did, holdsMaster, unlock, blocked, devices, endedHolders, requests, masterWaiting, encMismatch } | null — whether this computer can sign changes, as public facts: whether it keeps a master key (`holdsMaster`, a boolean), how that key unlocks ('os' for the computer's own prompt, or 'passphrase'), why no change can run, if one cannot (`blocked`), the devices the private record names (`devices`: { keyId, name, kind, holdsMaster: 'yes' | 'no' | 'offered' }[]), the revoked or unlinked key ids the key log says may still hold a valid master key (`endedHolders`), what other devices asked (`requests`: { id, kind, by, keyIds, expires }[]), whether a master key waits here to be taken (`masterWaiting`), and whether this computer lost the key that opens what is sent to it, so no master key or device list reaches it until it is revoked and linked again (`encMismatch`). deviceStore words all of these for a page. Null where the backend cannot change an identity from here
   - needsFirstRun: boolean — ask the first-run question now: this computer can sign changes, this device speaks for nobody, and "Start now" was not chosen for this account on this computer. Still true where changeBlocked is set, so the person learns why; offer "Start now" then
   - busy: boolean — a change is running
   - lastOutcome: 'done' | 'cancelled' | 'failed' | '' — how the last change ended
   - error: string — why the last read or change failed, ready to show, or empty. A change never rejects: it resolves "failed" and the reason is here, so draw it beside the control that asked
 - Actions:
   - refresh(): reads the status, the key log and the custody state again
-  - open(change: { kind: 'create' } | { kind: 'add-device' } | { kind: 'revoke', keyId }): runs a change and resolves with its outcome once it ends; the backend asks the person itself, wherever it keeps the master key, and everything is read again then. Words, passphrases and keys never reach the app
+  - open(change: { kind: 'create' } | { kind: 'add-device' } | { kind: 'scan-device' } | { kind: 'show-code' } | { kind: 'take-master' } | { kind: 'ask-master' } | { kind: 'answer-request', id } | { kind: 'rename', keyId } | { kind: 'unlink', keyId } | { kind: 'revoke', keyId }): runs a change and resolves with its outcome once it ends; the backend asks the person itself, wherever it keeps the master key, and everything is read again then. Words, passphrases and keys never reach the app
   - makeIdentity(): "Make my identity here" — runs `create`
   - startWithoutIdentity(): "Start now" — use this account without an identity; remembered for it on this computer, so the first-run question stops
 

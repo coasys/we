@@ -333,14 +333,14 @@ if (!to) {
   console.log(`Moved crates/custody to ad4m ${to.slice(0, 9)}.`);
   try {
     // From the crate's folder, so rustup takes the toolchain its `rust-toolchain.toml` pins.
-    execSync('cargo update -p ad4m-identity-client -p ad4m-identity-core -p ad4m-client', {
+    execSync('cargo update -p ad4m-identity-client -p ad4m-identity-core -p ad4m-client -p ad4m-ldk', {
       cwd: custodyDir,
       stdio: 'inherit',
     });
   } catch {
     fail(
       'crates/custody/Cargo.lock could not be updated (is cargo installed?). From crates/custody, run:\n' +
-        '  cargo update -p ad4m-identity-client -p ad4m-identity-core -p ad4m-client',
+        '  cargo update -p ad4m-identity-client -p ad4m-identity-core -p ad4m-client -p ad4m-ldk',
     );
   }
 }

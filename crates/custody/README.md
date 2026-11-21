@@ -26,10 +26,30 @@ keychain is not usable from the Electron app, and the identity it belongs to can
 there. A key in a sealed file opens from either app with its passphrase. On Linux both apps reach
 the same Secret Service.
 
-The crate runs the identity client's flows — make the identity, add a device, revoke one — and
-reaches the executor only over its RPC with the admin credential. It is its own crate so nothing of
-it links the executor; `tests/boundary.rs` keeps it so. No Windows: the desktop apps start there
-without identity.
+Beside each executor's device key the store keeps this computer's **custody enc key**: an X25519 key
+made at random the first time the crate connects to that executor, and never derived from the words,
+the master key or the device key. It goes in the keychain or the Secret Service as
+`coasys.custody.enc/<device key>`, or in the same folder as `<device key>.enc` (mode 0600), wherever
+a new master key would go. It asks for no unlock: the main window's state reads the record on every
+call. A link that may keep the master key lists it in the key log, so the device holding the master
+key seals the master key and wraps the record key to it. The crate opens both here
+(`CustodyEncKey`, through the identity client's `WithEncKey`), and the executor only passes the
+sealed text on (`identity.inboxSealed`). A key lost from the store cannot be made again; the log
+then lists one this computer does not have, and `publicState` says `encMismatch`: revoke this
+computer from a device that holds the master key, and link it again.
+
+The crate runs the identity client's flows — make the identity, add a device, unlink one, revoke
+one — and reaches the executor only over its RPC with the custody credential. It is its own crate so
+nothing of it links the executor; `tests/boundary.rs` keeps it so. No Windows: the desktop apps
+start there without identity.
+
+An **unlink** retires a device: it signs nothing new, and what it signed before stays valid. A
+**revoke** is for one lost or stolen, and takes the time the person no longer trusts it from
+(`since`, ms, asked on the confirm screen; none is the revoke's own time). The store refuses a
+`since` in the future or before the device was added, and the confirm screen says so. A revoke may
+follow an unlink. The master key signs both, so this computer cannot change its own key; the key
+unlinking itself needs the device key, which custody does not hold. A revoke asked by another
+device's `confirm-revoke` request carries no `since`.
 
 Only the **identity window** runs a flow. Its front end is shared too (`packages/identity-window`);
 each app opens it, gates its calls to that window, and answers the main window with how a step
@@ -37,9 +57,16 @@ ended — never a screen. See each app's `DEVELOPMENT.md`.
 
 ## The sidecar
 
-`we-custody --executor-port <port> [--custody-dir <dir>]`, with the executor's admin credential in
-`AD4M_ADMIN_CREDENTIAL` (never an argument: `ps` shows arguments to every user). It takes no
-identity store setting: it asks the executor which store it uses, as below. It speaks lines of JSON on stdin and stdout
+`we-custody --executor-port <port> [--custody-dir <dir>]`. It reaches the executor with the
+**custody credential** — the one the executor's `--custody-channel` admits, distinct from the admin
+credential the app's window gets — and reads it from the **first line of its stdin**, before any
+request. Never an argument (`ps` shows arguments to every user) and never the environment (a process's
+`/proc/<pid>/environ` is readable through the executor by whoever holds the admin credential): the
+sidecar refuses to start with `AD4M_CUSTODY_CREDENTIAL` or `AD4M_CUSTODY_CREDENTIAL_FILE` set, or
+without a non-blank first line ending in a newline (exit 2). The executor takes the same credential
+the same way: started with `--custody-channel`, it reads the first line of its own stdin and exits 78
+if either variable is set. It takes no identity store setting: it asks the executor which store it
+uses, as below. After the credential line it speaks lines of JSON on stdin and stdout
 (`src/sidecar.rs`):
 
 ```text
@@ -52,7 +79,17 @@ identity store setting: it asks the executor which store it uses, as below. It s
 | `publicState` |           | `CustodyPublic`                               |
 | `start`       | `{step}`  | `{screen, outcome}` — the step's first screen |
 | `step`        | `{input}` | `{screen, outcome}` — the next screen         |
-| `cancel`      |           | `null`; the open step is ended and wiped      |
+| `cancel`      |           | `null`, or `{screen, outcome}` (below)        |
+
+`cancel` answers `null` once the open step is ended and wiped, and the host may close the window.
+Cancelling a shown code ends it on the executor (`identity.endPrepared`): its ticket read stops,
+and every claim of it is cancelled, including one whose event has not reached custody yet. A cancel
+that cannot finish answers `{screen, outcome}` instead, and the host shows that screen and keeps the
+window open. That happens when the executor did not answer in 10 seconds, when it refused the call
+or gave an unknown answer before custody saw a claim, or when this computer had already joined.
+When the executor refuses or gives an unknown answer after custody saw a claim, custody cancels that
+claim with `identity.cancelJoin`: the executor stops reading the code after its first claim, so a confirmed
+cancel answers `null`, and an unconfirmed one answers the screen.
 
 `outcome` is `done`, `failed` or `null` until a screen ends the step. Failures are
 `{"id", "error": "<sentence>"}`, and a line that is not a request is answered with `"id": null`. No
@@ -107,7 +144,7 @@ its offer link, which the claiming device publishes through.
 **With no store, or one the executor trusts no key for, nothing can make or change an identity, and
 the app says so.** That is a network whose seed names no store, or a build that names a store URL
 without its key: the executor would refuse every publish (`no-store-keys`). So the custody service
-refuses make, add-device and revoke before anything starts — before any words are made — and
+refuses make, add-device, unlink and revoke before anything starts — before any words are made — and
 reports `blocked` in its public state. The first-run screen then draws "Make my identity here"
 disabled with the reason, and "Start now" is the way in. While the executor is not answering yet,
 nothing is known and nothing is reported blocked; the step itself asks again.
@@ -127,6 +164,58 @@ key log, a different log under its identifier, an event it calls invalid) is sho
 when the person next makes an identity, with "Discard" to forget it. Discarding forgets the
 incept only; the master key stays where it rests.
 
+## Devices and the master key
+
+The steps the main window may open (`IdentityStep`) besides `create`, `unlink` and `revoke`:
+
+| Step             | Where                          | What it does                                                                               |
+| ---------------- | ------------------------------ | ------------------------------------------------------------------------------------------ |
+| `add-device`     | a computer with the master key | gives a server an offer link (QR and text), then the match code, then signs the `add`      |
+| `scan-device`    | a computer with the master key | "Enter code": takes the `coasys:device:1:…` code a new device shows and sends it the offer |
+| `show-code`      | a computer of no identity yet  | "Show code": its device code as a QR code and a copyable link, until a holder links it     |
+| `take-master`    | a linked device                | "Accept master key": keeps the master key another device sent here                         |
+| `ask-master`     | a linked device                | "Ask for master key": posts a `send-master` request for a holder to answer                 |
+| `answer-request` | a computer with the master key | answers another device's `send-master` or `confirm-revoke` request, on the person's yes    |
+| `rename`         | a computer with the master key | names a device in the identity's private record                                            |
+
+On the match screen of a link the person names the new device, names this computer too when the
+private record does not list it yet, and — for a device that may keep it (a desktop app, not a
+server) — chooses "Send it the master key". The `add` is published first; the device's
+entry in the private record and, if chosen, the master key sealed to the device's inbox follow it.
+What did not happen yet is said on the last screen (`Linked.note`):
+
+- **The master key** a device was given waits in `<custody dir>/pending-pushes.json` until the store
+  took it. The list is retried each time a link or an answer unlocks this computer's master key, and
+  when `publicState` finds the key held in a store that unlocks itself.
+- **The private record** (names, kinds, who keeps the master key) is written after each link,
+  revoke, rename and answer; the client merges a write that raced another device's. A write that
+  fails is said on the last screen and not retried: the device shows by its key id until it is
+  named, and `rename` writes its whole entry when the record lacks one.
+
+On the device, a master key waiting in its inbox is taken by `publicState` without asking where the
+store unlocks itself (the macOS keychain): the key is then behind the OS unlock like any other, and
+the device marks itself a holder in the private record. A sealed store (a passphrase file, the Linux
+Secret Service) needs the passphrase, so there the person takes it with `take-master`, which asks
+for one, or a new one when this computer keeps no master key yet.
+
+`publicState` carries what the Devices page draws: `devices` (the private record's names, kinds and
+`holdsMaster`: `true`, `false` or `"offered"`), `requests` (what other devices asked, never their
+signed parts), `masterWaiting` and `encMismatch` (the log lists another enc key for this computer
+than the one kept here: a master key sent to it cannot be opened, and `take-master` and `ask-master`
+say to revoke this computer and link it again). Saying no to a request is closing the window: the
+request waits until it expires.
+
+What a card or a confirmation says about a device comes from the key log, never from the private
+record, which any linked device can write. A request card names who asks by its key id and the
+fingerprint of its signing key; a `confirm-revoke` card names each key it would revoke the same way
+(`targets`), with the record's name only beside it ("listed as “…”"), and refuses a key the
+log does not list. Whether a device **may still hold a valid master key** — on that card and on the
+`revoke` step's confirmation (`mayHoldMaster`) — is the log's too: it made the identity, or the
+claim it joined with said `canKeepMaster`. A record saying `holdsMaster: false` does not hide that,
+and a revoke does not change the master key, so the person is told to replace it. Nor does an
+unlink: the status lists every revoked or unlinked key that may still hold it (`endedHolders`, from
+`keylog::ended_holders`, cleared by a rotation), and the device list warns on those rows.
+
 ## Testing
 
 ```sh
@@ -141,11 +230,14 @@ rev and `package.json`'s pin differ). Against a local ad4m checkout at that comm
 A=<ad4m>; P='patch."https://github.com/coasys/ad4m"'
 cargo test --config "$P.ad4m-identity-client.path=\"$A/ad4m-identity-client\"" \
   --config "$P.ad4m-identity-core.path=\"$A/ad4m-identity-core\"" \
-  --config "$P.ad4m-client.path=\"$A/rust-client\""
+  --config "$P.ad4m-client.path=\"$A/rust-client\"" \
+  --config "$P.ad4m-ldk.path=\"$A/ad4m-ldk/rust\""
 ```
 
-The end-to-end test runs the three flows against a real identity-store and two real executors; see
-the header of `tests/live.rs` for what it needs. The executors are the one every WE live test runs
+The end-to-end test runs the three flows against a real identity-store and real executors, and a
+desktop executor (`--custody-channel`, the custody credential on stdin, no `--operator`) whose first
+link records its operator, after which another identity's offer is refused `first-link`; see the
+header of `tests/live.rs` for what it needs. The executors are the one every WE live test runs
 (`scripts/ad4m-executor.mjs --path`: `AD4M_EXECUTOR`, else the pinned download). `AD4M_REPO` names an
 ad4m checkout only for the identity-store binary and its `tests/js` language directories:
 

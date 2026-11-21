@@ -309,6 +309,8 @@ export type { ShapeInput, ShapeStore, StoredShape } from './shapes';
 export type { PersonPort } from './persons';
 export type {
   DeviceKeyView,
+  DeviceNameView,
+  DeviceRequestView,
   IdentityCapabilities,
   IdentityChange,
   IdentityChangeOutcome,

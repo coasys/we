@@ -18,6 +18,7 @@
 import type { Ad4mClient } from '@coasys/ad4m';
 import {
   type DeviceKeyView,
+  type DeviceRequestView,
   type IdentityCapabilities,
   type IdentityChange,
   type IdentityChangeOutcome,
@@ -66,6 +67,14 @@ export interface Ad4mCustodyState {
    * or one it trusts no key for, so it would refuse everything the custody service publishes.
    */
   blocked?: string | null;
+  /** The private record's devices; `holdsMaster` is `false`, `true` or `"offered"`. */
+  devices?: { keyId: string; name: string; kind: string; holdsMaster: boolean | 'offered' }[];
+  requests?: { id: string; kind: string; by: string; keyIds: string[]; expires: number }[];
+  /** The revoked keys the key log says may still hold a valid master key. */
+  endedHolders?: string[];
+  masterWaiting?: boolean;
+  /** The key log lists an enc key for this computer other than the one the custody service keeps. */
+  encMismatch: boolean;
 }
 
 type Raw = Record<string, unknown>;
@@ -112,16 +121,47 @@ export function readKeyLogEvent(raw: unknown, hash: string | null = null): KeyLo
     added: devices
       .filter((d): d is Raw => !!d && typeof d === 'object')
       .map((d) => ({ id: text(d.id) ?? '', sign: text(d.sign) ?? '' })),
+    unlinked: typeof event.unlink === 'string' ? [event.unlink] : [],
     revoked: Array.isArray(event.revoke) ? event.revoke.map(String) : [],
   };
 }
 
 export function readCustody(value: Ad4mCustodyState): IdentityCustodyView {
+  const devices = (Array.isArray(value.devices) ? value.devices : []).map((item) => {
+    const device = record(item);
+    const holds = device.holdsMaster;
+    return {
+      keyId: text(device.keyId) ?? '',
+      name: text(device.name) ?? '',
+      kind: text(device.kind) ?? '',
+      holdsMaster: holds === true ? ('yes' as const) : holds === 'offered' ? ('offered' as const) : ('no' as const),
+    };
+  });
+  const requests = (Array.isArray(value.requests) ? value.requests : []).flatMap((item): DeviceRequestView[] => {
+    const request = record(item);
+    const kind = request.kind;
+    // A kind this app cannot answer is left for one that can.
+    if (kind !== 'send-master' && kind !== 'confirm-revoke') return [];
+    return [
+      {
+        id: text(request.id) ?? '',
+        kind,
+        by: text(request.by) ?? '',
+        keyIds: Array.isArray(request.keyIds) ? request.keyIds.map(String) : [],
+        expires: count(request.expires) ?? 0,
+      },
+    ];
+  });
   return {
     did: value.did ?? null,
     holdsMaster: !!value.holdsMaster,
     unlock: value.unlock ?? null,
     blocked: value.blocked || null,
+    devices,
+    endedHolders: Array.isArray(value.endedHolders) ? value.endedHolders.map(String) : [],
+    requests,
+    masterWaiting: value.masterWaiting === true,
+    encMismatch: value.encMismatch,
   };
 }
 
@@ -162,6 +202,7 @@ export function readDevices(value: unknown): DeviceKeyView[] {
       sign: text(device.sign) ?? '',
       thisDevice: device.thisDevice === true,
       addedSeq: count(device.addedSeq) ?? 0,
+      unlinkedSeq: count(device.unlinkedSeq),
       revokedSeq: count(device.revokedSeq),
     };
   });

@@ -9,10 +9,13 @@
 //! Every read and write is logged by kind only (`custody: read for Link`), never with contents.
 //!
 //! Beside the master keys the vault keeps the incept of an identity `create` made here until its
-//! publish is confirmed ([`PendingIncepts`]): public data, so in a file rather than the secret store.
+//! publish is confirmed, and the retry list of master-key pushes to other devices
+//! ([`PendingIncepts`]): public data, so in files rather than the secret store.
+
+use std::sync::Arc;
 
 use ad4m_identity_client::vault::KeySigner;
-use ad4m_identity_client::{MasterUse, Secret, Unlocked, Vault, VaultError};
+use ad4m_identity_client::{MasterUse, PendingPush, Secret, Unlocked, Vault, VaultError};
 use ad4m_identity_core::Event;
 use zeroize::Zeroizing;
 
@@ -21,7 +24,7 @@ use crate::seal::{self, CustodyItem, Kdf};
 use crate::store::{item_name, SecretStore};
 
 pub struct DesktopVault {
-    store: Box<dyn SecretStore>,
+    store: Arc<dyn SecretStore>,
     pending: PendingIncepts,
     kdf: Kdf,
 }
@@ -34,7 +37,7 @@ impl DesktopVault {
     /// Master keys in `store`, pending incepts in `pending`.
     pub fn new(store: Box<dyn SecretStore>, pending: PendingIncepts) -> Self {
         DesktopVault {
-            store,
+            store: Arc::from(store),
             pending,
             kdf: Kdf::DESKTOP,
         }
@@ -43,7 +46,7 @@ impl DesktopVault {
     /// With another Argon2id cost (tests).
     pub fn with_kdf(store: Box<dyn SecretStore>, pending: PendingIncepts, kdf: Kdf) -> Self {
         DesktopVault {
-            store,
+            store: Arc::from(store),
             pending,
             kdf,
         }
@@ -83,6 +86,12 @@ impl DesktopVault {
         self.store.as_ref()
     }
 
+    /// The store in use, to keep beside the vault: the custody enc key rests in it
+    /// ([`crate::enc::CustodyEncKey`]).
+    pub fn shared_store(&self) -> Arc<dyn SecretStore> {
+        self.store.clone()
+    }
+
     /// The vault for one flow, with the passphrase the identity window collected (ignored where the
     /// OS unlocks the item itself). The passphrase is wiped when the returned value drops.
     pub fn unlocking<'a>(&'a self, passphrase: Option<Secret<String>>) -> Unlocking<'a> {
@@ -120,12 +129,13 @@ impl DesktopVault {
         log::info!("custody: write");
         let name = item_name(&item.scid);
         // Sealed or not as the store this item goes to (where it already is, or where a new one
-        // goes) keeps it.
+        // goes) keeps it. Unsealed, the buffer is the master key itself: kept in the wiping buffer
+        // `to_bytes` makes, not copied out of it into one freed unwiped after the put.
         let bytes = if self.store.kind_of(&name)?.unlocks_itself() {
-            item.to_bytes().to_vec()
+            item.to_bytes()
         } else {
             let passphrase = passphrase.ok_or(VaultError::Cancelled)?;
-            seal::seal(item, passphrase, self.kdf, &os_random)?
+            Zeroizing::new(seal::seal(item, passphrase, self.kdf, &os_random)?)
         };
         self.store.put(&name, &bytes)
     }
@@ -182,12 +192,36 @@ impl Vault for Unlocking<'_> {
         log::info!("custody: forget published incept");
         self.vault.pending.forget(scid)
     }
+
+    fn keep_push(&self, push: &PendingPush) -> Result<(), VaultError> {
+        log::info!("custody: keep a master-key push on the retry list");
+        self.vault.pending.keep_push(push)
+    }
+
+    fn pending_pushes(&self) -> Result<Vec<PendingPush>, VaultError> {
+        self.vault.pending.pushes()
+    }
+
+    fn push_done(&self, push: &PendingPush) -> Result<(), VaultError> {
+        log::info!("custody: forget a master-key push");
+        self.vault.pending.push_done(push)
+    }
+
+    /// In the custody folder beside the pending lists ([`PendingIncepts::record_seen`]): a
+    /// version number per identity, no secret, so not in the secret store.
+    fn record_seen(&self, scid: &str, version: u64) -> Result<Option<u64>, VaultError> {
+        self.vault.pending.record_seen(scid, version)
+    }
+
+    fn record_seen_reset(&self, scid: &str) -> Result<(), VaultError> {
+        log::info!("custody: reset a record's high-water mark");
+        self.vault.pending.record_seen_reset(scid)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
 
     use crate::store::{MemoryStore, StoreKind};
 
@@ -238,7 +272,11 @@ mod tests {
         // Without a platform store, a new item goes to the file, sealed.
         let empty = dir.path().join("empty");
         let none = DesktopVault::with_kdf(
-            Box::new(PlacedStore::new(Box::new(FileStore::new(&empty)), None)),
+            Box::new(PlacedStore::new(
+                Box::new(FileStore::new(&empty)),
+                None,
+                empty.join("claim.lock"),
+            )),
             PendingIncepts::memory(),
             CHEAP,
         );
@@ -344,8 +382,16 @@ mod tests {
             fn delete(&self, _: &str) -> Result<(), VaultError> {
                 Err(VaultError::Unavailable("cannot delete".into()))
             }
+            fn claim_secret(
+                &self,
+                _: &str,
+                _: &[u8],
+            ) -> Result<zeroize::Zeroizing<Vec<u8>>, VaultError> {
+                Err(VaultError::Unavailable("cannot claim".into()))
+            }
         }
         let name = item_name("QmScid");
+        let lock = tempfile::tempdir().unwrap();
         fn refused(store: &dyn SecretStore, name: &str) {
             assert!(unavailable(store.get(name)));
             assert!(unavailable(store.contains(name)));
@@ -360,6 +406,7 @@ mod tests {
         let store = PlacedStore::new(
             Box::new(Unanswering(StoreKind::File)),
             Some(Box::new(platform.clone())),
+            lock.path().join("claim.lock"),
         );
         refused(&store, &name);
         assert_eq!(
@@ -373,6 +420,7 @@ mod tests {
         let store = PlacedStore::new(
             Box::new(file.clone()),
             Some(Box::new(Unanswering(StoreKind::Keychain))),
+            lock.path().join("claim.lock"),
         );
         refused(&store, &name);
         assert_eq!(
@@ -410,7 +458,12 @@ mod tests {
         let platform = Arc::new(MemoryStore::as_kind(StoreKind::Keychain));
         file.put(&name, b"sealed").unwrap();
         platform.put(&name, b"keychain").unwrap();
-        let store = PlacedStore::new(Box::new(file.clone()), Some(Box::new(platform.clone())));
+        let lock = tempfile::tempdir().unwrap();
+        let store = PlacedStore::new(
+            Box::new(file.clone()),
+            Some(Box::new(platform.clone())),
+            lock.path().join("claim.lock"),
+        );
         assert!(unavailable(store.get(&name)));
         assert!(unavailable(store.contains(&name)));
         assert!(unavailable(store.kind_of(&name)));
@@ -446,6 +499,7 @@ mod tests {
             Box::new(crate::store::PlacedStore::new(
                 Box::new(crate::store::FileStore::new(custody)),
                 platform.map(|p| Box::new(p) as Box<dyn SecretStore>),
+                custody.join("claim.lock"),
             )),
             PendingIncepts::memory(),
             CHEAP,
@@ -472,6 +526,13 @@ mod tests {
         fn delete(&self, n: &str) -> Result<(), VaultError> {
             (**self).delete(n)
         }
+        fn claim_secret(
+            &self,
+            n: &str,
+            b: &[u8],
+        ) -> Result<zeroize::Zeroizing<Vec<u8>>, VaultError> {
+            (**self).claim_secret(n, b)
+        }
     }
 
     #[test]
@@ -496,6 +557,13 @@ mod tests {
             }
             fn delete(&self, n: &str) -> Result<(), VaultError> {
                 self.0.delete(n)
+            }
+            fn claim_secret(
+                &self,
+                n: &str,
+                b: &[u8],
+            ) -> Result<zeroize::Zeroizing<Vec<u8>>, VaultError> {
+                self.0.claim_secret(n, b)
             }
         }
         let vault = DesktopVault::with_kdf(
@@ -559,6 +627,13 @@ mod tests {
             }
             fn delete(&self, n: &str) -> Result<(), VaultError> {
                 self.0.delete(n)
+            }
+            fn claim_secret(
+                &self,
+                n: &str,
+                b: &[u8],
+            ) -> Result<zeroize::Zeroizing<Vec<u8>>, VaultError> {
+                self.0.claim_secret(n, b)
             }
         }
         let dir = tempfile::tempdir().unwrap();
