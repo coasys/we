@@ -11,8 +11,8 @@ const close = { $invoke: 'shellStore.setAcornProjectsOpen', args: [false] };
  * operation's own progress and its Retry/Close live in `spaceStore.acornPending`,
  * the card below — parked there across this dialog closing, not in these locals.
  */
-const lifecycleCall = (invoke: Record<string, unknown>): SchemaProp[] => [
-  { $setLocal: 'busy', value: true },
+const lifecycleCall = (flag: string, invoke: Record<string, unknown>): SchemaProp[] => [
+  { $setLocal: flag, value: true },
   { $setLocal: 'error', value: '' },
   { $setLocal: 'errorCause', value: '' },
   // Details revealed for the last failure are not revealed for the next one.
@@ -51,7 +51,7 @@ const lifecycleCall = (invoke: Record<string, unknown>): SchemaProp[] => [
         },
       },
     ],
-    onFinally: [{ $setLocal: 'busy', value: false }],
+    onFinally: [{ $setLocal: flag, value: false }],
   },
 ];
 
@@ -120,7 +120,14 @@ export const acornProjectsModal: SchemaNode = {
     newPassphrase: { type: 'string', initial: '' },
     joinPassphrase: { type: 'string', initial: '' },
     joinAddress: { type: 'string', initial: '' },
-    busy: { type: 'boolean', initial: false },
+    /*
+      One flag per lifecycle call, not one for the dialog: a running create
+      spins only Create. The other button is disabled while any call is out —
+      single-flight — but never spins for a call it did not make.
+    */
+    creating: { type: 'boolean', initial: false },
+    joining: { type: 'boolean', initial: false },
+    working: { type: 'boolean', initial: false },
     error: { type: 'string', initial: '' },
     errorCause: { type: 'string', initial: '' },
     showCause: { type: 'boolean', initial: false },
@@ -162,8 +169,8 @@ export const acornProjectsModal: SchemaNode = {
                       type: 'we-button',
                       props: {
                         variant: 'soft',
-                        disabled: { $: 'local.busy' },
-                        onClick: lifecycleCall({
+                        disabled: { $: '(local.creating || local.joining || local.working)' },
+                        onClick: lifecycleCall('working', {
                           $invoke: 'spaceStore.openAcornProject',
                           args: [{ $: 'project.datasetId' }],
                         }),
@@ -196,7 +203,7 @@ export const acornProjectsModal: SchemaNode = {
             width: '100%',
             value: { $: 'local.newName' },
             placeholder: 'What the project is called',
-            disabled: { $: 'local.busy' },
+            disabled: { $: '(local.creating || local.joining || local.working)' },
             onInput: { $setLocal: 'newName', value: { $: 'event.detail' } },
           },
         },
@@ -215,7 +222,7 @@ export const acornProjectsModal: SchemaNode = {
             width: '100%',
             value: { $: 'local.newPassphrase' },
             placeholder: 'A few words they will type back',
-            disabled: { $: 'local.busy' },
+            disabled: { $: '(local.creating || local.joining || local.working)' },
             onInput: { $setLocal: 'newPassphrase', value: { $: 'event.detail' } },
           },
         },
@@ -229,9 +236,11 @@ export const acornProjectsModal: SchemaNode = {
           type: 'we-button',
           props: {
             variant: 'solid',
-            loading: { $: 'local.busy' },
-            disabled: { $: 'local.busy || !local.newName || !local.newPassphrase' },
-            onClick: lifecycleCall({
+            loading: { $: 'local.creating' },
+            disabled: {
+              $: '(local.creating || local.joining || local.working) || !local.newName || !local.newPassphrase',
+            },
+            onClick: lifecycleCall('creating', {
               $invoke: 'spaceStore.createAcornProject',
               args: [{ $: 'local.newName' }, { $: 'local.newPassphrase' }],
             }),
@@ -258,7 +267,7 @@ export const acornProjectsModal: SchemaNode = {
             width: '100%',
             value: { $: 'local.joinPassphrase' },
             placeholder: 'The words you were given',
-            disabled: { $: 'local.busy' },
+            disabled: { $: '(local.creating || local.joining || local.working)' },
             onInput: { $setLocal: 'joinPassphrase', value: { $: 'event.detail' } },
           },
         },
@@ -274,7 +283,7 @@ export const acornProjectsModal: SchemaNode = {
             width: '100%',
             value: { $: 'local.joinAddress' },
             placeholder: 'Only if the passphrase alone does not resolve',
-            disabled: { $: 'local.busy' },
+            disabled: { $: '(local.creating || local.joining || local.working)' },
             onInput: { $setLocal: 'joinAddress', value: { $: 'event.detail' } },
           },
         },
@@ -288,9 +297,9 @@ export const acornProjectsModal: SchemaNode = {
           type: 'we-button',
           props: {
             variant: 'solid',
-            loading: { $: 'local.busy' },
-            disabled: { $: 'local.busy || !local.joinPassphrase' },
-            onClick: lifecycleCall({
+            loading: { $: 'local.joining' },
+            disabled: { $: '(local.creating || local.joining || local.working) || !local.joinPassphrase' },
+            onClick: lifecycleCall('joining', {
               $invoke: 'spaceStore.joinAcornProject',
               args: [{ $: 'local.joinAddress || null' }, { $: 'local.joinPassphrase' }],
             }),
@@ -367,11 +376,11 @@ export const acornProjectsModal: SchemaNode = {
                           type: 'we-button',
                           props: {
                             variant: 'solid',
-                            disabled: { $: 'local.busy' },
+                            disabled: { $: '(local.creating || local.joining || local.working)' },
                             // The failure on display names its own target — this
                             // Retry resumes it, not whichever operation happens
                             // to be parked first.
-                            onClick: lifecycleCall({
+                            onClick: lifecycleCall('working', {
                               $invoke: 'spaceStore.retryAcornProject',
                               args: [
                                 { $: 'spaceStore.acornPending.datasetId' },
@@ -385,7 +394,11 @@ export const acornProjectsModal: SchemaNode = {
                     },
                     {
                       type: 'we-button',
-                      props: { variant: 'soft', disabled: { $: 'local.busy' }, onClick: [close] },
+                      props: {
+                        variant: 'soft',
+                        disabled: { $: '(local.creating || local.joining || local.working)' },
+                        onClick: [close],
+                      },
                       children: ['Close'],
                     },
                   ],
@@ -405,7 +418,7 @@ export const acornProjectsModal: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $: 'local.busy && !spaceStore.acornPending' },
+        condition: { $: '(local.creating || local.joining || local.working) && !spaceStore.acornPending' },
         then: {
           type: 'Row',
           props: { gap: '200', ay: 'center' },

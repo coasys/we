@@ -261,6 +261,58 @@ describe('the Acorn projects dialog', () => {
     expect(stores.shellStore.setAcornProjectsOpen).not.toHaveBeenCalled();
   });
 
+  it('spins only Create while the create call is out — Join stays still, and still single-flight', async () => {
+    let release!: (v: string | null) => void;
+    const stores = fakeStores({
+      createAcornProject: vi.fn(() => new Promise<string | null>((r) => (release = r))),
+    });
+    const { container } = render(() => (
+      <RenderSchema node={acornProjectsModalMount} stores={stores as never} registry={registry} />
+    ));
+
+    type(container, 'Project', 0);
+    type(container, 'a b c', 1);
+    type(container, 'a b c', 2); // a join draft, so its button is not disabled for the empty reason
+    const create = button(container, 'Create project');
+    const join = button(container, 'Join project');
+    create.click();
+    await vi.waitFor(() => expect((create as any).loading).toBe(true));
+
+    // Its own spinner only: Join does not claim to be working, but nobody may
+    // run a second lifecycle call over the first.
+    expect((join as any).loading).toBeFalsy();
+    expect((join as any).disabled).toBe(true);
+
+    release(null); // no landing — the dialog stays open, both buttons settle
+    await vi.waitFor(() => expect((create as any).loading).toBe(false));
+    expect((join as any).disabled).toBe(false);
+  });
+
+  it('spins only Join while the join call is out — Create stays still, and still single-flight', async () => {
+    let release!: (v: string | null) => void;
+    const stores = fakeStores({
+      joinAcornProject: vi.fn(() => new Promise<string | null>((r) => (release = r))),
+    });
+    const { container } = render(() => (
+      <RenderSchema node={acornProjectsModalMount} stores={stores as never} registry={registry} />
+    ));
+
+    type(container, 'Project', 0);
+    type(container, 'a b c', 1);
+    type(container, 'a b c', 2);
+    const create = button(container, 'Create project');
+    const join = button(container, 'Join project');
+    join.click();
+    await vi.waitFor(() => expect((join as any).loading).toBe(true));
+
+    expect((create as any).loading).toBeFalsy();
+    expect((create as any).disabled).toBe(true);
+
+    release(null);
+    await vi.waitFor(() => expect((join as any).loading).toBe(false));
+    expect((create as any).disabled).toBe(false);
+  });
+
   it('leads an unparked lifecycle failure with its classified headline, never its raw text', async () => {
     const failure = Object.assign(new Error('ConductorApiError: CellError(InitTimeout) on cell abc'), {
       display: 'The project’s cell did not start on the executor in time.',
