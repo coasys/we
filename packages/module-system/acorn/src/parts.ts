@@ -95,9 +95,19 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
                         width: '100%',
                         value: { $: 'outcome.content' },
                         placeholder: { $: 'outcome.content' },
+                        /*
+                          A change that holds only whitespace is not a rename — saving it would
+                          blank the outcome's title. The write is skipped, so the previous
+                          content stays.
+                        */
                         onChange: {
-                          $invoke: 'recordStore.updateRecordField',
-                          args: ['AcornOutcome', { $: 'outcome.id' }, 'content', { $: 'event.detail' }],
+                          $if: {
+                            condition: { $: 'trim(arg.detail)' },
+                            then: {
+                              $invoke: 'recordStore.updateRecordField',
+                              args: ['AcornOutcome', { $: 'outcome.id' }, 'content', { $: 'event.detail' }],
+                            },
+                          },
                         },
                       },
                     },
