@@ -58,6 +58,14 @@ const MOUNT_BACKOFF_MS = [2_000, 4_000, 8_000, 16_000];
 const MOUNT_BUDGET_MS = 180_000;
 
 /**
+ * The dialog's own clock, across the whole call: a run still out past it is
+ * parked resumable — the spinner stops on a plain sentence and a Retry —
+ * while the calls it had in flight settle untouched. Sixty seconds is the
+ * join's bound; the mount phase inside it keeps its own, longer budget.
+ */
+const DIALOG_DEADLINE_MS = 60_000;
+
+/**
  * The only failures a same-target retry answers — the fresh cell's first network
  * read stalling past either of the two clocks that time it out: Holochain's
  * 30 s init mutex, and the B10 language's 15 s snapshot deadline, which fires
@@ -104,6 +112,12 @@ interface PendingAcornOp {
   stateOwner?: number;
   /** When `state` last became `failed`, in failure order — what a reopen with no identity picks by. */
   failedSeq?: number;
+  /**
+   * The run the dialog deadline already parked. A timed-out run keeps nothing
+   * that would let it answer for the op after its deadline spoke: its `owns`
+   * checks read false from here on, and the Retry's run writes the next state.
+   */
+  expiredRun?: number;
 }
 
 /** What `prepareAndMount` hands `openMounted`: the mounted target plus the name the newest ask gave it. */
@@ -189,6 +203,9 @@ export type AcornLifecycleStage = 'prepare' | 'mount' | 'setup';
  */
 function classifyAcornFailure(stage: AcornLifecycleStage, cause: string): string {
   if (!cause) return 'It was closed before it finished.';
+  if (/did not answer inside the \d+(\.\d+)? s deadline/.test(cause)) {
+    return 'It is taking longer than it should — Retry keeps the same project.';
+  }
   if (MOUNT_INIT_FAILURES.some((signature) => cause.includes(signature))) {
     return 'The project’s cell did not start on the executor in time.';
   }
@@ -372,6 +389,14 @@ export interface AcornLifecycleDeps {
    * bounds; this is the mount's alone.
    */
   mountBudgetMs?: number;
+  /**
+   * The wall-clock bound the dialog shows one lifecycle call — templating, the
+   * mount phase and the setup tail all draw from it. A run still out past it is
+   * parked resumable rather than left spinning: the card it leaves is the plain
+   * sentence and the Retry, and the calls it had in flight settle untouched —
+   * what lands after is reconciled by the Retry's re-read, not by the dead run.
+   */
+  deadlineMs?: number;
 }
 
 /**
@@ -464,6 +489,7 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
   // the waits below bound themselves rather than trusting mount() to have meant "done".
   const timeoutMs = deps.timeoutMs ?? 180_000;
   const mountBudgetMs = deps.mountBudgetMs ?? MOUNT_BUDGET_MS;
+  const deadlineMs = deps.deadlineMs ?? DIALOG_DEADLINE_MS;
 
   /** The port's `interact` — every member guards on the port before reaching this. */
   const interact = (url: string, name: string, parameters?: object) => deps.port()!.interact(url, { name, parameters });
@@ -875,13 +901,17 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
     op: PendingAcornOp,
     owns: () => boolean,
     report: (attempt: number) => void,
+    callDeadline: number,
   ): Promise<PreparedMount | null> => {
     /*
       One clock for the whole mount phase — target discovery, the mounts
       re-check, every attempt and every wait all draw from it, so nothing the
-      phase awaits can outlive the budget that bounds it.
+      phase awaits can outlive the budget that bounds it. The dialog deadline
+      clamps it further: a run already parked there owns nothing more, and its
+      queue slot is the Retry's to have back.
     */
-    const deadline = Date.now() + mountBudgetMs;
+    const phaseBudgetMs = Math.min(mountBudgetMs, Math.max(0, callDeadline - Date.now()));
+    const deadline = Date.now() + phaseBudgetMs;
     /*
       Discovery and allocation spend the same budget as the mount: a series of
       mounts reads that outlives it is the phase timing out, and a target they
@@ -891,7 +921,7 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       new AcornLifecycleError({
         stage: 'mount',
         retryTarget: null,
-        cause: new Error(`the mount phase did not answer inside the ${mountBudgetMs / 1000} s budget`),
+        cause: new Error(`the mount phase did not answer inside the ${phaseBudgetMs / 1000} s budget`),
       });
     /*
       An earlier run's allocation still out is this op's target-to-be: waited
@@ -1002,10 +1032,10 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
    */
   const runLifecycle = async (
     op: PendingAcornOp,
-    nav: { generation: number; selection: string | undefined },
+    nav: { generation: number; selection: string | undefined; deadline: number },
   ): Promise<string | null> => {
     const runId = nav.generation;
-    const owns = () => runId === openGeneration;
+    const owns = () => runId === openGeneration && op.expiredRun !== runId;
     pendingOps.set(op.lang, op);
     /*
       Only the newest ask writes `op.state`: a run superseded on its own op —
@@ -1046,79 +1076,119 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
         languageAddress: op.lang,
         failure: makeFailure(failure.stage, failure.cause, failure.retryable),
       });
-    try {
-      report({ phase: 'preparing', name: op.name, datasetId: op.ref?.id, languageAddress: op.lang });
-      const prepared = await serializeMount(op.lang, () =>
-        prepareAndMount(op, owns, (attempt) =>
-          report({ phase: 'mounting', attempt, name: op.name, datasetId: op.ref?.id, languageAddress: op.lang }),
-        ),
+    const inner = async (): Promise<string | null> => {
+      try {
+        report({ phase: 'preparing', name: op.name, datasetId: op.ref?.id, languageAddress: op.lang });
+        const prepared = await serializeMount(op.lang, () =>
+          prepareAndMount(
+            op,
+            owns,
+            (attempt) =>
+              report({ phase: 'mounting', attempt, name: op.name, datasetId: op.ref?.id, languageAddress: op.lang }),
+            nav.deadline,
+          ),
+        );
+        if (!prepared || !owns()) {
+          /*
+            Stood down before the mount finished — a close already parked this op
+            as resumable, or the newer ask's reports are the state. The parked
+            offer to continue survives either way.
+          */
+          parkIfMine({ stage: 'mount', cause: '', retryable: true });
+          return null;
+        }
+        report({
+          phase: 'setting-up',
+          name: prepared.name,
+          datasetId: prepared.ref.id,
+          languageAddress: op.lang,
+        });
+        const id = await openMounted(prepared.ref, op.lang, { name: prepared.name }, nav, owns);
+        if (!owns()) {
+          /*
+            Stood down inside the tail — the retained target and whatever debt
+            remains are the record, and the state this run was reporting is parked
+            so the dialog offers it rather than spinning on a run that is no
+            longer running.
+          */
+          parkIfMine({ stage: 'setup', cause: '', retryable: true });
+          return null;
+        }
+        /*
+          Delete only on this run's own success: a superseded run that stood down
+          inside `openMounted` must not remove the op its successor is still
+          running on.
+        */
+        if (pendingOps.get(op.lang) === op) pendingOps.delete(op.lang);
+        // A preflight failure parked for this dataset earlier is answered by this success too.
+        preflightFailures.delete(prepared.ref.id);
+        // The tail finished: the durable record of an unfinished setup goes with it.
+        if (!owedFor(prepared.ref.id)) deps.setupIntent?.clear(prepared.ref.id);
+        deps.progress?.(null);
+        return id;
+      } catch (error) {
+        /*
+          The typed failure carries its own classification; anything else reaching
+          this boundary is read once here — an error after the target was retained
+          is a setup failure resumable on it, an error before is a prepare failure
+          that retrying can only help if the cause was transient.
+        */
+        const failure =
+          error instanceof AcornLifecycleError
+            ? error
+            : new AcornLifecycleError({
+                stage: op.ref ? 'setup' : 'prepare',
+                retryTarget: op.ref ? { datasetId: op.ref.id, languageAddress: op.lang } : null,
+                cause: error,
+              });
+        // A typed failure without a target is retryable only when its cause was
+        // never an answer — the budget running out before a target was settled.
+        const retryable = Boolean(failure.retryTarget) || mountFailureKind(failure.cause) !== 'permanent';
+        park({ stage: failure.stage, cause: failure.message, retryable });
+        /*
+          The same failure parked when reporting is no longer ours: a run that
+          threw after losing ownership cannot surface the error through `report`,
+          but the op the dialog may still be showing must not spin on a dead run —
+          park the real failure on it where the last report was ours to replace.
+        */
+        parkIfMine({ stage: failure.stage, cause: failure.message, retryable });
+        throw failure;
+      }
+    };
+    /*
+      The dialog's own deadline: a run still out when it lapses has not answered,
+      whatever phase it is in — the spinner stops on a parked, resumable failure
+      instead of waiting on the mount phase's longer budget. The parked state is
+      reported while the run still owns the display, then `expiredRun` stands it
+      down: its calls already issued settle and pay their debts, but nothing
+      further is issued, and a late answer is the Retry's re-read to reconcile.
+    */
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timedOut = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => {
+          const stage: AcornLifecycleStage =
+            op.state?.phase === 'setting-up' ? 'setup' : op.state?.phase === 'mounting' ? 'mount' : 'prepare';
+          const cause = `the operation did not answer inside the ${deadlineMs / 1000} s deadline`;
+          const failure = new AcornLifecycleError({
+            stage,
+            retryTarget: op.ref ? { datasetId: op.ref.id, languageAddress: op.lang } : null,
+            cause: new Error(cause),
+          });
+          report({
+            phase: 'failed',
+            name: op.name,
+            datasetId: op.ref?.id,
+            languageAddress: op.lang,
+            failure: makeFailure(stage, failure.message, true),
+          });
+          op.expiredRun = runId;
+          reject(failure);
+        },
+        Math.max(0, nav.deadline - Date.now()),
       );
-      if (!prepared || !owns()) {
-        /*
-          Stood down before the mount finished — a close already parked this op
-          as resumable, or the newer ask's reports are the state. The parked
-          offer to continue survives either way.
-        */
-        parkIfMine({ stage: 'mount', cause: '', retryable: true });
-        return null;
-      }
-      report({
-        phase: 'setting-up',
-        name: prepared.name,
-        datasetId: prepared.ref.id,
-        languageAddress: op.lang,
-      });
-      const id = await openMounted(prepared.ref, op.lang, { name: prepared.name }, nav);
-      if (!owns()) {
-        /*
-          Stood down inside the tail — the retained target and whatever debt
-          remains are the record, and the state this run was reporting is parked
-          so the dialog offers it rather than spinning on a run that is no
-          longer running.
-        */
-        parkIfMine({ stage: 'setup', cause: '', retryable: true });
-        return null;
-      }
-      /*
-        Delete only on this run's own success: a superseded run that stood down
-        inside `openMounted` must not remove the op its successor is still
-        running on.
-      */
-      if (pendingOps.get(op.lang) === op) pendingOps.delete(op.lang);
-      // A preflight failure parked for this dataset earlier is answered by this success too.
-      preflightFailures.delete(prepared.ref.id);
-      // The tail finished: the durable record of an unfinished setup goes with it.
-      if (!owedFor(prepared.ref.id)) deps.setupIntent?.clear(prepared.ref.id);
-      deps.progress?.(null);
-      return id;
-    } catch (error) {
-      /*
-        The typed failure carries its own classification; anything else reaching
-        this boundary is read once here — an error after the target was retained
-        is a setup failure resumable on it, an error before is a prepare failure
-        that retrying can only help if the cause was transient.
-      */
-      const failure =
-        error instanceof AcornLifecycleError
-          ? error
-          : new AcornLifecycleError({
-              stage: op.ref ? 'setup' : 'prepare',
-              retryTarget: op.ref ? { datasetId: op.ref.id, languageAddress: op.lang } : null,
-              cause: error,
-            });
-      // A typed failure without a target is retryable only when its cause was
-      // never an answer — the budget running out before a target was settled.
-      const retryable = Boolean(failure.retryTarget) || mountFailureKind(failure.cause) !== 'permanent';
-      park({ stage: failure.stage, cause: failure.message, retryable });
-      /*
-        The same failure parked when reporting is no longer ours: a run that
-        threw after losing ownership cannot surface the error through `report`,
-        but the op the dialog may still be showing must not spin on a dead run —
-        park the real failure on it where the last report was ours to replace.
-      */
-      parkIfMine({ stage: failure.stage, cause: failure.message, retryable });
-      throw failure;
-    }
+    });
+    return Promise.race([inner().finally(() => clearTimeout(timer)), timedOut]);
   };
 
   /**
@@ -1131,14 +1201,16 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
     lang: string,
     opts: { name: string },
     nav: { generation: number; selection: string | undefined },
+    owns: () => boolean,
   ): Promise<string | null> => {
     /*
       Ownership asked after every await: the newest ask holds the run, and a
-      Close or a newer ask arriving while a call is out ends this one's right to
-      issue anything further. Calls already issued settle — a landed write still
-      pays its debt — but the tail does not continue past an owner that is gone.
+      Close, a newer ask, or the dialog deadline arriving while a call is out
+      ends this one's right to issue anything further. Calls already issued
+      settle — a landed write still pays its debt — but the tail does not
+      continue past an owner that is gone.
     */
-    const own = () => nav.generation === openGeneration;
+    const own = owns;
     // "Dataset appears" — the mount installed Acorn's shapes. Bounded, then on
     // anyway: a still-shapeless dataset gets WE's schemas installed next, which
     // is what `ensureSpaceStructure` is about to do itself — the order that matters
@@ -1248,7 +1320,7 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       on the counter). Either stale means the open stands down where it is: the
       work it did is finished and keeps.
     */
-    if (nav.generation !== openGeneration || deps.currentDatasetId() !== nav.selection) return null;
+    if (!own() || deps.currentDatasetId() !== nav.selection) return null;
     /*
       The same ownership, held through the navigation's awaits: a selection that moved
       during the preload or the switch means somebody else now owns where the person
@@ -1257,8 +1329,7 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       navigation is for.
     */
     const stillWanted = () =>
-      nav.generation === openGeneration &&
-      (deps.currentDatasetId() === nav.selection || deps.currentDatasetId() === ref.id);
+      own() && (deps.currentDatasetId() === nav.selection || deps.currentDatasetId() === ref.id);
     await deps.navigateToSpace(ref.id, stillWanted);
     return stillWanted() ? ref.id : null;
   };
@@ -1304,11 +1375,26 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
         while templating bumps the generation, and the call whose answer
         arrives afterward stands down instead of claiming a fresh one.
       */
-      const nav = { generation: ++openGeneration, selection: deps.currentDatasetId() };
+      const nav = {
+        generation: ++openGeneration,
+        selection: deps.currentDatasetId(),
+        deadline: Date.now() + deadlineMs,
+      };
       const seed = acornSeed(passphrase);
-      const { address: lang } = await port.applyTemplateLocal(sourceLanguageHash, { seed }).catch((error: unknown) => {
-        throw new AcornLifecycleError({ stage: 'prepare', retryTarget: null, cause: redactSeed(error, seed) });
-      });
+      const templated = await withinBudget(
+        port.applyTemplateLocal(sourceLanguageHash, { seed }).catch((error: unknown) => {
+          throw new AcornLifecycleError({ stage: 'prepare', retryTarget: null, cause: redactSeed(error, seed) });
+        }),
+        nav.deadline - Date.now(),
+      );
+      if (templated === BUDGET_OUT) {
+        throw new AcornLifecycleError({
+          stage: 'prepare',
+          retryTarget: null,
+          cause: new Error(`templating did not answer inside the ${deadlineMs / 1000} s deadline`),
+        });
+      }
+      const lang = templated.address;
       if (nav.generation !== openGeneration) return null;
       /*
         One operation per language: a resubmit of the same seed — the same
@@ -1335,25 +1421,40 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       const port = deps.port();
       const lifecycle = deps.lifecycle();
       if (!port || !lifecycle || !deps.hasAcornTemplate()) return null;
-      const nav = { generation: ++openGeneration, selection: deps.currentDatasetId() };
+      const nav = {
+        generation: ++openGeneration,
+        selection: deps.currentDatasetId(),
+        deadline: Date.now() + deadlineMs,
+      };
       const seed = acornSeed(passphrase);
-      const lang =
-        languageAddress ||
-        (
-          await port.applyTemplateLocal(sourceLanguageHash, { seed }).catch((error: unknown) => {
+      let lang = languageAddress;
+      if (!lang) {
+        const templated = await withinBudget(
+          port.applyTemplateLocal(sourceLanguageHash, { seed }).catch((error: unknown) => {
             throw new AcornLifecycleError({ stage: 'prepare', retryTarget: null, cause: redactSeed(error, seed) });
-          })
-        ).address;
+          }),
+          nav.deadline - Date.now(),
+        );
+        if (templated === BUDGET_OUT) {
+          throw new AcornLifecycleError({
+            stage: 'prepare',
+            retryTarget: null,
+            cause: new Error(`templating did not answer inside the ${deadlineMs / 1000} s deadline`),
+          });
+        }
+        lang = templated.address;
+      }
       if (nav.generation !== openGeneration) return null;
       /*
         A supplied address is verified before a dataset is made for it — joining an
         address that is not an Acorn cell would otherwise create the dataset, mount
         the language and announce into whatever it actually is. `answering` gives a
         cold cell the same grace `whoami` gets; a templated language needs no check —
-        it is Acorn by construction.
+        it is Acorn by construction. The call's own deadline bounds it too.
       */
       const owns = () => nav.generation === openGeneration;
-      if (languageAddress && !(await answering(() => acornInfo(lang), timeoutMs, pollMs, owns))) return null;
+      const infoWait = Math.min(timeoutMs, Math.max(0, nav.deadline - Date.now()));
+      if (languageAddress && !(await answering(() => acornInfo(lang!), infoWait, pollMs, owns))) return null;
       if (nav.generation !== openGeneration) return null;
       /*
         Same sharing as create: a retried join merges into the pending op —
@@ -1374,14 +1475,39 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       const port = deps.port();
       const lifecycle = deps.lifecycle();
       if (!port || !lifecycle || !deps.hasAcornTemplate()) return null;
-      const nav = { generation: ++openGeneration, selection: deps.currentDatasetId() };
+      const nav = {
+        generation: ++openGeneration,
+        selection: deps.currentDatasetId(),
+        deadline: Date.now() + deadlineMs,
+      };
       const owns = () => nav.generation === openGeneration;
       let ref: DatasetRef | null = null;
       let lang: string | null;
       try {
-        ref = await lifecycle.get(datasetId);
+        const got = await withinBudget(lifecycle.get(datasetId), nav.deadline - Date.now());
+        if (got === BUDGET_OUT) {
+          throw new AcornLifecycleError({
+            stage: 'prepare',
+            retryTarget: null,
+            cause: new Error(`the project's record did not answer inside the ${deadlineMs / 1000} s deadline`),
+          });
+        }
+        ref = got;
         if (!owns()) return null;
-        lang = ref ? await acornMountOf(await port.mounts(ref.id)) : null;
+        lang = ref
+          ? await acornMountOf(
+              await withinBudget(port.mounts(ref.id), nav.deadline - Date.now()).then((m) => {
+                if (m === BUDGET_OUT) {
+                  throw new AcornLifecycleError({
+                    stage: 'prepare',
+                    retryTarget: null,
+                    cause: new Error(`the mounts read did not answer inside the ${deadlineMs / 1000} s deadline`),
+                  });
+                }
+                return m;
+              }),
+            )
+          : null;
       } catch (error) {
         /*
           A preflight read that could not be made is a failure like the tail's:
@@ -1472,7 +1598,11 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       const port = deps.port();
       const lifecycle = deps.lifecycle();
       if (!port || !lifecycle || !deps.hasAcornTemplate()) return null;
-      const nav = { generation: ++openGeneration, selection: deps.currentDatasetId() };
+      const nav = {
+        generation: ++openGeneration,
+        selection: deps.currentDatasetId(),
+        deadline: Date.now() + deadlineMs,
+      };
       /*
         An Open that failed before it had an operation is resumed by running
         the Open again — on the dataset its failure names. A dataset-only Retry

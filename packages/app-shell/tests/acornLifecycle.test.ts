@@ -301,6 +301,77 @@ describe('joinAcornProject', () => {
   });
 });
 
+describe('the dialog deadline', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /*
+    A join that never lands must not spin forever: at the call's 60 s deadline
+    the run is parked resumable — the card the dialog shows, Retry included —
+    and the Retry runs the same words on the same retained target.
+  */
+  it('a join still out at 60 s parks resumable — and Retry runs it again with the same words', async () => {
+    vi.useFakeTimers();
+    const record: string[] = [];
+    const d = deps(record);
+    const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
+    (port.mount as ReturnType<typeof vi.fn>).mockImplementation(async (uuid: string, lang: string) => {
+      record.push(`mount:${uuid}:${lang}`);
+      return new Promise<boolean>(() => {});
+    });
+    const acorn = createAcornLifecycle(d);
+    const outcome = acorn.joinAcornProject(undefined, 'slow seed words', BASE).then(
+      (value) => ({ value }),
+      (error) => ({ error }),
+    );
+
+    await vi.advanceTimersByTimeAsync(61_000);
+
+    // The spinner's minute is up: a parked, resumable failure is what the dialog shows.
+    const pending = await acorn.pendingAcornOperation();
+    expect(pending?.phase).toBe('failed');
+    expect(pending?.failure?.retryable).toBe(true);
+    expect(pending?.datasetId).toBe('dataset-1');
+    expect(pending?.languageAddress).toBe(LANG);
+    // And the call answered — the dialog does not keep waiting on the mount that never did.
+    const settled = await Promise.race([outcome, Promise.resolve('still-out' as const)]);
+    expect(settled).not.toBe('still-out');
+
+    /*
+      Retry on the parked target: the mount call answers now, the same language
+      and dataset are re-checked, and the join lands.
+    */
+    (port.mount as ReturnType<typeof vi.fn>).mockImplementation(async (uuid: string, lang: string) => {
+      record.push(`mount:${uuid}:${lang}`);
+      port.mountsOf[uuid] = [lang];
+      return true;
+    });
+    const retried = acorn.resumeAcornOperation('dataset-1', LANG).then(
+      (value) => ({ value }),
+      (error) => ({ error }),
+    );
+    const retryOutcome = await Promise.race([
+      retried,
+      vi.advanceTimersByTimeAsync(240_000).then(() => 'still-out' as const),
+    ]);
+    expect(retryOutcome).not.toBe('still-out');
+    expect((retryOutcome as { value?: string | null }).value).toBe('dataset-1');
+    expect(record.filter((c) => c.startsWith('mount:')).every((c) => c === `mount:dataset-1:${LANG}`)).toBe(true);
+  });
+
+  it('a join that lands inside its deadline is not parked — the timer goes with the run', async () => {
+    vi.useFakeTimers();
+    const record: string[] = [];
+    const acorn = createAcornLifecycle(deps(record));
+    const join = acorn.joinAcornProject(undefined, 'quick words', BASE);
+    const { value, error } = await settle(join);
+    expect(error).toBeUndefined();
+    expect(value).toBe('dataset-1');
+    expect(await acorn.pendingAcornOperation()).toBeNull();
+  });
+});
+
 describe('openAcornProject', () => {
   afterEach(() => {
     vi.useRealTimers();
