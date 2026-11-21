@@ -353,8 +353,8 @@ const CALL_TIMEOUT_MS = 10 * 60_000;
 
 /**
  * Calls on the executor's WebSocket (`/api/v1/ws`) with the admin credential: `{id, type, params}`
- * out, `{id, result}` or `{id, error: {code, message}}` back; anything without an id (an event) is not
- * an answer. `call` rejects on the executor's error (marked `refused: true`: it answered, and said no,
+ * out, `{id, result}` or `{id, error: {code, message}}` back; anything without an id is an event
+ * (`{type, ...payload}`), which nothing here listens to and is never an answer. `call` rejects on the executor's error (marked `refused: true`: it answered, and said no,
  * with its `code`), a closed socket, or `timeoutMs`.
  */
 export function executorRpc({ port, token, timeoutMs = CALL_TIMEOUT_MS }) {
@@ -380,6 +380,8 @@ export function executorRpc({ port, token, timeoutMs = CALL_TIMEOUT_MS }) {
     } catch {
       return;
     }
+    // An event (no id): not an answer to anything.
+    if (answer && typeof answer === 'object' && answer.id === undefined && typeof answer.type === 'string') return;
     const waiting = answer?.id && pending.get(answer.id);
     if (!waiting) return;
     pending.delete(answer.id);

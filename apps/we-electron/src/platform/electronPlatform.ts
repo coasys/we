@@ -28,6 +28,7 @@ export const electronPlatform = createDesktopPlatform({
   executor: {
     restart: () => window.electron.restartExecutor(),
     chooseFile: (options) => window.electron.chooseFile(options),
+    storageStatus: () => window.electron.storageStatus?.() ?? Promise.resolve(null),
     // The tray's "Startup settings…". An older main process has no such ask: nothing to hear.
     onOpenSettings: (listener) => window.electron.executor?.onOpenSettings?.(listener) ?? (() => {}),
   },

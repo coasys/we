@@ -2995,6 +2995,7 @@ export const contextData: ContextData = {
         executorConfigRows: { type: 'array', properties: ['id', 'key', 'value', 'kind', 'choice', 'editable', 'note'] },
         executorLogTail: { type: 'string' },
         canRestartExecutor: { type: 'boolean' },
+        storageLine: { type: 'string' },
         pendingConsent: { type: 'object', properties: ['kind', 'title', 'message', 'app', 'peerId'] },
         consentSecret: { type: 'string' },
       },
