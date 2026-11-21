@@ -852,6 +852,7 @@ export const storeEntries: StoreEntry[] = [
           'name',
           'holdsMaster',
           'master',
+          'replaceMaster',
         ],
       },
       devicesLoaded: { type: 'boolean' },
@@ -859,6 +860,9 @@ export const storeEntries: StoreEntry[] = [
       canManage: { type: 'boolean' },
       canShowCode: { type: 'boolean' },
       canAskMaster: { type: 'boolean' },
+      canReplaceMaster: { type: 'boolean' },
+      canRestore: { type: 'boolean' },
+      canRemoveMaster: { type: 'boolean' },
       masterWaiting: { type: 'boolean' },
       encMismatch: { type: 'boolean' },
       requests: { type: 'array', properties: ['id', 'kind', 'title', 'detail'] },
@@ -874,6 +878,9 @@ export const storeEntries: StoreEntry[] = [
       'answerRequest',
       'rename',
       'revoke',
+      'replaceMaster',
+      'restore',
+      'removeMaster',
     ],
   },
   {
@@ -2254,7 +2261,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
   deviceStore: {
     state: {
       devices:
-        "{ keyId, addedSeq, unlinkedSeq, revokedSeq, label, subtitle, icon, thisDevice, unlinked, revoked, status, canUnlink, canRevoke, name, holdsMaster, master }[] — the device keys of the person's key log, active first and this computer on top, named from the identity's private record (which only its devices read). `label` is the record's name, else 'This computer' or 'Device d2'; `name` the record's name or empty; `status` 'Active', 'Unlinked' (retired: it signs nothing new, and what it signed before stays valid) or 'Revoked' (lost or stolen); `canUnlink` is an active key that is not this computer's; `canRevoke` is a key not yet revoked, unlinked or not, that is not this computer's; `holdsMaster` 'yes', 'no' or 'offered' (sent, not yet taken), worded in `master` ('Has master key', 'Master key sent', or empty). A revoked key's `holdsMaster` is 'no', but its `master` warns when it took the master key or the key log let it ('Still has your master key. Replace it to lock this device out.', 'May still have your master key. Replace it to lock this device out.'): a revoke leaves a copy of the master key valid. Draw `master` in a warning tone unless `holdsMaster` is 'yes'",
+        "{ keyId, addedSeq, unlinkedSeq, revokedSeq, label, subtitle, icon, thisDevice, unlinked, revoked, status, canUnlink, canRevoke, name, holdsMaster, master, replaceMaster }[] — the device keys of the person's key log, active first and this computer on top, named from the identity's private record (which only its devices read). `label` is the record's name, else 'This computer' or 'Device d2'; `name` the record's name or empty; `status` 'Active', 'Unlinked' (retired: it signs nothing new, and what it signed before stays valid) or 'Revoked' (lost or stolen); `canUnlink` is an active key that is not this computer's; `canRevoke` is a key not yet revoked, unlinked or not, that is not this computer's; `holdsMaster` 'yes', 'no' or 'offered' (sent, not yet taken), worded in `master` ('Has master key', 'Master key sent', or empty). A revoked key's `holdsMaster` is 'no', but its `master` warns when it took the master key or the key log let it ('Still has your master key. Replace it to lock this device out.', 'May still have your master key. Replace it to lock this device out.'): a revoke leaves a copy of the master key valid, until the master key is replaced: a rotation at or after the revoke clears the warning. `replaceMaster` is true on a row that warns: offer replaceMaster there, where canReplaceMaster. Draw `master` in a warning tone unless `holdsMaster` is 'yes'",
       devicesLoaded: 'boolean — the list has been read once',
       validCount: 'number — how many keys are active: neither unlinked nor revoked',
       canManage:
@@ -2262,10 +2269,16 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       canShowCode: 'boolean — "Show code" can be offered: this computer can join an identity and speaks for none yet',
       canAskMaster:
         'boolean — "Ask for master key" can be offered: a device of the identity that does not keep the master key, has none waiting, and could open one (not encMismatch)',
+      canReplaceMaster:
+        'boolean — "Replace master key" can be offered: a valid device of the identity where the 12 words can be typed. It need not keep the master key: replacing it shuts out a lost device that kept one',
+      canRestore:
+        'boolean — "Restore with recovery phrase" can be offered: this computer can take the words and speaks for no identity yet. Offer it beside "Show code"',
+      canRemoveMaster:
+        'boolean — this computer keeps the master key: on log out, ask "Remove master key from this computer?"',
       masterWaiting:
         'boolean — a master key another device sent waits here and this computer can open it: offer "Accept master key"',
       encMismatch:
-        'boolean — this computer lost the key that opens what is sent to it: no master key and no device names reach it (`devices` carries no names or master-key words then). Show a warning that says to revoke this computer from a device that holds the master key, then link it again',
+        'boolean — this computer lost the key that opens what is sent to it: no master key and no device names reach it (`devices` carries no names and nothing the record says of the master key then; the warning on a revoked row, read from the key log, stays). Show a warning that says to revoke this computer from a device that holds the master key, then link it again',
       requests:
         "{ id, kind, title, detail }[] — what the person's other devices asked and is waiting for an answer, while this computer keeps the master key; empty otherwise. `kind` is 'send-master' or 'confirm-revoke'; `title` names the device that asked ('Laptop asks for the master key')",
       error: 'string — why the last read failed, or empty',
@@ -2287,7 +2300,13 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       unlink:
         '(keyId: string): unlinks that device key — retired: it signs nothing new, and what it signed before stays valid — once the person confirms it where the master key is kept. Resolves with the outcome',
       revoke:
-        '(keyId: string): revokes that device key, lost or stolen, once the person confirms it where the master key is kept and says since when it was missing. Resolves with the outcome',
+        '(keyId: string): revokes that device key, lost or stolen, once the person confirms it where the master key is kept and says since when it was missing; the confirmation offers "Also replace master key" (ticked when the device kept a copy), which asks for the 12 words. Resolves with the outcome',
+      replaceMaster:
+        '(): "Replace master key" — asks for the 12 words where the custody service runs and publishes the next master key, which this computer keeps; every copy kept until now stops counting. Resolves with the outcome',
+      restore:
+        '(): "Restore with recovery phrase" — on a computer of no identity, asks for the words, lists the identity\'s devices to lock out, and makes this computer a device of it that keeps the new master key. Resolves with the outcome',
+      removeMaster:
+        "(): stops keeping the master key on this computer, once the person confirms it; refused, with the reason, when this computer keeps the only copy. Resolves 'done' only when it was removed",
     },
   },
   workflowStore: {

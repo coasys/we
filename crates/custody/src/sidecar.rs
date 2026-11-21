@@ -28,16 +28,22 @@
 //! `AD4M_CUSTODY_CREDENTIAL` or `AD4M_CUSTODY_CREDENTIAL_FILE` set refuses the start, as it does
 //! the executor's. No error here repeats what a request carried: a malformed step input could hold
 //! a passphrase.
+//!
+//! A request line can carry the 12 words or a passphrase, so it is read into a buffer that is wiped
+//! ([`Lines`]), no longer than [`MAX_LINE`] (a longer one is refused with `"line too long"`), and
+//! its params are read from the line's own text into a step input that wipes its secrets when
+//! dropped, read or not. `tests/step_input_wipe.rs` checks no freed block keeps one.
 
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use serde_json::value::RawValue;
 use serde_json::{json, Value};
-use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::sync::mpsc;
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::host::custody_dir;
 use crate::service::{
@@ -177,26 +183,105 @@ pub fn main(config: Config) -> Result<(), Stopped> {
     })
 }
 
+/// The longest request line: far past any request the identity window sends (the 12 words are under
+/// 200 bytes), and the most a line buffer ever holds, so it never grows past its first allocation.
+pub const MAX_LINE: usize = 64 * 1024;
+
+/// What one read of [`Lines::read`] found.
+#[derive(Debug)]
+pub enum Read {
+    /// A whole line, without its `\n`, in a buffer that wipes itself when dropped.
+    Line(Zeroizing<Vec<u8>>),
+    /// A line longer than [`MAX_LINE`]: wiped as it is read, and refused once.
+    TooLong,
+    /// Part of a line; read again.
+    Partial,
+    /// Input ended.
+    End,
+}
+
+/// Request lines read into a buffer that is wiped: a line can carry the 12 words or a passphrase.
+///
+/// The buffer is allocated once at [`MAX_LINE`] and a read never asks for more, so it never moves,
+/// which would leave a copy behind in the allocation it left. A line read is moved out whole and
+/// wiped when its request has been answered; a line too long is wiped as it is read.
+pub struct Lines {
+    buf: Zeroizing<Vec<u8>>,
+    /// Reading to the end of a line already refused as too long.
+    skipping: bool,
+}
+
+impl Default for Lines {
+    fn default() -> Self {
+        Lines {
+            buf: Zeroizing::new(Vec::with_capacity(MAX_LINE)),
+            skipping: false,
+        }
+    }
+}
+
+impl Lines {
+    /// Reads once. Cancel-safe, so it can wait in a `select!`: a read cut short leaves what it read
+    /// in the buffer, and the next read carries on from there.
+    pub async fn read<R: AsyncBufRead + Unpin>(&mut self, input: &mut R) -> std::io::Result<Read> {
+        let room = (MAX_LINE - self.buf.len()) as u64;
+        let read = input.take(room).read_until(b'\n', &mut self.buf).await?;
+        let ended = self.buf.last() == Some(&b'\n');
+        if !ended && read > 0 && self.buf.len() < MAX_LINE {
+            return Ok(Read::Partial);
+        }
+        let end = !ended && read == 0;
+        if !ended && !end {
+            // Full, and no newline yet.
+            self.buf.zeroize();
+            let first = !self.skipping;
+            self.skipping = true;
+            return Ok(if first { Read::TooLong } else { Read::Partial });
+        }
+        if self.skipping {
+            self.buf.zeroize();
+            self.skipping = false;
+            return Ok(if end { Read::End } else { Read::Partial });
+        }
+        if end && self.buf.is_empty() {
+            return Ok(Read::End);
+        }
+        if ended {
+            self.buf.pop();
+        }
+        let line = std::mem::replace(&mut *self.buf, Vec::with_capacity(MAX_LINE));
+        Ok(Read::Line(Zeroizing::new(line)))
+    }
+}
+
 /// Answers each request line of `input` on `output`, until `input` ends.
-pub async fn serve<R, W>(custody: CustodyHandle, input: R, mut output: W) -> std::io::Result<()>
+pub async fn serve<R, W>(custody: CustodyHandle, mut input: R, mut output: W) -> std::io::Result<()>
 where
     R: AsyncBufRead + Unpin,
     W: AsyncWrite + Unpin,
 {
     let (tx, mut answers) = mpsc::unbounded_channel::<String>();
-    let mut lines = input.lines();
-    loop {
+    let mut lines = Lines::default();
+    let mut ended = false;
+    while !ended {
         tokio::select! {
-            line = lines.next_line() => match line {
-                Ok(Some(line)) if line.trim().is_empty() => {}
-                Ok(Some(line)) => {
+            read = lines.read(&mut input) => match read {
+                Ok(Read::Line(line)) => {
+                    // The last line of input may have no newline: it is a request all the same.
+                    if line.trim_ascii().is_empty() {
+                        continue;
+                    }
                     let (custody, tx) = (custody.clone(), tx.clone());
                     tokio::spawn(async move {
                         let _ = tx.send(answer(&custody, &line).await);
                     });
                 }
+                Ok(Read::TooLong) => {
+                    let _ = tx.send(json!({ "id": null, "error": "line too long" }).to_string());
+                }
+                Ok(Read::Partial) => {}
                 // Closed, or unreadable: the host is gone either way.
-                Ok(None) | Err(_) => break,
+                Ok(Read::End) | Err(_) => ended = true,
             },
             Some(reply) = answers.recv() => write_line(&mut output, &reply).await?,
         }
@@ -221,12 +306,22 @@ async fn write_line<W: AsyncWrite + Unpin>(output: &mut W, line: &str) -> std::i
     output.flush().await
 }
 
+/// A request, read straight from its line: `params` stays the line's own text until the method's
+/// params are read from it, so no copy of a word or a passphrase is made on the way but the one the
+/// step input wipes ([`crate::service::TypedSecret`]).
 #[derive(Deserialize)]
-struct Request {
+struct Request<'a> {
     id: Value,
     method: String,
+    #[serde(default, borrow)]
+    params: Option<&'a RawValue>,
+}
+
+/// The id of a line that is not a request, so its error can still be matched to it.
+#[derive(Deserialize)]
+struct IdOnly {
     #[serde(default)]
-    params: Value,
+    id: Value,
 }
 
 /// A screen, and how the step ended when it is the last.
@@ -254,13 +349,21 @@ struct StepParams {
 }
 
 /// The answer line to one request line.
-async fn answer(custody: &CustodyHandle, line: &str) -> String {
-    let Ok(value) = serde_json::from_str::<Value>(line) else {
-        return json!({ "id": null, "error": "not JSON" }).to_string();
+async fn answer(custody: &CustodyHandle, line: &[u8]) -> String {
+    let not_json = || json!({ "id": null, "error": "not JSON" }).to_string();
+    let Ok(line) = std::str::from_utf8(line) else {
+        return not_json();
     };
-    let id = value.get("id").cloned().unwrap_or(Value::Null);
-    let Ok(request) = serde_json::from_value::<Request>(value) else {
-        return json!({ "id": id, "error": "not a request" }).to_string();
+    // Checked whole first, so a line that is not JSON is told apart from one that is not a request.
+    if serde_json::from_str::<&RawValue>(line).is_err() {
+        return not_json();
+    }
+    let request = match serde_json::from_str::<Request>(line) {
+        Ok(request) => request,
+        Err(_) => {
+            let id = serde_json::from_str::<IdOnly>(line).map_or(Value::Null, |only| only.id);
+            return json!({ "id": id, "error": "not a request" }).to_string();
+        }
     };
     match call(custody, &request.method, request.params).await {
         Ok(result) => json!({ "id": request.id, "result": result }),
@@ -269,7 +372,11 @@ async fn answer(custody: &CustodyHandle, line: &str) -> String {
     .to_string()
 }
 
-async fn call(custody: &CustodyHandle, method: &str, params: Value) -> Result<Value, String> {
+async fn call(
+    custody: &CustodyHandle,
+    method: &str,
+    params: Option<&RawValue>,
+) -> Result<Value, String> {
     let fail = |e: crate::CustodyError| e.to_string();
     let result = match method {
         "publicState" => serde_json::to_value(custody.public_state().await.map_err(fail)?),
@@ -288,8 +395,12 @@ async fn call(custody: &CustodyHandle, method: &str, params: Value) -> Result<Va
 }
 
 /// The params of `method`, with an error that never repeats them.
-fn params_of<T: DeserializeOwned>(method: &str, params: Value) -> Result<T, String> {
-    serde_json::from_value(params).map_err(|_| format!("the params of `{method}` are not valid"))
+fn params_of<'a, T: Deserialize<'a>>(
+    method: &str,
+    params: Option<&'a RawValue>,
+) -> Result<T, String> {
+    serde_json::from_str(params.map_or("null", RawValue::get))
+        .map_err(|_| format!("the params of `{method}` are not valid"))
 }
 
 /// Sends the crate's log lines to stderr, which the host keeps in its own log. They carry no
@@ -415,6 +526,41 @@ mod tests {
         );
         let all = serde_json::to_string(&answers).unwrap();
         assert!(!all.contains("4815162342") && !all.contains("burn-it-all"));
+    }
+
+    #[tokio::test]
+    async fn a_line_too_long_is_refused_once_and_the_next_line_is_answered() {
+        let long = format!(
+            r#"{{"id":1,"method":"publicState","pad":"{}"}}"#,
+            "x".repeat(3 * MAX_LINE)
+        );
+        let answers = exchange(custody(), &[&long, r#"{"id":2,"method":"cancel"}"#]).await;
+        assert_eq!(answers.len(), 2, "{answers:?}");
+        assert_eq!(by_id(&answers, Value::Null)["error"], "line too long");
+        assert_eq!(by_id(&answers, json!(2))["result"], Value::Null);
+    }
+
+    #[tokio::test]
+    async fn lines_are_read_whole_across_small_reads_and_the_buffer_is_left_empty() {
+        let text = format!("first\r\n\n{}\nsecond", "y".repeat(MAX_LINE + 1));
+        // A reader that hands over 7 bytes at a time.
+        let mut input = tokio::io::BufReader::with_capacity(7, text.as_bytes());
+        let mut lines = Lines::default();
+        let mut seen = Vec::new();
+        loop {
+            match lines.read(&mut input).await.unwrap() {
+                Read::Line(line) => {
+                    assert!(lines.buf.is_empty());
+                    seen.push(String::from_utf8(line.to_vec()).unwrap());
+                }
+                Read::TooLong => seen.push("<too long>".into()),
+                Read::Partial => {}
+                Read::End => break,
+            }
+            // Never grown past its first allocation.
+            assert_eq!(lines.buf.capacity(), MAX_LINE);
+        }
+        assert_eq!(seen, ["first\r", "", "<too long>", "second"]);
     }
 
     fn env(vars: &'static [(&'static str, &'static str)]) -> impl Fn(&str) -> Option<String> {

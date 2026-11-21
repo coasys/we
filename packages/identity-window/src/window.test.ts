@@ -7,6 +7,7 @@ const confirm = (error: string | null = null): Screen => ({
   screen: 'revoke-confirm',
   keyId: 'd2',
   mayHoldMaster: false,
+  rotate: false,
   passphrase: true,
   error,
 });
@@ -52,8 +53,8 @@ describe('the revoke confirm screen', () => {
 
     const at = new Date(2026, 10, 20, 8, 0).getTime();
     expect(sent).toEqual([
-      { kind: 'revoke', passphrase: 'wrong', since: at },
-      { kind: 'revoke', passphrase: 'right', since: at },
+      { kind: 'revoke', rotate: false, passphrase: 'wrong', since: at },
+      { kind: 'revoke', rotate: false, passphrase: 'right', since: at },
     ]);
   });
 
@@ -73,6 +74,21 @@ describe('the revoke confirm screen', () => {
     revoke();
     await vi.waitFor(() => expect(sent).toHaveLength(1));
 
-    expect(sent[0]).toEqual({ kind: 'revoke', passphrase: 'right' });
+    expect(sent[0]).toEqual({ kind: 'revoke', rotate: false, passphrase: 'right' });
+  });
+
+  it('sends no time with "Also replace master key": the rotation revokes the key in its own event', async () => {
+    const sent = await openOn([{ screen: 'failed', message: 'stop here' }]);
+    picker().value = '2026-11-20T08:00';
+    const rotate = document.querySelector<HTMLInputElement>('input[type=checkbox]')!;
+    rotate.checked = true;
+    rotate.dispatchEvent(new Event('change'));
+
+    expect(picker().disabled).toBe(true);
+    passphrase().value = 'right';
+    revoke();
+    await vi.waitFor(() => expect(sent).toHaveLength(1));
+
+    expect(sent[0]).toEqual({ kind: 'revoke', rotate: true, passphrase: 'right' });
   });
 });

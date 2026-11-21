@@ -122,7 +122,11 @@ export interface IdentityPort {
  * - `rename`: name a device, in the private record only its devices read.
  * - `unlink`: retire a device key: it signs nothing new, and what it signed before stays valid.
  * - `revoke`: revoke a device that was lost or stolen; the time it stops being trusted from is asked
- *   where the master key is kept.
+ *   where the master key is kept. The person may replace the master key in the same step.
+ * - `replace-master`: replace the master key from the 12 words, so every copy kept until now stops.
+ * - `restore`: on a computer of no identity yet, bring the identity back from the 12 words, locking
+ *   out the devices the person picks.
+ * - `remove-master`: stop keeping the master key on this computer; refused for the only copy.
  */
 export type IdentityChange =
   | { kind: 'create' }
@@ -134,7 +138,10 @@ export type IdentityChange =
   | { kind: 'answer-request'; id: string }
   | { kind: 'rename'; keyId: string }
   | { kind: 'unlink'; keyId: string }
-  | { kind: 'revoke'; keyId: string };
+  | { kind: 'revoke'; keyId: string }
+  | { kind: 'replace-master' }
+  | { kind: 'restore' }
+  | { kind: 'remove-master' };
 
 /** How a change ended: made, abandoned by the person, or refused along the way. */
 export type IdentityChangeOutcome = 'done' | 'cancelled' | 'failed';
