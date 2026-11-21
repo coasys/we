@@ -92,6 +92,7 @@ describe('the AD4M identity port', () => {
           deviceEnc: 'z6LS',
           keyId: 'd1',
           revoked: null,
+          unlinked: null,
           head,
           fork: null,
           storeBehind: { since: 1_700_000_000, seq: 0 },
