@@ -1,6 +1,6 @@
 /**
- * DeviceStore — the devices that speak for the person: linking one, naming one, revoking one, and
- * who keeps the master key.
+ * DeviceStore — the devices that speak for the person: linking one, naming one, unlinking one,
+ * revoking one, and who keeps the master key.
  *
  * Reads `IdentityPort.devices` (the device keys the key log lists) and names them from the private
  * record the custody view carries (`IdentityCustodyView.devices`), with who keeps the master key and
@@ -32,10 +32,10 @@ export interface DeviceStore {
   /** The device keys, valid first, this computer at the top. */
   devices: Accessor<DeviceRow[]>;
   devicesLoaded: Accessor<boolean>;
-  /** How many keys are valid. */
+  /** How many keys are active: neither unlinked nor revoked. */
   validCount: Accessor<number>;
   /**
-   * Linking, naming, revoking and answering requests can be offered: this computer keeps the master
+   * Linking, naming, unlinking, revoking and answering requests can be offered: this computer keeps the master
    * key of the identity.
    */
   canManage: Accessor<boolean>;
@@ -76,7 +76,9 @@ export interface DeviceStore {
   answerRequest: (id: string) => Promise<IdentityChangeOutcome>;
   /** Names the device `keyId`. */
   rename: (keyId: string) => Promise<IdentityChangeOutcome>;
-  /** Revokes the device key `keyId`. */
+  /** Unlinks the device key `keyId`: it signs nothing new, and what it signed before stays valid. */
+  unlink: (keyId: string) => Promise<IdentityChangeOutcome>;
+  /** Revokes the device key `keyId`, lost or stolen; the person says since when, where they unlock. */
   revoke: (keyId: string) => Promise<IdentityChangeOutcome>;
 }
 
@@ -144,7 +146,7 @@ export function DeviceStoreProvider(props: ParentProps) {
   const store: DeviceStore = {
     devices: rows,
     devicesLoaded,
-    validCount: () => rows().filter((d) => !d.revoked).length,
+    validCount: () => rows().filter((d) => !d.revoked && !d.unlinked).length,
     canManage,
     canShowCode: () => linking() && identity.statusLoaded() && !identity.did() && !identity.custody()?.holdsMaster,
     canAskMaster: () =>
@@ -169,6 +171,7 @@ export function DeviceStoreProvider(props: ParentProps) {
     askMaster: () => step(() => identity.open({ kind: 'ask-master' })),
     answerRequest: (id: string) => step(() => identity.open({ kind: 'answer-request', id })),
     rename: (keyId: string) => step(() => identity.open({ kind: 'rename', keyId })),
+    unlink: (keyId: string) => step(() => identity.open({ kind: 'unlink', keyId })),
     revoke: (keyId: string) => step(() => identity.open({ kind: 'revoke', keyId })),
   };
 

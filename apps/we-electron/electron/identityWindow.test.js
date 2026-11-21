@@ -240,6 +240,8 @@ describe('the identity window', () => {
       { kind: 'export-key' },
       { kind: 'revoke' },
       { kind: 'revoke', keyId: 2 },
+      { kind: 'unlink' },
+      { kind: 'unlink', keyId: 2 },
       { kind: 'rename' },
       { kind: 'answer-request' },
       { kind: 'answer-request', id: 7 },
@@ -257,6 +259,8 @@ describe('the identity window', () => {
       { kind: 'ask-master' },
       { kind: 'answer-request', id: 'r1' },
       { kind: 'rename', keyId: 'd2' },
+      { kind: 'unlink', keyId: 'd2' },
+      { kind: 'revoke', keyId: 'd2' },
     ]) {
       const { identity, calls, windows } = setup({ start: READY });
       const outcome = identity.open(step);

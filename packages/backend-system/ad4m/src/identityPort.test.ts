@@ -33,6 +33,7 @@ const add = {
   coSig: 's',
 };
 const revoke = { format: 'coasys-kel/1', scid: 'QmScid', seq: 2, prev: 'QmHash1', op: 'revoke', revoke: ['d2'] };
+const unlink = { format: 'coasys-kel/1', scid: 'QmScid', seq: 3, prev: 'QmHash2', op: 'unlink', unlink: 'd3' };
 const head: SignedHead = {
   scid: 'QmScid',
   seq: 2,
@@ -67,6 +68,14 @@ describe('the AD4M identity port', () => {
     expect(log.head).toMatchObject({ seq: 2, store: 'did:key:z6MkStore' });
   });
 
+  it('reads an unlink as the key it retires', async () => {
+    const port = createAd4mIdentityPort(
+      client({ log: { did: DID, events: [incept, unlink], head, fork: null } satisfies IdentityLog }),
+    );
+    const log = await port.log!(DID);
+    expect(log.events[1]).toMatchObject({ op: 'unlink', unlinked: ['d3'], revoked: [] });
+  });
+
   it('asks the executor to refresh the log from the store', async () => {
     const c = client({ log: { did: DID, events: [], head: null } });
     await createAd4mIdentityPort(c).log!(DID);
@@ -89,8 +98,26 @@ describe('the AD4M identity port', () => {
           store: { url: 'https://store.example', trusted: true },
         } satisfies IdentityStatus,
         devices: [
-          { keyId: 'd1', sign: 'z6MkOne', bot: null, expires: null, addedSeq: 0, revokedSeq: null, thisDevice: true },
-          { keyId: 'd2', sign: 'z6MkTwo', bot: null, expires: null, addedSeq: 1, revokedSeq: 2, thisDevice: false },
+          {
+            keyId: 'd1',
+            sign: 'z6MkOne',
+            bot: null,
+            expires: null,
+            addedSeq: 0,
+            unlinkedSeq: null,
+            revokedSeq: null,
+            thisDevice: true,
+          },
+          {
+            keyId: 'd2',
+            sign: 'z6MkTwo',
+            bot: null,
+            expires: null,
+            addedSeq: 1,
+            unlinkedSeq: 2,
+            revokedSeq: 3,
+            thisDevice: false,
+          },
         ] satisfies DeviceView[],
       }),
     );
@@ -101,9 +128,9 @@ describe('the AD4M identity port', () => {
       storeBehind: { since: 1_700_000_000, seq: 0 },
     });
     const devices = await port.devices!();
-    expect(devices.map((d) => [d.keyId, d.thisDevice, d.revokedSeq])).toEqual([
-      ['d1', true, null],
-      ['d2', false, 2],
+    expect(devices.map((d) => [d.keyId, d.thisDevice, d.unlinkedSeq, d.revokedSeq])).toEqual([
+      ['d1', true, null, null],
+      ['d2', false, 2, 3],
     ]);
   });
 

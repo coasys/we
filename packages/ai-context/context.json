@@ -6442,8 +6442,10 @@
             "subtitle",
             "icon",
             "thisDevice",
+            "unlinked",
             "revoked",
             "status",
+            "canUnlink",
             "canRevoke",
             "name",
             "holdsMaster",
@@ -6488,10 +6490,11 @@
         "askMaster",
         "answerRequest",
         "rename",
+        "unlink",
         "revoke"
       ],
       "ambient": ["refresh"],
-      "needsArgs": ["answerRequest", "rename", "revoke"]
+      "needsArgs": ["answerRequest", "rename", "unlink", "revoke"]
     },
     {
       "name": "editorStore",

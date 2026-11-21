@@ -120,7 +120,9 @@ export interface IdentityPort {
  * - `ask-master`: ask a device that keeps the master key to send it here.
  * - `answer-request`: answer what another device asked (send the master key, revoke devices).
  * - `rename`: name a device, in the private record only its devices read.
- * - `revoke`: revoke a device.
+ * - `unlink`: retire a device key: it signs nothing new, and what it signed before stays valid.
+ * - `revoke`: revoke a device that was lost or stolen; the time it stops being trusted from is asked
+ *   where the master key is kept.
  */
 export type IdentityChange =
   | { kind: 'create' }
@@ -131,6 +133,7 @@ export type IdentityChange =
   | { kind: 'ask-master' }
   | { kind: 'answer-request'; id: string }
   | { kind: 'rename'; keyId: string }
+  | { kind: 'unlink'; keyId: string }
   | { kind: 'revoke'; keyId: string };
 
 /** How a change ended: made, abandoned by the person, or refused along the way. */
@@ -246,12 +249,14 @@ export interface KeyLogDevice {
 /** One event of a key log, in the words a screen needs. */
 export interface KeyLogEvent {
   seq: number;
-  /** `incept`, `add`, `revoke`, `rotate`, or whatever a later format adds. */
+  /** `incept`, `add`, `unlink`, `revoke`, `rotate`, or whatever a later format adds. */
   op: string;
   /** The event's hash in the log, the next event's `prev`, where the backend reports one. */
   hash: string | null;
   /** The device keys this event adds. */
   added: KeyLogDevice[];
+  /** The device key ids this event unlinks. */
+  unlinked: string[];
   /** The device key ids this event revokes. */
   revoked: string[];
 }
@@ -272,6 +277,8 @@ export interface DeviceKeyView {
   thisDevice: boolean;
   /** The seq of the event that added it. */
   addedSeq: number;
+  /** The seq of the event that unlinked it, or `null` while it is not. */
+  unlinkedSeq: number | null;
   /** The seq of the event that revoked it, or `null` while it is valid. */
   revokedSeq: number | null;
 }

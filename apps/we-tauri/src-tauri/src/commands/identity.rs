@@ -48,6 +48,7 @@ fn step_kind(step: &Option<IdentityStep>) -> &'static str {
         Some(IdentityStep::AskMaster) => "ask-master",
         Some(IdentityStep::AnswerRequest { .. }) => "answer-request",
         Some(IdentityStep::Rename { .. }) => "rename",
+        Some(IdentityStep::Unlink { .. }) => "unlink",
         Some(IdentityStep::Revoke { .. }) => "revoke",
         None => "",
     }

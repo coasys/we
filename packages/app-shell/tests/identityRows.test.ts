@@ -9,11 +9,11 @@ const REVOKED_MAY_HOLD = 'May still have your master key. Replace it to lock thi
 
 describe('keyLogRows', () => {
   const events = [
-    { seq: 0, op: 'incept', hash: 'QmZkAAAAAAAAAAAA7rWd', added: [{ id: 'd1', sign: 'z' }], revoked: [] },
-    { seq: 1, op: 'add', hash: 'QmN4BBBBBBBBBByFlk', added: [{ id: 'd2', sign: 'z' }], revoked: [] },
-    { seq: 2, op: 'revoke', hash: null, added: [], revoked: ['d2'] },
-    { seq: 3, op: 'rotate', hash: null, added: [], revoked: [] },
-    { seq: 4, op: 'scope', hash: null, added: [], revoked: [] },
+    { seq: 0, op: 'incept', hash: 'QmZkAAAAAAAAAAAA7rWd', added: [{ id: 'd1', sign: 'z' }], unlinked: [], revoked: [] },
+    { seq: 1, op: 'add', hash: 'QmN4BBBBBBBBBByFlk', added: [{ id: 'd2', sign: 'z' }], unlinked: [], revoked: [] },
+    { seq: 2, op: 'revoke', hash: null, added: [], unlinked: [], revoked: ['d2'] },
+    { seq: 3, op: 'rotate', hash: null, added: [], unlinked: [], revoked: [] },
+    { seq: 4, op: 'scope', hash: null, added: [], unlinked: [], revoked: [] },
   ];
 
   it('words each event, newest first, and marks this computer', () => {
@@ -30,6 +30,11 @@ describe('keyLogRows', () => {
     expect(rows.find((r) => r.seq === 0)!.hashShort).toBe('QmZk…7rWd');
   });
 
+  it('reads an unlink as the key it retires', () => {
+    const [row] = keyLogRows([{ seq: 2, op: 'unlink', hash: null, added: [], unlinked: ['d2'], revoked: [] }], 'd1');
+    expect([row.title, row.detail, row.keys, row.icon]).toEqual(['Unlinked d2', 'd2', ['d2'], 'link-break']);
+  });
+
   it('names this computer and every other key by its id', () => {
     const rows = keyLogRows(events.slice(0, 3), 'd2');
     expect(rows.map((r) => r.title)).toEqual(['Revoked this computer', 'Added this computer', 'Created identity']);
@@ -40,26 +45,41 @@ describe('keyLogRows', () => {
 describe('deviceRows', () => {
   it('puts valid keys first and this computer on top, and offers revoke for the others only', () => {
     const rows = deviceRows([
-      { keyId: 'd3', sign: 'z', thisDevice: false, addedSeq: 3, revokedSeq: null },
-      { keyId: 'd2', sign: 'z', thisDevice: false, addedSeq: 1, revokedSeq: 2 },
-      { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, revokedSeq: null },
+      { keyId: 'd3', sign: 'z', thisDevice: false, addedSeq: 3, unlinkedSeq: null, revokedSeq: null },
+      { keyId: 'd2', sign: 'z', thisDevice: false, addedSeq: 1, unlinkedSeq: null, revokedSeq: 2 },
+      { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, unlinkedSeq: null, revokedSeq: null },
     ]);
-    expect(rows.map((r) => [r.keyId, r.label, r.status, r.canRevoke])).toEqual([
-      ['d1', 'This computer', 'Active', false],
-      ['d3', 'Device d3', 'Active', true],
-      ['d2', 'Device d2', 'Removed at #2', false],
+    expect(rows.map((r) => [r.keyId, r.label, r.status, r.canUnlink, r.canRevoke])).toEqual([
+      ['d1', 'This computer', 'Active', false, false],
+      ['d3', 'Device d3', 'Active', true, true],
+      ['d2', 'Device d2', 'Revoked', false, false],
     ]);
     expect(rows[1].subtitle).toBe('d3 · added at #3');
     expect(rows.map((r) => r.icon)).toEqual(['laptop', 'key', 'key']);
   });
 
+  it('reads a device Active, Unlinked or Revoked, and lets an unlinked one be revoked but not unlinked again', () => {
+    const rows = deviceRows([
+      { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, unlinkedSeq: null, revokedSeq: null },
+      { keyId: 'd2', sign: 'z', thisDevice: false, addedSeq: 1, unlinkedSeq: 3, revokedSeq: null },
+      { keyId: 'd3', sign: 'z', thisDevice: false, addedSeq: 2, unlinkedSeq: 4, revokedSeq: 5 },
+      { keyId: 'd4', sign: 'z', thisDevice: false, addedSeq: 6, unlinkedSeq: null, revokedSeq: null },
+    ]);
+    expect(rows.map((r) => [r.keyId, r.status, r.unlinked, r.revoked, r.canUnlink, r.canRevoke])).toEqual([
+      ['d1', 'Active', false, false, false, false],
+      ['d4', 'Active', false, false, true, true],
+      ['d2', 'Unlinked', true, false, false, true],
+      ['d3', 'Revoked', true, true, false, false],
+    ]);
+  });
+
   it('names each device as the private record does, and says which keep the master key', () => {
     const rows = deviceRows(
       [
-        { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, revokedSeq: null },
-        { keyId: 'd2', sign: 'z', thisDevice: false, addedSeq: 1, revokedSeq: null },
-        { keyId: 'd3', sign: 'z', thisDevice: false, addedSeq: 2, revokedSeq: null },
-        { keyId: 'd4', sign: 'z', thisDevice: false, addedSeq: 3, revokedSeq: 4 },
+        { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, unlinkedSeq: null, revokedSeq: null },
+        { keyId: 'd2', sign: 'z', thisDevice: false, addedSeq: 1, unlinkedSeq: null, revokedSeq: null },
+        { keyId: 'd3', sign: 'z', thisDevice: false, addedSeq: 2, unlinkedSeq: null, revokedSeq: null },
+        { keyId: 'd4', sign: 'z', thisDevice: false, addedSeq: 3, unlinkedSeq: null, revokedSeq: 4 },
       ],
       [
         { keyId: 'd1', name: 'Desktop', kind: 'desktop-app', holdsMaster: 'yes' },
@@ -82,8 +102,8 @@ describe('deviceRows', () => {
 
   it('keeps warning of a device revoked after it was handed the master key', () => {
     const keys = [
-      { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, revokedSeq: null },
-      { keyId: 'd2', sign: 'z', thisDevice: false, addedSeq: 1, revokedSeq: null },
+      { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, unlinkedSeq: null, revokedSeq: null },
+      { keyId: 'd2', sign: 'z', thisDevice: false, addedSeq: 1, unlinkedSeq: null, revokedSeq: null },
     ];
     const handedOver = deviceRows(keys, [
       { keyId: 'd1', name: 'Desktop', kind: 'desktop-app', holdsMaster: 'yes' },
@@ -99,7 +119,7 @@ describe('deviceRows', () => {
     );
     expect(revoked.map((r) => [r.label, r.status, r.master])).toEqual([
       ['Desktop', 'Active', 'Has master key'],
-      ['Device d2', 'Removed at #2', REVOKED_MAY_HOLD],
+      ['Device d2', 'Revoked', REVOKED_MAY_HOLD],
     ]);
 
     // A revoked device the log never let keep the master key carries no warning.

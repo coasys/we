@@ -1547,6 +1547,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     askMaster: action('devices'),
     answerRequest: action('devices'),
     rename: action('devices'),
+    unlink: action('devices'),
     revoke: action('devices'),
   },
 

@@ -16,15 +16,15 @@ import type { DeviceKeyView, DeviceNameView, DeviceRequestView, KeyLogEvent } fr
 /** One row of Security → Key log. */
 export interface KeyLogRow {
   seq: number;
-  /** `incept`, `add`, `revoke`, `rotate`, or whatever a later format adds. */
+  /** `incept`, `add`, `unlink`, `revoke`, `rotate`, or whatever a later format adds. */
   op: string;
-  /** The key ids the event adds or revokes. */
+  /** The key ids the event adds, unlinks or revokes. */
   keys: string[];
   /** "#0" */
   position: string;
   /** A Phosphor icon name. */
   icon: string;
-  /** "Created identity", "Added d2", "Revoked d2". */
+  /** "Created identity", "Added d2", "Unlinked d2", "Revoked d2". */
   title: string;
   /** The keys the event names, "d1 · This computer". */
   detail: string;
@@ -40,6 +40,8 @@ export interface DeviceRow {
   keyId: string;
   /** The seq of the event that added it. */
   addedSeq: number;
+  /** The seq of the event that unlinked it, or `null` while it is not. */
+  unlinkedSeq: number | null;
   /** The seq of the event that revoked it, or `null` while it is valid. */
   revokedSeq: number | null;
   /** "This computer", or "Device d2". */
@@ -48,10 +50,14 @@ export interface DeviceRow {
   subtitle: string;
   icon: string;
   thisDevice: boolean;
+  /** Unlinked: it signs nothing new, and what it signed before stays valid. */
+  unlinked: boolean;
   revoked: boolean;
-  /** "Active", or "Removed at #2". */
+  /** "Active", "Unlinked" or "Revoked". */
   status: string;
-  /** Whether a revoke may be offered: a valid key that is not this computer's. */
+  /** Whether an unlink may be offered: a key still active that is not this computer's. */
+  canUnlink: boolean;
+  /** Whether a revoke may be offered: a key not yet revoked, unlinked or not, that is not this computer's. */
   canRevoke: boolean;
   /** The name the private record gives it, or empty. */
   name: string;
@@ -96,7 +102,7 @@ export function keyLogRows(events: KeyLogEvent[], thisKeyId: string | null): Key
     .slice()
     .sort((a, b) => b.seq - a.seq)
     .map((event) => {
-      const keys = [...event.added.map((k) => k.id), ...event.revoked];
+      const keys = [...event.added.map((k) => k.id), ...event.unlinked, ...event.revoked];
       const thisComputer = !!thisKeyId && keys.includes(thisKeyId);
       const listed = (ids: string[]) =>
         ids.map((id) => (id === thisKeyId ? `${id} · ${THIS_COMPUTER}` : id)).join(', ');
@@ -113,6 +119,11 @@ export function keyLogRows(events: KeyLogEvent[], thisKeyId: string | null): Key
           icon = 'plus-circle';
           title = `Added ${event.added.map((k) => name(k.id)).join(', ')}`;
           detail = listed(event.added.map((k) => k.id));
+          break;
+        case 'unlink':
+          icon = 'link-break';
+          title = `Unlinked ${event.unlinked.map(name).join(', ')}`;
+          detail = listed(event.unlinked);
           break;
         case 'revoke':
           icon = 'prohibit';
@@ -140,7 +151,6 @@ export function keyLogRows(events: KeyLogEvent[], thisKeyId: string | null): Key
     });
 }
 
-/** The device list: valid keys first, this computer at the top, then in the order they were added. */
 const DEVICE_ICONS: Record<string, string> = {
   'desktop-app': 'laptop',
   'phone-app': 'device-mobile',
@@ -169,21 +179,19 @@ export function deviceName(keyId: string, names: DeviceNameView[], thisKeyId: st
   return keyId === thisKeyId ? THIS_COMPUTER : keyId;
 }
 
+/** The device list: active keys first, this computer at the top, then in the order they were added. */
 export function deviceRows(
   devices: DeviceKeyView[],
   names: DeviceNameView[] = [],
   revokedHolders: string[] = [],
 ): DeviceRow[] {
+  const ended = (d: DeviceKeyView) => Number(d.revokedSeq !== null || d.unlinkedSeq !== null);
   return devices
     .slice()
-    .sort(
-      (a, b) =>
-        Number(a.revokedSeq !== null) - Number(b.revokedSeq !== null) ||
-        Number(b.thisDevice) - Number(a.thisDevice) ||
-        a.addedSeq - b.addedSeq,
-    )
+    .sort((a, b) => ended(a) - ended(b) || Number(b.thisDevice) - Number(a.thisDevice) || a.addedSeq - b.addedSeq)
     .map((device) => {
       const revoked = device.revokedSeq !== null;
+      const unlinked = device.unlinkedSeq !== null;
       const record = names.find((n) => n.keyId === device.keyId);
       const name = record?.name ?? '';
       const listed = record?.holdsMaster ?? 'no';
@@ -201,6 +209,7 @@ export function deviceRows(
       return {
         keyId: device.keyId,
         addedSeq: device.addedSeq,
+        unlinkedSeq: device.unlinkedSeq,
         revokedSeq: device.revokedSeq,
         label: name || fallback,
         subtitle: [
@@ -210,8 +219,10 @@ export function deviceRows(
         ].join(' · '),
         icon: (record && DEVICE_ICONS[record.kind]) || (device.thisDevice ? 'laptop' : 'key'),
         thisDevice: device.thisDevice,
+        unlinked,
         revoked,
-        status: revoked ? `Removed at #${device.revokedSeq}` : 'Active',
+        status: revoked ? 'Revoked' : unlinked ? 'Unlinked' : 'Active',
+        canUnlink: !revoked && !unlinked && !device.thisDevice,
         canRevoke: !revoked && !device.thisDevice,
         name,
         holdsMaster,
