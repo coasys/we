@@ -15,6 +15,7 @@ export { type ClockStore, type ClockView, useClockStore, ClockStoreProvider } fr
 export { type WorkflowStore, useWorkflowStore, WorkflowStoreProvider } from './WorkflowStore';
 export { type IdentityStore, useIdentityStore, IdentityStoreProvider } from './IdentityStore';
 export { type DeviceStore, useDeviceStore, DeviceStoreProvider } from './DeviceStore';
+export { type BotStore, useBotStore, BotStoreProvider } from './BotStore';
 export {
   type InterpretationActivityView,
   type InterpretationStore,

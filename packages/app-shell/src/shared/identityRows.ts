@@ -53,7 +53,9 @@ export interface DeviceRow {
   /** Unlinked: it signs nothing new, and what it signed before stays valid. */
   unlinked: boolean;
   revoked: boolean;
-  /** "Active", "Unlinked" or "Revoked". */
+  /** Neither revoked, unlinked nor past the end the key log gives it. */
+  valid: boolean;
+  /** "Active", "Unlinked", "Revoked", or "Expired on 3 Dec 2026". */
   status: string;
   /** Whether an unlink may be offered: a key still active that is not this computer's. */
   canUnlink: boolean;
@@ -159,7 +161,7 @@ const DEVICE_ICONS: Record<string, string> = {
   browser: 'browser',
   server: 'hard-drives',
   'community-host': 'hard-drives',
-  bot: 'robot',
+  // No `bot`: a key the record calls a bot but the key log does not is drawn as the device it is.
 };
 
 const MASTER_WORDS = { yes: 'Has master key', offered: 'Master key sent', no: '' } as const;
@@ -182,21 +184,29 @@ export function deviceName(keyId: string, names: DeviceNameView[], thisKeyId: st
   return keyId === thisKeyId ? THIS_COMPUTER : keyId;
 }
 
-/** The device list: active keys first, this computer at the top, then in the order they were added. */
+/**
+ * The person's devices: active keys first, this computer at the top, then in the order they were
+ * added. A bot's key is in the same key log but is not a device: it is left out here and managed
+ * under Bots. Only the key log's bot mark (`DeviceKeyView.bot`) says so, never the private record's
+ * `kind`, which is a label the person chose. `now` is unix seconds.
+ */
 export function deviceRows(
   devices: DeviceKeyView[],
   names: DeviceNameView[] = [],
   revokedHolders: string[] = [],
   /** The seq of the key log's last rotation, or `null` when the master key was never replaced. */
   masterReplacedSeq: number | null = null,
+  now: number = Math.floor(Date.now() / 1000),
 ): DeviceRow[] {
-  const ended = (d: DeviceKeyView) => Number(d.revokedSeq !== null || d.unlinkedSeq !== null);
+  const expiredAt = (device: DeviceKeyView) => device.expires != null && device.expires <= now;
+  const ended = (d: DeviceKeyView) => Number(d.revokedSeq !== null || d.unlinkedSeq !== null || expiredAt(d));
   return devices
-    .slice()
+    .filter((device) => !device.bot)
     .sort((a, b) => ended(a) - ended(b) || Number(b.thisDevice) - Number(a.thisDevice) || a.addedSeq - b.addedSeq)
     .map((device) => {
       const revoked = device.revokedSeq !== null;
       const unlinked = device.unlinkedSeq !== null;
+      const expired = !revoked && !unlinked && expiredAt(device);
       const record = names.find((n) => n.keyId === device.keyId);
       const name = record?.name ?? '';
       const listed = record?.holdsMaster ?? 'no';
@@ -228,7 +238,15 @@ export function deviceRows(
         thisDevice: device.thisDevice,
         unlinked,
         revoked,
-        status: revoked ? 'Revoked' : unlinked ? 'Unlinked' : 'Active',
+        valid: !revoked && !unlinked && !expired,
+        status: revoked
+          ? 'Revoked'
+          : unlinked
+            ? 'Unlinked'
+            : expired
+              ? `Expired on ${dateOf(device.expires as number)}`
+              : 'Active',
+        // Ending an expired key for good is still the key log's to record.
         canUnlink: !revoked && !unlinked && !device.thisDevice,
         canRevoke: !revoked && !device.thisDevice,
         name,
@@ -237,6 +255,11 @@ export function deviceRows(
         replaceMaster: revokedMaster !== '',
       };
     });
+}
+
+/** A date as the device list shows it, in the person's own locale. */
+function dateOf(seconds: number): string {
+  return new Date(seconds * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
 /** The seq of the last rotation in `events`, or `null` when the master key was never replaced. */
