@@ -1270,7 +1270,15 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
     const owedEarly = owedFor(ref.id);
     let projectName: string | undefined;
     if (!owedEarly?.writeMeta && deps.projectMeta) {
-      const meta = await waitFor(() => deps.projectMeta!(ref), PROJECT_META_WAIT_MS, pollMs, own);
+      /*
+        Who may wait: only a run that owes the project its announce — a join,
+        whose absent meta is the wrong-passphrase tell. An open's mount is the
+        existence proof already, so it asks once and goes on; absent meta there
+        only means no real name to give the space, not a project that is not.
+      */
+      const meta = owedEarly?.announce
+        ? await waitFor(() => deps.projectMeta!(ref), PROJECT_META_WAIT_MS, pollMs, own)
+        : await deps.projectMeta(ref).catch(() => null);
       if (!own()) return null;
       /*
         A join's announce is owed to a project that must exist: meta that never
