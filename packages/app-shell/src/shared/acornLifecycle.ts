@@ -66,6 +66,14 @@ const MOUNT_BUDGET_MS = 180_000;
 const DIALOG_DEADLINE_MS = 60_000;
 
 /**
+ * How long a join waits for the project meta to arrive through the mount — the
+ * project's real name, and the only proof the words named a project at all: a
+ * wrong passphrase mounts an empty cell that syncs nothing. About 20 s is the
+ * grace a live sync needs; the report asked for it.
+ */
+const PROJECT_META_WAIT_MS = 20_000;
+
+/**
  * The only failures a same-target retry answers — the fresh cell's first network
  * read stalling past either of the two clocks that time it out: Holochain's
  * 30 s init mutex, and the B10 language's 15 s snapshot deadline, which fires
@@ -350,6 +358,18 @@ export interface AcornLifecycleDeps {
    * today's recipe cannot make, since a community may remove every Acorn section.
    */
   markSpaceSetupDone: (spaceUuid: string) => Promise<void>;
+  /**
+   * The project meta the mount synced — `AcornProjectMeta`'s name is the
+   * project's real one, where the placeholder a join carries is not. A host
+   * that cannot read foreign entities leaves the dep off entirely: the wait
+   * that calls it is skipped, and the placeholder name stays.
+   */
+  projectMeta?: (target: DatasetRef) => Promise<{ name?: string | null } | null>;
+  /**
+   * Rename the space record on `spaceUuid` — the correction a join owes when
+   * the real project name arrived after the placeholder was written.
+   */
+  updateSpaceMeta?: (updates: { name?: string }, spaceUuid?: string) => Promise<void>;
   /**
    * The space's section list — `Space.enabledViews`. Written beside the template for the
    * same reason: without it a fresh Acorn space inherits the deployment's default sections
@@ -1218,6 +1238,18 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
     await waitFor(() => deps.schemas()?.hasAnySchema(ref.handle) ?? Promise.resolve(true), timeoutMs, pollMs, own);
     if (!own()) return null;
     /*
+      The project's real name is the meta's, read once the mount is up — a join
+      carries only the placeholder ('Acorn project'). A create owes the meta
+      write itself, so its name is already the ask's and it skips the wait.
+    */
+    const owedEarly = owedFor(ref.id);
+    let projectName: string | undefined;
+    if (!owedEarly?.writeMeta && deps.projectMeta) {
+      const meta = await waitFor(() => deps.projectMeta!(ref), PROJECT_META_WAIT_MS, pollMs, own);
+      if (!own()) return null;
+      projectName = typeof meta?.name === 'string' && meta.name ? meta.name : undefined;
+    }
+    /*
       Setup names its target everywhere — nothing below reads the current dataset.
       A navigation during any of these awaits no longer retargets the writes: they
       belong to `ref`, and every writer is handed it rather than asking what is
@@ -1245,7 +1277,7 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       let setup = await deps.spaceSetup(ref).catch(() => null);
       if (!own()) return;
       if (!setup || !setup.spaceRecord || !setup.root) {
-        await deps.ensureSpaceStructure(owed?.name ?? opts.name, '', ref);
+        await deps.ensureSpaceStructure(projectName ?? owed?.name ?? opts.name, '', ref);
         if (!own()) return;
         setup = await deps.spaceSetup(ref).catch(() => setup);
         if (!own()) return;
@@ -1270,6 +1302,16 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       */
       if (setup && !setup.setupDone) {
         await deps.markSpaceSetupDone(ref.id);
+        if (!own()) return;
+      }
+
+      /*
+        The project's own name, where the meta's read named it: a space record
+        the join created under the placeholder — or one an earlier attempt
+        left — is corrected here rather than carrying 'Acorn project' forever.
+      */
+      if (projectName) {
+        await deps.updateSpaceMeta?.({ name: projectName }, ref.id);
         if (!own()) return;
       }
 

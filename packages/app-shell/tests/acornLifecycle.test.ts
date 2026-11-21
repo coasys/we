@@ -299,6 +299,23 @@ describe('joinAcornProject', () => {
     // The project already has its meta: the joiner must not write a second one.
     expect(record.find((c) => c.includes('class/AcornProjectMeta'))).toBeUndefined();
   });
+
+  it('names the space from the joined project’s meta — not the placeholder the ask carried', async () => {
+    const record: string[] = [];
+    const d = deps(record, {
+      projectMeta: vi.fn(async () => ({ name: 'Their Real Project' })),
+      updateSpaceMeta: vi.fn(async (updates: { name?: string }, uuid?: string) => {
+        record.push(`meta:${updates.name}:${uuid}`);
+      }),
+    });
+    const acorn = createAcornLifecycle(d);
+    const id = await acorn.joinAcornProject(undefined, 'alpha beta gamma', BASE);
+    expect(id).toBe('dataset-1');
+
+    // The structure is born under the real name, and the record itself is corrected.
+    expect(record).toContain('ensure:Their Real Project:dataset-1');
+    expect(record).toContain('meta:Their Real Project:dataset-1');
+  });
 });
 
 describe('the dialog deadline', () => {

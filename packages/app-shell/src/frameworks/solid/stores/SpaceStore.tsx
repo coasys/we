@@ -2921,6 +2921,23 @@ export function SpaceStoreProvider(props: ParentProps) {
     },
     setSpaceViews: (viewIds, spaceUuid) => setSpaceViews(viewIds, spaceUuid),
     setSpaceTemplateOverride: (templateId, spaceUuid) => setSpaceTemplateOverride(templateId, spaceUuid),
+    /*
+      The project meta is a foreign entity on the target — its class exists only
+      after the mount's shapes were swept into the dataset's registry, so the
+      read registers them first and answers null while nothing has landed. Null
+      is also the wrong-passphrase answer: an empty cell never gets a meta.
+    */
+    projectMeta: async (target) => {
+      const schemas = session.backendPorts()?.schemas;
+      if (!schemas) return null;
+      const ds: AppDataset = { ...target };
+      await schemas.foreignSchemas(ds.handle).catch(() => [] as never[]);
+      const Meta = getEntityForDataset('AcornProjectMeta', ds.handle) as EntityStatic<RecordInstance> | undefined;
+      if (!Meta) return null;
+      const [meta] = await Meta.findAll(ds.handle, {});
+      return meta ? { name: (meta as { name?: string }).name } : null;
+    },
+    updateSpaceMeta: (updates, spaceUuid) => updateSpaceMeta(updates, spaceUuid),
     hasAcornTemplate: () => ACORN_TEMPLATE_ID in bundledTemplates,
     agentName: () => {
       const did = session.me()?.did?.replace('did://', '');
