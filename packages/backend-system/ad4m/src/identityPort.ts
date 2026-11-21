@@ -77,7 +77,7 @@ export interface Ad4mCustodyState {
   devices?: { keyId: string; name: string; kind: string; holdsMaster: boolean | 'offered' }[];
   requests?: { id: string; kind: string; by: string; keyIds: string[]; expires: number }[];
   /** The revoked keys the key log says may still hold a valid master key. */
-  revokedHolders?: string[];
+  endedHolders?: string[];
   masterWaiting?: boolean;
   /** The key log lists an enc key for this computer other than the one the custody service keeps. */
   encMismatch: boolean;
@@ -164,7 +164,7 @@ export function readCustody(value: Ad4mCustodyState): IdentityCustodyView {
     unlock: value.unlock ?? null,
     blocked: value.blocked || null,
     devices,
-    revokedHolders: Array.isArray(value.revokedHolders) ? value.revokedHolders.map(String) : [],
+    endedHolders: Array.isArray(value.endedHolders) ? value.endedHolders.map(String) : [],
     requests,
     masterWaiting: value.masterWaiting === true,
     encMismatch: value.encMismatch,

@@ -102,7 +102,7 @@ const NO_CUSTODY: IdentityCustodyView = {
   unlock: 'passphrase',
   blocked: null,
   devices: [],
-  revokedHolders: [],
+  endedHolders: [],
   requests: [],
   masterWaiting: false,
   encMismatch: false,
@@ -631,7 +631,7 @@ describe('deviceStore', () => {
       unlock: 'os',
       // The record's word that d2 took the master key cannot be read here; the key log's can.
       devices: [{ keyId: 'd2', name: 'Laptop', kind: 'desktop-app', holdsMaster: 'yes' }],
-      revokedHolders: ['d2'],
+      endedHolders: ['d2'],
       encMismatch: true,
     };
     setPorts({ identity: signing(b.port, { custody: async () => state, change: async () => 'done' }) });
@@ -719,7 +719,7 @@ describe('deviceStore', () => {
     const revokedD2 = devices.map((d) => (d.keyId === 'd2' ? { ...d, revokedSeq: 2 } : d));
     const revoke = { seq: 2, op: 'revoke', hash: 'QmHash2', added: [], unlinked: [], revoked: ['d2'] };
     const b = backend({ did: DID, events: [incept, add, revoke], devices: revokedD2 });
-    let state: IdentityCustodyView = { ...NO_CUSTODY, did: DID, unlock: 'os', revokedHolders: ['d2'] };
+    let state: IdentityCustodyView = { ...NO_CUSTODY, did: DID, unlock: 'os', endedHolders: ['d2'] };
     const changes: IdentityChange[] = [];
     setPorts({
       identity: signing(b.port, {
@@ -735,7 +735,7 @@ describe('deviceStore', () => {
             state = {
               ...state,
               holdsMaster: true,
-              revokedHolders: [],
+              endedHolders: [],
               devices: [{ keyId: 'd2', name: 'Laptop', kind: 'desktop-app', holdsMaster: 'yes' }],
             };
           }
