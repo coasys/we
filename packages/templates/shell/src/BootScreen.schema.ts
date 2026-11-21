@@ -40,7 +40,7 @@ const sweep = (step: '100' | '200', hueOffset: string) =>
  * kept for AD4M protocol objects that genuinely are not accounts, like a peer in the trusted list.
  *
  * Account controls are gated on `accountStore.canManageAccounts`, which is false on web: a browser
- * tab has no directories to keep accounts in, and ad4m-connect already owns which executor it
+ * tab has no directories to keep accounts in, and @coasys/connect already owns which executor it
  * talks to. The unlock form is identical either way, so web loses the switcher and nothing else.
  *
  * Two rules govern most of what follows, and both have been rediscovered the hard way more than

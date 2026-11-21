@@ -72,7 +72,7 @@ export interface Account {
  * mutation here ends with the caller invoking {@link applySelection}.
  *
  * Optional on {@link PlatformAdapter}. The web host omits it: a browser tab has no filesystem to
- * keep accounts in and nothing to restart, and `ad4m-connect` already owns which executor it
+ * keep accounts in and nothing to restart, and `@coasys/connect` already owns which executor it
  * talks to.
  */
 export interface AccountHost {

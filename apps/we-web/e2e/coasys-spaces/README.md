@@ -232,7 +232,7 @@ The executor's log (`executor.log`) is written there at the end of every run.
 The job runs only after that PR merges. Until then, no nightly runs this suite. The job does two
 things:
 
-1. It overrides `@coasys/ad4m` and `@coasys/ad4m-connect` with tarballs packed from the ad4m commit under
+1. It overrides `@coasys/ad4m` and `@coasys/connect` with tarballs packed from the ad4m commit under
    test. To do this, it replaces the `pnpm.overrides` entries in the root `package.json` with
    `file:` paths to the `.tgz` files, and then runs `pnpm install` and `pnpm build:web`.
 2. It sets `AD4M_EXECUTOR` to the executor built from that same commit. The suite then runs that

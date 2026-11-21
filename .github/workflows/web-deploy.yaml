@@ -1,0 +1,51 @@
+# Deploys the web app (`apps/we-web`) to Cloudflare Pages: `dev` to staging, a `web-v*` tag to
+# production. It replaces the Netlify sites; nothing else in the repo deploys the web app.
+#
+# The app's hosts are not set here. Each environment's origins are in `apps/we-web/config/<env>.json`
+# (`appOrigin` is the host the app runs on), which the build compiles in and which the platform's
+# Connect registry has to list for the app id `coasys-app`. The Pages projects below carry the host
+# as a custom domain; the project names are the only host-related values in this file.
+#
+# The Pages token comes from the environment's secrets (`CLOUDFLARE_API_TOKEN`,
+# `CLOUDFLARE_ACCOUNT_ID`), so a pull request never sees it: a pull request does not run this workflow.
+name: Web deploy
+
+on:
+  push:
+    branches: [dev]
+    tags: ['web-v*']
+
+# One deploy per environment at a time, and a later push to `dev` waits rather than cancelling a
+# deploy that is already uploading.
+concurrency:
+  group: web-deploy-${{ github.ref_type == 'tag' && 'production' || 'staging' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy ${{ github.ref_type == 'tag' && 'production' || 'staging' }}
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_type == 'tag' && 'web-production' || 'web-staging' }}
+    env:
+      COASYS_ENV: ${{ github.ref_type == 'tag' && 'production' || 'staging' }}
+      PAGES_PROJECT: ${{ github.ref_type == 'tag' && 'coasys-app' || 'coasys-app-staging' }}
+      WE_BRANCH: ${{ github.ref_name }}
+      WE_COMMIT: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+
+      - name: Build
+        run: bash scripts/web-build.sh
+
+      # `_headers` and `_redirects` are in the build output (the CSP plugin writes the first, `public/`
+      # holds the second); Pages reads both as they are.
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy apps/we-web/dist --project-name=${{ env.PAGES_PROJECT }} --branch=main --commit-hash=${{ github.sha }}

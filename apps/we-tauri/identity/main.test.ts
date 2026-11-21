@@ -9,6 +9,6 @@ import source from './main.ts?raw';
 describe('the Tauri identity window', () => {
   it('imports only the shared window and the Tauri bridge', () => {
     const imports = [...source.matchAll(/from '([^']+)'/g)].map((m) => m[1]);
-    expect(imports.sort()).toEqual(['@tauri-apps/api/core', '@we/identity-window']);
+    expect(imports.sort()).toEqual(['@coasys/identity-portal', '@tauri-apps/api/core']);
   });
 });

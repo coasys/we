@@ -95,7 +95,7 @@ function originOf(url: string | null | undefined): string | null {
  * Starts the bridge: installs the window message listener immediately and registers an effect
  * that flushes a queued credential request once conditions are met. Call once, synchronously,
  * inside a reactive root, BEFORE any async boot work — REQUEST_AD4M_CONFIG from an embedded app
- * must never be dropped, including during the (possibly long) ad4m-connect auth flow on first
+ * must never be dropped, including during the (possibly long) @coasys/connect auth flow on first
  * load where the embedded app's 30-second timeout would otherwise expire.
  *
  * Returns the sendConfig function so the boot path can also push credentials proactively.
@@ -369,14 +369,14 @@ export function startAppBridge(deps: AppBridgeDeps) {
   //
   // The two platforms have different timing:
   //
-  // Web: port+token are set by backend.connectionDetails() AFTER ad4m-connect's auth UI completes,
+  // Web: port+token are set by backend.connectionDetails() AFTER @coasys/connect's auth UI completes,
   // so the agent is already unlocked at that point. We send immediately — no need to wait for
   // the rest of the boot chain, which would add unnecessary delay against the ACK-cleared but
-  // still-finite wait in ad4m-connect.
+  // still-finite wait in @coasys/connect.
   //
   // Desktop: port+token are set early (before the session is usable) from stored credentials,
   // while the agent may still be locked waiting for the user's password. Sending AD4M_CONFIG here
-  // would cause ad4m-connect's checkAuth() to fail with "Agent is locked". We must wait until the
+  // would cause @coasys/connect's checkAuth() to fail with "Agent is locked". We must wait until the
   // agent is unlocked first.
   createEffect(() => {
     const port = deps.port();

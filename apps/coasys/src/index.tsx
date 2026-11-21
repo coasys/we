@@ -6,7 +6,7 @@
 
   Which host it is decides what the base app can ask. Inside the phone app the `DeviceKey` plugin is
   there, so the identity is the phone's and a session can be had with its device key; anywhere else it
-  is a browser, which keeps no identity and connects through AD4M Connect. The desktop shells render
+  is a browser, which keeps no identity and links itself through Coasys Connect. The desktop shells render
   the same `BaseBoot` from their own entries, with the desktop host (`./hosts/desktop`).
 */
 
@@ -18,7 +18,7 @@ import { writeGuestBootTarget } from '@we/app-shell/shared';
 import { App, BaseBoot, PlatformProvider } from '@we/app-shell/solid';
 import { ad4mConnector } from '@we/app-web/platform/ad4mConnector';
 import { deviceKeyPlugin } from '@we/app-web/platform/deviceKey';
-import { createGuestConnector, hasStoredSession, parseGuestParams } from '@we/app-web/platform/guestConnector';
+import { createGuestConnector, parseGuestParams, storedGuestHost } from '@we/app-web/platform/guestConnector';
 import { webPlatform } from '@we/app-web/platform/webPlatform';
 import weSeed from '@we/seed-file';
 import { render } from 'solid-js/web';
@@ -32,15 +32,15 @@ if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
 
 /*
   A guest link is for somebody with no account, and boots as it does in WE's web app: straight to the
-  guest connector, with nothing asked first. Somebody who already has a session keeps it, and the link
-  takes them to the space's join gate (see apps/we-web/src/index.tsx for why).
+  guest connector, with nothing asked first; so does a reload of a tab that came in by one (see
+  apps/we-web/src/index.tsx).
 */
 const guestTarget = parseGuestParams();
-const storedSession = hasStoredSession();
-if (guestTarget) writeGuestBootTarget({ spaceId: guestTarget.spaceId, autoJoin: !storedSession });
+const guestHost = guestTarget?.hostUrl ?? storedGuestHost();
+if (guestTarget) writeGuestBootTarget({ spaceId: guestTarget.spaceId, autoJoin: true });
 
-if (guestTarget && !storedSession) {
-  const guest = createGuestConnector(guestTarget.hostUrl);
+if (guestHost) {
+  const guest = createGuestConnector(guestHost);
   render(
     () => (
       <PlatformProvider seed={weSeed} platform={webPlatform} backend={guest}>

@@ -1,0 +1,221 @@
+{
+  "browser": {
+    "address": "CDdScsfauSSLrd95aeHuEPtcJctoAvohs3jrUkbJTKMp",
+    "encMultikey": "z6LScS1VHnNkPEjZkU2TbwnkscczW9beRPh5ag9DpbzLK1Cd",
+    "encSecret": "553ac6276e31402bfd1f4b3bf58571495c8e8dfab269cf51c419745d2fb42560",
+    "keyId": "d4",
+    "offerId": "TpTwGZwLZ3MB973zpcsj5V",
+    "r": "HEtkUQvb8LqPRpB1jE32Zs",
+    "signMultikey": "z6MkqSRMEYA6z9ToJjGrH8vYKtjjnRseu48jLPdYDXN8brSa",
+    "signSeed": "fb2c9cbbb6b7cebf504dd39a72efebb8dd182bd5bb2e234e9fc84fc2dc856d1e"
+  },
+  "executorAddress": "ws://127.0.0.1:4403",
+  "logAfter": [
+    {
+      "add": [
+        {
+          "enc": "z6LSpN1iD3DmQmFTPxgSbytdShxSdeVHzuoySGUckYgDV3zR",
+          "id": "d1",
+          "sign": "z6MkoLDHstjfesQKtngXMequRUhP96dNkWrGDghVxxCoksYQ"
+        },
+        {
+          "enc": "z6LSmZoeDUDhufp8YgsCayHjfL792R9bR4heHDyryJtehMou",
+          "id": "d2",
+          "sign": "z6MkkesFdL6qqCLG8gJ2PB4PaWF5j9YGxVgr7RfvX7WggnUr"
+        }
+      ],
+      "format": "coasys/1",
+      "kind": "human",
+      "master": "z6Mkpuq56j9kNo4YqZvGtWoxCzKZfbFK329q3zsYWQVjEqMq",
+      "next": "QmYGaczyoimbrQLjPtYTQYcQ4X6WvMuKQiWQ98jTuD3i6n",
+      "op": "incept",
+      "prev": null,
+      "proof": [
+        {
+          "cryptosuite": "eddsa-jcs-2022",
+          "domain": "coasys:kel",
+          "proofPurpose": "assertionMethod",
+          "proofValue": "z3H4w9CBtWMSAPjt37GcVszywnSGjmfAXZ8QSVrPfVM4aBtaroBQV58RpKVZX8E13EvkrJrFGtVT2NLgCWkVayxD3",
+          "type": "DataIntegrityProof",
+          "verificationMethod": "did:scid:coasys:1:QmNSNTN9zyBE5PXwnU64Uah9C6PeoQqm2wLUoWTuvbuKtL#m0"
+        },
+        {
+          "cryptosuite": "eddsa-jcs-2022",
+          "domain": "coasys:kel",
+          "proofPurpose": "assertionMethod",
+          "proofValue": "z5yximjy5L8mcQXqsaCbRL32c8oBzJJwb3VmhKnzz9D32R9aHp7yyMMcDzqEfZFWFQpwfiEhq3dP3c9tUq41pVHpB",
+          "type": "DataIntegrityProof",
+          "verificationMethod": "did:scid:coasys:1:QmNSNTN9zyBE5PXwnU64Uah9C6PeoQqm2wLUoWTuvbuKtL#d1"
+        },
+        {
+          "cryptosuite": "eddsa-jcs-2022",
+          "domain": "coasys:kel",
+          "proofPurpose": "assertionMethod",
+          "proofValue": "z3od9Cwra6WgQru43TTRAHMNt6GUnABZAJcJzYfcbUg9CEjP3BuEEZzRyFYvSBqNEUcUhBoqN8KWLLbpbJidMup4e",
+          "type": "DataIntegrityProof",
+          "verificationMethod": "did:scid:coasys:1:QmNSNTN9zyBE5PXwnU64Uah9C6PeoQqm2wLUoWTuvbuKtL#d2"
+        }
+      ],
+      "scid": "QmNSNTN9zyBE5PXwnU64Uah9C6PeoQqm2wLUoWTuvbuKtL",
+      "seq": 0
+    },
+    {
+      "add": [
+        {
+          "can": ["read"],
+          "enc": "z6LSkEAbNEnQquHf2wrgW25kptXGoMpMCyDUiJfqEaPNX7Tk",
+          "expires": 1900000000,
+          "id": "d3",
+          "kind": "bot",
+          "sign": "z6Mkmu4QQQajcBEcm7r2iumaUyNZ45t5tUuojTUUSzdX3kYr"
+        }
+      ],
+      "coSig": "z3coSig",
+      "format": "coasys/1",
+      "offer": "offer-1",
+      "op": "add",
+      "prev": "QmbUyGdxZtiCXdK8AjqMZRUggzFp8cdev3Znw9up27pToh",
+      "proof": [
+        {
+          "cryptosuite": "eddsa-jcs-2022",
+          "domain": "coasys:kel",
+          "proofPurpose": "assertionMethod",
+          "proofValue": "z4K2Ww8mNPieyN3p9EJHCq9NmpFXEAUJgEtGVm6pfNVmKbpTTt1gHW65sFe3jY7jXgLn5dni9YjDQiFhtZx7kzN5D",
+          "type": "DataIntegrityProof",
+          "verificationMethod": "did:scid:coasys:1:QmNSNTN9zyBE5PXwnU64Uah9C6PeoQqm2wLUoWTuvbuKtL#m0"
+        }
+      ],
+      "scid": "QmNSNTN9zyBE5PXwnU64Uah9C6PeoQqm2wLUoWTuvbuKtL",
+      "seq": 1
+    },
+    {
+      "add": [
+        {
+          "enc": "z6LScS1VHnNkPEjZkU2TbwnkscczW9beRPh5ag9DpbzLK1Cd",
+          "id": "d4",
+          "sign": "z6MkqSRMEYA6z9ToJjGrH8vYKtjjnRseu48jLPdYDXN8brSa"
+        }
+      ],
+      "coSig": "z3coSig",
+      "format": "coasys/1",
+      "offer": "offer-1",
+      "op": "add",
+      "prev": "Qmdnun2gHMNqTsU3Fgrs2H5Z646NS7PQ35ca5bcdT7wzU3",
+      "proof": [
+        {
+          "cryptosuite": "eddsa-jcs-2022",
+          "domain": "coasys:kel",
+          "proofPurpose": "assertionMethod",
+          "proofValue": "z291taRGW8Ctp9u8ScYcMhexYUS9fzt9BQQ9NnFXcoBoKTbfAsQ73q4WmSx2yBGBiJD1uc46yw3AGhz3PwRxxJ9eC",
+          "type": "DataIntegrityProof",
+          "verificationMethod": "did:scid:coasys:1:QmNSNTN9zyBE5PXwnU64Uah9C6PeoQqm2wLUoWTuvbuKtL#m0"
+        }
+      ],
+      "scid": "QmNSNTN9zyBE5PXwnU64Uah9C6PeoQqm2wLUoWTuvbuKtL",
+      "seq": 2
+    }
+  ],
+  "logBefore": [
+    {
+      "add": [
+        {
+          "enc": "z6LSpN1iD3DmQmFTPxgSbytdShxSdeVHzuoySGUckYgDV3zR",
+          "id": "d1",
+          "sign": "z6MkoLDHstjfesQKtngXMequRUhP96dNkWrGDghVxxCoksYQ"
+        },
+        {
+          "enc": "z6LSmZoeDUDhufp8YgsCayHjfL792R9bR4heHDyryJtehMou",
+          "id": "d2",
+          "sign": "z6MkkesFdL6qqCLG8gJ2PB4PaWF5j9YGxVgr7RfvX7WggnUr"
+        }
+      ],
+      "format": "coasys/1",
+      "kind": "human",
+      "master": "z6Mkpuq56j9kNo4YqZvGtWoxCzKZfbFK329q3zsYWQVjEqMq",
+      "next": "QmYGaczyoimbrQLjPtYTQYcQ4X6WvMuKQiWQ98jTuD3i6n",
+      "op": "incept",
+      "prev": null,
+      "proof": [
+        {
+          "cryptosuite": "eddsa-jcs-2022",
+          "domain": "coasys:kel",
+          "proofPurpose": "assertionMethod",
+          "proofValue": "z3H4w9CBtWMSAPjt37GcVszywnSGjmfAXZ8QSVrPfVM4aBtaroBQV58RpKVZX8E13EvkrJrFGtVT2NLgCWkVayxD3",
+          "type": "DataIntegrityProof",
+          "verificationMethod": "did:scid:coasys:1:QmNSNTN9zyBE5PXwnU64Uah9C6PeoQqm2wLUoWTuvbuKtL#m0"
+        },
+        {
+          "cryptosuite": "eddsa-jcs-2022",
+          "domain": "coasys:kel",
+          "proofPurpose": "assertionMethod",
+          "proofValue": "z5yximjy5L8mcQXqsaCbRL32c8oBzJJwb3VmhKnzz9D32R9aHp7yyMMcDzqEfZFWFQpwfiEhq3dP3c9tUq41pVHpB",
+          "type": "DataIntegrityProof",
+          "verificationMethod": "did:scid:coasys:1:QmNSNTN9zyBE5PXwnU64Uah9C6PeoQqm2wLUoWTuvbuKtL#d1"
+        },
+        {
+          "cryptosuite": "eddsa-jcs-2022",
+          "domain": "coasys:kel",
+          "proofPurpose": "assertionMethod",
+          "proofValue": "z3od9Cwra6WgQru43TTRAHMNt6GUnABZAJcJzYfcbUg9CEjP3BuEEZzRyFYvSBqNEUcUhBoqN8KWLLbpbJidMup4e",
+          "type": "DataIntegrityProof",
+          "verificationMethod": "did:scid:coasys:1:QmNSNTN9zyBE5PXwnU64Uah9C6PeoQqm2wLUoWTuvbuKtL#d2"
+        }
+      ],
+      "scid": "QmNSNTN9zyBE5PXwnU64Uah9C6PeoQqm2wLUoWTuvbuKtL",
+      "seq": 0
+    },
+    {
+      "add": [
+        {
+          "can": ["read"],
+          "enc": "z6LSkEAbNEnQquHf2wrgW25kptXGoMpMCyDUiJfqEaPNX7Tk",
+          "expires": 1900000000,
+          "id": "d3",
+          "kind": "bot",
+          "sign": "z6Mkmu4QQQajcBEcm7r2iumaUyNZ45t5tUuojTUUSzdX3kYr"
+        }
+      ],
+      "coSig": "z3coSig",
+      "format": "coasys/1",
+      "offer": "offer-1",
+      "op": "add",
+      "prev": "QmbUyGdxZtiCXdK8AjqMZRUggzFp8cdev3Znw9up27pToh",
+      "proof": [
+        {
+          "cryptosuite": "eddsa-jcs-2022",
+          "domain": "coasys:kel",
+          "proofPurpose": "assertionMethod",
+          "proofValue": "z4K2Ww8mNPieyN3p9EJHCq9NmpFXEAUJgEtGVm6pfNVmKbpTTt1gHW65sFe3jY7jXgLn5dni9YjDQiFhtZx7kzN5D",
+          "type": "DataIntegrityProof",
+          "verificationMethod": "did:scid:coasys:1:QmNSNTN9zyBE5PXwnU64Uah9C6PeoQqm2wLUoWTuvbuKtL#m0"
+        }
+      ],
+      "scid": "QmNSNTN9zyBE5PXwnU64Uah9C6PeoQqm2wLUoWTuvbuKtL",
+      "seq": 1
+    }
+  ],
+  "now": 1700000000,
+  "receipt": {
+    "envelope": "QmT9BS3xsMfHWKvE6gH41NaaH5Nd7WRJzh1NQtzPW2bk7J",
+    "scid": "QmNSNTN9zyBE5PXwnU64Uah9C6PeoQqm2wLUoWTuvbuKtL",
+    "seq": 2,
+    "sig": "z2tCXNuKkNiSwfgj8NxEfhf5TyGdbDKqjo9wZkXHeeLxbkrMdxLf2veFxdisyajRDyaFrcaE3ggU24BSWMfjcVQio",
+    "store": "did:key:z6Mkp4kx9jBay2TaFCXjmk9ocNv91pJyU8P1xznvGRFCxmux",
+    "version": 1
+  },
+  "record": {
+    "ciphertext": "b4bV-ToFAEVKovj-tXb1T_83RsRuwco5nrQ4C4_WkZNt_cQFHoMuTa80l1khWzJu6XMFlWv09p39E-4Sw8d5MzyDqTze4jiuRl3sC1ZDaD527nqMd5-sw0J6Z2IfVmyk0L_pJtMBoLejH7ZT8URT6zm2nw787T7Ma913G-4HOC30ELZqkL9SLYqDrfShw-gJlPF11GwHvuOp06gdKuAkN3AydvjEGMAp4AFumqyB817yZgq4jin_U2Dz1Ryxrz6H1FeebGUNKcSdxEMy1daC-GZs6hrdwFVvzV-XN6TgRtyNv_1sruSEljOY94XTxC7NTO9BdhZbWK08kZgVhSgAGtr-CF7QOmROWGed9_mnwGjvB38k81OoPcLuzzUUpP_5GMFthf0NMwkJEqgvBOKUdV0SaZdVq0evp3DXMwGmz7FBqcdXh4D1nURUgn2PAeg0K7CSvLswfKUR44pH3Z-smC6F__iw2kytETGId60OCEboV_GAYtaL6CSRTQm5HYWgIBh5DmakBarqbb0XHVDO7kmRspJowvXqa3R8ygYU2nA1NK0LECB09ixLPN0xlva0jOi3iVAJF_Y7jgpFWBDLPN2K-SRCp_YDcsHwWhHFnjO0eR7XjYNxF8EgYf3RyRA7Cai9EgyL_5QG3rtqBHmk8hJr0-1bjDGwt9G7ikZZFCeqA1iXdbmdiFuYBpqDrFfWMDD2pH67fHd04WTB0ZmaiNDFYjEVWXFxsJthcG6C8gvhr1H52H9POKMbwG9a80Aq_TbkwOL67-Xrd62WU-XUKxl8E3rXbmsQZ5-JZfdymslX6HQhab7WDdI4wvYJxBB2gw",
+    "nonce": "HfCxKJhroTkE63n13nEAV9aAXkETdGiXF",
+    "sig": "z3sTqiRYi42hdChp7GEH1ooPfbuNqosuebZyYkW1JFPo56qLYsvZz4U8ifEjCP3Bz2brjZRYYpnayfhRd3o2MG1ne",
+    "signer": "d1",
+    "version": 1,
+    "wrapped": {
+      "d1": "Nx2q-h2ETHYet7yIHT-jJUXMdWOSYGPeUsPtVqbhuiysdYrTxpwe_PYlTNdFOzLI6DoAnAMFF89CTKey1FCWdSHYTk45bYd_nV7laaWbmVU",
+      "d2": "aFcNheNNnlKi0bqYeO2jRhd1KFBm8gEIPQ6UOSjsp2xd4WU3exVQ3k0s4UB-zjmtudKQNAfQkYRJPFmEV5HiYwsngDtP2wUNSCmNlnF7_1E",
+      "d4": "6sxCBo_Z5rCj8SrzEN6_5cVwPg2kSjknvmsNuXvaZjMlpbtkCT_A87bTB68cy1B0Xt-L3vcsnyfJlN5IJyx9Rp8hVEMFBFP0VFFMlYGV2mg"
+    }
+  },
+  "scid": "QmNSNTN9zyBE5PXwnU64Uah9C6PeoQqm2wLUoWTuvbuKtL",
+  "storeKey": "did:key:z6Mkp4kx9jBay2TaFCXjmk9ocNv91pJyU8P1xznvGRFCxmux",
+  "ticketSealed": "4VYVUMp90FxjNuurcwO5i03i6JPXQCMh9EqRKCbAHjbcIw2pOLPA0n9X3uO7PN5ln0Co4-FFrMhOAnADHfxDiIzsYwKvl5kp47GV2WX8ZYlAG8s3y1lKvAZIRgyydksay9i-PjI_2fmjWVvCJmWHFml0LBHcCTh2i9ld1tWe4pPzJeBW-mIr3dWWIDJBeGl2BIBH2iLDYfJ3iwK9A0beF-vysRP_ZRn4k0HfJq24pf7Q-7b5CEH8Zh20lb_5aSZQQu8xEQ3n6POxbY52dtkkaNzNgHiMHxMWyFEQkcLe7KSPXPpmH6pHqJhjU6vXew9ZYVUsgP8RN2WDm2ONB6moxlsNEWVmENTxxUnoEky93q6cYtu2tJlSh3XDwbBsYuswZuuXQBLdeeUV_090lNWkbR0rIu-F4qSTax4ZhNh0ZBWPrrIe3NflyB0AcUr_ALLFSFFZSBp1N2970eWPcBj1wskaT6iHLm-Ip-dSs683bzriUhDQnEMFuCh7xeUz8GndPMVDp23UXuOmTYGJz1mt-6L0jKNZKDJFHzqhKxteV8_L7K5D4qklxsfG_XFmMmUPMySiDIwhbTZAdlNjVXL2s4RQzQXSAiRX7Qm0ZzMIKLWJoGDAxnCCwKIkxdktOq1qSQlcFy77_DFJtt-pMFC07fzByl88b2s0Kz1hbcJajcWaX5JYJqxo4NPxrkXYzX_GaLmKwDWVHr0GOoCz85BEtjViRQ_wUvV4kyIb4qyNcv68YeUfTs2EXkaa6GbUUuDmuC3g_yuYP6Xr1T1TRkHYAttlwkovg3hShw5z2-JMBFdgiz5rge_Nvj9cK-6Myxf302KdxHdjBpDh0RkfogLnnRvF8cJdN4lgRYsAKYyDYdHg84BENVuc2Wi4GzT62CAhXAvkQBMkyk2DoJuI1jjR4NAOjvLgwIoOBR_ITtBrBSVifGydCPxnR2IacCMjMkEZ-Jd3YITkYbEgAUs-6DxrBCt2MnjX2kK03jW6GFVg2O2p6aEElBZwFhTzEqw0ecL_5sL6VRuhUSZn3Rq1snR0ClucaTy3KjheyQxVtMI5Evrku2BRuwRudlCobzaH8wleFj6zyPOtokIpAtYRuYLfCKHHaiwZsRa8RnGMh7AvvHBvy45JqVHhb_QeBrs3p2LcszJoR57qaClzDzdhSmKP0flQ4yMy1qZGXnzyHRdZ9rbRbPgXolS8rXdF4HsPLA_7iRr1wtxw02wKIwwEdq045TXC3Fg5A0Jif7o3B9OCXbTC7F5Xb3cYPYtbTScw1EYlS2vggDSXqf2NLGBruE4rKI2j8e9nqA"
+}

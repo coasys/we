@@ -617,7 +617,7 @@ describe('the page’s address', () => {
       '../../../we-web/src/platform/deviceKey',
       '../../../we-web/src/platform/keyHost',
       './transport',
-      '@we/identity-window',
+      '@coasys/identity-portal',
     ]);
     expect(imports(deviceKeySource)).toEqual([]);
     expect(imports(keyHostSource)).toEqual([]);

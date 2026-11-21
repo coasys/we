@@ -33,6 +33,6 @@
     "*.config.ts",
     "../../packages/app-shell/src/shared/global.d.ts",
     // The identity window's stylesheet imports, which this app typechecks through `identity/`.
-    "../../packages/identity-window/src/virtual.d.ts"
+    "../../packages/identity-portal/src/virtual.d.ts"
   ]
 }

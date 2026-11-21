@@ -3,15 +3,9 @@
  * it is one of that device's tabs. Two pages in one context share its `localStorage` (where the
  * device id lives) and its `BroadcastChannel`s; two contexts share nothing.
  */
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
 import { chromium } from 'playwright-core';
 
 import { chromePath } from './env.mjs';
-
-const PACKAGE = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 /**
  * Chrome (`chromePath()`), headless, with a fake camera and microphone. `fakeAudio` names a WAV file
@@ -31,33 +25,18 @@ export async function launchBrowser({ fakeAudio, headless = true } = {}) {
 }
 
 /**
- * ad4m-connect keeps its session under its own version: `<version>/ad4m-url`, `<version>/ad4m-token`.
- * `WE_CONNECT_VERSION` names it when the build under test bundles an ad4m-connect other than the
- * installed one — a local ad4m checkout, before it is published. The installed one is the pin's, the
- * same in every workspace package.
- */
-export function connectVersion() {
-  if (process.env.WE_CONNECT_VERSION) return process.env.WE_CONNECT_VERSION;
-  const manifest = join(PACKAGE, 'node_modules', '@coasys', 'ad4m-connect', 'package.json');
-  return JSON.parse(readFileSync(manifest, 'utf8')).version;
-}
-
-/**
- * One device: a browser profile signed in as `account`, as ad4m-connect leaves one after its
- * "Remote node" screen. Pages opened from it with `tab(label)` are that device's tabs, and what they
+ * One device: a browser profile signed in as `account`, through the boot session an embedding host
+ * hands WE (`window.__WE_AD4M_SESSION`, read once and never stored). Pages opened from it with `tab(label)` are that device's tabs, and what they
  * log to the console is kept in `logs`.
  */
 export async function device(browser, executor, account, { name, viewport = { width: 1280, height: 860 } } = {}) {
   const context = await browser.newContext({ viewport });
   await context.grantPermissions(['camera', 'microphone']);
-  const version = connectVersion();
   await context.addInitScript(
-    ([version, url, token]) => {
-      if (localStorage.getItem(`${version}/ad4m-token`)) return;
-      localStorage.setItem(`${version}/ad4m-url`, url);
-      localStorage.setItem(`${version}/ad4m-token`, token);
+    ([url, token]) => {
+      window.__WE_AD4M_SESSION = { url, token };
     },
-    [version, executor.url, account.token],
+    [executor.url, account.token],
   );
   // Every peer connection a page makes, so a test can ask whether a tab still holds one.
   await context.addInitScript(() => {

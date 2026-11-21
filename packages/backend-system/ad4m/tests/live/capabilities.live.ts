@@ -387,7 +387,7 @@ describe('ad4mCapabilities against the executor', () => {
         'the snapshot of coasys/ad4m@$1',
       );
     const lines = [
-      `Pinned: @coasys/ad4m ${pinned('@coasys/ad4m')}, @coasys/ad4m-connect ${pinned('@coasys/ad4m-connect')}`,
+      `Pinned: @coasys/ad4m ${pinned('@coasys/ad4m')}, @coasys/connect ${pinned('@coasys/connect')}`,
       `Executor: ${info?.ad4mExecutorVersion ?? 'unknown version'}${process.env.AD4M_COMMIT ? `, built from coasys/ad4m@${process.env.AD4M_COMMIT.slice(0, 9)}` : ''}`,
       '',
       ...results.map((r) => `${MARK[r.outcome]} ${r.name.padEnd(width)}  ${r.outcome}`),

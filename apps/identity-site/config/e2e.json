@@ -1,0 +1,10 @@
+{
+  "authDomain": "http://127.0.0.1:4400",
+  "platform": "http://127.0.0.1:4401",
+  "store": "http://127.0.0.1:4402",
+  "storeKey": "did:key:z6Mkp4kx9jBay2TaFCXjmk9ocNv91pJyU8P1xznvGRFCxmux",
+  "frameOrigins": ["http://localhost:4410"],
+  "connectExtra": ["http://127.0.0.1:*", "ws://127.0.0.1:*"],
+  "pagesProject": "none",
+  "pagesBranch": "none"
+}

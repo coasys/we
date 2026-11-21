@@ -14,6 +14,7 @@ import type { DeviceKeyPlugin } from '@we/app-web/platform/deviceKey';
 import {
   createDeviceKeyConnector,
   type DeviceKeyConnectorDeps,
+  isUnreachable,
   KeyLoginRefused,
   KeyLoginUnreachable,
 } from '@we/app-web/platform/deviceKeyConnector';
@@ -21,12 +22,12 @@ import { joinDeclined, readKeyHost } from '@we/app-web/platform/keyHost';
 import { browserNav, identityPageUrl, type PageNav, phoneCustodyHost } from '@we/app-web/platform/phoneCustody';
 import { readCustody } from '@we/backend-ad4m';
 
-import { CONNECT, connectFor, type ReachDeps, unreachable } from './web';
+import { CONNECT } from './web';
 
 /** What the phone host is built from; the tests pass their own. */
-export interface PhoneHostDeps extends Pick<ReachDeps, 'remembered' | 'reach'> {
+export interface PhoneHostDeps {
   plugin: DeviceKeyPlugin;
-  /** The connector AD4M Connect gives, for the CONNECT choice: the browser's. */
+  /** The connector Coasys Connect gives, for the CONNECT choice: the browser's. */
   fallback: BackendConnector;
   keyHost?: () => string | null;
   joinDeclined?: () => boolean;
@@ -101,16 +102,13 @@ export function phoneBaseHost(deps: PhoneHostDeps): BaseHost {
       const url = keyHost();
       return Promise.resolve(url ? [keyHostConnection(url), CONNECT] : [CONNECT]);
     },
-    connector: (connection, how) => {
-      if (connection.kind !== 'key-host')
-        return Promise.resolve(
-          connectFor(deps.fallback, how, { remembered: deps.remembered, reach: deps.reach, online }),
-        );
-      return Promise.resolve(makeKeyConnector({ plugin: () => deps.plugin, keyHost, nav }));
-    },
-    isUnreachable: (error) => error instanceof KeyLoginUnreachable || unreachable(error, online),
+    connector: (connection) =>
+      Promise.resolve(
+        connection.kind === 'key-host' ? makeKeyConnector({ plugin: () => deps.plugin, keyHost, nav }) : deps.fallback,
+      ),
+    isUnreachable: (error) => error instanceof KeyLoginUnreachable || isUnreachable(error, online()),
     // The key login not made (the key not known there, revoked): back to the choice, which still
-    // offers AD4M Connect.
+    // offers Coasys Connect.
     isRefused: (error) => error instanceof KeyLoginRefused,
     online,
   };

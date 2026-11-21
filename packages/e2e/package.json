@@ -52,7 +52,6 @@
   ],
   "dependencies": {
     "@coasys/ad4m": "*",
-    "@coasys/ad4m-connect": "*",
     "@we/csp": "workspace:*",
     "playwright-core": "^1.64.1"
   },

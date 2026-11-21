@@ -62,7 +62,7 @@ if (isEmbedded) {
   // 5. Request the config from parent
   window.parent.postMessage({ type: 'REQUEST_AD4M_CONFIG' }, '*');
 } else {
-  // Running standalone - use ad4m-connect or your own auth method
+  // Running standalone - use Coasys Connect (`@coasys/connect`) or your own auth method
   // ... your standalone initialization code
 }
 ```

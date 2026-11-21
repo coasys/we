@@ -1,35 +1,64 @@
 # WE Web App
 
-Browser-based launcher for the WE platform. This web application uses the `@we/app-shell` package to provide a platform-agnostic interface with web-specific authentication via `ad4m-connect`.
+Browser-based launcher for the WE platform. It uses the `@we/app-shell` package for a
+platform-agnostic interface, and signs in with Coasys Connect (`@coasys/connect`).
 
 ## What This App Does
 
 The WE web launcher:
 
 - Runs entirely in the browser (no installation required for the launcher itself)
-- Authenticates with AD4M using the `ad4m-connect` desktop application
+- Signs in with Coasys Connect: the browser links to an identity that one of the person's own
+  devices holds
 - Provides the same core functionality as the desktop launchers (Electron, Tauri)
 - Shares the same codebase via `@we/app-shell`
 
 ## Architecture
 
 - **Frontend** (`src/`): SolidJS app using the shared `@we/app-shell`
-- **Platform Adapter** (`src/platform/webAdapter.ts`): Implements AD4M connection using `ad4m-connect`
+- **Connectors** (`src/platform/`): `ad4mConnector.ts` (Coasys Connect), `guestConnector.ts` (a
+  guest on a node a link names), `bootSession.ts` (a session the embedding host hands over)
+- **Endpoints** (`config/<COASYS_ENV>.json`, read by `config/endpoints.mjs`): the identity origin,
+  the platform API origin and the store origin of this build. `COASYS_ENV` picks the file
+  (`production` is the default).
 - **Build Tool**: Vite with SolidJS plugin
 
 ## How it Works
 
-Unlike the desktop apps which embed their own AD4M executor, the web app:
+Unlike the desktop apps, which embed their own AD4M executor, the web app has no keys of its own.
+At start it takes one of three ways in, in this order:
 
-1. Connects to the `ad4m-connect` desktop application running on the user's machine
-2. Requests authentication through ad4m-connect
-3. Receives an authenticated AD4M client
-4. Uses this client to connect to the user's AD4M executor
+1. **A boot session**, when the host that serves the page sets `window.__WE_AD4M_SESSION`
+   (see below).
+2. **A guest session**, when the page was opened from a guest link (`/join/<space>?host=<url>`), or
+   when this tab was a guest before a reload.
+3. **Coasys Connect**. The signed-out screen offers **Link this browser**: it shows a link and a
+   QR code. The person opens the link in a Coasys app that holds their identity (the desktop
+   identity window, or the phone app), compares the match code on both screens, and confirms. The
+   browser then holds a device key of its own. It never holds the master key. Devices lists it as a
+   browser with its last use, and **Revoke device key** removes it.
 
-**Note:** Users must have:
+The session token stays in this page's memory. Nothing in `localStorage` or `sessionStorage` holds
+it, so a reload signs in again through Connect (the identity frame renews it). The one thing kept
+is a guest tab's host address in `sessionStorage`, so a reloaded guest tab stays a guest; it is
+gone with the tab.
 
-- `ad4m-connect` desktop application installed and running
-- AD4M executor running (managed by ad4m-connect)
+## The boot session
+
+A host that already holds a token for an executor (the ad4m Docker entrypoint, the SFU's Electron
+client) sets one global before WE's script runs:
+
+```js
+window.__WE_AD4M_SESSION = { url: 'http://127.0.0.1:12000', token: '<token>' };
+```
+
+- `url` is the executor: an `http(s)` or `ws(s)` address.
+- `token` is a token that executor issued: a grant, or its operator credential.
+
+WE reads it once, at start, and removes it from `window`. It writes it nowhere. WE does not renew
+the token: the host that issued it owns its lifetime. A value that is not `{ url, token }` is
+logged to the console and ignored; the app then starts as if the host had set none. A boot
+session wins over a guest link in the same page.
 
 ## Development
 
@@ -55,9 +84,9 @@ pnpm build
 
 This will:
 
-1. Build the app with Vite
+1. Build the app with Vite, with the endpoints of `COASYS_ENV` (`production` or `staging`)
 2. Output optimized static files to `dist/`
-3. The build can be served from any static hosting (Vercel, Netlify, etc.)
+3. The build can be served from any static hosting (Cloudflare Pages, etc.)
 
 ## Preview Production Build
 
@@ -76,7 +105,7 @@ pnpm serve
 - ✅ Auto-updates (just refresh the page)
 - ✅ Native browser APIs (screen sharing works out of the box)
 - ✅ Can embed external apps via iframe (same postMessage pattern)
-- ❌ Requires ad4m-connect desktop app to be installed
+- ❌ Needs one of the person's own devices to link the browser first
 
 ### Electron / Tauri
 
@@ -88,32 +117,6 @@ pnpm serve
 - ❌ Manual updates
 - ❌ Screen sharing requires polyfill (Electron only)
 
-## Platform Adapter
-
-The web platform adapter uses `ad4m-connect` for authentication:
-
-```typescript
-// src/platform/webAdapter.ts
-import Ad4mConnect from '@coasys/ad4m-connect';
-
-export const webAdapter: PlatformAdapter = {
-  async buildAd4mClient() {
-    const connect = Ad4mConnect({
-      appName: 'WE',
-      appDesc: 'Social media for the new internet',
-      appDomain: 'ad4m.weco.io',
-      appIconPath: 'https://avatars.githubusercontent.com/u/34165012',
-      capabilities: [{ with: { domain: '*', pointers: ['*'] }, can: ['*'] }],
-    });
-
-    return await connect.getAd4mClient();
-  },
-
-  isDesktop: false,
-  platform: 'web',
-};
-```
-
 ## Embedding External Apps
 
 The web launcher can embed external apps via iframe using the same postMessage protocol as the desktop apps. See [`embedding-external-apps.md`](../../docs/guides/embedding-external-apps.md) for the complete integration guide.
@@ -124,7 +127,7 @@ The web launcher can embed external apps via iframe using the same postMessage p
 - Standard browser security model
 - Works with any web-based embedded app
 
-**Note:** The embedded app will receive AD4M credentials the same way as in desktop launchers, but the credentials come from `ad4m-connect` rather than a bundled executor.
+**Note:** The embedded app receives AD4M credentials the same way as in desktop launchers, but the credentials come from Coasys Connect (or the boot session) rather than a bundled executor.
 
 ## Deployment
 
@@ -134,33 +137,28 @@ Build the app and deploy the `dist/` folder to any static host:
 
 ```bash
 pnpm build
-# Upload dist/ to Vercel, Netlify, GitHub Pages, etc.
+# Upload dist/ to Cloudflare Pages, GitHub Pages, etc.
 ```
 
 ### Environment Variables
 
-No environment variables required - all configuration is in `src/platform/webAdapter.ts`.
+`COASYS_ENV` (`production` or `staging`) picks `config/<COASYS_ENV>.json` at build time. Nothing
+else is read from the environment.
 
 ### CORS Considerations
 
-The app communicates with the AD4M executor via WebSocket. Ensure your AD4M executor allows connections from your web app's domain.
+The app talks to the AD4M executor over HTTP and WebSocket. Ensure the executor allows connections
+from your web app's domain.
 
 ## Troubleshooting
 
-### "ad4m-connect not found"
+### The sign-in does not finish
 
-Make sure the user has the `ad4m-connect` desktop application installed and running. Download it from the AD4M releases page.
-
-### Connection Failed
-
-1. Check that `ad4m-connect` desktop app is running
-2. Verify the AD4M executor is running (managed by ad4m-connect)
-3. Check firewall settings allow localhost connections
-4. Ensure ad4m-connect is configured correctly
+1. Check that the identity origin in `config/<COASYS_ENV>.json` is reachable from the browser.
+2. Check that the device that opens the link uses the same identity store as the browser.
+3. A link expires after five minutes: use **Link this browser** again for a new one.
 
 ### Build Fails
-
-If the build fails:
 
 - Clear node_modules and reinstall: `rm -rf node_modules && pnpm install`
 - Clear Vite cache: `rm -rf node_modules/.vite`

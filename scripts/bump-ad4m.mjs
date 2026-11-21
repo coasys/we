@@ -3,7 +3,7 @@
  * pnpm bump:ad4m [dev | <commit> | #<ad4m PR> | <ad4m PR URL> | <version> | <npm tag> | staging]
  *                [--no-install | --lockfile-only] [--allow-older] [--if-newer] [--pr-body <file>]
  *
- * Moves WE's pin of @coasys/ad4m and @coasys/ad4m-connect: the root `pnpm.overrides`, which decide
+ * Moves WE's pin of @coasys/ad4m, @coasys/connect and @coasys/identity-wasm: the root `pnpm.overrides`, which decide
  * what every workspace package installs. Nothing else declares a version (the packages say `*`), so
  * a bump is that and the lockfile — and the custody crate's ad4m revs and its Cargo.lock, which build
  * the desktop app's Rust against the same commit.
@@ -19,11 +19,11 @@
  * - **An npm version**: a version, a dist-tag, or `staging` — the newest version published from a
  *   commit on ad4m's `staging` branch. What a release pins, since a version never expires.
  *
- * Refuses a target whose two packages are not both published, and one behind the current pin
+ * Refuses a target whose three packages are not all published, and one behind the current pin
  * unless given --allow-older: either would quietly undo ad4m changes WE already has.
  *
  * pnpm records no integrity for a tarball URL, so a frozen install would accept whatever bytes the
- * URL served. So for a snapshot this downloads both tarballs, and after the install writes their
+ * URL served. So for a snapshot this downloads every tarball, and after the install writes their
  * sha512 into the lockfile, where pnpm keeps and enforces it. The merge gate fails a lockfile
  * without it.
  *
@@ -188,7 +188,7 @@ async function resolveVersion(spec) {
   return tags?.[spec] ?? spec;
 }
 
-/** The commit a version was published from, after checking both packages are published from it. */
+/** The commit a version was published from, after checking every package is published from it. */
 async function versionTarget(version) {
   const published = await Promise.all(
     PACKAGES.map((name) => getJson(`${REGISTRY}/${name.replace('/', '%2f')}/${encodeURIComponent(version)}`)),
@@ -197,17 +197,17 @@ async function versionTarget(version) {
   if (missing.length) {
     notYet(
       `${missing.join(' and ')} ${missing.length > 1 ? 'are' : 'is'} not published at ${version}.\n` +
-        `  Both packages have to exist at one version before WE can move to it.`,
+        `  All ${PACKAGES.length} packages have to exist at one version before WE can move to it.`,
     );
   }
-  const [sdk, connect] = published;
-  if (sdk.gitHead && connect.gitHead && sdk.gitHead !== connect.gitHead) {
+  const heads = published.map((p) => p.gitHead).filter(Boolean);
+  if (new Set(heads).size > 1) {
     notYet(
-      `${version} of the two packages was published from different commits ` +
-        `(${sdk.gitHead.slice(0, 9)} and ${connect.gitHead.slice(0, 9)}). Publish both from one commit.`,
+      `${version} of the ${PACKAGES.length} packages was published from different commits ` +
+        `(${[...new Set(heads)].map((h) => h.slice(0, 9)).join(', ')}). Publish all of them from one commit.`,
     );
   }
-  return sdk.gitHead;
+  return published[0].gitHead;
 }
 
 /**
@@ -255,7 +255,7 @@ try {
 }
 
 const lockPath = join(ROOT, 'pnpm-lock.yaml');
-/** For a snapshot, whether the lockfile already lists both tarballs, each with its integrity. */
+/** For a snapshot, whether the lockfile already lists every tarball, each with its integrity. */
 const lockHasIntegrity = () => {
   if (!commit) return true;
   const listed = lockfileSnapshots(readFileSync(lockPath, 'utf8')).filter((s) => tarballs[s.tarball]);
@@ -360,7 +360,7 @@ if (commit) {
     writeFileSync(lockPath, withIntegrity(readFileSync(lockPath, 'utf8'), tarballs));
     const recorded = lockfileSnapshots(readFileSync(lockPath, 'utf8')).filter((s) => tarballs[s.tarball]);
     if (recorded.length !== PACKAGES.length || recorded.some((s) => s.integrity !== tarballs[s.tarball])) {
-      fail(`The lockfile does not list both snapshots where this expected them; check pnpm-lock.yaml by hand.`);
+      fail(`The lockfile does not list every snapshot where this expected them; check pnpm-lock.yaml by hand.`);
     }
     console.log('Wrote the snapshots’ integrity into pnpm-lock.yaml.');
   } else {
@@ -377,7 +377,7 @@ const report = [];
 report.push(`Moves the ad4m pin from ${before ? describePin(before) : 'an unreadable pin'} to ${describePin(next)}.\n`);
 
 if (!from || !to) {
-  report.push('(One of the two pins records no ad4m commit, so the ad4m changes cannot be listed.)');
+  report.push('(One of the pins records no ad4m commit, so the ad4m changes cannot be listed.)');
 } else if (from === to) {
   report.push('(The same ad4m commit as before.)');
 } else if (!compare) {

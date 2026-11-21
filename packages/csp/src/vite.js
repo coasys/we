@@ -1,14 +1,15 @@
 import { readFileSync } from 'node:fs';
 
-import { buildContentSecurityPolicy } from './index.js';
+import { buildContentSecurityPolicy, webHeadersFile } from './index.js';
 
 /**
- * The policy as a `<meta>` tag in the page — and, for the web host, as a Netlify header too.
+ * The policy as a `<meta>` tag in the page — and, for the web host, as a header too.
  *
- * The tag goes first in `<head>`, because a policy only governs what comes after it. Netlify gets the
+ * The tag goes first in `<head>`, because a policy only governs what comes after it. The web host gets the
  * same policy as a header as well, in a `_headers` file written into the build, for the one clause a
  * meta tag cannot carry: `frame-ancestors`, which stops somebody else's page framing ours. Both are
- * enforced; they say the same thing apart from that clause.
+ * enforced; they say the same thing apart from that clause. The same file carries the host's other
+ * headers: see `webHeadersFile`.
  *
  * Electron does not use this. It sets the policy as a header on its own documents, from a file its
  * prebuild writes with the same builder.
@@ -45,7 +46,7 @@ export function contentSecurityPolicy({ host, seedFile }) {
       this.emitFile({
         type: 'asset',
         fileName: '_headers',
-        source: `/*\n  Content-Security-Policy: ${buildContentSecurityPolicy({ host, dev: false, seed })}\n`,
+        source: webHeadersFile(buildContentSecurityPolicy({ host, dev: false, seed })),
       });
     },
   };

@@ -9,6 +9,6 @@ import source from './main.ts?raw';
 describe('the Electron identity window', () => {
   it('imports only the shared window', () => {
     const imports = [...source.matchAll(/from '([^']+)'/g)].map((m) => m[1]);
-    expect(imports).toEqual(['@we/identity-window']);
+    expect(imports).toEqual(['@coasys/identity-portal']);
   });
 });

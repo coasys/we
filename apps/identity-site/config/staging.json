@@ -1,0 +1,8 @@
+{
+  "authDomain": "https://staging.coasys.id",
+  "platform": "https://api-staging.coasys.app",
+  "store": "https://store-staging.coasys.org",
+  "frameOrigins": ["https://staging.coasys.app"],
+  "pagesProject": "coasys-id",
+  "pagesBranch": "staging"
+}

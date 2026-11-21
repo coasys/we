@@ -51,7 +51,7 @@ follow an unlink. The master key signs both, so this computer cannot change its 
 unlinking itself needs the device key, which custody does not hold. A revoke asked by another
 device's `confirm-revoke` request carries no `since`.
 
-Only the **identity window** runs a flow. Its front end is shared too (`packages/identity-window`);
+Only the **identity window** runs a flow. Its front end is shared too (`packages/identity-portal`);
 each app opens it, gates its calls to that window, and answers the main window with how a step
 ended — never a screen. See each app's `DEVELOPMENT.md`.
 

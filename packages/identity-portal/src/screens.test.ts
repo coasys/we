@@ -103,6 +103,13 @@ describe('the identity window', () => {
     expect(heading({ ...match, hint: null }).title).toBe('Link this device?');
   });
 
+  it('says a browser is being linked, and that it never holds the master key', () => {
+    const match = { screen: 'match' as const, code: 'R7K Q2M', canKeep: false, ownName: false, hint: null };
+    const shown = heading({ ...match, browser: true });
+    expect(shown.title).toBe('Link this browser?');
+    expect(shown.lead).toContain('never holds your master key');
+  });
+
   it('asks the holder by key whether to send the master key, and the revoke request names each key from the log', () => {
     const request = {
       screen: 'request' as const,

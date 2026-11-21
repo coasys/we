@@ -4,9 +4,9 @@
  *
  * A fact about how the app was built, decided once, by the build. It is on in a development build
  * (`vite` serving), and in any other build made with `WE_DEV_FEATURES=true`, which is how a hosted
- * deploy of work in progress gets them: Netlify's `dev` branch and its pull-request previews set it,
+ * deploy of work in progress gets them: the staging build (`dev` branch) sets it,
  * production does not. See `scripts/seed-vite.mjs`, which turns it into the constant below, and
- * `scripts/netlify-build.sh`.
+ * `scripts/web-build.sh`.
  *
  * ## Not `isDevelopment`
  *

@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# Netlify build. Every build installs the @coasys/ad4m and @coasys/ad4m-connect this
-# branch pins, builds WE, and says which ad4m that was.
+# The web app's build, run by .github/workflows/web-deploy.yaml. Every build installs the
+# @coasys/ad4m and @coasys/connect this branch pins, builds WE, and says which ad4m that was.
 #
-# There is no special case for a deploy preview any more. A pull request that needs
-# an unmerged ad4m change pins that ad4m pull request's snapshot
-# (`pnpm bump:ad4m #<N>`), so its preview installs the change from the lockfile like
-# any other pin, and is the same build CI tests. See
-# docs/contributing/ad4m-and-deploys.md.
+# Inputs, from the workflow's environment:
+#   COASYS_ENV   `production` or `staging`: which apps/we-web/config/<env>.json the build compiles in,
+#                and whether it carries the developer features (staging does, production does not).
+#   WE_BRANCH    the branch or tag built, for /build-info.json.
+#   WE_COMMIT    the commit built, for /build-info.json.
+#
+# There is no special case for a pull request: one that needs an unmerged ad4m change pins that
+# ad4m pull request's snapshot (`pnpm bump:ad4m #<N>`), which installs from the lockfile like any
+# other pin and is the same build CI tests. See docs/contributing/ad4m-and-deploys.md.
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
@@ -20,8 +24,12 @@ echo "  pwd:  $PWD"
 
 DIST="$PWD/apps/we-web/dist"
 
-# Netlify sets BRANCH to `pull/N/head` on a deploy preview, and HEAD to the head branch.
-WE_BRANCH="${HEAD:-${BRANCH:-}}"
+case "${COASYS_ENV:-}" in
+  production | staging) ;;
+  *) echo "COASYS_ENV must be production or staging, got '${COASYS_ENV:-}'" >&2; exit 1 ;;
+esac
+export COASYS_ENV
+WE_BRANCH="${WE_BRANCH:-}"
 WE_VERSION="$(node -p "require('./package.json').version")"
 
 # Which ad4m, read the way every workflow reads it. A pin it cannot read fails the build
@@ -32,16 +40,11 @@ AD4M_PIN_VERSION="$(printf '%s\n' "$PIN" | sed -n 's/^version=//p')"
 AD4M_SHA="$(node scripts/ad4m-pin.mjs --commit 2>/dev/null || true)"
 echo "── ad4m: $AD4M_PIN_KIND ${AD4M_PIN_VERSION:-${AD4M_SHA:0:9}}"
 
-# Developer features (the showcase templates, pretend people, Settings → Developer) for everything
-# but production: `dev` and pull-request previews are where work in progress is looked at.
-# Production (`main`) is a published version and gets none of them. See
+# Developer features (the showcase templates, pretend people, Settings → Developer) for staging,
+# where work in progress is looked at. Production is a tagged release and gets none of them. See
 # packages/module-system/shared/src/devFeatures.ts.
-# Named rather than "anything but production", so a build with no context says no.
-case "${CONTEXT:-}" in
-  branch-deploy | deploy-preview) export WE_DEV_FEATURES=true ;;
-  *) export WE_DEV_FEATURES=false ;;
-esac
-echo "── developer features: $WE_DEV_FEATURES (context: ${CONTEXT:-unset})"
+if [ "$COASYS_ENV" = staging ]; then export WE_DEV_FEATURES=true; else export WE_DEV_FEATURES=false; fi
+echo "── developer features: $WE_DEV_FEATURES (env: $COASYS_ENV)"
 
 NODE_OPTIONS='--max-old-space-size=8192' pnpm build
 
@@ -52,7 +55,7 @@ NODE_OPTIONS='--max-old-space-size=8192' pnpm build
 # front of them does not match. Both halves are written: /build-info.json for anything
 # that wants to read it, and a console line for the person who has the page open.
 
-export DIST AD4M_PIN_KIND AD4M_PIN_VERSION AD4M_SHA WE_BRANCH WE_VERSION
+export DIST AD4M_PIN_KIND AD4M_PIN_VERSION AD4M_SHA WE_BRANCH WE_COMMIT WE_VERSION
 
 node -e "
   const fs = require('fs');
@@ -69,7 +72,7 @@ node -e "
     ad4mVersion: process.env.AD4M_PIN_VERSION || null,
     ad4mSha: process.env.AD4M_SHA || null,
     weBranch: process.env.WE_BRANCH || null,
-    weCommit: process.env.COMMIT_REF || null,
+    weCommit: process.env.WE_COMMIT || null,
     builtAt: new Date().toISOString(),
   };
   fs.writeFileSync(path.join(dist, 'build-info.json'), JSON.stringify(info, null, 2) + '\n');

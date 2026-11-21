@@ -112,7 +112,7 @@ crate (`crates/custody`, crate `we-custody`) into its main process: where keys r
 identity store, pending identities and how to test it are in `crates/custody/README.md`,
 shared with the Electron app, which runs the same crate as a sidecar.
 
-Only the **identity window** runs a flow. Its page is the shared window (`packages/identity-window`)
+Only the **identity window** runs a flow. Its page is the shared window (`packages/identity-portal`)
 over the `identity_flow_*` commands, built from `identity/` by `vite.identity.config.ts` into
 `dist/identity/` under a strict CSP, with its own capability (`src-tauri/capabilities/identity.json`).
 It wears the deployment's app as the app's screens before a session do — its theme, name and mark,

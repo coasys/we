@@ -27,3 +27,6 @@ export function buildContentSecurityPolicy(options?: {
   seed?: SeedLike;
   meta?: boolean;
 }): string;
+
+/** The `_headers` file of the web host: the policy and the host's other headers. */
+export function webHeadersFile(policy: string): string;

@@ -1,0 +1,66 @@
+# identity-site
+
+The static site behind the Coasys identity domain. It serves three routes:
+
+- `/connect`: the Connect frame. An app embeds it in an iframe; the person links this browser, picks one of their own devices, and the frame answers the app with a signed login.
+- `/o`: hands an offer link to the `coasys://link` handler of the Coasys app. It does nothing else.
+- `/`: a plain landing page.
+
+The site has no backend. It talks to the identity store, the platform's app registry and the executor the person picks, all over HTTP or WebSocket from the browser.
+
+## What the frame does
+
+1. The app posts `connect`. The frame checks `event.origin` against the registry (`GET {platform}/v1/connect/apps/{appId}`), and shows the app's name and its origin on every screen.
+2. A browser without WebCrypto Ed25519 and X25519 sees "This browser is too old for Coasys". There is no fallback.
+3. A browser with no key makes one (non-extractable, kept in IndexedDB) and shows "Link this browser": a QR code and a device link, no password field. The holder opens the link; the offer ticket arrives in the browser's pre-join inbox.
+4. The person picks a device from their own private record (only devices that run an executor). The frame asks that executor for a session challenge, signs a key statement, logs in, and posts the answer to the app's exact origin.
+5. The app can renew (`renew`) and sign out (`sign-out`). A browser key older than 30 days is dropped.
+
+## Layout
+
+| Path                                           | What it is                                                                                            |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `src/frame.ts`                                 | The message handling of `/connect`: origin checks, link, pick, login, renew.                          |
+| `src/ui.ts`, `src/page.css`                    | The screens.                                                                                          |
+| `src/browserKey.ts`                            | The browser key (non-extractable Ed25519; the X25519 secret AES-GCM-wrapped) and its IndexedDB vault. |
+| `src/wasm.ts`                                  | Starts `@coasys/identity-wasm` once. Every wire format and every check comes from it.                 |
+| `src/link.ts`, `src/store.ts`, `src/record.ts` | The link flow, the identity store's routes, the private record.                                       |
+| `src/session.ts`, `src/registry.ts`            | The executor client and the app registry client.                                                      |
+| `headers.ts`                                   | The one source of `dist/_headers`.                                                                    |
+| `site-build.ts`                                | Build plugin: integrity hashes, `_headers`, the build manifest.                                       |
+| `config/<env>.json`, `config/endpoints.mjs`    | The values of each environment.                                                                       |
+| `scripts/check-live.ts`                        | Compares a live site with its build (used by the deploy).                                             |
+| `tests/fakes.ts`, `tests/fixtures/`            | Fakes of the store, registry and executor, and a world of real-format data (see below).               |
+| `e2e/`                                         | Playwright tests: the real frame, with HTTP and WebSocket servers for the fakes.                      |
+| `/.github/workflows/identity-site-deploy.yaml` | The deploy (at the WE root).                                                                          |
+
+## Key storage
+
+The signing key is a WebCrypto Ed25519 key with `extractable: false`; it signs the bytes the `*Bytes` exports of the WASM return, and `proofValue` turns the signature into the protocol's text. WebKit cannot read an X25519 `CryptoKey` back from IndexedDB, so the X25519 secret is stored as AES-GCM ciphertext under a second non-extractable key; it exists in WASM memory for one call (`withEnc`) and is `free()`d after. Both keys are dropped 30 days after they were made.
+
+## Build and test
+
+From the WE root, `pnpm build`, `pnpm typecheck` and `pnpm test` include this site. Alone:
+
+```sh
+COASYS_ENV=staging COASYS_STORE_KEY=did:key:... pnpm --filter @we/identity-site build   # writes dist/
+pnpm --filter @we/identity-site typecheck
+pnpm --filter @we/identity-site test        # vitest: unit tests and the build checks
+pnpm --filter @we/identity-site test:e2e    # builds dist-e2e and runs Playwright in Chromium, Firefox and WebKit
+```
+
+The WASM cannot seal a message, so nothing can write a ticket for a key made at run time. The tests start from `tests/fixtures/world.json`: a key log, a sealed ticket, a private record and the browser key they are made for, generated by Rust from the identity core's own test helpers (`world-generator.rs.txt` is that generator; its `#[path]` names a checkout of ad4m). The unit and browser tests put the fixture's key in the vault, set the browser clock to the fixture's moment, and the frame verifies everything in them with the real WASM. `tests/fakes.ts` checks a login's signature by computing the expected one from the fixture's seed (Ed25519 is deterministic). The acceptance scenario at `tests/acceptance/web/link-this-browser.test.mjs` runs the same frame through the local edge.
+
+`COASYS_ENV` is `production`, `staging` (default) or `e2e`. `COASYS_STORE_KEY` is the identity store's head key as a `did:key`; it is deployment data and is required except for `e2e`. The `build` script fills in a placeholder only when the variable is not set at all, so the workspace's `pnpm build` runs; that `dist/` is never deployed. The deploy workflow runs `vite build` itself and passes the real key, and a build with an empty key is refused.
+
+Each environment file holds one value for each of: `authDomain`, `platform`, `store`, `frameOrigins`, `pagesProject`, `pagesBranch`. `frameOrigins` is a reviewed list of the origins that may embed `/connect`; it becomes `frame-ancestors`.
+
+The build writes `dist/_headers` and `dist/.well-known/identity-site-build.json` (commit, the versions of the identity portal and `@coasys/connect`, and the sha256 of every file). The same sources give the same files.
+
+## Deploy
+
+Push a tag `site-vX.Y.Z`. The workflow builds in a container pinned by digest, deploys the staging build to the Pages branch `staging`, compares the live staging site with the build (every file hash and every header), then does the same for production. If the production check fails, production returns to the deployment it replaced.
+
+## Dependencies
+
+`@coasys/identity-portal` supplies the theme and the link-browser view (`workspace:*`). `@coasys/identity-wasm` and `@coasys/connect` are pinned in the root `pnpm.overrides` with `@coasys/ad4m`, and `scripts/bump-ad4m.mjs` moves the three together.
