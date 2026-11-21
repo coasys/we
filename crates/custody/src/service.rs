@@ -3371,6 +3371,9 @@ async fn answer_on<R: ExecutorRpc>(
                 ))),
             ),
             Err(ClientError::NeedsWords) => {
+                // Read before the rotation, which rewrites the record without the devices it
+                // unlinks: a retry screen names them from here.
+                let names = record_names(executor, vault, &did).await;
                 let mut error = None;
                 let screen = loop {
                     // The typed words and the parsed ones end with this block, before the wait
@@ -3405,6 +3408,7 @@ async fn answer_on<R: ExecutorRpc>(
                                 &unlocking,
                                 &did,
                                 Some(&request),
+                                &names,
                                 pending,
                                 cause,
                                 "answer",
@@ -3782,7 +3786,10 @@ async fn revoke_on<R: ExecutorRpc>(
         Err(screen) => return answer(reply, Ok(screen)),
     };
     let may_hold_master = may_hold_master(executor, &did, &key_id).await;
-    let name = name_in(&record_names(executor, vault, &did).await, &key_id);
+    // Read before the rotation: it rewrites the record without the devices it unlinks, so a retry
+    // screen after it names them from here.
+    let names = record_names(executor, vault, &did).await;
+    let name = name_in(&names, &key_id);
     let confirm = |error: Option<String>| Screen::RevokeConfirm {
         key_id: key_id.clone(),
         name: name.clone(),
@@ -3842,8 +3849,8 @@ async fn revoke_on<R: ExecutorRpc>(
                     // The master key is replaced; the revoke is not published yet.
                     Err(ClientError::RotatedNotRevoked { pending, cause }) => {
                         let resumed = resume_revoke(
-                            executor, vault, address, rx, reply, &unlocking, &did, None, pending,
-                            cause, "revoke",
+                            executor, vault, address, rx, reply, &unlocking, &did, None, &names,
+                            pending, cause, "revoke",
                         )
                         .await;
                         break match resumed {
@@ -4032,14 +4039,14 @@ async fn resume_revoke<R: ExecutorRpc>(
     unlocking: &Unlocking<'_>,
     did: &str,
     request: Option<&DeviceRequest>,
+    names: &[(String, String)],
     mut pending: PendingRevoke,
     mut cause: String,
     purpose: &'static str,
 ) -> Option<Result<(Revoked, PendingRevoke, Option<String>), ClientError>> {
-    let names = record_names(executor, vault, did).await;
     loop {
         let since =
-            ask_retry_revoke(vault, address, rx, reply, &pending, &names, &cause, true).await?;
+            ask_retry_revoke(vault, address, rx, reply, &pending, names, &cause, true).await?;
         let mut error = None;
         loop {
             let (_typed, words) =
