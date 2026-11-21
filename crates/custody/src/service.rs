@@ -4918,7 +4918,7 @@ mod tests {
         /// ([`FakeExecutor::keep_puts`]). `None`: a put answers 404.
         keeps_record: RefCell<Option<Vec<Event>>>,
         /// Once the key's method is called, the method named beside it answers its value.
-        then: RefCell<std::collections::HashMap<&'static str, (&'static str, Value)>>,
+        then: RefCell<std::collections::HashMap<&'static str, Vec<(&'static str, Value)>>>,
         /// What a method refuses with, by name, ahead of anything it would answer.
         refusals: RefCell<std::collections::HashMap<&'static str, (u16, &'static str)>>,
         /// How long a method takes to answer, by name.
@@ -4966,7 +4966,11 @@ mod tests {
         /// Once `when` is called, `method` answers `value` (an `identity.acceptJoin` that lets the
         /// executor join, say).
         fn answer_after(&self, when: &'static str, method: &'static str, value: Value) {
-            self.then.borrow_mut().insert(when, (method, value));
+            self.then
+                .borrow_mut()
+                .entry(when)
+                .or_default()
+                .push((method, value));
         }
 
         /// `method` refuses with `code` and `message` from now on.
@@ -4999,7 +5003,7 @@ mod tests {
                 tokio::time::sleep(delay).await;
             }
             let then = self.then.borrow_mut().remove(method);
-            if let Some((next, value)) = then {
+            for (next, value) in then.into_iter().flatten() {
                 self.canned.borrow_mut().insert(next, value);
             }
             if let Some((code, message)) = self.refusals.borrow().get(method) {
@@ -9809,6 +9813,96 @@ mod tests {
         assert!(crate::keylog::ended_holders(&log).is_empty());
         assert_eq!(vault.master_index(&scid).unwrap(), Some(1));
         shows_no_word(&screens, &phrase, &[]);
+    }
+
+    /// The retry screen names the device the way the record did before the rotation: the rotation
+    /// rewrites the private record without the devices it unlinks, so names read after it are gone
+    /// and the screen would show the key id.
+    #[tokio::test]
+    async fn the_retry_screen_names_a_device_the_rotation_took_out_of_the_record() {
+        let (events, _) = crate::keylog::tests::log_with_d2(true);
+        let scid = events[0].scid.clone();
+        let chain = ad4m_identity_core::fold(&events).unwrap();
+        let seal = |record: &ad4m_identity_core::record::PrivateRecord| {
+            let d1 = KeySigner::new(&[2u8; 32], 0);
+            let sealed = ad4m_identity_core::record::seal_record(
+                &chain,
+                1,
+                record,
+                None,
+                &d1,
+                &mut Fixed(7),
+            )
+            .unwrap();
+            let receipt = ad4m_identity_core::record::sign_receipt(
+                &scid,
+                &sealed,
+                chain.head().seq,
+                &store_key(),
+            )
+            .unwrap();
+            json!({ "record": sealed, "receipt": receipt })
+        };
+        let mut before = ad4m_identity_core::record::PrivateRecord::default();
+        before.devices.insert("d2".into(), named("Test laptop"));
+        let mut after = ad4m_identity_core::record::PrivateRecord::default();
+        after.devices.insert("d1".into(), named("This computer"));
+        let rotated = rotated_unlinking(&events, &["d2"]);
+        // Serves the record as it is before the rotation, sealed to `d1`.
+        let (executor, _) = executor_with(&events, &before);
+        let fake = executor.rpc();
+        fake.answer("identity.requests", json!([]));
+        // The rotation is published: the log is the rotated one and the record is the rewrite.
+        fake.answer_after("identity.publish", "identity.log", log_answer(&rotated));
+        fake.answer_after("identity.publish", "identity.record", seal(&after));
+        fake.refuse_after.replace(Some((
+            1,
+            422,
+            "since is before the store appended the key".into(),
+        )));
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        keep_master(&vault, &scid, 0);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let phrase = phrase_of(41);
+        let ((), screens) = tokio::join!(
+            revoke_on(
+                &executor,
+                &vault,
+                &address,
+                &mut rx,
+                &mut reply,
+                "d2".into()
+            ),
+            async {
+                let mut shown = vec![first.await.unwrap().unwrap()];
+                shown.push(
+                    window
+                        .step(StepInput::Revoke {
+                            passphrase: None,
+                            rotate: true,
+                            since: Some(1_000),
+                        })
+                        .await,
+                );
+                shown.push(
+                    window
+                        .step(StepInput::TwelveWords {
+                            words: phrase.clone().into(),
+                        })
+                        .await,
+                );
+                // Cancel on the retry screen: the rotation stands and the step ends.
+                drop(window);
+                shown
+            }
+        );
+        assert!(
+            matches!(&screens[2], Screen::RotatedNotRevoked { key_ids, names, .. }
+                if key_ids == &["d2".to_string()]
+                    && names == &[Some("Test laptop".to_string())]),
+            "{:?}",
+            screens[2]
+        );
     }
 
     #[tokio::test]
