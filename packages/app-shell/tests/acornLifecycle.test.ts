@@ -285,6 +285,10 @@ describe('createAcornProject', () => {
 });
 
 describe('joinAcornProject', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('mounts the same seed-derived language and announces the join — without writing project meta', async () => {
     const record: string[] = [];
     const acorn = createAcornLifecycle(deps(record));
@@ -315,6 +319,62 @@ describe('joinAcornProject', () => {
     // The structure is born under the real name, and the record itself is corrected.
     expect(record).toContain('ensure:Their Real Project:dataset-1');
     expect(record).toContain('meta:Their Real Project:dataset-1');
+  });
+
+  /*
+    Words that name no project template a language nobody shares: the mount is
+    an empty cell that syncs nothing, so no project meta ever arrives. The join
+    waits for it about 20 s, then parks a retryable warning — a wrong-words
+    joiner sees the warning instead of an empty space built over nothing, and
+    a right-words joiner whose project is still syncing retries into it.
+  */
+  it('a join whose words name no project waits for the meta, then parks retryable — no empty space', async () => {
+    vi.useFakeTimers();
+    const record: string[] = [];
+    const d = deps(record, { projectMeta: vi.fn(async () => null) });
+    const acorn = createAcornLifecycle(d);
+    const outcome = acorn.joinAcornProject(undefined, 'wrong seed words', BASE).then(
+      (value) => ({ value }),
+      (error) => ({ error }),
+    );
+
+    await vi.advanceTimersByTimeAsync(25_000);
+
+    const settled = await Promise.race([outcome, Promise.resolve('still-out' as const)]);
+    expect(settled).not.toBe('still-out');
+    const pending = await acorn.pendingAcornOperation();
+    expect(pending?.phase).toBe('failed');
+    expect(pending?.failure?.retryable).toBe(true);
+    // No space was built over the empty cell: nothing of the setup tail ran.
+    expect(record.find((c) => c.startsWith('ensure:'))).toBeUndefined();
+    expect(record.find((c) => c.includes('announceJoin'))).toBeUndefined();
+    expect(record.find((c) => c.startsWith('navigate:'))).toBeUndefined();
+  });
+
+  it('the retry on an unanswered join lands once the meta has synced', async () => {
+    vi.useFakeTimers();
+    const record: string[] = [];
+    let meta: { name: string } | null = null;
+    const d = deps(record, {
+      projectMeta: vi.fn(async () => meta),
+      updateSpaceMeta: vi.fn(async (updates: { name?: string }, uuid?: string) => {
+        record.push(`meta:${updates.name}:${uuid}`);
+      }),
+    });
+    const acorn = createAcornLifecycle(d);
+    const outcome = acorn.joinAcornProject(undefined, 'late seed words', BASE).then(
+      (value) => ({ value }),
+      (error) => ({ error }),
+    );
+    await vi.advanceTimersByTimeAsync(25_000);
+    expect(await Promise.race([outcome, Promise.resolve('still-out' as const)])).not.toBe('still-out');
+
+    meta = { name: 'Late Project' };
+    const retried = acorn.resumeAcornOperation('dataset-1', LANG);
+    const { value, error } = await settle(retried);
+    expect(error).toBeUndefined();
+    expect(value).toBe('dataset-1');
+    expect(record).toContain('meta:Late Project:dataset-1');
   });
 });
 
@@ -1050,24 +1110,55 @@ describe('openAcornProject', () => {
   });
 
   /*
-    A retried create or join must not make a second perspective for the project it
-    already made one for: the same seed templates to the same language address, so
-    the dataset already carrying that mount is the project — the open tail resumes
-    it rather than `lifecycle.create` starting over.
+    A create asked with words a project already mounts must not land in that
+    project — the ask meant a new one, and answering it with the old one drops
+    the new name silently. The words being taken is a refusal in plain terms,
+    not a join: nothing is touched, and no Retry is offered on a second mount
+    that could only answer the same way. An intent that names the same language
+    is still "ours" — the interrupted create it marks resumes through this
+    scan instead of refusing.
   */
-  it('a retried create reuses the perspective the first attempt made', async () => {
+  it('create over words already mounting a project fails in words — it does not land in it', async () => {
+    const record: string[] = [];
+    const d = deps(record);
+    const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
+    (d.lifecycle()!.list as ReturnType<typeof vi.fn>).mockResolvedValue([ref('dataset-1', 'Old Project')]);
+    port.mountsOf['dataset-1'] = [LANG];
+    const acorn = createAcornLifecycle(d);
+
+    await expect(acorn.createAcornProject('New Name', 'alpha beta gamma', BASE)).rejects.toThrow(
+      /already exists for these words/,
+    );
+    // Nothing of the old project was touched — no structure, no meta, no landing.
+    expect(record.find((c) => c.startsWith('ensure:'))).toBeUndefined();
+    expect(record.find((c) => c.includes('AcornProjectMeta'))).toBeUndefined();
+    expect(record.find((c) => c.startsWith('navigate:'))).toBeUndefined();
+    expect(d.lifecycle()!.create).not.toHaveBeenCalled();
+    // Parked but not retryable: the words are taken, not timed out.
+    const pending = await acorn.pendingAcornOperation();
+    expect(pending?.phase).toBe('failed');
+    expect(pending?.failure?.retryable).toBe(false);
+  });
+
+  it('a create resumes its own interrupted project when the durable intent names the same language', async () => {
     const record: string[] = [];
     const d = deps(record);
     const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
     (d.lifecycle()!.list as ReturnType<typeof vi.fn>).mockResolvedValue([ref('dataset-1', 'Rig Project')]);
     port.mountsOf['dataset-1'] = [LANG];
+    d.setupIntent!.set('dataset-1', {
+      name: 'Rig Project',
+      writeMeta: false,
+      announce: false,
+      languageAddress: LANG,
+      phase: 'open',
+    });
     const acorn = createAcornLifecycle(d);
 
     const id = await acorn.createAcornProject('Rig Project', 'alpha beta gamma', BASE);
     expect(id).toBe('dataset-1');
     expect(d.lifecycle()!.create).not.toHaveBeenCalled();
     expect(record).toContain('ensure:Rig Project:dataset-1');
-    expect(record).toContain(`interact:create:${LANG}://class/AcornProjectMeta`);
   });
 
   it('a retried join reuses the perspective the first attempt made', async () => {

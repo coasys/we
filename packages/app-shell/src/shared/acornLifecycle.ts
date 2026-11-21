@@ -214,6 +214,12 @@ function classifyAcornFailure(stage: AcornLifecycleStage, cause: string): string
   if (/did not answer inside the \d+(\.\d+)? s deadline/.test(cause)) {
     return 'It is taking longer than it should — Retry keeps the same project.';
   }
+  if (cause.includes('a project already exists for these words')) {
+    return 'Those words already name a project here — join it instead of creating one.';
+  }
+  if (/no project meta arrived inside the \d+(\.\d+)? s join wait/.test(cause)) {
+    return 'No project answered with those words — check them, or Retry to keep waiting.';
+  }
   if (MOUNT_INIT_FAILURES.some((signature) => cause.includes(signature))) {
     return 'The project’s cell did not start on the executor in time.';
   }
@@ -969,6 +975,25 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
     // A Close or a newer ask during discovery: its "nothing found" allocates nothing.
     if (!owns()) return null;
     let ref = found?.ref;
+    /*
+      "Create" means a new project: a dataset already mounting this language
+      that no intent of ours names is a project these words already made —
+      landing there would silently turn the ask into a join and drop the new
+      name. Fail in words instead; a join wants exactly this target, and a
+      resume does not reach here — the intent marks its target `mounted: false`
+      above, so only a genuinely foreign mount refuses.
+    */
+    if (found?.mounted && ref && op.writeMeta) {
+      const intent = deps.setupIntent?.get(ref.id);
+      const ours = Boolean(intent?.phase && intent.languageAddress === op.lang);
+      if (!ours) {
+        throw new AcornLifecycleError({
+          stage: 'mount',
+          retryTarget: null,
+          cause: new Error('a project already exists for these words'),
+        });
+      }
+    }
     if (!ref) {
       /*
         The one allocation for this op. Whoever is waiting when it lands — this
@@ -1247,6 +1272,21 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
     if (!owedEarly?.writeMeta && deps.projectMeta) {
       const meta = await waitFor(() => deps.projectMeta!(ref), PROJECT_META_WAIT_MS, pollMs, own);
       if (!own()) return null;
+      /*
+        A join's announce is owed to a project that must exist: meta that never
+        arrives means the words named none — or none has reached this executor
+        yet — and building a WE space over the empty cell is exactly the silent
+        empty space the wrong passphrase used to make. Parked resumable, with
+        the mount kept: the same words' Retry waits again, which is also what a
+        project still syncing needs.
+      */
+      if (owedEarly?.announce && !meta) {
+        throw new AcornLifecycleError({
+          stage: 'mount',
+          retryTarget: { datasetId: ref.id, languageAddress: lang },
+          cause: new Error(`no project meta arrived inside the ${PROJECT_META_WAIT_MS / 1000} s join wait`),
+        });
+      }
       projectName = typeof meta?.name === 'string' && meta.name ? meta.name : undefined;
     }
     /*
