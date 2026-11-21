@@ -32,13 +32,14 @@ export async function check({ evaluate, pressAt }) {
     await evaluate(() => new Promise((resolve) => setTimeout(resolve, 250)));
   };
 
+  // Two levels: Social DNA holds the groups of classes, and the built-in group holds the vocabulary.
   await press('Social DNA');
-  if (!(await visible('Signal types'))) problems.push('pressing Social DNA did not open it');
-  await press('Signal types');
-  if (!(await visible('Like'))) problems.push('pressing Signal types did not open it');
-  await press('Signal types');
-  if (await visible('Like')) problems.push('pressing Signal types again did not close it');
+  if (!(await visible('Built in'))) problems.push('pressing Social DNA did not open it');
+  await press('Built in');
+  if (!(await visible('Signal types'))) problems.push('pressing Built in did not open it');
+  await press('Built in');
+  if (await visible('Signal types')) problems.push('pressing Built in again did not close it');
   await press('Social DNA');
-  if (await visible('Signal types')) problems.push('pressing Social DNA again did not close it');
+  if (await visible('Built in')) problems.push('pressing Social DNA again did not close it');
   return problems;
 }

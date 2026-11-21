@@ -170,11 +170,24 @@ interface RailShellBase {
    * opened under the first press and stayed open over the page it led to.
    *
    * An expression, because it is a fact about the window rather than about the rail (WE's sidebar
-   * passes `shellStore.narrowWindow`).
+   * passes `shellStore.narrowWindow`; a space's template answers to its own surface's tier instead —
+   * the window is chrome's to read).
    */
   compact?: SchemaProp;
   /** How tall the bar is while `compact` and closed. Defaults to '56px'. */
   compactHeight?: string;
+  /**
+   * While this holds, the shut bar is not drawn at all — an expression, for the same reason
+   * `compact` is.
+   *
+   * A cover can ask for the *whole* window, the app's chrome with the page (`COVER_ATTR="window"`
+   * in app-shell's `windowCover.ts`), and the host answers by taking the frame's bands away — but
+   * the bar is the rail's own to remove, and a bar left drawn stands over a cover it can no longer
+   * be cleared of. Scoped to `shut`, because the bar is all the rail is then; an open rail is a
+   * cover itself and is never asked to hide. The caller passes the same fact the frame reads
+   * (`shellStore.chromeCovered`).
+   */
+  barHidden?: SchemaProp;
 }
 
 /**
@@ -225,6 +238,12 @@ export function railShell(opts: RailShellOptions): SchemaNode {
   const compact = opts.compact;
   // Shut to the bar: only the header is drawn. A rail that is never compact is never shut.
   const shut = compact === undefined ? undefined : expr`${compact} && !local.expanded`;
+  /*
+    Nor is even the bar drawn while the whole window is a cover's — see `barHidden`. Scoped to
+    `shut`: it is the bar the cover must not stand over, and the same `display` trick the shut
+    children use, so `expanded` and every fold survives the cover letting go.
+  */
+  const barGone = shut !== undefined && opts.barHidden !== undefined ? expr`${shut} && ${opts.barHidden}` : undefined;
   // `display` rather than an `$if`, so what the rail holds (a folded group, a scroll position)
   // is where it was when the rail opens again.
   const hiddenWhileShut = shut === undefined ? {} : { display: expr`${shut} ? 'none' : 'flex'` };
@@ -257,6 +276,7 @@ export function railShell(opts: RailShellOptions): SchemaNode {
       position: opts.position ?? 'fixed',
       ...(opts.zIndex !== undefined && { zIndex: opts.zIndex }),
       ...(opts.position !== 'static' && { top: '0', [side]: '0' }),
+      ...(barGone !== undefined && { display: expr`${barGone} ? 'none' : 'flex'` }),
       ...(covering !== undefined && {
         'data-we-covers-window': expr`${covering} ? 'true' : 'false'`,
         onKeyDown: {
@@ -320,9 +340,13 @@ export function railShell(opts: RailShellOptions): SchemaNode {
  * where to go would cover the place they chose. On each row rather than once on the rail, because a
  * press on a group heading folds the group and should leave the rail open to show the fold. Does
  * nothing while the rail is not compact: there the pointer leaving closes it.
+ *
+ * What shuts defaults to the rail's own `expanded` flag. A caller whose openness lives elsewhere
+ * passes `then` — the Coasys space's tree is a `PanelLane` on a phone rather than a compact rail,
+ * so its rows fold the lane (`shellStore.setLaneCollapsed`) instead of clearing a local here.
  */
-export function closeWhenCompact(compact: SchemaProp): SchemaProp {
-  return { $if: { condition: compact, then: { $setLocal: 'expanded', value: false } } };
+export function closeWhenCompact(compact: SchemaProp, then?: SchemaProp): SchemaProp {
+  return { $if: { condition: compact, then: then ?? { $setLocal: 'expanded', value: false } } };
 }
 
 export interface RailButtonOptions {

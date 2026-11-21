@@ -3646,7 +3646,7 @@
         },
         {
           "name": "onNodeArrange",
-          "type": "((payload: { id: string; into: \"child\" | \"sibling\" | \"loose\"; recordId: string; recordType: string; targetId?: string; targetType?: string; before?: boolean; order?: string[]; x: number; y: number; }) => void)",
+          "type": "((payload: { id: string; into: \"child\" | \"sibling\" | \"loose\"; recordId: string; recordType: string; pending?: boolean; changed?: boolean; edge?: { id: string; type: string; data?: Record<string, GraphValue>; }; targetId?: string; targetType?: string; before?: boolean; order?: string[]; x: number; y: number; }) => void)",
           "optional": true
         },
         {
@@ -6653,7 +6653,7 @@
           "type": "boolean"
         }
       },
-      "actions": ["switchDataset", "reorderDatasets", "removeDataset", "cleanupSpaceSdna"],
+      "actions": ["switchDataset", "reorderDatasets", "removeDataset"],
       "ambient": ["switchDataset"],
       "destructive": ["removeDataset"],
       "needsArgs": ["switchDataset", "reorderDatasets", "removeDataset"]
@@ -6669,9 +6669,11 @@
             "subtitle",
             "icon",
             "thisDevice",
+            "unlinked",
             "revoked",
             "valid",
             "status",
+            "canUnlink",
             "canRevoke",
             "name",
             "holdsMaster",
@@ -6733,13 +6735,14 @@
         "askMaster",
         "answerRequest",
         "rename",
+        "unlink",
         "revoke",
         "replaceMaster",
         "restore",
         "removeMaster"
       ],
       "ambient": ["refresh"],
-      "needsArgs": ["answerRequest", "rename", "revoke"]
+      "needsArgs": ["answerRequest", "rename", "unlink", "revoke"]
     },
     {
       "name": "editorStore",
@@ -7068,6 +7071,9 @@
         },
         "displays": {
           "type": "object"
+        },
+        "plumbingClasses": {
+          "type": "array"
         },
         "kinds": {
           "type": "array"
@@ -7671,6 +7677,9 @@
         "devTools": {
           "type": "boolean"
         },
+        "testPeople": {
+          "type": "boolean"
+        },
         "credentialEntered": {
           "type": "boolean"
         },
@@ -7680,6 +7689,7 @@
       },
       "actions": [
         "setDevTools",
+        "setTestPeople",
         "unlock",
         "touchCredential",
         "clearPasswordError",
@@ -7688,7 +7698,7 @@
         "retryBoot"
       ],
       "ambient": ["touchCredential", "clearPasswordError"],
-      "needsArgs": ["setDevTools"]
+      "needsArgs": ["setDevTools", "setTestPeople"]
     },
     {
       "name": "shapeStore",
@@ -7897,6 +7907,9 @@
         "narrowWindow": {
           "type": "boolean"
         },
+        "chromeCovered": {
+          "type": "boolean"
+        },
         "dockPlacement": {
           "type": "object"
         },
@@ -7984,6 +7997,7 @@
         "resetTemplateLayout",
         "toggleLane",
         "setLaneCollapsed",
+        "focusInLane",
         "toggleCustomiseLayout",
         "saveLayout",
         "applyLayout",
@@ -8028,6 +8042,7 @@
         "resetTemplateLayout",
         "toggleLane",
         "setLaneCollapsed",
+        "focusInLane",
         "toggleCustomiseLayout",
         "revealDock",
         "openModulePanel",
@@ -8059,6 +8074,7 @@
         "closePanel",
         "toggleLane",
         "setLaneCollapsed",
+        "focusInLane",
         "saveLayout",
         "applyLayout",
         "deleteLayout",
@@ -8758,7 +8774,7 @@
         },
         "workflows": {
           "type": "array",
-          "properties": ["name", "label", "editable", "records", "managedBy", "archived", "steps", "moves"]
+          "properties": ["name", "label", "editable", "records", "running", "managedBy", "archived", "steps", "moves"]
         },
         "workflowsLoaded": {
           "type": "boolean"
@@ -8775,6 +8791,22 @@
         },
         "recordWorkflows": {
           "type": "object"
+        },
+        "active": {
+          "type": "array",
+          "properties": [
+            "id",
+            "workflow",
+            "label",
+            "record",
+            "title",
+            "kind",
+            "state",
+            "stateLabel",
+            "lastActivity",
+            "waiting",
+            "stalled"
+          ]
         }
       },
       "actions": [
@@ -8988,6 +9020,18 @@
       "params": ["options"],
       "doc": "A JSON string indented for reading, or the text unchanged when it will not parse — which is the case worth showing rather than swallowing. Options: text. For displaying a stored blob (an extraction pass’s prompt and response); a schema has no JSON.stringify of its own.",
       "example": "formatJson({ text: pass.prompt })"
+    },
+    {
+      "name": "treeSpines",
+      "params": ["options"],
+      "doc": "The choices a tree-mode spine picker offers: the space's named connection kinds, then every typed relation the installed models declare, grouped under \"Model relations\" and spelled rel:Class.prop — plus rel:* for all of them. Pass kinds (a RelationshipType query), shapes (shapeStore.spaceShapes) and foreign (datasetStore.currentDatasetEntities).",
+      "example": "treeSpines({ kinds: local.relationshipKinds, shapes: shapeStore.spaceShapes, foreign: datasetStore.currentDatasetEntities })"
+    },
+    {
+      "name": "treeSpine",
+      "params": ["options"],
+      "doc": "A tree spine as the tree reads it, from the picker's value (local.spine): its kind — any, relationship (with id) or relation (with class and prop for one, without for all) — and selector (the forest layout's spine), offSpine (the when of a rule drawing the other lines faint; absent for any) and relations (whether the canvas seed should draw the models' relations). The one reader of the spelling, so pass this rather than local.spine to anything that needs the spine. Options: value.",
+      "example": "treeSpine({ value: local.spine }).selector"
     },
     {
       "name": "generatedRun",
@@ -9811,6 +9855,11 @@
           "kind": "action",
           "doc": "Loads one more page of the transcript, in whichever direction it is being read.",
           "ambient": true
+        },
+        {
+          "name": "skipped",
+          "kind": "state",
+          "doc": "Utterances let go in this session without a transcript: the speech model was too far behind or could not be reached."
         },
         {
           "name": "speaking",

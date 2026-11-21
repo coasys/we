@@ -183,6 +183,16 @@ jobs:
       - name: Browser tests
         run: pnpm --filter @we/primitives test:browser
 
+      # The app shell's layout cases, in the same Chrome: each mounts a scenario at a sweep of widths
+      # and checks what only layout can say — a panel that overflows, a rail that covers the content.
+      # Neither browser suite needs an executor; `docs/testing/e2e.md` has the kinds and their homes.
+      - name: Browser layout tests
+        run: pnpm --filter @we/app-shell test:browser
+
+      # `pnpm e2e`'s own plan: which steps each suite takes, and that the scripts it names exist.
+      - name: The e2e runner
+        run: node --test scripts/e2e.test.mjs
+
       # The agent tools' single-file bundle, run where a host runs it: Deno, with no DOM, no Node and
       # read access to nothing but the bundle and two templates. Everything above runs in Node, which
       # quietly allows what a host would refuse — an env read, a filesystem call — so only this

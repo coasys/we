@@ -8,9 +8,13 @@ afterEach(() => {
   writeDevPeerCount(0);
 });
 
-/** A `localStorage` for a Node test run — the only thing standing between this and a real call. */
+/**
+ * A `localStorage` for a Node test run — the only thing standing between this and a real call. The
+ * Test people switch is on in it, as a developer testing with fake participants has it.
+ */
 function stubStorage(value: string | null) {
-  const store = new Map<string, string>(value === null ? [] : [['we.call.fakePeers', value]]);
+  const store = new Map<string, string>([['we.testPeople', 'on']]);
+  if (value !== null) store.set('we.call.fakePeers', value);
   vi.stubGlobal('localStorage', {
     getItem: (key: string) => store.get(key) ?? null,
     setItem: (key: string, next: string) => store.set(key, next),
@@ -65,7 +69,18 @@ describe('dev peers', () => {
     expect(devPeers(3)).toEqual([]);
   });
 
+  it('stay away until a developer turns the test people on', () => {
+    // On by default with the other developer tools, they showed up in calls of developers who were
+    // not testing with them.
+    const store = stubStorage(null);
+    store.delete('we.testPeople');
+    writeDevPeerCount(3);
+    expect(readDevPeerCount()).toBe(0);
+    expect(devPeers(3)).toEqual([]);
+  });
+
   it('give each peer a distinct id and alternate the mute badge', () => {
+    stubStorage(null);
     const peers = devPeers(3);
 
     expect(peers.map((peer) => peer.id)).toEqual(['fake-peer-0', 'fake-peer-1', 'fake-peer-2']);
@@ -79,6 +94,7 @@ describe('dev peers', () => {
   it('stops the canvases it no longer needs when the count drops', () => {
     // Going from five to two must not leave three timers painting for a call nobody can see them
     // in — the `−` button is pressed while watching the stage, so the cost is otherwise invisible.
+    stubStorage(null);
     expect(devPeers(5)).toHaveLength(5);
     expect(devPeers(2)).toHaveLength(2);
     expect(devPeers(0)).toEqual([]);

@@ -110,8 +110,9 @@ describe('media controller', () => {
     const mic = fakeTrack('audio');
     let call = 0;
     const { controller, errors, tracks } = setup({
-      getUserMedia: vi.fn(async () => {
-        if (call++ === 0) throw new Error('NotAllowedError');
+      getUserMedia: vi.fn(async (constraints: MediaStreamConstraints) => {
+        // The camera refused, alone or with the microphone; the microphone granted alone.
+        if (call++ === 0 || constraints.video) throw new Error('NotAllowedError');
         return fakeStream([mic]);
       }),
     });
@@ -133,8 +134,108 @@ describe('media controller', () => {
 
     await controller.start();
 
-    expect(errors).toEqual(['acquiring camera and microphone', 'acquiring microphone']);
+    expect(errors).toEqual(['acquiring camera and microphone', 'acquiring microphone', 'acquiring camera']);
     expect(controller.localStream()).toBeNull();
+  });
+
+  /*
+    The other half of the fallback, which did not exist: a refused or missing *microphone* lost the
+    camera too, because only audio was ever retried alone. Seen on a phone whose app had no
+    microphone permission — it joined with neither, though the camera was there to be had.
+  */
+  it('keeps the camera when only the microphone is refused', async () => {
+    const camera = fakeTrack('video');
+    const { controller, errors, tracks, states } = setup({
+      getUserMedia: vi.fn(async (constraints: MediaStreamConstraints) => {
+        if (constraints.audio) throw new Error('NotAllowedError');
+        return fakeStream([camera]);
+      }),
+    });
+
+    await controller.start();
+
+    expect(errors).toEqual(['acquiring camera and microphone', 'acquiring microphone']);
+    expect(sent(tracks, 'video')).toBe(camera);
+    expect(sent(tracks, 'audio')).toBeNull();
+    expect(controller.localStream()?.getVideoTracks()).toEqual([camera]);
+    // Muted, because nothing is being sent — not unmuted with silence behind it.
+    expect(controller.state()).toEqual({ audioEnabled: false, videoEnabled: true, screenShareEnabled: false });
+    expect(states.at(-1)).toEqual(controller.state());
+  });
+
+  it('keeps both when each is granted alone though not together', async () => {
+    // Some devices refuse the combined request (one capture at a time) and grant each kind alone.
+    const mic = fakeTrack('audio');
+    const camera = fakeTrack('video');
+    const { controller, tracks } = setup({
+      getUserMedia: vi.fn(async (constraints: MediaStreamConstraints) => {
+        if (constraints.audio && constraints.video) throw new Error('NotReadableError');
+        return fakeStream(constraints.audio ? [mic] : [camera]);
+      }),
+    });
+
+    await controller.start();
+
+    expect(sent(tracks, 'audio')).toBe(mic);
+    expect(sent(tracks, 'video')).toBe(camera);
+    expect(controller.localStream()?.getTracks()).toEqual([mic, camera]);
+    expect(controller.state()).toEqual({ audioEnabled: true, videoEnabled: true, screenShareEnabled: false });
+  });
+
+  it('stops what a fallback acquired once the call has been left', async () => {
+    const mic = fakeTrack('audio');
+    let release: ((stream: MediaStream) => void) | undefined;
+    const { controller, tracks } = setup({
+      getUserMedia: vi.fn((constraints: MediaStreamConstraints) => {
+        if (constraints.audio && constraints.video) return Promise.reject(new Error('NotAllowedError'));
+        return new Promise<MediaStream>((resolve) => (release = resolve));
+      }),
+    });
+
+    const starting = controller.start();
+    // Left while the microphone-alone prompt is open.
+    await vi.waitFor(() => expect(release).toBeDefined());
+    controller.stop();
+    release!(fakeStream([mic]));
+    await starting;
+
+    expect(mic.stopped).toBe(true);
+    expect(controller.localStream()).toBeNull();
+    expect(sent(tracks, 'audio')).toBeNull();
+  });
+
+  /*
+    Leaving while the *camera* fallback is still on its prompt. The microphone was already granted
+    and held only in a local variable — `stop()` could not reach it, so it stayed live until the
+    camera prompt was answered, which can be never.
+  */
+  it('stops a granted microphone at once when the call is left during the camera prompt', async () => {
+    const mic = fakeTrack('audio');
+    const camera = fakeTrack('video');
+    const releases: Array<(stream: MediaStream) => void> = [];
+    const { controller, tracks } = setup({
+      getUserMedia: vi.fn((constraints: MediaStreamConstraints) => {
+        if (constraints.audio && constraints.video) return Promise.reject(new Error('NotAllowedError'));
+        return new Promise<MediaStream>((resolve) => releases.push(resolve));
+      }),
+    });
+
+    const starting = controller.start();
+    // The microphone alone was granted; the camera prompt is still open.
+    await vi.waitFor(() => expect(releases).toHaveLength(1));
+    releases[0](fakeStream([mic]));
+    await vi.waitFor(() => expect(releases).toHaveLength(2));
+
+    controller.stop();
+    expect(mic.stopped, 'the granted microphone stayed live after the leave').toBe(true);
+
+    releases[1](fakeStream([camera]));
+    await starting;
+
+    expect(camera.stopped).toBe(true);
+    expect(controller.localStream()).toBeNull();
+    expect(sent(tracks, 'audio')).toBeNull();
+    expect(sent(tracks, 'video')).toBeNull();
   });
 
   describe('screen share', () => {
@@ -299,7 +400,7 @@ describe('when no device can be acquired at all', () => {
     const { controller, errors } = denied();
     await controller.start();
 
-    expect(errors).toEqual(['acquiring camera and microphone', 'acquiring microphone']);
+    expect(errors).toEqual(['acquiring camera and microphone', 'acquiring microphone', 'acquiring camera']);
   });
 
   it('publishes no track, since there is none', async () => {
@@ -392,6 +493,393 @@ describe('turning the camera on when there is no camera', () => {
   });
 });
 
+describe('turning the microphone on when there is no microphone', () => {
+  /*
+    The camera's counterpart, which did not exist. Join with the microphone refused and unmuting
+    only flipped a flag on a track that was not there: the button said unmuted, presence told every
+    peer the same, and nothing was ever going to ask for a microphone again — so audio never came
+    back, while the camera, which did ask, did.
+  */
+  const micBlocked = () => {
+    const mic = fakeTrack('audio');
+    const camera = fakeTrack('video');
+    let allowAudio = false;
+    const getUserMedia = vi.fn(async (constraints: MediaStreamConstraints) => {
+      if (constraints.audio && !allowAudio) throw new Error('NotAllowedError');
+      return fakeStream(constraints.audio ? [mic] : [camera]);
+    });
+    return { ...setup({ getUserMedia }), mic, camera, grant: () => (allowAudio = true) };
+  };
+
+  it('asks for one, and sends it when the permission has since been granted', async () => {
+    const { controller, mic, camera, grant, tracks } = micBlocked();
+    await controller.start();
+    expect(controller.state().audioEnabled).toBe(false);
+    const before = controller.localStream();
+
+    grant();
+    await controller.setAudioEnabled(true);
+
+    expect(controller.state().audioEnabled).toBe(true);
+    expect(sent(tracks, 'audio')).toBe(mic);
+    expect(mic.enabled).toBe(true);
+    // The camera keeps running beside it.
+    expect(controller.localStream()?.getTracks()).toEqual([camera, mic]);
+    // A new stream, as a device switch makes: the transcriber listens to the stream it was handed and
+    // dedupes on identity, so adding a microphone in place would leave it listening to none.
+    expect(controller.localStream()).not.toBe(before);
+  });
+
+  it('asks for one when nothing at all was acquired at join', async () => {
+    const mic = fakeTrack('audio');
+    let allow = false;
+    const { controller, tracks } = setup({
+      getUserMedia: vi.fn(async () => {
+        if (!allow) throw new Error('NotAllowedError');
+        return fakeStream([mic]);
+      }),
+    });
+    await controller.start();
+    expect(controller.localStream()).toBeNull();
+
+    allow = true;
+    await controller.setAudioEnabled(true);
+
+    expect(sent(tracks, 'audio')).toBe(mic);
+    expect(controller.localStream()?.getAudioTracks()).toEqual([mic]);
+    expect(controller.state().audioEnabled).toBe(true);
+  });
+
+  it('leaves the flag off when it is refused again, rather than true with nothing behind it', async () => {
+    const { controller, errors, states } = micBlocked();
+    await controller.start();
+
+    await controller.setAudioEnabled(true);
+
+    expect(controller.state().audioEnabled).toBe(false);
+    expect(states.at(-1)?.audioEnabled).toBe(false);
+    expect(errors).toContain('turning the microphone on');
+  });
+
+  it('watches the acquired microphone for being unplugged, like the one from join', async () => {
+    const { controller, mic, grant, lost } = micBlocked();
+    await controller.start();
+    grant();
+    await controller.setAudioEnabled(true);
+
+    mic.end();
+
+    expect(lost).toEqual(['audio']);
+    expect(controller.state().audioEnabled).toBe(false);
+  });
+
+  it('does not ask again to unmute a microphone it already has', async () => {
+    const { controller, devices, mic } = setup();
+    await controller.start();
+    await controller.setAudioEnabled(false);
+    const asked = (devices.getUserMedia as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    await controller.setAudioEnabled(true);
+
+    expect((devices.getUserMedia as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(asked);
+    expect(mic.enabled).toBe(true);
+  });
+
+  it('stops a microphone that arrives after the call was left', async () => {
+    const mic = fakeTrack('audio');
+    let release: ((stream: MediaStream) => void) | undefined;
+    let joined = false;
+    const { controller, tracks } = setup({
+      getUserMedia: vi.fn((constraints: MediaStreamConstraints) => {
+        if (!joined) return Promise.reject(new Error('NotAllowedError'));
+        void constraints;
+        return new Promise<MediaStream>((resolve) => (release = resolve));
+      }),
+    });
+    await controller.start();
+    joined = true;
+
+    const unmuting = controller.setAudioEnabled(true);
+    controller.stop();
+    release!(fakeStream([mic]));
+    await unmuting;
+
+    expect(mic.stopped).toBe(true);
+    expect(sent(tracks, 'audio')).toBeNull();
+  });
+
+  /*
+    Two unmute presses while the prompt is still open used to acquire a microphone each: whichever
+    resolved last was adopted on top of the first, leaving a second live track nothing pointed at —
+    and a mute pressed in between was overwritten by the stale resolution, which set
+    `audioEnabled` back to true unconditionally.
+  */
+  it('joins a second unmute to the one already waiting, and lets a mute between them win', async () => {
+    const mic = fakeTrack('audio');
+    const camera = fakeTrack('video');
+    let allowAudio = false;
+    const releases: Array<(stream: MediaStream) => void> = [];
+    const { controller, tracks } = setup({
+      getUserMedia: vi.fn((constraints: MediaStreamConstraints) => {
+        if (constraints.audio && !allowAudio) return Promise.reject(new Error('NotAllowedError'));
+        if (constraints.audio) return new Promise<MediaStream>((resolve) => releases.push(resolve));
+        return Promise.resolve(fakeStream([camera]));
+      }),
+    });
+    await controller.start();
+    expect(controller.state().audioEnabled).toBe(false);
+    allowAudio = true;
+
+    const first = controller.setAudioEnabled(true);
+    const second = controller.setAudioEnabled(true);
+    // One prompt, not two — a second acquisition is a second live microphone.
+    expect(releases).toHaveLength(1);
+    await controller.setAudioEnabled(false);
+    releases[0](fakeStream([mic]));
+    await Promise.all([first, second]);
+
+    expect(controller.localStream()?.getAudioTracks()).toEqual([mic]);
+    // The mute won: muted in state, and the microphone it raced is silent.
+    expect(controller.state().audioEnabled).toBe(false);
+    expect(mic.enabled).toBe(false);
+    expect(sent(tracks, 'audio')).toBe(mic);
+  });
+
+  /*
+    Two unmute presses while the first request is still open: the second queues behind it, and if
+    the first is then refused, the queued one retries and succeeds. The first's refusal must not
+    write `audioEnabled = false` over the second's ask — that left the recovered microphone
+    disabled and the state claiming muted while the button said unmuted.
+  */
+  it('does not let an earlier refused request mute a later unmute', async () => {
+    const mic = fakeTrack('audio');
+    const camera = fakeTrack('video');
+    let joined = false;
+    const requests: Array<{ resolve: (stream: MediaStream) => void; reject: (error: Error) => void }> = [];
+    const { controller } = setup({
+      getUserMedia: vi.fn((constraints: MediaStreamConstraints) => {
+        if (!constraints.audio) return Promise.resolve(fakeStream([camera]));
+        if (!joined) return Promise.reject(new Error('NotAllowedError'));
+        return new Promise<MediaStream>((resolve, reject) => requests.push({ resolve, reject }));
+      }),
+    });
+    await controller.start();
+    joined = true;
+
+    const first = controller.setAudioEnabled(true);
+    const second = controller.setAudioEnabled(true);
+    await vi.waitFor(() => expect(requests).toHaveLength(1));
+
+    // The first request is refused after the second was already queued; the second retries.
+    requests[0].reject(new Error('NotAllowedError'));
+    await vi.waitFor(() => expect(requests).toHaveLength(2));
+    requests[1].resolve(fakeStream([mic]));
+    await Promise.all([first, second]);
+
+    expect(controller.state().audioEnabled).toBe(true);
+    expect(mic.enabled, 'the recovered microphone was left disabled by a request that was not its own').toBe(true);
+  });
+
+  it('still lets a later mute win over a queued unmute', async () => {
+    // The same shape, but the press between the refusal and the retry is a mute: the microphone
+    // the retry lands is adopted silent, as muting a live track would have left it.
+    const mic = fakeTrack('audio');
+    const camera = fakeTrack('video');
+    let joined = false;
+    const requests: Array<{ resolve: (stream: MediaStream) => void; reject: (error: Error) => void }> = [];
+    const { controller } = setup({
+      getUserMedia: vi.fn((constraints: MediaStreamConstraints) => {
+        if (!constraints.audio) return Promise.resolve(fakeStream([camera]));
+        if (!joined) return Promise.reject(new Error('NotAllowedError'));
+        return new Promise<MediaStream>((resolve, reject) => requests.push({ resolve, reject }));
+      }),
+    });
+    await controller.start();
+    joined = true;
+
+    const first = controller.setAudioEnabled(true);
+    const second = controller.setAudioEnabled(true);
+    await vi.waitFor(() => expect(requests).toHaveLength(1));
+
+    requests[0].reject(new Error('NotAllowedError'));
+    await controller.setAudioEnabled(false);
+    await vi.waitFor(() => expect(requests).toHaveLength(2));
+    requests[1].resolve(fakeStream([mic]));
+    await Promise.all([first, second]);
+
+    expect(controller.state().audioEnabled).toBe(false);
+    expect(mic.enabled).toBe(false);
+  });
+
+  /*
+    An unmute pressed while `start`'s own request is still on the prompt. That request asks for a
+    microphone too but never took the device turn, so the unmute opened a second request beside it —
+    and whichever resolved last overwrote `stream`, leaving the other's microphone live and held
+    by nothing `stop()` could reach.
+  */
+  it("waits for start's open request rather than opening a second microphone beside it", async () => {
+    const mic = fakeTrack('audio');
+    const camera = fakeTrack('video');
+    const releases: Array<(stream: MediaStream) => void> = [];
+    const { controller, tracks } = setup({
+      getUserMedia: vi.fn(() => new Promise<MediaStream>((resolve) => releases.push(resolve))),
+    });
+
+    const starting = controller.start();
+    await vi.waitFor(() => expect(releases).toHaveLength(1));
+
+    await controller.setAudioEnabled(false);
+    const unmuting = controller.setAudioEnabled(true);
+    // The unmute must queue behind start's request, not ask beside it.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(releases, "the unmute opened a second request while start's was open").toHaveLength(1);
+
+    releases[0](fakeStream([mic, camera]));
+    await Promise.all([starting, unmuting]);
+
+    expect(releases).toHaveLength(1);
+    expect(controller.localStream()?.getAudioTracks()).toEqual([mic]);
+    expect(mic.enabled).toBe(true);
+    expect(controller.state().audioEnabled).toBe(true);
+    expect(sent(tracks, 'audio')).toBe(mic);
+  });
+
+  /*
+    An unmute queued behind `start`, whose microphone was refused. `start` marked the call muted
+    over the newer unmute, so when the unmute's own request was granted its microphone was
+    switched off at once and the call stayed muted.
+  */
+  it("keeps an unmute queued behind start when start's microphone is refused", async () => {
+    const mic = fakeTrack('audio');
+    const camera = fakeTrack('video');
+    const requests: Array<{ resolve: (s: MediaStream) => void; reject: (e: unknown) => void }> = [];
+    const { controller, tracks } = setup({
+      getUserMedia: vi.fn(() => new Promise<MediaStream>((resolve, reject) => requests.push({ resolve, reject }))),
+    });
+
+    const starting = controller.start();
+    await vi.waitFor(() => expect(requests).toHaveLength(1));
+    const unmuting = controller.setAudioEnabled(true);
+
+    requests[0].reject(new DOMException('denied', 'NotAllowedError'));
+    await vi.waitFor(() => expect(requests).toHaveLength(2));
+    requests[1].reject(new DOMException('denied', 'NotAllowedError'));
+    await vi.waitFor(() => expect(requests).toHaveLength(3));
+    requests[2].resolve(fakeStream([camera]));
+    await vi.waitFor(() => expect(requests).toHaveLength(4));
+    requests[3].resolve(fakeStream([mic]));
+    await Promise.all([starting, unmuting]);
+
+    expect(controller.state().audioEnabled).toBe(true);
+    expect(mic.enabled).toBe(true);
+    expect(sent(tracks, 'audio')).toBe(mic);
+  });
+
+  it('keeps an unmute queued behind start when start gets nothing at all', async () => {
+    const mic = fakeTrack('audio');
+    const requests: Array<{ resolve: (s: MediaStream) => void; reject: (e: unknown) => void }> = [];
+    const { controller, tracks } = setup({
+      getUserMedia: vi.fn(() => new Promise<MediaStream>((resolve, reject) => requests.push({ resolve, reject }))),
+    });
+
+    const starting = controller.start();
+    await vi.waitFor(() => expect(requests).toHaveLength(1));
+    const unmuting = controller.setAudioEnabled(true);
+
+    for (let i = 0; i < 3; i++) {
+      await vi.waitFor(() => expect(requests).toHaveLength(i + 1));
+      requests[i].reject(new DOMException('denied', 'NotAllowedError'));
+    }
+    await vi.waitFor(() => expect(requests).toHaveLength(4));
+    requests[3].resolve(fakeStream([mic]));
+    await Promise.all([starting, unmuting]);
+
+    expect(controller.state()).toMatchObject({ audioEnabled: true, videoEnabled: false });
+    expect(mic.enabled).toBe(true);
+    expect(sent(tracks, 'audio')).toBe(mic);
+  });
+
+  /*
+    Camera on, then off, while a microphone switch is on the prompt. The "on" waited for the switch
+    and wrote its state only afterwards, so it undid the "off" that came after it.
+  */
+  it('lets a later camera-off win over a camera-on queued behind a microphone switch', async () => {
+    const mic = fakeTrack('audio');
+    const camera = fakeTrack('video');
+    const requests: Array<{ resolve: (s: MediaStream) => void; reject: (e: unknown) => void }> = [];
+    const { controller, tracks } = setup({
+      getUserMedia: vi.fn(() => new Promise<MediaStream>((resolve, reject) => requests.push({ resolve, reject }))),
+    });
+    const starting = controller.start();
+    await vi.waitFor(() => expect(requests).toHaveLength(1));
+    requests[0].resolve(fakeStream([mic, camera]));
+    await starting;
+
+    const switching = controller.setDevice('audio', 'other-mic');
+    await vi.waitFor(() => expect(requests).toHaveLength(2));
+    const on = controller.setVideoEnabled(true);
+    await controller.setVideoEnabled(false);
+    requests[1].resolve(fakeStream([fakeTrack('audio')]));
+    await Promise.all([switching, on]);
+
+    expect(controller.state().videoEnabled).toBe(false);
+    expect(camera.enabled).toBe(false);
+    expect(sent(tracks, 'video')).toBe(camera);
+  });
+
+  it("lets a later camera-off win over a camera-on queued behind start's request", async () => {
+    const mic = fakeTrack('audio');
+    const camera = fakeTrack('video');
+    const requests: Array<{ resolve: (s: MediaStream) => void; reject: (e: unknown) => void }> = [];
+    const { controller, tracks } = setup({
+      getUserMedia: vi.fn(() => new Promise<MediaStream>((resolve, reject) => requests.push({ resolve, reject }))),
+    });
+
+    const starting = controller.start();
+    await vi.waitFor(() => expect(requests).toHaveLength(1));
+    const on = controller.setVideoEnabled(true);
+    await controller.setVideoEnabled(false);
+    requests[0].resolve(fakeStream([mic, camera]));
+    await Promise.all([starting, on]);
+
+    expect(requests).toHaveLength(1);
+    expect(controller.state().videoEnabled).toBe(false);
+    expect(camera.enabled).toBe(false);
+    expect(sent(tracks, 'video')).toBe(camera);
+  });
+
+  /*
+    The same race for the camera: turning it off and on while `start`'s request is on the prompt
+    opened a second camera request, and whichever resolved last overwrote `stream`, leaving the
+    other camera live and held by nothing `stop()` could reach.
+  */
+  it("waits for start's open request rather than opening a second camera beside it", async () => {
+    const mic = fakeTrack('audio');
+    const camera = fakeTrack('video');
+    const releases: Array<(stream: MediaStream) => void> = [];
+    const { controller, tracks } = setup({
+      getUserMedia: vi.fn(() => new Promise<MediaStream>((resolve) => releases.push(resolve))),
+    });
+
+    const starting = controller.start();
+    await vi.waitFor(() => expect(releases).toHaveLength(1));
+
+    await controller.setVideoEnabled(false);
+    const turningOn = controller.setVideoEnabled(true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(releases, "the camera opened a second request while start's was open").toHaveLength(1);
+
+    releases[0](fakeStream([mic, camera]));
+    await Promise.all([starting, turningOn]);
+
+    expect(releases).toHaveLength(1);
+    expect(controller.localStream()?.getVideoTracks()).toEqual([camera]);
+    expect(camera.enabled).toBe(true);
+    expect(controller.state().videoEnabled).toBe(true);
+    expect(sent(tracks, 'video')).toBe(camera);
+  });
+});
+
 describe('acquisition cancelled mid-prompt', () => {
   /**
    * `getUserMedia` sits behind a permission prompt, so it can be outstanding for as long as the user
@@ -460,12 +948,80 @@ describe('acquisition cancelled mid-prompt', () => {
     controller.stop();
     const b = controller.start();
     releases[0](streams[call++]);
+    // The second attempt takes the mic turn only once the abandoned one has settled.
+    await vi.waitFor(() => expect(releases).toHaveLength(2));
     releases[1](streams[call]);
     await Promise.all([a, b]);
 
     // The abandoned attempt's device is closed; the current one's is kept.
     expect(first.stopped).toBe(true);
     expect(second.stopped).toBe(false);
+  });
+
+  /*
+    The queued half of the race: two unmutes — one request dispatched, one waiting on the turn —
+    and the leave cancels only the first. When it settled, the second woke and asked for a
+    microphone with the post-stop generation, whose `current()` check passes trivially, and
+    adopted it into a stream the call no longer owned.
+  */
+  it('does not dispatch a queued unmute after the call was left', async () => {
+    const mic = fakeTrack('audio');
+    let joined = false;
+    const releases: Array<(stream: MediaStream) => void> = [];
+    const { controller } = setup({
+      getUserMedia: vi.fn(() => {
+        if (!joined) return Promise.reject(new Error('NotAllowedError'));
+        return new Promise<MediaStream>((resolve) => releases.push(resolve));
+      }),
+    });
+    await controller.start();
+    joined = true;
+
+    const first = controller.setAudioEnabled(true);
+    const second = controller.setAudioEnabled(true);
+    await vi.waitFor(() => expect(releases).toHaveLength(1));
+
+    controller.stop();
+    releases[0](fakeStream([mic]));
+    await first;
+    // Give the queued unmute its turn: the leave must have cancelled it, not let it ask.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const asked = releases.length;
+    for (const release of releases.slice(1)) release(fakeStream([fakeTrack('audio')]));
+    await second;
+
+    expect(asked, 'a queued unmute asked for a microphone after the call was left').toBe(1);
+    expect(controller.localStream()).toBeNull();
+  });
+
+  /*
+    And a dispatched request the leave overtook must not publish either: `acquireMic` stops the
+    late track, but the caller then went on to write track flags and emit state — which lands on
+    top of whatever the controller, or the next call, has said since.
+  */
+  it('does not publish state for an unmute the leave overtook', async () => {
+    const mic = fakeTrack('audio');
+    let joined = false;
+    let release: ((stream: MediaStream) => void) | undefined;
+    const { controller, states } = setup({
+      getUserMedia: vi.fn(() => {
+        if (!joined) return Promise.reject(new Error('NotAllowedError'));
+        return new Promise<MediaStream>((resolve) => (release = resolve));
+      }),
+    });
+    await controller.start();
+    joined = true;
+
+    const unmuting = controller.setAudioEnabled(true);
+    await vi.waitFor(() => expect(release).toBeDefined());
+    const emitted = states.length;
+    controller.stop();
+    release!(fakeStream([mic]));
+    await unmuting;
+
+    expect(mic.stopped).toBe(true);
+    // `stop()` emitted once; the unmute it overtook adds nothing.
+    expect(states).toHaveLength(emitted + 1);
   });
 });
 
@@ -638,5 +1194,91 @@ describe('choosing a device', () => {
 
     const asked = (devices.getUserMedia as unknown as { mock: { calls: [MediaStreamConstraints][] } }).mock.calls;
     expect(asked.at(-1)?.[0].video).toMatchObject({ deviceId: { exact: 'cam-9' } });
+  });
+
+  /*
+    A switch while an unmute is still waiting on the prompt used to acquire in parallel with it, and
+    whichever resolved second decided the stream: the retry landing last appended its microphone
+    beside the chosen one — two live tracks, one published and one held by nothing. The switch waits
+    for the retry to land and then replaces it, so exactly one microphone survives: the chosen one.
+  */
+  it('settles a microphone already being asked for before switching to another', async () => {
+    const camera = fakeTrack('video');
+    const retried = fakeTrack('audio');
+    const chosenTrack = fakeTrack('audio');
+    let allowAudio = false;
+    const releases: Array<() => void> = [];
+    const { controller, tracks } = setup({
+      getUserMedia: vi.fn((constraints: MediaStreamConstraints) => {
+        if (constraints.audio && !allowAudio) return Promise.reject(new Error('NotAllowedError'));
+        if (constraints.audio) {
+          // The switch pins a device exactly; the retry asks for whatever the system offers.
+          const exact = typeof constraints.audio === 'object' && !!constraints.audio.deviceId;
+          return new Promise<MediaStream>((resolve) => {
+            releases.push(() => resolve(fakeStream([exact ? chosenTrack : retried])));
+          });
+        }
+        return Promise.resolve(fakeStream([camera]));
+      }),
+    });
+    await controller.start();
+    allowAudio = true;
+
+    const unmuting = controller.setAudioEnabled(true);
+    await vi.waitFor(() => expect(releases).toHaveLength(1));
+    const switching = controller.setDevice('audio', 'mic-2');
+
+    // Answer them newest-first — the order that used to leave the retry's microphone running beside
+    // the chosen one. Fixed, the switch only asks once the retry has landed, so its release appears
+    // here only once the first has been answered.
+    while (releases.length) {
+      releases.pop()!();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    await Promise.all([unmuting, switching]);
+
+    expect(controller.localStream()?.getAudioTracks()).toEqual([chosenTrack]);
+    expect(retried.stopped).toBe(true);
+    expect(chosenTrack.stopped).toBe(false);
+    expect(sent(tracks, 'audio')).toBe(chosenTrack);
+  });
+
+  it('remembers a microphone chosen while none is open, and opens that one on unmute', async () => {
+    // Choosing a device that is off must not open it: the light would come on for nothing.
+    const chosenTrack = fakeTrack('audio');
+    const getUserMedia = vi.fn(async () => fakeStream([chosenTrack]));
+    const { controller, tracks } = setup({ getUserMedia });
+    await controller.setAudioEnabled(false);
+    await controller.setVideoEnabled(false);
+    await controller.start();
+
+    expect(await controller.setDevice('audio', 'mic-2')).toBe(true);
+    expect(getUserMedia).not.toHaveBeenCalled();
+
+    await controller.setAudioEnabled(true);
+    expect(getUserMedia).toHaveBeenCalledWith({
+      audio: expect.objectContaining({ deviceId: { exact: 'mic-2' } }),
+    });
+    expect(controller.localStream()?.getAudioTracks()).toEqual([chosenTrack]);
+    expect(sent(tracks, 'audio')).toBe(chosenTrack);
+  });
+});
+
+describe('starting with the microphone and camera off', () => {
+  it('opens nothing, and holds one empty stream for devices turned on later', async () => {
+    const { controller, devices } = setup();
+    await controller.setAudioEnabled(false);
+    await controller.setVideoEnabled(false);
+    await controller.start();
+
+    expect(devices.getUserMedia).not.toHaveBeenCalled();
+    const stream = controller.localStream();
+    expect(stream?.getTracks()).toEqual([]);
+    expect(controller.state()).toMatchObject({ audioEnabled: false, videoEnabled: false });
+
+    // The camera joins that same stream when it is turned on.
+    await controller.setVideoEnabled(true);
+    expect(controller.localStream()).toBe(stream);
+    expect(stream?.getVideoTracks()).toHaveLength(1);
   });
 });

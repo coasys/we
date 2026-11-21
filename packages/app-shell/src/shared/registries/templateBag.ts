@@ -23,6 +23,7 @@
  * consumer is reached through the slot registry, which is not a descendant of anything.
  */
 import type { Stores } from '@solid/types';
+import type { SurfaceState } from '@we/schema-solid';
 
 let lent: Stores | null = null;
 
@@ -43,6 +44,28 @@ export function provideTemplateBag(bag: Stores): () => void {
  */
 export function templateBag(): Stores | null {
   return lent;
+}
+
+/*
+  The same reach for the template's surface. A route gets it through `RouteSurface` because routes
+  run under the layout's owner; a panel body does not — it is drawn under `PanelHost`, beside the
+  chrome — so `surface.tier` read as undefined inside every panel, the same silent false the routes
+  had before `buildRoutes` carried it. Lent here rather than through a context for the reason above:
+  the consumer is reached through the slot registry, which is not a descendant of anything.
+*/
+let lentSurface: SurfaceState | null = null;
+
+/** Publish the template's surface. Returns the take-back, which the layout calls on unmount. */
+export function provideTemplateSurface(surface: SurfaceState): () => void {
+  lentSurface = surface;
+  return () => {
+    if (lentSurface === surface) lentSurface = null;
+  };
+}
+
+/** The lent surface, or `null` before a template is mounted — read it as `surface` reads nothing. */
+export function templateSurface(): SurfaceState | null {
+  return lentSurface;
 }
 
 /*

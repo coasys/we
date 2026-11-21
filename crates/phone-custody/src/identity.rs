@@ -713,7 +713,8 @@ impl PhoneIdentity {
         Ok(())
     }
 
-    /// Revokes the devices `key_ids`, signed with the master key behind the prompt.
+    /// Revokes the devices `key_ids` from now, signed with the master key behind the prompt. The phone
+    /// asks no "missing since" time.
     pub fn revoke(&self, key_ids: Vec<String>) -> Result<Option<String>, PhoneKeyError> {
         let (_, did) = self.parts.member()?;
         let exec = self.parts.executor(None)?;
@@ -722,6 +723,7 @@ impl PhoneIdentity {
             self.vault.as_ref(),
             &did,
             &key_ids,
+            None,
             &SystemClock,
             &OsRandom,
         ))

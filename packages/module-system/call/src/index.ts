@@ -965,8 +965,8 @@ function mediaToggle(opts: {
 }
 
 /**
- * The three toggles that leave the row when it is short of room — declared once, so the square in
- * the bar and the line in the overflow menu are built from the same facts and cannot come to
+ * The toggles beside the devices or in the overflow menu — declared once, so a square in the bar
+ * and a line in the menu are built from the same facts and cannot come to
  * disagree about what a control does or which way round it reads.
  *
  * Each carries two vocabularies, and the split is the point. `tip` is what the *action* would do
@@ -1111,10 +1111,11 @@ function menuAction(opts: { icon: string; label: string; action: string; args?: 
  *
  * Opens upward: the bar is on the bottom edge and there is nothing below it.
  *
- * What lives here is what the row no longer shows at any width — screen share, show/hide, solo —
- * plus the two lines that never had a square: choosing a device, and starting a second call from
- * inside one. Mute, camera and hang-up are not here and never were: they are the call, and a menu
- * between a person and their microphone is a step too many at the moment they need it.
+ * What lives here is what the row no longer shows at any width — show/hide, solo — plus the two
+ * lines that never had a square: choosing a device, and starting a second call from inside one.
+ * Mute, camera and hang-up are not here: they are the call, and a menu between a person and their
+ * microphone is a step too many at the moment they need it. Screen share is here only below `base`,
+ * as the gear is, because its square would cost Leave at 390px.
  */
 const moreMenu: SchemaNode = {
   type: 'we-popover',
@@ -1137,8 +1138,9 @@ const moreMenu: SchemaNode = {
       type: 'we-menu',
       slot: 'content',
       children: [
-        menuToggle(SCREEN_SHARE),
         menuToggle(STAGE),
+        // Screen share leaves the row below `base` — see the row.
+        { type: '$if', props: { condition: { $: "surface.tier == 'base'" }, then: menuToggle(SCREEN_SHARE) } },
         // Solo is only offered while something is focused — which is also the affordance: giving
         // somebody the stage reveals the option to give them all of it.
         { type: '$if', props: { condition: { $: 'modules.call.focusedId' }, then: menuToggle(SOLO) } },
@@ -1623,6 +1625,9 @@ const controls: SchemaNode = {
           action: 'modules.call.toggleVideo',
           tip: { on: 'Turn camera off', off: 'Turn camera on' },
         }),
+        // Beside the devices it sends with: sharing is reached for mid-call, not set and left. Below
+        // `base` it folds into More, as the gear does: its seat would cost Leave at 390px.
+        whenRoomy(mediaToggle(SCREEN_SHARE)),
         {
           // Where other modules put their call controls — see `anchors` below. The marker is replaced
           // by whatever is contributed, or by nothing at all, so the bar has no gap when no module
@@ -1653,9 +1658,9 @@ const controls: SchemaNode = {
               in a production build — see `devPeerControls` and `CALL_DEV_ANCHOR`.
 
               Two gates, doing different jobs. `devPeersAvailable` is the build, so a shipped app
-              carries no node at all. The `$if` is the `we.devTools` switch, which is live — a
-              developer looking at what a user sees loses these on the press rather than on the next
-              reload, and gets them back the same way.
+              carries no node at all. The `$if` is the Test people switch (Settings → Developer), off
+              until a developer turns it on and live — the controls go on the press rather than on the
+              next reload, and come back the same way.
 
               The region takes other modules' harnesses too, and they draw no rule of their own: this
               triple leads the group and brackets it once. The `$if` covers them as well, so the switch
@@ -1666,7 +1671,7 @@ const controls: SchemaNode = {
               {
                 type: '$if',
                 props: {
-                  condition: { $: 'sessionStore.devTools' },
+                  condition: { $: 'sessionStore.testPeople' },
                   then: {
                     type: 'Row',
                     /*

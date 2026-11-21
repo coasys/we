@@ -20,6 +20,7 @@ import {
   parseAppliesTo,
   resolveInvolvementTypes,
 } from '@shared/involvements';
+import { reportModuleRefusal } from '@shared/moduleSchemaRefusal';
 import {
   clearSetting,
   type LevelValues,
@@ -167,6 +168,7 @@ import {
   type TaskBlock,
   TaskState,
 } from '@we/entities';
+import { type Latest, latest } from '@we/module-shared';
 import type { ResolvedView, TemplateSchema } from '@we/schema-shared';
 import {
   applyStarterRecords,
@@ -1574,7 +1576,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (first !== 'space' || !segment) return;
     const ds = datasets.find((d) => datasetAddressedBy(d, segment));
     if (!ds) return;
-    datasetStore.prepareDataset(ds);
     void templateStore.preloadSpaceTemplates(ds).catch(() => {});
     // Its record too: the template it shows is named there, and its collection — what the Feed
     // reads — is taken from this read rather than read again. The other spaces wait for the list.
@@ -1723,7 +1724,9 @@ export function SpaceStoreProvider(props: ParentProps) {
 
       // Register SDNA models (full set, same as switchDataset uses)
       const schemas = session.backendPorts()!.schemas;
-      await schemas.installSpace(spaceHandle, moduleRegistry.moduleSchemas(schemas));
+      await schemas
+        .installSpace(spaceHandle, moduleRegistry.moduleSchemas(schemas))
+        .catch(reportModuleRefusal('SpaceStore: createSpace'));
 
       // Process avatar image if provided
       const avatarData = avatarFile
@@ -1885,7 +1888,9 @@ export function SpaceStoreProvider(props: ParentProps) {
 
     // Additive/idempotent — does not remove or touch the dataset's existing foreign SDNA.
     const initSchemas = session.backendPorts()!.schemas;
-    await initSchemas.installSpace(ds.handle, moduleRegistry.moduleSchemas(initSchemas));
+    await initSchemas
+      .installSpace(ds.handle, moduleRegistry.moduleSchemas(initSchemas))
+      .catch(reportModuleRefusal('SpaceStore: initializeAsWeSpace'));
 
     let avatarData: FileData | undefined;
     if (avatarValue instanceof File) {
@@ -1987,7 +1992,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     // so once the dataset has synced this writes only what the creator and earlier joiners
     // have not — never a duplicate copy.
     const joinSchemas = session.backendPorts()!.schemas;
-    await joinSchemas.installSpace(joinedHandle, moduleRegistry.moduleSchemas(joinSchemas));
+    await joinSchemas
+      .installSpace(joinedHandle, moduleRegistry.moduleSchemas(joinSchemas))
+      .catch(reportModuleRefusal('SpaceStore: joinSpace'));
 
     // Track locally so gates derived from the dataset list (marketplaceJoined, the sidebar,
     // the seed-configured global/marketplace slots) update with the join.
@@ -2514,6 +2521,15 @@ export function SpaceStoreProvider(props: ParentProps) {
   const heldSpace = (ds: AppDataset): Space | undefined => mySpaces().find((s) => isSpaceSelf(s, ds));
 
   /**
+   * The stored `Space` row, for a setter that builds its value from the one already there (a list or
+   * a settings map). Not the cached row: the live row of the space on screen is mirrored into the
+   * cache, and a row read before a write landed can arrive after it, so a list built from the cache
+   * drops what the write before it added (the second switch pressed under "What new calls look for").
+   */
+  const storedSpace = async (ds: AppDataset): Promise<Space | undefined> =>
+    (await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) }))[0] ?? heldSpace(ds);
+
+  /**
    * The `Space` row to write a default through: the cached one, else the stored one. The two default
    * setters show their value before they store it, so a space not held yet (its record not read or
    * not synced) must still be written, or the next member opens it with the old default.
@@ -2534,21 +2550,33 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   /**
-   * Persist fields on a space's own record, then publish them.
-   *
-   * A failure is logged, told to the person and rethrown: a setting that reports success without
-   * persisting is worse than one that fails visibly, because the setting is a community decision and
-   * the next member to open the page sees the old one.
+   * How a failed space write is told to the person: logged, and the same toast whatever it was.
+   * A setting that reports success without persisting is worse than one that fails visibly,
+   * because the setting is a community decision and the next member to open the page sees the old
+   * one.
    */
-  async function writeSpaceFields(ds: AppDataset, space: Space, fields: Partial<Space>): Promise<void> {
+  const reportSpaceSave = (what: string, error: unknown): void => {
+    console.error(`SpaceStore: could not persist ${what}`, error);
+    toastService.error('Could not save this change for the space.');
+  };
+
+  /**
+   * Persist fields on a space's own record, then publish them — unless `shouldPublish` says a newer
+   * save has since taken over what is shown.
+   */
+  async function writeSpaceFields(
+    ds: AppDataset,
+    space: Space,
+    fields: Partial<Space>,
+    shouldPublish: () => boolean = () => true,
+  ): Promise<void> {
     try {
       await Space.update(ds.handle, space.id, fields);
     } catch (error) {
-      console.error(`SpaceStore: could not persist ${Object.keys(fields).join(', ')}`, error);
-      toastService.error('Could not save this change for the space.');
+      reportSpaceSave(Object.keys(fields).join(', '), error);
       throw error;
     }
-    publishSpaceFields(ds, fields);
+    if (shouldPublish()) publishSpaceFields(ds, fields);
   }
 
   async function updateSpaceImage(field: 'avatar' | 'coverImage', imageFile: File, spaceUuid?: string): Promise<void> {
@@ -2854,10 +2882,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     dataset: () => datasetStore.currentDataset(),
     interpretation: () => session.backendPorts()?.interpretation,
     profileStore,
-    spaceName: () => currentSpace()?.name,
-    targetsFor: (callId) => extractionTargetsFor(callId),
-    spaceTargets: () => extractionTargets(),
-    autoFor: (callId) => autoExtractFor(callId),
+    exportMeta: collectionExtractionFor,
   });
 
   const [currentSpace, setCurrentSpace] = createSignal<Space | null>(null);
@@ -4365,7 +4390,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     spaceUuid?: string,
   ): Promise<void> {
     const ds = targetDataset(spaceUuid);
-    const space = ds ? heldSpace(ds) : undefined;
+    const space = ds ? await storedSpace(ds) : undefined;
     if (!ds || !space) return;
     const raw = (space as unknown as { moduleSettings?: string }).moduleSettings;
     const next = value === undefined ? clearSetting(raw, group, key) : writeSetting(raw, group, key, value);
@@ -4587,6 +4612,86 @@ export function SpaceStoreProvider(props: ParentProps) {
     await writeCollectionSettings(collectionId, { extractionTargets: JSON.stringify([...next]) }, 'what this extracts');
   }
 
+  /**
+   * One collection's extraction answers, read for the dataset named rather than the space on screen.
+   *
+   * The live reads above follow whichever space is showing and reset on every switch; a watch
+   * registered for a call in a space nobody is looking at, and an export laid out after a save
+   * dialog, both answer about the collection's own dataset. The space's defaults come off its
+   * record there, so a collection made without a copy defers to its own space — and narrowing asks
+   * the dataset's own registry, since a name it cannot resolve has no shape there and would take
+   * the whole pass down.
+   */
+  async function collectionExtractionFor(
+    handle: DatasetProxy,
+    collectionId: string,
+  ): Promise<{ spaceName?: string; spaceTargets: string[]; auto: boolean; classes: string[] }> {
+    const [row]: CollectionBlock[] = await CollectionBlock.findAll(handle, {
+      where: { id: [collectionId] },
+      properties: [...COLLECTION_SETTINGS_FIELDS],
+    } as never);
+    const ds = datasetStore.datasets().find((d) => d.handle === handle);
+    const onScreen = ds !== undefined && datasetStore.currentDataset()?.id === ds.id;
+    /*
+      Where the freshest answer lives, per dataset.
+
+      For the space on screen the live reads are the freshest — they hold a setting that has been
+      published but whose write has not landed yet — and they follow the stored record the moment
+      it changes, so preferring them loses nothing. For a dataset nobody is looking at the live
+      reads answer for a different space and the sidebar cache says what the record said when this
+      client last visited — a peer switching automatic extraction off after that would register a
+      watch the community already turned off — so the space's own record is read where it lives,
+      through the handle.
+    */
+    const shown = currentSpace();
+    /*
+      The live answers are taken now, before the next await: the space record's read below can
+      outlive the dataset on screen, and a switch landing inside it leaves the live signals
+      answering for the space that replaced this one — another space's collections and candidates,
+      read with this one's row and handle still in hand. What is live is read once, while the
+      dataset on screen is still provably this one's; everything after the await is the asking
+      dataset's own.
+    */
+    const shownSpace = onScreen && shown && ds && isSpaceSelf(shown, ds) ? shown : undefined;
+    const liveSettings =
+      onScreen && loadedCollections().has(collectionId) ? collectionSettings()[collectionId] : undefined;
+    // Only once this dataset's own list has published: until then the signal still holds the space just left's.
+    const liveCandidates =
+      onScreen && shapeStore.extractionCandidatesLoaded() ? shapeStore.extractionCandidates() : undefined;
+    const space = shownSpace ?? (ds ? (await Space.findAll(handle, { where: spaceSelfWhere(ds) }))[0] : undefined);
+    const own = liveSettings ?? { autoExtract: row?.autoExtract, extractionTargets: row?.extractionTargets };
+    /*
+      Narrowed by candidacy — the same rule the live list intersects, read for this dataset —
+      not by resolvability: an adopted model whose manifest is not extractable resolves in the
+      registry all the same, and a check that only asks "does the name resolve" kept it. The
+      resolvable check stays: a candidate whose class is not installed in this dataset yet has no
+      shape there and would take the whole pass down.
+
+      The candidates split the same way the records do: the live list for the dataset on screen
+      once it has loaded — re-reading what the switch already read would only wait on it again —
+      and the asking dataset's own read for one nobody is looking at or whose list is still arriving.
+    */
+    const { candidates, installed } = liveCandidates
+      ? { candidates: liveCandidates, installed: [] }
+      : await shapeStore.extractionCandidatesFor(handle);
+    // A class the dataset already had is installed though this session never registered it — only
+    // a switch does — and the executor resolves it from its own shape, so it stays.
+    const resolvable = (entity: string) =>
+      installed.includes(entity) || getEntityForDataset(entity, handle) !== undefined;
+    return {
+      spaceName: space?.name,
+      spaceTargets: resolveSpaceExtractionTargets(candidates, space?.extractionTargets).filter(resolvable),
+      // A record that could not be read has not said it inherits: the space's default must not start
+      // a watch the record's own switch may forbid, and nothing re-registers it once the record arrives.
+      auto:
+        (liveSettings !== undefined || row !== undefined) &&
+        resolveCollectionAutoExtract(space?.autoInterpret === true, own.autoExtract),
+      classes: resolveCollectionExtractionTargets(candidates, space?.extractionTargets, own.extractionTargets).filter(
+        resolvable,
+      ),
+    };
+  }
+
   /*
     The space's own standing watch: the messages typed straight into it, outside any call.
 
@@ -4609,8 +4714,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     candidatesLoaded: () => shapeStore.extractionCandidatesLoaded(),
     targetsFor: extractionTargetsFor,
     setTargetFor: setExtractionTargetFor,
-    autoFor: autoExtractFor,
     setAutoFor: setAutoExtractFor,
+    collectionAnswers: collectionExtractionFor,
   });
   onCleanup(provideModuleHostServices(extraction.services));
 
@@ -5523,7 +5628,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    */
   async function setExtractionTarget(entity: string, on: boolean, spaceUuid?: string) {
     const ds = targetDataset(spaceUuid);
-    const space = ds ? heldSpace(ds) : undefined;
+    const space = ds ? await storedSpace(ds) : undefined;
     if (!ds || !space) return;
     const current = parseEntityList(space.extractionTargets) ?? LEGACY_EXTRACTION_TARGETS;
     const next = new Set(current);
@@ -5534,9 +5639,9 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   async function setModuleEnabled(moduleId: string, enabled: boolean, spaceUuid?: string) {
     const ds = targetDataset(spaceUuid);
-    // Read the space from the cache rather than `currentSpace`, so this answers for a space being
+    // Read the space's own stored row rather than `currentSpace`, so this answers for a space being
     // configured from the spaces list as readily as for the one on screen.
-    const space = ds ? heldSpace(ds) : undefined;
+    const space = ds ? await storedSpace(ds) : undefined;
     if (!ds || !space) return;
     const next = new Set(resolveEnabledModules(space.enabledModules));
     if (enabled) next.add(moduleId);
@@ -5560,7 +5665,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    */
   async function setViewEnabled(viewId: string, enabled: boolean, spaceUuid?: string) {
     const ds = targetDataset(spaceUuid);
-    const space = ds ? heldSpace(ds) : undefined;
+    const space = ds ? await storedSpace(ds) : undefined;
     if (!ds || !space) return;
     const available = availableViews();
     const current = resolveEnabledViews(space.enabledViews, (id) => available.has(id), defaultViewOrder());
@@ -5647,7 +5752,11 @@ export function SpaceStoreProvider(props: ParentProps) {
       include: { location: true, taskStates: true },
     });
     const handleResult = (results: Space[]) => {
-      const space = results[0] ?? null;
+      const row = results[0] ?? null;
+      // A default still being saved stays shown over the row the record last took, which is the
+      // older choice until the write lands.
+      const pending = row ? pendingDefaults(ds) : {};
+      const space = row && Object.keys(pending).length ? withFields(row, pending) : row;
       if (space) pushedSpaces.add(space);
       setCurrentSpace(space);
     };
@@ -5762,28 +5871,138 @@ export function SpaceStoreProvider(props: ParentProps) {
     toastService.warning(`This template suggests a theme ("${suggested}") you don't have — using your own.`);
   });
 
+  /*
+    A default save paints its choice before it is stored, and two can be out at once — so what a
+    failed save puts back is kept here rather than re-read off the screen, where mid-save it is
+    the other save's paint, not anything the record took. `confirmed` is the last value the record
+    took: seeded while nothing is pending (the value shown is then the value stored) and moved on
+    each save that lands. `ops` says whether a save is still the newest for its field — an earlier
+    one failing or landing must not take back or overwrite a later one's paint with it. `tail` is
+    the store writes in the order they were asked, so the backend cannot finish an older choice
+    after a newer one and leave it stored. The record is dropped when nothing is pending, so the
+    next save seeds its baseline from what the cache says then, which the live read may have
+    moved on.
+  */
+  const defaultSaves = new Map<
+    string,
+    {
+      key: string;
+      confirmed: string | undefined;
+      value: string | undefined;
+      ops: Latest;
+      pending: number;
+      tail: Promise<unknown>;
+    }
+  >();
+
+  /** The newest choice of each default still being saved for a dataset, for a live row to show over. */
+  const pendingDefaults = (ds: AppDataset): Partial<Space> => {
+    const fields: Partial<Space> = {};
+    for (const field of ['defaultTemplateId', 'defaultThemeId'] as const) {
+      const save = defaultSaves.get(`${ds.id}:${field}`);
+      if (save) fields[field] = save.value;
+    }
+    return fields;
+  };
+
+  const defaultSaveFor = (ds: AppDataset, field: 'defaultTemplateId' | 'defaultThemeId') => {
+    const key = `${ds.id}:${field}`;
+    let save = defaultSaves.get(key);
+    if (!save) {
+      // The shown fallback asks for ds's own record, not just the dataset: a switch moves the
+      // dataset ahead of the record on screen, and the space being left's record is not a baseline.
+      const shown = currentSpace();
+      save = {
+        key,
+        confirmed: heldSpace(ds)?.[field] ?? (shown && isSpaceSelf(shown, ds) ? shown[field] : undefined),
+        value: undefined,
+        ops: latest(),
+        pending: 0,
+        tail: Promise.resolve(),
+      };
+      defaultSaves.set(key, save);
+    }
+    return save;
+  };
+
+  /** Run a default's store write after the ones already asked for the same field, whether they landed or not. */
+  const queueDefaultWrite = (save: { tail: Promise<unknown> }, write: () => Promise<void>): Promise<void> => {
+    const run = save.tail.catch(() => {}).then(write);
+    save.tail = run;
+    return run;
+  };
+
+  /*
+    The row a default save writes through, inside the same failure boundary as the write — and read
+    inside the queued write, so two saves whose reads finish out of order still write in the order
+    they were asked. A read that cannot answer, and a space with no record at all, were silent
+    successes: the paint already up stayed, with nothing saved and nothing said. Reported the way
+    the write reports, so the caller's failure path takes the publish back.
+  */
+  const spaceRowForSave = async (ds: AppDataset): Promise<Space> => {
+    try {
+      const space = await spaceRow(ds);
+      if (!space) throw new Error(`SpaceStore: no space record for ${ds.id}`);
+      return space;
+    } catch (error) {
+      reportSpaceSave('the space record', error);
+      throw error;
+    }
+  };
+
   async function setSpaceDefaultTemplate(templateId: string, spaceUuid?: string): Promise<void> {
     const ds = targetDataset(spaceUuid);
     if (!ds) return;
-    // Switching what is on screen is only right when the space being configured is the one on
-    // screen. Setting another space's default from the spaces list must not repaint the app.
-    // Published before it is stored, so template pre-loading reads the fresh id from the cache.
-    publishSpaceFields(ds, { defaultTemplateId: templateId });
-    if (isCurrent(ds)) {
-      const template = templateStore.allTemplates().find((t) => t.id === templateId);
-      if (template) templateStore.replaceTemplate(template);
+    const save = defaultSaveFor(ds, 'defaultTemplateId');
+    const isNewest = save.ops.begin();
+    save.value = templateId;
+    save.pending += 1;
+    try {
+      /*
+        Published before it is stored — and the publish is the whole of the paint. The template
+        store follows the record's `defaultTemplateId` for the space on screen, so a save touches
+        no template directly: the follow resolves what to show, through this agent's own override
+        for the space where one is set. The republish below is the whole rollback for the same
+        reason — the follow paints what the record last took, not what a snapshot happened to
+        capture, so a template the record itself brought in mid-save is never rolled back over.
+      */
+      publishSpaceFields(ds, { defaultTemplateId: templateId });
+      await queueDefaultWrite(save, async () =>
+        writeSpaceFields(ds, await spaceRowForSave(ds), { defaultTemplateId: templateId }, isNewest),
+      );
+      save.confirmed = templateId;
+    } catch (error) {
+      // Only the newest save takes the paint back — an earlier one failing leaves the later one's.
+      if (isNewest()) publishSpaceFields(ds, { defaultTemplateId: save.confirmed });
+      throw error;
+    } finally {
+      save.pending -= 1;
+      if (!save.pending) defaultSaves.delete(save.key);
     }
-    const space = await spaceRow(ds);
-    if (space) await Space.update(ds.handle, space.id, { defaultTemplateId: templateId });
   }
 
   async function setSpaceDefaultTheme(themeId: string, spaceUuid?: string): Promise<void> {
     const ds = targetDataset(spaceUuid);
     if (!ds) return;
-    publishSpaceFields(ds, { defaultThemeId: themeId });
-    if (isCurrent(ds)) explainHiddenSpaceTheme();
-    const space = await spaceRow(ds);
-    if (space) await Space.update(ds.handle, space.id, { defaultThemeId: themeId });
+    const save = defaultSaveFor(ds, 'defaultThemeId');
+    const isNewest = save.ops.begin();
+    save.value = themeId;
+    save.pending += 1;
+    try {
+      publishSpaceFields(ds, { defaultThemeId: themeId });
+      if (isCurrent(ds)) explainHiddenSpaceTheme();
+      await queueDefaultWrite(save, async () =>
+        writeSpaceFields(ds, await spaceRowForSave(ds), { defaultThemeId: themeId }, isNewest),
+      );
+      save.confirmed = themeId;
+    } catch (error) {
+      // Only the newest save takes the paint back — an earlier one failing leaves the later one's.
+      if (isNewest()) publishSpaceFields(ds, { defaultThemeId: save.confirmed });
+      throw error;
+    } finally {
+      save.pending -= 1;
+      if (!save.pending) defaultSaves.delete(save.key);
+    }
   }
 
   /**

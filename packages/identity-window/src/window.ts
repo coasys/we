@@ -32,6 +32,7 @@ import {
   remaining,
   type Screen,
   screenTurns,
+  sinceMs,
   spreadWords,
   type StepInput,
   targetLine,
@@ -71,6 +72,12 @@ let root: HTMLElement;
 let offerTimer: number | undefined;
 /** The 12 word fields while the words entry is up, so a refusal keeps what was typed. */
 let wordFields: HTMLInputElement[] | null = null;
+/**
+ * The "missing since" the person last sent for a revoke, drawn again when the custody service
+ * answers with the same key's confirm screen (a wrong passphrase, a refused time): a retry without
+ * it would revoke from now, and a revocation cannot be redone.
+ */
+let picked: { keyId: string; value: string } | undefined;
 /**
  * Marked at each screen drawn, each step sent and each cancel: a step's or a wait's answer is drawn
  * only while it holds.
@@ -507,16 +514,44 @@ function body(screen: Screen): Child[] {
         el('div', { className: 'row' }, button('Save', go, 'primary'), button('Cancel', cancel)),
       ];
     }
+    case 'unlink-confirm': {
+      const p = screen.passphrase ? secretField('Passphrase') : null;
+      const go = () => step({ kind: 'unlink', ...(p ? { passphrase: p.input.value } : {}) }, p ? [p.input] : []);
+      return [
+        ...(p ? [p.label] : []),
+        ...errorLine(screen.error),
+        el('div', { className: 'row' }, button('Unlink', go, 'primary'), button('Cancel', cancel)),
+      ];
+    }
     case 'revoke-confirm': {
       const p = screen.passphrase ? secretField('Passphrase') : null;
+      const since = el('input', { type: 'datetime-local' });
+      if (picked?.keyId === screen.keyId) since.value = picked.value;
       const rotate = el('input', { type: 'checkbox' });
       rotate.checked = screen.rotate;
-      const go = () =>
-        step(
-          { kind: 'revoke', rotate: rotate.checked, ...(p ? { passphrase: p.input.value } : {}) },
+      // A rotation revokes the key in its own event, which carries no time.
+      const sinceApplies = () => (since.disabled = rotate.checked);
+      rotate.addEventListener('change', sinceApplies);
+      sinceApplies();
+      const go = () => {
+        const at = rotate.checked ? undefined : sinceMs(since.value, since.validity.badInput);
+        if (at === null) {
+          draw({ ...screen, error: 'Enter the whole date and time, or clear it to revoke from now.' });
+          return;
+        }
+        picked = { keyId: screen.keyId, value: since.value };
+        void step(
+          {
+            kind: 'revoke',
+            rotate: rotate.checked,
+            ...(p ? { passphrase: p.input.value } : {}),
+            ...(at === undefined ? {} : { since: at }),
+          },
           p ? [p.input] : [],
         );
+      };
       return [
+        el('label', {}, 'Missing since (leave empty for now)', since),
         el('label', { className: 'check' }, rotate, 'Also replace master key'),
         el('p', {
           className: 'note',
@@ -524,7 +559,7 @@ function body(screen: Screen): Child[] {
         }),
         ...(p ? [p.label] : []),
         ...errorLine(screen.error),
-        el('div', { className: 'row' }, button('Remove', go, 'danger'), button('Cancel', cancel)),
+        el('div', { className: 'row' }, button('Revoke', go, 'danger'), button('Cancel', cancel)),
       ];
     }
     case 'enter-words': {
@@ -690,6 +725,7 @@ function body(screen: Screen): Child[] {
     case 'asked':
       return whoAsks(screen);
     case 'linked':
+    case 'unlinked':
     case 'revoked':
     case 'request-answered':
     case 'renamed':

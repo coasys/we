@@ -166,6 +166,7 @@ fn prompt_for(why: MasterUse) -> &'static str {
     match why {
         MasterUse::Link => "Confirm it's you to link a device",
         MasterUse::Revoke => "Confirm it's you to remove a device",
+        MasterUse::Unlink => "Confirm it's you to unlink a device",
         MasterUse::SendMaster => "Confirm it's you to send the master key",
         // The master key signs the private record itself: re-attesting the recovery key after a
         // rotation, which a device's own write of the record waits for.

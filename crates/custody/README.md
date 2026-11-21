@@ -38,12 +38,20 @@ sealed text on (`identity.inboxSealed`). A key lost from the store cannot be mad
 then lists one this computer does not have, and `publicState` says `encMismatch`: revoke this
 computer from a device that holds the master key, and link it again.
 
-The crate runs the identity client's flows — make the identity, add a device, revoke one — and
-reaches the executor only over its RPC with the custody credential. It is its own crate so nothing of
-it links the executor; `tests/boundary.rs` keeps it so. No Windows: the desktop apps start there
-without identity. The word steps (make from new words, restore, replace the master key) are
-`crates/identity-steps`, which the phone's `crates/phone-custody` runs too; this crate holds the
+The crate runs the identity client's flows — make the identity, add a device, unlink one, revoke
+one — and reaches the executor only over its RPC with the custody credential. It is its own crate so
+nothing of it links the executor; `tests/boundary.rs` keeps it so. No Windows: the desktop apps
+start there without identity. The word steps (make from new words, restore, replace the master key)
+are `crates/identity-steps`, which the phone's `crates/phone-custody` runs too; this crate holds the
 identity window's conversation and its vault around them.
+
+An **unlink** retires a device: it signs nothing new, and what it signed before stays valid. A
+**revoke** is for one lost or stolen, and takes the time the person no longer trusts it from
+(`since`, ms, asked on the confirm screen; none is the revoke's own time). The store refuses a
+`since` in the future or before the device was added, and the confirm screen says so. A revoke may
+follow an unlink. The master key signs both, so this computer cannot change its own key; the key
+unlinking itself needs the device key, which custody does not hold. A revoke asked by another
+device's `confirm-revoke` request carries no `since`.
 
 Only the **identity window** runs a flow. Its front end is shared too (`packages/identity-window`);
 each app opens it, gates its calls to that window, and answers the main window with how a step
@@ -180,7 +188,7 @@ its offer link, which the claiming device publishes through.
 **With no store, or one the executor trusts no key for, nothing can make or change an identity, and
 the app says so.** That is a network whose seed names no store, or a build that names a store URL
 without its key: the executor would refuse every publish (`no-store-keys`). So the custody service
-refuses make, add-device and revoke before anything starts — before any words are made — and
+refuses make, add-device, unlink and revoke before anything starts — before any words are made — and
 reports `blocked` in its public state. The first-run screen then draws "Make my identity here"
 disabled with the reason, and "Start now" is the way in. While the executor is not answering yet,
 nothing is known and nothing is reported blocked; the step itself asks again.
@@ -202,7 +210,7 @@ incept only; the master key stays where it rests.
 
 ## Devices and the master key
 
-The steps the main window may open (`IdentityStep`) besides `create` and `revoke`:
+The steps the main window may open (`IdentityStep`) besides `create`, `unlink` and `revoke`:
 
 | Step             | Where                          | What it does                                                                                                      |
 | ---------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
@@ -412,11 +420,16 @@ A patched build rewrites `Cargo.lock`'s `source` lines; restore it before commit
 The end-to-end test runs the three flows against a real identity-store and real executors, and a
 desktop executor (`--custody-channel`, the custody credential on stdin, no `--operator`) whose first
 link records its operator, after which another identity's offer is refused `first-link`; see the
-header of `tests/live.rs` for what it needs:
+header of `tests/live.rs` for what it needs. The executors are the one every WE live test runs
+(`scripts/ad4m-executor.mjs --path`: `AD4M_EXECUTOR`, else the pinned download). `AD4M_REPO` names an
+ad4m checkout only for the identity-store binary and its `tests/js` language directories:
 
 ```sh
+pnpm e2e custody-live          # from the repository root
 CUSTODY_LIVE=1 AD4M_REPO=<ad4m> cargo test --features cheap-kdf --test live -- --nocapture
 ```
+
+It is a live contract test; `docs/testing/e2e.md` places it among the others.
 
 In the Tauri app build the generated `Cargo.toml` patches this crate's ad4m crates to the seed's
 checkout (`apps/we-tauri/src-tauri/Cargo.toml.template`), so there is one ad4m in the binary.

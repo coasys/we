@@ -146,6 +146,12 @@ const rail: SchemaNode = railShell({
   */
   compact: { $: 'shellStore.narrowWindow' },
   compactHeight: PHONE_BAR,
+  /*
+    Nor is the bar drawn while a page asks for the whole window — a phone's thread, marked
+    `data-we-covers-window="window"`. The host's frame holds no bands while one holds, so the bar's
+    band is the cover's too and a drawn bar would stand over it.
+  */
+  barHidden: { $: 'shellStore.chromeCovered' },
   header: {
     type: '$if',
     props: { condition: { $: 'shellStore.narrowWindow' }, then: menuSquare, else: brandSquare },
