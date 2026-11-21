@@ -3972,6 +3972,74 @@ describe('what a collection extracts', () => {
     refused.mockRestore();
   }, 15000);
 
+  /*
+    Two switches each write the whole list, read from the copy the store is holding. Nightly V5
+    turned Decision on, saw that write stored, then turned Task on and read back a list that had
+    Task and not Decision: the second write had taken the list from before the first one was
+    published. The executor shows a write to the test before this app has published it, and a live
+    row from before the write can replace the copy, so both writes are held here and the older one
+    is finished last.
+  */
+  it('keeps every class two overlapping extraction switches turned on, even when the older write finishes last', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    const handle = await enterSpace(stores, 'Overlapping');
+    const rawBefore = (await Space.findAll(handle))[0]?.extractionTargets ?? '';
+    const before = (rawBefore ? (JSON.parse(rawBefore) as string[]) : ['TaskBlock', 'EventBlock']).slice();
+
+    const writes: { released: boolean; release: () => void }[] = [];
+    const Entity = getEntity('Space') as unknown as { update: (...a: unknown[]) => Promise<unknown> };
+    const update = Entity.update.bind(Entity);
+    const spy = vi.spyOn(Entity, 'update').mockImplementation(async (...args: unknown[]) => {
+      const fields = args[2] as { extractionTargets?: string } | undefined;
+      if (!fields || !('extractionTargets' in fields)) return update(...args);
+      await new Promise<void>((resolve) => {
+        const write = {
+          released: false,
+          release: () => {
+            write.released = true;
+            resolve();
+          },
+        };
+        writes.push(write);
+      });
+      return update(...args);
+    });
+
+    const saving = Promise.all([
+      stores.spaces.setExtractionTarget('Decision', true),
+      stores.spaces.setExtractionTarget('Task', true),
+    ]).then(
+      () => ({}),
+      (error: unknown) => ({ error }),
+    );
+    try {
+      await vi.waitFor(() => expect(writes.length).toBeGreaterThan(0));
+      for (
+        let attempt = 0;
+        attempt < 200 && (await Promise.race([saving, Promise.resolve()])) === undefined;
+        attempt++
+      ) {
+        writes
+          .filter((write) => !write.released)
+          .at(-1)
+          ?.release();
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+    } finally {
+      for (const write of writes) write.release();
+      spy.mockRestore();
+    }
+
+    expect(await saving).toEqual({});
+    const stored = JSON.parse((await Space.findAll(handle))[0]?.extractionTargets || '[]') as string[];
+    const wanted = [...new Set([...before, 'Decision', 'Task'])];
+    expect(stored).toEqual(expect.arrayContaining(wanted));
+    expect(stored).toHaveLength(wanted.length);
+    const shown = JSON.parse(stores.spaces.currentSpace()?.extractionTargets || '[]') as string[];
+    expect(shown).toEqual(expect.arrayContaining(['Decision', 'Task']));
+  }, 15000);
+
   it('gives a new call the defaults as they stand, and leaves a call already made with its own', async () => {
     const stores = mountShell();
     await ready(stores);

@@ -80,9 +80,9 @@ export async function enableTargets(page, names, perspective) {
     // dock frame and pressed nothing; unforced, a click that something else would take says so.
     const drawn = page.locator('we-switch').filter({ has: toggle });
     if (!(await toggle.isChecked())) await drawn.click();
-    // Each switch writes the whole list, read from the app's copy of the space
-    // (SpaceStore.tsx `setExtractionTarget`). A second click before the first write lands reads the
-    // list without the first class and writes it back without it, so each write is waited for.
+    // Each switch writes the whole list. The store publishes the merged list before that write
+    // (SpaceStore.tsx `setExtractionTarget`), and this waits until the stored row has caught up:
+    // the check below reads storage, which shows a class only once its write has landed.
     await until(stored, has(name), { timeout: 30_000, what: `${name} in the space's extraction targets` });
   }
   const all = await stored();
