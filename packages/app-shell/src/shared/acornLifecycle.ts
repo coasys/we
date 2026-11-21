@@ -560,9 +560,10 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
    * same as answering "not Acorn". An Acorn answer anywhere still wins; with
    * none, a rejection is rethrown rather than read as "nothing to open".
    */
-  const acornMountOf = async (mounted: string[]): Promise<string | null> => {
+  const acornMountOf = async (mounted: string[], owns: () => boolean = () => true): Promise<string | null> => {
     let unanswered: { error: unknown } | null = null;
     for (const lang of mounted) {
+      if (!owns()) return null;
       try {
         if (await acornInfo(lang)) return lang;
       } catch (error) {
@@ -1540,12 +1541,29 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
         address that is not an Acorn cell would otherwise create the dataset, mount
         the language and announce into whatever it actually is. `answering` gives a
         cold cell the same grace `whoami` gets; a templated language needs no check —
-        it is Acorn by construction. The call's own deadline bounds it too.
+        it is Acorn by construction. The call's own deadline bounds it too — each
+        `info` raced against what is left of it, so one that never answers stops
+        at the deadline, and a late answer is not carried on into a dataset.
       */
-      const owns = () => nav.generation === openGeneration;
-      const infoWait = Math.min(timeoutMs, Math.max(0, nav.deadline - Date.now()));
-      if (languageAddress && !(await answering(() => acornInfo(lang), infoWait, pollMs, owns))) return null;
-      if (nav.generation !== openGeneration) return null;
+      let expired = false;
+      const owns = () => nav.generation === openGeneration && !expired;
+      if (languageAddress) {
+        const infoWait = Math.min(timeoutMs, Math.max(0, nav.deadline - Date.now()));
+        const info = await withinBudget(
+          answering(() => acornInfo(lang), infoWait, pollMs, owns),
+          nav.deadline - Date.now(),
+        );
+        if (info === BUDGET_OUT) {
+          expired = true;
+          throw new AcornLifecycleError({
+            stage: 'prepare',
+            retryTarget: null,
+            cause: new Error(`the language info did not answer inside the ${deadlineMs / 1000} s deadline`),
+          });
+        }
+        if (!info) return null;
+      }
+      if (!owns()) return null;
       /*
         Same sharing as create: a retried join merges into the pending op —
         the dataset it already made stays the target, and the announce the join
@@ -1570,7 +1588,8 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
         selection: deps.currentDatasetId(),
         deadline: Date.now() + deadlineMs,
       };
-      const owns = () => nav.generation === openGeneration;
+      let expired = false;
+      const owns = () => nav.generation === openGeneration && !expired;
       let ref: DatasetRef | null = null;
       let lang: string | null;
       try {
@@ -1584,20 +1603,25 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
         }
         ref = got;
         if (!owns()) return null;
-        lang = ref
-          ? await acornMountOf(
-              await withinBudget(port.mounts(ref.id), nav.deadline - Date.now()).then((m) => {
-                if (m === BUDGET_OUT) {
-                  throw new AcornLifecycleError({
-                    stage: 'prepare',
-                    retryTarget: null,
-                    cause: new Error(`the mounts read did not answer inside the ${deadlineMs / 1000} s deadline`),
-                  });
-                }
-                return m;
-              }),
-            )
-          : null;
+        const mounted = ref ? await withinBudget(port.mounts(ref.id), nav.deadline - Date.now()) : [];
+        if (mounted === BUDGET_OUT) {
+          throw new AcornLifecycleError({
+            stage: 'prepare',
+            retryTarget: null,
+            cause: new Error(`the mounts read did not answer inside the ${deadlineMs / 1000} s deadline`),
+          });
+        }
+        // The info scan is the preflight's too: one `info` that never answers stops at the deadline.
+        const found = await withinBudget(acornMountOf(mounted, owns), nav.deadline - Date.now());
+        if (found === BUDGET_OUT) {
+          expired = true;
+          throw new AcornLifecycleError({
+            stage: 'prepare',
+            retryTarget: null,
+            cause: new Error(`the language info did not answer inside the ${deadlineMs / 1000} s deadline`),
+          });
+        }
+        lang = found;
       } catch (error) {
         /*
           A preflight read that could not be made is a failure like the tail's:
@@ -1605,7 +1629,8 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
           dialog can only answer with "that did not work".
         */
         const failure = new AcornLifecycleError({ stage: 'prepare', retryTarget: null, cause: error });
-        if (owns()) {
+        // The newest ask parks it — a preflight its deadline just expired included.
+        if (nav.generation === openGeneration) {
           const state: AcornOperationState = {
             phase: 'failed',
             name: ref?.name ?? owedFor(datasetId)?.name ?? 'Acorn project',

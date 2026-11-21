@@ -437,6 +437,79 @@ describe('the dialog deadline', () => {
     expect(record.filter((c) => c.startsWith('mount:')).every((c) => c === `mount:dataset-1:${LANG}`)).toBe(true);
   });
 
+  /*
+    The preflight is part of the call: an address whose `info` never answers
+    must not hold Join (or the list row's Open) past the same minute — and an
+    answer arriving after it must not carry on into a dataset or a mount.
+  */
+  it('a join whose address never answers info stops at 60 s — a late answer makes nothing', async () => {
+    vi.useFakeTimers();
+    const record: string[] = [];
+    const d = deps(record);
+    const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
+    const answer = port.interact as ReturnType<typeof vi.fn>;
+    const normal = answer.getMockImplementation() as (url: string, call: { name: string }) => Promise<unknown>;
+    let late: (value: unknown) => void = () => {};
+    answer.mockImplementation(async (url: string, call: { name: string; parameters?: object }) => {
+      if (call.name === 'info') return new Promise((resolve) => (late = resolve));
+      return normal(url, call);
+    });
+    const acorn = createAcornLifecycle(d);
+    const outcome = acorn.joinAcornProject(LANG, 'held seed words', BASE).then(
+      (value) => ({ value }),
+      (error) => ({ error }),
+    );
+
+    await vi.advanceTimersByTimeAsync(61_000);
+
+    const settled = await Promise.race([outcome, Promise.resolve('still-out' as const)]);
+    expect(settled).not.toBe('still-out');
+    const { error } = settled as { error?: unknown };
+    expect(error).toBeInstanceOf(AcornLifecycleError);
+    expect(error).toMatchObject({ stage: 'prepare' });
+    expect(String((error as AcornLifecycleError).cause)).toMatch(/60 s deadline/);
+
+    late({ dnaHash: 'QmdnaUnderTest' });
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(record.find((c) => c.startsWith('create:'))).toBeUndefined();
+    expect(record.find((c) => c.startsWith('mount:'))).toBeUndefined();
+  });
+
+  it('an Open whose info scan never answers parks resumable at 60 s — and its Retry finishes', async () => {
+    vi.useFakeTimers();
+    const record: string[] = [];
+    const d = deps(record, { spaceSetup: vi.fn(async () => ({ ...FULL_SETUP })) });
+    const port = d.port() as AcornLifecyclePort & { mountsOf: Record<string, string[]> };
+    port.mountsOf['dataset-1'] = [LANG];
+    const answer = port.interact as ReturnType<typeof vi.fn>;
+    const normal = answer.getMockImplementation() as (url: string, call: { name: string }) => Promise<unknown>;
+    answer.mockImplementation(async (url: string, call: { name: string; parameters?: object }) => {
+      if (call.name === 'info') return new Promise(() => {});
+      return normal(url, call);
+    });
+    const acorn = createAcornLifecycle(d);
+    const outcome = acorn.openAcornProject('dataset-1').then(
+      (value) => ({ value }),
+      (error) => ({ error }),
+    );
+
+    await vi.advanceTimersByTimeAsync(61_000);
+
+    const settled = await Promise.race([outcome, Promise.resolve('still-out' as const)]);
+    expect(settled).not.toBe('still-out');
+    expect((settled as { error?: unknown }).error).toBeInstanceOf(AcornLifecycleError);
+    await expect(acorn.pendingAcornOperation()).resolves.toMatchObject({
+      phase: 'failed',
+      datasetId: 'dataset-1',
+      failure: { stage: 'prepare', retryable: true },
+    });
+
+    answer.mockImplementation(normal);
+    const { value, error } = await settle(acorn.resumeAcornOperation('dataset-1'));
+    expect(error).toBeUndefined();
+    expect(value).toBe('dataset-1');
+  });
+
   it('a join that lands inside its deadline is not parked — the timer goes with the run', async () => {
     vi.useFakeTimers();
     const record: string[] = [];
