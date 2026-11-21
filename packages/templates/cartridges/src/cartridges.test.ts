@@ -401,6 +401,7 @@ describe('the Coasys cartridge', () => {
         spaceStore: { spacePath: '/space/s1', landmarks: { canvas: 'c1' }, policy: { sentences: [] } },
         workflowStore: { open: null },
         shapeStore: { spaceShapes: [] },
+        local: { others: 'dim' },
         ...extra,
       };
       return (prop: unknown) =>
@@ -413,7 +414,29 @@ describe('the Coasys cartridge', () => {
         });
     };
     const graph = findNode(canvasPane, (n) => n.type === 'GraphView')!;
-    const focusRules = ((graph.props as { nodeStyle: unknown[] }).nodeStyle as unknown[]).slice(-3);
+    const focusRules = ((graph.props as { nodeStyle: unknown[] }).nodeStyle as unknown[]).slice(-5);
+    const hideWhere = (graph.props as { seeds: { options: { hideWhere: unknown } } }).seeds.options.hideWhere;
+    /** Which of these cards the rules dim, by the graph's own style resolver. */
+    const dimmedOf = (rules: unknown[], cards: { id: string; data: Record<string, unknown> }[]) =>
+      cards
+        .filter(
+          (card) =>
+            (
+              resolveStyle({ kind: 'entity', type: 'TaskBlock', ...card } as never, rules as never) as {
+                opacity?: number;
+              }
+            ).opacity === FOCUS_DIM,
+        )
+        .map((card) => card.id);
+    const SPACE = {
+      spacePath: '/space/s1',
+      root: 'space-root',
+      landmarks: { canvas: 'c1' },
+      policy: { sentences: [] },
+    };
+    const fromCall = { id: 'from-call', data: { origin: 'call-1' } };
+    const fromFeed = { id: 'from-feed', data: { origin: 'space-root' } };
+    const byHand = { id: 'by-hand', data: {} };
     const dims = (evaluate: (p: unknown) => unknown) => focusRules.flatMap((rule) => evaluate(rule) as unknown[]);
 
     it('says what to do on an empty canvas, rather than the canvas’s address', () => {
@@ -443,6 +466,46 @@ describe('the Coasys cartridge', () => {
       // The Feed, and a record that is not a call, dim nothing.
       expect(dims(at([], { view: 'canvas' }))).toEqual([]);
       expect(dims(at(['record'], { kind: 'task', id: 't1', view: 'canvas' }))).toEqual([]);
+    });
+
+    /*
+      Calls chosen as a group lit nothing: only one call dimmed the canvas. It lights what any call
+      produced now, over a card from a call, one found in the Feed, and one made by hand.
+    */
+    it('dims what came from no call when Calls is chosen', () => {
+      const rules = dims(at(['calls'], { view: 'canvas' }, { spaceStore: SPACE }));
+      expect(dimmedOf(rules, [fromCall, fromFeed, byHand])).toEqual(['from-feed', 'by-hand']);
+    });
+
+    it('hides what it would dim, and leaves everything alone when the reader asks to see it all', () => {
+      const hiding = at(['calls'], { view: 'canvas' }, { spaceStore: SPACE, local: { others: 'hide' } });
+      expect(hiding(hideWhere)).toEqual([{ 'data.origin': { exists: false } }, { 'data.origin': 'space-root' }]);
+      // Still faded while the canvas reads again without them.
+      expect(dimmedOf(dims(hiding), [fromCall, fromFeed, byHand])).toEqual(['from-feed', 'by-hand']);
+      expect(
+        at(['record'], { kind: 'call', id: 'call-1', view: 'canvas' }, { local: { others: 'hide' } })(hideWhere),
+      ).toEqual([{ 'data.origin': { not: 'call-1' } }]);
+
+      const showing = at(['calls'], { view: 'canvas' }, { spaceStore: SPACE, local: { others: 'show' } });
+      expect(dims(showing)).toEqual([]);
+      expect(showing(hideWhere)).toBeNull();
+      // Dimming hides nothing, and nothing chosen hides nothing.
+      expect(at(['calls'], { view: 'canvas' }, { spaceStore: SPACE })(hideWhere)).toBeNull();
+      expect(at([], { view: 'canvas' }, { local: { others: 'hide' } })(hideWhere)).toBeNull();
+    });
+
+    it('offers the choice in the bar only while something is chosen', () => {
+      const shown = findNode(
+        canvasPane,
+        (n) =>
+          n.type === '$if' &&
+          JSON.stringify((n.props as { then?: unknown } | undefined)?.then ?? '').includes('Everything else'),
+      )!;
+      const condition = (shown.props as { condition: unknown }).condition;
+      expect(at(['calls'], { view: 'canvas' }, { spaceStore: SPACE })(condition)).toBe(true);
+      expect(at(['person'], { did: 'did:ada', view: 'canvas' })(condition)).toBe(true);
+      expect(at([], { view: 'canvas' })(condition)).toBe(false);
+      expect(at(['record'], { kind: 'task', id: 't1', view: 'canvas' })(condition)).toBe(false);
     });
 
     it('is carried by every navigation the tree makes, so choosing another thing stays on the canvas', () => {

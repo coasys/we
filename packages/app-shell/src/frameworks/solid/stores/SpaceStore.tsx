@@ -22,6 +22,7 @@ import {
   parseAppliesTo,
   resolveInvolvementTypes,
 } from '@shared/involvements';
+import { reportModuleRefusal } from '@shared/moduleSchemaRefusal';
 import {
   clearSetting,
   type LevelValues,
@@ -1586,7 +1587,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (first !== 'space' || !segment) return;
     const ds = datasets.find((d) => datasetAddressedBy(d, segment));
     if (!ds) return;
-    datasetStore.prepareDataset(ds);
     void templateStore.preloadSpaceTemplates(ds).catch(() => {});
     // Its record too: the template it shows is named there, and its collection — what the Feed
     // reads — is taken from this read rather than read again. The other spaces wait for the list.
@@ -1735,7 +1735,9 @@ export function SpaceStoreProvider(props: ParentProps) {
 
       // Register SDNA models (full set, same as switchDataset uses)
       const schemas = session.backendPorts()!.schemas;
-      await schemas.installSpace(spaceHandle, moduleRegistry.moduleSchemas(schemas));
+      await schemas
+        .installSpace(spaceHandle, moduleRegistry.moduleSchemas(schemas))
+        .catch(reportModuleRefusal('SpaceStore: createSpace'));
 
       // Process avatar image if provided
       const avatarData = avatarFile
@@ -1897,7 +1899,9 @@ export function SpaceStoreProvider(props: ParentProps) {
 
     // Additive/idempotent — does not remove or touch the dataset's existing foreign SDNA.
     const initSchemas = session.backendPorts()!.schemas;
-    await initSchemas.installSpace(ds.handle, moduleRegistry.moduleSchemas(initSchemas));
+    await initSchemas
+      .installSpace(ds.handle, moduleRegistry.moduleSchemas(initSchemas))
+      .catch(reportModuleRefusal('SpaceStore: initializeAsWeSpace'));
 
     let avatarData: FileData | undefined;
     if (avatarValue instanceof File) {
@@ -1999,7 +2003,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     // so once the dataset has synced this writes only what the creator and earlier joiners
     // have not — never a duplicate copy.
     const joinSchemas = session.backendPorts()!.schemas;
-    await joinSchemas.installSpace(joinedHandle, moduleRegistry.moduleSchemas(joinSchemas));
+    await joinSchemas
+      .installSpace(joinedHandle, moduleRegistry.moduleSchemas(joinSchemas))
+      .catch(reportModuleRefusal('SpaceStore: joinSpace'));
 
     // Track locally so gates derived from the dataset list (marketplaceJoined, the sidebar,
     // the seed-configured global/marketplace slots) update with the join.
