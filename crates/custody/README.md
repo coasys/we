@@ -212,7 +212,9 @@ fingerprint of its signing key; a `confirm-revoke` card names each key it would 
 log does not list. Whether a device **may still hold a valid master key** — on that card and on the
 `revoke` step's confirmation (`mayHoldMaster`) — is the log's too: it made the identity, or the
 claim it joined with said `canKeepMaster`. A record saying `holdsMaster: false` does not hide that,
-and a revoke does not change the master key, so the person is told to replace it.
+and a revoke does not change the master key, so the person is told to replace it. Nor does an
+unlink: the status lists every revoked or unlinked key that may still hold it (`endedHolders`, from
+`keylog::ended_holders`, cleared by a rotation), and the device list warns on those rows.
 
 ## Testing
 
