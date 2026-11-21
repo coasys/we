@@ -20,6 +20,7 @@ import {
   parseAppliesTo,
   resolveInvolvementTypes,
 } from '@shared/involvements';
+import { reportModuleRefusal } from '@shared/moduleSchemaRefusal';
 import {
   clearSetting,
   type LevelValues,
@@ -1575,7 +1576,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (first !== 'space' || !segment) return;
     const ds = datasets.find((d) => datasetAddressedBy(d, segment));
     if (!ds) return;
-    datasetStore.prepareDataset(ds);
     void templateStore.preloadSpaceTemplates(ds).catch(() => {});
     // Its record too: the template it shows is named there, and its collection — what the Feed
     // reads — is taken from this read rather than read again. The other spaces wait for the list.
@@ -1724,7 +1724,9 @@ export function SpaceStoreProvider(props: ParentProps) {
 
       // Register SDNA models (full set, same as switchDataset uses)
       const schemas = session.backendPorts()!.schemas;
-      await schemas.installSpace(spaceHandle, moduleRegistry.moduleSchemas(schemas));
+      await schemas
+        .installSpace(spaceHandle, moduleRegistry.moduleSchemas(schemas))
+        .catch(reportModuleRefusal('SpaceStore: createSpace'));
 
       // Process avatar image if provided
       const avatarData = avatarFile
@@ -1886,7 +1888,9 @@ export function SpaceStoreProvider(props: ParentProps) {
 
     // Additive/idempotent — does not remove or touch the dataset's existing foreign SDNA.
     const initSchemas = session.backendPorts()!.schemas;
-    await initSchemas.installSpace(ds.handle, moduleRegistry.moduleSchemas(initSchemas));
+    await initSchemas
+      .installSpace(ds.handle, moduleRegistry.moduleSchemas(initSchemas))
+      .catch(reportModuleRefusal('SpaceStore: initializeAsWeSpace'));
 
     let avatarData: FileData | undefined;
     if (avatarValue instanceof File) {
@@ -1988,7 +1992,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     // so once the dataset has synced this writes only what the creator and earlier joiners
     // have not — never a duplicate copy.
     const joinSchemas = session.backendPorts()!.schemas;
-    await joinSchemas.installSpace(joinedHandle, moduleRegistry.moduleSchemas(joinSchemas));
+    await joinSchemas
+      .installSpace(joinedHandle, moduleRegistry.moduleSchemas(joinSchemas))
+      .catch(reportModuleRefusal('SpaceStore: joinSpace'));
 
     // Track locally so gates derived from the dataset list (marketplaceJoined, the sidebar,
     // the seed-configured global/marketplace slots) update with the join.
@@ -2513,6 +2519,15 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   /** The cached `Space` row for a dataset — what a setter writes through, without reading it again. */
   const heldSpace = (ds: AppDataset): Space | undefined => mySpaces().find((s) => isSpaceSelf(s, ds));
+
+  /**
+   * The stored `Space` row, for a setter that builds its value from the one already there (a list or
+   * a settings map). Not the cached row: the live row of the space on screen is mirrored into the
+   * cache, and a row read before a write landed can arrive after it, so a list built from the cache
+   * drops what the write before it added (the second switch pressed under "What new calls look for").
+   */
+  const storedSpace = async (ds: AppDataset): Promise<Space | undefined> =>
+    (await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) }))[0] ?? heldSpace(ds);
 
   /**
    * The `Space` row to write a default through: the cached one, else the stored one. The two default
@@ -4375,7 +4390,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     spaceUuid?: string,
   ): Promise<void> {
     const ds = targetDataset(spaceUuid);
-    const space = ds ? heldSpace(ds) : undefined;
+    const space = ds ? await storedSpace(ds) : undefined;
     if (!ds || !space) return;
     const raw = (space as unknown as { moduleSettings?: string }).moduleSettings;
     const next = value === undefined ? clearSetting(raw, group, key) : writeSetting(raw, group, key, value);
@@ -5613,7 +5628,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    */
   async function setExtractionTarget(entity: string, on: boolean, spaceUuid?: string) {
     const ds = targetDataset(spaceUuid);
-    const space = ds ? heldSpace(ds) : undefined;
+    const space = ds ? await storedSpace(ds) : undefined;
     if (!ds || !space) return;
     const current = parseEntityList(space.extractionTargets) ?? LEGACY_EXTRACTION_TARGETS;
     const next = new Set(current);
@@ -5624,9 +5639,9 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   async function setModuleEnabled(moduleId: string, enabled: boolean, spaceUuid?: string) {
     const ds = targetDataset(spaceUuid);
-    // Read the space from the cache rather than `currentSpace`, so this answers for a space being
+    // Read the space's own stored row rather than `currentSpace`, so this answers for a space being
     // configured from the spaces list as readily as for the one on screen.
-    const space = ds ? heldSpace(ds) : undefined;
+    const space = ds ? await storedSpace(ds) : undefined;
     if (!ds || !space) return;
     const next = new Set(resolveEnabledModules(space.enabledModules));
     if (enabled) next.add(moduleId);
@@ -5650,7 +5665,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    */
   async function setViewEnabled(viewId: string, enabled: boolean, spaceUuid?: string) {
     const ds = targetDataset(spaceUuid);
-    const space = ds ? heldSpace(ds) : undefined;
+    const space = ds ? await storedSpace(ds) : undefined;
     if (!ds || !space) return;
     const available = availableViews();
     const current = resolveEnabledViews(space.enabledViews, (id) => available.has(id), defaultViewOrder());

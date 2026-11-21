@@ -416,8 +416,8 @@ export const devicesPage: SchemaNode = {
       available: can('devices'),
       icon: 'devices',
       title: 'Your devices',
-      description: 'Remove a device you lost or no longer use.',
-      preview: [actions('Remove a device')],
+      description: 'Unlink a device you no longer use, or revoke one that was lost or stolen.',
+      preview: [actions('Unlink device')],
       children: [deviceList, deviceListFootnote],
     }),
     comingSoon({

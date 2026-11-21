@@ -149,6 +149,7 @@ export function readKeyLogEvent(raw: unknown, hash: string | null = null): KeyLo
     added: devices
       .filter((d): d is Raw => !!d && typeof d === 'object')
       .map((d) => ({ id: text(d.id) ?? '', sign: text(d.sign) ?? '' })),
+    unlinked: typeof event.unlink === 'string' ? [event.unlink] : [],
     revoked: Array.isArray(event.revoke) ? event.revoke.map(String) : [],
   };
 }
@@ -240,6 +241,7 @@ export function readDevices(value: unknown): DeviceKeyView[] {
       sign: text(device.sign) ?? '',
       thisDevice: device.thisDevice === true,
       addedSeq: count(device.addedSeq) ?? 0,
+      unlinkedSeq: count(device.unlinkedSeq),
       revokedSeq: count(device.revokedSeq),
       bot: mark && {
         can: (Array.isArray(mark.can) ? mark.can : []).filter((c): c is string => typeof c === 'string'),
