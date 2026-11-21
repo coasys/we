@@ -123,6 +123,9 @@ same `BaseBoot` with its desktop host. See "Before a session" in docs/architectu
 The phone app (`apps/we-mobile`, Capacitor, `org.coasys.app`) is not a fourth host: it ships
 `apps/coasys`'s build unchanged inside a native WebView, with only a page of its own for a WebView too
 old to run WE (`android.minWebViewVersion`). Its README says how to build it and where the floor came from.
+`apps/identity-site` (`@we/identity-site`) is not a host either: it is the static site behind coasys.id, the Connect
+frame an app embeds to sign a person in with one of their own devices. It has no backend and runs no schema; it
+verifies the identity's key log and private record with `@coasys/identity-wasm` and is deployed by its own tag.
 
 **Dependency direction:** `templates → shell → backend-shared ← backend-ad4m`, and
 `modules → shell → backend-shared`. Dependencies point inward toward the contract packages; there are

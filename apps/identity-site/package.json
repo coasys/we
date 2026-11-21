@@ -1,0 +1,29 @@
+{
+  "private": true,
+  "name": "@we/identity-site",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "COASYS_STORE_KEY=${COASYS_STORE_KEY-did:key:z6MkLocalBuildOnlyNotAStore} vite build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "test:e2e": "COASYS_ENV=e2e vite build --outDir dist-e2e --emptyOutDir && playwright test"
+  },
+  "dependencies": {
+    "@coasys/ad4m": "*",
+    "@coasys/connect": "*",
+    "@coasys/identity-portal": "workspace:*",
+    "@coasys/identity-wasm": "*",
+    "qrcode-generator": "^1.4.4"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.0",
+    "@types/node": "26.6.6",
+    "@types/ws": "8.18.2",
+    "happy-dom": "^20.0.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5",
+    "ws": "8.23.0"
+  }
+}

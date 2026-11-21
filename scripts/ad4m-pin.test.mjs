@@ -14,8 +14,9 @@ import { lockfileSnapshots, PACKAGES, parsePin, PinError, snapshotUrl, withInteg
 
 const SHA = 'ee40d1143a72650039e6e847810f6e795320e58c';
 const OTHER = '2343daaeac8d62f1e8ad7e975a77c85c281c2876';
-const both = (sdk, connect = sdk) => ({ [PACKAGES[0]]: sdk, [PACKAGES[1]]: connect });
-const snapshots = (sdk, connect = sdk) => both(snapshotUrl(PACKAGES[0], sdk), snapshotUrl(PACKAGES[1], connect));
+const both = (sdk, connect = sdk, wasm = sdk) => ({ [PACKAGES[0]]: sdk, [PACKAGES[1]]: connect, [PACKAGES[2]]: wasm });
+const snapshots = (sdk, connect = sdk, wasm = sdk) =>
+  both(snapshotUrl(PACKAGES[0], sdk), snapshotUrl(PACKAGES[1], connect), snapshotUrl(PACKAGES[2], wasm));
 
 describe('what the pin reads as', () => {
   it('a version', () => {
@@ -46,12 +47,19 @@ describe('what the pin refuses', () => {
     refuses(snapshots(SHA, OTHER), /different ad4m commits/);
   });
 
+  it('the identity core from another commit than the SDK', () => {
+    refuses(snapshots(SHA, SHA, OTHER), /@coasys\/identity-wasm are pinned to different ad4m commits/);
+  });
+
   it('core and connect at different versions', () => {
-    refuses(both('0.13.1-staging.2', '0.13.1-staging.1'), /Pin both to one version/);
+    refuses(both('0.13.1-staging.2', '0.13.1-staging.1'), /Pin all of them to one version/);
   });
 
   it('one by version and the other by snapshot', () => {
-    refuses(both('0.13.1-staging.2', snapshotUrl(PACKAGES[1], SHA)), /by version and .* by snapshot/);
+    refuses(
+      both('0.13.1-staging.2', snapshotUrl(PACKAGES[1], SHA), snapshotUrl(PACKAGES[2], SHA)),
+      /by version and .* by snapshot/,
+    );
   });
 
   for (const [name, spec] of [
@@ -63,11 +71,16 @@ describe('what the pin refuses', () => {
     ['a tag', 'next'],
     ['a local link', 'link:../ad4m/core'],
   ]) {
-    it(name, () => refuses(both(spec, snapshotUrl(PACKAGES[1], SHA)), /neither an npm version nor|by .* and .* by/));
+    it(name, () =>
+      refuses(
+        both(spec, snapshotUrl(PACKAGES[1], SHA), snapshotUrl(PACKAGES[2], SHA)),
+        /neither an npm version nor|by .* and .* by/,
+      ),
+    );
   }
 
   it('a missing override', () => {
-    refuses({ [PACKAGES[0]]: '0.13.1-staging.2' }, /has no override/);
+    refuses({ [PACKAGES[0]]: '0.13.1-staging.2', [PACKAGES[1]]: '0.13.1-staging.2' }, /has no override/);
   });
 });
 

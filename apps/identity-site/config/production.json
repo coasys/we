@@ -1,0 +1,8 @@
+{
+  "authDomain": "https://coasys.id",
+  "platform": "https://api.coasys.app",
+  "store": "https://store.coasys.org",
+  "frameOrigins": ["https://coasys.app"],
+  "pagesProject": "coasys-id",
+  "pagesBranch": "main"
+}

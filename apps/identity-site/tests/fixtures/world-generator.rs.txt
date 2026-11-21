@@ -1,0 +1,90 @@
+#![allow(unused_imports, dead_code)]
+#[path = "<ad4m checkout>/ad4m-identity-core/tests/common/mod.rs"]
+mod common;
+
+use ad4m_hash_chain::sha256;
+use ad4m_identity_core::inbox::*;
+use ad4m_identity_core::link::OfferKind;
+use ad4m_identity_core::record::*;
+use ad4m_identity_core::{x25519_multikey_of, KeyLife};
+use common::*;
+use serde_json::json;
+
+fn hexs(b: &[u8]) -> String {
+    b.iter().map(|x| format!("{x:02x}")).collect()
+}
+
+fn main() {
+    let browser = dev(4);
+    let enc4 = enc_secret(4);
+    let log0 = devices_log();
+    let mut log1 = devices_log();
+    log1.add_key(sealable_device(4, KeyLife::Standing));
+    let scid = log0.chain.state().scid.clone();
+
+    // the holder's ticket, sealed to the browser's pre-join inbox
+    let signed = signed_offer(
+        &log0,
+        ad4m_identity_core::link::Offer {
+            device_key: Some(mk(&browser)),
+            ..link_offer(&log0, OfferKind::Device, None)
+        },
+    );
+    let body = InboxBody::OfferTicket(Box::new(OfferTicket {
+        store: "https://store.ad4m.dev".into(),
+        scid: scid.clone(),
+        offer_id: signed.offer.offer_id.clone(),
+        s: bs58::encode(link_secret()).into_string(),
+        signed_offer: signed,
+    }));
+    let payload = sign_payload(mk(&browser), body, LINK_NOW, signed_by(&log0), &master(log0.n)).unwrap();
+    let address = pre_address(&mk(&browser), &device_r()).unwrap();
+    let sealed_msg = seal(
+        &x25519_multikey_of(&enc4),
+        &InboxAddress::Pre(address.clone()),
+        &payload,
+        &mut TestRng::new("fixture ticket"),
+    )
+    .unwrap();
+
+    // the record after the link: the browser is d4, d1 answers sign-ins
+    let mut rec = record_fixture();
+    {
+        let d1 = rec.devices.get_mut("d1").unwrap();
+        d1.address = Some("ws://127.0.0.1:4403".into());
+        let mut d4 = d1.clone();
+        d4.name = "Browser".into();
+        d4.kind = DeviceKind::Browser;
+        d4.address = None;
+        d4.runs_executor = false;
+        d4.holds_master = HoldsMaster::No;
+        rec.devices.insert("d4".into(), d4);
+    }
+    rec.pending_revocations.clear();
+    let store = sk("the identity store");
+    let sealed_record = seal_record(&log1.chain, 1, &rec, None, &dev(1), &mut TestRng::new("fixture record")).unwrap();
+    let receipt = sign_receipt(log1.chain.id(), &sealed_record, log1.chain.head().seq, &store).unwrap();
+
+    let out = json!({
+        "now": LINK_NOW,
+        "scid": scid,
+        "storeKey": format!("did:key:{}", mk(&store)),
+        "browser": {
+            "signSeed": hexs(&browser.to_bytes()),
+            "signMultikey": mk(&browser),
+            "encSecret": hexs(&enc4.to_bytes()),
+            "encMultikey": x25519_multikey_of(&enc4),
+            "keyId": "d4",
+            "r": device_r(),
+            "address": address,
+            "offerId": link_offer_id(),
+        },
+        "ticketSealed": sealed_msg,
+        "logBefore": log0.json(),
+        "logAfter": log1.json(),
+        "record": sealed_record,
+        "receipt": receipt,
+        "executorAddress": "ws://127.0.0.1:4403",
+    });
+    println!("{}", serde_json::to_string_pretty(&out).unwrap());
+}

@@ -4,3 +4,10 @@
 # asked, not who must approve.
 
 * @jhweir
+
+# The Connect frame at coasys.id: its headers (frame-ancestors, script-src), its list of embedding
+# origins, and the workflow that deploys it decide who can frame it and what runs in it.
+/apps/identity-site/ @lucksus @jhweir
+/apps/identity-site/headers.ts @lucksus @jhweir
+/apps/identity-site/config/ @lucksus @jhweir
+/.github/workflows/identity-site-deploy.yaml @lucksus @jhweir

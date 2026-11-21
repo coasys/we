@@ -5,8 +5,9 @@
  *   node scripts/ad4m-pin.mjs [--commit] [--from <package.json | ->]
  *   node scripts/ad4m-pin.mjs --check-lockfile [<pnpm-lock.yaml>]
  *
- * The pin is the root `pnpm.overrides` entry for @coasys/ad4m and @coasys/connect, and it is
- * one of two kinds:
+ * The pin is the root `pnpm.overrides` entry for @coasys/ad4m, @coasys/connect and
+ * @coasys/identity-wasm (the identity core for the browser, which the identity site loads), and it
+ * is one of two kinds:
  *
  * - **A snapshot**: `https://pkg.pr.new/coasys/ad4m/<package>@<commit>`, which ad4m publishes for
  *   every commit on `dev` and every pull request head. `dev` and feature branches pin these.
@@ -37,7 +38,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-export const PACKAGES = ['@coasys/ad4m', '@coasys/connect'];
+export const PACKAGES = ['@coasys/ad4m', '@coasys/connect', '@coasys/identity-wasm'];
 export const AD4M_REPO = 'coasys/ad4m';
 export const SNAPSHOT_BASE = `https://pkg.pr.new/${AD4M_REPO}/`;
 const REGISTRY = 'https://registry.npmjs.org';
@@ -73,23 +74,26 @@ function parseOne(name, spec) {
 
 /** The pin the root `pnpm.overrides` hold: `{ kind: 'snapshot', commit }` or `{ kind: 'version', version }`. */
 export function parsePin(overrides) {
-  const [sdk, connect] = PACKAGES.map((name) => parseOne(name, overrides?.[name]));
-  if (sdk.kind !== connect.kind) {
-    throw new PinError(
-      `${PACKAGES[0]} is pinned by ${sdk.kind} and ${PACKAGES[1]} by ${connect.kind}. Pin both the same way.`,
-    );
+  const [first, ...rest] = PACKAGES.map((name) => parseOne(name, overrides?.[name]));
+  for (const [i, other] of rest.entries()) {
+    const name = PACKAGES[i + 1];
+    if (first.kind !== other.kind) {
+      throw new PinError(
+        `${PACKAGES[0]} is pinned by ${first.kind} and ${name} by ${other.kind}. Pin all of them the same way.`,
+      );
+    }
+    if (first.kind === 'snapshot' && first.commit !== other.commit) {
+      throw new PinError(
+        `${PACKAGES[0]} and ${name} are pinned to different ad4m commits (${first.commit.slice(0, 9)} and ${other.commit.slice(0, 9)}). Pin all of them to one.`,
+      );
+    }
+    if (first.kind === 'version' && first.version !== other.version) {
+      throw new PinError(
+        `${PACKAGES[0]} is pinned to ${first.version} and ${name} to ${other.version}. Pin all of them to one version.`,
+      );
+    }
   }
-  if (sdk.kind === 'snapshot' && sdk.commit !== connect.commit) {
-    throw new PinError(
-      `${PACKAGES[0]} and ${PACKAGES[1]} are pinned to different ad4m commits (${sdk.commit.slice(0, 9)} and ${connect.commit.slice(0, 9)}). Pin both to one.`,
-    );
-  }
-  if (sdk.kind === 'version' && sdk.version !== connect.version) {
-    throw new PinError(
-      `${PACKAGES[0]} is pinned to ${sdk.version} and ${PACKAGES[1]} to ${connect.version}. Pin both to one version.`,
-    );
-  }
-  return sdk;
+  return first;
 }
 
 /** The pin in a package.json's text, or in the repository's own. */
