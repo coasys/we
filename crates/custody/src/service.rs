@@ -3201,6 +3201,7 @@ async fn revoke_on<R: ExecutorRpc>(
             &unlocking,
             &did,
             std::slice::from_ref(&key_id),
+            None,
             &CLOCK,
             &RANDOM,
         )
