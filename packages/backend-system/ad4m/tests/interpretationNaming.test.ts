@@ -43,40 +43,30 @@ type Overlay = { base: string; kind: 'create' | 'update'; inferred: [string, unk
 /**
  * Enough of a `PerspectiveProxy` for `proposals` to run.
  *
- * The shapes are served as the executor answers the property query — name node, property shape,
- * path — so this exercises the same code a community's own model goes down rather than the
- * compiled-in registry. There is no `getShacl` and no `getAllShacl`: `getAllShacl` reads every
- * named shape in one call and skips one it cannot decode, but either way a shape comes back with
- * every link it has, where this path needs a few of each — and a mock that answered them would let
- * a full read come back unnoticed.
+ * The shapes are served as the executor's shape registry answers `shapes()` — one record per
+ * registered class — so this exercises the same code a community's own model goes down rather than
+ * the compiled-in registry. Nothing else answers a shape read, so a read through any other method
+ * fails here.
  */
 function perspectiveWith(
   overlays: Overlay[],
   classes: Record<string, string[]> | Error,
   shapes: () => typeof SHAPES = () => SHAPES,
-  registry: () => string[] = () => Object.keys(shapes()),
   /** What each record holds now, by base and predicate — what a staged change is compared against. */
   committed: Record<string, Record<string, string[]>> = {},
 ) {
-  const reads = { names: 0, sparql: 0 };
+  const reads = { shapes: 0 };
   const decided: (string | undefined)[] = [];
   const handle = {
     runInterpretation: () => undefined,
     interpretationOverlays: async () => overlays,
-    getShaclNames: async () => {
-      reads.names++;
-      return registry();
-    },
-    querySparql: async (query: string) => {
-      reads.sparql++;
-      if (!['<ad4m://shacl_shape_uri>', '<sh://property>', '<sh://path>'].every((p) => query.includes(p))) return [];
-      return Object.entries(shapes()).flatMap(([name, shape]) =>
-        shape.properties.map((p) => ({
-          name: `literal:string:shacl://${name}`,
-          prop: `test://${name}Shape.${p.name}`,
-          path: p.path,
-        })),
-      );
+    shapes: async () => {
+      reads.shapes++;
+      return Object.entries(shapes()).map(([name, shape]) => ({
+        name,
+        shape: { properties: shape.properties },
+        hash: '',
+      }));
     },
     get: async (query: { source?: string; predicate?: string }) =>
       (committed[query.source ?? '']?.[query.predicate ?? ''] ?? []).map((target) => ({ data: { target } })),
@@ -178,7 +168,7 @@ describe("reading the dataset's own shapes", () => {
 
     await port.proposals(p.handle);
 
-    expect(p.reads).toEqual({ names: 1, sparql: 1 });
+    expect(p.reads).toEqual({ shapes: 1 });
   });
 
   it('names a value by a shape installed since the last read', async () => {
@@ -192,19 +182,6 @@ describe("reading the dataset's own shapes", () => {
     expect((await port.proposals(p.handle))[0].values).toEqual({ status: 'todo' });
   });
 
-  it('reads only the shapes the registry lists', async () => {
-    // A shape's links can outlive its entry in `ad4m://has_shacl`. The registry is what says a shape
-    // is installed, as it was when each listed shape was read on its own.
-    const p = perspectiveWith(
-      [{ base: 'we://embed/1', kind: 'create', inferred: [[TITLE, literal('A link')]] }],
-      { 'we://embed/1': ['EmbedBlock'] },
-      () => SHAPES,
-      () => ['TaskBlock'],
-    );
-
-    expect((await port.proposals(p.handle))[0].values).toEqual({ title: 'A link' });
-  });
-
   it('sends a per-field decision the predicate its name maps to', async () => {
     // A reviewer decides on `label`, and the executor knows only `we://title`. EmbedBlock's shape
     // says the one is the other, and here only the dataset holds it.
@@ -213,7 +190,7 @@ describe("reading the dataset's own shapes", () => {
     await expect(port.reject(p.handle, 'we://embed/1', 'label')).resolves.toBe(true);
 
     expect(p.decided).toEqual([TITLE]);
-    expect(p.reads).toEqual({ names: 1, sparql: 1 });
+    expect(p.reads).toEqual({ shapes: 1 });
   });
 });
 
@@ -242,7 +219,6 @@ describe('a suggested change to an agreed record', () => {
       ],
       { 'we://task/1': ['TaskBlock'] },
       undefined,
-      undefined,
       { 'we://task/1': { [TITLE]: [envelope('Workshop')], [ALL_DAY]: ['literal:boolean:false'] } },
     );
 
@@ -263,7 +239,6 @@ describe('a suggested change to an agreed record', () => {
       ],
       { 'we://task/1': ['TaskBlock'] },
       undefined,
-      undefined,
       { 'we://task/1': { [TITLE]: [literal('Ship the docs')], [STATUS]: [literal('todo')] } },
     );
 
@@ -275,7 +250,6 @@ describe('a suggested change to an agreed record', () => {
     const p = perspectiveWith(
       [{ base: 'we://task/1', kind: 'create', inferred: [[TITLE, literal('Ship the docs')]] }],
       { 'we://task/1': ['TaskBlock'] },
-      undefined,
       undefined,
       { 'we://task/1': { [TITLE]: [literal('Ship the docs')] } },
     );

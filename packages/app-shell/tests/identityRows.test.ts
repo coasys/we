@@ -19,11 +19,11 @@ const REVOKED_MAY_HOLD = 'May still have your master key. Replace it to lock thi
 
 describe('keyLogRows', () => {
   const events = [
-    { seq: 0, op: 'incept', hash: 'QmZkAAAAAAAAAAAA7rWd', added: [{ id: 'd1', sign: 'z' }], revoked: [] },
-    { seq: 1, op: 'add', hash: 'QmN4BBBBBBBBBByFlk', added: [{ id: 'd2', sign: 'z' }], revoked: [] },
-    { seq: 2, op: 'revoke', hash: null, added: [], revoked: ['d2'] },
-    { seq: 3, op: 'rotate', hash: null, added: [], revoked: [] },
-    { seq: 4, op: 'scope', hash: null, added: [], revoked: [] },
+    { seq: 0, op: 'incept', hash: 'QmZkAAAAAAAAAAAA7rWd', added: [{ id: 'd1', sign: 'z' }], unlinked: [], revoked: [] },
+    { seq: 1, op: 'add', hash: 'QmN4BBBBBBBBBByFlk', added: [{ id: 'd2', sign: 'z' }], unlinked: [], revoked: [] },
+    { seq: 2, op: 'revoke', hash: null, added: [], unlinked: [], revoked: ['d2'] },
+    { seq: 3, op: 'rotate', hash: null, added: [], unlinked: [], revoked: [] },
+    { seq: 4, op: 'scope', hash: null, added: [], unlinked: [], revoked: [] },
   ];
 
   it('words each event, newest first, and marks this computer', () => {
@@ -40,6 +40,11 @@ describe('keyLogRows', () => {
     expect(rows.find((r) => r.seq === 0)!.hashShort).toBe('QmZk…7rWd');
   });
 
+  it('reads an unlink as the key it retires', () => {
+    const [row] = keyLogRows([{ seq: 2, op: 'unlink', hash: null, added: [], unlinked: ['d2'], revoked: [] }], 'd1');
+    expect([row.title, row.detail, row.keys, row.icon]).toEqual(['Unlinked d2', 'd2', ['d2'], 'link-break']);
+  });
+
   it('names this computer and every other key by its id', () => {
     const rows = keyLogRows(events.slice(0, 3), 'd2');
     expect(rows.map((r) => r.title)).toEqual(['Revoked this computer', 'Added this computer', 'Created identity']);
@@ -50,14 +55,14 @@ describe('keyLogRows', () => {
 describe('deviceRows', () => {
   it('puts valid keys first and this computer on top, and offers revoke for the others only', () => {
     const rows = deviceRows([
-      { keyId: 'd3', sign: 'z', thisDevice: false, addedSeq: 3, revokedSeq: null },
-      { keyId: 'd2', sign: 'z', thisDevice: false, addedSeq: 1, revokedSeq: 2 },
-      { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, revokedSeq: null },
+      { keyId: 'd3', sign: 'z', thisDevice: false, addedSeq: 3, unlinkedSeq: null, revokedSeq: null },
+      { keyId: 'd2', sign: 'z', thisDevice: false, addedSeq: 1, unlinkedSeq: null, revokedSeq: 2 },
+      { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, unlinkedSeq: null, revokedSeq: null },
     ]);
-    expect(rows.map((r) => [r.keyId, r.label, r.status, r.canRevoke])).toEqual([
-      ['d1', 'This computer', 'Active', false],
-      ['d3', 'Unnamed device', 'Active', true],
-      ['d2', 'Unnamed device', 'Removed at #2', false],
+    expect(rows.map((r) => [r.keyId, r.label, r.status, r.canUnlink, r.canRevoke])).toEqual([
+      ['d1', 'This computer', 'Active', false, false],
+      ['d3', 'Unnamed device', 'Active', true, true],
+      ['d2', 'Unnamed device', 'Revoked', false, false],
     ]);
     // A device row names no key id; the Key log page is where those are read.
     expect(rows[1].subtitle).toBe('added at #3');
@@ -71,19 +76,38 @@ describe('deviceRows', () => {
       sign: 'z',
       thisDevice: false,
       addedSeq: Number(keyId.slice(1)),
+      unlinkedSeq: null,
       revokedSeq,
       bot: { can: ['read'], expires },
       expires,
     });
     const rows = deviceRows(
       [
-        { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, revokedSeq: null, bot: null, expires: null },
+        {
+          keyId: 'd1',
+          sign: 'z',
+          thisDevice: true,
+          addedSeq: 0,
+          unlinkedSeq: null,
+          revokedSeq: null,
+          bot: null,
+          expires: null,
+        },
         // A bot whose key is valid, one whose key has ended, and one revoked: Bots manages each.
         bot('d2', NOW + 1000),
         bot('d3', NOW - 1000),
         bot('d4', NOW + 1000, 5),
         // The record calls this one a bot; the key log does not, so it is a device.
-        { keyId: 'd6', sign: 'z', thisDevice: false, addedSeq: 6, revokedSeq: null, bot: null, expires: null },
+        {
+          keyId: 'd6',
+          sign: 'z',
+          thisDevice: false,
+          addedSeq: 6,
+          unlinkedSeq: null,
+          revokedSeq: null,
+          bot: null,
+          expires: null,
+        },
       ],
       [
         { keyId: 'd2', name: 'Helper', kind: 'desktop-app', holdsMaster: 'no' },
@@ -103,9 +127,36 @@ describe('deviceRows', () => {
     const NOW = 1_750_000_000;
     const rows = deviceRows(
       [
-        { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, revokedSeq: null, bot: null, expires: null },
-        { keyId: 'd2', sign: 'z', thisDevice: false, addedSeq: 1, revokedSeq: null, bot: null, expires: NOW - 60 },
-        { keyId: 'd3', sign: 'z', thisDevice: false, addedSeq: 2, revokedSeq: null, bot: null, expires: NOW + 60 },
+        {
+          keyId: 'd1',
+          sign: 'z',
+          thisDevice: true,
+          addedSeq: 0,
+          unlinkedSeq: null,
+          revokedSeq: null,
+          bot: null,
+          expires: null,
+        },
+        {
+          keyId: 'd2',
+          sign: 'z',
+          thisDevice: false,
+          addedSeq: 1,
+          unlinkedSeq: null,
+          revokedSeq: null,
+          bot: null,
+          expires: NOW - 60,
+        },
+        {
+          keyId: 'd3',
+          sign: 'z',
+          thisDevice: false,
+          addedSeq: 2,
+          unlinkedSeq: null,
+          revokedSeq: null,
+          bot: null,
+          expires: NOW + 60,
+        },
       ],
       [],
       [],
@@ -123,13 +174,38 @@ describe('deviceRows', () => {
     expect(rows[2].canRevoke).toBe(true);
   });
 
+  it('reads a device Active, Unlinked or Revoked, and lets an unlinked one be revoked but not unlinked again', () => {
+    const key = (keyId: string, addedSeq: number, unlinkedSeq: number | null, revokedSeq: number | null) => ({
+      keyId,
+      sign: 'z',
+      thisDevice: keyId === 'd1',
+      addedSeq,
+      unlinkedSeq,
+      revokedSeq,
+      bot: null,
+      expires: null,
+    });
+    const rows = deviceRows([
+      key('d1', 0, null, null),
+      key('d2', 1, 3, null),
+      key('d3', 2, 4, 5),
+      key('d4', 6, null, null),
+    ]);
+    expect(rows.map((r) => [r.keyId, r.status, r.valid, r.unlinked, r.revoked, r.canUnlink, r.canRevoke])).toEqual([
+      ['d1', 'Active', true, false, false, false, false],
+      ['d4', 'Active', true, false, false, true, true],
+      ['d2', 'Unlinked', false, true, false, false, true],
+      ['d3', 'Revoked', false, true, true, false, false],
+    ]);
+  });
+
   it('names each device as the private record does, and says which keep the master key', () => {
     const rows = deviceRows(
       [
-        { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, revokedSeq: null },
-        { keyId: 'd2', sign: 'z', thisDevice: false, addedSeq: 1, revokedSeq: null },
-        { keyId: 'd3', sign: 'z', thisDevice: false, addedSeq: 2, revokedSeq: null },
-        { keyId: 'd4', sign: 'z', thisDevice: false, addedSeq: 3, revokedSeq: 4 },
+        { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, unlinkedSeq: null, revokedSeq: null },
+        { keyId: 'd2', sign: 'z', thisDevice: false, addedSeq: 1, unlinkedSeq: null, revokedSeq: null },
+        { keyId: 'd3', sign: 'z', thisDevice: false, addedSeq: 2, unlinkedSeq: null, revokedSeq: null },
+        { keyId: 'd4', sign: 'z', thisDevice: false, addedSeq: 3, unlinkedSeq: null, revokedSeq: 4 },
       ],
       [
         { keyId: 'd1', name: 'Desktop', kind: 'desktop-app', holdsMaster: 'yes' },
@@ -152,8 +228,8 @@ describe('deviceRows', () => {
 
   it('keeps warning of a device revoked after it was handed the master key', () => {
     const keys = [
-      { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, revokedSeq: null },
-      { keyId: 'd2', sign: 'z', thisDevice: false, addedSeq: 1, revokedSeq: null },
+      { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, unlinkedSeq: null, revokedSeq: null },
+      { keyId: 'd2', sign: 'z', thisDevice: false, addedSeq: 1, unlinkedSeq: null, revokedSeq: null },
     ];
     const handedOver = deviceRows(keys, [
       { keyId: 'd1', name: 'Desktop', kind: 'desktop-app', holdsMaster: 'yes' },
@@ -169,7 +245,7 @@ describe('deviceRows', () => {
     );
     expect(revoked.map((r) => [r.label, r.status, r.master])).toEqual([
       ['Desktop', 'Active', 'Has master key'],
-      ['Unnamed device', 'Removed at #2', REVOKED_MAY_HOLD],
+      ['Unnamed device', 'Revoked', REVOKED_MAY_HOLD],
     ]);
 
     // A revoked device the log never let keep the master key carries no warning.
@@ -181,8 +257,8 @@ describe('deviceRows', () => {
 
   it('stops warning once the master key was replaced at or after the revoke', () => {
     const keys = [
-      { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, revokedSeq: null },
-      { keyId: 'd2', sign: 'z', thisDevice: false, addedSeq: 1, revokedSeq: 2 },
+      { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, unlinkedSeq: null, revokedSeq: null },
+      { keyId: 'd2', sign: 'z', thisDevice: false, addedSeq: 1, unlinkedSeq: null, revokedSeq: 2 },
     ];
     const stillListed = [{ keyId: 'd2', name: 'Laptop', kind: 'desktop-app', holdsMaster: 'yes' as const }];
     // A rotation before the revoke left d2 a copy of the new key: the warning stands.
@@ -243,9 +319,9 @@ describe('this device, on a phone and on a desktop', () => {
   });
   // The executor is the laptop's (d1), and marks d1 as its own; the phone is d2.
   const keys = [
-    { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, revokedSeq: null },
-    { keyId: 'd2', sign: 'z', thisDevice: false, addedSeq: 1, revokedSeq: null },
-    { keyId: 'd3', sign: 'z', thisDevice: false, addedSeq: 2, revokedSeq: null },
+    { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, unlinkedSeq: null, revokedSeq: null },
+    { keyId: 'd2', sign: 'z', thisDevice: false, addedSeq: 1, unlinkedSeq: null, revokedSeq: null },
+    { keyId: 'd3', sign: 'z', thisDevice: false, addedSeq: 2, unlinkedSeq: null, revokedSeq: null },
   ];
   const names = [
     { keyId: 'd1', name: 'Laptop', kind: 'desktop-app', holdsMaster: 'no' as const },
@@ -298,8 +374,8 @@ describe('this device, on a phone and on a desktop', () => {
 
   it('the key log and the requests call the phone “This phone”', () => {
     const events = [
-      { seq: 0, op: 'incept', hash: null, added: [{ id: 'd1', sign: 'z' }], revoked: [] },
-      { seq: 1, op: 'add', hash: null, added: [{ id: 'd2', sign: 'z' }], revoked: [] },
+      { seq: 0, op: 'incept', hash: null, added: [{ id: 'd1', sign: 'z' }], unlinked: [], revoked: [] },
+      { seq: 1, op: 'add', hash: null, added: [{ id: 'd2', sign: 'z' }], unlinked: [], revoked: [] },
     ];
     const phone = keyLogRows(events, 'd2', 'This phone');
     expect(phone.map((r) => [r.title, r.detail, r.thisComputer])).toEqual([

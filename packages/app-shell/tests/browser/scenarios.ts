@@ -2930,9 +2930,9 @@ const botDetail = (): Scenario => {
  */
 const devicesOnPhone = (): Scenario => {
   const keys = [
-    { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, revokedSeq: null },
-    { keyId: 'd2', sign: 'z', thisDevice: false, addedSeq: 1, revokedSeq: null },
-    { keyId: 'd3', sign: 'z', thisDevice: false, addedSeq: 2, revokedSeq: null },
+    { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, unlinkedSeq: null, revokedSeq: null },
+    { keyId: 'd2', sign: 'z', thisDevice: false, addedSeq: 1, unlinkedSeq: null, revokedSeq: null },
+    { keyId: 'd3', sign: 'z', thisDevice: false, addedSeq: 2, unlinkedSeq: null, revokedSeq: null },
   ];
   const names = [
     { keyId: 'd1', name: 'Linux computer', kind: 'desktop-app', holdsMaster: 'yes' as const },

@@ -5,7 +5,7 @@ version = 4
 [[package]]
 name = "ad4m-hash-chain"
 version = "0.1.0"
-source = "git+https://github.com/coasys/ad4m?rev=79bceaf1634231cb9a0a40b1229d22c4fcf7c816#79bceaf1634231cb9a0a40b1229d22c4fcf7c816"
+source = "git+https://github.com/coasys/ad4m?rev=55dcc6ee231fb1aaa6a68fab2c430d6716afe348#55dcc6ee231fb1aaa6a68fab2c430d6716afe348"
 dependencies = [
  "async-trait",
  "bs58",
@@ -20,7 +20,7 @@ dependencies = [
 [[package]]
 name = "ad4m-identity-client"
 version = "0.1.0"
-source = "git+https://github.com/coasys/ad4m?rev=79bceaf1634231cb9a0a40b1229d22c4fcf7c816#79bceaf1634231cb9a0a40b1229d22c4fcf7c816"
+source = "git+https://github.com/coasys/ad4m?rev=55dcc6ee231fb1aaa6a68fab2c430d6716afe348#55dcc6ee231fb1aaa6a68fab2c430d6716afe348"
 dependencies = [
  "ad4m-hash-chain",
  "ad4m-identity-core",
@@ -39,7 +39,7 @@ dependencies = [
 [[package]]
 name = "ad4m-identity-core"
 version = "0.1.0"
-source = "git+https://github.com/coasys/ad4m?rev=79bceaf1634231cb9a0a40b1229d22c4fcf7c816#79bceaf1634231cb9a0a40b1229d22c4fcf7c816"
+source = "git+https://github.com/coasys/ad4m?rev=55dcc6ee231fb1aaa6a68fab2c430d6716afe348#55dcc6ee231fb1aaa6a68fab2c430d6716afe348"
 dependencies = [
  "ad4m-hash-chain",
  "base64",
@@ -63,7 +63,7 @@ dependencies = [
 [[package]]
 name = "ad4m-ldk"
 version = "0.13.0-test-1"
-source = "git+https://github.com/coasys/ad4m?rev=79bceaf1634231cb9a0a40b1229d22c4fcf7c816#79bceaf1634231cb9a0a40b1229d22c4fcf7c816"
+source = "git+https://github.com/coasys/ad4m?rev=55dcc6ee231fb1aaa6a68fab2c430d6716afe348#55dcc6ee231fb1aaa6a68fab2c430d6716afe348"
 dependencies = [
  "futures",
  "js-sys",
@@ -930,7 +930,7 @@ dependencies = [
 [[package]]
 name = "identity-store"
 version = "0.1.0"
-source = "git+https://github.com/coasys/ad4m?rev=79bceaf1634231cb9a0a40b1229d22c4fcf7c816#79bceaf1634231cb9a0a40b1229d22c4fcf7c816"
+source = "git+https://github.com/coasys/ad4m?rev=55dcc6ee231fb1aaa6a68fab2c430d6716afe348#55dcc6ee231fb1aaa6a68fab2c430d6716afe348"
 dependencies = [
  "ad4m-hash-chain",
  "ad4m-identity-core",
