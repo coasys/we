@@ -1536,7 +1536,7 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       */
       const owns = () => nav.generation === openGeneration;
       const infoWait = Math.min(timeoutMs, Math.max(0, nav.deadline - Date.now()));
-      if (languageAddress && !(await answering(() => acornInfo(lang!), infoWait, pollMs, owns))) return null;
+      if (languageAddress && !(await answering(() => acornInfo(lang), infoWait, pollMs, owns))) return null;
       if (nav.generation !== openGeneration) return null;
       /*
         Same sharing as create: a retried join merges into the pending op —
