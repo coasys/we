@@ -5,7 +5,7 @@
 //! the offer secret — and the window holds only what a screen showed it. The main window gets none
 //! of it: only how the step ended, and [`CustodyPublic`].
 //!
-//! The flows are the identity client's (`create`, `link`, `master`, `requests`, `revoke`, and the
+//! The flows are the identity client's (`create`, `link`, `master`, `requests`, `unlink`, `revoke`, and the
 //! private record); the executor is reached over its WebSocket RPC with the admin credential
 //! ([`ExecutorAddress`]), never in process, so moving the executor into a child process later
 //! changes nothing here.
@@ -28,6 +28,7 @@ use ad4m_identity_client::flows::requests::{self, Answered};
 use ad4m_identity_client::flows::restore::RestoreFlow;
 use ad4m_identity_client::flows::revoke::{revoke, revoke_and_rotate};
 use ad4m_identity_client::flows::rotate::{rotate, Rotated};
+use ad4m_identity_client::flows::unlink::unlink_key;
 use ad4m_identity_client::record::{self, Change};
 use ad4m_identity_client::vault::{MasterUse, Vault};
 use ad4m_identity_client::{
@@ -78,6 +79,12 @@ pub enum IdentityStep {
         #[serde(rename = "keyId")]
         key_id: String,
     },
+    /// Retires a device: its history stays valid.
+    Unlink {
+        #[serde(rename = "keyId")]
+        key_id: String,
+    },
+    /// Revokes a device that was lost or stolen.
     Revoke {
         #[serde(rename = "keyId")]
         key_id: String,
@@ -233,6 +240,19 @@ pub enum Screen {
         key_id: String,
         name: String,
     },
+    /// What unlinking will do, before it is done.
+    UnlinkConfirm {
+        #[serde(rename = "keyId")]
+        key_id: String,
+        passphrase: bool,
+        error: Option<String>,
+    },
+    /// The key was unlinked (`unlink` published).
+    Unlinked {
+        #[serde(rename = "keyId")]
+        key_id: String,
+        seq: u64,
+    },
     /// What revoking will do, before it is done.
     RevokeConfirm {
         #[serde(rename = "keyId")]
@@ -345,6 +365,7 @@ impl Screen {
         match self {
             Screen::IdentityReady { .. }
             | Screen::Linked { .. }
+            | Screen::Unlinked { .. }
             | Screen::Revoked { .. }
             | Screen::Joined { .. }
             | Screen::MasterTaken { .. }
@@ -462,12 +483,19 @@ pub enum StepInput {
     Name {
         name: String,
     },
-    /// Revoke, with the passphrase where the computer needs one; `rotate`: also replace the
-    /// master key, which asks for the 12 words next.
+    /// Unlink, with the passphrase where the computer needs one.
+    Unlink {
+        passphrase: Option<TypedSecret>,
+    },
+    /// Revoke, with the passphrase where the computer needs one, and the time (ms since the epoch)
+    /// from which the key is no longer trusted; none is the revoke's own time. `rotate`: also
+    /// replace the master key, which asks for the 12 words next; the rotation revokes the key in
+    /// its own event, which carries no time, so `since` does not apply.
     Revoke {
         passphrase: Option<TypedSecret>,
         #[serde(default)]
         rotate: bool,
+        since: Option<u64>,
     },
     /// The 12 words, as typed: one string, the words separated by spaces.
     TwelveWords {
@@ -510,6 +538,7 @@ impl std::fmt::Debug for StepInput {
             StepInput::Accept => "accept",
             StepInput::Answer { .. } => "answer",
             StepInput::Name { .. } => "name",
+            StepInput::Unlink { .. } => "unlink",
             StepInput::Revoke { .. } => "revoke",
             StepInput::TwelveWords { .. } => "twelve-words",
             StepInput::LockOut { .. } => "lock-out",
@@ -938,6 +967,9 @@ async fn run_step(step: IdentityStep, reads: &mut StateReads<'_>, rx: &mut Rx, r
         }
         IdentityStep::Rename { key_id } => {
             beside(reads, run_rename(vault, address, rx, reply, key_id)).await
+        }
+        IdentityStep::Unlink { key_id } => {
+            beside(reads, run_unlink(vault, address, rx, reply, key_id)).await
         }
         IdentityStep::Revoke { key_id } => {
             beside(reads, run_revoke(vault, address, rx, reply, key_id)).await
@@ -3750,7 +3782,128 @@ pub fn qr_svg(link: &str) -> String {
     }
 }
 
-// ─── revoke ─────────────────────────────────────────────────────────────────────
+// ─── unlink and revoke ──────────────────────────────────────────────────────────
+
+/// What the store said about a revoke's `since`, as a sentence for the confirm screen; `None` when
+/// the error is not about `since`.
+fn since_refusal(e: &ClientError) -> Option<String> {
+    let ClientError::Rpc(rpc) = e else {
+        return None;
+    };
+    if !rpc.message.contains("since") {
+        return None;
+    }
+    Some(if rpc.message.contains("later than") {
+        "That time is in the future. Pick a time that has passed.".into()
+    } else if rpc.message.contains("before the store appended") {
+        "That is before this device was added. Pick a later time.".into()
+    } else {
+        format!("The time was refused: {}", rpc.message)
+    })
+}
+
+/// What a key change opens with, shared by unlink and revoke: the store is trusted, a pending
+/// identity is finished, the identity exists, the key is not this computer's own, and whether the
+/// passphrase is needed. `Err` is the screen that ends the step.
+async fn open_key_change<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    vault: &DesktopVault,
+    key_id: &str,
+    own_key_refused: &str,
+) -> Result<(String, bool), Screen> {
+    trusted_store(executor).await?;
+    finish_pending_quietly(executor, vault).await;
+    let status = executor
+        .status()
+        .await
+        .map_err(|e| failed(&ClientError::Rpc(e)))?;
+    let Some(did) = status.did else {
+        return Err(Screen::Failed {
+            message: "Make your identity first.".into(),
+        });
+    };
+    if status.key_id.as_deref() == Some(key_id) {
+        return Err(Screen::Failed {
+            message: own_key_refused.into(),
+        });
+    }
+    let needs = passphrase_for(vault, &did).map_err(|e| failed(&e))?;
+    Ok((did, needs))
+}
+
+async fn run_unlink(
+    vault: &DesktopVault,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+    key_id: String,
+) {
+    let executor = match connect(address, vault).await {
+        Ok(e) => e,
+        Err(message) => return answer(reply, Ok(Screen::Failed { message })),
+    };
+    unlink_on(&executor, vault, address, rx, reply, key_id).await
+}
+
+/// [`run_unlink`] once the executor answers.
+async fn unlink_on<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    vault: &DesktopVault,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+    key_id: String,
+) {
+    let (did, needs) = match open_key_change(
+        executor,
+        vault,
+        &key_id,
+        "This computer cannot unlink its own key. Unlink it from another device.",
+    )
+    .await
+    {
+        Ok(opened) => opened,
+        Err(screen) => return answer(reply, Ok(screen)),
+    };
+    answer(
+        reply,
+        Ok(Screen::UnlinkConfirm {
+            key_id: key_id.clone(),
+            passphrase: needs,
+            error: None,
+        }),
+    );
+    loop {
+        let Some(input) = next_input(vault, address, rx, reply).await else {
+            return;
+        };
+        let StepInput::Unlink { passphrase } = input else {
+            answer(reply, Err(CustodyError::WrongInput));
+            continue;
+        };
+        let unlocking = vault.unlocking(passphrase.map(TypedSecret::into_secret));
+        match unlink_key(executor, &unlocking, &did, &key_id, &CLOCK).await {
+            Ok(head) => {
+                return answer(
+                    reply,
+                    Ok(Screen::Unlinked {
+                        key_id,
+                        seq: head.seq,
+                    }),
+                )
+            }
+            Err(ClientError::Vault(VaultError::Cancelled)) if needs => answer(
+                reply,
+                Ok(Screen::UnlinkConfirm {
+                    key_id: key_id.clone(),
+                    passphrase: true,
+                    error: Some("That passphrase does not open your master key.".into()),
+                }),
+            ),
+            Err(e) => return answer(reply, Ok(failed(&e))),
+        }
+    }
+}
 
 // ─── add a bot ─────────────────────────────────────────────────────────────────────
 
@@ -3987,36 +4140,16 @@ async fn revoke_on<R: ExecutorRpc>(
     reply: &mut Reply,
     key_id: String,
 ) {
-    if let Err(refused) = trusted_store(executor).await {
-        return answer(reply, Ok(refused));
-    }
-    finish_pending_quietly(executor, vault).await;
-    let (did, own) = match executor.status().await {
-        Ok(status) => match status.did {
-            Some(did) => (did, status.key_id),
-            None => {
-                return answer(
-                    reply,
-                    Ok(Screen::Failed {
-                        message: "Make your identity first.".into(),
-                    }),
-                )
-            }
-        },
-        Err(e) => return answer(reply, Ok(failed(&ClientError::Rpc(e)))),
-    };
-    if own.as_deref() == Some(key_id.as_str()) {
-        return answer(
-            reply,
-            Ok(Screen::Failed {
-                message: "This computer cannot revoke its own key. Revoke it from another device."
-                    .into(),
-            }),
-        );
-    }
-    let needs = match passphrase_for(vault, &did) {
-        Ok(needs) => needs,
-        Err(e) => return answer(reply, Ok(failed(&e))),
+    let (did, needs) = match open_key_change(
+        executor,
+        vault,
+        &key_id,
+        "This computer cannot revoke its own key. Revoke it from another device.",
+    )
+    .await
+    {
+        Ok(opened) => opened,
+        Err(screen) => return answer(reply, Ok(screen)),
     };
     let may_hold_master = may_hold_master(executor, &did, &key_id).await;
     let confirm = |error: Option<String>| Screen::RevokeConfirm {
@@ -4031,7 +4164,12 @@ async fn revoke_on<R: ExecutorRpc>(
         let Some(input) = next_input(vault, address, rx, reply).await else {
             return;
         };
-        let StepInput::Revoke { passphrase, rotate } = input else {
+        let StepInput::Revoke {
+            passphrase,
+            rotate,
+            since,
+        } = input
+        else {
             answer(reply, Err(CustodyError::WrongInput));
             continue;
         };
@@ -4081,6 +4219,7 @@ async fn revoke_on<R: ExecutorRpc>(
             &unlocking,
             &did,
             std::slice::from_ref(&key_id),
+            since,
             &CLOCK,
             &RANDOM,
         )
@@ -4106,7 +4245,10 @@ async fn revoke_on<R: ExecutorRpc>(
                     "That passphrase does not open your master key.".into(),
                 ))),
             ),
-            Err(e) => return answer(reply, Ok(failed(&e))),
+            Err(e) => match since_refusal(&e) {
+                Some(error) => answer(reply, Ok(confirm(Some(error)))),
+                None => return answer(reply, Ok(failed(&e))),
+            },
         }
     }
 }
@@ -5249,6 +5391,31 @@ mod tests {
     }
 
     #[test]
+    fn the_stores_since_refusals_become_sentences_on_the_confirm_screen() {
+        let refused = |message: &str| {
+            ClientError::Rpc(RpcError {
+                code: 400,
+                message: message.into(),
+            })
+        };
+        assert!(since_refusal(&refused(
+            "since: since is later than the store's time of the revoke"
+        ))
+        .unwrap()
+        .contains("future"));
+        assert!(since_refusal(&refused(
+            "since: since is before the store appended the add of d2"
+        ))
+        .unwrap()
+        .contains("before this device was added"));
+        assert_eq!(since_refusal(&refused("the keystore is locked")), None);
+        assert_eq!(
+            since_refusal(&ClientError::Vault(VaultError::Cancelled)),
+            None
+        );
+    }
+
+    #[test]
     fn steps_and_screens_cross_ipc_in_the_shapes_the_windows_expect() {
         let step: IdentityStep = serde_json::from_str(r#"{"kind":"revoke","keyId":"d2"}"#).unwrap();
         assert_eq!(
@@ -5256,6 +5423,43 @@ mod tests {
             IdentityStep::Revoke {
                 key_id: "d2".into()
             }
+        );
+        let step: IdentityStep = serde_json::from_str(r#"{"kind":"unlink","keyId":"d2"}"#).unwrap();
+        assert_eq!(
+            step,
+            IdentityStep::Unlink {
+                key_id: "d2".into()
+            }
+        );
+        let input: StepInput =
+            serde_json::from_str(r#"{"kind":"revoke","passphrase":null,"since":1700000000000}"#)
+                .unwrap();
+        assert!(matches!(
+            input,
+            StepInput::Revoke {
+                passphrase: None,
+                rotate: false,
+                since: Some(1_700_000_000_000)
+            }
+        ));
+        let input: StepInput = serde_json::from_str(r#"{"kind":"revoke"}"#).unwrap();
+        assert!(matches!(input, StepInput::Revoke { since: None, .. }));
+        let input: StepInput =
+            serde_json::from_str(r#"{"kind":"unlink","passphrase":"x"}"#).unwrap();
+        assert!(matches!(
+            input,
+            StepInput::Unlink {
+                passphrase: Some(_)
+            }
+        ));
+        let screen = serde_json::to_value(Screen::Unlinked {
+            key_id: "d2".into(),
+            seq: 2,
+        })
+        .unwrap();
+        assert_eq!(
+            (screen["screen"].as_str(), screen["keyId"].as_str()),
+            (Some("unlinked"), Some("d2"))
         );
         let step: IdentityStep = serde_json::from_str(r#"{"kind":"add-device"}"#).unwrap();
         assert_eq!(step, IdentityStep::AddDevice);
@@ -8227,6 +8431,34 @@ mod tests {
         assert_eq!(confirm["rotate"], true);
     }
 
+    /// An unlink opens on its own confirm screen, and this computer cannot unlink its own key.
+    #[tokio::test]
+    async fn an_unlink_confirms_another_device_and_refuses_this_computers_own_key() {
+        let (events, _) = crate::keylog::tests::log_with_d2(true);
+        let (executor, _) = executor_with(&events, &lying_record());
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        for (key, own) in [("d2", false), ("d1", true)] {
+            let (address, mut rx, mut reply, window, first) = opened();
+            drop(window);
+            unlink_on(&executor, &vault, &address, &mut rx, &mut reply, key.into()).await;
+            let screen = first.await.unwrap().unwrap();
+            if own {
+                assert_eq!(
+                    screen,
+                    Screen::Failed {
+                        message: "This computer cannot unlink its own key. Unlink it from another device."
+                            .into()
+                    }
+                );
+            } else {
+                assert!(
+                    matches!(&screen, Screen::UnlinkConfirm { key_id, error: None, .. } if key_id == key),
+                    "{screen:?}"
+                );
+            }
+        }
+    }
+
     /// A revoke unlocked with the passphrase pushes again a master key whose delivery failed: the
     /// main window's refreshes cannot, without the passphrase, so this unlock is the retry's.
     #[tokio::test]
@@ -8276,6 +8508,7 @@ mod tests {
                     .step(StepInput::Revoke {
                         passphrase: Some(PASSPHRASE.into()),
                         rotate: false,
+                        since: None,
                     })
                     .await
             }
@@ -9784,6 +10017,7 @@ mod tests {
                         .step(StepInput::Revoke {
                             passphrase: None,
                             rotate: true,
+                            since: None,
                         })
                         .await,
                 );
@@ -9857,6 +10091,7 @@ mod tests {
                         .step(StepInput::Revoke {
                             passphrase: None,
                             rotate: false,
+                            since: None,
                         })
                         .await,
                 );

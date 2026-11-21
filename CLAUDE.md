@@ -107,7 +107,7 @@ Glossary (these terms pervade stores, models, and `$query`/`perspective` in sche
 | `@we/drag` | design-system/drag | The drag session and its payload — references, never DOM — plus the ghost, the zone registry and the press-to-drag threshold | Agnostic |
 | `@we/entities` | packages/entities | WE's domain models: the authored neutral manifest (src/manifest, the source of truth), the neutral type contract, and the entity proxies backends register into | **Agnostic** |
 | `@we/app-shell` | packages/app-shell | App shell, stores, registries, built-in template schemas | Solid |
-| `@we/identity-window` | packages/identity-window | The desktop identity window's screens (make an identity, add or revoke a device) over an `IdentityTransport`; each desktop app supplies the transport to its custody service (`crates/custody`) | Vanilla DOM |
+| `@we/identity-window` | packages/identity-window | The desktop identity window's screens (make an identity, add, unlink or revoke a device) over an `IdentityTransport`; each desktop app supplies the transport to its custody service (`crates/custody`) | Vanilla DOM |
 | `@we/ai-context` | packages/ai-context | Generates this reference (CLAUDE.md et al.) from code + fragments | Build tool |
 | `@we/e2e` | packages/e2e | What every live test shares: a fresh multi-user executor and its accounts, a build served under the production CSP, Chrome, waits and failure artifacts (docs/testing/e2e.md) | Test tool |
 | `@we/agent-tools` | packages/agent-tools | What a model can do with WE: templates and themes as tools for any host, a space's records and WE's conventions for a conversation WE runs itself, and a single-file bundle for agent hosts | **Agnostic** |
@@ -3195,16 +3195,15 @@ DatasetStore:
   - switchDataset(uuid: string): switches to a dataset by UUID, registers its SHACL models as dynamic model classes, and populates currentDatasetEntities
   - reorderDatasets(newOrder: string[]): reorders the sidebar items by UUID array
   - removeDataset(uuid: string): removes a dataset from the backend and from local state. The low-level half of spaceStore.removeSpace, which also clears the global-discovery listing — call that from a template, and this only for a dataset that is not a space
-  - cleanupSpaceSdna(uuid?: string): one-time remediation for a space that accumulated duplicate SDNA installs — removes the redundant duplicate link copies. Defaults to the current dataset. Returns a display-ready summary string naming how many links were removed and the DIDs that authored them (your own DID annotated with "(you)"), or an empty string if nothing needed cleaning up
 
 DeviceStore:
 - State:
-  - devices: { keyId, addedSeq, revokedSeq, label, subtitle, icon, thisDevice, revoked, valid, status, canRevoke, name, holdsMaster, master, replaceMaster }[] — the device keys of the person's key log, valid first and this computer on top (a bot's key, which the key log marks, is not listed: botStore manages it), named from the identity's private record (which only its devices read). `label` is the record's name, else 'This computer' (on a phone 'This phone': the phone's own key is this device, and the computer whose executor it reaches is listed like any other) or 'Unnamed device'; `name` the record's name or empty; `valid` is neither revoked nor past its end; `status` 'Active', 'Removed at #2' or 'Expired on 3 Dec 2026'; `canRevoke` is a key not revoked that is not this computer's; `holdsMaster` 'yes', 'no' or 'offered' (sent, not yet taken), worded in `master` ('Has master key', 'Master key sent', or empty). A revoked key's `holdsMaster` is 'no', but its `master` warns when it took the master key or the key log let it ('Still has your master key. Replace it to lock this device out.', 'May still have your master key. Replace it to lock this device out.'): a revoke leaves a copy of the master key valid, until the master key is replaced: a rotation at or after the revoke clears the warning. `replaceMaster` is true on a row that warns: offer replaceMaster there, where canReplaceMaster. Draw 'yes' as a badge; 'offered' is pending, not a problem, so a muted line (a sentence, which a badge never wraps); and a revoked key's warning in a warning tone
+  - devices: { keyId, addedSeq, unlinkedSeq, revokedSeq, label, subtitle, icon, thisDevice, unlinked, revoked, valid, status, canUnlink, canRevoke, name, holdsMaster, master, replaceMaster }[] — the device keys of the person's key log, valid first and this computer on top (a bot's key, which the key log marks, is not listed: botStore manages it), named from the identity's private record (which only its devices read). `label` is the record's name, else 'This computer' (on a phone 'This phone': the phone's own key is this device, and the computer whose executor it reaches is listed like any other) or 'Unnamed device'; `name` the record's name or empty; `valid` is neither unlinked, revoked nor past its end; `status` 'Active', 'Unlinked' (retired: it signs nothing new, and what it signed before stays valid), 'Revoked' (lost or stolen) or 'Expired on 3 Dec 2026'; `canUnlink` is an active key that is not this computer's; `canRevoke` is a key not yet revoked, unlinked or not, that is not this computer's; `holdsMaster` 'yes', 'no' or 'offered' (sent, not yet taken), worded in `master` ('Has master key', 'Master key sent', or empty). A revoked key's `holdsMaster` is 'no', but its `master` warns when it took the master key or the key log let it ('Still has your master key. Replace it to lock this device out.', 'May still have your master key. Replace it to lock this device out.'): a revoke leaves a copy of the master key valid, until the master key is replaced: a rotation at or after the revoke clears the warning. `replaceMaster` is true on a row that warns: offer replaceMaster there, where canReplaceMaster. Draw 'yes' as a badge; 'offered' is pending, not a problem, so a muted line (a sentence, which a badge never wraps); and a revoked key's warning in a warning tone
   - devicesLoaded: boolean — the list has been read once
   - serving: { label, subtitle, icon } — the device serving this session, for the top of Devices: 'This computer' on the desktop; on a phone, the host it signs in to, by its name in the private record or 'Your host'
   - deviceNoun: 'phone' | 'computer' — what this device is, for the sentences about it: 'This ' + deviceStore.deviceNoun + ' does not keep your master key'
-  - validCount: number — how many device keys are valid (neither revoked nor ended); bot keys are not counted
-  - canManage: boolean — Link a device (scanDevice, addDevice), Rename, Remove and answering requests can be offered: this computer keeps the master key of the identity
+  - validCount: number — how many device keys are valid (neither unlinked, revoked nor ended); bot keys are not counted
+  - canManage: boolean — Link a device (scanDevice, addDevice), Rename, Unlink, Revoke and answering requests can be offered: this computer keeps the master key of the identity
   - canShowCode: boolean — "Show code" can be offered: this computer can join an identity and speaks for none yet
   - canAskMaster: boolean — "Ask for master key" can be offered: a device of the identity that does not keep the master key, has none waiting, and could open one (not encMismatch)
   - canReplaceMaster: boolean — "Replace master key" can be offered: a valid device of the identity where the 12 words can be typed. It need not keep the master key: replacing it shuts out a lost device that kept one
@@ -3223,7 +3222,8 @@ DeviceStore:
   - askMaster(): "Ask for master key" — asks the devices that keep it to send it here; one answers from its own requests
   - answerRequest(id: string): answers that request of another device, once the person says yes where the master key is kept (send the master key, or revoke the devices it names)
   - rename(keyId: string): names that device, in the private record only the identity’s devices read
-  - revoke(keyId: string): revokes that device key, once the person confirms it where the master key is kept; the confirmation offers "Also replace master key" (ticked when the device kept a copy), which asks for the 12 words. Resolves with the outcome
+  - unlink(keyId: string): unlinks that device key — retired: it signs nothing new, and what it signed before stays valid — once the person confirms it where the master key is kept. Resolves with the outcome
+  - revoke(keyId: string): revokes that device key, lost or stolen, once the person confirms it where the master key is kept and says since when it was missing; the confirmation offers "Also replace master key" (ticked when the device kept a copy), which asks for the 12 words. Resolves with the outcome
   - replaceMaster(): "Replace master key" — asks for the 12 words where the custody service runs and publishes the next master key, which this computer keeps; every copy kept until now stops counting. Resolves with the outcome
   - restore(): "Restore with recovery phrase" — on a computer of no identity, asks for the words, lists the identity's devices to lock out, and makes this computer a device of it that keeps the new master key. Resolves with the outcome
   - removeMaster(): stops keeping the master key on this computer, once the person confirms it; refused, with the reason, when this computer keeps the only copy. Resolves 'done' only when it was removed
@@ -3316,7 +3316,7 @@ IdentityStore:
   - error: string — why the last read or change failed, ready to show, or empty. A change never rejects: it resolves "failed" and the reason is here, so draw it beside the control that asked
 - Actions:
   - refresh(): reads the status, the key log and the custody state again
-  - open(change: { kind: 'create' } | { kind: 'add-device' } | { kind: 'scan-device' } | { kind: 'show-code' } | { kind: 'take-master' } | { kind: 'ask-master' } | { kind: 'answer-request', id } | { kind: 'rename', keyId } | { kind: 'revoke', keyId }): runs a change and resolves with its outcome once it ends; the backend asks the person itself, wherever it keeps the master key, and everything is read again then. Words, passphrases and keys never reach the app
+  - open(change: { kind: 'create' } | { kind: 'add-device' } | { kind: 'scan-device' } | { kind: 'show-code' } | { kind: 'take-master' } | { kind: 'ask-master' } | { kind: 'answer-request', id } | { kind: 'rename', keyId } | { kind: 'unlink', keyId } | { kind: 'revoke', keyId }): runs a change and resolves with its outcome once it ends; the backend asks the person itself, wherever it keeps the master key, and everything is read again then. Words, passphrases and keys never reach the app
   - makeIdentity(): "Make my identity here" — runs `create`
   - startWithoutIdentity(): "Start now" — use this account without an identity; remembered for it on this computer, so the first-run question stops
 
@@ -6707,7 +6707,7 @@ What the SDK and executor do around a subscription, so a watch can rely on it:
   lets go, so a surface remounting does not tear one down and open another. `onProposalsChanged`
   shows how.
 
-### Reading shapes from `@we/backend-ad4m`
+### Reading and registering shapes from `@we/backend-ad4m`
 
 Where the browser signs in through AD4M Connect, the `PerspectiveProxy` the app holds comes from the SDK
 copy bundled inside `@coasys/ad4m-connect`, not from the `@coasys/ad4m` this repo pins: an SDK fix
@@ -6715,11 +6715,21 @@ reaches that path only when ad4m-connect republishes, so measure performance wor
 copy. The desktop's local executor and the phone's key login open an `Ad4mClient` from the pinned
 `@coasys/ad4m` themselves.
 
-In that copy, `getAllShacl(options?: { names })` reads every shape — or the named ones — in one call,
-and skips a shape it cannot decode rather than rejecting. It still carries every link of every shape
-it returns. For a question about a few links of many shapes, ask the executor once with SPARQL, and
-read a shape in full only when the answer needs it: `readShapeProperties` and `getForeignShacl` in
-`perspectiveHelpers.ts` show how.
+The executor holds a shape registry per perspective. Read it with `perspective.shapes(names?)`: one
+call, one record per registered class (`name` is the local name of the target class, sorted by
+name). Two apps can each have a class with the same local name, so a lookup by target class checks
+`record.shape.targetClass` too — `storedShapeOf` in `sdnaEntities.ts` shows how. Do not read
+shapes from links or with SPARQL: the registry is the one source the model queries use.
+
+Write it with `perspective.registerShapes(shapes)` (or `Model.register(p)` /
+`Ad4mModel.registerAll(p, models)`). The executor compares each shape with the stored one and writes
+only a changed one, and the call answers once queries see the new shapes, so do not read first, sleep
+after, or write hints again after. One call refuses two shapes for one class, a shape URI another
+class already holds, or a `node_shape_uri` not ending in `{Class}Shape` — and writes nothing from
+the call. Two classes may share a name (`we://Topic` beside `flux://Topic`): each is addressed by
+its target class IRI, and the bare name reads the least IRI. WE's own links on a shape
+node (annotations, the tuned-hints marker) are links, read and written as links; the executor keeps
+them when it rewrites a shape.
 
 ---
 
