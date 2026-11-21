@@ -22,7 +22,11 @@ describe('the device list', () => {
     ];
     const rows = deviceRows(devices, NOW);
     expect(rows.map((r) => r.keyId)).toEqual(['d2', 'd1']);
-    expect(rows[0]).toMatchObject({ kind: 'Browser', lastUse: 'Last used 2 hours ago', revokeLabel: REVOKE_DEVICE_KEY });
+    expect(rows[0]).toMatchObject({
+      kind: 'Browser',
+      lastUse: 'Last used 2 hours ago',
+      revokeLabel: REVOKE_DEVICE_KEY,
+    });
     expect(rows[1].revokeLabel).toBeNull();
   });
 

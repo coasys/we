@@ -10,12 +10,7 @@ import { after, before, describe, test } from 'node:test';
 import { buildContentSecurityPolicy, webHeadersFile } from '../../../packages/csp/src/index.js';
 import { parseHeaders, parseRedirects, startEdge } from './edge.mjs';
 
-const REDIRECTS = [
-  '# comment',
-  '/assets/*  /asset-gone.txt  404',
-  '/*  /index.html  200',
-  '',
-].join('\n');
+const REDIRECTS = ['# comment', '/assets/*  /asset-gone.txt  404', '/*  /index.html  200', ''].join('\n');
 
 async function site(name, html) {
   const root = await mkdtemp(join(tmpdir(), `edge-${name}-`));
@@ -24,10 +19,7 @@ async function site(name, html) {
   await writeFile(join(root, 'asset-gone.txt'), 'gone\n');
   await writeFile(join(root, 'assets', 'app.js'), 'export {}\n');
   await writeFile(join(root, '_redirects'), REDIRECTS);
-  await writeFile(
-    join(root, '_headers'),
-    webHeadersFile(buildContentSecurityPolicy({ host: 'web', meta: false })),
-  );
+  await writeFile(join(root, '_headers'), webHeadersFile(buildContentSecurityPolicy({ host: 'web', meta: false })));
   return root;
 }
 
