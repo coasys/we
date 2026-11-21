@@ -27,6 +27,7 @@ const SOLID_TESTS = [
   'tests/baseStore.test.tsx',
   'tests/baseBoot.test.tsx',
   'tests/botStore.test.tsx',
+  'tests/hostingStore.test.tsx',
   'tests/profileStore.test.tsx',
   // Mounts the profile store and holds the app's first-screen gate: real signals and real promises.
   'tests/firstScreenDeferral.test.tsx',

@@ -340,6 +340,17 @@ export type {
   KeyLogStoreBehind,
   KeyLogView,
 } from './identity';
+export type {
+  DelistReason,
+  HostingIndexConfig,
+  HostingPort,
+  HostingStatusView,
+  ListedModel,
+  ListedRate,
+  ListingState,
+  ListingText,
+  OwnListingView,
+} from './hosting';
 export { isNotAdmitted } from './host';
 export type {
   HostImportView,

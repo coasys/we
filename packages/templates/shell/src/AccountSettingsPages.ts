@@ -12,6 +12,7 @@ import { comingSoon, confirmModal } from '@we/template-kit';
 import { accountSettings } from './AccountSettings.schema.ts';
 import { botsSection } from './BotSettingsPages.ts';
 import { cloudUsageCard, peopleCard, signupsCard } from './CloudSettingsPages.ts';
+import { earnWithItSection, findHostSection } from './HostingSettingsPages.ts';
 import { hostCredits, hostSection } from './HostSettings.schema.ts';
 import {
   addDeviceButton,
@@ -432,41 +433,27 @@ export const devicesPage: SchemaNode = {
       preview: [actions('Link a device')],
       children: [{ type: 'Row', children: [addDeviceButton] }],
     }),
+    findHostSection,
     comingSoon({
       available: { $: 'deviceStore.canAddCloudDevice' },
       icon: 'cloud',
       title: 'Add a cloud device',
       description:
-        'Keep a copy of your identity on Coasys cloud, or on a host you name. Leave the address empty for Coasys cloud.',
+        'Keep a copy of your identity on Coasys cloud, or on another host: choose it under Find a host, or add it by its address there.',
       preview: [actions('Add a cloud device')],
       children: [
         {
-          type: 'Column',
-          props: { gap: '200' },
-          $localState: { cloudAddress: { type: 'string', initial: '' } },
+          type: 'Row',
           children: [
             {
-              type: 'we-input',
+              type: 'we-button',
               props: {
-                placeholder: 'Host address (optional)',
-                value: { $: 'local.cloudAddress' },
-                onInput: { $setLocal: 'cloudAddress', value: { $: 'event.detail' } },
+                size: 'sm',
+                loading: { $: 'identityStore.busy' },
+                disabled: { $: 'identityStore.busy' },
+                onClick: { $invoke: 'deviceStore.addCloudDevice' },
               },
-            },
-            {
-              type: 'Row',
-              children: [
-                {
-                  type: 'we-button',
-                  props: {
-                    size: 'sm',
-                    loading: { $: 'identityStore.busy' },
-                    disabled: { $: 'identityStore.busy' },
-                    onClick: { $invoke: 'deviceStore.addCloudDevice', args: [{ $: 'local.cloudAddress' }] },
-                  },
-                  children: ['Add a cloud device'],
-                },
-              ],
+              children: ['Add Coasys cloud'],
             },
           ],
         },
@@ -497,6 +484,7 @@ export function thisDevicePage(advanced: SchemaNode[]): SchemaNode {
       },
       heading('This device', "Settings for the computer or host you're using now."),
       hostSection,
+      earnWithItSection,
       signupsCard,
       peopleCard,
       /*

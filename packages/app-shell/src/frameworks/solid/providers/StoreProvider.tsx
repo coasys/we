@@ -8,6 +8,7 @@ import {
   DatasetStoreProvider,
   DeviceStoreProvider,
   EditorStoreProvider,
+  HostingStoreProvider,
   HostStoreProvider,
   IdentityStoreProvider,
   InterpretationStoreProvider,
@@ -91,7 +92,10 @@ export default function StoreProvider(props: ParentProps) {
                                                 <BundleStoreProvider>
                                                   {/* Beneath the space store: a grant names the person's spaces. */}
                                                   <BotStoreProvider>
-                                                    <EditorHostAdapter>{props.children}</EditorHostAdapter>
+                                                    {/* Reads the backend's hosting port and the platform API: it needs only the session. */}
+                                                    <HostingStoreProvider>
+                                                      <EditorHostAdapter>{props.children}</EditorHostAdapter>
+                                                    </HostingStoreProvider>
                                                   </BotStoreProvider>
                                                 </BundleStoreProvider>
                                               </WorkflowStoreProvider>

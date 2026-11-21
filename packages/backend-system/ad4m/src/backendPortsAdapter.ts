@@ -39,6 +39,7 @@ import { createAd4mCallPort } from './callPort';
 import { installClearOnEmpty } from './clearOnEmpty';
 import { installContainmentPredicate } from './containment';
 import { Space } from './entities';
+import { createAd4mHostingPort } from './hostingPort';
 import { createAd4mHostPort } from './hostPort';
 import { type Ad4mCustodyHost, createAd4mIdentityPort } from './identityPort';
 import { createAd4mInterpretationPort } from './interpretationAdapter';
@@ -258,6 +259,8 @@ export function createAd4mBackendPorts(
     // The key log and the device list, as the executor's identity module holds them, and changes to
     // them through the host's custody service where it runs one.
     identity: createAd4mIdentityPort(backendClient, options.custody),
+    // This device's listing in the hosting index.
+    hosting: createAd4mHostingPort(backendClient),
     // The tenant half signs in to a host with this computer's own executor, which only the desktop
     // (the custody service's computer) may ask: a phone signs in with its own key, not through here.
     ...(options.custody ? { hosts: createAd4mHostPort(backendClient as Ad4mClient) } : {}),
