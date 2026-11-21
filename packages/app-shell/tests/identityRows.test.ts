@@ -125,6 +125,20 @@ describe('deviceRows', () => {
     // A revoked device the log never let keep the master key carries no warning.
     const server = deviceRows([keys[0], { ...keys[1], revokedSeq: 2 }], [], []);
     expect(server[1].master).toBe('');
+
+    // An unlink does not replace the master key either: the row warns, in words for a device the
+    // person may still have. Before the record's write it still lists the device as a holder.
+    const unlinked = [keys[0], { ...keys[1], unlinkedSeq: 2 }];
+    const kept = deviceRows(unlinked, [{ keyId: 'd2', name: 'Laptop', kind: 'desktop-app', holdsMaster: 'yes' }]);
+    expect([kept[1].status, kept[1].holdsMaster, kept[1].master]).toEqual([
+      'Unlinked',
+      'no',
+      "Still has your master key. Replace it if you don't have this device any more.",
+    ]);
+    expect(deviceRows(unlinked, [], ['d2'])[1].master).toBe(
+      "May still have your master key. Replace it if you don't have this device any more.",
+    );
+    expect(deviceRows(unlinked, [], [])[1].master).toBe('');
   });
 });
 

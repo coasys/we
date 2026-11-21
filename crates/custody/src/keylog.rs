@@ -53,25 +53,27 @@ pub fn device(events: &[Event], key_id: &str) -> Option<LoggedDevice> {
     })
 }
 
-/// The revoked keys that may still hold a valid master key: the log let them keep it (see
-/// [`device`]), and no rotation since their revocation replaced the master key. A revoke does not
-/// change the master key, so a copy such a device took stays valid until the master key is
-/// replaced. The private record cannot say this: its write drops the entries of revoked keys.
-pub fn revoked_holders(events: &[Event]) -> Vec<String> {
-    let mut revoked: Vec<String> = Vec::new();
+/// The revoked or unlinked keys that may still hold a valid master key: the log let them keep it
+/// (see [`device`]), and no rotation since replaced the master key. Neither a revoke nor an unlink
+/// changes the master key, so a copy such a device took stays valid until the master key is
+/// replaced. The private record cannot say this: its write drops the entries of ended keys.
+pub fn ended_holders(events: &[Event]) -> Vec<String> {
+    let mut ended: Vec<String> = Vec::new();
     for event in events {
         match &event.op {
             Op::Revoke { revoke, .. } => {
-                revoked.extend(revoke.iter().map(|k| k.as_str().to_string()))
+                ended.extend(revoke.iter().map(|k| k.as_str().to_string()))
             }
+            Op::Unlink { unlink } => ended.push(unlink.as_str().to_string()),
             // A new master key: no copy of the old one acts any more.
-            Op::Rotate { .. } => revoked.clear(),
+            Op::Rotate { .. } => ended.clear(),
             _ => {}
         }
     }
-    revoked.retain(|id| device(events, id).is_some_and(|d| d.may_keep_master));
-    revoked.dedup();
-    revoked
+    ended.retain(|id| device(events, id).is_some_and(|d| d.may_keep_master));
+    ended.sort();
+    ended.dedup();
+    ended
 }
 
 /// Whether the log lists device `key_id` as one that may keep the master key, not revoked, with an
@@ -256,17 +258,26 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_revoked_device_that_may_keep_the_master_key_still_may_hold_it() {
-        use ad4m_identity_core::build::revoke;
+    fn a_revoked_or_unlinked_device_that_may_keep_the_master_key_still_may_hold_it() {
+        use ad4m_identity_core::build::{revoke, unlink};
         use ad4m_identity_core::{words, KeyId};
         let master = words::master_key(&words::seed(&words::from_entropy(&[41u8; 16])), 0).unwrap();
         for (can_keep_master, expected) in [(true, vec!["d2".to_string()]), (false, vec![])] {
-            let (mut events, _) = log_with_d2(can_keep_master);
-            assert!(revoked_holders(&events).is_empty(), "nothing revoked yet");
+            let (events, _) = log_with_d2(can_keep_master);
+            assert!(ended_holders(&events).is_empty(), "nothing ended yet");
             let chain = fold(&events).unwrap();
-            events.push(revoke(&chain, &master, &[KeyId::from("d2")], None).unwrap());
-            fold(&events).unwrap();
-            assert_eq!(revoked_holders(&events), expected);
+            let mut revoked = events.clone();
+            revoked.push(revoke(&chain, &master, &[KeyId::from("d2")], None).unwrap());
+            fold(&revoked).unwrap();
+            assert_eq!(ended_holders(&revoked), expected);
+            let mut unlinked = events.clone();
+            unlinked.push(unlink(&chain, &master, &KeyId::from("d2")).unwrap());
+            fold(&unlinked).unwrap();
+            assert_eq!(ended_holders(&unlinked), expected);
+            // A revoke after the unlink names the key once.
+            let chain = fold(&unlinked).unwrap();
+            unlinked.push(revoke(&chain, &master, &[KeyId::from("d2")], None).unwrap());
+            assert_eq!(ended_holders(&unlinked), expected);
         }
     }
 }

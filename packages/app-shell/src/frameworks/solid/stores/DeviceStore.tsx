@@ -139,7 +139,7 @@ export function DeviceStoreProvider(props: ParentProps) {
   const encMismatch = () => !!identity.custody()?.encMismatch;
   // The record's names cannot have been read here then: whatever came is not this computer's to show.
   const names = () => (encMismatch() ? [] : (identity.custody()?.devices ?? []));
-  const rows = createMemo(() => deviceRows(raw(), names(), identity.custody()?.revokedHolders ?? []));
+  const rows = createMemo(() => deviceRows(raw(), names(), identity.custody()?.endedHolders ?? []));
   const linking = () => session.identityCapabilities().linkDevice && identity.canChange();
   const canManage = () => linking() && !!identity.did() && !!identity.custody()?.holdsMaster;
   const masterWaiting = () => !!identity.custody()?.masterWaiting && !encMismatch();

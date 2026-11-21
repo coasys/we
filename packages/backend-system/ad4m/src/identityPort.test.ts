@@ -195,7 +195,7 @@ describe('the AD4M identity port with a custody service', () => {
       unlock: 'os',
       blocked: null,
       devices: [],
-      revokedHolders: [],
+      endedHolders: [],
       requests: [],
       masterWaiting: false,
       encMismatch: false,
@@ -224,7 +224,7 @@ describe('the AD4M identity port with a custody service', () => {
           // A kind this app cannot answer is left for one that can.
           { id: 'r3', kind: 'rotate-everything', by: 'd2', keyIds: [], expires: 99 },
         ],
-        revokedHolders: ['d4'],
+        endedHolders: ['d4'],
         masterWaiting: true,
       }),
     );
@@ -239,7 +239,7 @@ describe('the AD4M identity port with a custody service', () => {
       { id: 'r2', kind: 'confirm-revoke', by: 'd2', keyIds: ['d3'], expires: 99 },
     ]);
     expect(view.masterWaiting).toBe(true);
-    expect(view.revokedHolders).toEqual(['d4']);
+    expect(view.endedHolders).toEqual(['d4']);
   });
 
   it('opens each device step in the custody service as asked', async () => {
