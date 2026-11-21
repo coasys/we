@@ -68,6 +68,21 @@ describe('the revoke confirm screen', () => {
     expect(document.body.textContent).toContain('Enter the whole date and time');
   });
 
+  it('keeps "Also replace master key" and the passphrase as set across a half-filled time', async () => {
+    const sent = await openOn([{ screen: 'failed', message: 'stop here' }]);
+    const rotate = document.querySelector<HTMLInputElement>('input[type=checkbox]')!;
+    rotate.checked = true;
+    passphrase().value = 'right';
+    Object.defineProperty(picker(), 'validity', { value: { badInput: true }, configurable: true });
+    revoke();
+
+    expect(sent).toEqual([]);
+    expect(document.body.textContent).toContain('Enter the whole date and time');
+    expect(document.querySelector<HTMLInputElement>('input[type=checkbox]')).toBe(rotate);
+    expect(rotate.checked).toBe(true);
+    expect(passphrase().value).toBe('right');
+  });
+
   it('sends no time for an empty picker: the store takes its own', async () => {
     const sent = await openOn([{ screen: 'revoked', keyId: 'd2', seq: 3 }]);
     passphrase().value = 'right';
@@ -140,6 +155,46 @@ describe('the revoke confirm screen', () => {
     expect(sent[0]).toMatchObject({
       kind: 'lock-out',
       keyIds: ['d2'],
+      since: new Date(2026, 10, 20, 8, 0).getTime(),
+    });
+  });
+
+  it('keeps the ticks and the name across a half-filled time, so a device still held is never locked out', async () => {
+    const sent = await openOn([{ screen: 'failed', message: 'stop here' }], {
+      screen: 'restore-devices',
+      did: 'did:scid:coasys:1:Qm',
+      devices: [
+        { keyId: 'd2', name: 'Phone', kind: 'app', lockOut: true },
+        { keyId: 'd3', name: 'Laptop', kind: 'app', lockOut: true },
+      ],
+      note: null,
+    });
+    const boxes = Array.from(document.querySelectorAll<HTMLInputElement>('input[type=checkbox]'));
+    // The laptop is still in hand: it stays.
+    boxes[1].checked = false;
+    document.querySelector<HTMLInputElement>('input[placeholder="Home desktop"]')!.value = 'Desk';
+    Object.defineProperty(picker(), 'validity', { value: { badInput: true }, configurable: true });
+    const restore = () =>
+      Array.from(document.querySelectorAll('button'))
+        .find((b) => b.textContent === 'Restore')!
+        .click();
+    restore();
+
+    expect(sent).toEqual([]);
+    expect(document.body.textContent).toContain('Enter the whole date and time');
+    // The form stands as it was: the same boxes, with the ticks the person left.
+    expect(Array.from(document.querySelectorAll('input[type=checkbox]'))).toEqual(boxes);
+    expect(boxes.map((b) => b.checked)).toEqual([true, false]);
+
+    Object.defineProperty(picker(), 'validity', { value: { badInput: false }, configurable: true });
+    picker().value = '2026-11-20T08:00';
+    restore();
+    await vi.waitFor(() => expect(sent).toHaveLength(1));
+
+    expect(sent[0]).toEqual({
+      kind: 'lock-out',
+      keyIds: ['d2'],
+      name: 'Desk',
       since: new Date(2026, 10, 20, 8, 0).getTime(),
     });
   });

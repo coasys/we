@@ -382,6 +382,7 @@ export function heading(screen: Screen): { title: string; lead: string } {
           screen.needsWords
             ? 'Try again to revoke now. You will enter your recovery phrase.'
             : 'Try again to revoke now.',
+          'Closing this window ends this retry. The device stays unlinked, which blocks new links but does not flag the links it already made. Revoke it from Devices with "Also replace master key" unticked.',
         ].join(' '),
       };
     case 'revoked':

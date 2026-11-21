@@ -398,6 +398,12 @@ describe('the identity window', () => {
     );
     expect(heading({ ...screen, needsWords: false }).lead).not.toContain('recovery phrase');
     expect(`${title} ${lead}`).not.toMatch(/nothing (was )?changed/i);
+    // The retry lives only in this window: closing it, or a restart, drops it, and the manual way
+    // is the Devices list. Never said to resume.
+    expect(lead).toContain('Closing this window ends this retry');
+    expect(lead).toContain('does not flag the links it already made');
+    expect(lead).toContain('Revoke it from Devices with "Also replace master key" unticked');
+    expect(lead).not.toMatch(/resume/i);
     // Not a last screen: the rotation stands, and Close cancels the wait.
     expect(isLast(screen)).toBe(false);
     expect(windowSource).toMatch(

@@ -73,6 +73,26 @@ function pickedSince(input: HTMLInputElement, key: string, again: () => void): n
   else picked = { keyId: key, value: input.value };
   return at;
 }
+
+/** What a time not finished says. */
+const HALF_TIME = 'Enter the whole date and time, or clear it to revoke from now.';
+
+/**
+ * An error line a screen sets in place. A time not finished is said here and the form is never drawn
+ * again for it: a redraw would rebuild every tick, the name and the passphrase from the screen the
+ * service sent, and a device the person unticked would be ticked again.
+ */
+function errorSlot(text: string | null): { line: HTMLParagraphElement; show: (message: string) => void } {
+  const line = el('p', { className: 'error', textContent: text ?? '' });
+  line.hidden = !text;
+  return {
+    line,
+    show: (message) => {
+      line.textContent = message;
+      line.hidden = false;
+    },
+  };
+}
 /** Marked at each screen drawn and each step sent: a wait's answer is drawn only while it holds. */
 const turn = screenTurns();
 
@@ -429,14 +449,13 @@ function body(screen: Screen): Child[] {
     case 'revoke-confirm': {
       const p = screen.passphrase ? secretField('Passphrase') : null;
       const since = sincePicker(screen.keyId, 'Missing since (leave empty for now)');
+      const problem = errorSlot(screen.error);
       const rotate = el('input', { type: 'checkbox' });
       rotate.checked = screen.rotate;
       // With "Also replace master key" the rotation comes first and the revoke follows it, from the
       // same time: the picker stays.
       const go = () => {
-        const at = pickedSince(since.input, screen.keyId, () =>
-          draw({ ...screen, error: 'Enter the whole date and time, or clear it to revoke from now.' }),
-        );
+        const at = pickedSince(since.input, screen.keyId, () => problem.show(HALF_TIME));
         if (at === null) return;
         void step(
           {
@@ -457,7 +476,7 @@ function body(screen: Screen): Child[] {
             "Any copy this device has stops working. You'll enter your recovery phrase next, and the device is revoked from the time above after your master key is replaced.",
         }),
         ...(p ? [p.label] : []),
-        ...errorLine(screen.error),
+        problem.line,
         el('div', { className: 'row' }, button('Revoke', go, 'danger'), button('Cancel', cancel)),
       ];
     }
@@ -478,10 +497,9 @@ function body(screen: Screen): Child[] {
       });
       const name = textField('Name for this computer', '', 'Home desktop');
       const since = sincePicker(screen.did, 'Missing since (leave empty for now)');
+      const problem = errorSlot(null);
       const go = () => {
-        const at = pickedSince(since.input, screen.did, () =>
-          draw({ ...screen, note: 'Enter the whole date and time, or clear it to revoke from now.' }),
-        );
+        const at = pickedSince(since.input, screen.did, () => problem.show(HALF_TIME));
         if (at === null) return;
         void step({
           kind: 'lock-out',
@@ -495,6 +513,7 @@ function body(screen: Screen): Child[] {
         ...ticks.map((t) => el('label', { className: 'check' }, t.box, `Remove ${t.label}`)),
         since.label,
         name.label,
+        problem.line,
         el('div', { className: 'row' }, button('Restore', go, 'primary'), button('Cancel', cancel)),
       ];
     }
@@ -521,15 +540,15 @@ function body(screen: Screen): Child[] {
     case 'rotated-not-revoked': {
       // The rotation stands: closing leaves it; trying again publishes only the revoke.
       const since = sincePicker(picked?.keyId ?? '', 'Missing since (leave empty for now)');
+      const problem = errorSlot(null);
       const go = () => {
-        const at = pickedSince(since.input, picked?.keyId ?? '', () =>
-          draw({ ...screen, reason: 'Enter the whole date and time, or clear it to revoke from now.' }),
-        );
+        const at = pickedSince(since.input, picked?.keyId ?? '', () => problem.show(HALF_TIME));
         if (at === null) return;
         void step({ kind: 'retry-revoke', ...(at === undefined ? {} : { since: at }) });
       };
       return [
         since.label,
+        problem.line,
         el('div', { className: 'row' }, button('Revoke now', go, 'primary'), button('Close', cancel)),
       ];
     }

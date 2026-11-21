@@ -32,7 +32,7 @@ use ad4m_identity_client::flows::revoke::{
 use ad4m_identity_client::flows::rotate::{rotate, Rotated};
 use ad4m_identity_client::flows::unlink::unlink_key;
 use ad4m_identity_client::record::{self, Change};
-use ad4m_identity_client::vault::{MasterUse, Vault};
+use ad4m_identity_client::vault::{MasterUse, Stored, Vault};
 use ad4m_identity_client::{
     ClientError, Clock, ExecutorRpc, OsRandom, Secret, SystemClock, VaultError, ViaExecutor,
     WithEncKey,
@@ -3369,16 +3369,20 @@ async fn answer_on<R: ExecutorRpc>(
             Err(ClientError::NeedsWords) => {
                 let mut error = None;
                 let screen = loop {
-                    let Some((_typed, words)) =
-                        ask_words(vault, address, rx, reply, "answer", error.take()).await
-                    else {
-                        return;
+                    // The typed words and the parsed ones end with this block, before the wait
+                    // for a retry: a pending revoke may wait long, and holds neither.
+                    let answered = {
+                        let Some((_typed, words)) =
+                            ask_words(vault, address, rx, reply, "answer", error.take()).await
+                        else {
+                            return;
+                        };
+                        requests::answer_with_words(
+                            executor, &unlocking, &did, &request, &words, &CLOCK, &RANDOM,
+                        )
+                        .await
                     };
-                    match requests::answer_with_words(
-                        executor, &unlocking, &did, &request, &words, &CLOCK, &RANDOM,
-                    )
-                    .await
-                    {
+                    match answered {
                         Ok(answered) => {
                             let stopped = rotation_stopped(executor, &answered).await;
                             break answered_screen(answered, stopped);
@@ -3404,11 +3408,19 @@ async fn answer_on<R: ExecutorRpc>(
                             .await;
                             break match resumed {
                                 None => return,
-                                Some(Ok((revoked, _, left))) => Screen::RequestAnswered {
-                                    kind,
-                                    device: device.clone(),
-                                    note: joined(handed_over(&[], &revoked.record, false), left),
-                                },
+                                Some(Ok((revoked, pending, left))) => {
+                                    let note =
+                                        joined(handed_over(&[], &revoked.record, false), left);
+                                    match kept_after_retry(&unlocking, &did, &pending, note.clone())
+                                    {
+                                        Ok(_) => Screen::RequestAnswered {
+                                            kind,
+                                            device: device.clone(),
+                                            note,
+                                        },
+                                        Err(not_kept) => *not_kept,
+                                    }
+                                }
                                 Some(Err(e)) => failed_after_rotation(&e),
                             };
                         }
@@ -3802,16 +3814,20 @@ async fn revoke_on<R: ExecutorRpc>(
             let revoke = [ad4m_identity_core::KeyId::from(key_id.as_str())];
             let mut error = None;
             let screen = loop {
-                let Some((_typed, words)) =
-                    ask_words(vault, address, rx, reply, "revoke", error.take()).await
-                else {
-                    return;
+                // The typed words and the parsed ones end with this block, before the wait for
+                // a retry: a pending revoke may wait long, and holds neither.
+                let rotated = {
+                    let Some((_typed, words)) =
+                        ask_words(vault, address, rx, reply, "revoke", error.take()).await
+                    else {
+                        return;
+                    };
+                    revoke_and_rotate(
+                        executor, &unlocking, &did, &revoke, since, &words, &CLOCK, &RANDOM,
+                    )
+                    .await
                 };
-                match revoke_and_rotate(
-                    executor, &unlocking, &did, &revoke, since, &words, &CLOCK, &RANDOM,
-                )
-                .await
-                {
+                match rotated {
                     Ok(rotated) => {
                         let stopped = stopped_at_record(executor, &rotated.record).await;
                         break replaced(rotated, vec![key_id.clone()], None, stopped);
@@ -3825,11 +3841,17 @@ async fn revoke_on<R: ExecutorRpc>(
                         .await;
                         break match resumed {
                             None => return,
-                            Some(Ok((revoked, pending, _))) => Screen::MasterReplaced {
-                                index: pending.index,
-                                revoked: key_names(&pending),
-                                note: handed_over(&[], &revoked.record, false),
-                            },
+                            Some(Ok((revoked, pending, _))) => {
+                                let note = handed_over(&[], &revoked.record, false);
+                                match kept_after_retry(&unlocking, &did, &pending, note.clone()) {
+                                    Ok(kept) => Screen::MasterReplaced {
+                                        index: kept,
+                                        revoked: key_names(&pending),
+                                        note,
+                                    },
+                                    Err(not_kept) => *not_kept,
+                                }
+                            }
                             Some(Err(e)) => failed_after_rotation(&e),
                         };
                     }
@@ -4008,6 +4030,44 @@ async fn resume_revoke<R: ExecutorRpc>(
             }
         }
     }
+}
+
+/// The index this computer keeps after a retried revoke ([`resume_revoke`]) published. The first
+/// call of the step reported nothing about the keep: `revoke_and_rotate` answers only the pending
+/// revoke when the revoke fails, and the retry signs from the words and never stores a key. So the
+/// vault is asked, and a key the rotation left staged is promoted (the way `Rotated::kept` does).
+/// [`Screen::MasterNotKept`], with why and `note`, when no key at the rotation's index or later
+/// is kept; the rotation stands, and "Try again" replaces the master key once more.
+fn kept_after_retry(
+    unlocking: &Unlocking<'_>,
+    did: &str,
+    pending: &PendingRevoke,
+    note: Option<String>,
+) -> Result<u32, Box<Screen>> {
+    let kept = ad4m_identity_core::scid_of(did)
+        .ok_or(VaultError::NotFound)
+        .and_then(|scid| match unlocking.promote_master(scid, pending.index) {
+            Ok(Stored::Stored) => Ok(pending.index),
+            Ok(Stored::AlreadyNewer { kept }) => Ok(kept),
+            // Nothing staged: another app kept it already, or no key was ever staged.
+            Err(VaultError::NotFound) => match unlocking.master_index(scid)? {
+                Some(kept) if kept >= pending.index => Ok(kept),
+                _ => Err(VaultError::NotFound),
+            },
+            Err(e) => Err(e),
+        });
+    kept.map_err(|e| {
+        log::warn!(
+            "custody: master #{} is current, and this computer did not keep it: {e}",
+            pending.index
+        );
+        Box::new(Screen::MasterNotKept {
+            index: pending.index,
+            revoked: key_names(pending),
+            reason: after_publish(&ClientError::Vault(e)),
+            note,
+        })
+    })
 }
 
 /// Whether `unlocking` opens the master key of `did` kept here: a passphrase checked before a step
@@ -9018,18 +9078,29 @@ mod tests {
     }
 
     /// A store that refuses its next rename, as a keychain that refuses an update: the vault
-    /// cannot promote the key a rotation staged, once.
+    /// cannot promote the key a rotation staged, once (or every time, [`Self::always`]).
     struct RefusesRename {
         items: crate::store::MemoryStore,
         refuse: std::sync::atomic::AtomicBool,
+        every_time: bool,
     }
 
     impl RefusesRename {
         fn once() -> DesktopVault {
+            Self::refusing(false)
+        }
+
+        /// A vault whose store refuses every rename.
+        fn always() -> DesktopVault {
+            Self::refusing(true)
+        }
+
+        fn refusing(every_time: bool) -> DesktopVault {
             DesktopVault::new(
                 Box::new(RefusesRename {
                     items: crate::store::MemoryStore::as_kind(crate::store::StoreKind::Keychain),
                     refuse: std::sync::atomic::AtomicBool::new(true),
+                    every_time,
                 }),
                 PendingIncepts::memory(),
             )
@@ -9067,7 +9138,12 @@ mod tests {
             self.items.tag_of(name)
         }
         fn rename(&self, from: &str, to: &str) -> Result<(), VaultError> {
-            if self.refuse.swap(false, std::sync::atomic::Ordering::SeqCst) {
+            let refused = if self.every_time {
+                self.refuse.load(std::sync::atomic::Ordering::SeqCst)
+            } else {
+                self.refuse.swap(false, std::sync::atomic::Ordering::SeqCst)
+            };
+            if refused {
                 return Err(VaultError::Unavailable(
                     "the keychain refused the update".into(),
                 ));
@@ -9757,6 +9833,109 @@ mod tests {
         );
         assert_eq!(vault.master_index(&scid).unwrap(), Some(1));
         shows_no_word(&screens, &phrase, &[]);
+    }
+
+    /// A revoke with a master key replacement whose rotation publishes, this computer cannot keep
+    /// the new key (`vault`'s store refuses a rename) and the revoke is refused; then the retry
+    /// publishes. The screens shown, and the identity's scid.
+    async fn retried_after_a_rotation_not_kept(vault: &DesktopVault) -> (Vec<Screen>, String) {
+        let (events, _) = crate::keylog::tests::log_with_d2(true);
+        let scid = events[0].scid.clone();
+        let executor = executor_of(&events);
+        let fake = executor.rpc().rpc();
+        fake.answer_after(
+            "identity.publish",
+            "identity.log",
+            log_answer(&rotated_unlinking(&events, &["d2"])),
+        );
+        fake.refuse_after.replace(Some((
+            1,
+            422,
+            "since is before the store appended the key".into(),
+        )));
+        keep_master(vault, &scid, 0);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let phrase = phrase_of(41);
+        let ex = &executor;
+        let said = phrase.clone();
+        let ((), screens) = tokio::join!(
+            revoke_on(&executor, vault, &address, &mut rx, &mut reply, "d2".into()),
+            // Moved in, so the window closes after the last step: a screen that waits for "Try
+            // again" ends with it.
+            async move {
+                let mut shown = vec![first.await.unwrap().unwrap()];
+                shown.push(
+                    window
+                        .step(StepInput::Revoke {
+                            passphrase: None,
+                            rotate: true,
+                            since: Some(1_000),
+                        })
+                        .await,
+                );
+                shown.push(
+                    window
+                        .step(StepInput::TwelveWords {
+                            words: said.clone().into(),
+                        })
+                        .await,
+                );
+                ex.rpc().rpc().refuse_after.replace(None);
+                shown.push(
+                    window
+                        .step(StepInput::RetryRevoke { since: Some(2_000) })
+                        .await,
+                );
+                shown.push(
+                    window
+                        .step(StepInput::TwelveWords {
+                            words: said.clone().into(),
+                        })
+                        .await,
+                );
+                shown
+            }
+        );
+        assert!(
+            matches!(&screens[2], Screen::RotatedNotRevoked { index: 1, .. }),
+            "{:?}",
+            screens[2]
+        );
+        shows_no_word(&screens, &phrase, &[]);
+        (screens, scid)
+    }
+
+    /// The retry of a revoke publishes, and the vault holds the key the rotation staged: the retry
+    /// keeps it, and the screen says the key is replaced.
+    #[tokio::test]
+    async fn a_retried_revoke_keeps_the_new_master_key_the_rotation_left_staged() {
+        let vault = RefusesRename::once();
+        let (screens, scid) = retried_after_a_rotation_not_kept(&vault).await;
+        assert!(
+            matches!(&screens[4], Screen::MasterReplaced { index: 1, revoked, .. }
+                if revoked == &["d2".to_string()]),
+            "{:?}",
+            screens[4]
+        );
+        assert_eq!(vault.master_index(&scid).unwrap(), Some(1));
+        assert_eq!(vault.staged_index(&scid).unwrap(), None);
+    }
+
+    /// The retry of a revoke publishes, and this computer still cannot keep the new key: the screen
+    /// is the one for a key not kept, never "This computer has the new master key".
+    #[tokio::test]
+    async fn a_retried_revoke_that_cannot_keep_the_new_master_key_says_so() {
+        let vault = RefusesRename::always();
+        let (screens, scid) = retried_after_a_rotation_not_kept(&vault).await;
+        assert!(
+            matches!(&screens[4], Screen::MasterNotKept { index: 1, revoked, reason, .. }
+                if revoked == &["d2".to_string()] && reason.contains("refused")),
+            "{:?}",
+            screens[4]
+        );
+        // The old key stays kept, and the new one stays staged for the way back.
+        assert_eq!(vault.master_index(&scid).unwrap(), Some(0));
+        assert_eq!(vault.staged_index(&scid).unwrap(), Some(1));
     }
 
     #[tokio::test]

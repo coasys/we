@@ -218,11 +218,25 @@ the step does not say nothing changed. It shows "Devices not revoked yet": the m
 replaced, the devices are not revoked, and why (the store's refusal of the time in words). It is not
 a last screen. "Revoke now" (`retry-revoke`, with a corrected `since` if the person changes it)
 asks the 12 words again — the service keeps none between steps, and the words go to the call and are
-wiped, never to a screen or the log — and publishes only the revoke (`finish_revoke`; for an
+wiped, never to a screen or the log; the first call's words are dropped before the wait for the
+retry, so a long wait holds none — and publishes only the revoke (`finish_revoke`; for an
 answered `confirm-revoke` request `requests::finish_answer`, which then deletes the request). It never
 rotates again; if the log moved on, the client refuses and the step says so. A restore holds the
 words in its flow, so its retry asks nothing (`RestoreFlow::revoke_locked_out`, which then enrols
 this computer; until it succeeds `enrol` and `finish` refuse). "Close" leaves the rotation standing.
+
+The pending revoke (`PendingRevoke`) lives only in the running step. Closing the window, or a
+restart of the app, ends the retry and its `since`; nothing resumes it. The devices stay unlinked by
+the rotation, which blocks new links but does not flag the links they already made. The manual way
+is the Devices list: Revoke on the unlinked key, with "Also replace master key" unticked.
+
+The retry signs from the words and never stores a key, and when the first call fails after the
+rotation, the client does not say whether this computer kept the new master key. So after a retry
+that publishes, the service asks the vault: a key the rotation left staged is promoted, and when no
+key at the rotation's index or later is kept, the step shows `master-not-kept` ("Enter recovery
+phrase" replaces the master key once more) instead of `master-replaced`. For an answered request the
+same check runs. A restore needs none: its `enrol` keeps the key and reports a failure as
+`restore-not-linked`.
 
 The 12 words are typed into twelve fields (a paste fills them from the field it lands in). A word
 that is not in the list is refused by its position only ("Word 3 isn't a recovery phrase word"), never by
