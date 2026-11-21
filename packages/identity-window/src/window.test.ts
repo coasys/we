@@ -6,6 +6,7 @@ import type { Screen, StepInput } from './screens';
 const confirm = (error: string | null = null): Screen => ({
   screen: 'revoke-confirm',
   keyId: 'd2',
+  name: null,
   mayHoldMaster: false,
   rotate: false,
   passphrase: true,
@@ -112,12 +113,18 @@ describe('the revoke confirm screen', () => {
     });
   });
 
+  it('says "leave empty for now" only on a picker that starts empty', async () => {
+    await openOn([]);
+    expect(picker().closest('label')?.textContent).toBe('Missing since (leave empty for now)');
+  });
+
   it('after the rotation without its revoke, retries only the revoke, with a time the person may correct', async () => {
     const sent = await openOn([
       {
         screen: 'rotated-not-revoked',
         index: 1,
         keyIds: ['d2'],
+        names: [null],
         reason: 'That is before this device was added. Pick a later time.',
         needsWords: true,
       },
@@ -126,8 +133,10 @@ describe('the revoke confirm screen', () => {
     picker().value = '2026-11-20T08:00';
     passphrase().value = 'right';
     revoke();
-    await vi.waitFor(() => expect(document.body.textContent).toContain('Devices not revoked yet'));
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Device not revoked yet'));
     expect(document.body.textContent).toContain('Pick a later time.');
+    // The field starts filled, so it is a time to correct, not one to leave empty.
+    expect(picker().closest('label')?.textContent).toBe('Missing since');
     // The time sent is still there to correct.
     expect(picker().value).toBe('2026-11-20T08:00');
     picker().value = '2026-11-20T09:00';

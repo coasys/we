@@ -31,7 +31,14 @@ const IDENTITY_CSP = policy.trim();
 
 describe('the identity window', () => {
   it('says what a revocation does, and promises nothing about earlier signatures', () => {
-    const confirm = { screen: 'revoke-confirm' as const, keyId: 'd2', rotate: false, passphrase: false, error: null };
+    const confirm = {
+      screen: 'revoke-confirm' as const,
+      keyId: 'd2',
+      name: null,
+      rotate: false,
+      passphrase: false,
+      error: null,
+    };
     const lead = heading({ ...confirm, mayHoldMaster: false }).lead;
     expect(lead).toContain("A computer that's offline learns this when it reconnects");
     expect(lead).toContain('may no longer show as yours');
@@ -43,6 +50,7 @@ describe('the identity window', () => {
     const lead = heading({
       screen: 'revoke-confirm',
       keyId: 'd2',
+      name: null,
       mayHoldMaster: true,
       rotate: true,
       passphrase: false,
@@ -61,12 +69,25 @@ describe('the identity window', () => {
     const revoke = heading({
       screen: 'revoke-confirm',
       keyId: 'd2',
+      name: null,
       mayHoldMaster: false,
       rotate: false,
       passphrase: false,
       error: null,
     });
     expect(revoke.title).toBe('Revoke d2?');
+    // The record's name stands in for the key id when it has one.
+    expect(
+      heading({
+        screen: 'revoke-confirm',
+        keyId: 'd2',
+        name: 'Test laptop',
+        mayHoldMaster: false,
+        rotate: false,
+        passphrase: false,
+        error: null,
+      }).title,
+    ).toBe('Revoke Test laptop?');
     expect(revoke.lead).toContain('lost or stolen');
     expect(revoke.lead).toContain('since when');
     expect(heading({ screen: 'unlinked', keyId: 'd2', seq: 2 }).title).toBe('d2 unlinked');
@@ -384,25 +405,33 @@ describe('the identity window', () => {
       screen: 'rotated-not-revoked',
       index: 2,
       keyIds: ['d2'],
+      names: [null],
       reason: 'That is before this device was added. Pick a later time.',
       needsWords: true,
     };
     const { title, lead } = heading(screen);
-    expect(title).toBe('Devices not revoked yet');
+    expect(title).toBe('Device not revoked yet');
     expect(lead).toContain('Your master key was replaced (master #2)');
     expect(lead).toContain('d2 is not revoked yet');
+    // A name from the record stands in for the key id; a device without one falls back to it.
+    expect(heading({ ...screen, names: ['Test laptop'] }).lead).toContain('but Test laptop is not revoked yet.');
+    expect(heading({ ...screen, keyIds: ['d2', 'd3'], names: ['Test laptop', null] }).lead).toContain(
+      'but Test laptop, d3 are not revoked yet.',
+    );
+    expect(heading({ ...screen, keyIds: ['d2', 'd3'], names: [null, null] }).title).toBe('Devices not revoked yet');
     expect(lead).toContain('Pick a later time.');
     expect(lead).toContain('You will enter your recovery phrase');
-    expect(heading({ ...screen, keyIds: ['d2', 'd3'], needsWords: false }).lead).toContain(
+    expect(heading({ ...screen, keyIds: ['d2', 'd3'], names: [null, null], needsWords: false }).lead).toContain(
       'd2, d3 are not revoked yet',
     );
     expect(heading({ ...screen, needsWords: false }).lead).not.toContain('recovery phrase');
     expect(`${title} ${lead}`).not.toMatch(/nothing (was )?changed/i);
     // The retry lives only in this window: closing it, or a restart, drops it, and the manual way
     // is the Devices list. Never said to resume.
-    expect(lead).toContain('Closing this window ends this retry');
-    expect(lead).toContain('does not flag the links it already made');
-    expect(lead).toContain('Revoke it from Devices with "Also replace master key" unticked');
+    expect(lead).toContain('Closing this window ends the retry. The device stays unlinked.');
+    expect(lead).toContain('To revoke it later, use Devices > Revoke with "Also replace master key" unticked.');
+    for (const sentence of lead.split(/(?<=\.) /)) expect(sentence).toMatch(/\.$/);
+    expect(lead).not.toMatch(/executor|\b400\b/);
     expect(lead).not.toMatch(/resume/i);
     // Not a last screen: the rotation stands, and Close cancels the wait.
     expect(isLast(screen)).toBe(false);
@@ -445,7 +474,9 @@ describe('the identity window', () => {
     // A word field at `width: 100%` without it is its padding and border wider than its card, and
     // runs over the next one.
     expect(css).toMatch(/\.word input \{[^}]*box-sizing: border-box;/);
-    expect(css).toMatch(/input\[type='text'\],\s*input\[type='password'\] \{[^}]*box-sizing: border-box;/);
+    expect(css).toMatch(
+      /input\[type='text'\],\s*input\[type='password'\],\s*input\[type='datetime-local'\] \{[^}]*box-sizing: border-box;/,
+    );
   });
 
   it('puts a word field beside its number, so the twelve fit the 640 px window', () => {

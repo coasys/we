@@ -214,8 +214,11 @@ with that second event, as it does for a plain revoke.
 
 **`rotated-not-revoked`.** The rotation is public once published; when the revoke after it fails
 (the store refuses a `since` before the device's add or after now, or the executor does not answer),
-the step does not say nothing changed. It shows "Devices not revoked yet": the master key was
-replaced, the devices are not revoked, and why (the store's refusal of the time in words). It is not
+the step does not say nothing changed. It shows "Device not revoked yet" (or "Devices not revoked
+yet"): the master key was replaced, the devices are not revoked, and why (the store's refusal of the
+time in words; any other refusal as a plain sentence, never the executor's raw error, which only the
+log keeps). It names each device by the record's name (`names`, parallel to `keyIds`), by key id where
+the record names none; `revoke-confirm` does the same with `name`. It is not
 a last screen. "Revoke now" (`retry-revoke`, with a corrected `since` if the person changes it)
 asks the 12 words again — the service keeps none between steps, and the words go to the call and are
 wiped, never to a screen or the log; the first call's words are dropped before the wait for the

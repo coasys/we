@@ -59,10 +59,14 @@ let wordFields: HTMLInputElement[] | null = null;
  */
 let picked: { keyId: string; value: string } | undefined;
 
-/** The "missing since" picker, filled with what the person sent last for `key` when it is drawn again. */
-function sincePicker(key: string, text: string): { label: HTMLLabelElement; input: HTMLInputElement } {
+/**
+ * The "missing since" picker, filled with what the person sent last for `key` when it is drawn again.
+ * "Leave empty for now" is said only while it starts empty: a filled one is a time to correct.
+ */
+function sincePicker(key: string): { label: HTMLLabelElement; input: HTMLInputElement } {
   const input = el('input', { type: 'datetime-local' });
   if (picked?.keyId === key) input.value = picked.value;
+  const text = input.value ? 'Missing since' : 'Missing since (leave empty for now)';
   return { label: el('label', {}, text, input), input };
 }
 
@@ -448,7 +452,7 @@ function body(screen: Screen): Child[] {
     }
     case 'revoke-confirm': {
       const p = screen.passphrase ? secretField('Passphrase') : null;
-      const since = sincePicker(screen.keyId, 'Missing since (leave empty for now)');
+      const since = sincePicker(screen.keyId);
       const problem = errorSlot(screen.error);
       const rotate = el('input', { type: 'checkbox' });
       rotate.checked = screen.rotate;
@@ -496,7 +500,7 @@ function body(screen: Screen): Child[] {
         return { keyId: d.keyId, box, label: d.name ? `${d.name} (${d.keyId})` : d.keyId };
       });
       const name = textField('Name for this computer', '', 'Home desktop');
-      const since = sincePicker(screen.did, 'Missing since (leave empty for now)');
+      const since = sincePicker(screen.did);
       const problem = errorSlot(null);
       const go = () => {
         const at = pickedSince(since.input, screen.did, () => problem.show(HALF_TIME));
@@ -539,7 +543,7 @@ function body(screen: Screen): Child[] {
       ];
     case 'rotated-not-revoked': {
       // The rotation stands: closing leaves it; trying again publishes only the revoke.
-      const since = sincePicker(picked?.keyId ?? '', 'Missing since (leave empty for now)');
+      const since = sincePicker(picked?.keyId ?? '');
       const problem = errorSlot(null);
       const go = () => {
         const at = pickedSince(since.input, picked?.keyId ?? '', () => problem.show(HALF_TIME));

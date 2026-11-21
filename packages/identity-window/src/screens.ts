@@ -60,6 +60,8 @@ export type Screen =
   | {
       screen: 'revoke-confirm';
       keyId: string;
+      /** The record's name of the device, when it names it. */
+      name: string | null;
       /** The key log let the device keep the master key, so it may still hold a valid one. */
       mayHoldMaster: boolean;
       /** Whether "Also replace master key" starts ticked: when the device may hold a copy. */
@@ -78,11 +80,19 @@ export type Screen =
   | { screen: 'master-replaced'; index: number; revoked: string[]; note: string | null }
   /**
    * The master key is replaced (master `index` is current) but the devices `keyIds` are not revoked
-   * yet: not a last screen. `reason` is why (the store's refusal of the time, when that was it).
+   * yet: not a last screen. `names` are the record's names of `keyIds`, in order (null where it
+   * names none). `reason` is why (the store's refusal of the time, when that was it).
    * Retrying publishes only the revoke, from a time the person may correct; `needsWords` says the 12
    * words are asked again first (a restore still holds them).
    */
-  | { screen: 'rotated-not-revoked'; index: number; keyIds: string[]; reason: string; needsWords: boolean }
+  | {
+      screen: 'rotated-not-revoked';
+      index: number;
+      keyIds: string[];
+      names: Array<string | null>;
+      reason: string;
+      needsWords: boolean;
+    }
   /** The rotation is published but this computer could not keep the new key: not a last screen. */
   | { screen: 'master-not-kept'; index: number; revoked: string[]; reason: string; note: string | null }
   /** The restore's rotation is published but this computer is not linked yet: not a last screen. */
@@ -309,7 +319,7 @@ export function heading(screen: Screen): { title: string; lead: string } {
       return { title: `${screen.keyId} unlinked`, lead: `It's entry #${screen.seq} in your key log.` };
     case 'revoke-confirm':
       return {
-        title: `Revoke ${screen.keyId}?`,
+        title: `Revoke ${screen.name || screen.keyId}?`,
         lead: [
           "Do this for a device that was lost or stolen. It loses access to your identity and can't be linked again. Say since when it was missing: anything from it that arrives from then on may no longer show as yours, even if it was made earlier. A computer that's offline learns this when it reconnects.",
           ...(screen.mayHoldMaster
@@ -374,17 +384,20 @@ export function heading(screen: Screen): { title: string; lead: string } {
         title: 'Master key removed',
         lead: 'This computer stays linked. To add or remove devices, use a device with the master key or your recovery phrase.',
       };
-    case 'rotated-not-revoked':
+    case 'rotated-not-revoked': {
+      const one = screen.keyIds.length === 1;
+      const who = screen.keyIds.map((id, i) => screen.names[i] || id).join(', ');
       return {
-        title: 'Devices not revoked yet',
+        title: one ? 'Device not revoked yet' : 'Devices not revoked yet',
         lead: [
-          `Your master key was replaced (master #${screen.index}), but ${screen.keyIds.join(', ')} ${screen.keyIds.length === 1 ? 'is' : 'are'} not revoked yet. ${screen.reason}`,
+          `Your master key was replaced (master #${screen.index}), but ${who} ${one ? 'is' : 'are'} not revoked yet. ${screen.reason}`,
           screen.needsWords
             ? 'Try again to revoke now. You will enter your recovery phrase.'
             : 'Try again to revoke now.',
-          'Closing this window ends this retry. The device stays unlinked, which blocks new links but does not flag the links it already made. Revoke it from Devices with "Also replace master key" unticked.',
+          `Closing this window ends the retry. ${one ? 'The device stays' : 'The devices stay'} unlinked. To revoke ${one ? 'it' : 'them'} later, use Devices > Revoke with "Also replace master key" unticked.`,
         ].join(' '),
       };
+    }
     case 'revoked':
       return { title: `${screen.keyId} revoked`, lead: `It's entry #${screen.seq} in your key log.` };
     case 'pending-refused':

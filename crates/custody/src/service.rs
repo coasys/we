@@ -255,6 +255,8 @@ pub enum Screen {
     RevokeConfirm {
         #[serde(rename = "keyId")]
         key_id: String,
+        /// The record's name of the device, when it names it: the window shows it before the key id.
+        name: Option<String>,
         /// The device may still hold a valid master key: the key log let it keep one
         /// ([`may_hold_master`]), and a revoke leaves such a copy valid until the master key is
         /// replaced.
@@ -308,6 +310,8 @@ pub enum Screen {
         index: u32,
         #[serde(rename = "keyIds")]
         key_ids: Vec<String>,
+        /// The record's name of each of `key_ids`, in the same order: `None` where it names none.
+        names: Vec<Option<String>>,
         reason: String,
         #[serde(rename = "needsWords")]
         needs_words: bool,
@@ -3627,7 +3631,8 @@ fn since_sentence(message: &str) -> Option<String> {
     } else if message.contains("before the store appended") {
         "That is before this device was added. Pick a later time.".into()
     } else {
-        format!("The time was refused: {message}")
+        log::warn!("custody: the store refused the revoke's time: {message}");
+        "That time was not accepted. Pick a time after the device was linked.".into()
     })
 }
 
@@ -3777,8 +3782,10 @@ async fn revoke_on<R: ExecutorRpc>(
         Err(screen) => return answer(reply, Ok(screen)),
     };
     let may_hold_master = may_hold_master(executor, &did, &key_id).await;
+    let name = name_in(&record_names(executor, vault, &did).await, &key_id);
     let confirm = |error: Option<String>| Screen::RevokeConfirm {
         key_id: key_id.clone(),
+        name: name.clone(),
         may_hold_master,
         rotate: may_hold_master,
         passphrase: needs,
@@ -3935,20 +3942,54 @@ fn failed_after_rotation(e: &ClientError) -> Screen {
     }
 }
 
+/// The record's name for each device it lists, as `(key id, name)`: empty when the record cannot be
+/// read, so a screen falls back to the key id.
+async fn record_names<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    vault: &DesktopVault,
+    did: &str,
+) -> Vec<(String, String)> {
+    match record::read(executor, &vault.unlocking(None), did).await {
+        Ok(opened) => opened
+            .map(|o| device_names(&o.record))
+            .unwrap_or_default()
+            .into_iter()
+            .map(|d| (d.key_id, d.name))
+            .collect(),
+        Err(e) => {
+            log::warn!("custody: the device names cannot be read now: {e}");
+            Vec::new()
+        }
+    }
+}
+
+/// The name `names` gives `key_id`, if any and not blank.
+fn name_in(names: &[(String, String)], key_id: &str) -> Option<String> {
+    names
+        .iter()
+        .find(|(id, name)| id == key_id && !name.trim().is_empty())
+        .map(|(_, name)| name.clone())
+}
+
 /// What a [`Screen::RotatedNotRevoked`] says is wrong, in words: the store's refusal of the time
 /// when that was it, else the cause. Never a word or a passphrase: the cause is the executor's.
 fn not_revoked_reason(cause: &str) -> String {
-    since_sentence(cause).unwrap_or_else(|| format!("The revoke was refused: {cause}"))
+    since_sentence(cause).unwrap_or_else(|| {
+        log::warn!("custody: the revoke was refused: {cause}");
+        "The revoke was not accepted. Try again.".into()
+    })
 }
 
 /// Shows [`Screen::RotatedNotRevoked`] and waits for [`StepInput::RetryRevoke`]: the `since` to
 /// publish the revoke with. `None` when the window cancels (the rotation stands).
+#[allow(clippy::too_many_arguments)]
 async fn ask_retry_revoke(
     vault: &DesktopVault,
     address: &ExecutorAddress,
     rx: &mut Rx,
     reply: &mut Reply,
     pending: &PendingRevoke,
+    names: &[(String, String)],
     cause: &str,
     words: bool,
 ) -> Option<Option<u64>> {
@@ -3957,6 +3998,10 @@ async fn ask_retry_revoke(
         Ok(Screen::RotatedNotRevoked {
             index: pending.index,
             key_ids: key_names(pending),
+            names: key_names(pending)
+                .iter()
+                .map(|id| name_in(names, id))
+                .collect(),
             reason: not_revoked_reason(cause),
             needs_words: words,
         }),
@@ -3991,8 +4036,10 @@ async fn resume_revoke<R: ExecutorRpc>(
     mut cause: String,
     purpose: &'static str,
 ) -> Option<Result<(Revoked, PendingRevoke, Option<String>), ClientError>> {
+    let names = record_names(executor, vault, did).await;
     loop {
-        let since = ask_retry_revoke(vault, address, rx, reply, &pending, &cause, true).await?;
+        let since =
+            ask_retry_revoke(vault, address, rx, reply, &pending, &names, &cause, true).await?;
         let mut error = None;
         loop {
             let (_typed, words) =
@@ -4672,8 +4719,13 @@ async fn restore_on<R: ExecutorRpc>(
             // pending revoke and the words, so a retry takes only the `since`, which the person
             // may correct, and enrols after the revoke.
             Err(ClientError::RotatedNotRevoked { pending, cause }) => {
+                let named: Vec<(String, String)> = devices
+                    .iter()
+                    .filter_map(|d| Some((d.key_id.clone(), d.name.clone()?)))
+                    .collect();
                 let Some(since) =
-                    ask_retry_revoke(vault, address, rx, reply, &pending, &cause, false).await
+                    ask_retry_revoke(vault, address, rx, reply, &pending, &named, &cause, false)
+                        .await
                 else {
                     return;
                 };
@@ -8194,6 +8246,7 @@ mod tests {
         assert!(may_hold_master(&executor, "did:scid:coasys:1:Qm", "d2").await);
         let confirm = serde_json::to_value(Screen::RevokeConfirm {
             key_id: "d2".into(),
+            name: Some("Test laptop".into()),
             may_hold_master: true,
             rotate: true,
             passphrase: false,
@@ -8202,6 +8255,37 @@ mod tests {
         .unwrap();
         assert_eq!(confirm["mayHoldMaster"], true);
         assert_eq!(confirm["rotate"], true);
+        assert_eq!(confirm["name"], "Test laptop");
+    }
+
+    #[test]
+    fn a_refused_revoke_is_said_in_words_never_as_the_executors_error() {
+        let raw = "executor: 400: invalid: since";
+        let said = not_revoked_reason(raw);
+        assert_eq!(
+            said,
+            "That time was not accepted. Pick a time after the device was linked."
+        );
+        assert!(said.ends_with('.') && !said.contains("executor"), "{said}");
+        assert_eq!(
+            not_revoked_reason("executor: 503: busy"),
+            "The revoke was not accepted. Try again."
+        );
+        assert_eq!(
+            not_revoked_reason("since is later than now"),
+            "That time is in the future. Pick a time that has passed."
+        );
+    }
+
+    #[test]
+    fn a_device_is_named_by_the_record_when_it_names_one() {
+        let names = vec![
+            ("d1".to_string(), "Test laptop".to_string()),
+            ("d2".to_string(), "  ".to_string()),
+        ];
+        assert_eq!(name_in(&names, "d1").as_deref(), Some("Test laptop"));
+        assert_eq!(name_in(&names, "d2"), None);
+        assert_eq!(name_in(&names, "d3"), None);
     }
 
     /// An unlink opens on its own confirm screen, and this computer cannot unlink its own key.
@@ -9369,7 +9453,7 @@ mod tests {
             }
         );
         assert!(
-            matches!(&screens[2], Screen::RotatedNotRevoked { index: 1, key_ids, reason, needs_words: false }
+            matches!(&screens[2], Screen::RotatedNotRevoked { index: 1, key_ids, reason, needs_words: false, .. }
                     if key_ids == &["d2".to_string()]
                         && reason == "That time is in the future. Pick a time that has passed."),
             "{:?}",
@@ -9799,7 +9883,7 @@ mod tests {
         );
         for at in [2, 4] {
             assert!(
-                matches!(&screens[at], Screen::RotatedNotRevoked { index: 1, key_ids, reason, needs_words: true }
+                matches!(&screens[at], Screen::RotatedNotRevoked { index: 1, key_ids, reason, needs_words: true, .. }
                     if key_ids == &["d2".to_string()]
                         && reason == "That is before this device was added. Pick a later time."),
                 "{at}: {:?}",
