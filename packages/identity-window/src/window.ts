@@ -58,6 +58,21 @@ let wordFields: HTMLInputElement[] | null = null;
  * it would revoke from now, and a revocation cannot be redone.
  */
 let picked: { keyId: string; value: string } | undefined;
+
+/** The "missing since" picker, filled with what the person sent last for `key` when it is drawn again. */
+function sincePicker(key: string, text: string): { label: HTMLLabelElement; input: HTMLInputElement } {
+  const input = el('input', { type: 'datetime-local' });
+  if (picked?.keyId === key) input.value = picked.value;
+  return { label: el('label', {}, text, input), input };
+}
+
+/** The picker's time in ms: `undefined` for now, `null` (after saying so) for a time not finished. */
+function pickedSince(input: HTMLInputElement, key: string, again: () => void): number | undefined | null {
+  const at = sinceMs(input.value, input.validity.badInput);
+  if (at === null) again();
+  else picked = { keyId: key, value: input.value };
+  return at;
+}
 /** Marked at each screen drawn and each step sent: a wait's answer is drawn only while it holds. */
 const turn = screenTurns();
 
@@ -413,21 +428,16 @@ function body(screen: Screen): Child[] {
     }
     case 'revoke-confirm': {
       const p = screen.passphrase ? secretField('Passphrase') : null;
-      const since = el('input', { type: 'datetime-local' });
-      if (picked?.keyId === screen.keyId) since.value = picked.value;
+      const since = sincePicker(screen.keyId, 'Missing since (leave empty for now)');
       const rotate = el('input', { type: 'checkbox' });
       rotate.checked = screen.rotate;
-      // A rotation revokes the key in its own event, which carries no time.
-      const sinceApplies = () => (since.disabled = rotate.checked);
-      rotate.addEventListener('change', sinceApplies);
-      sinceApplies();
+      // With "Also replace master key" the rotation comes first and the revoke follows it, from the
+      // same time: the picker stays.
       const go = () => {
-        const at = rotate.checked ? undefined : sinceMs(since.value, since.validity.badInput);
-        if (at === null) {
-          draw({ ...screen, error: 'Enter the whole date and time, or clear it to revoke from now.' });
-          return;
-        }
-        picked = { keyId: screen.keyId, value: since.value };
+        const at = pickedSince(since.input, screen.keyId, () =>
+          draw({ ...screen, error: 'Enter the whole date and time, or clear it to revoke from now.' }),
+        );
+        if (at === null) return;
         void step(
           {
             kind: 'revoke',
@@ -439,11 +449,12 @@ function body(screen: Screen): Child[] {
         );
       };
       return [
-        el('label', {}, 'Missing since (leave empty for now)', since),
+        since.label,
         el('label', { className: 'check' }, rotate, 'Also replace master key'),
         el('p', {
           className: 'note',
-          textContent: "Any copy this device has stops working. You'll enter your recovery phrase next.",
+          textContent:
+            "Any copy this device has stops working. You'll enter your recovery phrase next, and the device is revoked from the time above after your master key is replaced.",
         }),
         ...(p ? [p.label] : []),
         ...errorLine(screen.error),
@@ -466,15 +477,23 @@ function body(screen: Screen): Child[] {
         return { keyId: d.keyId, box, label: d.name ? `${d.name} (${d.keyId})` : d.keyId };
       });
       const name = textField('Name for this computer', '', 'Home desktop');
-      const go = () =>
-        step({
+      const since = sincePicker(screen.did, 'Missing since (leave empty for now)');
+      const go = () => {
+        const at = pickedSince(since.input, screen.did, () =>
+          draw({ ...screen, note: 'Enter the whole date and time, or clear it to revoke from now.' }),
+        );
+        if (at === null) return;
+        void step({
           kind: 'lock-out',
           keyIds: ticks.filter((t) => t.box.checked).map((t) => t.keyId),
           name: typed(name.input),
+          ...(at === undefined ? {} : { since: at }),
         });
+      };
       return [
         el('div', { className: 'link', textContent: screen.did }),
         ...ticks.map((t) => el('label', { className: 'check' }, t.box, `Remove ${t.label}`)),
+        since.label,
         name.label,
         el('div', { className: 'row' }, button('Restore', go, 'primary'), button('Cancel', cancel)),
       ];
@@ -499,6 +518,21 @@ function body(screen: Screen): Child[] {
           button('Close', cancel),
         ),
       ];
+    case 'rotated-not-revoked': {
+      // The rotation stands: closing leaves it; trying again publishes only the revoke.
+      const since = sincePicker(picked?.keyId ?? '', 'Missing since (leave empty for now)');
+      const go = () => {
+        const at = pickedSince(since.input, picked?.keyId ?? '', () =>
+          draw({ ...screen, reason: 'Enter the whole date and time, or clear it to revoke from now.' }),
+        );
+        if (at === null) return;
+        void step({ kind: 'retry-revoke', ...(at === undefined ? {} : { since: at }) });
+      };
+      return [
+        since.label,
+        el('div', { className: 'row' }, button('Revoke now', go, 'primary'), button('Close', cancel)),
+      ];
+    }
     case 'restore-not-linked':
       return [
         el('div', { className: 'link', textContent: screen.did }),

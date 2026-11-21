@@ -173,6 +173,23 @@ describe('deviceRows', () => {
     });
     expect(deviceRows(unlinkedThenRevoked, stillListed, ['d2'], 1)[1]).toMatchObject({ replaceMaster: true });
   });
+
+  it('does not warn for a device the rotation unlinked and the next event revoked', () => {
+    // "Revoke and replace master key": rotate at seq 3 unlinking d2, revoke at seq 4. d2 was never
+    // sent the new master key, so the revoke one later does not bring the warning back.
+    const keys = [
+      { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, unlinkedSeq: null, revokedSeq: null },
+      { keyId: 'd2', sign: 'z', thisDevice: false, addedSeq: 1, unlinkedSeq: 3, revokedSeq: 4 },
+    ];
+    const stillListed = [{ keyId: 'd2', name: 'Laptop', kind: 'desktop-app', holdsMaster: 'yes' as const }];
+    expect(deviceRows(keys, stillListed, ['d2'], 3)[1]).toMatchObject({ master: '', replaceMaster: false });
+    expect(deviceRows(keys, [], ['d2'], 3)[1]).toMatchObject({ master: '', replaceMaster: false });
+    // A revoke after a rotation that did not unlink the key is a device that may hold the new key:
+    // it warns.
+    const later = [keys[0], { ...keys[1], unlinkedSeq: null, revokedSeq: 4 }];
+    expect(deviceRows(later, stillListed, ['d2'], 3)[1]).toMatchObject({ replaceMaster: true });
+    expect(deviceRows(later, [], ['d2'], 3)[1]).toMatchObject({ replaceMaster: true });
+  });
 });
 
 describe('requestRows', () => {

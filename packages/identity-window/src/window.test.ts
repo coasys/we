@@ -12,12 +12,12 @@ const confirm = (error: string | null = null): Screen => ({
   error,
 });
 
-async function openOn(answers: Screen[]) {
+async function openOn(answers: Screen[], first: Screen = confirm()) {
   vi.resetModules();
   const { runIdentityWindow } = await import('./window');
   const sent: StepInput[] = [];
   runIdentityWindow({
-    start: () => Promise.resolve(confirm()),
+    start: () => Promise.resolve(first),
     step: (input) => {
       sent.push(input);
       return Promise.resolve(answers.shift() ?? { screen: 'failed', message: 'no more answers' });
@@ -77,18 +77,70 @@ describe('the revoke confirm screen', () => {
     expect(sent[0]).toEqual({ kind: 'revoke', rotate: false, passphrase: 'right' });
   });
 
-  it('sends no time with "Also replace master key": the rotation revokes the key in its own event', async () => {
+  it('sends the picked time with "Also replace master key": the revoke after the rotation carries it', async () => {
     const sent = await openOn([{ screen: 'failed', message: 'stop here' }]);
     picker().value = '2026-11-20T08:00';
     const rotate = document.querySelector<HTMLInputElement>('input[type=checkbox]')!;
     rotate.checked = true;
     rotate.dispatchEvent(new Event('change'));
 
-    expect(picker().disabled).toBe(true);
+    expect(picker().disabled).toBe(false);
     passphrase().value = 'right';
     revoke();
     await vi.waitFor(() => expect(sent).toHaveLength(1));
 
-    expect(sent[0]).toEqual({ kind: 'revoke', rotate: true, passphrase: 'right' });
+    expect(sent[0]).toEqual({
+      kind: 'revoke',
+      rotate: true,
+      passphrase: 'right',
+      since: new Date(2026, 10, 20, 8, 0).getTime(),
+    });
+  });
+
+  it('after the rotation without its revoke, retries only the revoke, with a time the person may correct', async () => {
+    const sent = await openOn([
+      {
+        screen: 'rotated-not-revoked',
+        index: 1,
+        keyIds: ['d2'],
+        reason: 'That is before this device was added. Pick a later time.',
+        needsWords: true,
+      },
+      { screen: 'master-replaced', index: 1, revoked: ['d2'], note: null },
+    ]);
+    picker().value = '2026-11-20T08:00';
+    passphrase().value = 'right';
+    revoke();
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Devices not revoked yet'));
+    expect(document.body.textContent).toContain('Pick a later time.');
+    // The time sent is still there to correct.
+    expect(picker().value).toBe('2026-11-20T08:00');
+    picker().value = '2026-11-20T09:00';
+    Array.from(document.querySelectorAll('button'))
+      .find((b) => b.textContent === 'Revoke now')!
+      .click();
+    await vi.waitFor(() => expect(sent).toHaveLength(2));
+
+    expect(sent[1]).toEqual({ kind: 'retry-revoke', since: new Date(2026, 10, 20, 9, 0).getTime() });
+  });
+
+  it('asks since when the lost devices were missing on a restore, and sends it with the lock-out', async () => {
+    const sent = await openOn([{ screen: 'failed', message: 'stop here' }], {
+      screen: 'restore-devices',
+      did: 'did:scid:coasys:1:Qm',
+      devices: [{ keyId: 'd2', name: 'Phone', kind: 'app', lockOut: true }],
+      note: null,
+    });
+    picker().value = '2026-11-20T08:00';
+    Array.from(document.querySelectorAll('button'))
+      .find((b) => b.textContent === 'Restore')!
+      .click();
+    await vi.waitFor(() => expect(sent).toHaveLength(1));
+
+    expect(sent[0]).toMatchObject({
+      kind: 'lock-out',
+      keyIds: ['d2'],
+      since: new Date(2026, 10, 20, 8, 0).getTime(),
+    });
   });
 });

@@ -76,6 +76,13 @@ export type Screen =
     }
   | { screen: 'restore-devices'; did: string; devices: RestoreDevice[]; note: string | null }
   | { screen: 'master-replaced'; index: number; revoked: string[]; note: string | null }
+  /**
+   * The master key is replaced (master `index` is current) but the devices `keyIds` are not revoked
+   * yet: not a last screen. `reason` is why (the store's refusal of the time, when that was it).
+   * Retrying publishes only the revoke, from a time the person may correct; `needsWords` says the 12
+   * words are asked again first (a restore still holds them).
+   */
+  | { screen: 'rotated-not-revoked'; index: number; keyIds: string[]; reason: string; needsWords: boolean }
   /** The rotation is published but this computer could not keep the new key: not a last screen. */
   | { screen: 'master-not-kept'; index: number; revoked: string[]; reason: string; note: string | null }
   /** The restore's rotation is published but this computer is not linked yet: not a last screen. */
@@ -145,7 +152,8 @@ export type StepInput =
   | { kind: 'unlink'; passphrase?: string }
   | { kind: 'revoke'; passphrase?: string; rotate?: boolean; since?: number }
   | { kind: 'twelve-words'; words: string }
-  | { kind: 'lock-out'; keyIds: string[]; name?: string }
+  | { kind: 'lock-out'; keyIds: string[]; name?: string; since?: number }
+  | { kind: 'retry-revoke'; since?: number }
   | { kind: 'remove' }
   | { kind: 'discard' }
   | { kind: 'try-again' };
@@ -315,7 +323,7 @@ export function heading(screen: Screen): { title: string; lead: string } {
       return {
         title: 'Remove lost devices',
         lead: [
-          'Select each device you lost or no longer use. Your master key is replaced, and this computer gets the new one.',
+          'Select each device you lost or no longer use. Your master key is replaced, and this computer gets the new one. Say since when they were missing: anything from them that arrives from then on may no longer show as yours, even if it was made earlier.',
           ...(screen.note ? [screen.note] : []),
         ].join(' '),
       };
@@ -365,6 +373,16 @@ export function heading(screen: Screen): { title: string; lead: string } {
       return {
         title: 'Master key removed',
         lead: 'This computer stays linked. To add or remove devices, use a device with the master key or your recovery phrase.',
+      };
+    case 'rotated-not-revoked':
+      return {
+        title: 'Devices not revoked yet',
+        lead: [
+          `Your master key was replaced (master #${screen.index}), but ${screen.keyIds.join(', ')} ${screen.keyIds.length === 1 ? 'is' : 'are'} not revoked yet. ${screen.reason}`,
+          screen.needsWords
+            ? 'Try again to revoke now. You will enter your recovery phrase.'
+            : 'Try again to revoke now.',
+        ].join(' '),
       };
     case 'revoked':
       return { title: `${screen.keyId} revoked`, lead: `It's entry #${screen.seq} in your key log.` };

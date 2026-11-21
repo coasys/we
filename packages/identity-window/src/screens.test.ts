@@ -379,6 +379,42 @@ describe('the identity window', () => {
     );
   });
 
+  it('says the master key is replaced but the devices are not revoked yet, and retries only the revoke', () => {
+    const screen: Screen = {
+      screen: 'rotated-not-revoked',
+      index: 2,
+      keyIds: ['d2'],
+      reason: 'That is before this device was added. Pick a later time.',
+      needsWords: true,
+    };
+    const { title, lead } = heading(screen);
+    expect(title).toBe('Devices not revoked yet');
+    expect(lead).toContain('Your master key was replaced (master #2)');
+    expect(lead).toContain('d2 is not revoked yet');
+    expect(lead).toContain('Pick a later time.');
+    expect(lead).toContain('You will enter your recovery phrase');
+    expect(heading({ ...screen, keyIds: ['d2', 'd3'], needsWords: false }).lead).toContain(
+      'd2, d3 are not revoked yet',
+    );
+    expect(heading({ ...screen, needsWords: false }).lead).not.toContain('recovery phrase');
+    expect(`${title} ${lead}`).not.toMatch(/nothing (was )?changed/i);
+    // Not a last screen: the rotation stands, and Close cancels the wait.
+    expect(isLast(screen)).toBe(false);
+    expect(windowSource).toMatch(
+      /case 'rotated-not-revoked':[\s\S]*?kind: 'retry-revoke'[\s\S]*?button\('Close', cancel\)/,
+    );
+  });
+
+  it('keeps the missing-since picker on the revoke with a replaced master key, and on the restore lock-out', () => {
+    // The picker is never disabled by the replace tick, and its time goes with the revoke.
+    expect(windowSource).not.toMatch(/since\.disabled/);
+    expect(windowSource).toMatch(/kind: 'revoke',\s*rotate: rotate\.checked,[\s\S]*?since: at/);
+    expect(windowSource).toMatch(/kind: 'lock-out',[\s\S]*?since: at/);
+    expect(heading({ screen: 'restore-devices', did: 'did:scid:coasys:1:Qm', devices: [], note: null }).lead).toContain(
+      'since when they were missing',
+    );
+  });
+
   it('marks only the refused word field invalid, with a token value, and draws it', () => {
     expect(Array.from({ length: 12 }, (_, i) => refusedField(3, i))).toEqual(
       Array.from({ length: 12 }, (_, i) => i === 2),
