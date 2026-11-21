@@ -9,7 +9,7 @@ import { getEntityForDataset } from '@we/backend-ad4m';
 import { until } from '@we/e2e/waits';
 
 import { dismissNamePrompt } from '../steps/space.mjs';
-import { leaveCall, startCall, stopTranscribing, typeIntoCall, untilHeard, watchCall } from './call.mjs';
+import { leaveCall, startCall, stopTranscribing, typeIntoCall, unmute, untilHeard, watchCall } from './call.mjs';
 import { SLOW, STUB, world } from './context.mjs';
 import { DNA, records, spacePerspective, valueOf } from './dna.mjs';
 import { HEARD, LINES, roleOf, SCRIPT } from './stub-llm.mjs';
@@ -195,10 +195,10 @@ export async function joinByInvite(who, sharedUrl) {
  * Setup shared by the verticals after V2: a call in which the film's lines are said, the records
  * extraction makes of them, and the call left. Resolves with the call's id and the records by class.
  *
- * The stub tier waits for every record the script makes. The real tier waits until every line has
- * landed, stops transcribing (the fake microphone loops its recording), and then waits for a titled
- * record of each class in `needs` — the classes the vertical goes on to use — or, with none named,
- * for any record of the package.
+ * The stub tier waits for every record the script makes. The real tier unmutes (a call joins
+ * silent), waits until every line has landed, stops transcribing (the fake microphone loops its
+ * recording), and then waits for a titled record of each class in `needs` — the classes the
+ * vertical goes on to use — or, with none named, for any record of the package.
  */
 export async function callThatFinds(who, perspective, needs = []) {
   const callId = await startCall(who.page);
@@ -206,6 +206,7 @@ export async function callThatFinds(who, perspective, needs = []) {
     await watchCall(who, perspective, callId);
     await typeIntoCall(who, perspective, callId, Object.values(LINES));
   } else {
+    await unmute(who.page);
     await untilHeard(perspective, callId, HEARD, SLOW);
     await stopTranscribing(who.page);
   }
