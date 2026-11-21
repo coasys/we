@@ -4,8 +4,8 @@ version = 4
 
 [[package]]
 name = "ad4m-client"
-version = "0.13.1-staging.15"
-source = "git+https://github.com/coasys/ad4m?rev=7ea99eee191978987bc1f951abce18bc142f777d#7ea99eee191978987bc1f951abce18bc142f777d"
+version = "0.13.1-staging.16"
+source = "git+https://github.com/coasys/ad4m?rev=e6285b769c1d74092f90c005396dd2926c4d958d#e6285b769c1d74092f90c005396dd2926c4d958d"
 dependencies = [
  "anyhow",
  "chrono",
@@ -29,7 +29,7 @@ dependencies = [
 [[package]]
 name = "ad4m-hash-chain"
 version = "0.1.0"
-source = "git+https://github.com/coasys/ad4m?rev=7ea99eee191978987bc1f951abce18bc142f777d#7ea99eee191978987bc1f951abce18bc142f777d"
+source = "git+https://github.com/coasys/ad4m?rev=e6285b769c1d74092f90c005396dd2926c4d958d#e6285b769c1d74092f90c005396dd2926c4d958d"
 dependencies = [
  "bs58",
  "ed25519-dalek",
@@ -42,7 +42,7 @@ dependencies = [
 [[package]]
 name = "ad4m-identity-client"
 version = "0.1.0"
-source = "git+https://github.com/coasys/ad4m?rev=7ea99eee191978987bc1f951abce18bc142f777d#7ea99eee191978987bc1f951abce18bc142f777d"
+source = "git+https://github.com/coasys/ad4m?rev=e6285b769c1d74092f90c005396dd2926c4d958d#e6285b769c1d74092f90c005396dd2926c4d958d"
 dependencies = [
  "ad4m-client",
  "ad4m-hash-chain",
@@ -62,7 +62,7 @@ dependencies = [
 [[package]]
 name = "ad4m-identity-core"
 version = "0.1.0"
-source = "git+https://github.com/coasys/ad4m?rev=7ea99eee191978987bc1f951abce18bc142f777d#7ea99eee191978987bc1f951abce18bc142f777d"
+source = "git+https://github.com/coasys/ad4m?rev=e6285b769c1d74092f90c005396dd2926c4d958d#e6285b769c1d74092f90c005396dd2926c4d958d"
 dependencies = [
  "ad4m-hash-chain",
  "base64 0.22.1",
@@ -86,7 +86,7 @@ dependencies = [
 [[package]]
 name = "ad4m-ldk"
 version = "0.13.0-test-1"
-source = "git+https://github.com/coasys/ad4m?rev=7ea99eee191978987bc1f951abce18bc142f777d#7ea99eee191978987bc1f951abce18bc142f777d"
+source = "git+https://github.com/coasys/ad4m?rev=e6285b769c1d74092f90c005396dd2926c4d958d#e6285b769c1d74092f90c005396dd2926c4d958d"
 dependencies = [
  "futures",
  "js-sys",

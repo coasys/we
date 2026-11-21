@@ -444,7 +444,6 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     switchDataset: ambient('navigation'),
     reorderDatasets: action('agent'),
     removeDataset: destructive('space-admin'),
-    cleanupSpaceSdna: action('space-admin'),
 
     /*
       Agent settings and the datasets that hold them.
@@ -500,7 +499,6 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     onDatasetRemoved: WIRING,
     readDatasets: WIRING,
     initSystemDatasets: WIRING,
-    prepareDataset: WIRING,
     loadDatasets: WIRING,
     subscribeToChanges: WIRING,
     getDatasetOrder: WIRING,
@@ -1552,6 +1550,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     askMaster: action('devices'),
     answerRequest: action('devices'),
     rename: action('devices'),
+    unlink: action('devices'),
     revoke: action('devices'),
     replaceMaster: action('devices'),
     restore: action('devices'),

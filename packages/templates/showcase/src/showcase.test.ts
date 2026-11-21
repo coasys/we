@@ -2336,19 +2336,54 @@ describe('the workshop’s space-wide views', () => {
   const route = (path: string) => JSON.stringify((workshop.routes ?? []).find((entry) => entry.path === path));
   const SCOPE = 'routeStore.params.scope';
   const RECORD = `(${SCOPE} == 'call' ? (${CALL_EXPR}) : ${SCOPE} == 'space' ? spaceStore.root : ${SCOPE} ? ${SCOPE} : '')`;
-  const DIM = `(${RECORD}) && routeStore.params.from == 'dim'`;
-  const HIDE = `(${RECORD}) && routeStore.params.from == 'hide'`;
+  /** The canvas's graph, and an expression on it read against plain objects, as the renderer reads it. */
+  const canvasGraph = (): Record<string, unknown> => {
+    let found: Record<string, unknown> | undefined;
+    const walk = (value: unknown): void => {
+      if (found || !value || typeof value !== 'object') return;
+      if ((value as { type?: unknown }).type === 'GraphView')
+        found = (value as { props: Record<string, unknown> }).props;
+      else Object.values(value).forEach(walk);
+    };
+    walk((workshop.routes ?? []).find((entry) => entry.path === '/canvas'));
+    return found!;
+  };
+  const evaluate = (source: string, roots: Record<string, unknown>): unknown =>
+    evaluateExpression(parseExpression(source), {
+      root: (name: string) => (name in roots ? { bound: true, value: roots[name] } : { bound: false }),
+      call: (name: string, args: unknown[]) =>
+        listFunctions()
+          .find((f) => f.name === name)
+          ?.impl(args, {} as never),
+    } as never);
 
   it('narrows nothing until somebody picks a scope', () => {
     const canvas = route('/canvas');
     // Hiding leaves off what the conversation in scope did not produce; with no scope it asks for
     // nobody's cards.
-    expect(canvas).toContain(`"onlyFrom":{"$":"(${HIDE}) ? (${RECORD}) : ''"}`);
-    // Dimming fades everything else — a card with no origin is in no scope. Under "hide" too, so the
-    // cards stay faded while the canvas reloads without them rather than flashing back.
-    expect(canvas).toContain(
-      `((${DIM}) || (${HIDE})) ? [{ when: { 'data.origin': { not: (${RECORD}) } }, style: { opacity: 0.1 } }] : []`,
-    );
+    const props = canvasGraph();
+    const hideWhere = (props.seeds as { options: { hideWhere: { $: string } } }).options.hideWhere.$;
+    const dims = (props.nodeStyle as unknown[]).filter((rule) =>
+      JSON.stringify(rule).includes("'data.origin': { not:"),
+    ) as { $: string }[];
+    const read = (params: Record<string, string>) => {
+      const scope = { routeStore: { params }, spaceStore: { root: 'space-root' }, local: {}, modules: {} };
+      return { hide: evaluate(hideWhere, scope), dim: dims.flatMap((rule) => evaluate(rule.$, scope) as unknown[]) };
+    };
+    const rest = { 'data.origin': { not: 'space-root' } };
+    // No scope picked: nothing hidden, nothing faded, whatever the treatment says.
+    expect(read({ from: 'hide' })).toEqual({ hide: null, dim: [] });
+    // Hiding leaves off what the conversation in scope did not produce — a card with no origin is in
+    // no scope. Faded under "hide" too, so the cards stay faded while the canvas reloads without them.
+    expect(read({ scope: 'space', from: 'hide' })).toEqual({
+      hide: [rest],
+      dim: [{ when: rest, style: { opacity: 0.1 } }],
+    });
+    expect(read({ scope: 'space', from: 'dim' })).toEqual({
+      hide: null,
+      dim: [{ when: rest, style: { opacity: 0.1 } }],
+    });
+    expect(read({ scope: 'space' })).toEqual({ hide: null, dim: [] });
     expect(canvas).toContain('"origin":"extractedFrom"');
   });
 
