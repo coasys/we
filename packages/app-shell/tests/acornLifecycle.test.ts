@@ -351,6 +351,36 @@ describe('joinAcornProject', () => {
     expect(record.find((c) => c.startsWith('navigate:'))).toBeUndefined();
   });
 
+  /*
+    The 20 s is the wait's, not each read's: a meta read still out when the
+    wait lapses has not answered, and its late answer is not accepted.
+  */
+  it('a meta read slower than the 20 s wait parks the join — a 35 s answer is not accepted', async () => {
+    vi.useFakeTimers();
+    const record: string[] = [];
+    const d = deps(record, {
+      projectMeta: vi.fn(
+        () => new Promise<{ name: string }>((resolve) => setTimeout(() => resolve({ name: 'Slow Project' }), 35_000)),
+      ),
+    });
+    const acorn = createAcornLifecycle(d);
+    const outcome = acorn.joinAcornProject(undefined, 'slow meta words', BASE).then(
+      (value) => ({ value }),
+      (error) => ({ error }),
+    );
+
+    await vi.advanceTimersByTimeAsync(25_000);
+
+    const settled = await Promise.race([outcome, Promise.resolve('still-out' as const)]);
+    expect(settled).not.toBe('still-out');
+    const pending = await acorn.pendingAcornOperation();
+    expect(pending?.phase).toBe('failed');
+    expect(pending?.failure?.retryable).toBe(true);
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(record.find((c) => c.startsWith('ensure:'))).toBeUndefined();
+    expect(record.find((c) => c.includes('announceJoin'))).toBeUndefined();
+  });
+
   it('the retry on an unanswered join lands once the meta has synced', async () => {
     vi.useFakeTimers();
     const record: string[] = [];

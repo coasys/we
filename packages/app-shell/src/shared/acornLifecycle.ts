@@ -467,7 +467,9 @@ function withinBudget<T>(work: Promise<T>, ms: number): Promise<T | typeof BUDGE
 /**
  * Poll `read` until it answers truthy — an rpc that throws counts as "not yet".
  * `owns` is the caller's ownership: once it is gone the loop asks nothing more
- * and answers null, the same as running out of time.
+ * and answers null, the same as running out of time. The bound is the wait's,
+ * not each read's: a read still out when it lapses has not answered, and its
+ * late answer is not accepted.
  */
 async function waitFor<T>(
   read: () => Promise<T>,
@@ -477,11 +479,14 @@ async function waitFor<T>(
 ): Promise<T | null> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
-    const value = await read().catch(() => null);
-    if (!owns()) return null;
+    const value = await withinBudget(
+      read().catch(() => null),
+      deadline - Date.now(),
+    );
+    if (value === BUDGET_OUT || !owns()) return null;
     if (value) return value;
     if (Date.now() >= deadline) return null;
-    await new Promise((done) => setTimeout(done, pollMs));
+    await new Promise((done) => setTimeout(done, Math.min(pollMs, Math.max(0, deadline - Date.now()))));
     if (!owns()) return null;
   }
 }
