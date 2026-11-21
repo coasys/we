@@ -11,7 +11,7 @@
  * - an installed class has no `set`/`add`/`remove` for a `max_count: 1` relation, so a reparent has
  *   to go through the static `update` — and that write lands, and so does a clear (`''`).
  */
-import { Ad4mClient } from '@coasys/ad4m';
+import { Ad4mClient, type PerspectiveProxy, SHACLShape } from '@coasys/ad4m';
 import { getEntityForDataset } from '@we/entities';
 import { afterAll, describe, expect, inject, it } from 'vitest';
 
@@ -20,6 +20,11 @@ import { createAd4mBackendPorts } from '../../src/backendPortsAdapter';
 
 /** Two classes in the shape a model author writes: links as typed `hasOne`s, no `sh:class`. */
 const setter = (predicate: string) => [{ action: 'setSingleTarget', source: 'this', predicate, target: 'value' }];
+
+/** Register shapes given as SHACL JSON, as another app would. */
+const register = (handle: unknown, ...shapes: object[]) =>
+  (handle as PerspectiveProxy).registerShapes(shapes.map((s) => SHACLShape.fromJSON(s as never)));
+
 const TOPIC = {
   target_class: 'treelive://LiveTopic',
   properties: [
@@ -133,11 +138,7 @@ describe('a tree over an installed SDNA’s relations, live', () => {
     const ref = await ports.lifecycle.create(`tree-relations-${Date.now()}`);
     try {
       await ports.schemas.installSpace(ref.handle, []);
-      const perspective = ref.handle as {
-        addSdna(n: string, c: string, t: 'subject_class', s: string): Promise<boolean>;
-      };
-      await perspective.addSdna('LiveTopic', '', 'subject_class', JSON.stringify(TOPIC));
-      await perspective.addSdna('LivePosition', '', 'subject_class', JSON.stringify(POSITION));
+      await register(ref.handle, TOPIC, POSITION);
 
       // The manifest the canvas and the spine picker read: each relation names its target.
       const entries = await ports.schemas.foreignSchemas(ref.handle);
@@ -192,12 +193,7 @@ describe('a tree over an installed SDNA’s relations, live', () => {
     const ref = await ports.lifecycle.create(`tree-relations-list-${Date.now()}`);
     try {
       await ports.schemas.installSpace(ref.handle, []);
-      const perspective = ref.handle as {
-        addSdna(n: string, c: string, t: 'subject_class', s: string): Promise<boolean>;
-      };
-      await perspective.addSdna('LiveTopic', '', 'subject_class', JSON.stringify(TOPIC));
-      await perspective.addSdna('LivePosition', '', 'subject_class', JSON.stringify(POSITION));
-      await perspective.addSdna('LiveAgenda', '', 'subject_class', JSON.stringify(AGENDA));
+      await register(ref.handle, TOPIC, POSITION, AGENDA);
       const entries = await ports.schemas.foreignSchemas(ref.handle);
       expect(entries.find((e) => e.name === 'LiveAgenda')?.properties.find((p) => p.name === 'items')).toMatchObject({
         relatedEntity: 'LiveTopic',
@@ -298,11 +294,9 @@ describe('a tree over an installed SDNA’s relations, live', () => {
     try {
       await ports.schemas.installSpace(ref.handle, []);
       const perspective = ref.handle as {
-        addSdna(n: string, c: string, t: 'subject_class', s: string): Promise<boolean>;
         get(q: { source?: string; predicate?: string }): Promise<{ data: { target: string } }[]>;
       };
-      await perspective.addSdna('LiveTopic', '', 'subject_class', JSON.stringify(TOPIC));
-      await perspective.addSdna('LivePosition', '', 'subject_class', JSON.stringify(POSITION));
+      await register(ref.handle, TOPIC, POSITION);
       await ports.schemas.foreignSchemas(ref.handle);
       const Topic = getEntityForDataset('LiveTopic', ref.handle) as unknown as Model;
       const Position = getEntityForDataset('LivePosition', ref.handle) as unknown as Model;
