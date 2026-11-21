@@ -52,7 +52,9 @@ export function identityFile(url, dir) {
 function isIdentityStep(step) {
   if (PLAIN_STEPS.has(step?.kind)) return true;
   if (step?.kind === 'answer-request') return typeof step.id === 'string';
-  return (step?.kind === 'revoke' || step?.kind === 'rename') && typeof step.keyId === 'string';
+  return (
+    (step?.kind === 'unlink' || step?.kind === 'revoke' || step?.kind === 'rename') && typeof step.keyId === 'string'
+  );
 }
 
 /** The steps that name nothing but their kind. */

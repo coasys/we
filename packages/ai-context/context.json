@@ -6540,7 +6540,7 @@
           "type": "boolean"
         }
       },
-      "actions": ["switchDataset", "reorderDatasets", "removeDataset", "cleanupSpaceSdna"],
+      "actions": ["switchDataset", "reorderDatasets", "removeDataset"],
       "ambient": ["switchDataset"],
       "destructive": ["removeDataset"],
       "needsArgs": ["switchDataset", "reorderDatasets", "removeDataset"]
@@ -6556,9 +6556,11 @@
             "subtitle",
             "icon",
             "thisDevice",
+            "unlinked",
             "revoked",
             "valid",
             "status",
+            "canUnlink",
             "canRevoke",
             "name",
             "holdsMaster",
@@ -6620,13 +6622,14 @@
         "askMaster",
         "answerRequest",
         "rename",
+        "unlink",
         "revoke",
         "replaceMaster",
         "restore",
         "removeMaster"
       ],
       "ambient": ["refresh"],
-      "needsArgs": ["answerRequest", "rename", "revoke"]
+      "needsArgs": ["answerRequest", "rename", "unlink", "revoke"]
     },
     {
       "name": "editorStore",
