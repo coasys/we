@@ -23,6 +23,7 @@ import {
   type RevokeTarget,
   type Screen,
   screenTurns,
+  sinceMs,
   spreadWords,
   targetLine,
   vouchedLine,
@@ -56,6 +57,33 @@ describe('the identity window', () => {
     expect(lead).toContain('Replace your master key');
     // Not a claim about what the device holds: the log says it may, not that it does.
     expect(lead).not.toMatch(/keeps a copy|stays valid/);
+  });
+
+  it('says an unlink keeps what the device did before, and a revoke asks since when', () => {
+    const unlink = heading({ screen: 'unlink-confirm', keyId: 'd2', passphrase: false, error: null });
+    expect(unlink.title).toBe('Unlink d2?');
+    expect(unlink.lead).toContain('what it did before stays yours');
+    const revoke = heading({
+      screen: 'revoke-confirm',
+      keyId: 'd2',
+      mayHoldMaster: false,
+      rotate: false,
+      passphrase: false,
+      error: null,
+    });
+    expect(revoke.title).toBe('Revoke d2?');
+    expect(revoke.lead).toContain('lost or stolen');
+    expect(revoke.lead).toContain('since when');
+    expect(heading({ screen: 'unlinked', keyId: 'd2', seq: 2 }).title).toBe('Device unlinked');
+    expect(heading({ screen: 'revoked', keyId: 'd2', seq: 3 }).title).toBe('Device revoked');
+  });
+
+  it("reads the picked time as the person's local time, and an empty one as now", () => {
+    expect(sinceMs('2026-11-21T09:30')).toBe(new Date(2026, 10, 21, 9, 30).getTime());
+    expect(sinceMs('')).toBeUndefined();
+    // A half-filled picker reports an empty value with `badInput`.
+    expect(sinceMs('', true)).toBeNull();
+    expect(sinceMs('not a time')).toBeNull();
   });
 
   it('asks for the two words the custody service chose', () => {
@@ -128,7 +156,7 @@ describe('the identity window', () => {
     const joined = heading({ screen: 'joined', did: 'did:scid:coasys:1:Qm', keyId: 'd2' }).lead;
     expect(joined).toBe("It doesn't have the master key, so it can't add or remove devices.");
     expect(joined).not.toContain('d2');
-    expect(heading({ screen: 'revoked', keyId: 'd2', seq: 2 }).title).toBe('Device removed');
+    expect(heading({ screen: 'revoked', keyId: 'd2', seq: 2 }).title).toBe('Device revoked');
     const linked = heading({ screen: 'linked', seq: 3, masterSent: true, note: 'Its name is not saved yet.' }).lead;
     expect(linked).toContain('entry #3');
     expect(linked).toContain('It gets the master key the next time it unlocks.');
@@ -503,6 +531,7 @@ describe('the identity window', () => {
   it('ends on the screens that end a step', () => {
     expect(isLast({ screen: 'identity-ready', did: 'did:scid:coasys:1:Qm', keyId: 'd1', vouched: false })).toBe(true);
     expect(isLast({ screen: 'revoked', keyId: 'd2', seq: 2 })).toBe(true);
+    expect(isLast({ screen: 'unlinked', keyId: 'd2', seq: 2 })).toBe(true);
     expect(isLast({ screen: 'show-words', words: [] })).toBe(false);
     expect(isLast({ screen: 'offer', link: '', qrSvg: '', expires: 0 })).toBe(false);
     for (const last of [

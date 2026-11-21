@@ -2,10 +2,11 @@
  * The identity window's screens, as the custody service sends them (`we_custody::Screen`), and the
  * words each one says: the recovery phrase, the identity being ready, the passphrase fallback where
  * there is no keychain, linking a device from either side (a code shown, a code scanned or pasted),
- * taking, asking for and sending the master key, naming a device, revoking one, and the 12 words typed
- * back in: replacing the master key, restoring the identity on a computer that has none, and removing
- * the master key from this computer, and adding a bot. The words typed are never sent back: no screen after the words
- * entry carries them, and a refused word is named by its place only.
+ * taking, asking for and sending the master key, naming a device, unlinking one, revoking one, the
+ * 12 words typed back in (replacing the master key, restoring the identity on a computer that has
+ * none, and removing the master key from this computer), and adding a bot. The words typed are never
+ * sent back: no screen after the words entry carries them, and a refused word is named by its place
+ * only.
  *
  * Pure, so the wording is tested without a window (`screens.test.ts`). `window.ts` draws them.
  */
@@ -92,6 +93,8 @@ export type Screen =
   | { screen: 'asked'; keyId: string; fingerprint: string; code: string }
   | { screen: 'rename'; keyId: string; name: string; error: string | null }
   | { screen: 'renamed'; keyId: string; name: string }
+  | { screen: 'unlink-confirm'; keyId: string; passphrase: boolean; error: string | null }
+  | { screen: 'unlinked'; keyId: string; seq: number }
   | {
       screen: 'revoke-confirm';
       keyId: string;
@@ -222,7 +225,8 @@ export type StepInput =
   | { kind: 'accept' }
   | { kind: 'answer'; passphrase?: string }
   | { kind: 'name'; name: string }
-  | { kind: 'revoke'; passphrase?: string; rotate?: boolean }
+  | { kind: 'unlink'; passphrase?: string }
+  | { kind: 'revoke'; passphrase?: string; rotate?: boolean; since?: number }
   | { kind: 'twelve-words'; words: string }
   | { kind: 'lock-out'; keyIds: string[]; name?: string }
   | { kind: 'remove' }
@@ -249,6 +253,20 @@ export function vouchedLine(vouched: boolean): string {
   return vouched
     ? 'Email checked: the identity store records that a person made this identity.'
     : 'Email not checked. You can check it later in Settings → Security.';
+}
+
+/**
+ * The time a "lost or stolen" key stopped being trusted, in ms since the epoch, from the picker's
+ * value (`2026-11-21T09:30`, the person's local time). `undefined` for an empty field: now, which
+ * the custody service reads as no `since` at all. `null` for a time the person did not finish
+ * (`badInput`: the picker then reports an empty value) or that does not parse: never sent as now,
+ * because a revocation cannot be redone.
+ */
+export function sinceMs(picked: string, badInput = false): number | undefined | null {
+  if (badInput) return null;
+  if (!picked) return undefined;
+  const at = new Date(picked).getTime();
+  return Number.isFinite(at) ? at : null;
 }
 
 /** "01" … "12", as the words grid numbers them. */
@@ -465,11 +483,18 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
       return { title: 'Rename device', lead: 'Only your devices can see this name.' };
     case 'renamed':
       return { title: `Renamed to ${screen.name}`, lead: 'All your devices show the new name.' };
+    case 'unlink-confirm':
+      return {
+        title: `Unlink ${screen.keyId}?`,
+        lead: "Do this for a device you replaced or no longer use. It can't act as you after this entry in your key log, and what it did before stays yours. A computer that's offline learns this when it reconnects.",
+      };
+    case 'unlinked':
+      return { title: 'Device unlinked', lead: `It's entry #${screen.seq} in your key log.` };
     case 'revoke-confirm':
       return {
-        title: `Remove ${screen.keyId}?`,
+        title: `Revoke ${screen.keyId}?`,
         lead: [
-          "Do this for a device you lost or no longer use. It loses access to your identity and can't be linked again. A computer that's offline learns this when it reconnects. Some things it added before may no longer show as yours.",
+          "Do this for a device that was lost or stolen. It loses access to your identity and can't be linked again. Say since when it was missing: anything from it that arrives from then on may no longer show as yours, even if it was made earlier. A computer that's offline learns this when it reconnects.",
           ...(screen.mayHoldMaster
             ? [mayHoldMaster('This device', 'Replace your master key to stop it adding and removing devices.')]
             : []),
@@ -556,7 +581,7 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
         ].join(' '),
       };
     case 'revoked':
-      return { title: 'Device removed', lead: `It's entry #${screen.seq} in your key log.` };
+      return { title: 'Device revoked', lead: `It's entry #${screen.seq} in your key log.` };
     case 'pending-refused':
       return {
         title: "Couldn't publish your identity",
@@ -661,6 +686,7 @@ export function isLast(screen: Screen): boolean {
     'email-checked',
     'cloud-added',
     'linked',
+    'unlinked',
     'revoked',
     'joined',
     'master-taken',

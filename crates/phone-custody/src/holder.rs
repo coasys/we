@@ -332,7 +332,7 @@ mod tests {
             ("coasys:device:1:abc", true)
         );
         // A fragment on something that is not a web address is no browser's link.
-        assert_eq!(browser_link("ftp://x/#coasys:device:1:abc").1, false);
+        assert!(!browser_link("ftp://x/#coasys:device:1:abc").1);
     }
 
     /// The confirm wait ends with the flow's unlock: past the deadline the link is `Ended` and

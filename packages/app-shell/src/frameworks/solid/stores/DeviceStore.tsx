@@ -1,7 +1,7 @@
 /**
- * DeviceStore — the devices that speak for the person: linking one, naming one, revoking one, and
- * who keeps the master key; and the 12 words typed back in, to replace the master key or restore the
- * identity on a computer of none.
+ * DeviceStore — the devices that speak for the person: linking one, naming one, unlinking one,
+ * revoking one, and who keeps the master key; and the 12 words typed back in, to replace the master
+ * key or restore the identity on a computer of none.
  *
  * Reads `IdentityPort.devices` (the device keys the key log lists) and names them from the private
  * record the custody view carries (`IdentityCustodyView.devices`), with who keeps the master key and
@@ -50,10 +50,10 @@ export interface DeviceStore {
   serving: Accessor<ServingDevice>;
   /** What this device is, for the sentences about it: "phone" on a phone, "computer" on the desktop. */
   deviceNoun: Accessor<'phone' | 'computer'>;
-  /** How many device keys are valid: neither revoked nor ended. A bot's key is not a device's. */
+  /** How many device keys are valid: neither unlinked, revoked nor ended. A bot's key is not a device's. */
   validCount: Accessor<number>;
   /**
-   * Linking, naming, revoking and answering requests can be offered: this computer keeps the master
+   * Linking, naming, unlinking, revoking and answering requests can be offered: this computer keeps the master
    * key of the identity.
    */
   canManage: Accessor<boolean>;
@@ -118,7 +118,12 @@ export interface DeviceStore {
   answerRequest: (id: string) => Promise<IdentityChangeOutcome>;
   /** Names the device `keyId`. */
   rename: (keyId: string) => Promise<IdentityChangeOutcome>;
-  /** Revokes the device key `keyId`; the window offers to replace the master key too. */
+  /** Unlinks the device key `keyId`: it signs nothing new, and what it signed before stays valid. */
+  unlink: (keyId: string) => Promise<IdentityChangeOutcome>;
+  /**
+   * Revokes the device key `keyId`, lost or stolen; the person says since when, where they unlock.
+   * The window offers to replace the master key too.
+   */
   revoke: (keyId: string) => Promise<IdentityChangeOutcome>;
   /** Replaces the master key from the 12 words; this computer keeps the new one. */
   replaceMaster: () => Promise<IdentityChangeOutcome>;
@@ -253,6 +258,7 @@ export function DeviceStoreProvider(props: ParentProps) {
     askMaster: () => step(() => identity.open({ kind: 'ask-master' })),
     answerRequest: (id: string) => step(() => identity.open({ kind: 'answer-request', id })),
     rename: (keyId: string) => step(() => identity.open({ kind: 'rename', keyId })),
+    unlink: (keyId: string) => step(() => identity.open({ kind: 'unlink', keyId })),
     revoke: (keyId: string) => step(() => identity.open({ kind: 'revoke', keyId })),
     replaceMaster: () => step(() => identity.open({ kind: 'replace-master' })),
     restore: () => step(() => identity.open({ kind: 'restore' })),
