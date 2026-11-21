@@ -16,6 +16,24 @@ import type { ModulePart } from '@we/module-shared';
  * Everything else here reads `Acorn*` records through `$query` or declares its row as an
  * `input` — never a module store, which this module does not have.
  */
+/*
+  The add steps, shared by the Add button and Enter in the input. `addingOutcome`
+  marks the write in flight so a second press — a double click or Enter while the
+  first is still out — cannot start another. `onFinally`, not `onSuccess`: a
+  failed add still releases the lock.
+*/
+const addOutcome = [
+  { $setLocal: 'addingOutcome', value: true },
+  {
+    $invoke: 'record.create',
+    args: ['AcornOutcome', { content: { $: 'local.newOutcome' } }],
+    onFinally: [
+      { $setLocal: 'newOutcome', value: '' },
+      { $setLocal: 'addingOutcome', value: false },
+    ],
+  },
+];
+
 export const ACORN_PARTS: Record<string, ModulePart> = {
   outcomeList: {
     label: 'Outcome list',
@@ -24,7 +42,10 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
     node: {
       type: 'Column',
       props: { gap: '300', width: '100%' },
-      $localState: { newOutcome: { type: 'string', initial: '' } },
+      $localState: {
+        newOutcome: { type: 'string', initial: '' },
+        addingOutcome: { type: 'boolean', initial: false },
+      },
       children: [
         /*
           The create row: `record.create` is the generic write the host gives every space
@@ -44,18 +65,20 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
                 value: { $: 'local.newOutcome' },
                 placeholder: 'New outcome…',
                 onInput: { $setLocal: 'newOutcome', value: { $: 'event.detail' } },
+                onKeyDown: {
+                  $if: {
+                    condition: { $: `arg.detail.key == 'Enter' && trim(local.newOutcome) && !local.addingOutcome` },
+                    then: addOutcome,
+                  },
+                },
               },
             },
             {
               type: 'we-button',
               props: {
                 variant: 'solid',
-                disabled: { $: '!local.newOutcome' },
-                onClick: {
-                  $invoke: 'record.create',
-                  args: ['AcornOutcome', { content: { $: 'local.newOutcome' } }],
-                  onFinally: [{ $setLocal: 'newOutcome', value: '' }],
-                },
+                disabled: { $: '!trim(local.newOutcome) || local.addingOutcome' },
+                onClick: addOutcome,
               },
               children: ['Add outcome'],
             },
