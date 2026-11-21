@@ -1,0 +1,5 @@
+# The same channel as `crates/custody`. The Android targets (aarch64-linux-android,
+# x86_64-linux-android) are added by `apps/we-mobile/scripts/build-android-rust.sh`.
+[toolchain]
+channel = "1.96.1"
+components = ["clippy", "rustfmt"]

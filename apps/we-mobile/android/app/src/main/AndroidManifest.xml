@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:usesCleartextTraffic="false"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:theme="@style/AppTheme">
+
+        <activity
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
+            android:name=".MainActivity"
+            android:label="@string/title_activity_main"
+            android:theme="@style/AppTheme.NoActionBarLaunch"
+            android:launchMode="singleTask"
+            android:exported="true">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+        </activity>
+
+        <!-- The QR scanner of the DeviceKey plugin (a computer's offer, another device's code). -->
+        <activity
+            android:name=".devicekey.ScanActivity"
+            android:theme="@style/AppTheme.Scan"
+            android:screenOrientation="portrait"
+            android:exported="false" />
+
+    </application>
+
+    <!-- Permissions -->
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Scanning a QR code, and a call's camera (getUserMedia video); asked for at first use, and
+         pasting works without it. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <!-- A call's microphone (getUserMedia audio). Capacitor's WebChromeClient grants a page's
+         audio capture only when this and MODIFY_AUDIO_SETTINGS are both granted; undeclared, the
+         page is refused without a prompt. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- With RECORD_AUDIO, for a call's audio routing (a normal permission: granted at install). -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- The master key's prompt. -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <!-- RECORD_AUDIO would otherwise imply a required microphone; a phone without one still runs WE. -->
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+</manifest>

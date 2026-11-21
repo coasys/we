@@ -1,0 +1,28 @@
+{
+  "private": true,
+  "name": "@we/app-mobile",
+  "version": "0.1.0-alpha.1",
+  "description": "Coasys phone app: WE's web build in a Capacitor shell, connected to an executor on a host or Coasys cloud",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build:web": "node scripts/assemble-web.mjs",
+    "check:floor": "node scripts/check-floor.mjs",
+    "sync": "cap sync",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/core": "^8.6.0",
+    "@capacitor/ios": "^8.6.0",
+    "@we/identity-window": "workspace:*"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.6.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^6.0.3",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.5"
+  }
+}

@@ -57,6 +57,12 @@ export interface Ad4mCustodyHost {
   /** Opens the custody service's window on `change`; resolves when the change ends there. */
   open(change: IdentityChange): Promise<IdentityChangeOutcome>;
   publicState(): Promise<Ad4mCustodyState>;
+  /**
+   * Whether the host takes the 12 words back, to replace the master key or restore the identity.
+   * Absent means it does, as the desktop custody service does; a phone, which takes no words, says
+   * `false`, and the screens then offer neither.
+   */
+  takesWords?: boolean;
 }
 
 /** The custody service's public state, as it answers `publicState`. */
@@ -79,6 +85,11 @@ export interface Ad4mCustodyState {
   /** The revoked keys the key log says may still hold a valid master key. */
   revokedHolders?: string[];
   masterWaiting?: boolean;
+  /**
+   * The device this custody service answers for, where it is not the executor's: a phone's own key
+   * and kind. Absent on the desktop, where the custody service and the executor share a computer.
+   */
+  thisDevice?: { keyId: string | null; kind: string } | null;
   /** The key log lists an enc key for this computer other than the one the custody service keeps. */
   encMismatch: boolean;
 }
@@ -167,8 +178,15 @@ export function readCustody(value: Ad4mCustodyState): IdentityCustodyView {
     revokedHolders: Array.isArray(value.revokedHolders) ? value.revokedHolders.map(String) : [],
     requests,
     masterWaiting: value.masterWaiting === true,
+    thisDevice: readCustodyDevice(value.thisDevice),
     encMismatch: value.encMismatch,
   };
+}
+
+function readCustodyDevice(value: unknown): IdentityCustodyView['thisDevice'] {
+  if (!value || typeof value !== 'object') return null;
+  const device = record(value);
+  return { keyId: text(device.keyId), kind: text(device.kind) ?? '' };
 }
 
 export function readIdentityStatus(value: unknown): IdentityStatusView {
@@ -256,7 +274,7 @@ export function createAd4mIdentityPort(backendClient: unknown, custody?: Ad4mCus
         keyLog: true,
         devices: true,
         masterKey: !!custody,
-        recoveryWords: !!custody,
+        recoveryWords: !!custody && custody.takesWords !== false,
         linkDevice: !!custody,
       };
     },

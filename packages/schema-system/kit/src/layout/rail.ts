@@ -155,6 +155,20 @@ interface RailShellBase {
    * nothing else could see. One set, declared once, is the whole point of holding ids.
    */
   initialCollapsedGroups?: SchemaProp[];
+  /**
+   * While true, the pointer arriving does not open the rail — only a control does.
+   *
+   * For a touch screen. A tap is reported as the pointer arriving, and nothing reports it leaving
+   * until the next tap lands somewhere else, so a hover rail on a phone opens under the first press
+   * and stays open over the page it led to. An expression, because it is a fact about the window
+   * rather than about the rail (WE's sidebar passes `shellStore.narrowWindow`): below it, put a
+   * control in the `header` carrying `{ $toggleLocal: 'expanded' }`. Leaving still closes the rail,
+   * which on a touch screen is the next press landing outside it.
+   *
+   * Only meaningful with `hoverExpand`, the default; a rail that never opens under the pointer is
+   * already what this asks for.
+   */
+  compact?: SchemaProp;
 }
 
 /**
@@ -221,7 +235,10 @@ export function railShell(opts: RailShellOptions): SchemaNode {
       ...(opts.zIndex !== undefined && { zIndex: opts.zIndex }),
       ...(opts.position !== 'static' && { top: '0', [side]: '0' }),
       ...(hoverExpand && {
-        onMouseEnter: { $setLocal: 'expanded', value: true },
+        onMouseEnter:
+          opts.compact === undefined
+            ? { $setLocal: 'expanded', value: true }
+            : { $if: { condition: expr`!${opts.compact}`, then: { $setLocal: 'expanded', value: true } } },
         onMouseLeave: { $setLocal: 'expanded', value: false },
       }),
     },

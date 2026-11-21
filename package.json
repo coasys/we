@@ -61,11 +61,14 @@
   },
   "pnpm": {
     "overrides": {
-      "@coasys/ad4m": "https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@c57aa5fc647dd651744f8da1bf9620d084837546",
-      "@coasys/ad4m-connect": "https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@c57aa5fc647dd651744f8da1bf9620d084837546",
+      "@coasys/ad4m": "https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@0ca8835dc5c79926dd9bc4706f52cb7e41439c9d",
+      "@coasys/ad4m-connect": "https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@0ca8835dc5c79926dd9bc4706f52cb7e41439c9d",
       "prettier": "3.9.10",
       "@xmldom/xmldom": ">=0.9.12",
       "plist": ">=3.1.1",
+      "@capacitor/cli>plist": "^3.1.1",
+      "simple-plist>plist": "^3.1.1",
+      "native-run>plist": "^3.1.1",
       "app-builder-lib": ">=26.15.0",
       "brace-expansion@<1.1.18": ">=1.1.18",
       "brace-expansion@>=4.0.0 <5.0.9": ">=5.0.9",

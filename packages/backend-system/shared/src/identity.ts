@@ -179,8 +179,19 @@ export interface IdentityCustodyView {
   revokedHolders: string[];
   /** What other devices asked and is waiting for an answer from a device that keeps the master key. */
   requests: DeviceRequestView[];
-  /** A master key another device sent waits for this computer to take it. */
+  /**
+   * "Take the master key" has something to do here: a master key another device sent waits for
+   * this device to take it, or the private record is still owed this device's mark for the key it
+   * keeps (a take whose record write was cancelled or failed), which the take makes.
+   */
   masterWaiting: boolean;
+  /**
+   * The device the custody service answers for, where it is not the backend's own: a phone that
+   * reaches a computer's executor keeps its own key, so that key, not the executor's, is this
+   * device. `null` where the custody service runs beside the backend (the desktop), whose own key
+   * `IdentityStatusView.keyId` and `DeviceKeyView.thisDevice` already name.
+   */
+  thisDevice?: CustodyDeviceView | null;
   /**
    * The key log lets this computer keep the master key but lists an encryption key for it that this
    * computer no longer has. Nothing sent to it opens any more — no master key, no device list (so
@@ -188,6 +199,14 @@ export interface IdentityCustodyView {
    * again.
    */
   encMismatch: boolean;
+}
+
+/** The device a custody service answers for, set apart from the backend it reaches. */
+export interface CustodyDeviceView {
+  /** Its id in the key log (`d3`); `null` before the log lists it. */
+  keyId: string | null;
+  /** `phone-app`, … as the private record's kinds go. */
+  kind: string;
 }
 
 /** A device as the private record names it. */

@@ -110,6 +110,19 @@ pub trait SecretStore: Send + Sync {
     /// it. An error is an error: it never means the item is absent.
     fn kind_of(&self, name: &str) -> Result<StoreKind, VaultError>;
     fn put(&self, name: &str, bytes: &[u8]) -> Result<(), VaultError>;
+    /// Keeps `bytes` under `name` only when no item is kept there: create if absent, never
+    /// replace. For an item that is not secret (a vault id, [`vault_id_name`]), read back with no
+    /// unlock and no prompt; the keychain writes it with no access control.
+    ///
+    /// `true` when this claim made the item, `false` when another item was there first or won
+    /// the claim, which stays as it is. The store decides the winner, never the caller: two
+    /// claimants that do not share a lock (two custody folders over one platform store) both read
+    /// "absent", and at most one of them gets `true`. A caller reads the item back after the
+    /// claim to learn what is kept.
+    ///
+    /// No default: a get, then a put, is not a claim, and a store that cannot make one must say
+    /// how it decides.
+    fn claim_public(&self, name: &str, bytes: &[u8]) -> Result<bool, VaultError>;
     fn get(&self, name: &str) -> Result<Option<Vec<u8>>, VaultError>;
     /// Whether an item is kept under `name`, without reading it: no unlock, no prompt, and the bytes
     /// never leave the store.
@@ -178,15 +191,32 @@ pub fn staged_name(scid: &str) -> String {
     format!("{STAGED_PREFIX}{scid}")
 }
 
+/// The name of this vault's id for an identity (`Vault::vault_id`): a third slot beside the kept
+/// and staged ones, in the store that keeps them, so the id goes only where the key goes. Not
+/// secret, written once ([`SecretStore::claim_public`]), and kept when the key is forgotten.
+///
+/// Whoever can write the store can write this item. In the keychain that is this app's access
+/// group. On Linux the id item has the same trust boundary as the Secret Service itself: any
+/// program that runs as the same user can read, replace or delete it, as it can the sealed keys
+/// beside it.
+pub fn vault_id_name(scid: &str) -> String {
+    format!("{VAULT_PREFIX}{scid}")
+}
+
 const KEPT_PREFIX: &str = "coasys.identity/";
 const STAGED_PREFIX: &str = "coasys.identity.staged/";
+const VAULT_PREFIX: &str = "coasys.identity.vault/";
 
 /// The file stem a name is kept under beside the sealed files: `<scid>` for a kept item,
-/// `<scid>.staged` for a staged one, `<device key>.enc` for a custody enc key (a scid and a device
-/// key are base58, so neither has a dot of its own, and no two kinds share a stem).
+/// `<scid>.staged` for a staged one, `<scid>.vault` for the vault id, `<device key>.enc` for a
+/// custody enc key (a scid and a device key are base58, so neither has a dot of its own, and no
+/// two kinds share a stem).
 fn stem(name: &str) -> String {
     if let Some(scid) = name.strip_prefix(STAGED_PREFIX) {
         return format!("{scid}.staged");
+    }
+    if let Some(scid) = name.strip_prefix(VAULT_PREFIX) {
+        return format!("{scid}.vault");
     }
     if let Some(device_key) = name.strip_prefix(ENC_PREFIX) {
         return format!("{device_key}.enc");
@@ -194,9 +224,21 @@ fn stem(name: &str) -> String {
     name.rsplit('/').next().unwrap_or(name).to_string()
 }
 
-/// The kept item a staged name stands beside; `None` for any other name.
-fn kept_beside(name: &str) -> Option<String> {
-    name.strip_prefix(STAGED_PREFIX).map(item_name)
+/// The items of the same identity a new item under `name` goes beside, in the order they are
+/// asked: a staged key beside the kept one, else beside the vault id; a kept key beside the vault
+/// id; the vault id beside the kept key, else the staged one. So a key and its id never land on
+/// two sides of a [`PlacedStore`].
+fn anchors(name: &str) -> Vec<String> {
+    if let Some(scid) = name.strip_prefix(STAGED_PREFIX) {
+        return vec![item_name(scid), vault_id_name(scid)];
+    }
+    if let Some(scid) = name.strip_prefix(VAULT_PREFIX) {
+        return vec![item_name(scid), staged_name(scid)];
+    }
+    if let Some(scid) = name.strip_prefix(KEPT_PREFIX) {
+        return vec![vault_id_name(scid)];
+    }
+    Vec::new()
 }
 
 const ENC_PREFIX: &str = "coasys.custody.enc/";
@@ -221,8 +263,9 @@ impl FileStore {
     }
 
     fn path(&self, name: &str) -> PathBuf {
-        // `coasys.identity/<scid>` is `<scid>.bin`, its staged slot `<scid>.staged.bin`, and
-        // `coasys.custody.enc/<device key>` is `<device key>.enc`, which no `.bin` name can be.
+        // `coasys.identity/<scid>` is `<scid>.bin`, its staged slot `<scid>.staged.bin`, its vault
+        // id `<scid>.vault.bin`, and `coasys.custody.enc/<device key>` is `<device key>.enc`, which
+        // no `.bin` name can be.
         if name.starts_with(ENC_PREFIX) {
             self.dir.join(stem(name))
         } else {
@@ -324,7 +367,11 @@ impl SecretStore for FileStore {
         use std::io::Write;
         std::fs::create_dir_all(&self.dir).map_err(io)?;
         let path = self.path(name);
-        let tmp = path.with_extension("bin.tmp");
+        // Beside the whole file name, not in place of its extension: `<device key>.enc` would
+        // otherwise share `<device key>.bin.tmp` with a kept item's.
+        let mut tmp = path.clone().into_os_string();
+        tmp.push(".tmp");
+        let tmp = PathBuf::from(tmp);
         let mut options = std::fs::OpenOptions::new();
         options.write(true).create(true).truncate(true);
         #[cfg(unix)]
@@ -338,6 +385,46 @@ impl SecretStore for FileStore {
         std::fs::rename(&tmp, &path).map_err(io)?;
         // `Ok` means durable: the name too, not only the bytes.
         sync_dir(&self.dir).map_err(io)
+    }
+
+    /// The bytes go to a temp file of this claim's own (`create_new`), made durable, then are
+    /// linked to the item's name with `link(2)`, which fails with `EEXIST` when the name is
+    /// taken. So the name appears whole or not at all: a crash or a reader never sees it empty
+    /// or half written, as it could with `O_CREAT|O_EXCL` on the name itself. The temp file is
+    /// removed either way.
+    fn claim_public(&self, name: &str, bytes: &[u8]) -> Result<bool, VaultError> {
+        use std::io::Write;
+        std::fs::create_dir_all(&self.dir).map_err(io)?;
+        let path = self.path(name);
+        let mut nonce = [0u8; 8];
+        rand_core::RngCore::fill_bytes(&mut rand_core::OsRng, &mut nonce);
+        let nonce: String = nonce.iter().map(|b| format!("{b:02x}")).collect();
+        let tmp = path.with_extension(format!("bin.claim-{nonce}.tmp"));
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let linked = (|| {
+            let mut file = options.open(&tmp)?;
+            file.write_all(bytes)?;
+            file.sync_all()?;
+            match std::fs::hard_link(&tmp, &path) {
+                Ok(()) => Ok(true),
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
+                Err(e) => Err(e),
+            }
+        })();
+        let removed = match std::fs::remove_file(&tmp) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+            _ => Ok(()),
+        };
+        let made = linked.map_err(io)?;
+        removed.map_err(io)?;
+        sync_dir(&self.dir).map_err(io)?;
+        Ok(made)
     }
 
     fn get(&self, name: &str) -> Result<Option<Vec<u8>>, VaultError> {
@@ -444,6 +531,20 @@ impl SecretStore for MemoryStore {
             .insert(name.into(), (bytes.to_vec(), None));
         Ok(())
     }
+    /// Under the map's one lock: the check and the insert are one step.
+    fn claim_public(&self, name: &str, bytes: &[u8]) -> Result<bool, VaultError> {
+        let mut items = self
+            .items
+            .lock()
+            .map_err(|_| VaultError::Unavailable("poisoned".into()))?;
+        match items.entry(name.into()) {
+            std::collections::hash_map::Entry::Occupied(_) => Ok(false),
+            std::collections::hash_map::Entry::Vacant(slot) => {
+                slot.insert((bytes.to_vec(), None));
+                Ok(true)
+            }
+        }
+    }
     /// As the store it stands in for: kept only as a keychain is.
     fn put_tagged(&self, name: &str, bytes: &[u8], tag: &ItemTag) -> Result<(), VaultError> {
         if !self.kind().unlocks_itself() {
@@ -500,6 +601,33 @@ impl SecretStore for MemoryStore {
 
 // ─── Linux: the Secret Service ──────────────────────────────────────────────────
 
+/// Which of the items kept under one name holds it.
+#[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
+#[derive(Debug, PartialEq, Eq)]
+enum Holder {
+    None,
+    One(usize),
+    /// Two or more were created first, in the same second: none holds it.
+    Tied,
+}
+
+/// Of the creation times (seconds) of the items kept under one name, the one that holds the
+/// name: the one created strictly first. An item made after that one never displaces it, so
+/// every reader agrees on the holder, whenever it reads; two that tie for first are refused
+/// rather than chosen between, since a claimant that read before the other was made has already
+/// taken its own as the holder.
+#[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
+fn first_created(created: &[u64]) -> Holder {
+    let Some(first) = created.iter().min() else {
+        return Holder::None;
+    };
+    let mut at = created.iter().enumerate().filter(|(_, c)| *c == first);
+    match (at.next(), at.next()) {
+        (Some((index, _)), None) => Holder::One(index),
+        _ => Holder::Tied,
+    }
+}
+
 #[cfg(target_os = "linux")]
 pub use secret_service_store::SecretServiceStore;
 
@@ -508,7 +636,7 @@ mod secret_service_store {
     use std::collections::HashMap;
     use std::sync::mpsc;
 
-    use secret_service::blocking::SecretService;
+    use secret_service::blocking::{Item, SecretService};
     use secret_service::EncryptionType;
 
     use super::*;
@@ -536,6 +664,47 @@ mod secret_service_store {
 
     fn ended() -> VaultError {
         VaultError::Unavailable("Secret Service: its thread ended".into())
+    }
+
+    /// How many times [`holder`] searches again when an item it found is gone before its
+    /// creation time is read.
+    const SETTLE_TRIES: usize = 8;
+
+    /// Every item kept under `name`, locked or not, and which of them holds it
+    /// ([`first_created`]). Nothing is unlocked or read; the creation times are asked only when
+    /// there are two or more items.
+    ///
+    /// While claims are under way, an item found by the search can be deleted before its
+    /// creation time is read: a claimant that lost deletes its own. Then the search is made
+    /// again, and the item is left out. That is safe because only a lost claim deletes an item,
+    /// and a lost claim never holds the name.
+    fn holder<'a>(
+        service: &'a SecretService<'static>,
+        name: &str,
+    ) -> Result<(Vec<Item<'a>>, Holder), VaultError> {
+        let mut tries = 0;
+        loop {
+            let found = service
+                .search_items(HashMap::from([(ATTRIBUTE, name)]))
+                .map_err(unavailable)?;
+            let items: Vec<Item<'a>> = found.unlocked.into_iter().chain(found.locked).collect();
+            let created = match items.len() {
+                0 => return Ok((items, Holder::None)),
+                1 => return Ok((items, Holder::One(0))),
+                _ => items
+                    .iter()
+                    .map(|item| item.get_created())
+                    .collect::<Result<Vec<_>, _>>(),
+            };
+            match created {
+                Ok(created) => {
+                    let holder = first_created(&created);
+                    return Ok((items, holder));
+                }
+                Err(_) if tries + 1 < SETTLE_TRIES => tries += 1,
+                Err(e) => return Err(unavailable(e)),
+            }
+        }
     }
 
     fn open() -> Result<SecretService<'static>, VaultError> {
@@ -620,23 +789,67 @@ mod secret_service_store {
             })
         }
 
+        /// `CreateItem` with `replace = false`, which the Secret Service API does not make a
+        /// create-if-absent: it adds a second item with the same attributes beside the first
+        /// (GNOME Keyring does; the specification says only that the old one is not replaced).
+        /// So the claim is decided after the create, by a rule every claimant reads the same
+        /// way (`holder`): the item created strictly first holds the name. A claimant whose
+        /// item is not that one deletes its own and answers `false`. An item that searches find
+        /// later was created later, so a claimant that saw itself first stays first. Two items
+        /// made in the same second tie, and both claimants delete their own: the name is left
+        /// empty and the caller is refused, never given two answers.
+        ///
+        /// It relies on the service creating and searching one call at a time (GNOME Keyring and
+        /// KWallet each run one D-Bus loop) and on its clock not stepping back between two
+        /// creates.
+        fn claim_public(&self, name: &str, bytes: &[u8]) -> Result<bool, VaultError> {
+            let (name, bytes) = (name.to_string(), bytes.to_vec());
+            self.run(move |service| {
+                let collection = service.get_default_collection().map_err(unavailable)?;
+                if collection.is_locked().map_err(unavailable)? {
+                    collection.unlock().map_err(unavailable)?;
+                }
+                let ours = collection
+                    .create_item(
+                        &name,
+                        HashMap::from([(ATTRIBUTE, name.as_str())]),
+                        &bytes,
+                        false,
+                        "application/octet-stream",
+                    )
+                    .map_err(unavailable)?;
+                let (found, holder) = holder(service, &name)?;
+                let won = match holder {
+                    Holder::One(at) => found[at].item_path == ours.item_path,
+                    Holder::Tied | Holder::None => false,
+                };
+                if !won {
+                    ours.delete().map_err(unavailable)?;
+                }
+                Ok(won)
+            })
+        }
+
+        /// The item that holds `name` (`holder`): the only one, or, while claims are under
+        /// way, the one created strictly first. Refused when two tie for first.
         fn get(&self, name: &str) -> Result<Option<Vec<u8>>, VaultError> {
             let name = name.to_string();
             self.run(move |service| {
-                let found = service
-                    .search_items(HashMap::from([(ATTRIBUTE, name.as_str())]))
-                    .map_err(unavailable)?;
-                let item = match (
-                    found.unlocked.into_iter().next(),
-                    found.locked.into_iter().next(),
-                ) {
-                    (Some(item), _) => item,
-                    (None, Some(item)) => {
-                        item.unlock().map_err(unavailable)?;
-                        item
+                let (found, holder) = holder(service, &name)?;
+                let item = match holder {
+                    Holder::None => return Ok(None),
+                    Holder::One(at) => &found[at],
+                    Holder::Tied => {
+                        return Err(VaultError::Unavailable(
+                            "Secret Service: two items of the same name were made in the same \
+                             second, and neither holds it; remove one"
+                                .into(),
+                        ))
                     }
-                    (None, None) => return Ok(None),
                 };
+                if item.is_locked().map_err(unavailable)? {
+                    item.unlock().map_err(unavailable)?;
+                }
                 Ok(Some(item.get_secret().map_err(unavailable)?))
             })
         }
@@ -769,8 +982,8 @@ mod keychain_store {
 
     const ERR_SEC_USER_CANCELED: i32 = -128;
     const ERR_SEC_ITEM_NOT_FOUND: i32 = -25300;
-    const ERR_SEC_INTERACTION_NOT_ALLOWED: i32 = -25308;
     const ERR_SEC_DUPLICATE_ITEM: i32 = -25299;
+    const ERR_SEC_INTERACTION_NOT_ALLOWED: i32 = -25308;
 
     fn unavailable(e: Error) -> VaultError {
         if e.code() == ERR_SEC_USER_CANCELED {
@@ -810,6 +1023,46 @@ mod keychain_store {
             let mut options = item(name);
             options.set_access_control_options(AccessControlOptions::USER_PRESENCE);
             set_generic_password_options(bytes, options).map_err(unavailable)
+        }
+
+        /// One plain `SecItemAdd`, with no delete before it and no update after it (as
+        /// `set_generic_password_options` would make on `errSecDuplicateItem`): the keychain adds
+        /// the item only when no item of this service and account is kept, and answers
+        /// `errSecDuplicateItem` when one is, which is a lost claim. No access control: the vault
+        /// id is not secret, and a read of it must not prompt. Still in the data-protection
+        /// keychain, under this service and this app's access group.
+        fn claim_public(&self, name: &str, bytes: &[u8]) -> Result<bool, VaultError> {
+            let pairs: Vec<(CFString, CFType)> = unsafe {
+                vec![
+                    (
+                        CFString::wrap_under_get_rule(kSecClass),
+                        CFString::wrap_under_get_rule(kSecClassGenericPassword).into_CFType(),
+                    ),
+                    (
+                        CFString::wrap_under_get_rule(kSecAttrService),
+                        CFString::new(SERVICE).into_CFType(),
+                    ),
+                    (
+                        CFString::wrap_under_get_rule(kSecAttrAccount),
+                        CFString::new(name).into_CFType(),
+                    ),
+                    (
+                        CFString::wrap_under_get_rule(kSecUseDataProtectionKeychain),
+                        CFBoolean::true_value().into_CFType(),
+                    ),
+                    (
+                        CFString::wrap_under_get_rule(kSecValueData),
+                        CFData::from_buffer(bytes).into_CFType(),
+                    ),
+                ]
+            };
+            let attributes = CFDictionary::from_CFType_pairs(&pairs);
+            // No `kSecReturn*` key, so no result is asked for: a null result pointer.
+            match unsafe { SecItemAdd(attributes.as_concrete_TypeRef(), std::ptr::null_mut()) } {
+                0 => Ok(true),
+                ERR_SEC_DUPLICATE_ITEM => Ok(false),
+                code => Err(unavailable(Error::from_code(code))),
+            }
         }
 
         /// The tag as the item's comment (`kSecAttrComment`, [`tag_comment`]), added in the same
@@ -1119,16 +1372,17 @@ impl PlacedStore {
         }
     }
 
-    /// The side that holds `name`, or the one it goes to when it is new. A new staged key goes to
-    /// the side of the kept item it stands beside, so it is sealed (or not) as that item is, and
-    /// its promote is a move within one store: a key staged on the keychain, unsealed, never lands
-    /// in a file.
+    /// The side that holds `name`, or the one it goes to when it is new: the side of the first of
+    /// its [`anchors`] that is held. A new staged key goes beside the kept item, so it is sealed
+    /// (or not) as that item is, and its promote is a move within one store: a key staged on the
+    /// keychain, unsealed, never lands in a file. A key and the vault id go beside each other, so
+    /// the id is lost only with the store that keeps the key.
     fn side(&self, name: &str) -> Result<&dyn SecretStore, VaultError> {
         if let Some(held) = self.holder(name)? {
             return Ok(held);
         }
-        if let Some(kept) = kept_beside(name) {
-            if let Some(held) = self.holder(&kept)? {
+        for anchor in anchors(name) {
+            if let Some(held) = self.holder(&anchor)? {
                 return Ok(held);
             }
         }
@@ -1147,6 +1401,16 @@ impl SecretStore for PlacedStore {
 
     fn put(&self, name: &str, bytes: &[u8]) -> Result<(), VaultError> {
         self.side(name)?.put(name, bytes)
+    }
+
+    /// On the side [`put`](SecretStore::put) would use; that side decides the claim. The side is
+    /// chosen inside the placement lock, as for [`claim_secret`](SecretStore::claim_secret): a
+    /// claimer that saw the platform store down and one that saw it back cannot each claim on a
+    /// different side.
+    fn claim_public(&self, name: &str, bytes: &[u8]) -> Result<bool, VaultError> {
+        holding_lock(&self.claim_lock, || {
+            self.side(name)?.claim_public(name, bytes)
+        })?
     }
 
     fn get(&self, name: &str) -> Result<Option<Vec<u8>>, VaultError> {
@@ -1317,6 +1581,14 @@ impl SecretStore for Reconnecting {
         let connected = self.reach()?;
         self.on(&connected, |store| store.put(name, bytes))?;
         self.mark(name)
+    }
+
+    /// Marked whether this claim won or not: either way the store now keeps an item there.
+    fn claim_public(&self, name: &str, bytes: &[u8]) -> Result<bool, VaultError> {
+        let connected = self.reach()?;
+        let made = self.on(&connected, |store| store.claim_public(name, bytes))?;
+        self.mark(name)?;
+        Ok(made)
     }
 
     fn put_tagged(&self, name: &str, bytes: &[u8], tag: &ItemTag) -> Result<(), VaultError> {
@@ -1622,6 +1894,53 @@ mod tests {
         assert_eq!(&store.claim_secret(&enc, b"other").unwrap()[..], b"enc");
     }
 
+    /// The four items one base58 string can name — a kept key, a staged key, a vault id, a custody
+    /// enc key — are four files, each read back as its own.
+    #[test]
+    fn a_vault_id_an_enc_key_and_the_master_key_slots_are_four_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = FileStore::new(dir.path());
+        let names = [
+            item_name("QmSame"),
+            staged_name("QmSame"),
+            vault_id_name("QmSame"),
+            enc_item_name("QmSame"),
+        ];
+        assert!(store.claim_public(&names[2], b"vault").unwrap());
+        assert_eq!(&store.claim_secret(&names[3], b"enc").unwrap()[..], b"enc");
+        store.put(&names[0], b"kept").unwrap();
+        store.put(&names[1], b"staged").unwrap();
+        store.put(&names[3], b"enc").unwrap();
+        let mut files: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .collect();
+        files.sort();
+        assert_eq!(
+            files,
+            [
+                "QmSame.bin",
+                "QmSame.enc",
+                "QmSame.staged.bin",
+                "QmSame.vault.bin"
+            ]
+        );
+        for (name, bytes) in names
+            .iter()
+            .zip([&b"kept"[..], b"staged", b"vault", b"enc"])
+        {
+            assert_eq!(store.get(name).unwrap().as_deref(), Some(bytes), "{name}");
+        }
+        // No claim takes a name another kind already holds.
+        assert!(!store.claim_public(&names[2], b"other").unwrap());
+        assert_eq!(
+            &store.claim_secret(&names[3], b"other").unwrap()[..],
+            b"enc"
+        );
+        store.delete(&names[0]).unwrap();
+        assert!(store.contains(&names[2]).unwrap() && store.contains(&names[3]).unwrap());
+    }
+
     /// The Secret Service's marker for a custody enc key is its own: while the service is down, an
     /// identity whose scid is the device key's string is still absent, not refused.
     #[test]
@@ -1654,6 +1973,97 @@ mod tests {
         for status in [-25293, -25291, -128, -50] {
             assert!(keychain_usable(status), "{status}");
         }
+    }
+
+    /// A claim makes the item only where none is kept, and never replaces one: in a file, in
+    /// memory, and through a placed store (on the platform side, and on the file side when there
+    /// is no platform store).
+    #[test]
+    fn a_claim_makes_an_item_only_where_none_is_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let name = vault_id_name("QmScid");
+        let file = FileStore::new(dir.path().join("custody"));
+        let memory = MemoryStore::as_kind(StoreKind::Keychain);
+        let platform = Arc::new(MemoryStore::as_kind(StoreKind::Keychain));
+        let placed = PlacedStore::new(
+            Box::new(FileStore::new(dir.path().join("placed"))),
+            Some(Box::new(Session(platform.clone()))),
+            dir.path().join("placed").join(PLACEMENT_LOCK),
+        );
+        // The lock file of the file-only store sits beside its folder, so the folder holds only the
+        // claimed item.
+        let placed_file = PlacedStore::new(
+            Box::new(FileStore::new(dir.path().join("only"))),
+            None,
+            dir.path().join(PLACEMENT_LOCK),
+        );
+        let stores: [&dyn SecretStore; 4] = [&file, &memory, &placed, &placed_file];
+        for store in stores {
+            assert!(store.claim_public(&name, b"first").unwrap());
+            assert!(!store.claim_public(&name, b"second").unwrap());
+            assert_eq!(store.get(&name).unwrap().as_deref(), Some(&b"first"[..]));
+        }
+        assert_eq!(platform.get(&name).unwrap().as_deref(), Some(&b"first"[..]));
+        assert!(!dir.path().join("placed/QmScid.vault.bin").exists());
+        assert!(dir.path().join("only/QmScid.vault.bin").exists());
+        // No temp file of a claim is left beside the item.
+        for folder in ["custody", "only"] {
+            let left: Vec<_> = std::fs::read_dir(dir.path().join(folder))
+                .unwrap()
+                .map(|e| e.unwrap().file_name().into_string().unwrap())
+                .collect();
+            assert_eq!(left, vec!["QmScid.vault.bin".to_string()], "{folder}");
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(dir.path().join("custody/QmScid.vault.bin"))
+                .unwrap()
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
+    }
+
+    /// Many claims at once on one file name: exactly one makes it, and the name holds its bytes.
+    #[test]
+    fn of_claims_on_one_file_at_once_exactly_one_makes_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let name = vault_id_name("QmScid");
+        let start = Arc::new(std::sync::Barrier::new(8));
+        let claims: Vec<_> = (0..8u8)
+            .map(|n| {
+                let (dir, name, start) = (dir.path().to_path_buf(), name.clone(), start.clone());
+                std::thread::spawn(move || {
+                    let store = FileStore::new(dir);
+                    start.wait();
+                    (n, store.claim_public(&name, &[n; 4]).unwrap())
+                })
+            })
+            .collect();
+        let won: Vec<u8> = claims
+            .into_iter()
+            .map(|c| c.join().unwrap())
+            .filter(|(_, made)| *made)
+            .map(|(n, _)| n)
+            .collect();
+        assert_eq!(won.len(), 1);
+        let kept = FileStore::new(dir.path()).get(&name).unwrap().unwrap();
+        assert_eq!(kept, vec![won[0]; 4]);
+    }
+
+    /// The Secret Service may keep two items under one name while claims are under way: the one
+    /// created strictly first holds it, whatever order they are listed in, and one created later
+    /// never displaces it. Two created first in the same second hold it neither.
+    #[test]
+    fn of_items_kept_under_one_name_the_one_created_strictly_first_holds_it() {
+        assert_eq!(first_created(&[]), Holder::None);
+        assert_eq!(first_created(&[7]), Holder::One(0));
+        assert_eq!(first_created(&[9, 7]), Holder::One(1));
+        assert_eq!(first_created(&[7, 9, 8]), Holder::One(0));
+        assert_eq!(first_created(&[7, 7]), Holder::Tied);
+        assert_eq!(first_created(&[8, 7, 9, 7]), Holder::Tied);
+        assert_eq!(first_created(&[6, 7, 7]), Holder::One(0));
     }
 
     #[test]
@@ -1719,6 +2129,9 @@ mod tests {
         }
         fn put(&self, name: &str, bytes: &[u8]) -> Result<(), VaultError> {
             self.0.put(name, bytes)
+        }
+        fn claim_public(&self, name: &str, bytes: &[u8]) -> Result<bool, VaultError> {
+            self.0.claim_public(name, bytes)
         }
         fn get(&self, name: &str) -> Result<Option<Vec<u8>>, VaultError> {
             self.0.get(name)
@@ -1865,6 +2278,9 @@ mod tests {
         }
         fn delete(&self, name: &str) -> Result<(), VaultError> {
             self.items.delete(name)
+        }
+        fn claim_public(&self, name: &str, bytes: &[u8]) -> Result<bool, VaultError> {
+            self.items.claim_public(name, bytes)
         }
         fn claim_secret(&self, name: &str, bytes: &[u8]) -> Result<Zeroizing<Vec<u8>>, VaultError> {
             self.items.claim_secret(name, bytes)

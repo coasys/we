@@ -1,0 +1,96 @@
+apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
+
+android {
+    namespace = "org.coasys.app"
+    compileSdk = rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId "org.coasys.app"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode 1
+        versionName "1.0"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        ndk {
+            // The ABIs scripts/build-android-rust.sh builds the DeviceKey plugin's Rust for:
+            // phones, and the x86_64 emulator.
+            abiFilters 'arm64-v8a', 'x86_64'
+        }
+        // The identity store a phone that has not joined yet speaks to, and the keys its signed
+        // heads must be signed by: the deployment's, set when the app is built (as the desktop's
+        // AD4M_IDENTITY_STORE_URL and AD4M_IDENTITY_STORE_KEYS, comma-separated). A joined phone
+        // speaks to the store it joined at, with these keys. Empty keys: every call that commits
+        // to the log refuses (`no-store-keys`).
+        buildConfigField "String", "IDENTITY_STORE_URL", "\"${System.getenv('AD4M_IDENTITY_STORE_URL') ?: ''}\""
+        buildConfigField "String", "IDENTITY_STORE_KEYS", "\"${System.getenv('AD4M_IDENTITY_STORE_KEYS') ?: ''}\""
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    buildFeatures {
+        buildConfig = true
+    }
+    testOptions {
+        unitTests.all {
+            // The JVM unit tests run the DeviceKey plugin's real Rust: the host build that
+            // scripts/build-android-rust.sh leaves here.
+            systemProperty 'jna.library.path', file('build/host-lib').absolutePath
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+}
+
+kotlin {
+    // Java 21, as capacitor.build.gradle sets for the Java sources.
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+    // Scanning a QR code: CameraX for the frames, ML Kit's bundled barcode model (in the app, no
+    // Play services) for the reading.
+    implementation "androidx.camera:camera-camera2:$cameraxVersion"
+    implementation "androidx.camera:camera-lifecycle:$cameraxVersion"
+    implementation "androidx.camera:camera-view:$cameraxVersion"
+    implementation "com.google.mlkit:barcode-scanning:$mlkitBarcodeVersion"
+    // The Android JNA (its native dispatch for each ABI) in the app; the desktop jar, with the
+    // host's, for the JVM unit tests.
+    implementation "net.java.dev.jna:jna:$jnaVersion@aar"
+    testImplementation "net.java.dev.jna:jna:$jnaVersion"
+    // android.jar's org.json is a stub off the phone; the unit tests read JSON with the real one.
+    testImplementation "org.json:json:20250517"
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception e) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}
