@@ -96,6 +96,27 @@ function removeToast(id: string) {
   setToasts((prev) => prev.filter((t) => t.id !== id));
 }
 
+/*
+  An identical error stays muted for this long after it last reached the screen.
+
+  Longer than any toast's duration on purpose: the collapse above covers a repeat
+  that arrives while its twin is still showing, but a retry loop that reports the
+  same cause every few seconds was free to re-show it the moment it dismissed —
+  a strip of identical boxes, each one news only to itself. Thirty seconds is the
+  line between "the same report, held" and "a recurrence worth seeing again".
+*/
+const ERROR_REPEAT_MUTE_MS = 30_000;
+
+/** When each error message last reached the screen — the window `error()` enforces. */
+const errorShownAt = new Map<string, number>();
+
+function reportError(message: string, duration?: number): string {
+  const now = Date.now();
+  if (now - (errorShownAt.get(message) ?? -Infinity) < ERROR_REPEAT_MUTE_MS) return '';
+  errorShownAt.set(message, now);
+  return addToast(message, 'danger', duration);
+}
+
 export const toastService = {
   get toasts() {
     return toasts;
@@ -111,5 +132,5 @@ export const toastService = {
   success: (message: string, duration?: number, action?: ToastAction, look?: ToastLook) =>
     addToast(message, 'success', duration, action, look),
   warning: (message: string, duration?: number) => addToast(message, 'warning', duration),
-  error: (message: string, duration?: number) => addToast(message, 'danger', duration),
+  error: reportError,
 };

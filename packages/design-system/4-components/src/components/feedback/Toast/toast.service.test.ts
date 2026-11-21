@@ -117,6 +117,32 @@ describe('toastService', () => {
     expect(undone).toEqual(['a', 'b']);
   });
 
+  it('shows the same error text at most once per 30 seconds', () => {
+    /*
+      A failure that keeps firing — a subscription retry loop reporting the same
+      cause every few seconds — used to re-show the identical box each time the
+      last one dismissed. One error is news; the ninth copy of it is a strip.
+      The mute window is on the text and the clock, not on the toast still being
+      on screen.
+    */
+    toastService.error('Join did not land');
+    vi.advanceTimersByTime(5000); // long past its four seconds: it has gone
+    expect(toastService.toasts()).toHaveLength(0);
+
+    toastService.error('Join did not land');
+    expect(toastService.toasts()).toHaveLength(0); // inside the window — held
+
+    vi.advanceTimersByTime(30_000 - 5000);
+    toastService.error('Join did not land');
+    expect(toastService.toasts()).toHaveLength(1); // a real recurrence again
+  });
+
+  it('mutes only the repeated error text, not other errors', () => {
+    toastService.error('First distinct failure');
+    toastService.error('Second distinct failure');
+    expect(toastService.toasts()).toHaveLength(2);
+  });
+
   it('carries who a toast is from and its own icon', () => {
     toastService.info('On it', 0, undefined, { icon: 'robot', from: { name: 'Data', hash: 'did:data' } });
     expect(toastService.toasts()[0]).toMatchObject({ icon: 'robot', from: { name: 'Data', hash: 'did:data' } });
