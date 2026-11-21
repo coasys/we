@@ -254,6 +254,22 @@ describe('the identity window', () => {
     expect(windows).toHaveLength(0);
   });
 
+  it('refuses a cloud device with no host, or a host it cannot read, before any window opens', async () => {
+    const { identity, windows } = setup();
+    for (const step of [
+      { kind: 'add-cloud-device' },
+      { kind: 'add-cloud-device', host: null },
+      { kind: 'add-cloud-device', host: 'cloud.example.org' },
+      { kind: 'add-cloud-device', host: {} },
+      { kind: 'add-cloud-device', host: { kind: 'other' } },
+      { kind: 'add-cloud-device', host: { kind: 'address' } },
+      { kind: 'add-cloud-device', host: { kind: 'address', url: 7 } },
+    ]) {
+      await expect(identity.open(step)).rejects.toThrow('not an identity step');
+    }
+    expect(windows).toHaveLength(0);
+  });
+
   it('runs each device step the custody service knows', async () => {
     for (const step of [
       { kind: 'scan-device' },
@@ -265,6 +281,8 @@ describe('the identity window', () => {
       { kind: 'remove-master' },
       { kind: 'add-bot' },
       { kind: 'check-email' },
+      { kind: 'add-cloud-device', host: { kind: 'coasys' } },
+      { kind: 'add-cloud-device', host: { kind: 'address', url: 'host.example.org' } },
       { kind: 'answer-request', id: 'r1' },
       { kind: 'rename', keyId: 'd2' },
       { kind: 'unlink', keyId: 'd2' },

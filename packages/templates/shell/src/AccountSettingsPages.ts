@@ -11,6 +11,7 @@ import { comingSoon, confirmModal } from '@we/template-kit';
 
 import { accountSettings } from './AccountSettings.schema.ts';
 import { botsSection } from './BotSettingsPages.ts';
+import { cloudUsageCard, peopleCard, signupsCard } from './CloudSettingsPages.ts';
 import { hostCredits, hostSection } from './HostSettings.schema.ts';
 import {
   addDeviceButton,
@@ -432,6 +433,47 @@ export const devicesPage: SchemaNode = {
       children: [{ type: 'Row', children: [addDeviceButton] }],
     }),
     comingSoon({
+      available: { $: 'deviceStore.canAddCloudDevice' },
+      icon: 'cloud',
+      title: 'Add a cloud device',
+      description:
+        'Keep a copy of your identity on Coasys cloud, or on a host you name. Leave the address empty for Coasys cloud.',
+      preview: [actions('Add a cloud device')],
+      children: [
+        {
+          type: 'Column',
+          props: { gap: '200' },
+          $localState: { cloudAddress: { type: 'string', initial: '' } },
+          children: [
+            {
+              type: 'we-input',
+              props: {
+                placeholder: 'Host address (optional)',
+                value: { $: 'local.cloudAddress' },
+                onInput: { $setLocal: 'cloudAddress', value: { $: 'event.detail' } },
+              },
+            },
+            {
+              type: 'Row',
+              children: [
+                {
+                  type: 'we-button',
+                  props: {
+                    size: 'sm',
+                    loading: { $: 'identityStore.busy' },
+                    disabled: { $: 'identityStore.busy' },
+                    onClick: { $invoke: 'deviceStore.addCloudDevice', args: [{ $: 'local.cloudAddress' }] },
+                  },
+                  children: ['Add a cloud device'],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    }),
+    cloudUsageCard,
+    comingSoon({
       available: can('switchDevice'),
       icon: 'arrows-left-right',
       title: 'Where to keep your spaces',
@@ -455,6 +497,8 @@ export function thisDevicePage(advanced: SchemaNode[]): SchemaNode {
       },
       heading('This device', "Settings for the computer or host you're using now."),
       hostSection,
+      signupsCard,
+      peopleCard,
       /*
         How this device keeps the data on its disk, in the backend's own terms and nothing more. Absent
         where the app does not start the backend, and while nothing true can be said yet.

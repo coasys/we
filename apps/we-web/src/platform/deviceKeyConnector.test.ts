@@ -8,10 +8,10 @@
  * `core/src/apiClient.ts:204`), and `onAuthFailed` calls back once when the executor refuses the
  * token.
  */
+import { RENEW_BEFORE_MS } from '@we/backend-ad4m';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { DeviceKeyPlugin, SignedSessionStatement } from './deviceKey';
-import { RENEW_BEFORE_MS } from './keySession';
 import { unusedPlugin } from './unusedPlugin.testing';
 
 /** A `localStorage` for the test, as the WebView's. */
@@ -64,7 +64,7 @@ const clients: {
   refuseToken(reason: string): void;
 }[] = [];
 
-vi.mock('@coasys/ad4m', () => {
+vi.mock('@coasys/ad4m', async (importOriginal) => {
   class Ad4mClient {
     agent = agent;
     closed = false;
@@ -91,10 +91,13 @@ vi.mock('@coasys/ad4m', () => {
       this.closed = true;
     }
   }
-  return { Ad4mClient };
+  // The rest is the SDK's own: the real key session (in `@we/backend-ad4m`) loads beside it.
+  return { ...(await importOriginal<typeof import('@coasys/ad4m')>()), Ad4mClient };
 });
 
-vi.mock('@we/backend-ad4m', () => ({
+// The key session is the real one (it is what is under test); only the port bundle is a stand-in.
+vi.mock('@we/backend-ad4m', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@we/backend-ad4m')>()),
   createAd4mBackendPorts: (client: unknown, _ctx: unknown, options: unknown) => ({ client, options }),
   capabilitiesFromToken: () => [],
 }));

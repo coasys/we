@@ -407,6 +407,36 @@ and a revoke does not change the master key, so the person is told to replace it
 request that also asks to replace the master key goes on, after the yes, to the 12 words, and the
 answer is one `rotate` that revokes the targets and replaces the key.
 
+## Cloud devices and hosts
+
+A host is an executor that takes tenants (AR-05). The `add-cloud-device` step adds one as a device of
+the identity, and the same identity then signs in to it as a tenant. The step is
+`{ kind: 'add-cloud-device', host: { kind: 'coasys' } }` for Coasys cloud, or
+`{ kind: 'add-cloud-device', host: { kind: 'address', url } }` for a host the person types. The
+identity window shows four screens for it: the invite (`cloud-invite`), the wait while the host sets
+up (`cloud-joining`), the match code the holder confirms (`cloud-match`) and the end (`cloud-added`).
+The master key stays on the person's own devices: the host gets a device key only.
+
+`host.info`, `host.join` and `host.joinStatus` go to the host with no credential, because each
+carries its own proof. The service reads an invite from a link or from its code alone, words every
+refusal of `host.join` for the person, and follows the join until the host serves them
+(`ACTIVATION_WAIT`). The Electron main process (`identityWindow.js`) refuses an `add-cloud-device`
+step whose `host` is neither of the two shapes, before any window opens.
+
+**Coasys cloud's address is one value.** `DEFAULT_CLOUD_URL` in `src/cloud.rs` is `https://cloud.coasys.app`
+today, and `coasys_url()` is the only place it is read. `WE_COASYS_CLOUD_URL` replaces it (a staging
+host, or one on this computer); a value that is not an address is an error, not a fall back to the
+default. The service passes the address to the app as `cloudUrl` in its public state, so the app
+holds no copy. The domain is under review (`coasys.app` and `api.coasys.app` for the cloud, `coasys.id`
+for the identity, and `coasys.org` is the DAO), so a change of domain is that one edit.
+
+**The tenant session is the app's, not the service's.** The app signs in to a host with its own
+executor's `agent.signSessionStatement` under `coasys:session`, through the same key-session code a
+browser tab uses (`keySession.ts` in `@we/backend-ad4m`). The token stays in the page's memory and
+never reaches a store or storage. Usage, leaving, export and import all go through that one session.
+A host that holds a tenant answers every call except reading, exporting, usage and leaving with
+`not-admitted`, and the app then shows the held state.
+
 ## Known limits
 
 - **A device's key is linkable to its identity.** The executor's `identity.keyOwner` answers which

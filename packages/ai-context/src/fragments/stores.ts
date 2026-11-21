@@ -913,6 +913,7 @@ export const storeEntries: StoreEntry[] = [
       deviceNoun: { type: 'string' },
       validCount: { type: 'number' },
       canManage: { type: 'boolean' },
+      canAddCloudDevice: { type: 'boolean' },
       canShowCode: { type: 'boolean' },
       canAskMaster: { type: 'boolean' },
       canReplaceMaster: { type: 'boolean' },
@@ -926,6 +927,7 @@ export const storeEntries: StoreEntry[] = [
     actions: [
       'refresh',
       'addDevice',
+      'addCloudDevice',
       'scanDevice',
       'showCode',
       'takeMaster',
@@ -936,6 +938,41 @@ export const storeEntries: StoreEntry[] = [
       'replaceMaster',
       'restore',
       'removeMaster',
+    ],
+  },
+  {
+    name: 'hostStore',
+    state: {
+      canViewHost: { type: 'boolean' },
+      isCoasysCloud: { type: 'boolean' },
+      usage: {
+        type: 'object',
+        properties: ['host', 'spend', 'storage', 'aiRuns', 'spaces', 'privateSpaces'],
+      },
+      held: { type: 'boolean' },
+      error: { type: 'string' },
+      notice: { type: 'string' },
+      busy: { type: 'boolean' },
+      canOperate: { type: 'boolean' },
+      policy: { type: 'object', properties: ['signup', 'maxTenants', 'display', 'choiceNeeded'] },
+      choiceNeeded: { type: 'boolean' },
+      choiceNeededText: { type: 'string' },
+      signupOptions: { type: 'array', properties: ['value', 'label'] },
+      invites: { type: 'array', properties: ['id', 'note', 'status', 'expires', 'canRevoke'] },
+      people: { type: 'array', properties: ['id', 'label', 'state', 'canRemove', 'since'] },
+      newInvite: { type: 'string' },
+      operatorError: { type: 'string' },
+      operatorBusy: { type: 'boolean' },
+    },
+    actions: [
+      'openHost',
+      'leave',
+      'exportData',
+      'importData',
+      'setSignup',
+      'createInvite',
+      'revokeInvite',
+      'removePerson',
     ],
   },
   {
@@ -2475,6 +2512,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         "'phone' | 'computer' — what this device is, for the sentences about it: 'This ' + deviceStore.deviceNoun + ' does not keep your master key'",
       validCount:
         'number — how many device keys are valid (neither unlinked, revoked nor ended); bot keys are not counted',
+      canAddCloudDevice:
+        'boolean — a cloud device can be added: canManage, and the backend can sign in to a host. Gate the Add a cloud device card on this',
       canManage:
         'boolean — Link a device (scanDevice, addDevice), Rename, Unlink, Revoke and answering requests can be offered: this computer keeps the master key of the identity',
       canShowCode: 'boolean — "Show code" can be offered: this computer can join an identity and speaks for none yet',
@@ -2498,6 +2537,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       refresh: '(): reads the device list again',
       addDevice:
         '(): adds a server by an offer link — the backend asks the person wherever it keeps the master key (on the desktop: the offer link and QR code, then the match code, then the confirmation that signs it). Resolves with the outcome; the list is read again',
+      addCloudDevice:
+        '(address?): adds a cloud device: Coasys cloud, or the host at `address` when one is typed. The backend asks for an invite code where the host wants one, checks the email, shows the match code, and signs the new device into the key log. Resolves with the outcome; the list is read again',
       scanDevice:
         '(): "Enter code" — adds a device by the code it shows: the person pastes it, both show a match code, and the confirmation names the device and may let it keep the master key',
       showCode:
@@ -2518,6 +2559,45 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '(): "Restore with recovery phrase" — on a computer of no identity, asks for the words, lists the identity\'s devices to lock out, and makes this computer a device of it that keeps the new master key. Resolves with the outcome',
       removeMaster:
         "(): stops keeping the master key on this computer, once the person confirms it; refused, with the reason, when this computer keeps the only copy. Resolves 'done' only when it was removed",
+    },
+  },
+  hostStore: {
+    state: {
+      canViewHost:
+        'boolean — the person can look at their own place on a host from here: this computer signs in to one as them. Gate the Cloud usage card on this',
+      isCoasysCloud: 'boolean — the host being looked at is Coasys cloud: show its welcome text',
+      usage:
+        "{ host, spend, storage, aiRuns, spaces, privateSpaces } | null — what the person uses on the host, worded: `spend` is 'Free during the closed beta' while the host takes no payment; `spaces` is { name, shared }[]. Null until read, and after leaving",
+      held: 'boolean — the host holds this person: only reading, exporting, usage and leaving work, and every other call is refused. Show that, and offer Export and Leave only',
+      error: 'string — why the last call to the host failed, or empty',
+      notice: 'string — what the last export, import or leave did, or empty',
+      busy: 'boolean — a call to the host is running',
+      canOperate: 'boolean — this computer runs a host that takes people: Sign-ups and People can be offered',
+      policy: '{ signup, maxTenants, display, choiceNeeded } | null — the host this computer runs: who may join',
+      choiceNeeded: 'boolean — the person who runs this host has never chosen who may join: show choiceNeededText',
+      choiceNeededText: 'string — the sentence to show while choiceNeeded',
+      signupOptions: '{ value, label }[] — the three answers to who may join, in order; `value` goes to setSignup',
+      invites:
+        "{ id, note, status, expires, canRevoke }[] — the invites sent, `status` 'Open', 'Used', 'Revoked' or 'Expired'",
+      people:
+        "{ id, label, state, canRemove, since }[] — the people on this host; `state` 'Joining', 'Active', 'On hold', 'Left', 'Deleted'; `canRemove` for one who left and kept their data here",
+      newInvite: 'string — the code of the invite just made, shown once; empty before',
+      operatorError: 'string — why the last Sign-ups or People call failed, or empty',
+      operatorBusy: 'boolean — a Sign-ups or People call is running',
+    },
+    actions: {
+      openHost:
+        "(address?): looks at the host at `address`, or at Coasys cloud when it is empty, and reads the usage. The session is opened on the first call, signed with the person's identity",
+      leave:
+        '(keepData: boolean, exportFirst: boolean): leaves the host. exportFirst saves everything to a file and leaves only once it is saved; keepData false destroys the data on the host at once and cannot be undone. Resolves true once left',
+      exportData:
+        '(): saves everything the host keeps for the person to a gzip file they choose. Resolves true once saved',
+      importData:
+        '(): asks for a file made by exportData and loads it into new private spaces. Resolves true once loaded',
+      setSignup: "(signup: 'anyone' | 'by_invite' | 'no_one'): sets who may join this host",
+      createInvite: '(note: string): makes an invite that lasts a week; its code is in newInvite',
+      revokeInvite: '(id: string): cancels an open invite',
+      removePerson: '(id: string): removes a person who left and kept their data here, and that data',
     },
   },
   botStore: {

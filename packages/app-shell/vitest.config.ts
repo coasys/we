@@ -21,6 +21,8 @@ const SOLID_TESTS = [
   'tests/runtimeStore.test.tsx',
   'tests/accountStore.test.tsx',
   'tests/identityStore.test.tsx',
+  // The host store over a fake host port: real signals, and an effect that follows the backend.
+  'tests/hostStore.test.tsx',
   // The app before a session: memos over a host of fakes, and the hand-off rendering WE's app.
   'tests/baseStore.test.tsx',
   'tests/baseBoot.test.tsx',

@@ -106,6 +106,13 @@ pub enum IdentityStep {
     /// the platform's token gives to the identity (`identity.attachNote`). Offered while
     /// `identity.status` says `vouched: false`; the person can skip it.
     CheckEmail,
+    /// The holder adds a host (Coasys cloud, or one by its address) as a device: the host's
+    /// managed agent claims an offer, the person confirms the match code, and the key log lists the
+    /// host's key (AR-05 4.5). Asks for an invite where the host wants one, and for the email
+    /// check where the host needs it.
+    AddCloudDevice {
+        host: crate::cloud::CloudHost,
+    },
 }
 
 /// A key a `confirm-revoke` request asks to revoke, as the key log lists it: the key id and its
@@ -160,6 +167,15 @@ pub enum Screen {
     },
     /// The store keeps a vouch note for `did` now.
     EmailChecked { did: String },
+    /// The host asks for an invite. `error`: why the last one did not work.
+    CloudInvite { host: String, error: Option<String> },
+    /// Nothing to ask: the window sends `WaitClaim`, and the host is asked to claim the offer.
+    CloudJoining { host: String },
+    /// The host claimed the offer. Both show this code; the person confirms when they match.
+    CloudMatch { code: String, host: String },
+    /// The key log lists the host's key. `active`: the host serves the person now; false while it
+    /// is still setting up, which the Devices page shows too.
+    CloudAdded { host: String, active: bool },
     /// The offer link to give the new device, and its QR code as SVG.
     Offer {
         link: String,
@@ -397,7 +413,8 @@ impl Screen {
             | Screen::Restored { .. }
             | Screen::MasterRemoved
             | Screen::BotAdded { .. }
-            | Screen::EmailChecked { .. } => Some(StepOutcome::Done),
+            | Screen::EmailChecked { .. }
+            | Screen::CloudAdded { .. } => Some(StepOutcome::Done),
             Screen::Failed { .. } => Some(StepOutcome::Failed),
             _ => None,
         }
@@ -558,6 +575,10 @@ pub enum StepInput {
     NewCode,
     /// On `EnterEmailCode`: go back to `EnterEmail`, to type another address.
     ChangeEmail,
+    /// On `CloudInvite`: the invite link, or its secret alone.
+    Invite {
+        code: String,
+    },
 }
 
 impl std::fmt::Debug for StepInput {
@@ -588,6 +609,7 @@ impl std::fmt::Debug for StepInput {
             StepInput::EmailCode { .. } => "email-code",
             StepInput::NewCode => "new-code",
             StepInput::ChangeEmail => "change-email",
+            StepInput::Invite { .. } => "invite",
         };
         f.write_str(name)
     }
@@ -629,6 +651,8 @@ pub struct CustodyPublic {
     /// again, so the person revokes this computer from a device that holds the master key and
     /// links it again ([`ENC_MISMATCH`]).
     pub enc_mismatch: bool,
+    /// Coasys cloud's address ([`crate::cloud::coasys_url`]), for the window's tenant view of it.
+    pub cloud_url: String,
 }
 
 /// What the person reads when [`CustodyPublic::enc_mismatch`] is set.
@@ -1081,7 +1105,10 @@ async fn run_step(step: IdentityStep, reads: &mut StateReads<'_>, rx: &mut Rx, r
     match step {
         IdentityStep::ShowCode => run_show_code(reads, rx, reply).await,
         IdentityStep::Create => beside(reads, run_create(vault, address, rx, reply)).await,
-        IdentityStep::AddDevice => beside(reads, run_link(vault, address, rx, reply)).await,
+        IdentityStep::AddDevice => beside(reads, run_link(vault, address, rx, reply, None)).await,
+        IdentityStep::AddCloudDevice { host } => {
+            beside(reads, run_link(vault, address, rx, reply, Some(&host))).await
+        }
         IdentityStep::ScanDevice => beside(reads, run_scan(vault, address, rx, reply)).await,
         IdentityStep::TakeMaster => beside(reads, run_take_master(vault, address, rx, reply)).await,
         IdentityStep::AskMaster => beside(reads, run_ask_master(vault, address, reply)).await,
@@ -1402,6 +1429,8 @@ async fn public_state_on<R: ExecutorRpc>(
         requests,
         master_waiting,
         enc_mismatch,
+        // Empty when the override is not an address: the window then offers no Coasys cloud view.
+        cloud_url: crate::cloud::coasys_url().unwrap_or_default(),
     }
 }
 
@@ -1957,19 +1986,80 @@ fn passphrase_for(vault: &DesktopVault, did: &str) -> Result<bool, ClientError> 
     Ok(vault.needs_passphrase_for(scid)?)
 }
 
-async fn run_link(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, reply: &mut Reply) {
+/// The holder adds a device by an offer it gives: shown as a link for a server's operator
+/// (`host` is `None`), or handed to a host the person chose, whose managed agent claims it
+/// ([`follow_cloud`]).
+async fn run_link(
+    vault: &DesktopVault,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+    host: Option<&crate::cloud::CloudHost>,
+) {
     let executor = match connect(address, vault).await {
         Ok(e) => e,
         Err(message) => return answer(reply, Ok(Screen::Failed { message })),
     };
+    let target = match host {
+        Some(host) => match connect_host(host).await {
+            Ok(target) => Some(target),
+            Err(message) => return answer(reply, Ok(Screen::Failed { message })),
+        },
+        None => None,
+    };
+    link_on(&executor, target, vault, address, rx, reply).await
+}
+
+/// The host a person chose, reached with no credential: `host.info`, `host.join` and
+/// `host.joinStatus` are open to anyone and carry their own proof.
+struct CloudTarget<H> {
+    rpc: H,
+    url: String,
+    coasys: bool,
+}
+
+/// Reaches the host at its address (Coasys cloud's is [`crate::cloud::DEFAULT_CLOUD_URL`]).
+async fn connect_host(host: &crate::cloud::CloudHost) -> Result<CloudTarget<WsRpcClient>, String> {
+    let url = match host {
+        crate::cloud::CloudHost::Coasys => crate::cloud::coasys_url()?,
+        address => address.url(None)?,
+    };
+    let rpc = WsRpcClient::connect(&url, "").await.map_err(|e| {
+        log::warn!("custody: the host at {url} did not answer: {e}");
+        crate::cloud::UNREACHABLE.to_string()
+    })?;
+    Ok(CloudTarget {
+        rpc,
+        url,
+        coasys: matches!(host, crate::cloud::CloudHost::Coasys),
+    })
+}
+
+async fn link_on<R: ExecutorRpc, H: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    target: Option<CloudTarget<H>>,
+    vault: &DesktopVault,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+) {
     // The offer names the store the executor uses, and the claiming device publishes through it.
-    let store_url = match trusted_store(&executor).await {
+    let store_url = match trusted_store(executor).await {
         Ok(url) => url,
         Err(refused) => return answer(reply, Ok(refused)),
     };
-    let (did, own_key) = match holder_of(&executor, vault).await {
+    let (did, own_key) = match holder_of(executor, vault).await {
         Ok(holder) => holder,
         Err(screen) => return answer(reply, Ok(screen)),
+    };
+    // A host is asked before the person unlocks anything: one that is closed, full or not a host
+    // costs no passphrase.
+    let cloud = match target {
+        Some(target) => match cloud_prelude(target, executor, vault, address, rx, reply).await {
+            Some(cloud) => Some(cloud),
+            None => return,
+        },
+        None => None,
     };
 
     // The one unlock of the flow — a flow asks the person to unlock once, not per signature: where
@@ -1995,7 +2085,7 @@ async fn run_link(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, 
             unlocking = vault.unlocking(Some(p.into_secret()));
         }
         match LinkFlow::open(
-            &executor,
+            executor,
             &unlocking,
             &did,
             OfferKind::Node,
@@ -2013,6 +2103,12 @@ async fn run_link(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, 
             Err(e) => return answer(reply, Ok(failed(&e))),
         }
     };
+    if let Some(cloud) = cloud {
+        return follow_cloud(
+            &flow, executor, &unlocking, &did, cloud, vault, address, rx, reply,
+        )
+        .await;
+    }
     let link = flow.link();
     answer(
         reply,
@@ -2024,7 +2120,7 @@ async fn run_link(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, 
     );
     follow_link(
         &flow,
-        &executor,
+        executor,
         &unlocking,
         &did,
         own_key.as_deref(),
@@ -2034,6 +2130,185 @@ async fn run_link(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, 
         reply,
     )
     .await
+}
+
+/// The host a person adds, asked what anyone may ask before the flow goes on.
+struct CloudJoin<H> {
+    target: CloudTarget<H>,
+    name: String,
+    needs_invite: bool,
+}
+
+/// Reads what the host says of itself (`host.info`) and runs the email check it needs. `None` when
+/// the step ended (a screen said why, or the step was cancelled).
+async fn cloud_prelude<R: ExecutorRpc, H: ExecutorRpc>(
+    target: CloudTarget<H>,
+    executor: &ViaExecutor<R>,
+    vault: &DesktopVault,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+) -> Option<CloudJoin<H>> {
+    let info = match crate::cloud::info(&target.rpc).await {
+        Ok(info) => info,
+        Err(message) => {
+            answer(reply, Ok(Screen::Failed { message }));
+            return None;
+        }
+    };
+    if let Some(message) = info.refuses() {
+        answer(reply, Ok(Screen::Failed { message }));
+        return None;
+    }
+    let platform = crate::platform::Platform::from_env();
+    match email_check(executor, &platform, vault, address, rx, reply).await? {
+        Screen::EmailChecked { .. } => {}
+        failed => {
+            answer(reply, Ok(failed));
+            return None;
+        }
+    }
+    Some(CloudJoin {
+        target,
+        name: info.name,
+        needs_invite: info.signup == crate::cloud::Signup::ByInvite,
+    })
+}
+
+/// The link to a host after its offer is open: the invite where it is asked, then `host.join`
+/// (the host's managed agent claims the offer), the match code, and the holder's confirm, which
+/// publishes the add. Ends when the host serves the person, or says it is still setting up.
+#[allow(clippy::too_many_arguments)]
+async fn follow_cloud<R: ExecutorRpc, H: ExecutorRpc>(
+    flow: &LinkFlow<'_, R>,
+    executor: &ViaExecutor<R>,
+    unlocking: &Unlocking<'_>,
+    did: &str,
+    cloud: CloudJoin<H>,
+    vault: &DesktopVault,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+) {
+    use crate::cloud::{self, JoinRefused};
+    let host = cloud.name.clone();
+    let mut invite: Option<String> = None;
+    let ask_invite = |error: Option<&str>| Screen::CloudInvite {
+        host: host.clone(),
+        error: error.map(str::to_string),
+    };
+    answer(
+        reply,
+        Ok(if cloud.needs_invite {
+            ask_invite(None)
+        } else {
+            Screen::CloudJoining { host: host.clone() }
+        }),
+    );
+    let mut claimed: Option<(Claimed, String)> = None;
+    loop {
+        let Some(input) = next_input(vault, address, rx, reply).await else {
+            return;
+        };
+        match input {
+            StepInput::Invite { code } if cloud.needs_invite && claimed.is_none() => {
+                match cloud::invite_secret(&code) {
+                    Some(secret) => {
+                        invite = Some(secret);
+                        answer(reply, Ok(Screen::CloudJoining { host: host.clone() }));
+                    }
+                    None => answer(
+                        reply,
+                        Ok(ask_invite(Some(
+                            "That is not an invite. Check it and try again.",
+                        ))),
+                    ),
+                }
+            }
+            StepInput::WaitClaim
+                if claimed.is_none() && (invite.is_some() || !cloud.needs_invite) =>
+            {
+                let joined = match cloud::join(
+                    &cloud.target.rpc,
+                    did,
+                    &flow.offer_string(),
+                    invite.as_deref(),
+                )
+                .await
+                {
+                    Ok(joined) => joined,
+                    Err(e) => match cloud::join_refused(&e) {
+                        JoinRefused::Invite => {
+                            invite = None;
+                            answer(
+                                reply,
+                                Ok(ask_invite(Some(
+                                    "That invite does not work. Ask for a new one.",
+                                ))),
+                            );
+                            continue;
+                        }
+                        JoinRefused::Stopped(message) => {
+                            return answer(reply, Ok(Screen::Failed { message }))
+                        }
+                    },
+                };
+                let outcome = tokio::select! {
+                    claim = flow.wait_for_claim() => Some(claim),
+                    () = wait_cancel(vault, address, rx) => None,
+                };
+                match outcome {
+                    Some(Ok(claim)) => {
+                        let screen = Screen::CloudMatch {
+                            code: claim.match_code.clone(),
+                            host: host.clone(),
+                        };
+                        claimed = Some((claim, joined.join_handle));
+                        answer(reply, Ok(screen));
+                    }
+                    Some(Err(e)) => return answer(reply, Ok(failed(&e))),
+                    None => return answer(reply, Err(CustodyError::NoStep)),
+                }
+            }
+            StepInput::Confirm { name, .. } if claimed.is_some() => {
+                let (claim, handle) = claimed.take().expect("checked above");
+                let (kind, place) = if cloud.target.coasys {
+                    (DeviceKind::CoasysCloud, Place::CoasysCloud)
+                } else {
+                    (DeviceKind::CommunityHost, Place::CommunityHost)
+                };
+                let entry = DeviceEntry {
+                    name: given_name(name).unwrap_or_else(|| host.clone()),
+                    kind,
+                    place: Some(place),
+                    address: Some(cloud.target.url.clone()),
+                    runs_executor: true,
+                    holds_master: Holds::No,
+                    master_index: None,
+                    vault: None,
+                    operator: None,
+                };
+                // A host never keeps the master key: it serves the person with its own agent.
+                if let Err(e) = flow.confirm(&claim, entry, false).await {
+                    return answer(reply, Ok(failed(&e)));
+                }
+                retry_quietly(executor, unlocking, did).await;
+                let active = cloud::until_active(
+                    &cloud.target.rpc,
+                    &handle,
+                    std::time::Duration::from_secs(2),
+                    cloud::ACTIVATION_WAIT,
+                )
+                .await
+                .unwrap_or_else(|why| {
+                    log::warn!("custody: the host's join was not followed to its end: {why}");
+                    false
+                });
+                return answer(reply, Ok(Screen::CloudAdded { host, active }));
+            }
+            _ => answer(reply, Err(CustodyError::WrongInput)),
+        }
+    }
 }
 
 /// The identity this computer speaks for and this computer's key id in its log, finishing a
@@ -5238,32 +5513,58 @@ async fn check_email_on<R: ExecutorRpc>(
     rx: &mut Rx,
     reply: &mut Reply,
 ) {
-    use crate::platform::PlatformError;
+    if let Some(last) = email_check(executor, platform, vault, address, rx, reply).await {
+        answer(reply, Ok(last));
+    }
+}
+
+/// The email check from the start: `EmailChecked` at once when the store already keeps a vouch
+/// note, else the screens of [`ask_email`]. The last screen, which the caller answers with, or
+/// `None` when the step ended first (a cancel). The cloud-device step runs it too, then goes on.
+async fn email_check<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    platform: &crate::platform::Platform,
+    vault: &DesktopVault,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+) -> Option<Screen> {
     let did = match executor.status().await {
         Ok(IdentityStatus {
             did: Some(did),
             vouched: true,
             ..
-        }) => return answer(reply, Ok(Screen::EmailChecked { did })),
+        }) => return Some(Screen::EmailChecked { did }),
         Ok(IdentityStatus { did: Some(did), .. }) => did,
         Ok(_) => {
-            return answer(
-                reply,
-                Ok(Screen::Failed {
-                    message: NO_IDENTITY_TO_CHECK.into(),
-                }),
-            )
+            return Some(Screen::Failed {
+                message: NO_IDENTITY_TO_CHECK.into(),
+            })
         }
-        Err(e) => return answer(reply, Ok(failed(&ClientError::Rpc(e)))),
+        Err(e) => return Some(failed(&ClientError::Rpc(e))),
     };
+    ask_email(executor, platform, did, vault, address, rx, reply).await
+}
+
+/// The email check's screens for the identity `did`, from the address to the platform's token
+/// attached: the last screen (`EmailChecked`, or `Failed`), which the caller answers with, or
+/// `None` when the step ended first (a cancel). The cloud-device step runs it too, then goes on.
+async fn ask_email<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    platform: &crate::platform::Platform,
+    did: String,
+    vault: &DesktopVault,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+) -> Option<Screen> {
+    use crate::platform::PlatformError;
     answer(reply, Ok(Screen::EnterEmail { error: None }));
 
     // The address the last code went to; `None` on `EnterEmail`.
     let mut sent: Option<String> = None;
     loop {
-        let Some(input) = next_input(vault, address, rx, reply).await else {
-            return;
-        };
+        let input = next_input(vault, address, rx, reply).await?;
         let screen = match (input, sent.clone()) {
             (StepInput::Email { email }, None) => {
                 let email = email.trim().to_string();
@@ -5313,18 +5614,15 @@ async fn check_email_on<R: ExecutorRpc>(
                 };
                 match platform.verify(&email, &did, &code).await {
                     Ok(token) => match executor.attach_note(&token).await {
-                        Ok(_) => return answer(reply, Ok(Screen::EmailChecked { did })),
+                        Ok(_) => return Some(Screen::EmailChecked { did }),
                         // Another app of this identity attached a note first: the check is done.
                         Err(e) if refusal(&e) == Some(Refusal::AlreadyVouched) => {
-                            return answer(reply, Ok(Screen::EmailChecked { did }))
+                            return Some(Screen::EmailChecked { did })
                         }
                         Err(e) if refusal(&e) == Some(Refusal::NoIdentity) => {
-                            return answer(
-                                reply,
-                                Ok(Screen::Failed {
-                                    message: NO_IDENTITY_TO_CHECK.into(),
-                                }),
-                            )
+                            return Some(Screen::Failed {
+                                message: NO_IDENTITY_TO_CHECK.into(),
+                            })
                         }
                         // The store's vouching check refused the token (spent, or not known).
                         Err(e) if e.code == 403 => {
@@ -5394,6 +5692,7 @@ async fn may_hold_master<R: ExecutorRpc>(
 mod tests {
     use super::*;
     use std::cell::{Cell, RefCell};
+    use std::rc::Rc;
 
     use ad4m_identity_client::vault::KeySigner;
     use ad4m_identity_client::{RpcError, Vault};
@@ -5950,6 +6249,7 @@ mod tests {
             }],
             master_waiting: true,
             enc_mismatch: true,
+            cloud_url: "https://cloud.example.org".into(),
         })
         .unwrap();
         assert_eq!(public["devices"][0]["keyId"], "d1");
@@ -5959,6 +6259,7 @@ mod tests {
         assert_eq!(public["requests"][0]["keyIds"], json!([]));
         assert_eq!(public["masterWaiting"], true);
         assert_eq!(public["encMismatch"], true);
+        assert_eq!(public["cloudUrl"], "https://cloud.example.org");
         assert_eq!(public["revokedHolders"], json!(["d3"]));
         assert_eq!(public["holdsMaster"]["index"], 0);
         assert_eq!(public["blocked"], NO_STORE);
@@ -10524,6 +10825,252 @@ mod tests {
             "{shown:?}"
         );
         assert!(executor.rpc().called("identity.openOffer").is_empty());
+    }
+
+    #[test]
+    fn the_add_cloud_device_step_and_its_screens_cross_ipc_in_the_windows_shapes() {
+        let step: IdentityStep = serde_json::from_value(
+            json!({ "kind": "add-cloud-device", "host": { "kind": "address", "url": "h.example.org" } }),
+        )
+        .unwrap();
+        assert!(matches!(
+            &step,
+            IdentityStep::AddCloudDevice { host: crate::cloud::CloudHost::Address { url } } if url == "h.example.org"
+        ));
+        let coasys: IdentityStep = serde_json::from_value(
+            json!({ "kind": "add-cloud-device", "host": { "kind": "coasys" } }),
+        )
+        .unwrap();
+        assert!(matches!(
+            coasys,
+            IdentityStep::AddCloudDevice {
+                host: crate::cloud::CloudHost::Coasys
+            }
+        ));
+        let input: StepInput =
+            serde_json::from_value(json!({ "kind": "invite", "code": "https://x#abc" })).unwrap();
+        assert!(matches!(&input, StepInput::Invite { code } if code == "https://x#abc"));
+        // The invite is a credential: the debug form never prints it.
+        assert_eq!(format!("{input:?}"), "invite");
+        assert_eq!(
+            serde_json::to_value(Screen::CloudInvite {
+                host: "Coasys cloud".into(),
+                error: None
+            })
+            .unwrap(),
+            json!({ "screen": "cloud-invite", "host": "Coasys cloud", "error": null })
+        );
+        assert_eq!(
+            serde_json::to_value(Screen::CloudJoining { host: "H".into() }).unwrap(),
+            json!({ "screen": "cloud-joining", "host": "H" })
+        );
+        assert_eq!(
+            serde_json::to_value(Screen::CloudMatch {
+                code: "R7K Q2M".into(),
+                host: "H".into()
+            })
+            .unwrap(),
+            json!({ "screen": "cloud-match", "code": "R7K Q2M", "host": "H" })
+        );
+        let added = Screen::CloudAdded {
+            host: "H".into(),
+            active: true,
+        };
+        assert_eq!(
+            serde_json::to_value(&added).unwrap(),
+            json!({ "screen": "cloud-added", "host": "H", "active": true })
+        );
+        assert_eq!(added.outcome(), Some(StepOutcome::Done));
+        for open in [
+            Screen::CloudInvite {
+                host: "H".into(),
+                error: None,
+            },
+            Screen::CloudJoining { host: "H".into() },
+            Screen::CloudMatch {
+                code: "c".into(),
+                host: "H".into(),
+            },
+        ] {
+            assert_eq!(open.outcome(), None, "{open:?}");
+        }
+    }
+
+    /// A host the test keeps a hand on while the flow holds it.
+    struct SharedHost(Rc<FakeExecutor>);
+
+    #[async_trait::async_trait(?Send)]
+    impl ExecutorRpc for SharedHost {
+        async fn call(&self, method: &str, p: Value) -> Result<Value, RpcError> {
+            self.0.call(method, p).await
+        }
+    }
+
+    /// A host that answers `host.info` as `signup` says.
+    fn host_with(signup: &'static str, full: bool) -> (CloudTarget<SharedHost>, Rc<FakeExecutor>) {
+        let host = Rc::new(FakeExecutor::new());
+        host.answer(
+            "host.info",
+            json!({ "multiUser": true, "signup": signup, "name": "Garden host",
+                    "runByCoasys": false, "full": full }),
+        );
+        let target = CloudTarget {
+            rpc: SharedHost(host.clone()),
+            url: "https://garden.example".into(),
+            coasys: false,
+        };
+        (target, host)
+    }
+
+    #[tokio::test]
+    async fn a_host_that_is_full_is_refused_before_anything_is_opened() {
+        let (executor, vault) = holder_with_head();
+        executor.rpc().rpc().vouched.set(true);
+        let (target, _host) = host_with("anyone", true);
+        let (address, mut rx, mut reply, _window, first) = opened();
+        let ((), shown) = tokio::join!(
+            link_on(
+                &executor,
+                Some(target),
+                &vault,
+                &address,
+                &mut rx,
+                &mut reply
+            ),
+            async { first.await.unwrap().unwrap() }
+        );
+        assert!(
+            matches!(&shown, Screen::Failed { message } if message.contains("is full")),
+            "{shown:?}"
+        );
+        assert!(executor.rpc().rpc().called("identity.openOffer").is_empty());
+        assert_eq!(executor.rpc().rpc().publishes.get(), 0);
+    }
+
+    #[tokio::test]
+    async fn a_host_that_wants_an_invite_asks_for_it_and_asks_again_when_it_does_not_work() {
+        let (executor, vault) = holder_with_head();
+        executor.rpc().rpc().vouched.set(true);
+        let (target, host) = host_with("by_invite", false);
+        host.refuse("host.join", 403, "invite-invalid: no such invite");
+        let (address, mut rx, mut reply, window, first) = opened();
+        let ((), screens) = tokio::join!(
+            link_on(
+                &executor,
+                Some(target),
+                &vault,
+                &address,
+                &mut rx,
+                &mut reply
+            ),
+            async {
+                let mut shown = vec![first.await.unwrap().unwrap()];
+                shown.push(
+                    window
+                        .step(StepInput::Invite {
+                            code: "not an invite".into(),
+                        })
+                        .await,
+                );
+                assert!(host.called("host.join").is_empty());
+                shown.push(
+                    window
+                        .step(StepInput::Invite {
+                            code: "https://coasys.id/i#abc-123".into(),
+                        })
+                        .await,
+                );
+                shown.push(window.step(StepInput::WaitClaim).await);
+                // A refusal other than the invite ends the step.
+                host.refuse("host.join", 403, "host-full: no room");
+                shown.push(
+                    window
+                        .step(StepInput::Invite {
+                            code: "abc-123".into(),
+                        })
+                        .await,
+                );
+                shown.push(window.step(StepInput::WaitClaim).await);
+                shown
+            }
+        );
+        assert!(
+            matches!(&screens[0], Screen::CloudInvite { host, error: None } if host == "Garden host"),
+            "{screens:?}"
+        );
+        assert!(
+            matches!(&screens[1], Screen::CloudInvite { error: Some(m), .. } if m.contains("not an invite")),
+            "{screens:?}"
+        );
+        assert!(
+            matches!(&screens[2], Screen::CloudJoining { .. }),
+            "{screens:?}"
+        );
+        assert!(
+            matches!(&screens[3], Screen::CloudInvite { error: Some(m), .. } if m.contains("does not work")),
+            "{screens:?}"
+        );
+        assert!(
+            matches!(&screens[4], Screen::CloudJoining { .. }),
+            "{screens:?}"
+        );
+        assert!(
+            matches!(&screens[5], Screen::Failed { message } if message.contains("full")),
+            "{screens:?}"
+        );
+        let joins = host.called("host.join");
+        assert_eq!(joins.len(), 2);
+        assert_eq!(joins[0]["inviteSecret"], "abc-123");
+        assert!(
+            joins[0]["offer"]
+                .as_str()
+                .unwrap()
+                .starts_with("coasys:offer:1:"),
+            "{}",
+            joins[0]
+        );
+        assert!(joins[0]["didScid"]
+            .as_str()
+            .unwrap()
+            .starts_with("did:scid:"));
+        assert_eq!(executor.rpc().rpc().publishes.get(), 0);
+    }
+
+    #[tokio::test]
+    async fn a_host_that_asks_for_no_invite_is_asked_to_claim_the_offer_with_none() {
+        let (executor, vault) = holder_with_head();
+        executor.rpc().rpc().vouched.set(true);
+        // No claim ever reaches the store: the wait ends as the offer did.
+        executor.rpc().rpc().answer("identity.offers", json!([]));
+        let (target, host) = host_with("anyone", false);
+        host.answer(
+            "host.join",
+            json!({ "joinHandle": "h1", "tenantId": "t1", "deviceDid": "did:key:zD", "rejoin": false }),
+        );
+        let (address, mut rx, mut reply, window, first) = opened();
+        let ((), (first_screen, last)) = tokio::join!(
+            link_on(
+                &executor,
+                Some(target),
+                &vault,
+                &address,
+                &mut rx,
+                &mut reply
+            ),
+            async {
+                (
+                    first.await.unwrap().unwrap(),
+                    window.step(StepInput::WaitClaim).await,
+                )
+            }
+        );
+        assert!(
+            matches!(&first_screen, Screen::CloudJoining { host } if host == "Garden host"),
+            "{first_screen:?}"
+        );
+        assert!(matches!(last, Screen::Failed { .. }), "{last:?}");
+        assert_eq!(host.called("host.join")[0]["inviteSecret"], Value::Null);
+        assert_eq!(executor.rpc().rpc().called("identity.openOffer").len(), 1);
     }
 
     /// A vault in the keychain (no passphrase) with its custody lists in `dir`, where a file can

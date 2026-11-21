@@ -56,6 +56,7 @@ import {
   useDatasetStore,
   useDeviceStore,
   useEditorStore,
+  useHostStore,
   useIdentityStore,
   useInterpretationStore,
   usePresenceStore,
@@ -131,6 +132,7 @@ export default function TemplateProvider() {
   const workflowStore = useWorkflowStore();
   const identityStore = useIdentityStore();
   const deviceStore = useDeviceStore();
+  const hostStore = useHostStore();
   const botStore = useBotStore();
 
   // Set CSS custom properties on :root so position:fixed elements (e.g. CesiumGlobe canvas)
@@ -442,6 +444,7 @@ export default function TemplateProvider() {
     workflowStore,
     identityStore,
     deviceStore,
+    hostStore,
     botStore,
     // Always present, even with no modules registered: a read of `modules.x` resolves through the
     // single-segment path, which indexes the store object without a guard and would throw on a

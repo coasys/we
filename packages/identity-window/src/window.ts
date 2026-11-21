@@ -743,6 +743,30 @@ function body(screen: Screen): Child[] {
     }
     case 'email-checked':
       return [el('div', { className: 'link', textContent: screen.did })];
+    case 'cloud-invite': {
+      const invite = textField('Invite', '', 'https://…#…');
+      const go = () => step({ kind: 'invite', code: invite.input.value.trim() }, [invite.input]);
+      return [
+        invite.label,
+        ...errorLine(screen.error),
+        el('div', { className: 'row' }, button('Continue', go, 'primary'), button('Cancel', cancel)),
+      ];
+    }
+    case 'cloud-joining':
+      // The host claims the offer when asked: ask now.
+      waitFor({ kind: 'wait-claim' });
+      return [el('progress'), el('div', { className: 'row' }, button('Cancel', cancel))];
+    case 'cloud-match': {
+      const name = textField('Name', screen.host, screen.host);
+      const confirm = () => step({ kind: 'confirm', name: typed(name.input) });
+      return [
+        el('div', { className: 'code', textContent: screen.code }),
+        name.label,
+        el('div', { className: 'row' }, button('Add', confirm, 'primary'), button('Cancel', cancel)),
+      ];
+    }
+    case 'cloud-added':
+      return [];
     case 'identity-ready':
       return [
         el('div', { className: 'link', textContent: screen.did }),
