@@ -17,6 +17,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const [ports, setPorts] = createSignal<{ identity?: IdentityPort } | null>(null);
 const [bootState, setBootState] = createSignal('ready');
+/** Whether the host runs the email check: the desktop does, the phone does not. */
+const [emailCheck, setEmailCheck] = createSignal(true);
 
 vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
   useSessionStore: () => ({
@@ -29,6 +31,7 @@ vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
       devices: true,
       linkDevice: !!ports()?.identity?.change,
       recoveryWords: !!ports()?.identity?.change,
+      emailCheck: !!ports()?.identity?.change && emailCheck(),
     }),
   }),
 }));
@@ -45,7 +48,7 @@ import {
 const DID = 'did:scid:coasys:1:QmScid';
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
-const status = (did: string | null) => ({
+const status = (did: string | null, vouched = false) => ({
   did,
   deviceKey: 'z6MkOne',
   keyId: did ? 'd1' : null,
@@ -53,6 +56,7 @@ const status = (did: string | null) => ({
   head: null,
   fork: null,
   storeBehind: null,
+  vouched,
 });
 
 const incept: KeyLogView['events'][number] = {
@@ -77,13 +81,18 @@ const devices: DeviceKeyView[] = [
 ];
 
 /** A backend whose identity is whatever the test says, and which counts what it was asked. */
-function backend(state: { did: string | null; events: KeyLogView['events']; devices: DeviceKeyView[] }) {
+function backend(state: {
+  did: string | null;
+  events: KeyLogView['events'];
+  devices: DeviceKeyView[];
+  vouched?: boolean;
+}) {
   const calls: string[] = [];
   const port: IdentityPort = {
     capabilities: () => ({ ...NO_IDENTITY_CAPABILITIES, keyLog: true, devices: true }),
     async status() {
       calls.push('status');
-      return status(state.did);
+      return status(state.did, state.vouched ?? false);
     },
     async log(did) {
       calls.push(`log:${did}`);
@@ -157,6 +166,7 @@ function mount(): { identity: IdentityStore; devices: DeviceStore } {
 beforeEach(() => {
   setPorts(null);
   setBootState('ready');
+  setEmailCheck(true);
   localStorage.clear();
 });
 
@@ -230,6 +240,56 @@ describe('identityStore', () => {
     expect(identity.keyLog().map((r) => r.title)).toEqual(['Created identity']);
     expect(identity.custody()?.holdsMaster).toBe(true);
     expect(deviceStore.devices().map((d) => d.label)).toEqual(['This computer']);
+  });
+
+  it('offers the email check while the identity is not vouched, and reads it vouched once checked', async () => {
+    const b = backend({ did: DID, events: [incept], devices: [devices[1]] });
+    const c = custody(
+      b.port,
+      (change) => {
+        if (change.kind === 'check-email') b.state.vouched = true;
+      },
+      true,
+    );
+    setPorts({ identity: c.identity });
+    const { identity } = mount();
+    await flush();
+    await flush();
+    expect(identity.vouched()).toBe(false);
+    expect(identity.canCheckEmail()).toBe(true);
+    expect(await identity.checkEmail()).toBe('done');
+    await flush();
+    expect(c.changes).toEqual([{ kind: 'check-email' }]);
+    expect(identity.vouched()).toBe(true);
+    expect(identity.canCheckEmail()).toBe(false);
+  });
+
+  it('offers no email check where it cannot run: no identity, no custody, or a host that runs none', async () => {
+    // No identity yet: nothing to check.
+    let b = backend({ did: null, events: [], devices: [] });
+    setPorts({ identity: custody(b.port, () => {}).identity });
+    let stores = mount();
+    await flush();
+    await flush();
+    expect(stores.identity.canCheckEmail()).toBe(false);
+
+    // The web: the identity is read, and nothing here can change it.
+    b = backend({ did: DID, events: [incept], devices: [devices[1]] });
+    setPorts({ identity: b.port });
+    stores = mount();
+    await flush();
+    await flush();
+    expect(stores.identity.vouched()).toBe(false);
+    expect(stores.identity.canCheckEmail()).toBe(false);
+
+    // A phone: it signs changes, and runs no email check.
+    setEmailCheck(false);
+    setPorts({ identity: custody(b.port, () => {}, true).identity });
+    stores = mount();
+    await flush();
+    await flush();
+    expect(stores.identity.canChange()).toBe(true);
+    expect(stores.identity.canCheckEmail()).toBe(false);
   });
 
   it('where changes are blocked, asks the question but starts no change, and says why', async () => {

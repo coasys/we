@@ -6924,6 +6924,12 @@
         "keyId": {
           "type": "string"
         },
+        "vouched": {
+          "type": "boolean"
+        },
+        "canCheckEmail": {
+          "type": "boolean"
+        },
         "thisDeviceRevoked": {
           "type": "boolean"
         },
@@ -6956,7 +6962,7 @@
           "type": "string"
         }
       },
-      "actions": ["refresh", "open", "makeIdentity", "startWithoutIdentity"],
+      "actions": ["refresh", "open", "makeIdentity", "checkEmail", "startWithoutIdentity"],
       "ambient": ["refresh"],
       "needsArgs": ["open"]
     },
@@ -7659,6 +7665,7 @@
             "passkey",
             "masterKey",
             "recoveryWords",
+            "emailCheck",
             "keyLog",
             "export",
             "logOutEverywhere",

@@ -42,6 +42,8 @@ export interface IdentityCapabilities {
   masterKey: boolean;
   /** Twelve recovery words, shown once and asked for to recover. */
   recoveryWords: boolean;
+  /** Check an email address, so the shared store keeps a vouch note for the identity (`check-email`). */
+  emailCheck: boolean;
   /** The log of every key change, readable and exportable. */
   keyLog: boolean;
   /** Take everything to another provider: the key log and private spaces, as a file. */
@@ -69,6 +71,7 @@ export const NO_IDENTITY_CAPABILITIES: IdentityCapabilities = {
   passkey: false,
   masterKey: false,
   recoveryWords: false,
+  emailCheck: false,
   keyLog: false,
   export: false,
   logOutEverywhere: false,
@@ -136,6 +139,8 @@ export interface IdentityPort {
  * - `remove-master`: stop keeping the master key on this computer; refused for the only copy.
  * - `add-bot`: open a bot offer of the scope the person picks there, and add the bot's key once it
  *   claims; the bot is made with `bots.create` from the offer.
+ * - `check-email`: check an email address with the platform, and keep the vouch note it gives
+ *   beside the identity's log, so `IdentityStatusView.vouched` turns `true`.
  */
 export type IdentityChange =
   | { kind: 'create' }
@@ -151,7 +156,8 @@ export type IdentityChange =
   | { kind: 'replace-master' }
   | { kind: 'restore' }
   | { kind: 'remove-master' }
-  | { kind: 'add-bot' };
+  | { kind: 'add-bot' }
+  | { kind: 'check-email' };
 
 /** How a change ended: made, abandoned by the person, or refused along the way. */
 export type IdentityChangeOutcome = 'done' | 'cancelled' | 'failed';
@@ -272,6 +278,11 @@ export interface IdentityStatusView {
    * meanwhile. `null` once the store catches up, and on a backend that does not say.
    */
   storeBehind: KeyLogStoreBehind | null;
+  /**
+   * The shared store keeps a vouch note for `did`: an email check (`check-email`) showed that a
+   * person made it. `false` while it keeps none, and while this device speaks for nobody.
+   */
+  vouched: boolean;
 }
 
 /** The shared store answering a log behind the backend's own copy. */

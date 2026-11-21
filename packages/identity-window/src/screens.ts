@@ -26,7 +26,19 @@ export type Screen =
   | { screen: 'storage-migrating'; storesDone: number; storesTotal: number }
   /** That move failed: nothing was lost, and Try again hands the data its key again. */
   | { screen: 'storage-migration-failed' }
-  | { screen: 'identity-ready'; did: string; keyId: string }
+  /** The words are confirmed and the identity is being made: the proof of work the identity store
+   *  asks of a new identity (`bits`) is solved, then the identity is published. The window asks for
+   *  the screen that follows with `wait-created`. */
+  | { screen: 'preparing'; bits: number }
+  /** `vouched`: the identity store keeps a vouch note for it. When it does not, the email check is
+   *  offered (the `check-email` step). */
+  | { screen: 'identity-ready'; did: string; keyId: string; vouched: boolean }
+  /** The email check: the address to send a code to, and why the last one did not go. */
+  | { screen: 'enter-email'; error: string | null }
+  /** The code sent to `email`, and why the last code was refused. */
+  | { screen: 'enter-email-code'; email: string; error: string | null }
+  /** The identity store keeps a vouch note for `did` now. */
+  | { screen: 'email-checked'; did: string }
   | { screen: 'offer'; link: string; qrSvg: string; expires: number }
   | { screen: 'match'; code: string; hint: string | null; canKeep: boolean; ownName: boolean }
   | { screen: 'linked'; seq: number; masterSent: boolean; note: string | null }
@@ -185,6 +197,14 @@ export type StepInput =
   | { kind: 'words'; answers: [string, string] }
   | { kind: 'passphrase'; passphrase: string; confirm?: string }
   | { kind: 'wait-claim' }
+  /** On `preparing`: wait for the identity to be made. */
+  | { kind: 'wait-created' }
+  | { kind: 'email'; email: string }
+  | { kind: 'email-code'; code: string }
+  /** On `enter-email-code`: send a new code to the same address. */
+  | { kind: 'new-code' }
+  /** On `enter-email-code`: go back and type another address. */
+  | { kind: 'change-email' }
   | { kind: 'confirm'; name?: string; keepMaster?: boolean; thisName?: string }
   | { kind: 'code'; code: string }
   /** The offer link or `coasys:offer:1:` string `enter-offer` was given. Not a custody step: only
@@ -210,6 +230,19 @@ export type StepInput =
 export function remaining(expires: number, nowSeconds: number): string {
   const left = Math.max(0, Math.floor(expires - nowSeconds));
   return `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+}
+
+/** "Working for 1:05 · Closing this window does not stop it." — under the bar while the identity is made. */
+export function preparingNote(elapsedSeconds: number): string {
+  const s = Math.max(0, Math.floor(elapsedSeconds));
+  return `Working for ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')} · Closing this window does not stop it.`;
+}
+
+/** What the identity's state says of the email check, where the window shows the identity. */
+export function vouchedLine(vouched: boolean): string {
+  return vouched
+    ? 'Email checked: the identity store records that a person made this identity.'
+    : 'Email not checked. You can check it later in Settings → Security.';
 }
 
 /**
@@ -316,6 +349,26 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
       return {
         title: 'Identity created',
         lead: 'This computer is your first device.',
+      };
+    case 'preparing':
+      return {
+        title: 'Preparing your identity',
+        lead: 'This computer does a short piece of work that the identity store asks of each new identity. Then it publishes your identity. This can take a minute.',
+      };
+    case 'enter-email':
+      return {
+        title: 'Check your email',
+        lead: 'Type your email address. We send a code to it. The check tells the identity store that a person made this identity.',
+      };
+    case 'enter-email-code':
+      return {
+        title: `Enter the code we sent to ${screen.email}`,
+        lead: 'The code has 6 digits. It can take a minute to arrive.',
+      };
+    case 'email-checked':
+      return {
+        title: 'Your email is checked',
+        lead: 'The identity store now records that a person made this identity.',
       };
     case 'offer':
       return {
@@ -596,6 +649,7 @@ function revokeRequest(screen: Extract<Screen, { screen: 'request' }>): { title:
 export function isLast(screen: Screen): boolean {
   return [
     'identity-ready',
+    'email-checked',
     'linked',
     'unlinked',
     'revoked',

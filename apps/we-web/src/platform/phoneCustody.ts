@@ -9,7 +9,8 @@
  * when it returns, and Settings reads the state afresh.
  *
  * The phone takes no 12 words ({@link Ad4mCustodyHost.takesWords} `false`): replacing the master key
- * and restoring are a computer's.
+ * and restoring are a computer's. It runs no email check either ({@link Ad4mCustodyHost.checksEmail}
+ * `false`).
  */
 import type { Ad4mCustodyHost, Ad4mCustodyState } from '@we/backend-ad4m';
 
@@ -58,6 +59,8 @@ export const PHONE_KIND = 'phone-app';
 export function phoneCustodyHost(plugin: DeviceKeyPlugin, nav: PageNav = browserNav): Ad4mCustodyHost {
   return {
     takesWords: false,
+    // The email check runs in the desktop custody service only.
+    checksEmail: false,
 
     open(change) {
       nav.assign(identityPageUrl(change, nav.here()));

@@ -74,6 +74,7 @@ const PLAIN_STEPS = new Set([
   'restore',
   'remove-master',
   'add-bot',
+  'check-email',
 ]);
 
 /**

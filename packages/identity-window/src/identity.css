@@ -35,6 +35,11 @@ body {
   padding: var(--we-space-500) var(--we-space-600) var(--we-space-600);
 }
 
+/* Progress bars wear the theme's accent, not the browser's blue. */
+progress {
+  accent-color: var(--accent);
+}
+
 /* The app's mark and name, as the screens before a session put them in the top corner. */
 .brand {
   display: flex;
@@ -157,7 +162,8 @@ label.check {
 input[type='text'],
 input[type='password'],
 input[type='url'],
-input[type='number'] {
+input[type='number'],
+input[type='email'] {
   box-sizing: border-box;
   font: inherit;
   color: var(--text);
@@ -171,7 +177,8 @@ input[type='number'] {
 input[type='text']:hover,
 input[type='password']:hover,
 input[type='url']:hover,
-input[type='number']:hover {
+input[type='number']:hover,
+input[type='email']:hover {
   background: var(--we-role-field-hover, var(--sunken));
 }
 

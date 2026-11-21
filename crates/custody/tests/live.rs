@@ -537,13 +537,18 @@ async fn make_identity(custody: &CustodyHandle) -> (String, String) {
         matches!(set, Screen::SetPassphrase { error: None }),
         "{set:?}"
     );
-    let ready = custody
+    let preparing = custody
         .step(StepInput::Passphrase {
             passphrase: PASSPHRASE.into(),
             confirm: Some(PASSPHRASE.into()),
         })
         .await
         .unwrap();
+    assert!(
+        matches!(preparing, Screen::Preparing { .. }),
+        "{preparing:?}"
+    );
+    let ready = custody.step(StepInput::WaitCreated).await.unwrap();
     let Screen::IdentityReady { did, .. } = ready else {
         panic!("not ready: {ready:?}")
     };
@@ -621,7 +626,8 @@ async fn make_link_and_revoke_through_the_custody_service() {
             .unwrap(),
     );
     assert!(matches!(short, Screen::SetPassphrase { error: Some(_) }));
-    let ready = shown.record(
+    // The proof of work the store asks of a new identity is solved before the publish.
+    let preparing = shown.record(
         &custody
             .step(StepInput::Passphrase {
                 passphrase: PASSPHRASE.into(),
@@ -630,11 +636,23 @@ async fn make_link_and_revoke_through_the_custody_service() {
             .await
             .unwrap(),
     );
-    let Screen::IdentityReady { did, key_id } = ready else {
+    assert!(
+        matches!(preparing, Screen::Preparing { .. }),
+        "{preparing:?}"
+    );
+    let ready = shown.record(&custody.step(StepInput::WaitCreated).await.unwrap());
+    let Screen::IdentityReady {
+        did,
+        key_id,
+        vouched,
+    } = ready
+    else {
         panic!("not ready: {ready:?}")
     };
     assert!(did.starts_with("did:scid:coasys:1:"));
     assert_eq!(key_id, "d1");
+    // A new identity made with a proof of work has no vouch note.
+    assert!(!vouched);
 
     // The executor speaks for it, and the key log lists `incept` with d1.
     let status = a.call("identity.status", json!({})).await;

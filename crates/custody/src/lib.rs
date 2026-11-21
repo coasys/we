@@ -12,6 +12,8 @@
 //! - [`service`] runs the identity client's flows — create, add a device, unlink or revoke one — for the identity
 //!   window, and reaches the executor only over its RPC with the custody credential, behind
 //!   [`enc::CustodyEncKey`]'s adapter.
+//! - [`platform`] calls the platform's email check, which the `check-email` step uses to get a
+//!   vouch note for the identity.
 //! - [`window`] says which Tauri window may call which command.
 //! - [`host`] is what every desktop host starts the service with: the custody folder. Which
 //!   identity store the executor uses, and whether it trusts it, the service asks the executor.
@@ -32,6 +34,7 @@ pub mod host;
 pub mod keylog;
 mod keyring_item;
 pub mod pending;
+pub mod platform;
 pub mod seal;
 pub mod service;
 pub mod sidecar;

@@ -58,6 +58,13 @@ export interface IdentityStore {
   did: Accessor<string>;
   /** This device's id in the log (`d1`), or empty. */
   keyId: Accessor<string>;
+  /** The shared store keeps a vouch note for the identity: its email is checked. */
+  vouched: Accessor<boolean>;
+  /**
+   * The email check is worth offering: this computer can sign changes, it speaks for an identity, and
+   * that identity has no vouch note yet. Nothing is refused without one; the check is offered only.
+   */
+  canCheckEmail: Accessor<boolean>;
   /** The log names this computer's key revoked. */
   thisDeviceRevoked: Accessor<boolean>;
   /** The key log, newest first, as Settings → Security → Key log draws it. */
@@ -90,6 +97,8 @@ export interface IdentityStore {
   open: (change: IdentityChange) => Promise<IdentityChangeOutcome>;
   /** "Make my identity here". */
   makeIdentity: () => Promise<IdentityChangeOutcome>;
+  /** "Check my email": opens the email check, which keeps a vouch note for the identity. */
+  checkEmail: () => Promise<IdentityChangeOutcome>;
   /**
    * "Start now": use this account without an identity on this computer; remembered for it, and asked
    * again from Settings.
@@ -280,6 +289,15 @@ export function IdentityStoreProvider(props: ParentProps) {
     statusLoaded,
     did,
     keyId,
+    vouched: () => status()?.vouched === true,
+    canCheckEmail: createMemo(
+      () =>
+        session.identityCapabilities().emailCheck &&
+        canChange() &&
+        !!did() &&
+        status()?.revoked == null &&
+        status()?.vouched === false,
+    ),
     thisDeviceRevoked: () => status()?.revoked != null,
     keyLog: createMemo(() => {
       // A phone's custody service answers for the phone: its key is the one the log marks as here.
@@ -306,6 +324,7 @@ export function IdentityStoreProvider(props: ParentProps) {
     refresh,
     open,
     makeIdentity: () => open({ kind: 'create' }),
+    checkEmail: () => open({ kind: 'check-email' }),
     startWithoutIdentity: () => {
       const key = deviceKey();
       try {
