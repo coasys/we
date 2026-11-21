@@ -164,7 +164,7 @@ export function DeviceStoreProvider(props: ParentProps) {
   // The record's names cannot have been read here then: whatever came is not this computer's to show.
   const names = () => (encMismatch() ? [] : (identity.custody()?.devices ?? []));
   const rows = createMemo(() =>
-    deviceRows(raw(), names(), identity.custody()?.revokedHolders ?? [], lastRotation(identity.keyLog())),
+    deviceRows(raw(), names(), identity.custody()?.endedHolders ?? [], lastRotation(identity.keyLog())),
   );
   // The words go to the custody service, which the `recoveryWords` capability says is here.
   const words = () => session.identityCapabilities().recoveryWords && identity.canChange();

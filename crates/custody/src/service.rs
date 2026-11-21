@@ -533,10 +533,10 @@ pub struct CustodyPublic {
     /// The devices the private record names, by key id. Empty before the first record write, or
     /// when the record cannot be read now.
     pub devices: Vec<DeviceName>,
-    /// The revoked keys that may still hold a valid master key, from the key log
-    /// ([`crate::keylog::revoked_holders`]): the record drops a key's entry when it is revoked, and a
-    /// revoke does not replace the master key. Empty when the log cannot be read now.
-    pub revoked_holders: Vec<String>,
+    /// The revoked or unlinked keys that may still hold a valid master key, from the key log
+    /// ([`crate::keylog::ended_holders`]): the record drops a key's entry when it ends, and neither
+    /// a revoke nor an unlink replaces the master key. Empty when the log cannot be read now.
+    pub ended_holders: Vec<String>,
     /// The requests of other devices waiting in the identity's box.
     pub requests: Vec<RequestView>,
     /// A master key waits in this computer's inbox ("Accept master key").
@@ -1097,7 +1097,7 @@ async fn public_state_on<R: ExecutorRpc>(
     let mut master_waiting = false;
     let mut devices = Vec::new();
     let mut requests = Vec::new();
-    let mut revoked_holders = Vec::new();
+    let mut ended_holders = Vec::new();
     let mut enc_mismatch = false;
     if let (Some(executor), Some(did)) = (executor, did.as_deref()) {
         master_waiting = master_waits(executor).await;
@@ -1142,7 +1142,7 @@ async fn public_state_on<R: ExecutorRpc>(
         };
         match executor.events(did).await {
             Ok(events) => {
-                revoked_holders = crate::keylog::revoked_holders(&events);
+                ended_holders = crate::keylog::ended_holders(&events);
                 enc_mismatch = status
                     .as_ref()
                     .is_some_and(|status| enc_lost(&events, status));
@@ -1186,7 +1186,7 @@ async fn public_state_on<R: ExecutorRpc>(
         unlock,
         blocked,
         devices,
-        revoked_holders,
+        ended_holders,
         requests,
         master_waiting,
         enc_mismatch,
@@ -3632,15 +3632,20 @@ async fn unlink_on<R: ExecutorRpc>(
             continue;
         };
         let unlocking = vault.unlocking(passphrase.map(TypedSecret::into_secret));
-        match unlink_key(executor, &unlocking, &did, &key_id, &CLOCK).await {
-            Ok(head) => {
+        match unlink_key(executor, &unlocking, &did, &key_id, &CLOCK, &RANDOM).await {
+            Ok(unlinked) => {
+                if let Err(e) = &unlinked.record {
+                    log::warn!("custody: the record still lists the unlinked device: {e}");
+                }
+                // The main window's refreshes cannot unlock a sealed key; this unlock can.
+                retry_quietly(executor, &unlocking, &did).await;
                 return answer(
                     reply,
                     Ok(Screen::Unlinked {
                         key_id,
-                        seq: head.seq,
+                        seq: unlinked.head.seq,
                     }),
-                )
+                );
             }
             Err(ClientError::Vault(VaultError::Cancelled)) if needs => answer(
                 reply,
@@ -4968,7 +4973,7 @@ mod tests {
                 kind: DeviceKind::DesktopApp,
                 holds_master: Holds::Offered,
             }],
-            revoked_holders: vec!["d3".into()],
+            ended_holders: vec!["d3".into()],
             requests: vec![RequestView {
                 id: "r1".into(),
                 kind: "send-master".into(),
@@ -4987,7 +4992,7 @@ mod tests {
         assert_eq!(public["requests"][0]["keyIds"], json!([]));
         assert_eq!(public["masterWaiting"], true);
         assert_eq!(public["encMismatch"], true);
-        assert_eq!(public["revokedHolders"], json!(["d3"]));
+        assert_eq!(public["endedHolders"], json!(["d3"]));
         assert_eq!(public["holdsMaster"]["index"], 0);
         assert_eq!(public["blocked"], NO_STORE);
         let screen = serde_json::to_value(Screen::PendingRefused {

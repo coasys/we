@@ -127,6 +127,21 @@ describe('deviceRows', () => {
     expect(server[1].master).toBe('');
     expect(server[1].replaceMaster).toBe(false);
     expect(revoked[1].replaceMaster).toBe(true);
+
+    // An unlink does not replace the master key either: the row warns, in words for a device the
+    // person may still have. Before the record's write it still lists the device as a holder.
+    const unlinked = [keys[0], { ...keys[1], unlinkedSeq: 2 }];
+    const kept = deviceRows(unlinked, [{ keyId: 'd2', name: 'Laptop', kind: 'desktop-app', holdsMaster: 'yes' }]);
+    expect([kept[1].status, kept[1].holdsMaster, kept[1].master, kept[1].replaceMaster]).toEqual([
+      'Unlinked',
+      'no',
+      "Still has your master key. Replace it if you don't have this device any more.",
+      true,
+    ]);
+    expect(deviceRows(unlinked, [], ['d2'])[1].master).toBe(
+      "May still have your master key. Replace it if you don't have this device any more.",
+    );
+    expect(deviceRows(unlinked, [], [])[1].master).toBe('');
   });
 
   it('stops warning once the master key was replaced at or after the revoke', () => {
@@ -149,6 +164,14 @@ describe('deviceRows', () => {
       ]),
     ).toBe(3);
     expect(lastRotation([{ seq: 0, op: 'incept' }])).toBeNull();
+
+    // An unlinked key counts from its unlink, and a revoke after it does not bring the warning back.
+    const unlinkedThenRevoked = [keys[0], { ...keys[1], unlinkedSeq: 2, revokedSeq: 4 }];
+    expect(deviceRows(unlinkedThenRevoked, stillListed, ['d2'], 3)[1]).toMatchObject({
+      master: '',
+      replaceMaster: false,
+    });
+    expect(deviceRows(unlinkedThenRevoked, stillListed, ['d2'], 1)[1]).toMatchObject({ replaceMaster: true });
   });
 });
 
