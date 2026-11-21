@@ -92,6 +92,34 @@ describe('adding an outcome — Enter and the busy lock', () => {
     }
   });
 
+  it('an Enter that confirms an IME candidate adds nothing — the next plain Enter does', async () => {
+    const { stores, record } = await fixtureHost();
+    const { container, unmount } = render(() => (
+      <RenderSchema
+        node={ACORN_PARTS.outcomeList.node as SchemaNode}
+        stores={stores as never}
+        registry={registry}
+        context={{}}
+      />
+    ));
+    try {
+      const { input } = await createRow(container);
+      type(input, 'デモ');
+      input.dispatchEvent(
+        new CustomEvent('keydown', { detail: { key: 'Enter', isComposing: true }, bubbles: true, composed: true }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(record.create).not.toHaveBeenCalled();
+      input.dispatchEvent(
+        new CustomEvent('keydown', { detail: { key: 'Enter', isComposing: false }, bubbles: true, composed: true }),
+      );
+      await waitFor(() => expect(record.create).toHaveBeenCalledWith('AcornOutcome', { content: 'デモ' }));
+      expect(record.create).toHaveBeenCalledTimes(1);
+    } finally {
+      unmount();
+    }
+  });
+
   it('while an add runs the button is disabled, so a double click makes one outcome', async () => {
     let release: (v: unknown) => void = () => {};
     const slow = () => new Promise((resolve) => (release = resolve));

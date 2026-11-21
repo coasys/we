@@ -65,9 +65,12 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
                 value: { $: 'local.newOutcome' },
                 placeholder: 'New outcome…',
                 onInput: { $setLocal: 'newOutcome', value: { $: 'event.detail' } },
+                // An Enter still composing is the IME's — confirming a candidate, not adding.
                 onKeyDown: {
                   $if: {
-                    condition: { $: `arg.detail.key == 'Enter' && trim(local.newOutcome) && !local.addingOutcome` },
+                    condition: {
+                      $: `arg.detail.key == 'Enter' && !arg.detail.isComposing && trim(local.newOutcome) && !local.addingOutcome`,
+                    },
                     then: addOutcome,
                   },
                 },
