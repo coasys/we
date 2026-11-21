@@ -83,7 +83,7 @@ vertical('V3 social DNA: install, shapes, targets, wizard', (v) => {
       { timeout: 60_000, what: `${cls.name} to show ${fields} fields` },
     );
     const shacl = await until(
-      async () => JSON.stringify(await perspective.getShacl(cls.name)),
+      async () => JSON.stringify((await perspective.shapes([cls.name]))[0]?.shape),
       (s) => s.includes(FIELD),
       { timeout: 60_000, what: `${FIELD} in the SHACL of ${cls.name}` },
     );

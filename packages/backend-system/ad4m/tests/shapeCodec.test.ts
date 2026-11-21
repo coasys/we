@@ -2,19 +2,28 @@
  * A space's own model kept as SHACL and annotations, and read back as the manifest it was saved as.
  *
  * Every case goes the whole way through what a perspective would hold: the manifest compiled by the
- * same compiler a module's entities take, the SHACL links the SDK writes for it, the annotations, and
- * back through the SDK's own `fromLinks`. So a field the codec forgets, or one the SDK stores
- * differently from how the codec reads it, fails here rather than as a model that loses a field the
- * first time somebody opens it.
+ * same compiler a module's entities take, its shape as `shapes()` returns it (through the JSON the
+ * executor stores), the links on the shape's nodes with the annotations among them, and back. So a
+ * field the codec forgets, or one the SDK stores differently from how the codec reads it, fails here
+ * rather than as a model that loses a field the first time somebody opens it.
  */
+import { SHACLShape } from '@coasys/ad4m';
 import type { EntityManifest, EntitySchema, ShapeInput } from '@we/backend-shared';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import { describe, expect, it } from 'vitest';
 
 import { compileManifest, manifestToEntries } from '../src/manifestCompiler';
-import { annotationLinks, isAnnotation, type LinkLike, readShape, sameShape } from '../src/shapeCodec';
+import {
+  annotationLinks,
+  type HeldShape,
+  isAnnotation,
+  type LinkLike,
+  readShape,
+  sameShape,
+  shapeNodes,
+} from '../src/shapeCodec';
 
-type Shaped = { generateSHACL: () => { shape: { toLinks(): LinkLike[] } } };
+type Shaped = { generateSHACL: () => { shape: SHACLShape } };
 
 const SIGHTING: EntityManifest = {
   version: '1',
@@ -72,11 +81,29 @@ const input = (manifest: EntityManifest, over: Partial<ShapeInput> = {}): ShapeI
   ...over,
 });
 
-/** What a perspective holds for a model: its compiled SHACL, and the annotations beside it. */
-function stored(shape: ShapeInput): LinkLike[] {
+/** The compiled SHACL of a model, as the SDK generates it. */
+function compiledShape(shape: ShapeInput): SHACLShape {
   const classes = compileManifest(shape.manifest, { moduleId: 'shape/test', resolveExternal: () => undefined });
-  const shacl = (classes[shape.name] as unknown as Shaped).generateSHACL().shape.toLinks();
-  return [...shacl, ...annotationLinks(shape, shacl)];
+  return (classes[shape.name] as unknown as Shaped).generateSHACL().shape;
+}
+
+/**
+ * What a perspective holds for a model: its shape as `shapes()` returns it, and the links on the
+ * shape's nodes — the SHACL's own, and the annotations beside them.
+ */
+function stored(shape: ShapeInput): HeldShape {
+  const shacl = compiledShape(shape);
+  const own = shacl.toLinks() as LinkLike[];
+  return { shape: SHACLShape.fromJSON(shacl.toJSON()), links: [...own, ...annotationLinks(shape, own)] };
+}
+
+/** The same stored model as an executor might list it: its fields and its links in another order. */
+function reversed({ shape, links }: HeldShape): HeldShape {
+  const json = shape.toJSON();
+  return {
+    shape: SHACLShape.fromJSON({ ...json, properties: [...json.properties].reverse() }),
+    links: [...links].reverse(),
+  };
 }
 
 /**
@@ -124,7 +151,7 @@ describe('a space model kept as SHACL', () => {
   it('keeps the order the fields were declared in, whatever order the shape is listed in', () => {
     // An executor answers in its own order. Read back in another, the first text field — what names
     // a record when nothing says otherwise — was a different field.
-    const read = readShape([...stored(input(SIGHTING))].reverse())!;
+    const read = readShape(reversed(stored(input(SIGHTING))))!;
     expect(Object.keys(read.manifest.entities.Sighting.properties)).toEqual(
       Object.keys(SIGHTING.entities.Sighting.properties),
     );
@@ -146,10 +173,8 @@ describe('a space model kept as SHACL', () => {
   });
 
   it('is not one of WE’s models without a shape id, so it is not listed', () => {
-    const shape = input(SIGHTING);
-    const classes = compileManifest(shape.manifest, { moduleId: 'shape/test', resolveExternal: () => undefined });
-    const shacl = (classes.Sighting as unknown as Shaped).generateSHACL().shape.toLinks();
-    expect(readShape(shacl)).toBeNull();
+    const shacl = compiledShape(input(SIGHTING));
+    expect(readShape({ shape: shacl, links: shacl.toLinks() as LinkLike[] })).toBeNull();
   });
 
   it('reads every concrete core entity back, as a model a space could carry', () => {
@@ -165,37 +190,53 @@ describe('a space model kept as SHACL', () => {
 });
 
 describe('whether a stored model can be saved from WE without loss', () => {
-  const rebuilt = (links: LinkLike[]) => {
-    const read = readShape(links)!;
-    return stored(input(read.manifest, read));
+  const rebuilt = (held: HeldShape): HeldShape => {
+    const read = readShape(held)!;
+    const shape = input(read.manifest, read);
+    const shacl = compiledShape(shape);
+    return { shape: shacl, links: annotationLinks(shape, shacl.toLinks() as LinkLike[]) };
   };
 
   it('is, whatever order the shape is listed in', () => {
     // An executor answers in its own order; the same shape listed backwards is the same shape.
-    const links = stored(input(SIGHTING));
-    const back = [...links].reverse();
+    const back = reversed(stored(input(SIGHTING)));
     expect(sameShape(back, rebuilt(back))).toBe(true);
   });
 
   it('is, when the shape holds only what the manifest says', () => {
-    const links = stored(input(SIGHTING));
-    expect(sameShape(links, rebuilt(links))).toBe(true);
+    const held = stored(input(SIGHTING));
+    expect(sameShape(held, rebuilt(held))).toBe(true);
   });
 
   it('is not, when something else wrote to the shape', () => {
-    const links = stored(input(SIGHTING));
-    const field = links.find((l) => l.predicate === 'sh://path' && l.target === 'we://module/shape/x/count')!.source;
-    const extra = [...links, { source: field, predicate: 'sh://maxInclusive', target: 'literal:100^^xsd:integer' }];
+    const held = stored(input(SIGHTING));
+    const field = held.links.find(
+      (l) => l.predicate === 'sh://path' && l.target === 'we://module/shape/x/count',
+    )!.source;
+    const extra = {
+      ...held,
+      links: [...held.links, { source: field, predicate: 'sh://maxInclusive', target: 'literal:100^^xsd:integer' }],
+    };
     expect(sameShape(extra, rebuilt(extra))).toBe(false);
+  });
+
+  it('is not, when the stored shape has a field the manifest does not', () => {
+    // Another app registered the class with one more field; the annotations still read as WE's.
+    const held = stored(input(SIGHTING));
+    const json = held.shape.toJSON();
+    const wider = SHACLShape.fromJSON({
+      ...json,
+      properties: [...json.properties, { path: 'other://ring', name: 'ring', datatype: 'xsd://string' } as never],
+    });
+    expect(sameShape({ ...held, shape: wider }, rebuilt(held))).toBe(false);
   });
 });
 
 describe('the annotations', () => {
   it('are only on the shape’s own nodes, and are the only links the codec claims', () => {
-    const shape = input(SIGHTING);
-    const all = stored(shape);
-    const nodes = new Set(all.filter((l) => !isAnnotation(l)).map((l) => l.source));
-    const annotations = all.filter(isAnnotation);
+    const held = stored(input(SIGHTING));
+    const nodes = new Set(shapeNodes(held.shape));
+    const annotations = held.links.filter(isAnnotation);
     expect(annotations.length).toBeGreaterThan(10);
     for (const link of annotations) expect(nodes.has(link.source)).toBe(true);
   });
