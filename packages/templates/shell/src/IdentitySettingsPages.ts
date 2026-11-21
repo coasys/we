@@ -338,7 +338,7 @@ const deviceRow: SchemaNode = listRow(
     },
     {
       type: 'we-badge',
-      props: { tone: { $: "device.valid ? 'success' : 'danger'" }, size: 'sm' },
+      props: { tone: { $: "device.valid ? 'success' : device.unlinked ? 'neutral' : 'danger'" }, size: 'sm' },
       children: [{ $: 'device.status' }],
     },
     {
@@ -364,6 +364,22 @@ const deviceRow: SchemaNode = listRow(
     {
       type: '$if',
       props: {
+        condition: { $: 'device.canUnlink && deviceStore.canManage' },
+        then: {
+          type: 'we-button',
+          props: {
+            variant: 'ghost',
+            size: 'sm',
+            disabled: { $: 'identityStore.busy' },
+            onClick: { $invoke: 'deviceStore.unlink', args: [{ $: 'device.keyId' }] },
+          },
+          children: ['Unlink device'],
+        },
+      },
+    },
+    {
+      type: '$if',
+      props: {
         condition: { $: 'device.canRevoke && deviceStore.canManage' },
         then: {
           type: 'we-button',
@@ -374,7 +390,7 @@ const deviceRow: SchemaNode = listRow(
             disabled: { $: 'identityStore.busy' },
             onClick: { $invoke: 'deviceStore.revoke', args: [{ $: 'device.keyId' }] },
           },
-          children: ['Remove'],
+          children: ['Lost or stolen…'],
         },
       },
     },
@@ -569,5 +585,5 @@ export const requestList: SchemaNode = when('count(deviceStore.requests)', {
 
 export const deviceListFootnote: SchemaNode = footnote(
   'lock',
-  'Only your devices can see device names. Your public key log lists only keys. Removing a device takes effect from that point in the log.',
+  'Only your devices can see device names. Your public key log lists only keys. Unlinking a device takes effect from that entry in the log. Revoking one also stops trusting what arrives from it after the time you pick.',
 );

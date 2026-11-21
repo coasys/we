@@ -16,7 +16,7 @@
  * registered plugin, referenced from data with parameters. Same bargain the template system makes
  * with components.
  */
-import type { GraphNode, GraphValue } from './graph';
+import type { GraphEdge, GraphNode, GraphValue } from './graph';
 import type { EdgeCurve, EdgeSide } from './layout';
 
 /** Operators a match clause may use against a node/edge field. Mirrors the schema system's `$filter`. */
@@ -34,6 +34,50 @@ export interface MatchOperators {
  * ANDed. A bare value means equality.
  */
 export type MatchClause = Record<string, GraphValue | MatchOperators>;
+
+/** Read a match key off a node or edge. `data.x` reaches into the data bag; everything else is a field. */
+export function readField(subject: GraphNode | GraphEdge, key: string): unknown {
+  if (key.startsWith('data.')) return subject.data?.[key.slice(5)];
+  return (subject as unknown as Record<string, unknown>)[key];
+}
+
+function isOperators(value: unknown): value is MatchOperators {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  return ['not', 'contains', 'exists', 'in', 'gt', 'lt'].some((k) => k in value);
+}
+
+function matchesOperators(actual: unknown, ops: MatchOperators): boolean {
+  if (ops.exists !== undefined) {
+    const present = actual !== undefined && actual !== null;
+    if (present !== ops.exists) return false;
+  }
+  if (ops.not !== undefined) {
+    const excluded = Array.isArray(ops.not) ? ops.not : [ops.not];
+    if (excluded.includes(actual as GraphValue)) return false;
+  }
+  if (ops.in !== undefined && !ops.in.includes(actual as GraphValue)) return false;
+  if (ops.contains !== undefined) {
+    if (typeof actual !== 'string') return false;
+    if (!actual.toLowerCase().includes(ops.contains.toLowerCase())) return false;
+  }
+  if (ops.gt !== undefined && !(typeof actual === 'number' && actual > ops.gt)) return false;
+  if (ops.lt !== undefined && !(typeof actual === 'number' && actual < ops.lt)) return false;
+  return true;
+}
+
+/** Does a subject satisfy a clause? Sibling keys are ANDed; an empty clause matches everything. */
+export function matches(subject: GraphNode | GraphEdge, clause?: MatchClause): boolean {
+  if (!clause) return true;
+  for (const [key, expected] of Object.entries(clause)) {
+    const actual = readField(subject, key);
+    if (isOperators(expected)) {
+      if (!matchesOperators(actual, expected)) return false;
+    } else if (actual !== expected) {
+      return false;
+    }
+  }
+  return true;
+}
 
 /**
  * A value computed by a registered metric rather than read off the node.

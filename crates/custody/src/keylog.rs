@@ -61,7 +61,9 @@ pub fn revoked_holders(events: &[Event]) -> Vec<String> {
     let mut revoked: Vec<String> = Vec::new();
     for event in events {
         match &event.op {
-            Op::Revoke { revoke } => revoked.extend(revoke.iter().map(|k| k.as_str().to_string())),
+            Op::Revoke { revoke, .. } => {
+                revoked.extend(revoke.iter().map(|k| k.as_str().to_string()))
+            }
             // A new master key: no copy of the old one acts any more.
             Op::Rotate { .. } => revoked.clear(),
             _ => {}
@@ -81,7 +83,7 @@ pub fn enc_mismatch(events: &[Event], key_id: Option<&str>, custody_enc: &str) -
         return false;
     };
     let revoked = events.iter().any(|event| match &event.op {
-        Op::Revoke { revoke } => revoke.iter().any(|k| k.as_str() == key_id),
+        Op::Revoke { revoke, .. } => revoke.iter().any(|k| k.as_str() == key_id),
         _ => false,
     });
     !revoked && device(events, key_id).is_some_and(|d| d.may_keep_master && d.enc != custody_enc)
@@ -249,7 +251,7 @@ pub(crate) mod tests {
         // Revoked: linking again is under way or done, and this key is past.
         let master = words::master_key(&words::seed(&words::from_entropy(&[41u8; 16])), 0).unwrap();
         let mut revoked = events.clone();
-        revoked.push(revoke(&fold(&events).unwrap(), &master, &[KeyId::from("d2")]).unwrap());
+        revoked.push(revoke(&fold(&events).unwrap(), &master, &[KeyId::from("d2")], None).unwrap());
         assert!(!enc_mismatch(&revoked, Some("d2"), &kept));
     }
 
@@ -268,7 +270,7 @@ pub(crate) mod tests {
             let (mut events, _) = log_with_d2(can_keep_master);
             assert!(revoked_holders(&events).is_empty(), "nothing revoked yet");
             let chain = fold(&events).unwrap();
-            events.push(revoke(&chain, &master, &[KeyId::from("d2")]).unwrap());
+            events.push(revoke(&chain, &master, &[KeyId::from("d2")], None).unwrap());
             fold(&events).unwrap();
             assert_eq!(revoked_holders(&events), expected);
         }

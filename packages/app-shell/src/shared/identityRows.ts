@@ -16,15 +16,15 @@ import type { DeviceKeyView, DeviceNameView, DeviceRequestView, KeyLogEvent } fr
 /** One row of Security → Key log. */
 export interface KeyLogRow {
   seq: number;
-  /** `incept`, `add`, `revoke`, `rotate`, or whatever a later format adds. */
+  /** `incept`, `add`, `unlink`, `revoke`, `rotate`, or whatever a later format adds. */
   op: string;
-  /** The key ids the event adds or revokes. */
+  /** The key ids the event adds, unlinks or revokes. */
   keys: string[];
   /** "#0" */
   position: string;
   /** A Phosphor icon name. */
   icon: string;
-  /** "Created identity", "Added d2", "Revoked d2". */
+  /** "Created identity", "Added d2", "Unlinked d2", "Revoked d2". */
   title: string;
   /** The keys the event names, "d1 · This computer". */
   detail: string;
@@ -40,6 +40,8 @@ export interface DeviceRow {
   keyId: string;
   /** The seq of the event that added it. */
   addedSeq: number;
+  /** The seq of the event that unlinked it, or `null` while it is not. */
+  unlinkedSeq: number | null;
   /** The seq of the event that revoked it, or `null` while it is valid. */
   revokedSeq: number | null;
   /** "This computer", or "Device d2". */
@@ -48,12 +50,16 @@ export interface DeviceRow {
   subtitle: string;
   icon: string;
   thisDevice: boolean;
+  /** Unlinked: it signs nothing new, and what it signed before stays valid. */
+  unlinked: boolean;
   revoked: boolean;
-  /** Neither revoked nor past the end the key log gives it. */
+  /** Neither revoked, unlinked nor past the end the key log gives it. */
   valid: boolean;
-  /** "Active", "Removed at #2", or "Expired on 3 Dec 2026". */
+  /** "Active", "Unlinked", "Revoked", or "Expired on 3 Dec 2026". */
   status: string;
-  /** Whether a revoke may be offered: a valid key that is not this computer's. */
+  /** Whether an unlink may be offered: a key still active that is not this computer's. */
+  canUnlink: boolean;
+  /** Whether a revoke may be offered: a key not yet revoked, unlinked or not, that is not this computer's. */
   canRevoke: boolean;
   /** The name the private record gives it, or empty. */
   name: string;
@@ -100,7 +106,7 @@ export function keyLogRows(events: KeyLogEvent[], thisKeyId: string | null): Key
     .slice()
     .sort((a, b) => b.seq - a.seq)
     .map((event) => {
-      const keys = [...event.added.map((k) => k.id), ...event.revoked];
+      const keys = [...event.added.map((k) => k.id), ...event.unlinked, ...event.revoked];
       const thisComputer = !!thisKeyId && keys.includes(thisKeyId);
       const listed = (ids: string[]) =>
         ids.map((id) => (id === thisKeyId ? `${id} · ${THIS_COMPUTER}` : id)).join(', ');
@@ -117,6 +123,11 @@ export function keyLogRows(events: KeyLogEvent[], thisKeyId: string | null): Key
           icon = 'plus-circle';
           title = `Added ${event.added.map((k) => name(k.id)).join(', ')}`;
           detail = listed(event.added.map((k) => k.id));
+          break;
+        case 'unlink':
+          icon = 'link-break';
+          title = `Unlinked ${event.unlinked.map(name).join(', ')}`;
+          detail = listed(event.unlinked);
           break;
         case 'revoke':
           icon = 'prohibit';
@@ -144,7 +155,6 @@ export function keyLogRows(events: KeyLogEvent[], thisKeyId: string | null): Key
     });
 }
 
-/** The device list: valid keys first, this computer at the top, then in the order they were added. */
 const DEVICE_ICONS: Record<string, string> = {
   'desktop-app': 'laptop',
   'phone-app': 'device-mobile',
@@ -175,9 +185,10 @@ export function deviceName(keyId: string, names: DeviceNameView[], thisKeyId: st
 }
 
 /**
- * The person's devices. A bot's key is in the same key log but is not a device: it is left out here
- * and managed under Bots. Only the key log's bot mark (`DeviceKeyView.bot`) says so, never the
- * private record's `kind`, which is a label the person chose. `now` is unix seconds.
+ * The person's devices: active keys first, this computer at the top, then in the order they were
+ * added. A bot's key is in the same key log but is not a device: it is left out here and managed
+ * under Bots. Only the key log's bot mark (`DeviceKeyView.bot`) says so, never the private record's
+ * `kind`, which is a label the person chose. `now` is unix seconds.
  */
 export function deviceRows(
   devices: DeviceKeyView[],
@@ -187,18 +198,15 @@ export function deviceRows(
   masterReplacedSeq: number | null = null,
   now: number = Math.floor(Date.now() / 1000),
 ): DeviceRow[] {
-  const ended = (device: DeviceKeyView) => device.expires != null && device.expires <= now;
+  const expiredAt = (device: DeviceKeyView) => device.expires != null && device.expires <= now;
+  const ended = (d: DeviceKeyView) => Number(d.revokedSeq !== null || d.unlinkedSeq !== null || expiredAt(d));
   return devices
     .filter((device) => !device.bot)
-    .sort(
-      (a, b) =>
-        Number(a.revokedSeq !== null || ended(a)) - Number(b.revokedSeq !== null || ended(b)) ||
-        Number(b.thisDevice) - Number(a.thisDevice) ||
-        a.addedSeq - b.addedSeq,
-    )
+    .sort((a, b) => ended(a) - ended(b) || Number(b.thisDevice) - Number(a.thisDevice) || a.addedSeq - b.addedSeq)
     .map((device) => {
       const revoked = device.revokedSeq !== null;
-      const expired = !revoked && ended(device);
+      const unlinked = device.unlinkedSeq !== null;
+      const expired = !revoked && !unlinked && expiredAt(device);
       const record = names.find((n) => n.keyId === device.keyId);
       const name = record?.name ?? '';
       const listed = record?.holdsMaster ?? 'no';
@@ -218,6 +226,7 @@ export function deviceRows(
       return {
         keyId: device.keyId,
         addedSeq: device.addedSeq,
+        unlinkedSeq: device.unlinkedSeq,
         revokedSeq: device.revokedSeq,
         label: name || fallback,
         subtitle: [
@@ -227,14 +236,18 @@ export function deviceRows(
         ].join(' · '),
         icon: (record && DEVICE_ICONS[record.kind]) || (device.thisDevice ? 'laptop' : 'key'),
         thisDevice: device.thisDevice,
+        unlinked,
         revoked,
-        valid: !revoked && !expired,
+        valid: !revoked && !unlinked && !expired,
         status: revoked
-          ? `Removed at #${device.revokedSeq}`
-          : expired
-            ? `Expired on ${dateOf(device.expires as number)}`
-            : 'Active',
+          ? 'Revoked'
+          : unlinked
+            ? 'Unlinked'
+            : expired
+              ? `Expired on ${dateOf(device.expires as number)}`
+              : 'Active',
         // Ending an expired key for good is still the key log's to record.
+        canUnlink: !revoked && !unlinked && !device.thisDevice,
         canRevoke: !revoked && !device.thisDevice,
         name,
         holdsMaster,

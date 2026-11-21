@@ -9,7 +9,7 @@
 //!   the record key to it, and the service opens both, so the executor only passes sealed text on.
 //! - [`pending`] keeps the incept of an identity made here until its publish is confirmed, so a
 //!   create the app did not see finish is completed on the next start rather than stranded.
-//! - [`service`] runs the identity client's flows — create, add a device, revoke — for the identity
+//! - [`service`] runs the identity client's flows — create, add a device, unlink or revoke one — for the identity
 //!   window, and reaches the executor only over its RPC with the custody credential, behind
 //!   [`enc::CustodyEncKey`]'s adapter.
 //! - [`window`] says which Tauri window may call which command.

@@ -19053,6 +19053,7 @@
                     "newNoteOpen": { "type": "boolean", "initial": false },
                     "noteOpen": { "type": "boolean", "initial": false },
                     "vocabOpen": { "type": "array", "initial": [] },
+                    "others": { "type": "string", "initial": "dim", "persist": "coasys.canvas.others" },
                     "treeMode": { "type": "boolean", "initial": false, "syncParam": { "name": "tree", "push": true } },
                     "spine": { "type": "string", "initial": "", "syncParam": "spine" },
                     "order": { "type": "string", "initial": "manual", "syncParam": "order" },
@@ -19610,6 +19611,31 @@
                           }
                         },
                         {
+                          "type": "$if",
+                          "props": {
+                            "condition": {
+                              "$": "!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'calls') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open))"
+                            },
+                            "then": {
+                              "type": "DropdownMenu",
+                              "props": {
+                                "triggerIcon": {
+                                  "$": "local.others == 'hide' ? 'eye-slash' : local.others == 'dim' ? 'circle-half' : 'eye'"
+                                },
+                                "triggerLabel": {
+                                  "$": "local.others == 'hide' ? 'Others hidden' : local.others == 'dim' ? 'Others dimmed' : 'Showing everything'"
+                                },
+                                "triggerTitle": "What happens to everything outside what is chosen",
+                                "triggerVariant": "ghost",
+                                "items": {
+                                  "$": "[{ type: 'group', id: 'rest', label: 'Everything else', items: [{ id: 'dim', label: 'Dim', icon: 'circle-half', selected: local.others == 'dim' }, { id: 'hide', label: 'Hide', icon: 'eye-slash', selected: local.others == 'hide' }, { id: 'show', label: 'Show', icon: 'eye', selected: local.others != 'dim' && local.others != 'hide' }] }]"
+                                },
+                                "onSelect": { "$setLocal": "others", "value": { "$": "arg.id" } }
+                              }
+                            }
+                          }
+                        },
+                        {
                           "type": "Row",
                           "props": {
                             "gap": "100",
@@ -19683,6 +19709,9 @@
                                 "weights": { "$": "local.voices" },
                                 "relations": {
                                   "$": "local.treeMode && treeSpine({ value: local.spine }).relations ? { children: true } : false"
+                                },
+                                "hideWhere": {
+                                  "$": "(local.others) == 'hide' ? (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? [{ 'data.origin': { not: ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') } }] : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'calls') ? [{ 'data.origin': { exists: false } }, { 'data.origin': spaceStore.root }] : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? [{ 'data.author': { not: ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') } }] : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open) ? [{ 'data.recordId': { not: workflowStore.open.records.map(r, r.record) } }] : null) : null"
                                 }
                               }
                             },
@@ -19743,13 +19772,19 @@
                                 "style": { "borderColor": "warning-text", "borderWidth": 2 }
                               },
                               {
-                                "$": "((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? [{ when: { 'data.origin': { not: ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') } }, style: { opacity: 0.1 } }] : []"
+                                "$": "(((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') && ((local.others) == 'dim' || (local.others) == 'hide')) ? [{ when: { 'data.origin': { not: ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') } }, style: { opacity: 0.1 } }] : []"
                               },
                               {
-                                "$": "((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? [{ when: { 'data.author': { not: ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') } }, style: { opacity: 0.1 } }] : []"
+                                "$": "(((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'calls') && ((local.others) == 'dim' || (local.others) == 'hide')) ? [{ when: { 'data.origin': { exists: false } }, style: { opacity: 0.1 } }] : []"
                               },
                               {
-                                "$": "((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open) ? [{ when: { 'data.recordId': { not: (workflowStore.open.records.map(r, r.record)) } }, style: { opacity: 0.1 } }] : []"
+                                "$": "(((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'calls') && ((local.others) == 'dim' || (local.others) == 'hide')) ? [{ when: { 'data.origin': spaceStore.root }, style: { opacity: 0.1 } }] : []"
+                              },
+                              {
+                                "$": "(((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') && ((local.others) == 'dim' || (local.others) == 'hide')) ? [{ when: { 'data.author': { not: ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') } }, style: { opacity: 0.1 } }] : []"
+                              },
+                              {
+                                "$": "(((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open) && ((local.others) == 'dim' || (local.others) == 'hide')) ? [{ when: { 'data.recordId': { not: workflowStore.open.records.map(r, r.record) } }, style: { opacity: 0.1 } }] : []"
                               }
                             ],
                             "edgeStyle": [

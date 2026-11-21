@@ -509,6 +509,13 @@ async fn make_identity(custody: &CustodyHandle) -> (String, String) {
     (did, words.join(" "))
 }
 
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn make_link_and_revoke_through_the_custody_service() {
     let Some((_one, world)) = set_up().await else {
@@ -704,7 +711,30 @@ async fn make_link_and_revoke_through_the_custody_service() {
         (Some(did.as_str()), Some("d2"))
     );
 
-    // ─── 4. Revoke d2 ───
+    // ─── 4. Unlink d2, then revoke it as lost since a time the store takes ───
+    let confirm = shown.record(
+        &custody
+            .start(IdentityStep::Unlink {
+                key_id: "d2".into(),
+            })
+            .await
+            .unwrap(),
+    );
+    assert!(
+        matches!(&confirm, Screen::UnlinkConfirm { key_id, passphrase: true, .. } if key_id == "d2")
+    );
+    let unlinked = shown.record(
+        &custody
+            .step(StepInput::Unlink {
+                passphrase: Some(PASSPHRASE.into()),
+            })
+            .await
+            .unwrap(),
+    );
+    assert!(
+        matches!(&unlinked, Screen::Unlinked { key_id, seq: 2 } if key_id == "d2"),
+        "{unlinked:?}"
+    );
     let confirm = shown.record(
         &custody
             .start(IdentityStep::Revoke {
@@ -721,6 +751,7 @@ async fn make_link_and_revoke_through_the_custody_service() {
             .step(StepInput::Revoke {
                 rotate: false,
                 passphrase: Some("still not the passphrase".into()),
+                since: None,
             })
             .await
             .unwrap(),
@@ -729,17 +760,32 @@ async fn make_link_and_revoke_through_the_custody_service() {
         wrong,
         Screen::RevokeConfirm { error: Some(_), .. }
     ));
-    let revoked = shown.record(
+    let in_the_future = shown.record(
         &custody
             .step(StepInput::Revoke {
                 rotate: false,
                 passphrase: Some(PASSPHRASE.into()),
+                since: Some(u64::MAX / 2),
             })
             .await
             .unwrap(),
     );
     assert!(
-        matches!(&revoked, Screen::Revoked { key_id, seq: 2 } if key_id == "d2"),
+        matches!(&in_the_future, Screen::RevokeConfirm { error: Some(e), .. } if e.contains("future")),
+        "{in_the_future:?}"
+    );
+    let revoked = shown.record(
+        &custody
+            .step(StepInput::Revoke {
+                rotate: false,
+                passphrase: Some(PASSPHRASE.into()),
+                since: Some(now_ms()),
+            })
+            .await
+            .unwrap(),
+    );
+    assert!(
+        matches!(&revoked, Screen::Revoked { key_id, seq: 3 } if key_id == "d2"),
         "{revoked:?}"
     );
     let log = a
@@ -754,7 +800,7 @@ async fn make_link_and_revoke_through_the_custody_service() {
         .iter()
         .map(|e| e["op"].as_str().unwrap())
         .collect();
-    assert_eq!(ops, ["incept", "add", "revoke"]);
+    assert_eq!(ops, ["incept", "add", "unlink", "revoke"]);
     let devices = a.call("identity.devices", json!({})).await;
     let d2 = devices
         .as_array()
@@ -762,10 +808,13 @@ async fn make_link_and_revoke_through_the_custody_service() {
         .iter()
         .find(|d| d["keyId"] == "d2")
         .unwrap();
-    assert_eq!(d2["revokedSeq"], 2);
+    assert_eq!(
+        (&d2["unlinkedSeq"], &d2["revokedSeq"]),
+        (&json!(2), &json!(3))
+    );
     let b_status = b.call("identity.status", json!({})).await;
     assert_eq!(
-        b_status["revoked"], 2,
+        b_status["revoked"], 3,
         "the second executor reports its key revoked"
     );
     // This computer cannot revoke itself.
@@ -1185,6 +1234,7 @@ async fn a_desktop_executor_takes_its_first_link_as_its_operator() {
         .step(StepInput::Revoke {
             rotate: false,
             passphrase: Some(PASSPHRASE.into()),
+            since: None,
         })
         .await
         .unwrap();

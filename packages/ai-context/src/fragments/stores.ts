@@ -303,7 +303,7 @@ export const storeEntries: StoreEntry[] = [
       marketplaceConfigured: { type: 'boolean' },
       marketplaceJoined: { type: 'boolean' },
     },
-    actions: ['switchDataset', 'reorderDatasets', 'cleanupSpaceSdna'],
+    actions: ['switchDataset', 'reorderDatasets'],
   },
   {
     name: 'profileStore',
@@ -844,9 +844,11 @@ export const storeEntries: StoreEntry[] = [
           'subtitle',
           'icon',
           'thisDevice',
+          'unlinked',
           'revoked',
           'valid',
           'status',
+          'canUnlink',
           'canRevoke',
           'name',
           'holdsMaster',
@@ -1289,8 +1291,6 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       switchDataset:
         '(uuid: string): switches to a dataset by UUID, registers its SHACL models as dynamic model classes, and populates currentDatasetEntities',
       reorderDatasets: '(newOrder: string[]): reorders the sidebar items by UUID array',
-      cleanupSpaceSdna:
-        '(uuid?: string): one-time remediation for a space that accumulated duplicate SDNA installs — removes the redundant duplicate link copies. Defaults to the current dataset. Returns a display-ready summary string naming how many links were removed and the DIDs that authored them (your own DID annotated with "(you)"), or an empty string if nothing needed cleaning up',
     },
   },
   profileStore: {
@@ -2323,7 +2323,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
     },
     actions: {
       refresh: '(): reads the status, the key log and the custody state again',
-      open: "(change: { kind: 'create' } | { kind: 'add-device' } | { kind: 'scan-device' } | { kind: 'show-code' } | { kind: 'take-master' } | { kind: 'ask-master' } | { kind: 'answer-request', id } | { kind: 'rename', keyId } | { kind: 'revoke', keyId }): runs a change and resolves with its outcome once it ends; the backend asks the person itself, wherever it keeps the master key, and everything is read again then. Words, passphrases and keys never reach the app",
+      open: "(change: { kind: 'create' } | { kind: 'add-device' } | { kind: 'scan-device' } | { kind: 'show-code' } | { kind: 'take-master' } | { kind: 'ask-master' } | { kind: 'answer-request', id } | { kind: 'rename', keyId } | { kind: 'unlink', keyId } | { kind: 'revoke', keyId }): runs a change and resolves with its outcome once it ends; the backend asks the person itself, wherever it keeps the master key, and everything is read again then. Words, passphrases and keys never reach the app",
       makeIdentity: '(): "Make my identity here" — runs `create`',
       startWithoutIdentity:
         '(): "Start now" — use this account without an identity; remembered for it on this computer, so the first-run question stops',
@@ -2332,11 +2332,12 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
   deviceStore: {
     state: {
       devices:
-        "{ keyId, addedSeq, revokedSeq, label, subtitle, icon, thisDevice, revoked, valid, status, canRevoke, name, holdsMaster, master, replaceMaster }[] — the device keys of the person's key log, valid first and this computer on top (a bot's key, which the key log marks, is not listed: botStore manages it), named from the identity's private record (which only its devices read). `label` is the record's name, else 'This computer' or 'Device d2'; `name` the record's name or empty; `valid` is neither revoked nor past its end; `status` 'Active', 'Removed at #2' or 'Expired on 3 Dec 2026'; `canRevoke` is a key not revoked that is not this computer's; `holdsMaster` 'yes', 'no' or 'offered' (sent, not yet taken), worded in `master` ('Has master key', 'Master key sent', or empty). A revoked key's `holdsMaster` is 'no', but its `master` warns when it took the master key or the key log let it ('Still has your master key. Replace it to lock this device out.', 'May still have your master key. Replace it to lock this device out.'): a revoke leaves a copy of the master key valid, until the master key is replaced: a rotation at or after the revoke clears the warning. `replaceMaster` is true on a row that warns: offer replaceMaster there, where canReplaceMaster. Draw `master` in a warning tone unless `holdsMaster` is 'yes'",
+        "{ keyId, addedSeq, unlinkedSeq, revokedSeq, label, subtitle, icon, thisDevice, unlinked, revoked, valid, status, canUnlink, canRevoke, name, holdsMaster, master, replaceMaster }[] — the device keys of the person's key log, valid first and this computer on top (a bot's key, which the key log marks, is not listed: botStore manages it), named from the identity's private record (which only its devices read). `label` is the record's name, else 'This computer' or 'Device d2'; `name` the record's name or empty; `valid` is neither unlinked, revoked nor past its end; `status` 'Active', 'Unlinked' (retired: it signs nothing new, and what it signed before stays valid), 'Revoked' (lost or stolen) or 'Expired on 3 Dec 2026'; `canUnlink` is an active key that is not this computer's; `canRevoke` is a key not yet revoked, unlinked or not, that is not this computer's; `holdsMaster` 'yes', 'no' or 'offered' (sent, not yet taken), worded in `master` ('Has master key', 'Master key sent', or empty). A revoked key's `holdsMaster` is 'no', but its `master` warns when it took the master key or the key log let it ('Still has your master key. Replace it to lock this device out.', 'May still have your master key. Replace it to lock this device out.'): a revoke leaves a copy of the master key valid, until the master key is replaced: a rotation at or after the revoke clears the warning. `replaceMaster` is true on a row that warns: offer replaceMaster there, where canReplaceMaster. Draw `master` in a warning tone unless `holdsMaster` is 'yes'",
       devicesLoaded: 'boolean — the list has been read once',
-      validCount: 'number — how many device keys are valid (neither revoked nor ended); bot keys are not counted',
+      validCount:
+        'number — how many device keys are valid (neither unlinked, revoked nor ended); bot keys are not counted',
       canManage:
-        'boolean — Link a device (scanDevice, addDevice), Rename, Remove and answering requests can be offered: this computer keeps the master key of the identity',
+        'boolean — Link a device (scanDevice, addDevice), Rename, Unlink, Revoke and answering requests can be offered: this computer keeps the master key of the identity',
       canShowCode: 'boolean — "Show code" can be offered: this computer can join an identity and speaks for none yet',
       canAskMaster:
         'boolean — "Ask for master key" can be offered: a device of the identity that does not keep the master key, has none waiting, and could open one (not encMismatch)',
@@ -2368,8 +2369,10 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       answerRequest:
         '(id: string): answers that request of another device, once the person says yes where the master key is kept (send the master key, or revoke the devices it names)',
       rename: '(keyId: string): names that device, in the private record only the identity’s devices read',
+      unlink:
+        '(keyId: string): unlinks that device key — retired: it signs nothing new, and what it signed before stays valid — once the person confirms it where the master key is kept. Resolves with the outcome',
       revoke:
-        '(keyId: string): revokes that device key, once the person confirms it where the master key is kept; the confirmation offers "Also replace master key" (ticked when the device kept a copy), which asks for the 12 words. Resolves with the outcome',
+        '(keyId: string): revokes that device key, lost or stolen, once the person confirms it where the master key is kept and says since when it was missing; the confirmation offers "Also replace master key" (ticked when the device kept a copy), which asks for the 12 words. Resolves with the outcome',
       replaceMaster:
         '(): "Replace master key" — asks for the 12 words where the custody service runs and publishes the next master key, which this computer keeps; every copy kept until now stops counting. Resolves with the outcome',
       restore:
