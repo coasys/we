@@ -838,14 +838,25 @@ export const storeEntries: StoreEntry[] = [
     state: {
       devices: {
         type: 'array',
-        properties: ['keyId', 'label', 'subtitle', 'icon', 'thisDevice', 'revoked', 'status', 'canRevoke'],
+        properties: [
+          'keyId',
+          'label',
+          'subtitle',
+          'icon',
+          'thisDevice',
+          'unlinked',
+          'revoked',
+          'status',
+          'canUnlink',
+          'canRevoke',
+        ],
       },
       devicesLoaded: { type: 'boolean' },
       validCount: { type: 'number' },
       canManage: { type: 'boolean' },
       error: { type: 'string' },
     },
-    actions: ['refresh', 'addDevice', 'revoke'],
+    actions: ['refresh', 'addDevice', 'unlink', 'revoke'],
   },
   {
     name: 'clockStore',
@@ -2220,7 +2231,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
     },
     actions: {
       refresh: '(): reads the status, the key log and the custody state again',
-      open: "(change: { kind: 'create' } | { kind: 'add-device' } | { kind: 'revoke', keyId }): runs a change and resolves with its outcome once it ends; the backend asks the person itself, wherever it keeps the master key, and everything is read again then. Words, passphrases and keys never reach the app",
+      open: "(change: { kind: 'create' } | { kind: 'add-device' } | { kind: 'unlink', keyId } | { kind: 'revoke', keyId }): runs a change and resolves with its outcome once it ends; the backend asks the person itself, wherever it keeps the master key, and everything is read again then. Words, passphrases and keys never reach the app",
       makeIdentity: '(): "Make my identity here" — runs `create`',
       startWithoutIdentity:
         '(): "Start now" — use this account without an identity; remembered for it on this computer, so the first-run question stops',
@@ -2229,18 +2240,21 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
   deviceStore: {
     state: {
       devices:
-        "{ keyId, addedSeq, revokedSeq, label, subtitle, icon, thisDevice, revoked, status, canRevoke }[] — the device keys of the person's key log, valid first and this computer on top. `label` is 'This computer' or 'Device d2' (devices have no names yet); `status` 'Active' or 'Removed at #2'; `canRevoke` is a valid key that is not this computer's",
+        "{ keyId, addedSeq, unlinkedSeq, revokedSeq, label, subtitle, icon, thisDevice, unlinked, revoked, status, canUnlink, canRevoke }[] — the device keys of the person's key log, active first and this computer on top. `label` is 'This computer' or 'Device d2' (devices have no names yet); `status` 'Active', 'Unlinked' or 'Revoked'; `canUnlink` is an active key that is not this computer's; `canRevoke` is a key not yet revoked (an unlinked one included) that is not this computer's",
       devicesLoaded: 'boolean — the list has been read once',
-      validCount: 'number — how many keys are valid',
-      canManage: 'boolean — Link a device or Remove can be offered: this computer keeps the master key of the identity',
+      validCount: 'number — how many keys are active: neither unlinked nor revoked',
+      canManage:
+        'boolean — Link a device, Unlink device or Lost or stolen can be offered: this computer keeps the master key of the identity',
       error: 'string — why the last read failed, or empty',
     },
     actions: {
       refresh: '(): reads the device list again',
       addDevice:
         '(): adds a device — the backend asks the person wherever it keeps the master key (on the desktop: the offer link and QR code, then the match code, then the confirmation that signs it). Resolves with the outcome; the list is read again',
+      unlink:
+        '(keyId: string): unlinks that device key — a device the person replaced or retired. It signs nothing new, and what it signed before stays valid. Confirmed where the master key is kept. Resolves with the outcome',
       revoke:
-        '(keyId: string): revokes that device key, once the person confirms it where the master key is kept. Resolves with the outcome',
+        '(keyId: string): revokes that device key as lost or stolen, once the person confirms it where the master key is kept; there they also say since when it was missing (default now). Resolves with the outcome',
     },
   },
   workflowStore: {

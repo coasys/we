@@ -1541,6 +1541,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     error: state('devices'),
     refresh: ambient('devices'),
     addDevice: action('devices'),
+    unlink: action('devices'),
     revoke: action('devices'),
   },
 

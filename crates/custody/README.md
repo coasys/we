@@ -26,10 +26,17 @@ keychain is not usable from the Electron app, and the identity it belongs to can
 there. A key in a sealed file opens from either app with its passphrase. On Linux both apps reach
 the same Secret Service.
 
-The crate runs the identity client's flows — make the identity, add a device, revoke one — and
-reaches the executor only over its RPC with the admin credential. It is its own crate so nothing of
-it links the executor; `tests/boundary.rs` keeps it so. No Windows: the desktop apps start there
-without identity.
+The crate runs the identity client's flows — make the identity, add a device, unlink one, revoke
+one — and reaches the executor only over its RPC with the admin credential. It is its own crate so
+nothing of it links the executor; `tests/boundary.rs` keeps it so. No Windows: the desktop apps
+start there without identity.
+
+An **unlink** retires a device: it signs nothing new, and what it signed before stays valid. A
+**revoke** is for one lost or stolen, and takes the time the person no longer trusts it from
+(`since`, ms, asked on the confirm screen; none is the revoke's own time). The store refuses a
+`since` in the future or before the device was added, and the confirm screen says so. A revoke may
+follow an unlink. The master key signs both, so this computer cannot change its own key; the key
+unlinking itself needs the device key, which custody does not hold.
 
 Only the **identity window** runs a flow. Its front end is shared too (`packages/identity-window`);
 each app opens it, gates its calls to that window, and answers the main window with how a step
@@ -107,7 +114,7 @@ its offer link, which the claiming device publishes through.
 **With no store, or one the executor trusts no key for, nothing can make or change an identity, and
 the app says so.** That is a network whose seed names no store, or a build that names a store URL
 without its key: the executor would refuse every publish (`no-store-keys`). So the custody service
-refuses make, add-device and revoke before anything starts — before any words are made — and
+refuses make, add-device, unlink and revoke before anything starts — before any words are made — and
 reports `blocked` in its public state. The first-run screen then draws "Make my identity here"
 disabled with the reason, and "Start now" is the way in. While the executor is not answering yet,
 nothing is known and nothing is reported blocked; the step itself asks again.

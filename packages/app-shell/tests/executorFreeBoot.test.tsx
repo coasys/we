@@ -1351,8 +1351,22 @@ describe('what the backend can do with an identity', () => {
           return { did: PERSON } as never;
         },
         devices: async () => [
-          { keyId: 'k1', sign: 'z6MkTestThisDevice', thisDevice: true, addedSeq: 0, revokedSeq: null },
-          { keyId: 'k2', sign: 'z6MkTestOtherDevice', thisDevice: false, addedSeq: 1, revokedSeq: null },
+          {
+            keyId: 'k1',
+            sign: 'z6MkTestThisDevice',
+            thisDevice: true,
+            addedSeq: 0,
+            unlinkedSeq: null,
+            revokedSeq: null,
+          },
+          {
+            keyId: 'k2',
+            sign: 'z6MkTestOtherDevice',
+            thisDevice: false,
+            addedSeq: 1,
+            unlinkedSeq: null,
+            revokedSeq: null,
+          },
         ],
       } as never;
     };
@@ -3593,8 +3607,22 @@ describe('changing a reaction', () => {
         capabilities: async () => ({ devices: true }) as never,
         status: async () => ({ did: 'did:scid:coasys:1:QmTestPerson' }) as never,
         devices: async () => [
-          { keyId: 'k1', sign: 'z6MkTestThisDevice', thisDevice: true, addedSeq: 0, revokedSeq: null },
-          { keyId: 'k2', sign: 'z6MkTestOtherDevice', thisDevice: false, addedSeq: 1, revokedSeq: null },
+          {
+            keyId: 'k1',
+            sign: 'z6MkTestThisDevice',
+            thisDevice: true,
+            addedSeq: 0,
+            unlinkedSeq: null,
+            revokedSeq: null,
+          },
+          {
+            keyId: 'k2',
+            sign: 'z6MkTestOtherDevice',
+            thisDevice: false,
+            addedSeq: 1,
+            unlinkedSeq: null,
+            revokedSeq: null,
+          },
         ],
       } as never;
     };

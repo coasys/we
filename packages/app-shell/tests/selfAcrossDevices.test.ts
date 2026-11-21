@@ -18,6 +18,7 @@ const device = (sign: string, thisDevice: boolean, revokedSeq: number | null = n
   sign,
   thisDevice,
   addedSeq: 0,
+  unlinkedSeq: null,
   revokedSeq,
 });
 

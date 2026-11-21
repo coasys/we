@@ -106,7 +106,7 @@ Glossary (these terms pervade stores, models, and `$query`/`perspective` in sche
 | `@we/drag` | design-system/drag | The drag session and its payload — references, never DOM — plus the ghost, the zone registry and the press-to-drag threshold | Agnostic |
 | `@we/entities` | packages/entities | WE's domain models: the authored neutral manifest (src/manifest, the source of truth), the neutral type contract, and the entity proxies backends register into | **Agnostic** |
 | `@we/app-shell` | packages/app-shell | App shell, stores, registries, built-in template schemas | Solid |
-| `@we/identity-window` | packages/identity-window | The desktop identity window's screens (make an identity, add or revoke a device) over an `IdentityTransport`; each desktop app supplies the transport to its custody service (`crates/custody`) | Vanilla DOM |
+| `@we/identity-window` | packages/identity-window | The desktop identity window's screens (make an identity, add, unlink or revoke a device) over an `IdentityTransport`; each desktop app supplies the transport to its custody service (`crates/custody`) | Vanilla DOM |
 | `@we/ai-context` | packages/ai-context | Generates this reference (CLAUDE.md et al.) from code + fragments | Build tool |
 | `@we/e2e` | packages/e2e | What every live test shares: a fresh multi-user executor and its accounts, a build served under the production CSP, Chrome, waits and failure artifacts (docs/testing/e2e.md) | Test tool |
 | `@we/agent-tools` | packages/agent-tools | What a model can do with WE: templates and themes as tools for any host, a space's records and WE's conventions for a conversation WE runs itself, and a single-file bundle for agent hosts | **Agnostic** |
@@ -3111,15 +3111,16 @@ DatasetStore:
 
 DeviceStore:
 - State:
-  - devices: { keyId, addedSeq, revokedSeq, label, subtitle, icon, thisDevice, revoked, status, canRevoke }[] — the device keys of the person's key log, valid first and this computer on top. `label` is 'This computer' or 'Device d2' (devices have no names yet); `status` 'Active' or 'Removed at #2'; `canRevoke` is a valid key that is not this computer's
+  - devices: { keyId, addedSeq, unlinkedSeq, revokedSeq, label, subtitle, icon, thisDevice, unlinked, revoked, status, canUnlink, canRevoke }[] — the device keys of the person's key log, active first and this computer on top. `label` is 'This computer' or 'Device d2' (devices have no names yet); `status` 'Active', 'Unlinked' or 'Revoked'; `canUnlink` is an active key that is not this computer's; `canRevoke` is a key not yet revoked (an unlinked one included) that is not this computer's
   - devicesLoaded: boolean — the list has been read once
-  - validCount: number — how many keys are valid
-  - canManage: boolean — Link a device or Remove can be offered: this computer keeps the master key of the identity
+  - validCount: number — how many keys are active: neither unlinked nor revoked
+  - canManage: boolean — Link a device, Unlink device or Lost or stolen can be offered: this computer keeps the master key of the identity
   - error: string — why the last read failed, or empty
 - Actions:
   - refresh(): reads the device list again
   - addDevice(): adds a device — the backend asks the person wherever it keeps the master key (on the desktop: the offer link and QR code, then the match code, then the confirmation that signs it). Resolves with the outcome; the list is read again
-  - revoke(keyId: string): revokes that device key, once the person confirms it where the master key is kept. Resolves with the outcome
+  - unlink(keyId: string): unlinks that device key — a device the person replaced or retired. It signs nothing new, and what it signed before stays valid. Confirmed where the master key is kept. Resolves with the outcome
+  - revoke(keyId: string): revokes that device key as lost or stolen, once the person confirms it where the master key is kept; there they also say since when it was missing (default now). Resolves with the outcome
 
 EditorStore:
 - State:
@@ -3209,7 +3210,7 @@ IdentityStore:
   - error: string — why the last read or change failed, ready to show, or empty. A change never rejects: it resolves "failed" and the reason is here, so draw it beside the control that asked
 - Actions:
   - refresh(): reads the status, the key log and the custody state again
-  - open(change: { kind: 'create' } | { kind: 'add-device' } | { kind: 'revoke', keyId }): runs a change and resolves with its outcome once it ends; the backend asks the person itself, wherever it keeps the master key, and everything is read again then. Words, passphrases and keys never reach the app
+  - open(change: { kind: 'create' } | { kind: 'add-device' } | { kind: 'unlink', keyId } | { kind: 'revoke', keyId }): runs a change and resolves with its outcome once it ends; the backend asks the person itself, wherever it keeps the master key, and everything is read again then. Words, passphrases and keys never reach the app
   - makeIdentity(): "Make my identity here" — runs `create`
   - startWithoutIdentity(): "Start now" — use this account without an identity; remembered for it on this computer, so the first-run question stops
 

@@ -6436,7 +6436,18 @@
       "state": {
         "devices": {
           "type": "array",
-          "properties": ["keyId", "label", "subtitle", "icon", "thisDevice", "revoked", "status", "canRevoke"]
+          "properties": [
+            "keyId",
+            "label",
+            "subtitle",
+            "icon",
+            "thisDevice",
+            "unlinked",
+            "revoked",
+            "status",
+            "canUnlink",
+            "canRevoke"
+          ]
         },
         "devicesLoaded": {
           "type": "boolean"
@@ -6451,9 +6462,9 @@
           "type": "string"
         }
       },
-      "actions": ["refresh", "addDevice", "revoke"],
+      "actions": ["refresh", "addDevice", "unlink", "revoke"],
       "ambient": ["refresh"],
-      "needsArgs": ["revoke"]
+      "needsArgs": ["unlink", "revoke"]
     },
     {
       "name": "editorStore",
