@@ -134,12 +134,14 @@ impl HttpClient for RouterHttp {
 
 /// The phone's transport: blocking, as the app's is. `offline` answers no request;
 /// `refuse_publish` answers no publish of a log's events, as a connection lost at that moment.
-/// `appends` keeps the body of each publish that went out.
+/// `refuse_publish_after` answers none once that many publishes went out (the store refusing the
+/// second of a rotation and its revoke). `appends` keeps the body of each publish that went out.
 struct PhoneHttp {
     rt: Arc<Runtime>,
     router: Router,
     offline: AtomicBool,
     refuse_publish: AtomicBool,
+    refuse_publish_after: AtomicUsize,
     sent: AtomicUsize,
     appends: Mutex<Vec<Value>>,
 }
@@ -152,7 +154,10 @@ impl StoreTransport for PhoneHttp {
             });
         }
         let append = request.method == "POST" && request.url.ends_with("/events");
-        if append && self.refuse_publish.load(Ordering::SeqCst) {
+        let refused = self.refuse_publish.load(Ordering::SeqCst)
+            || self.appends.lock().unwrap().len()
+                >= self.refuse_publish_after.load(Ordering::SeqCst);
+        if append && refused {
             return Err(TransportError::Failed {
                 reason: "Software caused connection abort".into(),
             });
@@ -332,6 +337,7 @@ fn phone(world: &World, protection: &str) -> Phone {
         router: world.router.clone(),
         offline: AtomicBool::new(false),
         refuse_publish: AtomicBool::new(false),
+        refuse_publish_after: AtomicUsize::new(usize::MAX),
         sent: AtomicUsize::new(0),
         appends: Mutex::new(Vec::new()),
     });
@@ -1768,6 +1774,81 @@ fn the_phone_restores_an_identity_and_locks_out_a_lost_computer() {
     assert_eq!(me.kind.as_deref(), Some("phone-app"));
     assert_eq!(me.holds_master, "yes");
     assert_eq!(me.master_index, Some(1));
+}
+
+// The store refuses the revoke after the rotation is published: the step shows the devices not
+// revoked, the phone is in no log yet, and Try again publishes only the revoke (from now, with no
+// words typed again), then joins the phone.
+#[test]
+fn a_restore_whose_revoke_is_refused_is_retried_without_the_words() {
+    let world = world();
+    let laptop = computer(&world, 1);
+    let did = create(&world, &laptop, 61);
+    let phone = phone(&world, "strongbox");
+    let steps = phone.identity.start_restore(false).unwrap();
+    steps.next().unwrap();
+    steps
+        .step(PhoneInput::TwelveWords { words: spelled(61) })
+        .unwrap();
+    // The rotation is the first publish; the revoke after it is refused.
+    phone.http.refuse_publish_after.store(1, Ordering::SeqCst);
+    let stopped = steps
+        .step(PhoneInput::LockOut {
+            key_ids: vec!["d1".into()],
+            name: Some("Pixel".into()),
+        })
+        .unwrap();
+    let PhoneScreen::RotatedNotRevoked {
+        index,
+        key_ids,
+        names,
+        reason,
+    } = stopped
+    else {
+        panic!("expected the revoke not published, got {stopped:?}");
+    };
+    assert_eq!(index, 1);
+    assert_eq!(key_ids, vec!["d1".to_string()]);
+    assert_eq!(names, vec![Some("Laptop".to_string())]);
+    assert!(!reason.is_empty());
+    assert!(!steps.ended(), "the flow waits for the retry");
+    assert_eq!(phone.keys.status().identity, None, "not joined yet");
+    assert!(matches!(
+        steps.step(PhoneInput::LockOut {
+            key_ids: vec!["d1".into()],
+            name: None,
+        }),
+        Err(PhoneKeyError::WrongInput)
+    ));
+
+    // Still refused: the same screen again.
+    assert!(matches!(
+        steps.step(PhoneInput::TryAgain).unwrap(),
+        PhoneScreen::RotatedNotRevoked { .. }
+    ));
+    phone
+        .http
+        .refuse_publish_after
+        .store(usize::MAX, Ordering::SeqCst);
+    let restored = steps.step(PhoneInput::TryAgain).unwrap();
+    let PhoneScreen::Restored {
+        did: restored_did,
+        name,
+        revoked,
+        ..
+    } = restored
+    else {
+        panic!("expected restored, got {restored:?}");
+    };
+    assert_eq!(restored_did, did);
+    assert_eq!(name, "Pixel");
+    assert_eq!(revoked, vec!["d1".to_string()]);
+    assert!(steps.ended());
+    assert_eq!(phone.keys.status().identity.unwrap().did, did);
+    let devices = phone.identity.devices().unwrap();
+    let laptop_now = devices.iter().find(|d| d.key_id == "d1").unwrap();
+    assert!(laptop_now.revoked_seq.is_some(), "the laptop is locked out");
+    assert!(devices.iter().any(|d| d.this_device));
 }
 
 /// Blocks every write of `phone`'s key file and nothing else: a directory where the write puts

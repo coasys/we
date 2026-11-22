@@ -147,6 +147,13 @@ class IdentityStepsJvmTest {
     val restored = IdentityStepsJson.screenJson(PhoneScreen.Restored("did:webvh:x", "Phone", "d4", listOf("d1"), null))
     assertEquals("d1", restored.getJSONArray("revoked").getString(0))
 
+    val notRevoked = IdentityStepsJson.screenJson(PhoneScreen.RotatedNotRevoked(1u, listOf("d1", "d2"), listOf("Laptop", null), "refused"))
+    assertEquals("rotated-not-revoked", notRevoked.getString("screen"))
+    assertEquals("d2", notRevoked.getJSONArray("keyIds").getString(1))
+    assertEquals("Laptop", notRevoked.getJSONArray("names").getString(0))
+    assertTrue(notRevoked.getJSONArray("names").isNull(1))
+    assertFalse(notRevoked.getBoolean("needsWords"))
+
     val notLinked = IdentityStepsJson.screenJson(PhoneScreen.RestoreNotLinked("did:webvh:x", listOf("d1"), "offline"))
     assertEquals("restore-not-linked", notLinked.getString("screen"))
 

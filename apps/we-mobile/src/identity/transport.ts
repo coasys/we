@@ -521,6 +521,9 @@ export function phoneTransport(start: PhoneStart, deps: PhoneTransportDeps): Pho
         });
       case 'try-again':
         return flowStep({ input: 'try-again' });
+      case 'retry-revoke':
+        // The phone has no "missing since" input: the retry revokes from now, and asks for no words.
+        return flowStep({ input: 'try-again' });
       default:
         return failed(ON_A_COMPUTER);
     }

@@ -25,6 +25,8 @@ import uniffi.we_phone_custody.RestoreDeviceView
  *   {screen: "identity-ready", did, keyId, note}              (the end)
  *   {screen: "make-stopped", did, reason, pending}            → input "try-again"
  *   {screen: "restored", did, name, keyId, revoked, note}     (the end)
+ *   {screen: "rotated-not-revoked", index, keyIds, names, reason, needsWords: false}
+ *                                                             → input "try-again"
  *   {screen: "restore-not-linked", did, revoked, reason}      → input "try-again"
  *   {screen: "master-replaced", index, revoked, note}         (the end)
  *   {screen: "master-not-kept", index, revoked, reason, note} → input "try-again"
@@ -69,6 +71,14 @@ object IdentityStepsJson {
         .put("did", screen.did)
         .put("revoked", JSArray(screen.revoked))
         .put("reason", screen.reason)
+    is PhoneScreen.RotatedNotRevoked ->
+      named("rotated-not-revoked")
+        .put("index", screen.index.toLong())
+        .put("keyIds", JSArray(screen.keyIds))
+        .put("names", JSArray(screen.names.map { it.orNull() }))
+        .put("reason", screen.reason)
+        // The phone holds the words for the flow: a retry asks for none.
+        .put("needsWords", false)
     is PhoneScreen.MasterReplaced ->
       named("master-replaced")
         .put("index", screen.index.toLong())

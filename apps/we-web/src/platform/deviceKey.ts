@@ -211,6 +211,18 @@ export type IdentityScreen =
   | { screen: 'make-stopped'; did: string | null; reason: string; pending: boolean }
   /** The restore's last screen. */
   | { screen: 'restored'; did: string; name: string; keyId: string; revoked: string[]; note: string | null }
+  /**
+   * The restore's rotation is published and the lock-out's revoke is not (`names` are the record's,
+   * null where it names none). `try-again` publishes the revoke, from now, with no words asked.
+   */
+  | {
+      screen: 'rotated-not-revoked';
+      index: number;
+      keyIds: string[];
+      names: Array<string | null>;
+      reason: string;
+      needsWords: false;
+    }
   /** The restore's rotation is published and this phone is not in the log yet. */
   | { screen: 'restore-not-linked'; did: string; revoked: string[]; reason: string }
   /** The replace's last screen: this phone keeps master `index`. */
@@ -225,7 +237,7 @@ export type IdentityInput =
   | { input: 'name-device'; name?: string }
   | { input: 'twelve-words'; words: string }
   | { input: 'lock-out'; keyIds: string[]; name?: string }
-  /** To `make-stopped`, `restore-not-linked` and `master-not-kept`. */
+  /** To `make-stopped`, `rotated-not-revoked`, `restore-not-linked` and `master-not-kept`. */
   | { input: 'try-again' };
 
 /** A flow's screen, and whether the flow is over (its last screen, or one it ended on). */

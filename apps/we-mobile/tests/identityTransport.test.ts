@@ -668,6 +668,51 @@ describe('making an identity on the phone', () => {
     ]);
   });
 
+  it('shows a restore whose revoke was refused, and retries it from now with no words', async () => {
+    const calls: Calls = [];
+    const notRevoked = {
+      screen: 'rotated-not-revoked' as const,
+      index: 1,
+      keyIds: ['d1'],
+      names: ['Laptop'],
+      reason: 'The revoke was not accepted.',
+      needsWords: false as const,
+    };
+    const transport = phoneTransport(
+      { kind: 'restore' },
+      {
+        plugin: plugin(
+          {
+            status: { ...emptyStatus, keys },
+            setSecure: {},
+            startRestore: {
+              flow: 'r1',
+              ended: false,
+              screen: { screen: 'restore-devices', did: MADE, devices: [], note: null },
+            },
+            identityStep: [
+              { ended: false, screen: notRevoked },
+              {
+                ended: true,
+                screen: { screen: 'restored', did: MADE, name: 'Pixel', keyId: 'd2', revoked: ['d1'], note: null },
+              },
+            ],
+          },
+          calls,
+        ),
+        leave: () => {},
+      },
+    );
+    await transport.start();
+    expect(await transport.step({ kind: 'lock-out', keyIds: ['d1'] })).toEqual(notRevoked);
+    // A time the window sends is not carried: the phone revokes from now.
+    expect(await transport.step({ kind: 'retry-revoke', since: 5 })).toMatchObject({ screen: 'restored' });
+    expect(calls.filter(([m]) => m === 'identityStep').map(([, o]) => o)).toEqual([
+      { flow: 'r1', input: { input: 'lock-out', keyIds: ['d1'] } },
+      { flow: 'r1', input: { input: 'try-again' } },
+    ]);
+  });
+
   it('shows the identity at once when the phone had one made and not published', async () => {
     const transport = phoneTransport(
       { kind: 'create' },

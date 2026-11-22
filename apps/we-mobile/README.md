@@ -180,7 +180,10 @@ master key, replaces it with the words, adds devices and answers their requests.
     incept, co-signed by the phone's device key, is published.
   - **Restore:** the 12 words are typed and the identity's devices are listed, with its apps ticked
     to lock out. One rotation revokes the ticked devices and keeps the new master key here, and
-    the phone joins as a device.
+    the phone joins as a device. The revoke is always from now: the phone has no "missing since"
+    input. If the store refuses the revoke after the rotation is published, the page shows
+    "Devices not revoked yet" (`rotated-not-revoked`). Try again publishes only the revoke, with
+    no words typed again, and then joins the phone.
   - **Replace:** the 12 words are typed and the next master key is kept here. The other devices
     that keep the master key are sent it.
 
@@ -210,7 +213,7 @@ master key, replaces it with the words, adds devices and answers their requests.
   | Replace | `enter-words` → `master-replaced`                                                                                |
 
   The stops, each with Try again: `make-stopped` (pending: publish again; otherwise make again from
-  the same words), `restore-not-linked` and `master-not-kept`. A flow that cannot start (no
+  the same words), `rotated-not-revoked`, `restore-not-linked` and `master-not-kept`. A flow that cannot start (no
   biometric, the person declined a weak keystore, a phone already in an identity, the store down) is
   a `failed` screen in the page's words.
 

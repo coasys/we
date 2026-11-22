@@ -21,7 +21,7 @@ here, so a make, a restore or a replace means the same thing on either.
 | `words`   | Why typed words were refused, in the sentences a person reads                                                                                    |
 | `epoch`   | `EpochRecovery`, `recover_lost_epoch`, `words_make_current_master`: the words-gated way back from a lost custody epoch, before a rotation        |
 | `rotate`  | Replace the master key with the words                                                                                                            |
-| `restore` | The lock-out list, its check, and the restore's rotation and enrolment                                                                           |
+| `restore` | The lock-out list, its check, the restore's rotation and enrolment, and `revoke_again` for a rotation whose revoke was refused                   |
 | `notes`   | What a hand-over of a new master key left undone                                                                                                 |
 
 Generic over `ad4m_identity_client::ExecutorRpc`; nothing here names the executor, a transport or

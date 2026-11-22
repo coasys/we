@@ -8,7 +8,8 @@
 //!   → [`PhoneScreen::NameDevice`] → [`PhoneInput::NameDevice`] → [`PhoneScreen::IdentityReady`].
 //! - **Restore** ([`PhoneIdentity::start_restore`]): [`PhoneScreen::EnterWords`] →
 //!   [`PhoneInput::TwelveWords`] → [`PhoneScreen::RestoreDevices`] → [`PhoneInput::LockOut`] →
-//!   [`PhoneScreen::Restored`].
+//!   [`PhoneScreen::Restored`]. A revoke the store refuses after the rotation is published shows
+//!   [`PhoneScreen::RotatedNotRevoked`]; [`PhoneInput::TryAgain`] publishes it again.
 //! - **Replace the master key** ([`PhoneIdentity::start_rotate`]): [`PhoneScreen::EnterWords`] →
 //!   [`PhoneInput::TwelveWords`] → [`PhoneScreen::MasterReplaced`].
 //!
@@ -53,7 +54,8 @@ use ad4m_identity_core::{did_of, scid_of, Event, Op};
 use futures_executor::block_on;
 use we_identity_steps::{
     enrol_again, finish_restore, handed_over, joined, key_ids, listed, lock_out_of, record_note,
-    rotate_with_words, words_refused, MakeWords, RestoreDevice, NOT_THESE_WORDS, WRONG_CONFIRM,
+    revoke_again, rotate_with_words, words_refused, MakeWords, RestoreDevice, NOT_THESE_WORDS,
+    WRONG_CONFIRM,
 };
 use zeroize::Zeroizing;
 
@@ -148,6 +150,17 @@ pub enum PhoneScreen {
         revoked: Vec<String>,
         reason: String,
     },
+    /// The restore's rotation is published (master `index` is current, the identity restored) and
+    /// the lock-out's revoke is not: the devices `key_ids` are not locked out yet, and this phone
+    /// is not in the log. `names` are the record's names of `key_ids`, in order (`None` where it
+    /// names none). `reason` is why. [`PhoneInput::TryAgain`] publishes only the revoke, from now,
+    /// then joins this phone, without the words being typed again.
+    RotatedNotRevoked {
+        index: u32,
+        key_ids: Vec<String>,
+        names: Vec<Option<String>>,
+        reason: String,
+    },
     /// The master key is replaced; this phone keeps master `index`.
     MasterReplaced {
         index: u32,
@@ -234,6 +247,18 @@ impl std::fmt::Debug for PhoneScreen {
                 .field("revoked", revoked)
                 .field("reason", reason)
                 .finish(),
+            PhoneScreen::RotatedNotRevoked {
+                index,
+                key_ids,
+                names,
+                reason,
+            } => f
+                .debug_struct("RotatedNotRevoked")
+                .field("index", index)
+                .field("key_ids", key_ids)
+                .field("names", names)
+                .field("reason", reason)
+                .finish(),
             PhoneScreen::MasterReplaced {
                 index,
                 revoked,
@@ -277,8 +302,8 @@ pub enum PhoneInput {
         key_ids: Vec<String>,
         name: Option<String>,
     },
-    /// To [`PhoneScreen::MakeStopped`], [`PhoneScreen::RestoreNotLinked`] and
-    /// [`PhoneScreen::MasterNotKept`].
+    /// To [`PhoneScreen::MakeStopped`], [`PhoneScreen::RotatedNotRevoked`],
+    /// [`PhoneScreen::RestoreNotLinked`] and [`PhoneScreen::MasterNotKept`].
     TryAgain,
 }
 
@@ -466,6 +491,16 @@ impl Talk<'_> {
 
     fn wrong(&self) {
         let _ = self.screens.send(Err(PhoneKeyError::WrongInput));
+    }
+
+    /// Waits for [`PhoneInput::TryAgain`]; any other input is answered a wrong input.
+    fn try_again(&self) -> Result<(), PhoneKeyError> {
+        loop {
+            match self.input()? {
+                Command::TryAgain => return Ok(()),
+                _ => self.wrong(),
+            }
+        }
     }
 
     /// The next input: `Cancelled` when the app cancelled or dropped the flow, `Ended` after
@@ -733,12 +768,7 @@ fn make(parts: &Parts, vault: &PhoneVault, exec: &Executor, talk: &Talk<'_>) -> 
                     did: pending,
                     reason,
                 });
-                loop {
-                    match talk.input()? {
-                        Command::TryAgain => break,
-                        _ => talk.wrong(),
-                    }
-                }
+                talk.try_again()?;
             }
         }
     }
@@ -827,7 +857,7 @@ fn restore(parts: &Parts, vault: &PhoneVault, exec: &Executor, talk: &Talk<'_>) 
     let entry = this_phone(name);
     let name = entry.name.clone();
     talk.check()?;
-    let restored = block_on(finish_restore(
+    let mut finished = block_on(finish_restore(
         &mut flow,
         exec,
         vault,
@@ -835,8 +865,37 @@ fn restore(parts: &Parts, vault: &PhoneVault, exec: &Executor, talk: &Talk<'_>) 
         &lock_out,
         None,
         entry.clone(),
-    ))
-    .map_err(phone_error)?;
+    ));
+    let restored = loop {
+        match finished {
+            Ok(restored) => break restored,
+            // The rotation is published and the lock-out's revoke is not: the flow holds the
+            // pending revoke and the words, so a retry asks for nothing. The phone has no "missing
+            // since" input: it revokes from now.
+            Err(ClientError::RotatedNotRevoked { pending, cause }) => {
+                log::warn!("phone: the restore's revoke was refused: {cause}");
+                talk.show(PhoneScreen::RotatedNotRevoked {
+                    index: pending.index,
+                    names: pending
+                        .key_ids
+                        .iter()
+                        .map(|id| {
+                            devices
+                                .iter()
+                                .find(|d| d.key_id == id.as_str())
+                                .and_then(|d| d.name.clone())
+                        })
+                        .collect(),
+                    key_ids: key_ids(&pending.key_ids),
+                    reason: "The revoke was not accepted.".into(),
+                });
+                talk.try_again()?;
+                talk.check()?;
+                finished = block_on(revoke_again(&mut flow, None, entry.clone()));
+            }
+            Err(e) => return Err(phone_error(e)),
+        }
+    };
     // Published from here: the identity is restored and the lock-out stands, whatever follows.
     let revoked = key_ids(&restored.revoked);
     let mut enrolled: Result<Enrolled, ClientError> = restored.enrolled;
@@ -864,12 +923,7 @@ fn restore(parts: &Parts, vault: &PhoneVault, exec: &Executor, talk: &Talk<'_>) 
                 });
             }
         }
-        loop {
-            match talk.input()? {
-                Command::TryAgain => break,
-                _ => talk.wrong(),
-            }
-        }
+        talk.try_again()?;
         talk.check()?;
         // The same flow: it holds the words, which are not asked again, and refuses a second
         // rotation. The same words, checked again, recover an epoch lost since.
@@ -927,12 +981,7 @@ fn rotate(parts: &Parts, vault: &PhoneVault, exec: &Executor, talk: &Talk<'_>) -
             Ok(rotated) => match replaced(rotated) {
                 screen @ PhoneScreen::MasterNotKept { .. } => {
                     talk.show(screen);
-                    loop {
-                        match talk.input()? {
-                            Command::TryAgain => break,
-                            _ => talk.wrong(),
-                        }
-                    }
+                    talk.try_again()?;
                 }
                 screen => return Ok(screen),
             },
