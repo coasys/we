@@ -6916,6 +6916,85 @@
       "needsArgs": ["switchSession", "deleteSession", "setContentMode", "confirmPicker", "sendMessage"]
     },
     {
+      "name": "hostingStore",
+      "state": {
+        "hosts": {
+          "type": "array",
+          "properties": ["id", "name", "details", "address", "runByCoasys", "signup", "charge", "models", "joinable"]
+        },
+        "hostListState": {
+          "type": "string"
+        },
+        "hostListError": {
+          "type": "string"
+        },
+        "address": {
+          "type": "string"
+        },
+        "addressProblem": {
+          "type": "string"
+        },
+        "chosen": {
+          "type": "object",
+          "properties": ["kind", "host", "url"]
+        },
+        "available": {
+          "type": "boolean"
+        },
+        "loaded": {
+          "type": "boolean"
+        },
+        "error": {
+          "type": "string"
+        },
+        "canOffer": {
+          "type": "boolean"
+        },
+        "notAllowed": {
+          "type": "boolean"
+        },
+        "noOperator": {
+          "type": "boolean"
+        },
+        "indexError": {
+          "type": "string"
+        },
+        "listing": {
+          "type": "object",
+          "properties": ["name", "address", "label", "tone", "line", "models", "rates", "confirmed"]
+        },
+        "isListed": {
+          "type": "boolean"
+        },
+        "draft": {
+          "type": "object",
+          "properties": ["name", "description", "location", "url"]
+        },
+        "problem": {
+          "type": "string"
+        },
+        "publishing": {
+          "type": "boolean"
+        },
+        "withdrawing": {
+          "type": "boolean"
+        }
+      },
+      "actions": [
+        "loadHosts",
+        "setAddress",
+        "choose",
+        "chooseAddress",
+        "clearChoice",
+        "setDraftField",
+        "refresh",
+        "publish",
+        "withdraw"
+      ],
+      "ambient": ["setAddress", "choose", "chooseAddress", "clearChoice", "setDraftField", "refresh"],
+      "needsArgs": ["setAddress", "choose", "setDraftField"]
+    },
+    {
       "name": "hostStore",
       "state": {
         "canViewHost": {

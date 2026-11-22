@@ -68,6 +68,7 @@ export const CAPABILITY_GROUPS = {
   keys: 'See your identity and its key log, and ask to make or change it — you confirm every change yourself',
   devices: 'See the devices that act as you, and ask to add or remove one — you confirm every change yourself',
   bots: 'See the bots that act for you and what they did, and change, pause or revoke what each may do',
+  hosting: 'Read the hosting index to find a host, and list or withdraw this device in it',
 } as const;
 
 export type CapabilityGroup = keyof typeof CAPABILITY_GROUPS;
@@ -143,6 +144,11 @@ export const CHROME_TIER: readonly CapabilityGroup[] = [
     person's own session. So no space template may name it, and revoking is marked destructive.
   */
   'bots',
+  /*
+    Chrome only. Listing a device tells the hosting index where it is and who runs it, and reading the
+    index is a request to the platform that a community's template could make on every page view.
+  */
+  'hosting',
 ];
 
 /** Host wiring: never in any template bag, at any tier. */
@@ -1693,6 +1699,41 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     resume: action('bots'),
     revoke: destructive('bots'),
     loadOlder: ambient('bots'),
+  },
+  /*
+    Reading the index is a request to the platform, so `loadHosts` is not ambient: it runs from a
+    press ("Add a cloud device", "Try again"), never because a screen mounted. Choosing a host only
+    records the choice for the flow that joins it.
+  */
+  hostingStore: {
+    hosts: state('hosting'),
+    hostListState: state('hosting'),
+    hostListError: state('hosting'),
+    address: state('hosting'),
+    addressProblem: state('hosting'),
+    chosen: state('hosting'),
+    available: state('hosting'),
+    loaded: state('hosting'),
+    error: state('hosting'),
+    canOffer: state('hosting'),
+    notAllowed: state('hosting'),
+    noOperator: state('hosting'),
+    indexError: state('hosting'),
+    listing: state('hosting'),
+    isListed: state('hosting'),
+    draft: state('hosting'),
+    problem: state('hosting'),
+    publishing: state('hosting'),
+    withdrawing: state('hosting'),
+    loadHosts: action('hosting'),
+    setAddress: ambient('hosting'),
+    choose: ambient('hosting'),
+    chooseAddress: ambient('hosting'),
+    clearChoice: ambient('hosting'),
+    setDraftField: ambient('hosting'),
+    refresh: ambient('hosting'),
+    publish: action('hosting'),
+    withdraw: action('hosting'),
   },
 
   /*

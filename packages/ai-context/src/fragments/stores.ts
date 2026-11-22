@@ -1053,6 +1053,47 @@ export const storeEntries: StoreEntry[] = [
     ],
   },
   {
+    name: 'hostingStore',
+    state: {
+      hosts: {
+        type: 'array',
+        properties: ['id', 'name', 'details', 'address', 'runByCoasys', 'signup', 'charge', 'models', 'joinable'],
+      },
+      hostListState: { type: 'string' },
+      hostListError: { type: 'string' },
+      address: { type: 'string' },
+      addressProblem: { type: 'string' },
+      chosen: { type: 'object', properties: ['kind', 'host', 'url'] },
+      available: { type: 'boolean' },
+      loaded: { type: 'boolean' },
+      error: { type: 'string' },
+      canOffer: { type: 'boolean' },
+      notAllowed: { type: 'boolean' },
+      noOperator: { type: 'boolean' },
+      indexError: { type: 'string' },
+      listing: {
+        type: 'object',
+        properties: ['name', 'address', 'label', 'tone', 'line', 'models', 'rates', 'confirmed'],
+      },
+      isListed: { type: 'boolean' },
+      draft: { type: 'object', properties: ['name', 'description', 'location', 'url'] },
+      problem: { type: 'string' },
+      publishing: { type: 'boolean' },
+      withdrawing: { type: 'boolean' },
+    },
+    actions: [
+      'loadHosts',
+      'setAddress',
+      'choose',
+      'chooseAddress',
+      'clearChoice',
+      'setDraftField',
+      'refresh',
+      'publish',
+      'withdraw',
+    ],
+  },
+  {
     name: 'clockStore',
     state: { clocks: { type: 'object' } },
     actions: ['play', 'pause', 'toggle', 'seek', 'seekProgress', 'setSpeed', 'setLoop', 'configure'],
@@ -2578,6 +2619,48 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '(): "Restore with recovery phrase" — on a computer of no identity, asks for the words, lists the identity\'s devices to lock out (with since when they were missing), and makes this computer a device of it that keeps the new master key. Resolves with the outcome',
       removeMaster:
         "(): stops keeping the master key on this computer, once the person confirms it; refused, with the reason, when this computer keeps the only copy. Resolves 'done' only when it was removed",
+    },
+  },
+  hostingStore: {
+    state: {
+      hosts:
+        '{ id, name, details, address, runByCoasys, signup, charge, models, joinable }[] — the hosts the hosting index lists, Coasys cloud first, then by name, each worded for a row. Empty until loadHosts has answered. `joinable` is false for a full host or one taking no new people',
+      hostListState:
+        "string — 'idle' (not read yet), 'loading', 'ready', 'down' (the index did not answer) or 'unconfigured' (the deployment names no platform API)",
+      hostListError: 'string — the sentence to show when the index did not answer, or empty',
+      address: 'string — the address typed under "Add by its address"',
+      addressProblem: 'string — why the typed address cannot be used, or empty (also empty before anything is typed)',
+      chosen:
+        "{ kind: 'listed', host } | { kind: 'address', url } | null — the host the person chose; \"Add a cloud device\" takes it from here",
+      available: 'boolean — this backend can list its device on the index. Gate Earn with it on it',
+      loaded: 'boolean — the listing has been read once',
+      error: 'string — why the last read or change failed, or empty',
+      canOffer: 'boolean — the device has an operator and the index admits it: listing can be offered',
+      notAllowed: 'boolean — the index does not admit this operator',
+      noOperator: 'boolean — the device has no operator identity to list for',
+      indexError: 'string — the index did not answer; what shows is what the device remembers. Empty when it answered',
+      listing:
+        "{ name, address, label, tone, line, models, rates, confirmed } | null — this device's listing, worded. `label` and `tone` go in a badge; `line` says what the index says now, with the reason when it removed the listing; `confirmed` is false when it is only what the device remembers",
+      isListed: 'boolean — the listing is up (listed, or cannot be reached for now): Withdraw can be offered',
+      draft: '{ name, description, location, url } — the listing text being edited',
+      problem: 'string — what is missing or too long in the draft, or empty when it can be listed',
+      publishing: 'boolean — List is under way',
+      withdrawing: 'boolean — Withdraw is under way',
+    },
+    actions: {
+      loadHosts:
+        '(): reads the host list from the platform API. Call it from a button: it reaches the network, so nothing may run it on mount',
+      setAddress: '(value: string): sets the address typed under "Add by its address"',
+      choose:
+        '(id: string): chooses a listed host by its id and, where deviceStore.canAddCloudDevice, starts "Add a cloud device" with it (Coasys cloud for the host Coasys runs, else its address)',
+      chooseAddress:
+        '(): chooses the address typed, when it is a usable https address, and starts "Add a cloud device" with it as choose does. This is the one place an address is typed',
+      clearChoice: '(): forgets the chosen host',
+      setDraftField: "(field: 'name' | 'description' | 'location' | 'url', value: string): edits the listing text",
+      refresh: '(): reads the listing again',
+      publish:
+        '(): points the device at the index if it is not yet, then lists it with the draft. Resolves true when listed',
+      withdraw: '(): takes the listing off the index at once. Resolves true when withdrawn',
     },
   },
   hostStore: {
