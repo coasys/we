@@ -67,6 +67,8 @@ export interface IdentityStore {
   canCheckEmail: Accessor<boolean>;
   /** The log names this computer's key revoked. */
   thisDeviceRevoked: Accessor<boolean>;
+  /** The log names this computer's key unlinked, here or from another device: it no longer speaks for the person. */
+  thisDeviceUnlinked: Accessor<boolean>;
   /** The key log, newest first, as Settings → Security → Key log draws it. */
   keyLog: Accessor<KeyLogRow[]>;
   keyLogLoaded: Accessor<boolean>;
@@ -299,6 +301,7 @@ export function IdentityStoreProvider(props: ParentProps) {
         status()?.vouched === false,
     ),
     thisDeviceRevoked: () => status()?.revoked != null,
+    thisDeviceUnlinked: () => status()?.unlinked != null,
     keyLog: createMemo(() => {
       // A phone's custody service answers for the phone: its key is the one the log marks as here.
       const here = custodyDevice(custody());

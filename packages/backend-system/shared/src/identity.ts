@@ -117,6 +117,15 @@ export interface IdentityPort {
    * with `change({ kind: 'add-bot' })`, where the master key is kept.
    */
   bots?: BotPort;
+  /**
+   * This computer's device key leaves the identity, signed by the key itself: no master key is
+   * needed, so no custody window opens. The key is dead here from then on and the agent is signed
+   * out. Resolves when it is done; rejects with an `Error` whose message is a plain sentence a
+   * person can read (no identity, not listed, already unlinked, not allowed). A backend that cannot
+   * do this rejects the same way. When the answer was lost or the backend cannot say whether it
+   * happened, it rejects with an `UnlinkUncertainError`: the unlink may have been done.
+   */
+  unlinkSelf(): Promise<void>;
 }
 
 /**
@@ -159,6 +168,14 @@ export type IdentityChange =
   | { kind: 'add-bot' }
   | { kind: 'check-email' };
 
+/** `IdentityPort.unlinkSelf` could not tell whether the unlink happened: ask the status again. */
+export class UnlinkUncertainError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'UnlinkUncertainError';
+  }
+}
+
 /** How a change ended: made, abandoned by the person, or refused along the way. */
 export type IdentityChangeOutcome = 'done' | 'cancelled' | 'failed';
 
@@ -178,11 +195,12 @@ export interface IdentityCustodyView {
    */
   devices: DeviceNameView[];
   /**
-   * The revoked keys that may still hold a valid master key, as the key log says: it let them keep
-   * the master key, and none has replaced it since. A revoke leaves a copy of the master key valid,
-   * and the private record drops a revoked key's entry, so only the log keeps this.
+   * The revoked or unlinked keys that may still hold a valid master key, as the key log says: it let
+   * them keep the master key, and none has replaced it since. A revoke or an unlink leaves a copy of
+   * the master key valid, and the private record drops an ended key's entry, so only the log keeps
+   * this.
    */
-  revokedHolders: string[];
+  endedHolders: string[];
   /** What other devices asked and is waiting for an answer from a device that keeps the master key. */
   requests: DeviceRequestView[];
   /**
@@ -270,6 +288,11 @@ export interface IdentityStatusView {
   keyId: string | null;
   /** The seq of the event that revoked this device, if one did. */
   revoked: number | null;
+  /**
+   * The seq of the event that unlinked this device, if one did. A key the log shows unlinked no
+   * longer speaks for the person: the executor signs the agent out of it.
+   */
+  unlinked: number | null;
   head: KeyLogHead | null;
   fork: KeyLogFork | null;
   /**

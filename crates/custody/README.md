@@ -49,7 +49,8 @@ An **unlink** retires a device: it signs nothing new, and what it signed before 
 `since` in the future or before the device was added, and the confirm screen says so. A revoke may
 follow an unlink. The master key signs both, so this computer cannot change its own key; the key
 unlinking itself needs the device key, which custody does not hold. A revoke asked by another
-device's `confirm-revoke` request carries no `since`.
+device's `confirm-revoke` request carries no `since` on its first try; the retry after a published
+rotation (below) takes one.
 
 Only the **identity window** runs a flow. Its front end is shared too (`packages/identity-window`);
 each app opens it, gates its calls to that window, and answers the main window with how a step
@@ -244,24 +245,56 @@ incept only; the master key stays where it rests.
 
 The steps the main window may open (`IdentityStep`) besides `create`, `unlink` and `revoke`:
 
-| Step             | Where                          | What it does                                                                                                      |
-| ---------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
-| `add-device`     | a computer with the master key | gives a server an offer link (QR and text), then the match code, then signs the `add`                             |
-| `scan-device`    | a computer with the master key | "Enter code": takes the `coasys:device:1:…` code a new device shows and sends it the offer                        |
-| `show-code`      | a computer of no identity yet  | "Show code": its device code as a QR code and a copyable link, until a holder links it                            |
-| `take-master`    | a linked device                | "Accept master key": keeps the master key another device sent here                                                |
-| `ask-master`     | a linked device                | "Ask for master key": posts a `send-master` request for a holder to answer                                        |
-| `answer-request` | a computer with the master key | answers another device's `send-master` or `confirm-revoke` request, on the person's yes                           |
-| `rename`         | a computer with the master key | names a device in the identity's private record                                                                   |
-| `replace-master` | a device of the identity       | "Replace master key": takes the 12 words and publishes a `rotate`; this computer keeps the new key                |
-| `restore`        | a computer of no identity yet  | "Restore with recovery phrase": finds the identity, ticks its devices to lock out, rotates and adds this computer |
-| `remove-master`  | a computer with the master key | on sign out: forgets this computer's copy of the master key; refused when it is the only copy                     |
-| `check-email`    | a device of the identity       | "Check my email": an email address, the code sent to it, then a vouch note kept beside the log                    |
+| Step             | Where                          | What it does                                                                                                                                                    |
+| ---------------- | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `add-device`     | a computer with the master key | gives a server an offer link (QR and text), then the match code, then signs the `add`                                                                           |
+| `scan-device`    | a computer with the master key | "Enter code": takes the `coasys:device:1:…` code a new device shows and sends it the offer                                                                      |
+| `show-code`      | a computer of no identity yet  | "Show code": its device code as a QR code and a copyable link, until a holder links it                                                                          |
+| `take-master`    | a linked device                | "Accept master key": keeps the master key another device sent here                                                                                              |
+| `ask-master`     | a linked device                | "Ask for master key": posts a `send-master` request for a holder to answer                                                                                      |
+| `answer-request` | a computer with the master key | answers another device's `send-master` or `confirm-revoke` request, on the person's yes                                                                         |
+| `rename`         | a computer with the master key | names a device in the identity's private record                                                                                                                 |
+| `replace-master` | a device of the identity       | "Replace master key": takes the 12 words and publishes a `rotate`; this computer keeps the new key                                                              |
+| `restore`        | a computer of no identity yet  | "Restore with recovery phrase": finds the identity, ticks its devices to lock out (with the "Missing since" time), rotates, revokes them and adds this computer |
+| `remove-master`  | a computer with the master key | on sign out: forgets this computer's copy of the master key; refused when it is the only copy                                                                   |
+| `check-email`    | a device of the identity       | "Check my email": an email address, the code sent to it, then a vouch note kept beside the log                                                                  |
 
 `revoke` carries `rotate`: "Also replace master key", ticked by default when the key log says the
 device revoked may still hold the master key (`mayHoldMaster`, below). A revoke alone leaves that copy valid; with the choice the window takes the 12
-words and publishes one `rotate` that revokes the device and replaces the master key, so the revoked
-copy signs nothing any more.
+words, publishes a `rotate` to master _n_+1 that names no key (the device to revoke is never sent
+the new master key), then a separate `revoke` signed by _n_+1, so the revoked copy signs nothing
+any more. The "Missing since" picker stays on the screen with the choice ticked, and its time goes
+with that second event, as it does for a plain revoke.
+
+**`rotated-not-revoked`.** The rotation is public once published; when the revoke after it fails
+(the store refuses a `since` before the device's add or after now, or the executor does not answer),
+the step does not say nothing changed. It shows "Device not revoked yet" (or "Devices not revoked
+yet"): the master key was replaced, the devices are not revoked, and why (the store's refusal of the
+time in words; any other refusal as a plain sentence, never the executor's raw error, which only the
+log keeps). It names each device by the record's name (`names`, parallel to `keyIds`), by key id where
+the record names none. The names are read before the rotation, which rewrites the record without the
+devices it unlinks; `revoke-confirm` does the same with `name`. It is not
+a last screen. "Revoke now" (`retry-revoke`, with a corrected `since` if the person changes it)
+asks the 12 words again — the service keeps none between steps, and the words go to the call and are
+wiped, never to a screen or the log; the first call's words are dropped before the wait for the
+retry, so a long wait holds none — and publishes only the revoke (`finish_revoke`; for an
+answered `confirm-revoke` request `requests::finish_answer`, which then deletes the request). It never
+rotates again; if the log moved on, the client refuses and the step says so. A restore holds the
+words in its flow, so its retry asks nothing (`RestoreFlow::revoke_locked_out`, which then enrols
+this computer; until it succeeds `enrol` and `finish` refuse). "Close" leaves the rotation standing.
+
+The pending revoke (`PendingRevoke`) lives only in the running step. Closing the window, or a
+restart of the app, ends the retry and its `since`; nothing resumes it. The devices stay unlinked by
+the rotation, which blocks new links but does not flag the links they already made. The manual way
+is the Devices list: Revoke on the unlinked key, with "Also replace master key" unticked.
+
+The retry signs from the words and never stores a key, and when the first call fails after the
+rotation, the client does not say whether this computer kept the new master key. So after a retry
+that publishes, the service asks the vault: a key the rotation left staged is promoted, and when no
+key at the rotation's index or later is kept, the step shows `master-not-kept` ("Enter recovery
+phrase" replaces the master key once more) instead of `master-replaced`. For an answered request the
+same check runs. A restore needs none: its `enrol` keeps the key and reports a failure as
+`restore-not-linked`.
 
 The 12 words are typed into twelve fields (a paste fills them from the field it lands in). A word
 that is not in the list is refused by its position only ("Word 3 isn't a recovery phrase word"), never by
@@ -363,7 +396,9 @@ make deterministic. The staged key is not checked against the log's commitment, 
 sealed item's index while locked does not check its tag: that guards against a split write, not
 against tampering.
 
-Restore works the same way: the rotation is published first. If adding this computer fails after
+Restore works the same way: the rotation is published first, then the lock-out is a `revoke` of the
+ticked devices from the `since` the person picked (the same "Missing since" wording as the revoke
+screen; empty is now). A failed revoke is `rotated-not-revoked` above. If adding this computer fails after
 that, the window says the identity is restored but this computer is not linked yet
 (`restore-not-linked`), and "Try again" adds it from the same flow. No screen after a publish says
 "Nothing changed". Neither screen is a step's last: closing the window cancels what is waiting, and
@@ -403,9 +438,17 @@ fingerprint of its signing key; a `confirm-revoke` card names each key it would 
 log does not list. Whether a device **may still hold a valid master key** — on that card and on the
 `revoke` step's confirmation (`mayHoldMaster`) — is the log's too: it made the identity, or the
 claim it joined with said `canKeepMaster`. A record saying `holdsMaster: false` does not hide that,
-and a revoke does not change the master key, so the person is told to replace it. A `confirm-revoke`
+and a revoke does not change the master key, so the person is told to replace it. Nor does an
+unlink: the status lists every revoked or unlinked key that may still hold it (`endedHolders`, from
+`keylog::ended_holders`), and the device list warns on those rows. A key counts only when the log let
+it keep the master key and its first end (its unlink or its revoke, whichever came first) is after
+the last rotation: a rotation replaced what a device that ended before it could hold. "Revoke and
+replace master key" and a restore's lock-out rotate at seq _r_, unlinking the devices they revoke
+(the new key goes to none of them), then revoke them at _r_+1. Their first end is the rotation, so
+they are not listed. The device list (`deviceRows`) follows the same rule. A `confirm-revoke`
 request that also asks to replace the master key goes on, after the yes, to the 12 words, and the
-answer is one `rotate` that revokes the targets and replaces the key.
+answer is the same: a `rotate` that unlinks the targets, then a `revoke` of them signed by the new
+master key.
 
 ## Known limits
 
