@@ -833,6 +833,7 @@ fn restore(parts: &Parts, vault: &PhoneVault, exec: &Executor, talk: &Talk<'_>) 
         vault,
         &words,
         &lock_out,
+        None,
         entry.clone(),
     ))
     .map_err(phone_error)?;
@@ -880,7 +881,9 @@ fn restore(parts: &Parts, vault: &PhoneVault, exec: &Executor, talk: &Talk<'_>) 
 
 /// The last screen of a rotation that was published.
 fn replaced(rotated: Rotated) -> PhoneScreen {
-    let revoked = key_ids(&rotated.revoked);
+    // Replacing with the words revokes nothing; the keys the rotation unlinked (none are asked
+    // for) are the only ones it could name.
+    let revoked = key_ids(&rotated.unlinked);
     let note = joined(None, handed_over(&rotated.pushes, &rotated.record, AGAIN));
     match rotated.kept {
         Ok(index) => PhoneScreen::MasterReplaced {

@@ -66,18 +66,34 @@ pub fn lock_out_of(devices: &[RestoreDevice], key_ids: &[String]) -> Option<Vec<
 /// the stage the rotation makes, a custody epoch of this identity the device lost (a first
 /// restore stopped, a file gone) is recovered with `words`, checked first to make the
 /// identity's current master. Once this answers `Ok` the rotation is published: the identity is
-/// restored and the lock-out stands, whatever `enrolled` says.
+/// restored and the lock-out stands, whatever `enrolled` says. `since` (ms) is the time from
+/// which the locked-out devices are no longer trusted; none is the revoke's own time. An error
+/// of [`ClientError::RotatedNotRevoked`] means the rotation is published and the revoke is not:
+/// [`revoke_again`] retries it, from a `since` the person may correct.
 pub async fn finish_restore<R: ExecutorRpc>(
     flow: &mut RestoreFlow<'_, R>,
     executor: &ViaExecutor<R>,
     epochs: &dyn EpochRecovery,
     words: &Words,
     lock_out: &[KeyId],
+    since: Option<u64>,
     entry: DeviceEntry,
 ) -> Result<Restored, ClientError> {
     let did = flow.did().to_string();
     recover_lost_epoch(executor, epochs, &did, words).await?;
-    flow.finish(lock_out, entry).await
+    flow.finish(lock_out, since, entry).await
+}
+
+/// The lock-out's revoke again, after [`finish_restore`] answered
+/// [`ClientError::RotatedNotRevoked`]: the flow holds the pending revoke and the words, so it
+/// takes only `since` (which the person may have corrected) and the enrolment as `entry`. The
+/// epoch was recovered before the rotation, so it is not checked again.
+pub async fn revoke_again<R: ExecutorRpc>(
+    flow: &mut RestoreFlow<'_, R>,
+    since: Option<u64>,
+    entry: DeviceEntry,
+) -> Result<Restored, ClientError> {
+    flow.revoke_locked_out(since, entry).await
 }
 
 /// This device's enrolment again, after a restore whose rotation was published and whose

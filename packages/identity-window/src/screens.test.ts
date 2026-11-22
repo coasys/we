@@ -36,7 +36,14 @@ const IDENTITY_CSP = policy.trim();
 
 describe('the identity window', () => {
   it('says what a revocation does, and promises nothing about earlier signatures', () => {
-    const confirm = { screen: 'revoke-confirm' as const, keyId: 'd2', rotate: false, passphrase: false, error: null };
+    const confirm = {
+      screen: 'revoke-confirm' as const,
+      keyId: 'd2',
+      name: null,
+      rotate: false,
+      passphrase: false,
+      error: null,
+    };
     const lead = heading({ ...confirm, mayHoldMaster: false }).lead;
     expect(lead).toContain("A computer that's offline learns this when it reconnects");
     expect(lead).toContain('may no longer show as yours');
@@ -48,6 +55,7 @@ describe('the identity window', () => {
     const lead = heading({
       screen: 'revoke-confirm',
       keyId: 'd2',
+      name: null,
       mayHoldMaster: true,
       rotate: true,
       passphrase: false,
@@ -66,12 +74,25 @@ describe('the identity window', () => {
     const revoke = heading({
       screen: 'revoke-confirm',
       keyId: 'd2',
+      name: null,
       mayHoldMaster: false,
       rotate: false,
       passphrase: false,
       error: null,
     });
     expect(revoke.title).toBe('Revoke d2?');
+    // The record's name stands in for the key id when it has one.
+    expect(
+      heading({
+        screen: 'revoke-confirm',
+        keyId: 'd2',
+        name: 'Test laptop',
+        mayHoldMaster: false,
+        rotate: false,
+        passphrase: false,
+        error: null,
+      }).title,
+    ).toBe('Revoke Test laptop?');
     expect(revoke.lead).toContain('lost or stolen');
     expect(revoke.lead).toContain('since when');
     expect(heading({ screen: 'unlinked', keyId: 'd2', seq: 2 }).title).toBe('Device unlinked');
@@ -583,6 +604,56 @@ describe('the identity window', () => {
     }
   });
 
+  it('says the master key is replaced but the devices are not revoked yet, and retries only the revoke', () => {
+    const screen: Screen = {
+      screen: 'rotated-not-revoked',
+      index: 2,
+      keyIds: ['d2'],
+      names: [null],
+      reason: 'That is before this device was added. Pick a later time.',
+      needsWords: true,
+    };
+    const { title, lead } = heading(screen);
+    expect(title).toBe('Device not revoked yet');
+    expect(lead).toContain('Your master key was replaced (master #2)');
+    expect(lead).toContain('d2 is not revoked yet');
+    // A name from the record stands in for the key id; a device without one falls back to it.
+    expect(heading({ ...screen, names: ['Test laptop'] }).lead).toContain('but Test laptop is not revoked yet.');
+    expect(heading({ ...screen, keyIds: ['d2', 'd3'], names: ['Test laptop', null] }).lead).toContain(
+      'but Test laptop, d3 are not revoked yet.',
+    );
+    expect(heading({ ...screen, keyIds: ['d2', 'd3'], names: [null, null] }).title).toBe('Devices not revoked yet');
+    expect(lead).toContain('Pick a later time.');
+    expect(lead).toContain('You will enter your recovery phrase');
+    expect(heading({ ...screen, keyIds: ['d2', 'd3'], names: [null, null], needsWords: false }).lead).toContain(
+      'd2, d3 are not revoked yet',
+    );
+    expect(heading({ ...screen, needsWords: false }).lead).not.toContain('recovery phrase');
+    expect(`${title} ${lead}`).not.toMatch(/nothing (was )?changed/i);
+    // The retry lives only in this window: closing it, or a restart, drops it, and the manual way
+    // is the Devices list. Never said to resume.
+    expect(lead).toContain('Closing this window ends the retry. The device stays unlinked.');
+    expect(lead).toContain('To revoke it later, use Devices > Revoke with "Also replace master key" unticked.');
+    for (const sentence of lead.split(/(?<=\.) /)) expect(sentence).toMatch(/\.$/);
+    expect(lead).not.toMatch(/executor|\b400\b/);
+    expect(lead).not.toMatch(/resume/i);
+    // Not a last screen: the rotation stands, and Close cancels the wait.
+    expect(isLast(screen)).toBe(false);
+    expect(windowSource).toMatch(
+      /case 'rotated-not-revoked':[\s\S]*?kind: 'retry-revoke'[\s\S]*?button\('Close', cancel\)/,
+    );
+  });
+
+  it('keeps the missing-since picker on the revoke with a replaced master key, and on the restore lock-out', () => {
+    // The picker is never disabled by the replace tick, and its time goes with the revoke.
+    expect(windowSource).not.toMatch(/since\.disabled/);
+    expect(windowSource).toMatch(/kind: 'revoke',\s*rotate: rotate\.checked,[\s\S]*?since: at/);
+    expect(windowSource).toMatch(/kind: 'lock-out',[\s\S]*?since: at/);
+    expect(heading({ screen: 'restore-devices', did: 'did:scid:coasys:1:Qm', devices: [], note: null }).lead).toContain(
+      'since when they were missing',
+    );
+  });
+
   it('marks only the refused word field invalid, with a token value, and draws it', () => {
     expect(Array.from({ length: 12 }, (_, i) => refusedField(3, i))).toEqual(
       Array.from({ length: 12 }, (_, i) => i === 2),
@@ -608,17 +679,17 @@ describe('the identity window', () => {
     // runs over the next one.
     expect(css).toMatch(/\.word input \{[^}]*box-sizing: border-box;/);
     expect(css).toMatch(
-      /input\[type='text'\],\s*input\[type='password'\],\s*input\[type='url'\],\s*input\[type='number'\] \{[^}]*box-sizing: border-box;/,
+      /input\[type='text'\],\s*input\[type='password'\],\s*input\[type='url'\],\s*input\[type='number'\],\s*input\[type='datetime-local'\] \{[^}]*box-sizing: border-box;/,
     );
   });
 
   it('draws every kind of field it makes in the theme, never in the browser default', () => {
     const kinds = new Set(
-      [...windowSource.matchAll(/type(?:: | = )'(\w+)'/g)]
+      [...windowSource.matchAll(/type(?:: | = )'([\w-]+)'/g)]
         .map((m) => m[1])
         .filter((kind) => kind !== 'button' && kind !== 'checkbox'),
     );
-    expect([...kinds].sort()).toEqual(['number', 'password', 'text', 'url']);
+    expect([...kinds].sort()).toEqual(['datetime-local', 'number', 'password', 'text', 'url']);
     for (const kind of kinds)
       expect(css).toMatch(new RegExp(`input\\[type='${kind}'\\][,\\s][^{]*\\{[^}]*background: var\\(--sunken\\)`));
   });

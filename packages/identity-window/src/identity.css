@@ -157,7 +157,8 @@ label.check {
 input[type='text'],
 input[type='password'],
 input[type='url'],
-input[type='number'] {
+input[type='number'],
+input[type='datetime-local'] {
   box-sizing: border-box;
   font: inherit;
   color: var(--text);

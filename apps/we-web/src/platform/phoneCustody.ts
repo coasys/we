@@ -151,7 +151,9 @@ export function phoneCustodyHost(plugin: DeviceKeyPlugin, nav: PageNav = browser
         requests: requests
           .filter((r) => r.problem === null)
           .map((r) => ({ id: r.id, kind: r.kind, by: r.by, keyIds: r.targetKeys, expires: r.expires })),
-        revokedHolders: devices.filter((d) => d.revokedSeq !== null && d.mayKeepMaster).map((d) => d.keyId),
+        // Revoked keys only: the plugin's device view carries no unlink or rotation, so unlinked keys and
+        // a rotation that cleared the copy are not told here (the desktop's `endedHolders` tells both).
+        endedHolders: devices.filter((d) => d.revokedSeq !== null && d.mayKeepMaster).map((d) => d.keyId),
         masterWaiting: waiting,
       };
     },

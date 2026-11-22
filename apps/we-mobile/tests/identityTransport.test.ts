@@ -518,6 +518,7 @@ describe('naming and revoking a device', () => {
     expect(await transport.start()).toEqual({
       screen: 'revoke-confirm',
       keyId: 'd1',
+      name: 'Laptop',
       mayHoldMaster: true,
       rotate: false,
       passphrase: false,

@@ -27,6 +27,8 @@ pub mod words;
 pub use epoch::{recover_lost_epoch, words_make_current_master, EpochRecovery};
 pub use make::MakeWords;
 pub use notes::{handed_over, joined, key_ids};
-pub use restore::{enrol_again, finish_restore, listed, lock_out_of, record_note, RestoreDevice};
+pub use restore::{
+    enrol_again, finish_restore, listed, lock_out_of, record_note, revoke_again, RestoreDevice,
+};
 pub use rotate::rotate_with_words;
 pub use words::{words_refused, NOT_THESE_WORDS, WRONG_CONFIRM};
