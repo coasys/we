@@ -1514,6 +1514,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     did: state('keys'),
     keyId: state('keys'),
     thisDeviceRevoked: state('keys'),
+    thisDeviceUnlinked: state('keys'),
     keyLog: state('keys'),
     keyLogLoaded: state('keys'),
     forked: state('keys'),
@@ -1548,6 +1549,10 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     answerRequest: action('devices'),
     rename: action('devices'),
     unlink: action('devices'),
+    confirmingUnlink: state('devices'),
+    unlinkLeavesNoMaster: state('devices'),
+    cancelUnlink: ambient('devices'),
+    unlinkThisComputer: action('devices'),
     revoke: action('devices'),
   },
 

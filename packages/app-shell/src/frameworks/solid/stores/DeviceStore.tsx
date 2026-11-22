@@ -76,8 +76,28 @@ export interface DeviceStore {
   answerRequest: (id: string) => Promise<IdentityChangeOutcome>;
   /** Names the device `keyId`. */
   rename: (keyId: string) => Promise<IdentityChangeOutcome>;
-  /** Unlinks the device key `keyId`: it signs nothing new, and what it signed before stays valid. */
+  /**
+   * Unlinks the device key `keyId`: it signs nothing new, and what it signed before stays valid.
+   * Another device's key opens the custody window, where the master key signs it. This computer's own
+   * key needs no master key: this only raises the confirm (`confirmingUnlink`) and answers
+   * `'cancelled'`; `unlinkThisComputer` does it.
+   */
   unlink: (keyId: string) => Promise<IdentityChangeOutcome>;
+  /** The confirm for unlinking this computer is up. */
+  confirmingUnlink: Accessor<boolean>;
+  /**
+   * That confirm also warns that the identity's other devices would have no master key to use: this
+   * computer keeps it, and no other active device is recorded as keeping it or being sent it.
+   */
+  unlinkLeavesNoMaster: Accessor<boolean>;
+  /** Dismisses the confirm; nothing is unlinked. */
+  cancelUnlink: () => void;
+  /**
+   * Unlinks this computer: its key leaves the identity, signed by itself, and this computer is signed
+   * out. The identity is read again after, so the status shows it no longer linked. A refusal is
+   * said in `error`.
+   */
+  unlinkThisComputer: () => Promise<IdentityChangeOutcome>;
   /** Revokes the device key `keyId`, lost or stolen; the person says since when, where they unlock. */
   revoke: (keyId: string) => Promise<IdentityChangeOutcome>;
 }
@@ -92,6 +112,7 @@ export function DeviceStoreProvider(props: ParentProps) {
   const [raw, setRaw] = createSignal<DeviceKeyView[]>([]);
   const [devicesLoaded, setDevicesLoaded] = createSignal(false);
   const [error, setError] = createSignal('');
+  const [confirmingUnlink, setConfirmingUnlink] = createSignal(false);
 
   // As in the identity store: a reply belongs to the port it was asked of and to the latest read.
   const reads = latest();
@@ -101,6 +122,7 @@ export function DeviceStoreProvider(props: ParentProps) {
       setRaw([]);
       setDevicesLoaded(false);
       setError('');
+      setConfirmingUnlink(false);
     }),
   );
 
@@ -143,6 +165,30 @@ export function DeviceStoreProvider(props: ParentProps) {
   const linking = () => session.identityCapabilities().linkDevice && identity.canChange();
   const canManage = () => linking() && !!identity.did() && !!identity.custody()?.holdsMaster;
   const masterWaiting = () => !!identity.custody()?.masterWaiting && !encMismatch();
+  // This computer keeps the master key and no other active device does (or is being sent it), so
+  // once it leaves, nothing that is still linked could use that key. Read from the private record's
+  // rows, as `master` is: what the record does not say is not guessed.
+  const unlinkLeavesNoMaster = () =>
+    !!identity.custody()?.holdsMaster &&
+    !rows().some((d) => !d.thisDevice && !d.revoked && !d.unlinked && d.holdsMaster !== 'no');
+
+  async function unlinkThisComputer(): Promise<IdentityChangeOutcome> {
+    setConfirmingUnlink(false);
+    const p = port();
+    if (!p) return 'failed';
+    setError('');
+    try {
+      await p.unlinkSelf();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      return 'failed';
+    }
+    // The status read is the truth about what this computer is now; nothing is guessed here.
+    await identity.refresh();
+    await refresh();
+    return 'done';
+  }
+
   const store: DeviceStore = {
     devices: rows,
     devicesLoaded,
@@ -154,6 +200,7 @@ export function DeviceStoreProvider(props: ParentProps) {
       !!identity.did() &&
       !!identity.keyId() &&
       !identity.thisDeviceRevoked() &&
+      !identity.thisDeviceUnlinked() &&
       !identity.custody()?.holdsMaster &&
       !masterWaiting() &&
       !encMismatch(),
@@ -171,7 +218,17 @@ export function DeviceStoreProvider(props: ParentProps) {
     askMaster: () => step(() => identity.open({ kind: 'ask-master' })),
     answerRequest: (id: string) => step(() => identity.open({ kind: 'answer-request', id })),
     rename: (keyId: string) => step(() => identity.open({ kind: 'rename', keyId })),
-    unlink: (keyId: string) => step(() => identity.open({ kind: 'unlink', keyId })),
+    unlink: async (keyId: string) => {
+      if (rows().some((d) => d.keyId === keyId && d.thisDevice)) {
+        setConfirmingUnlink(true);
+        return 'cancelled';
+      }
+      return step(() => identity.open({ kind: 'unlink', keyId }));
+    },
+    confirmingUnlink,
+    unlinkLeavesNoMaster,
+    cancelUnlink: () => setConfirmingUnlink(false),
+    unlinkThisComputer,
     revoke: (keyId: string) => step(() => identity.open({ kind: 'revoke', keyId })),
   };
 

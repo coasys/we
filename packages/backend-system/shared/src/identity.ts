@@ -107,6 +107,14 @@ export interface IdentityPort {
    * own confirmation. Rejects only when the change could not be started at all.
    */
   change?(change: IdentityChange): Promise<IdentityChangeOutcome>;
+  /**
+   * This computer's device key leaves the identity, signed by the key itself: no master key is
+   * needed, so no custody window opens. The key is dead here from then on and the agent is signed
+   * out. Resolves when it is done; rejects with an `Error` whose message is a plain sentence a
+   * person can read (no identity, not listed, already unlinked, not allowed). A backend that cannot
+   * do this rejects the same way.
+   */
+  unlinkSelf(): Promise<void>;
 }
 
 /**
@@ -223,6 +231,11 @@ export interface IdentityStatusView {
   keyId: string | null;
   /** The seq of the event that revoked this device, if one did. */
   revoked: number | null;
+  /**
+   * The seq of the event that unlinked this device, if one did. A key the log shows unlinked no
+   * longer speaks for the person: the executor signs the agent out of it.
+   */
+  unlinked: number | null;
   head: KeyLogHead | null;
   fork: KeyLogFork | null;
   /**

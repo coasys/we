@@ -92,6 +92,7 @@ describe('the AD4M identity port', () => {
           deviceEnc: 'z6LS',
           keyId: 'd1',
           revoked: null,
+          unlinked: null,
           head,
           fork: null,
           storeBehind: { since: 1_700_000_000, seq: 0 },
@@ -154,6 +155,33 @@ describe('the AD4M identity port', () => {
   it('keeps a malformed event as an unknown one rather than failing the log', () => {
     const log = readKeyLog({ did: DID, events: [incept, 'nonsense'], head: null });
     expect(log.events.map((e) => e.op)).toEqual(['incept', 'unknown']);
+  });
+
+  it('unlinks this computer through the executor, with no custody service', async () => {
+    const c = client({});
+    const unlinkSelf = vi.fn(async () => head);
+    const port = createAd4mIdentityPort({ identity: { ...c.identity, unlinkSelf } });
+    await expect(port.unlinkSelf()).resolves.toBeUndefined();
+    expect(unlinkSelf).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    [Object.assign(new Error('no-identity: this agent has none'), { status: 409 }), /not linked to an identity/],
+    [Object.assign(new Error('not-listed: d9'), { status: 409 }), /doesn't list this computer/],
+    [Object.assign(new Error('key-dead: d1'), { status: 409 }), /already unlinked/],
+    [Object.assign(new Error('forbidden'), { status: 403 }), /not allowed/],
+    [new Error('socket closed'), /could not be unlinked: socket closed/],
+  ])('says why the executor refused to unlink this computer (%#)', async (refusal, words) => {
+    const c = client({});
+    const port = createAd4mIdentityPort({
+      identity: {
+        ...c.identity,
+        unlinkSelf: async () => {
+          throw refusal;
+        },
+      },
+    });
+    await expect(port.unlinkSelf()).rejects.toThrow(words);
   });
 
   it('passes forks on', () => {

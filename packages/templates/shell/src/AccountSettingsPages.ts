@@ -21,6 +21,7 @@ import {
   makeIdentityCard,
   masterKeyCards,
   requestList,
+  unlinkThisComputerConfirm,
 } from './IdentitySettingsPages.ts';
 import { profileEditor } from './Profile.schema.ts';
 import { mcpServer } from './RuntimeSettings.schema.ts';
@@ -338,7 +339,7 @@ export const devicesPage: SchemaNode = {
       title: 'Your devices',
       description: 'Unlink a device you no longer use, or revoke one that was lost or stolen.',
       preview: [actions('Unlink device')],
-      children: [deviceList, deviceListFootnote],
+      children: [deviceList, deviceListFootnote, unlinkThisComputerConfirm],
     }),
     comingSoon({
       // Linking needs the master key here: `canManage` is the backend's `linkDevice` and this

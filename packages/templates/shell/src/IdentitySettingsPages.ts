@@ -8,6 +8,7 @@
  * person wherever it keeps the master key and signs there, and the lists are read again when it ends.
  */
 import type { SchemaNode } from '@we/schema-shared';
+import { confirmModal } from '@we/template-kit';
 
 /**
  * Why the last read or change of the identity failed, where it failed. A change resolves rather than
@@ -364,7 +365,12 @@ const deviceRow: SchemaNode = listRow(
     {
       type: '$if',
       props: {
-        condition: { $: 'device.canUnlink && deviceStore.canManage' },
+        // This computer's own key leaves signed by itself, with no master key, after the app's own
+        // confirm: any linked computer that can sign changes may offer it. Another device's unlink
+        // needs the master key here, and the confirm is the custody window's.
+        condition: {
+          $: 'device.canUnlink && (deviceStore.canManage || (device.thisDevice && identityStore.canChange))',
+        },
         then: {
           type: 'we-button',
           props: {
@@ -373,7 +379,7 @@ const deviceRow: SchemaNode = listRow(
             disabled: { $: 'identityStore.busy' },
             onClick: { $invoke: 'deviceStore.unlink', args: [{ $: 'device.keyId' }] },
           },
-          children: ['Unlink device'],
+          children: [{ $: "device.thisDevice ? 'Unlink this computer' : 'Unlink device'" }],
         },
       },
     },
@@ -416,6 +422,36 @@ export const deviceList: SchemaNode = {
     },
   },
 };
+
+/**
+ * "Unlink this computer?", raised by `deviceStore.unlink` on this computer's own row. Dismissing it
+ * unlinks nothing. It adds the warning about the master key when this computer keeps the only copy
+ * a linked device could use (`deviceStore.unlinkLeavesNoMaster`).
+ */
+export const unlinkThisComputerConfirm: SchemaNode = confirmModal({
+  open: { $: 'deviceStore.confirmingUnlink' },
+  close: { $invoke: 'deviceStore.cancelUnlink' },
+  title: 'Unlink this computer?',
+  body: "This computer leaves your identity and is signed out. It can't act as you again until you link it from another device. What it did before stays yours.",
+  children: [
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'deviceStore.unlinkLeavesNoMaster' },
+        then: {
+          type: 'we-alert',
+          props: { tone: 'warning' },
+          children: [
+            'This computer keeps your master key, and no other device does. Once it is unlinked, your other devices have no master key to use.',
+          ],
+        },
+      },
+    },
+  ],
+  confirmLabel: 'Unlink this computer',
+  cancelLabel: 'Cancel',
+  confirm: { $invoke: 'deviceStore.unlinkThisComputer' },
+});
 
 /** A button that opens a step in the identity window, idle while one runs. */
 const stepButton = (label: string, invoke: string, variant = 'solid', args: unknown[] = []): SchemaNode => ({

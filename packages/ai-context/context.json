@@ -6479,6 +6479,12 @@
         },
         "error": {
           "type": "string"
+        },
+        "confirmingUnlink": {
+          "type": "boolean"
+        },
+        "unlinkLeavesNoMaster": {
+          "type": "boolean"
         }
       },
       "actions": [
@@ -6491,9 +6497,11 @@
         "answerRequest",
         "rename",
         "unlink",
+        "cancelUnlink",
+        "unlinkThisComputer",
         "revoke"
       ],
-      "ambient": ["refresh"],
+      "ambient": ["refresh", "cancelUnlink"],
       "needsArgs": ["answerRequest", "rename", "unlink", "revoke"]
     },
     {
@@ -6677,6 +6685,9 @@
           "type": "string"
         },
         "thisDeviceRevoked": {
+          "type": "boolean"
+        },
+        "thisDeviceUnlinked": {
           "type": "boolean"
         },
         "keyLog": {

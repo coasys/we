@@ -48,6 +48,7 @@ const status = (did: string | null) => ({
   deviceKey: 'z6MkOne',
   keyId: did ? 'd1' : null,
   revoked: null,
+  unlinked: null,
   head: null,
   fork: null,
   storeBehind: null,
@@ -75,7 +76,13 @@ const devices: DeviceKeyView[] = [
 ];
 
 /** A backend whose identity is whatever the test says, and which counts what it was asked. */
-function backend(state: { did: string | null; events: KeyLogView['events']; devices: DeviceKeyView[] }) {
+function backend(state: {
+  did: string | null;
+  events: KeyLogView['events'];
+  devices: DeviceKeyView[];
+  /** What `unlinkSelf` rejects with, when the test has the executor refuse. */
+  refuse?: string;
+}) {
   const calls: string[] = [];
   const port: IdentityPort = {
     capabilities: () => ({ ...NO_IDENTITY_CAPABILITIES, keyLog: true, devices: true }),
@@ -90,6 +97,12 @@ function backend(state: { did: string | null; events: KeyLogView['events']; devi
     async devices() {
       calls.push('devices');
       return state.devices;
+    },
+    async unlinkSelf() {
+      calls.push('unlinkSelf');
+      if (state.refuse) throw new Error(state.refuse);
+      // The executor re-keys the agent: this computer speaks for no identity from then on.
+      state.did = null;
     },
   };
   return { port, calls, state };
@@ -306,6 +319,7 @@ describe('identityStore', () => {
     expect(deviceStore.devices()).toHaveLength(2);
 
     const broken: IdentityPort = {
+      unlinkSelf: async () => {},
       capabilities: () => NO_IDENTITY_CAPABILITIES,
       status: async () => {
         throw new Error('no answer');
@@ -324,6 +338,7 @@ describe('identityStore', () => {
   it('drops a reply from a backend the session has already left', async () => {
     let answer!: (value: ReturnType<typeof status>) => void;
     const slow: IdentityPort = {
+      unlinkSelf: async () => {},
       capabilities: () => NO_IDENTITY_CAPABILITIES,
       status: () => new Promise((resolve) => (answer = resolve)),
     };
@@ -475,6 +490,124 @@ describe('deviceStore', () => {
     });
     expect(deviceStore.validCount()).toBe(1);
     expect(identity.keyLog()[0].title).toBe('Unlinked d2');
+  });
+
+  describe('unlinking this computer', () => {
+    const named = (d2Master: 'yes' | 'no' | 'offered') => [
+      { keyId: 'd1', name: '', kind: 'desktop-app', holdsMaster: 'yes' as const },
+      { keyId: 'd2', name: '', kind: 'server', holdsMaster: d2Master },
+    ];
+    /** This computer's own port: no master key needed, `unlinkSelf` answered by the backend. */
+    function setup(holds: boolean, d2Master: 'yes' | 'no' | 'offered' = 'no') {
+      const b = backend({ did: DID, events: [incept, add], devices });
+      const c = custody(b.port, () => {}, holds);
+      const view = c.identity.custody!;
+      c.identity.custody = async () => ({ ...(await view()), holdsMaster: holds, devices: named(d2Master) });
+      setPorts({ identity: c.identity });
+      return { b, c, ...mount() };
+    }
+
+    it('confirms in the app first: no custody window, no call, until the person agrees', async () => {
+      const { b, c, devices: deviceStore } = setup(false);
+      await flush();
+      await flush();
+      expect(deviceStore.canManage()).toBe(false);
+      expect(deviceStore.devices().map((d) => [d.keyId, d.thisDevice, d.canUnlink])).toEqual([
+        ['d1', true, true],
+        ['d2', false, true],
+      ]);
+      expect(deviceStore.confirmingUnlink()).toBe(false);
+      expect(await deviceStore.unlink('d1')).toBe('cancelled');
+      expect(deviceStore.confirmingUnlink()).toBe(true);
+      expect(c.changes).toEqual([]);
+      expect(b.calls).not.toContain('unlinkSelf');
+      deviceStore.cancelUnlink();
+      expect(deviceStore.confirmingUnlink()).toBe(false);
+      expect(b.calls).not.toContain('unlinkSelf');
+    });
+
+    it('calls the port on confirm, with no custody window, then reads the status again, which shows no identity here', async () => {
+      const { b, c, identity, devices: deviceStore } = setup(false);
+      await flush();
+      await flush();
+      await deviceStore.unlink('d1');
+      const reads = b.calls.filter((call) => call === 'status').length;
+      expect(await deviceStore.unlinkThisComputer()).toBe('done');
+      await flush();
+      expect(b.calls.filter((call) => call === 'unlinkSelf')).toHaveLength(1);
+      expect(c.changes).toEqual([]);
+      expect(deviceStore.confirmingUnlink()).toBe(false);
+      expect(b.calls.filter((call) => call === 'status').length).toBeGreaterThan(reads);
+      expect(identity.did()).toBe('');
+      expect(identity.keyId()).toBe('');
+      expect(deviceStore.devices()).toEqual([]);
+      expect(deviceStore.error()).toBe('');
+    });
+
+    it('warns that no master key is left when this computer keeps it and no other active device does', async () => {
+      const { devices: deviceStore } = setup(true, 'no');
+      await flush();
+      await flush();
+      expect(deviceStore.unlinkLeavesNoMaster()).toBe(true);
+    });
+
+    it.each([
+      ['another device keeps it', true, 'yes'],
+      ['another device is being sent it', true, 'offered'],
+      ['this computer does not keep it', false, 'no'],
+    ] as const)('does not warn about the master key when %s', async (_why, holds, d2) => {
+      const { devices: deviceStore } = setup(holds, d2);
+      await flush();
+      await flush();
+      expect(deviceStore.unlinkLeavesNoMaster()).toBe(false);
+    });
+
+    it('does not count a device that is unlinked or revoked as keeping the master key', async () => {
+      const { b, devices: deviceStore } = setup(true, 'yes');
+      b.state.devices = b.state.devices.map((d) => (d.keyId === 'd2' ? { ...d, unlinkedSeq: 2 } : d));
+      await deviceStore.refresh();
+      await flush();
+      expect(deviceStore.unlinkLeavesNoMaster()).toBe(true);
+    });
+
+    it('says why the executor refused, in the error slot, and stays linked', async () => {
+      const { b, identity, devices: deviceStore } = setup(false);
+      b.state.refuse = 'This computer is already unlinked.';
+      await flush();
+      await flush();
+      await deviceStore.unlink('d1');
+      expect(await deviceStore.unlinkThisComputer()).toBe('failed');
+      expect(deviceStore.error()).toBe('This computer is already unlinked.');
+      expect(deviceStore.confirmingUnlink()).toBe(false);
+      expect(identity.did()).toBe(DID);
+    });
+  });
+
+  it('reads this computer unlinked from the status, as it reads it revoked, and offers no master key request then', async () => {
+    const b = backend({ did: DID, events: [incept, add], devices });
+    const linked = b.port.status!;
+    b.port.status = async () => ({ ...(await linked()), unlinked: 2 });
+    setPorts({ identity: custody(b.port, () => {}, false).identity });
+    const { identity, devices: deviceStore } = mount();
+    await flush();
+    await flush();
+    expect(identity.thisDeviceUnlinked()).toBe(true);
+    expect(identity.thisDeviceRevoked()).toBe(false);
+    expect(deviceStore.canAskMaster()).toBe(false);
+  });
+
+  it('unlinking another device leaves this computer linked', async () => {
+    const b = backend({ did: DID, events: [incept, add], devices });
+    const c = custody(b.port, () => {}, true);
+    setPorts({ identity: c.identity });
+    const { identity, devices: deviceStore } = mount();
+    await flush();
+    await flush();
+    expect(await deviceStore.unlink('d2')).toBe('done');
+    await flush();
+    await flush();
+    expect(identity.did()).toBe(DID);
+    expect(identity.keyId()).toBe('d1');
   });
 
   it('add asks for add-device', async () => {

@@ -5,7 +5,7 @@ version = 4
 [[package]]
 name = "ad4m-client"
 version = "0.13.1-staging.16"
-source = "git+https://github.com/coasys/ad4m?rev=e0e213d567fefd5b61c55f136d3ddef979a8616a#e0e213d567fefd5b61c55f136d3ddef979a8616a"
+source = "git+https://github.com/coasys/ad4m?rev=07ca3c927834189ab49d13a11fc378d288384be9#07ca3c927834189ab49d13a11fc378d288384be9"
 dependencies = [
  "anyhow",
  "chrono",
@@ -29,7 +29,7 @@ dependencies = [
 [[package]]
 name = "ad4m-hash-chain"
 version = "0.1.0"
-source = "git+https://github.com/coasys/ad4m?rev=e0e213d567fefd5b61c55f136d3ddef979a8616a#e0e213d567fefd5b61c55f136d3ddef979a8616a"
+source = "git+https://github.com/coasys/ad4m?rev=07ca3c927834189ab49d13a11fc378d288384be9#07ca3c927834189ab49d13a11fc378d288384be9"
 dependencies = [
  "bs58",
  "ed25519-dalek",
@@ -42,7 +42,7 @@ dependencies = [
 [[package]]
 name = "ad4m-identity-client"
 version = "0.1.0"
-source = "git+https://github.com/coasys/ad4m?rev=e0e213d567fefd5b61c55f136d3ddef979a8616a#e0e213d567fefd5b61c55f136d3ddef979a8616a"
+source = "git+https://github.com/coasys/ad4m?rev=07ca3c927834189ab49d13a11fc378d288384be9#07ca3c927834189ab49d13a11fc378d288384be9"
 dependencies = [
  "ad4m-client",
  "ad4m-hash-chain",
@@ -62,7 +62,7 @@ dependencies = [
 [[package]]
 name = "ad4m-identity-core"
 version = "0.1.0"
-source = "git+https://github.com/coasys/ad4m?rev=e0e213d567fefd5b61c55f136d3ddef979a8616a#e0e213d567fefd5b61c55f136d3ddef979a8616a"
+source = "git+https://github.com/coasys/ad4m?rev=07ca3c927834189ab49d13a11fc378d288384be9#07ca3c927834189ab49d13a11fc378d288384be9"
 dependencies = [
  "ad4m-hash-chain",
  "base64 0.22.1",
@@ -86,7 +86,7 @@ dependencies = [
 [[package]]
 name = "ad4m-ldk"
 version = "0.13.0-test-1"
-source = "git+https://github.com/coasys/ad4m?rev=e0e213d567fefd5b61c55f136d3ddef979a8616a#e0e213d567fefd5b61c55f136d3ddef979a8616a"
+source = "git+https://github.com/coasys/ad4m?rev=07ca3c927834189ab49d13a11fc378d288384be9#07ca3c927834189ab49d13a11fc378d288384be9"
 dependencies = [
  "futures",
  "js-sys",
