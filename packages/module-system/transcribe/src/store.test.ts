@@ -2750,6 +2750,24 @@ describe('turning automatic extraction off for one call', () => {
     expect(h.store.extractionOpen()).toBe(true);
   });
 
+  it('leaves the panel shut when a pass starts, whoever started it', async () => {
+    /*
+      The panel opens only by hand. A pass is usually started by a standing watch on somebody else's
+      device, and a panel springing open over the call each time one begins is chrome arguing with
+      its reader; the call bar's button carries what the pass is doing instead.
+    */
+    let activity: { id: string; running: boolean }[] = [];
+    const h = harness([peer(ME, { type: 'call', id: CALL, record: RECORD })], {
+      interpretation: { available: () => true, activity: () => activity },
+    });
+    expect(h.store.extractionOpen()).toBe(false);
+
+    activity = [{ id: 'pass-1', running: true }];
+    await h.settle();
+
+    expect(h.store.extractionOpen()).toBe(false);
+  });
+
   it('writes the decision against that call', async () => {
     const { h, set } = withAuto([peer(ME, { type: 'call', id: CALL, record: RECORD })], { [RECORD]: true });
 

@@ -3908,9 +3908,11 @@ const placed = (name: string): SchemaNode => ({ type: '$part', props: { id: `tra
  * while somebody talks, and extraction follows a pass that may be a peer's, takes minutes, spends
  * tokens and is read afterwards.
  *
- * Opening itself when a pass starts is what makes this safe to separate, and it is the rule
- * recording already follows: starting something invisible and saying nothing about it is how a
- * feature comes to look broken. A pass any member starts opens this for everyone who has the module.
+ * It opens only by hand — from the rail, or the button an interface without one puts in its call
+ * bar — and when somebody switches automatic extraction on, since that is asking to see what it
+ * makes. A pass starting does not open it: most are started by a standing watch on some other
+ * member's device, and a panel springing open over the call each time is chrome arguing with its
+ * reader. What a pass is doing is shown on the button that opens this instead.
  */
 export const extractionPanel: SchemaNode = {
   ...panelShell({

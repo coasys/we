@@ -89,9 +89,10 @@ describe('the module declaration', () => {
   it('owns whether each panel is open, and names how to open and close it', () => {
     /*
       The exception the contract describes rather than the default it offers. The store opens the
-      transcript on a record press and the extraction panel when a pass starts, and reads `open` to
-      keep polling for a model — none of which a host-held flag would let it do. Owning the flag
-      means owning `show` and `close` too, or the rail and the titlebar have nothing to call.
+      transcript on a record press and the extraction panel when auto-extraction is switched on, and
+      reads `open` to keep polling for a model — none of which a host-held flag would let it do.
+      Owning the flag means owning `show` and `close` too, or the rail and the titlebar have nothing
+      to call.
     */
     const panels = transcribeModule.contributes?.panels ?? [];
     const surface = storeSurface(bareStore());
