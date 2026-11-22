@@ -70,7 +70,13 @@ const addBotButton: SchemaNode = {
     condition: { $: 'botStore.canAdd' },
     then: {
       type: 'we-button',
-      props: { variant: 'solid', size: 'sm', onClick: { $invoke: 'botStore.addBot' } },
+      props: {
+        variant: 'solid',
+        size: 'sm',
+        // Adding a bot signs a change to the key log, which is moving while this computer unlinks.
+        disabled: { $: 'identityStore.busy || deviceStore.unlinking' },
+        onClick: { $invoke: 'botStore.addBot' },
+      },
       children: [{ type: 'we-icon', props: { name: 'plus' } }, 'Add a bot'],
     },
   },
@@ -204,7 +210,7 @@ const makeBotCard: SchemaNode = {
             props: {
               variant: 'solid',
               size: 'sm',
-              disabled: { $: "local.botOffer == '' || botStore.creating" },
+              disabled: { $: "local.botOffer == '' || botStore.creating || deviceStore.unlinking" },
               loading: { $: 'botStore.creating' },
               onClick: {
                 $invoke: 'botStore.create',
