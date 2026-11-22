@@ -138,7 +138,9 @@ vertical('V5 build flow: an agent over MCP, evidence and a human approval', (v) 
         (owner) => owner === OWNER,
         { timeout: 180_000, interval: 2_000, what: "the agent's ownership in Alice's copy" },
       );
-      await openOnCanvas(alice.page, task.title);
+      // The owner's name picks this Task out from another card with the same title. A substring of
+      // the title would open the Question that contains it, whose inspector offers Decide.
+      await openOnCanvas(alice.page, task.title, { carrying: OWNER });
       await alice.page.getByText(OWNER).first().waitFor({ timeout: 120_000 });
       // Two 180 s polls, a 120 s wait for the owner on the screen, and the canvas's own wait (`SLOW`).
     },
@@ -146,8 +148,22 @@ vertical('V5 build flow: an agent over MCP, evidence and a human approval', (v) 
   );
 
   v.step(`Alice starts ${FLOW.name} on the ${CLASS} from its inspector`, async () => {
+    // Build is offered on a Task. A Question open instead lists Decide, and the menu has no Build.
+    await until(
+      () => alice.page.url(),
+      (url) => new RegExp(`[?&]cardType=${CLASS}(?:&|$)`).test(url),
+      {
+        timeout: 30_000,
+        what: `the inspector on the ${CLASS} (${FLOW.name} runs on ${FLOW.entities.join(', ')})`,
+      },
+    );
     await alice.page.getByRole('button', { name: 'Start a workflow on this' }).first().click({ timeout: 60_000 });
-    await alice.page.getByRole('menuitem', { name: FLOW.name }).click();
+    await until(
+      async () => (await alice.page.getByRole('menuitem').allInnerTexts()).map((text) => text.trim()).filter(Boolean),
+      (names) => names.includes(FLOW.name),
+      { timeout: 30_000, what: `${FLOW.name} among the workflows this ${CLASS} offers` },
+    );
+    await alice.page.getByRole('menuitem', { name: FLOW.name, exact: true }).click();
     await untilItem(
       alice.ports,
       perspective,

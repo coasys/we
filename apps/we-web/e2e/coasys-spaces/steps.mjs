@@ -300,16 +300,4 @@ export function recordOf(found, className) {
   return list.find((r) => r.title === title);
 }
 
-/**
- * Opens a record into the inspector by pressing its card on the canvas. Found inside the canvas's own
- * element: the Extraction panel lists the same title, earlier in the page. The canvas names no role
- * or label, so its class is the one hold there is.
- */
-export async function openOnCanvas(page, title) {
-  await page.getByRole('button', { name: 'Canvas', exact: true }).click();
-  const card = page.locator('.we-graph').getByText(title).first();
-  await card.waitFor({ timeout: SLOW });
-  // Forced: the canvas's surface lies over its cards and finds the card under the pointer itself, so
-  // the press lands on the surface at the card's place — as a person's does.
-  await card.click({ force: true });
-}
+export { openOnCanvas } from './canvas.mjs';
