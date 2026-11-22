@@ -242,7 +242,7 @@ export function createInterpretationRuntime(deps: InterpretationRuntimeDeps): In
       const { auto, classes } = await deps.collectionAnswers(handle, collectionId);
       if (!auto) throw new Error('interpretation: automatic interpretation is off for this collection');
       // Refused rather than registered empty: the executor rejects a processor with no classes, and
-      // "this space has marked nothing for extraction" is a sentence worth saying in its own words.
+      // "nothing in this space is marked for AI interpretation" is a sentence worth saying in its own words.
       if (!classes.length) throw new Error('interpretation: nothing in this space is marked for AI interpretation');
 
       await watch(handle, {

@@ -1877,7 +1877,7 @@ const canvas: SchemaNode = {
       whose conversation is over, where "as the conversation produces them" is only half the answer.
     */
     empty: {
-      $: `(${SPACE_CANVAS_EXPR}) ? 'Nothing on this canvas yet. Double-click anywhere to add a card, or start a call — what a conversation commits to appears here on its own.' : 'This space has no canvas of its own. Spaces made with one show everything extracted here.'`,
+      $: `(${SPACE_CANVAS_EXPR}) ? 'Nothing on this canvas yet. Double-click anywhere to add a card, or start a call — what a conversation commits to appears here on its own.' : 'This space has no canvas of its own. Spaces made with one show everything interpreted here.'`,
     },
     /*
       And drawn as an invitation, which is what both of those sentences are — the same gradient the
