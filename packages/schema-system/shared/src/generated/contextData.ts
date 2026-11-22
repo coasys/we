@@ -2477,6 +2477,9 @@ export const contextData: ContextData = {
         encMismatch: { type: 'boolean' },
         requests: { type: 'array', properties: ['id', 'kind', 'title', 'detail'] },
         error: { type: 'string' },
+        confirmingUnlink: { type: 'boolean' },
+        unlinkLeavesNoMaster: { type: 'boolean' },
+        unlinking: { type: 'boolean' },
       },
       actions: [
         'refresh',
@@ -2488,12 +2491,14 @@ export const contextData: ContextData = {
         'answerRequest',
         'rename',
         'unlink',
+        'cancelUnlink',
+        'unlinkThisComputer',
         'revoke',
         'replaceMaster',
         'restore',
         'removeMaster',
       ],
-      ambient: ['refresh'],
+      ambient: ['refresh', 'cancelUnlink'],
       needsArgs: ['answerRequest', 'rename', 'unlink', 'revoke'],
     },
     {
@@ -2596,6 +2601,7 @@ export const contextData: ContextData = {
         did: { type: 'string' },
         keyId: { type: 'string' },
         thisDeviceRevoked: { type: 'boolean' },
+        thisDeviceUnlinked: { type: 'boolean' },
         keyLog: {
           type: 'array',
           properties: ['seq', 'position', 'icon', 'title', 'detail', 'hash', 'hashShort', 'thisComputer'],

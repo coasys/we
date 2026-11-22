@@ -134,7 +134,8 @@ label.check {
 
 /* `border-box`: a field given a width keeps its padding and border inside it, never past its box. */
 input[type='text'],
-input[type='password'] {
+input[type='password'],
+input[type='datetime-local'] {
   box-sizing: border-box;
   font: inherit;
   color: var(--text);

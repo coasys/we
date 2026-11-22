@@ -53,14 +53,21 @@ describe('keyLogRows', () => {
 });
 
 describe('deviceRows', () => {
-  it('puts valid keys first and this computer on top, and offers revoke for the others only', () => {
+  it('does not offer to unlink this computer once its key is unlinked or revoked', () => {
+    const rows = deviceRows([
+      { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, unlinkedSeq: 3, revokedSeq: null },
+    ]);
+    expect(rows.map((r) => [r.status, r.canUnlink, r.canRevoke])).toEqual([['Unlinked', false, false]]);
+  });
+
+  it('puts valid keys first and this computer on top, and offers revoke for the others only, unlink for any active key', () => {
     const rows = deviceRows([
       { keyId: 'd3', sign: 'z', thisDevice: false, addedSeq: 3, unlinkedSeq: null, revokedSeq: null },
       { keyId: 'd2', sign: 'z', thisDevice: false, addedSeq: 1, unlinkedSeq: null, revokedSeq: 2 },
       { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, unlinkedSeq: null, revokedSeq: null },
     ]);
     expect(rows.map((r) => [r.keyId, r.label, r.status, r.canUnlink, r.canRevoke])).toEqual([
-      ['d1', 'This computer', 'Active', false, false],
+      ['d1', 'This computer', 'Active', true, false],
       ['d3', 'Device d3', 'Active', true, true],
       ['d2', 'Device d2', 'Revoked', false, false],
     ]);
@@ -191,7 +198,8 @@ describe('deviceRows', () => {
       key('d4', 6, null, null),
     ]);
     expect(rows.map((r) => [r.keyId, r.status, r.valid, r.unlinked, r.revoked, r.canUnlink, r.canRevoke])).toEqual([
-      ['d1', 'Active', true, false, false, false, false],
+      // This computer can unlink itself (#430); it can never revoke itself.
+      ['d1', 'Active', true, false, false, true, false],
       ['d4', 'Active', true, false, false, true, true],
       ['d2', 'Unlinked', false, true, false, false, true],
       ['d3', 'Revoked', false, true, true, false, false],
@@ -252,6 +260,21 @@ describe('deviceRows', () => {
     expect(server[1].master).toBe('');
     expect(server[1].replaceMaster).toBe(false);
     expect(revoked[1].replaceMaster).toBe(true);
+
+    // An unlink does not replace the master key either: the row warns, in words for a device the
+    // person may still have. Before the record's write it still lists the device as a holder.
+    const unlinked = [keys[0], { ...keys[1], unlinkedSeq: 2 }];
+    const kept = deviceRows(unlinked, [{ keyId: 'd2', name: 'Laptop', kind: 'desktop-app', holdsMaster: 'yes' }]);
+    expect([kept[1].status, kept[1].holdsMaster, kept[1].master, kept[1].replaceMaster]).toEqual([
+      'Unlinked',
+      'no',
+      "Still has your master key. Replace it if you don't have this device any more.",
+      true,
+    ]);
+    expect(deviceRows(unlinked, [], ['d2'])[1].master).toBe(
+      "May still have your master key. Replace it if you don't have this device any more.",
+    );
+    expect(deviceRows(unlinked, [], [])[1].master).toBe('');
   });
 
   it('stops warning once the master key was replaced at or after the revoke', () => {
@@ -274,6 +297,31 @@ describe('deviceRows', () => {
       ]),
     ).toBe(3);
     expect(lastRotation([{ seq: 0, op: 'incept' }])).toBeNull();
+
+    // An unlinked key counts from its unlink, and a revoke after it does not bring the warning back.
+    const unlinkedThenRevoked = [keys[0], { ...keys[1], unlinkedSeq: 2, revokedSeq: 4 }];
+    expect(deviceRows(unlinkedThenRevoked, stillListed, ['d2'], 3)[1]).toMatchObject({
+      master: '',
+      replaceMaster: false,
+    });
+    expect(deviceRows(unlinkedThenRevoked, stillListed, ['d2'], 1)[1]).toMatchObject({ replaceMaster: true });
+  });
+
+  it('does not warn for a device the rotation unlinked and the next event revoked', () => {
+    // "Revoke and replace master key": rotate at seq 3 unlinking d2, revoke at seq 4. d2 was never
+    // sent the new master key, so the revoke one later does not bring the warning back.
+    const keys = [
+      { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, unlinkedSeq: null, revokedSeq: null },
+      { keyId: 'd2', sign: 'z', thisDevice: false, addedSeq: 1, unlinkedSeq: 3, revokedSeq: 4 },
+    ];
+    const stillListed = [{ keyId: 'd2', name: 'Laptop', kind: 'desktop-app', holdsMaster: 'yes' as const }];
+    expect(deviceRows(keys, stillListed, ['d2'], 3)[1]).toMatchObject({ master: '', replaceMaster: false });
+    expect(deviceRows(keys, [], ['d2'], 3)[1]).toMatchObject({ master: '', replaceMaster: false });
+    // A revoke after a rotation that did not unlink the key is a device that may hold the new key:
+    // it warns.
+    const later = [keys[0], { ...keys[1], unlinkedSeq: null, revokedSeq: 4 }];
+    expect(deviceRows(later, stillListed, ['d2'], 3)[1]).toMatchObject({ replaceMaster: true });
+    expect(deviceRows(later, [], ['d2'], 3)[1]).toMatchObject({ replaceMaster: true });
   });
 });
 
@@ -310,7 +358,7 @@ describe('this device, on a phone and on a desktop', () => {
     unlock: 'os',
     blocked: null,
     devices: [],
-    revokedHolders: [],
+    endedHolders: [],
     requests: [],
     masterWaiting: false,
     thisDevice,

@@ -3,6 +3,7 @@
  * degrades on an executor that predates them.
  */
 import type { DeviceView, IdentityLog, IdentityStatus, SignedHead } from '@coasys/ad4m';
+import { UnlinkUncertainError } from '@we/backend-shared';
 import { describe, expect, it, vi } from 'vitest';
 
 import { type Ad4mCustodyState, createAd4mIdentityPort, readKeyLog } from './identityPort';
@@ -92,6 +93,7 @@ describe('the AD4M identity port', () => {
           deviceEnc: 'z6LS',
           keyId: 'd1',
           revoked: null,
+          unlinked: null,
           head,
           fork: null,
           storeBehind: { since: 1_700_000_000, seq: 0 },
@@ -206,6 +208,54 @@ describe('the AD4M identity port', () => {
     expect(log.events.map((e) => e.op)).toEqual(['incept', 'unknown']);
   });
 
+  it('unlinks this computer through the executor, with no custody service', async () => {
+    const c = client({});
+    const unlinkSelf = vi.fn(async () => head);
+    const port = createAd4mIdentityPort({ identity: { ...c.identity, unlinkSelf } });
+    await expect(port.unlinkSelf()).resolves.toBeUndefined();
+    expect(unlinkSelf).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    [Object.assign(new Error('no-identity: this agent has none'), { status: 409 }), /not linked to an identity/],
+    [Object.assign(new Error('not-listed: d9'), { status: 409 }), /doesn't list this computer/],
+    [Object.assign(new Error('key-dead: d1'), { status: 409 }), /already unlinked/],
+    [
+      Object.assign(new Error('cannot-retire-key: the wallet said no'), { status: 409 }),
+      /could not be taken out of use/,
+    ],
+    [Object.assign(new Error('forbidden'), { status: 403 }), /not allowed/],
+  ])('says why the executor refused to unlink this computer (%#)', async (refusal, words) => {
+    const c = client({});
+    const port = createAd4mIdentityPort({
+      identity: {
+        ...c.identity,
+        unlinkSelf: async () => {
+          throw refusal;
+        },
+      },
+    });
+    await expect(port.unlinkSelf()).rejects.toThrow(words);
+  });
+
+  it.each([
+    [new Error('socket closed')],
+    [Object.assign(new Error('the key is unlinked but still in the wallet'), { status: 500 })],
+  ])('says an unlink with no definite answer may have happened (%#)', async (failure) => {
+    const c = client({});
+    const port = createAd4mIdentityPort({
+      identity: {
+        ...c.identity,
+        unlinkSelf: async () => {
+          throw failure;
+        },
+      },
+    });
+    const error = await port.unlinkSelf().catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(UnlinkUncertainError);
+    expect((error as Error).message).toBe('This computer may already be unlinked. Check again, or try again.');
+  });
+
   it('passes forks on', () => {
     let handler: ((event: unknown) => void) | undefined;
     const c = { ...client({}), on: (_type: 'identity-fork', h: (event: unknown) => void) => ((handler = h), () => {}) };
@@ -257,7 +307,7 @@ describe('the AD4M identity port with a custody service', () => {
       unlock: 'os',
       blocked: null,
       devices: [],
-      revokedHolders: [],
+      endedHolders: [],
       requests: [],
       masterWaiting: false,
       // The desktop's custody service runs beside the executor, so it names no device of its own.
@@ -302,7 +352,7 @@ describe('the AD4M identity port with a custody service', () => {
           // A kind this app cannot answer is left for one that can.
           { id: 'r3', kind: 'rotate-everything', by: 'd2', keyIds: [], expires: 99 },
         ],
-        revokedHolders: ['d4'],
+        endedHolders: ['d4'],
         masterWaiting: true,
       }),
     );
@@ -317,7 +367,7 @@ describe('the AD4M identity port with a custody service', () => {
       { id: 'r2', kind: 'confirm-revoke', by: 'd2', keyIds: ['d3'], expires: 99 },
     ]);
     expect(view.masterWaiting).toBe(true);
-    expect(view.revokedHolders).toEqual(['d4']);
+    expect(view.endedHolders).toEqual(['d4']);
   });
 
   it('opens each device step in the custody service as asked', async () => {
