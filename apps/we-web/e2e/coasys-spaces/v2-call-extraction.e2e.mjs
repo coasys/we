@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { getEntityForDataset } from '@we/backend-ad4m';
 
 import { createSpace } from '../steps/space.mjs';
-import { leaveCall, startCall, stopTranscribing, typeIntoCall, untilHeard, watchCall } from './call.mjs';
+import { leaveCall, startCall, stopTranscribing, typeIntoCall, unmute, untilHeard, watchCall } from './call.mjs';
 import { SLOW, STUB, until, vertical, world } from './context.mjs';
 import { DNA, installDnaThroughUi, linked, spacePerspective } from './dna.mjs';
 import { HEARD, LINES } from './stub-llm.mjs';
@@ -65,6 +65,8 @@ vertical('V2 call: transcript, extraction, accept, leave', (v) => {
     }
     // The stored lines hold a word of each recorded line — words the space's name and the page's
     // controls do not, so only the transcript can pass this. The speech model's spelling, not the script's.
+    // The microphone is off until this press, so the recording has not started yet.
+    await unmute(alice.page);
     const said = await untilHeard(perspective, callId, HEARD, SLOW);
     // The fake microphone plays its recording in a loop; every line is in, so it stops here, and
     // extraction reads one pass of the recording rather than a transcript that grows without end.
