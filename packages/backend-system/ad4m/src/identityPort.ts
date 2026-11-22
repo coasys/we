@@ -30,6 +30,7 @@ import {
   type KeyLogStoreBehind,
   type KeyLogView,
   NO_IDENTITY_CAPABILITIES,
+  UnlinkUncertainError,
 } from '@we/backend-shared';
 
 import { sharedInFlight } from './inFlight';
@@ -227,7 +228,12 @@ export function unlinkSelfRefusal(error: unknown): Error {
     return new Error("Your key log doesn't list this computer, so there is nothing to unlink.");
   }
   if (message.includes('key-dead')) return new Error('This computer is already unlinked.');
-  return new Error(`This computer could not be unlinked: ${message}`);
+  if (message.includes('cannot-retire-key')) {
+    return new Error("This computer's key could not be taken out of use, so it was not unlinked.");
+  }
+  // Anything else (a failed write, a lost reply, a closed socket) may have come after the unlink
+  // was recorded, which the executor finishes later on its own.
+  return new UnlinkUncertainError('This computer may already be unlinked. Check again, or try again.');
 }
 
 export function createAd4mIdentityPort(backendClient: unknown, custody?: Ad4mCustodyHost): IdentityPort {

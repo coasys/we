@@ -11,17 +11,25 @@ import type {
   IdentityPort,
   KeyLogView,
 } from '@we/backend-shared';
-import { NO_IDENTITY_CAPABILITIES } from '@we/backend-shared';
+import { NO_IDENTITY_CAPABILITIES, UnlinkUncertainError } from '@we/backend-shared';
 import { createSignal } from 'solid-js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const [ports, setPorts] = createSignal<{ identity?: IdentityPort } | null>(null);
 const [bootState, setBootState] = createSignal('ready');
+const DID = 'did:scid:coasys:1:QmScid';
+const RETIRED_DID = 'did:key:z6MkRetired';
+const NEW_DID = 'did:key:z6MkRekeyed';
+/** What `agent.me` answers: the executor's re-key changes it. */
+const agent = { did: RETIRED_DID };
+const [me, setMe] = createSignal<{ did: string }>({ did: RETIRED_DID });
 
 vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
   useSessionStore: () => ({
     backendPorts: ports,
     bootState,
+    me,
+    refreshMe: async () => setMe({ did: agent.did }),
     // As the session reads them from the port: linking a device needs a way to sign changes.
     identityCapabilities: () => ({
       ...NO_IDENTITY_CAPABILITIES,
@@ -40,7 +48,6 @@ import {
   useIdentityStore,
 } from '../src/frameworks/solid/stores/IdentityStore';
 
-const DID = 'did:scid:coasys:1:QmScid';
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
 const status = (did: string | null) => ({
@@ -81,7 +88,9 @@ function backend(state: {
   events: KeyLogView['events'];
   devices: DeviceKeyView[];
   /** What `unlinkSelf` rejects with, when the test has the executor refuse. */
-  refuse?: string;
+  refuse?: Error;
+  /** `unlinkSelf` answers once this settles, when the test holds it in flight. */
+  gate?: Promise<void>;
 }) {
   const calls: string[] = [];
   const port: IdentityPort = {
@@ -100,9 +109,12 @@ function backend(state: {
     },
     async unlinkSelf() {
       calls.push('unlinkSelf');
-      if (state.refuse) throw new Error(state.refuse);
-      // The executor re-keys the agent: this computer speaks for no identity from then on.
+      await state.gate;
+      if (state.refuse) throw state.refuse;
+      // The executor re-keys the agent: this computer speaks for no identity from then on, and
+      // `agent.me` answers the new DID.
       state.did = null;
+      agent.did = NEW_DID;
     },
   };
   return { port, calls, state };
@@ -167,6 +179,8 @@ function mount(): { identity: IdentityStore; devices: DeviceStore } {
 
 beforeEach(() => {
   setPorts(null);
+  agent.did = RETIRED_DID;
+  setMe({ did: RETIRED_DID });
   setBootState('ready');
   localStorage.clear();
 });
@@ -544,6 +558,16 @@ describe('deviceStore', () => {
       expect(deviceStore.error()).toBe('');
     });
 
+    it("reads the session's own agent again, so the shell holds the new DID and not the retired one", async () => {
+      const { devices: deviceStore } = setup(false);
+      await flush();
+      await flush();
+      expect(me().did).toBe(RETIRED_DID);
+      await deviceStore.unlink('d1');
+      expect(await deviceStore.unlinkThisComputer()).toBe('done');
+      expect(me().did).toBe(NEW_DID);
+    });
+
     it('warns that no master key is left when this computer keeps it and no other active device does', async () => {
       const { devices: deviceStore } = setup(true, 'no');
       await flush();
@@ -572,7 +596,7 @@ describe('deviceStore', () => {
 
     it('says why the executor refused, in the error slot, and stays linked', async () => {
       const { b, identity, devices: deviceStore } = setup(false);
-      b.state.refuse = 'This computer is already unlinked.';
+      b.state.refuse = new Error('This computer is already unlinked.');
       await flush();
       await flush();
       await deviceStore.unlink('d1');
@@ -580,6 +604,70 @@ describe('deviceStore', () => {
       expect(deviceStore.error()).toBe('This computer is already unlinked.');
       expect(deviceStore.confirmingUnlink()).toBe(false);
       expect(identity.did()).toBe(DID);
+      expect(me().did).toBe(RETIRED_DID);
+    });
+
+    it('says an unlink with no definite answer may have happened, reads the status again, and can be tried again', async () => {
+      const { b, identity, devices: deviceStore } = setup(false);
+      b.state.refuse = new UnlinkUncertainError('This computer may already be unlinked. Check again, or try again.');
+      await flush();
+      await flush();
+      await deviceStore.unlink('d1');
+      const reads = b.calls.filter((call) => call === 'status').length;
+      expect(await deviceStore.unlinkThisComputer()).toBe('uncertain');
+      expect(deviceStore.error()).toBe('This computer may already be unlinked. Check again, or try again.');
+      expect(b.calls.filter((call) => call === 'status').length).toBeGreaterThan(reads);
+      expect(deviceStore.unlinking()).toBe(false);
+      // The status still lists this computer: the row offers the unlink again.
+      expect(identity.did()).toBe(DID);
+      expect(deviceStore.devices().find((d) => d.thisDevice)?.canUnlink).toBe(true);
+      await deviceStore.unlink('d1');
+      expect(deviceStore.confirmingUnlink()).toBe(true);
+      b.state.refuse = undefined;
+      expect(await deviceStore.unlinkThisComputer()).toBe('done');
+      expect(b.calls.filter((call) => call === 'unlinkSelf')).toHaveLength(2);
+    });
+
+    describe('while the unlink is in flight', () => {
+      function inFlight() {
+        const s = setup(false);
+        let release!: () => void;
+        s.b.state.gate = new Promise<void>((resolve) => (release = resolve));
+        return { ...s, release };
+      }
+
+      it('sends one call for a repeated confirm, and keeps the confirm up until it settles', async () => {
+        const { b, devices: deviceStore, release } = inFlight();
+        await flush();
+        await flush();
+        await deviceStore.unlink('d1');
+        const first = deviceStore.unlinkThisComputer();
+        expect(deviceStore.unlinking()).toBe(true);
+        expect(deviceStore.confirmingUnlink()).toBe(true);
+        expect(await deviceStore.unlinkThisComputer()).toBe('cancelled');
+        await flush();
+        expect(b.calls.filter((call) => call === 'unlinkSelf')).toHaveLength(1);
+        release();
+        expect(await first).toBe('done');
+        expect(deviceStore.unlinking()).toBe(false);
+        expect(deviceStore.confirmingUnlink()).toBe(false);
+        expect(b.calls.filter((call) => call === 'unlinkSelf')).toHaveLength(1);
+      });
+
+      it('cannot be raised again, and cancelling after the submit does nothing', async () => {
+        const { b, devices: deviceStore, release } = inFlight();
+        await flush();
+        await flush();
+        await deviceStore.unlink('d1');
+        const first = deviceStore.unlinkThisComputer();
+        deviceStore.cancelUnlink();
+        expect(deviceStore.confirmingUnlink()).toBe(true);
+        expect(await deviceStore.unlink('d1')).toBe('cancelled');
+        expect(deviceStore.confirmingUnlink()).toBe(true);
+        release();
+        await first;
+        expect(b.calls.filter((call) => call === 'unlinkSelf')).toHaveLength(1);
+      });
     });
   });
 

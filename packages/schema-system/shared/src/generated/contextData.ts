@@ -2389,6 +2389,7 @@ export const contextData: ContextData = {
         error: { type: 'string' },
         confirmingUnlink: { type: 'boolean' },
         unlinkLeavesNoMaster: { type: 'boolean' },
+        unlinking: { type: 'boolean' },
       },
       actions: [
         'refresh',

@@ -1551,6 +1551,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     unlink: action('devices'),
     confirmingUnlink: state('devices'),
     unlinkLeavesNoMaster: state('devices'),
+    unlinking: state('devices'),
     cancelUnlink: ambient('devices'),
     unlinkThisComputer: action('devices'),
     revoke: action('devices'),

@@ -112,7 +112,8 @@ export interface IdentityPort {
    * needed, so no custody window opens. The key is dead here from then on and the agent is signed
    * out. Resolves when it is done; rejects with an `Error` whose message is a plain sentence a
    * person can read (no identity, not listed, already unlinked, not allowed). A backend that cannot
-   * do this rejects the same way.
+   * do this rejects the same way. When the answer was lost or the backend cannot say whether it
+   * happened, it rejects with an `UnlinkUncertainError`: the unlink may have been done.
    */
   unlinkSelf(): Promise<void>;
 }
@@ -143,6 +144,14 @@ export type IdentityChange =
   | { kind: 'rename'; keyId: string }
   | { kind: 'unlink'; keyId: string }
   | { kind: 'revoke'; keyId: string };
+
+/** `IdentityPort.unlinkSelf` could not tell whether the unlink happened: ask the status again. */
+export class UnlinkUncertainError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'UnlinkUncertainError';
+  }
+}
 
 /** How a change ended: made, abandoned by the person, or refused along the way. */
 export type IdentityChangeOutcome = 'done' | 'cancelled' | 'failed';

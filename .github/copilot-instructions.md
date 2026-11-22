@@ -3122,6 +3122,7 @@ DeviceStore:
   - error: string — why the last read or the last unlink of this computer failed, in a plain sentence, or empty
   - confirmingUnlink: boolean — the confirm for unlinking this computer is up: draw it as a confirm modal whose confirm is `deviceStore.unlinkThisComputer` and whose close is `deviceStore.cancelUnlink`
   - unlinkLeavesNoMaster: boolean — this computer keeps the master key and no other active device keeps it or is being sent it: the confirm adds that the identity’s other devices then have no master key to use
+  - unlinking: boolean — unlinking this computer is running: keep the confirm up with its button busy (`busy: { $: "deviceStore.unlinking" }`) and disable the other device buttons
 - Actions:
   - refresh(): reads the device list again
   - addDevice(): adds a server by an offer link — the backend asks the person wherever it keeps the master key (on the desktop: the offer link and QR code, then the match code, then the confirmation that signs it). Resolves with the outcome; the list is read again
@@ -3132,8 +3133,8 @@ DeviceStore:
   - answerRequest(id: string): answers that request of another device, once the person says yes where the master key is kept (send the master key, or revoke the devices it names)
   - rename(keyId: string): names that device, in the private record only the identity’s devices read
   - unlink(keyId: string): unlinks that device key — retired: it signs nothing new, and what it signed before stays valid — once the person confirms it where the master key is kept. For this computer's own key it opens no window: it sets `confirmingUnlink` and answers 'cancelled' until `unlinkThisComputer` runs. Resolves with the outcome
-  - cancelUnlink(): dismisses the confirm for unlinking this computer; nothing is unlinked
-  - unlinkThisComputer(): unlinks this computer — its key leaves the identity, signed by itself with no master key, and this computer is signed out; it can act as the person again only once it is linked from another device. The identity is read again after. A refusal is said in `error`. Resolves with the outcome
+  - cancelUnlink(): dismisses the confirm for unlinking this computer; nothing is unlinked. Does nothing once the unlink has been sent
+  - unlinkThisComputer(): unlinks this computer — its key leaves the identity, signed by itself with no master key, and this computer is signed out; it can act as the person again only once it is linked from another device. The session and the identity are read again after. A refusal is said in `error` and resolves 'failed'; a failure that may have come after the unlink was made (no answer, a closed connection) is said in `error` as one that may have happened and resolves 'uncertain', with the status read again to show which. A second call while one runs does nothing
   - revoke(keyId: string): revokes that device key, lost or stolen, once the person confirms it where the master key is kept and says since when it was missing. Resolves with the outcome
 
 EditorStore:

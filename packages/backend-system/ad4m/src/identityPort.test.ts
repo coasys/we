@@ -3,6 +3,7 @@
  * degrades on an executor that predates them.
  */
 import type { DeviceView, IdentityLog, IdentityStatus, SignedHead } from '@coasys/ad4m';
+import { UnlinkUncertainError } from '@we/backend-shared';
 import { describe, expect, it, vi } from 'vitest';
 
 import { type Ad4mCustodyState, createAd4mIdentityPort, readKeyLog } from './identityPort';
@@ -169,8 +170,11 @@ describe('the AD4M identity port', () => {
     [Object.assign(new Error('no-identity: this agent has none'), { status: 409 }), /not linked to an identity/],
     [Object.assign(new Error('not-listed: d9'), { status: 409 }), /doesn't list this computer/],
     [Object.assign(new Error('key-dead: d1'), { status: 409 }), /already unlinked/],
+    [
+      Object.assign(new Error('cannot-retire-key: the wallet said no'), { status: 409 }),
+      /could not be taken out of use/,
+    ],
     [Object.assign(new Error('forbidden'), { status: 403 }), /not allowed/],
-    [new Error('socket closed'), /could not be unlinked: socket closed/],
   ])('says why the executor refused to unlink this computer (%#)', async (refusal, words) => {
     const c = client({});
     const port = createAd4mIdentityPort({
@@ -182,6 +186,24 @@ describe('the AD4M identity port', () => {
       },
     });
     await expect(port.unlinkSelf()).rejects.toThrow(words);
+  });
+
+  it.each([
+    [new Error('socket closed')],
+    [Object.assign(new Error('the key is unlinked but still in the wallet'), { status: 500 })],
+  ])('says an unlink with no definite answer may have happened (%#)', async (failure) => {
+    const c = client({});
+    const port = createAd4mIdentityPort({
+      identity: {
+        ...c.identity,
+        unlinkSelf: async () => {
+          throw failure;
+        },
+      },
+    });
+    const error = await port.unlinkSelf().catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(UnlinkUncertainError);
+    expect((error as Error).message).toBe('This computer may already be unlinked. Check again, or try again.');
   });
 
   it('passes forks on', () => {

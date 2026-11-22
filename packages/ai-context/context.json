@@ -6485,6 +6485,9 @@
         },
         "unlinkLeavesNoMaster": {
           "type": "boolean"
+        },
+        "unlinking": {
+          "type": "boolean"
         }
       },
       "actions": [

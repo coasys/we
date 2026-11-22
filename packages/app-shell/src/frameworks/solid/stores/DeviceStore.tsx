@@ -12,7 +12,7 @@
  * devices.
  */
 import { type DeviceRow, deviceRows, type RequestRow, requestRows } from '@shared/identityRows';
-import type { DeviceKeyView, IdentityChangeOutcome } from '@we/backend-shared';
+import { type DeviceKeyView, type IdentityChangeOutcome, UnlinkUncertainError } from '@we/backend-shared';
 import { latest } from '@we/module-shared';
 import {
   type Accessor,
@@ -27,6 +27,9 @@ import {
 
 import { useIdentityStore } from './IdentityStore';
 import { useSessionStore } from './SessionStore';
+
+/** How unlinking this computer ended: `'uncertain'` when it may have happened though no answer said so. */
+export type UnlinkOutcome = IdentityChangeOutcome | 'uncertain';
 
 export interface DeviceStore {
   /** The device keys, valid first, this computer at the top. */
@@ -90,14 +93,19 @@ export interface DeviceStore {
    * computer keeps it, and no other active device is recorded as keeping it or being sent it.
    */
   unlinkLeavesNoMaster: Accessor<boolean>;
-  /** Dismisses the confirm; nothing is unlinked. */
+  /** Unlinking this computer is running: the confirm stays up, and nothing else on the page should be pressed. */
+  unlinking: Accessor<boolean>;
+  /** Dismisses the confirm; nothing is unlinked. Does nothing once the unlink has been sent. */
   cancelUnlink: () => void;
   /**
    * Unlinks this computer: its key leaves the identity, signed by itself, and this computer is signed
-   * out. The identity is read again after, so the status shows it no longer linked. A refusal is
-   * said in `error`.
+   * out. The session's own identity and the identity are read again after, so they show the new
+   * state. A refusal is said in `error` and answers `'failed'`; an answer that never came, or a
+   * failure that may have come after the unlink was recorded, is said in `error` as one that may
+   * have happened, answers `'uncertain'`, and the status is read again to show which. A second call
+   * while one runs does nothing and answers `'cancelled'`.
    */
-  unlinkThisComputer: () => Promise<IdentityChangeOutcome>;
+  unlinkThisComputer: () => Promise<UnlinkOutcome>;
   /** Revokes the device key `keyId`, lost or stolen; the person says since when, where they unlock. */
   revoke: (keyId: string) => Promise<IdentityChangeOutcome>;
 }
@@ -113,6 +121,7 @@ export function DeviceStoreProvider(props: ParentProps) {
   const [devicesLoaded, setDevicesLoaded] = createSignal(false);
   const [error, setError] = createSignal('');
   const [confirmingUnlink, setConfirmingUnlink] = createSignal(false);
+  const [unlinking, setUnlinking] = createSignal(false);
 
   // As in the identity store: a reply belongs to the port it was asked of and to the latest read.
   const reads = latest();
@@ -172,21 +181,37 @@ export function DeviceStoreProvider(props: ParentProps) {
     !!identity.custody()?.holdsMaster &&
     !rows().some((d) => !d.thisDevice && !d.revoked && !d.unlinked && d.holdsMaster !== 'no');
 
-  async function unlinkThisComputer(): Promise<IdentityChangeOutcome> {
-    setConfirmingUnlink(false);
+  async function unlinkThisComputer(): Promise<UnlinkOutcome> {
     const p = port();
-    if (!p) return 'failed';
+    if (!p) {
+      setConfirmingUnlink(false);
+      return 'failed';
+    }
+    if (unlinking()) return 'cancelled';
+    setUnlinking(true);
     setError('');
+    let outcome: UnlinkOutcome = 'done';
+    let reason = '';
     try {
       await p.unlinkSelf();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      return 'failed';
+      outcome = e instanceof UnlinkUncertainError ? 'uncertain' : 'failed';
+      reason = e instanceof Error ? e.message : String(e);
     }
-    // The status read is the truth about what this computer is now; nothing is guessed here.
-    await identity.refresh();
-    await refresh();
-    return 'done';
+    // The reads are the truth about what this computer is now; nothing is guessed here. The session
+    // reads its own agent again too: the agent has a new DID, and the shell compares against it.
+    // An unlink that may have happened is read again for the same reason, and the person tries again
+    // from the row, which stays while the status still lists this computer.
+    if (outcome !== 'failed') {
+      await session.refreshMe();
+      await identity.refresh();
+      await refresh();
+    }
+    // After the reads, which clear `error` when they succeed: why it failed outlives them.
+    if (reason) setError(reason);
+    setUnlinking(false);
+    setConfirmingUnlink(false);
+    return outcome;
   }
 
   const store: DeviceStore = {
@@ -220,14 +245,18 @@ export function DeviceStoreProvider(props: ParentProps) {
     rename: (keyId: string) => step(() => identity.open({ kind: 'rename', keyId })),
     unlink: async (keyId: string) => {
       if (rows().some((d) => d.keyId === keyId && d.thisDevice)) {
-        setConfirmingUnlink(true);
+        // Not again while it runs: the confirm is already up, and one unlink is all there is.
+        if (!unlinking()) setConfirmingUnlink(true);
         return 'cancelled';
       }
       return step(() => identity.open({ kind: 'unlink', keyId }));
     },
     confirmingUnlink,
     unlinkLeavesNoMaster,
-    cancelUnlink: () => setConfirmingUnlink(false),
+    unlinking,
+    cancelUnlink: () => {
+      if (!unlinking()) setConfirmingUnlink(false);
+    },
     unlinkThisComputer,
     revoke: (keyId: string) => step(() => identity.open({ kind: 'revoke', keyId })),
   };

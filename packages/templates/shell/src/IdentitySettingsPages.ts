@@ -355,7 +355,7 @@ const deviceRow: SchemaNode = listRow(
           props: {
             variant: 'ghost',
             size: 'sm',
-            disabled: { $: 'identityStore.busy' },
+            disabled: { $: 'identityStore.busy || deviceStore.unlinking' },
             onClick: { $invoke: 'deviceStore.rename', args: [{ $: 'device.keyId' }] },
           },
           children: ['Rename'],
@@ -376,7 +376,7 @@ const deviceRow: SchemaNode = listRow(
           props: {
             variant: 'ghost',
             size: 'sm',
-            disabled: { $: 'identityStore.busy' },
+            disabled: { $: 'identityStore.busy || deviceStore.unlinking' },
             onClick: { $invoke: 'deviceStore.unlink', args: [{ $: 'device.keyId' }] },
           },
           children: [{ $: "device.thisDevice ? 'Unlink this computer' : 'Unlink device'" }],
@@ -393,7 +393,7 @@ const deviceRow: SchemaNode = listRow(
             variant: 'ghost',
             size: 'sm',
             tone: 'danger',
-            disabled: { $: 'identityStore.busy' },
+            disabled: { $: 'identityStore.busy || deviceStore.unlinking' },
             onClick: { $invoke: 'deviceStore.revoke', args: [{ $: 'device.keyId' }] },
           },
           children: ['Lost or stolen…'],
@@ -451,6 +451,7 @@ export const unlinkThisComputerConfirm: SchemaNode = confirmModal({
   confirmLabel: 'Unlink this computer',
   cancelLabel: 'Cancel',
   confirm: { $invoke: 'deviceStore.unlinkThisComputer' },
+  busy: { $: 'deviceStore.unlinking' },
 });
 
 /** A button that opens a step in the identity window, idle while one runs. */
@@ -460,7 +461,7 @@ const stepButton = (label: string, invoke: string, variant = 'solid', args: unkn
     variant,
     size: 'sm',
     loading: { $: 'identityStore.busy' },
-    disabled: { $: 'identityStore.busy' },
+    disabled: { $: 'identityStore.busy || deviceStore.unlinking' },
     onClick: { $invoke: invoke, ...(args.length ? { args } : {}) },
   },
   children: [label],
