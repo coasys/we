@@ -73,6 +73,38 @@ const MAX_HELD_SAMPLES = 16_000 * 60;
 const REFUSALS_BEFORE_DROPPING = 2;
 
 /**
+ * How long to wait before sending again to a stream whose queue was full.
+ *
+ * A full queue is the executor saying the speech model is behind on this stream (ad4m#1805). The
+ * stream itself is fine and still transcribing what it took. Opening another stream would close this
+ * one, and the text of what it already took would then go nowhere. So the utterance waits and goes
+ * to the same stream again.
+ */
+const QUEUE_FULL_RETRY_MS = 2_000;
+
+/**
+ * How much speech may wait for a stream whose queue is full — 30 s, at the 16 kHz the worklet sends.
+ *
+ * Less than {@link MAX_HELD_SAMPLES}: the model is answering, only slowly, and every second kept here
+ * is a second later that everything after it lands. Past this the oldest is let go and counted, so
+ * the transcript catches up instead of staying behind for the rest of the call.
+ */
+const MAX_BACKLOG_SAMPLES = 16_000 * 30;
+
+/**
+ * Whether a feed was refused because the stream's utterance queue is full.
+ *
+ * The executor answers that with a 500 whose text names it, and the SDK passes the text on in its
+ * error.
+ */
+function isQueueFull(cause: unknown): boolean {
+  const message = cause instanceof Error ? cause.message : String(cause);
+  return /utterance queue[^.]*full/i.test(message);
+}
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
  * Characters of transcript held before writing a block.
  *
  * Flux's number, kept. One block per utterance would be truer to the source but writes a record
@@ -708,6 +740,13 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * working session that had stopped hearing anything.
    */
   const [reconnecting, setReconnecting] = signal(false);
+  /**
+   * Utterances let go in this session without being transcribed: the speech model stayed too far
+   * behind, the stream stayed away too long, or the far end kept refusing one.
+   *
+   * Counted so the panel can say it happened. Reset when a session starts.
+   */
+  const [skipped, setSkipped] = signal(0);
   let inFlightTimer: ReturnType<typeof setTimeout> | null = null;
   let inFlightDeadline = 0;
   let modelPoll: ReturnType<typeof setTimeout> | null = null;
@@ -1025,25 +1064,6 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   }
 
   /** Write what has accumulated, if anything. Safe to call at any point, including teardown. */
-  /**
-   * Show the extraction panel when a pass starts — anybody's, not only this agent's.
-   *
-   * The same rule recording follows, and the reason the one-line signal in the call bar can go:
-   * starting something invisible and saying nothing about it is how a feature comes to look broken.
-   * A pass takes minutes and spends somebody's tokens, and most of them are started by a standing
-   * watch rather than by a press — so the four people in five who did not start it are exactly the
-   * ones who need telling.
-   *
-   * Once, on the edge. Re-opening a panel somebody has deliberately closed, every time a pass
-   * settles and another begins, is chrome arguing with its reader.
-   */
-  let sawRunning = false;
-  effect?.(() => {
-    const running = (interpretation?.activity?.() ?? []).some((row) => row.running);
-    if (running && !sawRunning) setExtractionOpen(true);
-    sawRunning = running;
-  });
-
   /** The reads of staged suggestions in flight, by key — see {@link loadProposals}. */
   const readingProposals = coalesceByKey();
 
@@ -1911,6 +1931,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     const isMine = sessions.begin();
     setStatus('starting');
     setError('');
+    setSkipped(0);
 
     let newStream: typeof stream = null;
     let newContext: AudioContext | null = null;
@@ -1992,6 +2013,13 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
         held: [] as { audio: Float32Array; refusals: number }[],
         /** The reconnection in progress, so every utterance that fails joins the same one. */
         reconnecting: null as Promise<void> | null,
+        /**
+         * Utterances waiting for this stream's full queue to have room, oldest first — see
+         * {@link MAX_BACKLOG_SAMPLES}.
+         */
+        backlog: [] as Float32Array[],
+        /** The backlog being sent, so every utterance said meanwhile joins the end of it. */
+        draining: null as Promise<void> | null,
       };
 
       /** Keep an utterance until there is a stream to send it to, dropping the oldest past the cap. */
@@ -2001,6 +2029,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
         // Never empties: the utterance just held is the one worth keeping if it alone is over the cap.
         while (total > MAX_HELD_SAMPLES && session.held.length > 1) {
           total -= (session.held.shift() as { audio: Float32Array }).audio.length;
+          setSkipped(skipped() + 1);
         }
       };
 
@@ -2051,6 +2080,12 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
                   await session.stream.feed(next.audio);
                   session.held.shift();
                 } catch (refused) {
+                  // Behind, not refusing: the stream took it and has no room yet. Not counted.
+                  if (isQueueFull(refused)) {
+                    await wait(QUEUE_FULL_RETRY_MS);
+                    if (!isMine()) return;
+                    continue;
+                  }
                   next.refusals += 1;
                   if (next.refusals < REFUSALS_BEFORE_DROPPING) throw refused;
                   /*
@@ -2063,6 +2098,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
                   */
                   console.warn('transcribe: this utterance was refused twice and has been dropped', refused);
                   session.held.shift();
+                  setSkipped(skipped() + 1);
                 }
               }
               setReconnecting(false);
@@ -2085,7 +2121,53 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
         });
       };
 
-      /** Feed one utterance, or hold it and start putting the stream back. */
+      /*
+        Send the backlog to the same stream, one utterance at a time, waiting whenever it is still full.
+
+        One at a time is the backpressure: the next one goes only once the stream has answered the
+        last, so this never adds to a queue that is already full. An utterance is taken out while it
+        is sent, so the cap below can only let go of ones still waiting.
+
+        If the stream fails for any other reason, the backlog joins the reconnection, in order.
+      */
+      const drainBacklog = (): void => {
+        if (session.draining) return;
+        session.draining = (async () => {
+          await wait(QUEUE_FULL_RETRY_MS);
+          while (session.backlog.length > 0) {
+            if (!isMine()) return;
+            const next = session.backlog.shift() as Float32Array;
+            try {
+              await session.stream.feed(next);
+            } catch (cause) {
+              if (!isMine()) return;
+              if (isQueueFull(cause)) {
+                session.backlog.unshift(next);
+                await wait(QUEUE_FULL_RETRY_MS);
+                continue;
+              }
+              for (const audio of [next, ...session.backlog.splice(0)]) hold(audio);
+              reconnect(cause);
+              return;
+            }
+          }
+        })().finally(() => {
+          session.draining = null;
+        });
+      };
+
+      /** Keep an utterance for the full stream, letting go of the oldest past the cap. */
+      const queueBehind = (audio: Float32Array): void => {
+        session.backlog.push(audio);
+        let total = session.backlog.reduce((sum, one) => sum + one.length, 0);
+        while (total > MAX_BACKLOG_SAMPLES && session.backlog.length > 1) {
+          total -= (session.backlog.shift() as Float32Array).length;
+          setSkipped(skipped() + 1);
+        }
+        drainBacklog();
+      };
+
+      /** Feed one utterance; keep it for a full stream, or hold it and start putting the stream back. */
       const feed = async (audio: Float32Array): Promise<void> => {
         noteFed(audio.length);
         // Held rather than raced: while a reconnection is running there is nothing to feed it to,
@@ -2094,11 +2176,22 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
           hold(audio);
           return;
         }
+        // Behind the backlog, so what is said keeps its order and a full queue gets no more at once.
+        if (session.draining) {
+          queueBehind(audio);
+          return;
+        }
         const tried = session.stream;
         try {
           await tried.feed(audio);
         } catch (cause) {
           if (!isMine()) return;
+          // The stream is fine and behind. Kept for it, rather than replacing it and losing the text
+          // of what it already took.
+          if (isQueueFull(cause) && tried === session.stream && !session.reconnecting) {
+            queueBehind(audio);
+            return;
+          }
           // Held too, so the sentence that discovered the problem is not the one lost.
           hold(audio);
           reconnect(cause);
@@ -2345,15 +2438,26 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * in. See the leave effect below.
    */
   async function syncWatch(next: string | null, options?: { keepWatch?: boolean }): Promise<void> {
+    /*
+      The gates below — the class list, the auto switch, whether the list is whole — all read the
+      space on screen, the only space a module can ask about. A call in another space outlives the
+      reader's wander (see `callElsewhere`), and its answers live in its own dataset: the space on
+      screen selecting nothing says nothing about the call's. So for a call elsewhere none of them
+      are read — the watch is attempted and the host, which resolves the collection through its own
+      dataset, refuses or registers with the call's own answers. Its refusal is already the message
+      `watchProblem` shows.
+    */
+    const elsewhere = next !== null && callElsewhere();
     // Keyed on what this call currently extracts, so a group changing it mid-call moves the watch.
     // The host owns the list; this only has to notice when the answer changed.
-    const key = next
-      ? targetsFor(next)
-          .filter((t) => t.selected)
-          .map((t) => t.entity)
-          .join(',')
-      : '';
-    const auto = next ? autoEnabled(next) : true;
+    const key =
+      next && !elsewhere
+        ? targetsFor(next)
+            .filter((t) => t.selected)
+            .map((t) => t.entity)
+            .join(',')
+        : '';
+    const auto = next && !elsewhere ? autoEnabled(next) : true;
     /*
       Nothing decided from a list the host has not finished reading.
 
@@ -2368,13 +2472,13 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       Only while extraction is on. Switching it off needs no list, and waiting would leave the watch
       spending a pass per batch on a community that has just said stop.
     */
-    if (next && auto && !targetsLoaded()) {
+    if (next && !elsewhere && auto && !targetsLoaded()) {
       deferredWatch = next;
       return;
     }
     const deferred = deferredWatch === next ? next : null;
     deferredWatch = null;
-    if (watched === next && watchedClasses === key && watchedAuto === auto) return;
+    if (watched === next && (elsewhere || (watchedClasses === key && watchedAuto === auto))) return;
     const previous = watched;
     /*
       A class-set change re-registers the *same* collection, so the teardown below has to run for it.
@@ -2462,7 +2566,12 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       return;
     }
 
-    if (next && key && typeof interpretation?.watchCollection === 'function') {
+    /*
+      For a call elsewhere there is no local `key` to gate on — `watchCollection` is attempted
+      unconditionally and the host's refusal, if the call's own dataset says off or empty, is the
+      message `watchProblem` shows. So the "no models selected" toast below is on-screen only.
+    */
+    if (next && (key || elsewhere) && typeof interpretation?.watchCollection === 'function') {
       try {
         await interpretation.watchCollection(next, watchedTarget);
         setWatchProblem('');
@@ -2485,7 +2594,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
         setWatchProblem(error instanceof Error ? error.message : String(error));
         console.warn('[transcribe] could not watch this call for auto-extraction', error);
       }
-    } else if (next && !key) {
+    } else if (next && !key && !elsewhere) {
       /*
         Said once, out loud, rather than printed under the controls for the rest of the call.
 
@@ -2871,6 +2980,16 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     reconnecting: state(
       onScreen(reconnecting, false),
       'The link to the speech model dropped and is being re-established; what is said meanwhile is held.',
+    ),
+    /**
+     * How many utterances this session let go without transcribing them.
+     *
+     * A count rather than a flag so the panel can say how much is missing. It only grows while the
+     * session runs: a gap in the transcript stays a gap.
+     */
+    skipped: state(
+      onScreen(skipped, 0),
+      'Utterances let go in this session without a transcript: the speech model was too far behind or could not be reached.',
     ),
     /**
      * What has been heard and is not yet a row in the transcript — buffering, or being written.

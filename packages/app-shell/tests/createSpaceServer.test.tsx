@@ -17,16 +17,17 @@ import { sharingPickerOptions } from '../src/shared/sharingOptions';
 const PRODUCTION = 'https://link.ad4m.dev';
 const STAGING = 'https://link-staging.ad4m.dev';
 
+// As the AD4M backend lists them: the server link language first, as the default.
 const OPTIONS = sharingPickerOptions([
-  { id: 'Qm-p2p', name: 'perspectiveDiffSync', kind: 'peer-to-peer' },
   { id: 'Qm-server', name: 'server-link-language', kind: 'server', servers: [PRODUCTION, STAGING] },
+  { id: 'Qm-p2p', name: 'perspectiveDiffSync', kind: 'peer-to-peer' },
 ]);
 
 function renderModal() {
   const createSpace = vi.fn(async (..._args: unknown[]) => {});
   // Store members as a template reads them: values, not the accessors the providers hold.
   const stores = {
-    spaceStore: { sharingOptions: OPTIONS, defaultSharing: 'Qm-p2p', createSpace },
+    spaceStore: { sharingOptions: OPTIONS, defaultSharing: 'Qm-server', createSpace },
     shellStore: { setCreateSpaceOpen: vi.fn() },
     datasetStore: { globalDataset: null, globalSpaceConfigured: false },
     templateStore: { brand: { name: 'WE' } },
@@ -64,10 +65,27 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 afterEach(cleanup);
 
+describe('a new space', () => {
+  it('starts shared, syncing through the default server', async () => {
+    const { container, createSpace } = renderModal();
+    fire(container.querySelector('we-input')!, 'input', 'Garden');
+
+    const sync = select(container, 'How this space syncs') as unknown as { value: string };
+    expect(sync.value).toBe('Qm-server');
+    expect((select(container, 'Link server') as unknown as { value: string }).value).toBe(PRODUCTION);
+
+    fire(createButton(container), 'click');
+    await settle();
+
+    expect(createSpace).toHaveBeenCalledTimes(1);
+    expect(createSpace.mock.calls[0][2]).toBe('shared');
+  });
+});
+
 describe('the link server of a new shared space', () => {
   it('is not asked about for a peer-to-peer space', () => {
     const { container } = renderModal();
-    fire(container.querySelector('we-switch')!, 'change', true);
+    fire(select(container, 'How this space syncs')!, 'change', 'Qm-p2p');
 
     expect(select(container, 'How this space syncs')).toBeDefined();
     expect(select(container, 'Link server')).toBeUndefined();

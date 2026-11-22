@@ -54,7 +54,6 @@ import { registerDeclaredRelations } from './relationPredicates';
 import { installRelationWrites } from './relationWrites';
 import { type Ad4mRuntimeOptions, createAd4mRuntimeAdmin } from './runtimeAdminAdapter';
 import {
-  deduplicateSpaceSdna,
   ensureEntityRegistered,
   installModuleSdna,
   installRootSdna,
@@ -63,8 +62,6 @@ import {
   refreshSpaceSdna,
   ROOT_MODELS,
   SPACE_MODELS,
-  warmSchemaReads,
-  warmStoredShapes,
 } from './sdnaEntities';
 import { createAd4mTranscriptionPort } from './transcriptionAdapter';
 import { createAd4mWorkflowPort } from './workflowPort';
@@ -82,13 +79,15 @@ export function createAd4mSchemaPort(backendClient: unknown): SchemaPort {
     installModules: (dataset, moduleSchemas) => installModuleSdna(proxy(dataset), moduleSchemas),
     refreshSpace: (dataset) => refreshSpaceSdna(proxy(dataset)),
     ensure: (dataset, schema) => ensureEntityRegistered(proxy(dataset), schema as never),
-    hasCoreSchema: (dataset) => {
-      // A switch reads the stored shapes next if this answers yes — start that read alongside.
-      warmStoredShapes(proxy(dataset));
-      return isEntityRegistered(proxy(dataset), Space);
+    hasCoreSchema: (dataset) => isEntityRegistered(proxy(dataset), Space),
+    hasAnySchema: async (dataset) => (await proxy(dataset).shapes()).length > 0,
+
+    async foreignEntries(dataset): Promise<EntityManifestEntry[]> {
+      // The read half of `foreignSchemas` — registering is the switch's to do, because it
+      // *replaces* the dataset's synthesised-class registry, adopted shapes' compiled classes
+      // included. A candidacy ask only reads.
+      return buildEntityManifest(await getForeignShacl(proxy(dataset)));
     },
-    prepare: (dataset) => warmSchemaReads(proxy(dataset)),
-    hasAnySchema: async (dataset) => (await proxy(dataset).getShaclNames()).length > 0,
 
     async foreignSchemas(dataset): Promise<EntityManifestEntry[]> {
       const shapes = await getForeignShacl(proxy(dataset));
@@ -140,8 +139,6 @@ export function createAd4mSchemaPort(backendClient: unknown): SchemaPort {
     interpretationHints: (dataset, entity) => readInterpretationHints(proxy(dataset), entity),
     setInterpretationHints: (dataset, entity, hints) => writeInterpretationHints(proxy(dataset), entity, hints),
     resetInterpretationHints: (dataset, entity) => resetInterpretationHints(proxy(dataset), entity),
-
-    dedupe: (dataset) => deduplicateSpaceSdna(proxy(dataset)),
   };
   // A space's own models are kept as their SHACL, installed the way this port installs any entity.
   port.shapes = createAd4mShapeStore({

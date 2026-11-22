@@ -1179,6 +1179,30 @@ describe('extraction', () => {
       expect(i.targetsSeen).toEqual(['space-a', 'space-a']);
     });
 
+    it('asks the host about a call in another space rather than gating on the space on screen’s list', async () => {
+      /*
+        The reader is in a call in space-a while looking at space-b, whose list selects nothing.
+        `targets`, `autoEnabled` and `targetsLoaded` all answer for the space on screen — gated by
+        them, the call's watch was never attempted and the panel said "No models selected" about a
+        space the call is not in. For a call elsewhere the module asks the host, which resolves the
+        collection through its own dataset and answers with the call's own switch and list.
+      */
+      const i = interpreter(undefined, true, []);
+      const anchored = [peer(ME, { type: 'call', id: CALL, record: RECORD, anchor: { datasetUri: 'space-a' } })];
+      const h = harness(anchored, {
+        interpretation: i.port,
+        dataset: () => ({}),
+        datasetUri: () => 'space-b',
+      });
+      await h.say('first words from the wrong side of the rail');
+
+      // Registered against the call's own dataset — never gated on space-b's empty list, and no
+      // toast about a space the call is not in.
+      expect(i.watches).toEqual([RECORD]);
+      expect(i.targetsSeen).toEqual(['space-a']);
+      expect(h.notified.filter((n) => n.message.includes('extraction'))).toEqual([]);
+    });
+
     it('stops the watch when the module is disposed with nobody else in the call', async () => {
       const i = interpreter();
       const disposers: Array<() => void> = [];
@@ -2725,6 +2749,24 @@ describe('turning automatic extraction off for one call', () => {
     expect(h.store.extractionOpen()).toBe(true);
   });
 
+  it('leaves the panel shut when a pass starts, whoever started it', async () => {
+    /*
+      The panel opens only by hand. A pass is usually started by a standing watch on somebody else's
+      device, and a panel springing open over the call each time one begins is chrome arguing with
+      its reader; the call bar's button carries what the pass is doing instead.
+    */
+    let activity: { id: string; running: boolean }[] = [];
+    const h = harness([peer(ME, { type: 'call', id: CALL, record: RECORD })], {
+      interpretation: { available: () => true, activity: () => activity },
+    });
+    expect(h.store.extractionOpen()).toBe(false);
+
+    activity = [{ id: 'pass-1', running: true }];
+    await h.settle();
+
+    expect(h.store.extractionOpen()).toBe(false);
+  });
+
   it('writes the decision against that call', async () => {
     const { h, set } = withAuto([peer(ME, { type: 'call', id: CALL, record: RECORD })], { [RECORD]: true });
 
@@ -3442,6 +3484,99 @@ describe('a stream that went away', () => {
     expect(fed).toEqual([1600]);
     // The one it started with, and the ones that proved the node was answering.
     expect(opens).toBeLessThanOrEqual(3);
+  });
+
+  /**
+   * A full queue (ad4m#1805) means the speech model is behind, not that the stream is gone. A new
+   * stream would close this one, and the text of what it already took would go nowhere.
+   */
+  describe('a stream whose queue is full', () => {
+    const FULL = new Error(
+      '[AIClient] feed failed: 500 Internal Server Error All streams failed: s1: The utterance queue of this stream is full. This audio was not accepted.',
+    );
+    const sized = (samples: number) => ({ data: { kind: 'utterance', audio: new Float32Array(samples) } });
+
+    /** One stream that refuses the first `refusals` feeds as full, then takes everything. */
+    function behind(refusals: number) {
+      const fed: number[] = [];
+      let opens = 0;
+      let left = refusals;
+      return {
+        fed,
+        opens: () => opens,
+        transcription: {
+          available: () => true,
+          models: async () => [{ id: 'small', name: 'Whisper small', ready: true, isDefault: true }],
+          open: async () => {
+            opens += 1;
+            return {
+              feed: async (audio: Float32Array) => {
+                if (left > 0) {
+                  left -= 1;
+                  throw FULL;
+                }
+                fed.push(audio.length);
+              },
+              close: async () => {},
+            };
+          },
+        },
+      };
+    }
+
+    it('sends again to the same stream, in the order it was said, without reconnecting', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        const s = behind(2);
+        const h = harness(IN_CALL, { dataset: () => ({}), transcription: s.transcription });
+        await settle();
+
+        nodes[0].port.onmessage?.(sized(1600));
+        await settle();
+        nodes[0].port.onmessage?.(sized(1601));
+        nodes[0].port.onmessage?.(sized(1602));
+        await settle();
+        expect(s.fed).toEqual([]);
+        expect(h.store.reconnecting()).toBe(false);
+
+        await vi.advanceTimersByTimeAsync(10_000);
+
+        expect(s.opens()).toBe(1);
+        expect(s.fed).toEqual([1600, 1601, 1602]);
+        expect(h.store.skipped()).toBe(0);
+        expect(h.store.status()).toBe('listening');
+
+        // Once caught up, the next utterance goes straight to the stream again.
+        nodes[0].port.onmessage?.(sized(1603));
+        await settle();
+        expect(s.fed).toEqual([1600, 1601, 1602, 1603]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('lets go of the oldest speech past 30 s while the stream stays full, and counts it', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        // Full for the whole test, so all of it waits.
+        const s = behind(1_000);
+        const h = harness(IN_CALL, { dataset: () => ({}), transcription: s.transcription });
+        await settle();
+
+        // Four utterances of 10 s each: 40 s behind a full queue.
+        for (let i = 0; i < 4; i++) nodes[0].port.onmessage?.(sized(160_000));
+        await settle();
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        // The oldest is let go to stay within 30 s, and the stream is not replaced.
+        expect(h.store.skipped()).toBe(1);
+        expect(h.store.reconnecting()).toBe(false);
+        expect(s.opens()).toBe(1);
+        expect(h.store.status()).toBe('listening');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   it('keeps trying, and stops only once a minute of attempts has failed', async () => {

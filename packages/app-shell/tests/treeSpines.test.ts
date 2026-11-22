@@ -1,0 +1,170 @@
+/**
+ * The spine picker offers what the relation seed would follow — the space's own declared
+ * structure, and never the host's bookkeeping. Every core WE class carries typed relations
+ * (`signals`, `runs`, `generatedBy`): offered as spines they read as choices a community made,
+ * and followed they flood a tree with reactions and model runs. The same list the extraction
+ * candidates exclude (`WE_PLUMBING_CLASSES`) rules them out here, at either end of the relation.
+ */
+import type { EntityManifestEntry } from '@we/backend-shared';
+import { describe, expect, it } from 'vitest';
+
+import { parseSpine, type Spine, spineValue, treeSpine, treeSpines } from '../src/shared/sources/treeSpines';
+
+const uri = (name: string, relatedEntity: string, isCollection = false): EntityManifestEntry['properties'][number] => ({
+  name,
+  predicate: `disc://${name}`,
+  type: 'uri',
+  isCollection,
+  required: false,
+  writable: true,
+  relatedEntity,
+});
+
+describe('treeSpines', () => {
+  it('offers none of WE’s own bookkeeping relations, at either end', () => {
+    // The core manifest alone carries `WeNode › signals`, `› runs`, `› generatedBy` — every one a
+    // typed relation at a plumbing class. A community shape declaring the same targets beside its
+    // own relation gets only its own line.
+    const shapes = [
+      {
+        name: 'Minute',
+        manifest: {
+          entities: {
+            Minute: {
+              properties: { title: { type: 'string' } },
+              relations: {
+                about: { target: 'DiscussionTopic', cardinality: 'one', predicate: 'disc://about' },
+                signals: { target: 'Signal', cardinality: 'many', predicate: 'disc://signals' },
+                generatedBy: { target: 'ModelRun', cardinality: 'one', predicate: 'disc://generated-by' },
+              },
+            },
+            DiscussionTopic: {
+              properties: { title: { type: 'string' } },
+              relations: {},
+            },
+          },
+        },
+      },
+    ];
+
+    const values = treeSpines({ shapes }).map((option) => option.value);
+
+    expect(values).toContain('rel:*');
+    expect(values).toContain('rel:Minute.about');
+    // A core relation between two *content* classes is structure too — `EventBlock.location` is a
+    // block pointing at a block, not furniture. It stays.
+    expect(values).toContain('rel:EventBlock.location');
+    // Nothing held by, or pointing at, WE's bookkeeping: no WeNode/Space/AgentSettings relations,
+    // and no `signals`, `runs` or `generatedBy` on any class at all.
+    const relations = values.filter((value) => value.startsWith('rel:') && value !== 'rel:*');
+    expect(relations).toEqual(expect.arrayContaining(['rel:Minute.about', 'rel:EventBlock.location']));
+    for (const value of relations) {
+      expect(value).not.toMatch(
+        /rel:(WeNode|Space|Shape|Signal|SignalType|Involvement|Placement|TypeStyle|EdgeRoute|ModelRun|Amendment|AgentSettings|SpacePreference|SpaceTemplatePreference|Template|Theme|ReadMarker|MutedAgent|Policy|Role|RoleGrant|RelationshipType|InvolvementType|TaskState|CollectionBlock|SpaceLandmark)\./,
+      );
+      expect(value).not.toMatch(
+        /\.(signals|runs|generatedBy|typeStyles|landmarks|root|board|run|node|hiddenTemplates|installedThemes|installedTemplates|defaultTaskState|spacePreferences|screenshots)$/,
+      );
+    }
+    expect(values).not.toContain('rel:Minute.signals');
+    expect(values).not.toContain('rel:Minute.generatedBy');
+  });
+
+  it('keeps a foreign schema’s own relations beside the space’s', () => {
+    const foreign: EntityManifestEntry[] = [
+      {
+        name: 'Author',
+        targetClass: 'disc://Author',
+        properties: [uri('posts', 'Post', true)],
+      },
+      {
+        name: 'Post',
+        targetClass: 'disc://Post',
+        // Even an installed schema pointing at WE's bookkeeping names furniture, not structure.
+        properties: [uri('author', 'Author'), uri('generatedBy', 'ModelRun')],
+      },
+    ];
+
+    const values = treeSpines({ foreign }).map((option) => option.value);
+
+    expect(values).toEqual(expect.arrayContaining(['rel:*', 'rel:Author.posts', 'rel:Post.author']));
+    expect(values).not.toContain('rel:Post.generatedBy');
+  });
+});
+
+describe('treeSpines — forward relations only', () => {
+  it('offers a belongsTo nowhere: its forward already names that link', () => {
+    /*
+      `Post.comments` and `Comment.post` are one link read from its two ends. The tree draws it from
+      the forward declaration, so a spine on the reverse would select an edge nothing draws.
+    */
+    const foreign: EntityManifestEntry[] = [
+      { name: 'Post', targetClass: 'disc://Post', properties: [uri('comments', 'Comment', true)] },
+      {
+        name: 'Comment',
+        targetClass: 'disc://Comment',
+        properties: [{ ...uri('post', 'Post'), predicate: 'disc://comments', reverse: true, reverseOf: 'comments' }],
+      },
+    ];
+
+    const values = treeSpines({ foreign }).map((option) => option.value);
+
+    expect(values).toContain('rel:Post.comments');
+    expect(values).not.toContain('rel:Comment.post');
+  });
+});
+
+/**
+ * The spine as a value with a kind, rather than a string every reader decodes.
+ *
+ * `rel:*`, `rel:Class.prop` and a bare `RelationshipType` id shared one string, and each reader — the
+ * layout's selector, the faint-line rule, the seed's switch, the drag — parsed it again. The faint-line
+ * bug (`data.relation` compared with `*`) came from one of those parses. The string stays the spelling
+ * a picker and an address hold; `parseSpine` is the only thing that reads it.
+ */
+describe('the spine as a typed value', () => {
+  it('reads each spelling as its kind, and writes it back the same', () => {
+    const cases: [string, Spine][] = [
+      ['', { kind: 'any' }],
+      ['kind-1', { kind: 'relationship', id: 'kind-1' }],
+      ['rel:*', { kind: 'relation' }],
+      ['rel:Position.about', { kind: 'relation', class: 'Position', prop: 'about' }],
+    ];
+    for (const [value, spine] of cases) {
+      expect(parseSpine(value)).toEqual(spine);
+      expect(spineValue(spine)).toBe(value);
+    }
+  });
+
+  it('takes a spine already typed, and reads anything unreadable as any connection', () => {
+    expect(parseSpine({ kind: 'relation', class: 'Position', prop: 'about' })).toEqual({
+      kind: 'relation',
+      class: 'Position',
+      prop: 'about',
+    });
+    for (const value of [undefined, null, 42, 'rel:', 'rel:Position'])
+      expect(parseSpine(value)).toEqual({ kind: 'any' });
+  });
+
+  it('answers what the tree reads off it — the layout’s selector, the faint lines, whether relations are drawn', () => {
+    expect(treeSpine({ value: 'rel:*' })).toMatchObject({
+      kind: 'relation',
+      selector: { field: 'type', value: 'relation' },
+      offSpine: { type: { not: 'relation' } },
+      relations: true,
+    });
+    expect(treeSpine({ value: 'rel:Position.about' })).toMatchObject({
+      selector: { field: 'data.relation', value: 'Position.about' },
+      offSpine: { 'data.relation': { not: 'Position.about' } },
+      relations: true,
+    });
+    expect(treeSpine({ value: 'kind-1' })).toMatchObject({
+      selector: { field: 'data.relationshipTypeId', value: 'kind-1' },
+      offSpine: { 'data.relationshipTypeId': { not: 'kind-1' } },
+      relations: false,
+    });
+    // "Any connection": the layout follows every line, nothing is faint, and relations are drawn.
+    expect(treeSpine({ value: '' })).toMatchObject({ kind: 'any', relations: true });
+    expect(treeSpine({ value: '' }).selector).toEqual({ field: 'data.relationshipTypeId', value: '' });
+  });
+});

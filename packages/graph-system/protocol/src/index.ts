@@ -28,7 +28,7 @@ export {
   propertyAddress,
   resourceAddress,
 } from './address';
-export { CARD_SILHOUETTES, cardSilhouette, metricKey, MORPH_OUTLINES, morphOutline } from './style';
+export { CARD_SILHOUETTES, cardSilhouette, matches, metricKey, MORPH_OUTLINES, morphOutline, readField } from './style';
 export type { GraphEdge, GraphFragment, GraphNode, GraphValue } from './graph';
 export { CONTAINMENT_EDGE_TYPES } from './graph';
 export type {
@@ -43,6 +43,7 @@ export type {
   SeedSource,
   WatchQuery,
 } from './expander';
+export { heldByChild, treeEnds } from './expander';
 export type {
   Bounds,
   EdgeAnchors,

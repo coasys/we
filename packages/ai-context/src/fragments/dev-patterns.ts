@@ -177,17 +177,29 @@ checkout run a local build path. \`pnpm dev:electron\` runs the same command wit
 \`[ad4m:executor]\` line rather than scrolling past it. Details:
 \`docs/contributing/ad4m-and-deploys.md\`, "The executor you run locally".
 
-### Live tests (real executor, real browser)
+### End-to-end tests: three kinds
 
-\`apps/we-web/tests/live/\` drives the built app (\`pnpm build:web\` first) in Chromium against a fresh
-multi-user executor from the same chooser. \`pnpm --filter @we/app-web test:live\` runs the call suite;
-\`test:spaces\` runs the coasys-spaces product suite (space, call and extraction, social DNA, two
-workflows, an agent over MCP, the canvas, the page and a theme) — a stub LLM by default,
-\`COASYS_SPACES_TIER=real\` for a real model. Its Feed checks are \`it.todo\`, pending a product bug (the
-Feed does not read a class a bundle declares). Its env vars, its \`it.todo\` backlog and the ad4m
-nightly job that will run it are in
-\`apps/we-web/tests/live/coasys-spaces/README.md\`. Selectors are roles and accessible names: when one
-is missing, add a \`label\` to the product node rather than reaching for a CSS selector.
+Beyond the jsdom suites, WE has three kinds of test that need a real browser or a real executor.
+\`pnpm e2e\` lists every suite; \`pnpm e2e <suite>\` builds what it needs, fetches the executor and runs
+it. The helpers they share (start an executor, sign up an account, serve a build under the
+production CSP, find Chrome, wait, keep artifacts) are \`@we/e2e\` (\`packages/e2e\`). The full map,
+env vars and CI homes: \`docs/testing/e2e.md\`.
+
+| Kind | Where | Runner · suffix | Run | CI |
+|---|---|---|---|---|
+| **Browser layout** — real Chrome, no executor | \`packages/app-shell/tests/browser/\`; \`3-primitives/src/*.browser.test.ts\` | own runner (\`run.mjs\`); vitest · \`.browser.test.ts\` | \`pnpm e2e browser-layout\`, \`pnpm e2e primitives-browser\` | \`build.yaml\` test job |
+| **Live contract** — one surface against a real executor | \`packages/backend-system/ad4m/tests/live/\`; \`crates/custody/tests/live.rs\` | vitest · \`.live.ts\`; cargo (\`CUSTODY_LIVE=1\`) | \`pnpm e2e backend-live\` (= \`pnpm verify:ad4m\`), \`pnpm e2e custody-live\` | \`ad4m-live.yaml\` \`live\`; custody: by hand |
+| **Journey** — the built app, a person's path through it | \`apps/we-web/e2e/\` (steps in \`e2e/steps/\`) | node:test · \`.e2e.mjs\` | \`pnpm e2e calls\`, \`pnpm e2e spaces [--tier stub\\|real] [--only v1,v2]\` | \`ad4m-live.yaml\` \`calls\` and \`spaces\` (stub); real tier: the ad4m nightly |
+
+Every live test runs a fresh **multi-user** executor from the same chooser, as a hosted node does, and
+signs up an account on it. The spaces suite is the coasys-spaces product suite (space, call and
+extraction, social DNA, two workflows, an agent over MCP, the canvas, the page and a theme) — a stub
+LLM by default, \`--tier real\` for a real model. Its Feed checks are \`it.todo\`, pending a product bug
+(the Feed does not read a class a bundle declares); its env vars and backlog are in
+\`apps/we-web/e2e/coasys-spaces/README.md\`. A failing journey step leaves a screenshot, the page's
+aria snapshot and the executor log in \`WE_E2E_ARTIFACTS\` (a temp dir otherwise). Selectors are roles
+and accessible names: when one is missing, add a \`label\` to the product node rather than reaching for
+a CSS selector.
 
 ### Building the AD4M Executor Binary
 
@@ -654,17 +666,27 @@ What the SDK and executor do around a subscription, so a watch can rely on it:
   lets go, so a surface remounting does not tear one down and open another. \`onProposalsChanged\`
   shows how.
 
-### Reading shapes from \`@we/backend-ad4m\`
+### Reading and registering shapes from \`@we/backend-ad4m\`
 
 The \`PerspectiveProxy\` the app holds comes from the SDK copy bundled inside \`@coasys/ad4m-connect\`,
 not from the \`@coasys/ad4m\` this repo pins. An SDK fix reaches the app only when ad4m-connect
 republishes, so measure performance work against that copy, not the workspace one.
 
-In that copy, \`getAllShacl()\` reads every shape one at a time — \`getShaclNames()\`, then \`getShacl()\`
-per shape at 3 + P calls for P properties — and it rejects outright when one shape carries a
-property transform a newer SDK encoded. For a question about many shapes, ask the executor
-once with SPARQL, and read a shape in full only when the answer needs it: \`readShapeProperties\` and
-\`getForeignShacl\` in \`perspectiveHelpers.ts\` show how.
+The executor holds a shape registry per perspective. Read it with \`perspective.shapes(names?)\`: one
+call, one record per registered class (\`name\` is the local name of the target class, sorted by
+name). Two apps can each have a class with the same local name, so a lookup by target class checks
+\`record.shape.targetClass\` too — \`storedShapeOf\` in \`sdnaEntities.ts\` shows how. Do not read
+shapes from links or with SPARQL: the registry is the one source the model queries use.
+
+Write it with \`perspective.registerShapes(shapes)\` (or \`Model.register(p)\` /
+\`Ad4mModel.registerAll(p, models)\`). The executor compares each shape with the stored one and writes
+only a changed one, and the call answers once queries see the new shapes, so do not read first, sleep
+after, or write hints again after. One call refuses two shapes for one class, a shape URI another
+class already holds, or a \`node_shape_uri\` not ending in \`{Class}Shape\` — and writes nothing from
+the call. Two classes may share a name (\`we://Topic\` beside \`flux://Topic\`): each is addressed by
+its target class IRI, and the bare name reads the least IRI. WE's own links on a shape
+node (annotations, the tuned-hints marker) are links, read and written as links; the executor keeps
+them when it rewrites a shape.
 
 ---
 

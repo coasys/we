@@ -2161,7 +2161,15 @@ describe('the workshop’s tree', () => {
       switch, throwing away the selection, the camera and every card's identity — and with it the
       travel, which is what makes the switch read as one movement over one set of cards.
     */
-    expect(canvas).toContain("{ type: 'forest', options: { spine: { field: 'data.relationshipTypeId'");
+    expect(canvas).toContain("{ type: 'forest', options: { spine:");
+    /*
+      The spine is read once, by `treeSpine`, which knows its kinds — `rel:*`, `rel:Class.prop`, or a
+      bare connection kind, so a `?spine=<kindId>` link saved before relations existed still means the
+      same tree. No reader here decodes the spelling for itself.
+    */
+    expect(canvas).toContain("{ type: 'forest', options: { spine: treeSpine({ value: local.spine }).selector");
+    expect(canvas).not.toContain('startsWith(local.spine');
+    expect(canvas).not.toContain('split(local.spine');
     expect(canvas).toContain("{ type: 'manual', options: { size: { width: 180, height: 135 }");
     // One layout prop on the canvas's graph, so there is exactly one place the mode is read. (The
     // route also holds the vocabulary map, a different graph with a layout of its own.)
@@ -2232,7 +2240,7 @@ describe('the workshop’s tree', () => {
       community's vocabulary and this reader's choice, neither of which a store can know.
     */
     expect(canvas).toContain('"onNodeArrange":{"$invoke":"recordStore.arrangeOnTree"');
-    expect(canvas).toContain('{"$":"local.spine"}');
+    expect(canvas).toContain('{"$":"treeSpine({ value: local.spine })"}');
     expect(canvas).toContain('"onNodeDragEnd":{"$invoke":"recordStore.dragOnCanvas"');
   });
 
@@ -2270,7 +2278,7 @@ describe('the workshop’s tree', () => {
       still drawn, and a connection of another kind entirely is exactly what a reader following a
       decision pathway wants to notice. Faint rather than absent, or the shape is lost in the tangle.
     */
-    expect(canvas).toContain("{ 'data.relationshipTypeId': { not: local.spine } }");
+    expect(canvas).toContain('{ when: treeSpine({ value: local.spine }).offSpine,');
     expect(canvas).toContain('opacity: 0.25');
     /*
       And every child is met at its own top, from its parent's bottom.
@@ -2309,7 +2317,9 @@ describe('the workshop’s tree', () => {
     // select would render empty. Guarded globally as well, and stated here where the temptation was.
     expect(canvas).toContain('"placeholder":"Any connection"');
     expect(canvas).toContain('"$setLocal":"spine","value":""');
-    expect(canvas).toContain('local.relationshipKinds.map(k, { label: k.name, value: k.id, icon: k.icon })');
+    // The kinds still come from the RelationshipType query — `treeSpines` merges the model
+    // relations the installed classes declare into the same list.
+    expect(canvas).toContain('treeSpines({ kinds: local.relationshipKinds');
   });
 });
 
@@ -2326,19 +2336,54 @@ describe('the workshop’s space-wide views', () => {
   const route = (path: string) => JSON.stringify((workshop.routes ?? []).find((entry) => entry.path === path));
   const SCOPE = 'routeStore.params.scope';
   const RECORD = `(${SCOPE} == 'call' ? (${CALL_EXPR}) : ${SCOPE} == 'space' ? spaceStore.root : ${SCOPE} ? ${SCOPE} : '')`;
-  const DIM = `(${RECORD}) && routeStore.params.from == 'dim'`;
-  const HIDE = `(${RECORD}) && routeStore.params.from == 'hide'`;
+  /** The canvas's graph, and an expression on it read against plain objects, as the renderer reads it. */
+  const canvasGraph = (): Record<string, unknown> => {
+    let found: Record<string, unknown> | undefined;
+    const walk = (value: unknown): void => {
+      if (found || !value || typeof value !== 'object') return;
+      if ((value as { type?: unknown }).type === 'GraphView')
+        found = (value as { props: Record<string, unknown> }).props;
+      else Object.values(value).forEach(walk);
+    };
+    walk((workshop.routes ?? []).find((entry) => entry.path === '/canvas'));
+    return found!;
+  };
+  const evaluate = (source: string, roots: Record<string, unknown>): unknown =>
+    evaluateExpression(parseExpression(source), {
+      root: (name: string) => (name in roots ? { bound: true, value: roots[name] } : { bound: false }),
+      call: (name: string, args: unknown[]) =>
+        listFunctions()
+          .find((f) => f.name === name)
+          ?.impl(args, {} as never),
+    } as never);
 
   it('narrows nothing until somebody picks a scope', () => {
     const canvas = route('/canvas');
     // Hiding leaves off what the conversation in scope did not produce; with no scope it asks for
     // nobody's cards.
-    expect(canvas).toContain(`"onlyFrom":{"$":"(${HIDE}) ? (${RECORD}) : ''"}`);
-    // Dimming fades everything else — a card with no origin is in no scope. Under "hide" too, so the
-    // cards stay faded while the canvas reloads without them rather than flashing back.
-    expect(canvas).toContain(
-      `((${DIM}) || (${HIDE})) ? [{ when: { 'data.origin': { not: (${RECORD}) } }, style: { opacity: 0.1 } }] : []`,
-    );
+    const props = canvasGraph();
+    const hideWhere = (props.seeds as { options: { hideWhere: { $: string } } }).options.hideWhere.$;
+    const dims = (props.nodeStyle as unknown[]).filter((rule) =>
+      JSON.stringify(rule).includes("'data.origin': { not:"),
+    ) as { $: string }[];
+    const read = (params: Record<string, string>) => {
+      const scope = { routeStore: { params }, spaceStore: { root: 'space-root' }, local: {}, modules: {} };
+      return { hide: evaluate(hideWhere, scope), dim: dims.flatMap((rule) => evaluate(rule.$, scope) as unknown[]) };
+    };
+    const rest = { 'data.origin': { not: 'space-root' } };
+    // No scope picked: nothing hidden, nothing faded, whatever the treatment says.
+    expect(read({ from: 'hide' })).toEqual({ hide: null, dim: [] });
+    // Hiding leaves off what the conversation in scope did not produce — a card with no origin is in
+    // no scope. Faded under "hide" too, so the cards stay faded while the canvas reloads without them.
+    expect(read({ scope: 'space', from: 'hide' })).toEqual({
+      hide: [rest],
+      dim: [{ when: rest, style: { opacity: 0.1 } }],
+    });
+    expect(read({ scope: 'space', from: 'dim' })).toEqual({
+      hide: null,
+      dim: [{ when: rest, style: { opacity: 0.1 } }],
+    });
+    expect(read({ scope: 'space' })).toEqual({ hide: null, dim: [] });
     expect(canvas).toContain('"origin":"extractedFrom"');
   });
 
