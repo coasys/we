@@ -190,6 +190,8 @@ export default [
       '**/old/**',
       '**/target/**',
       '**/dist-electron/**',
+      // The identity site's end-to-end build (`test:e2e`).
+      'apps/identity-site/dist-e2e/**',
       // The phone app's copies of WE's built web app: www/, and the assets Capacitor syncs into
       // its native projects.
       'apps/we-mobile/www/**',
