@@ -12,7 +12,7 @@
  * - a `scope` drill through the `belongsTo`, and an inbound `scope` through the child's own field,
  *   both find the record that points at the anchor.
  */
-import { Ad4mClient, Ad4mModel, HasOne, Model, Property } from '@coasys/ad4m';
+import { Ad4mClient, Ad4mModel, HasOne, Model, type PerspectiveProxy, Property, SHACLShape } from '@coasys/ad4m';
 import { getEntityForDataset } from '@we/entities';
 import { afterAll, describe, expect, inject, it } from 'vitest';
 
@@ -118,11 +118,9 @@ describe('an installed SDNA’s relations, read back live', () => {
     const ref = await ports.lifecycle.create(`manifest-relations-${Date.now()}`);
     try {
       await ports.schemas.installSpace(ref.handle, []);
-      const perspective = ref.handle as {
-        addSdna(n: string, c: string, t: 'subject_class', s: string): Promise<boolean>;
-      };
-      await perspective.addSdna('MlTopic', '', 'subject_class', JSON.stringify(TOPIC));
-      await perspective.addSdna('MlPosition', '', 'subject_class', JSON.stringify(POSITION));
+      await (ref.handle as PerspectiveProxy).registerShapes(
+        [TOPIC, POSITION].map((s) => SHACLShape.fromJSON(s as never)),
+      );
 
       // The manifest: the target from `target_class_name`, and the belongsTo paired with its forward.
       const entries = await ports.schemas.foreignSchemas(ref.handle);
@@ -173,9 +171,11 @@ describe('an installed SDNA’s relations, read back live', () => {
     const ref = await ports.lifecycle.create(`manifest-decorated-${Date.now()}`);
     try {
       await ports.schemas.installSpace(ref.handle, []);
-      const perspective = ref.handle as { ensureSDNASubjectClass(c: unknown): Promise<void> };
-      await perspective.ensureSDNASubjectClass(DecoTopic);
-      await perspective.ensureSDNASubjectClass(DecoPosition);
+      await (ref.handle as PerspectiveProxy).registerShapes(
+        [DecoTopic, DecoPosition].map(
+          (m) => (m as unknown as { generateSHACL(): { shape: SHACLShape } }).generateSHACL().shape,
+        ),
+      );
 
       // The generated shape really does write both, and they differ.
       const generated = (

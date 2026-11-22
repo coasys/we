@@ -1511,9 +1511,34 @@ describe('a canvas over another record’s members', () => {
 
   it('keeps only one conversation’s cards when asked, and nothing that came from nowhere', async () => {
     const { ctx } = spaceContext();
-    const { nodes } = await canvasSeed().seed({ ...options, onlyFrom: 'call-1' }, ctx);
+    const { nodes } = await canvasSeed().seed({ ...options, hideWhere: { 'data.origin': { not: 'call-1' } } }, ctx);
 
     expect(nodes.map((n) => n.label)).toEqual(['Loose']);
+  });
+
+  it('leaves off whatever the clause names, by any field a card carries', async () => {
+    const { ctx } = spaceContext();
+    const { nodes } = await canvasSeed().seed({ ...options, hideWhere: { 'data.author': { not: 'did:ada' } } }, ctx);
+
+    expect(nodes.map((n) => n.label)).toEqual(['Placed']);
+  });
+
+  it('leaves off what any clause of a list names', async () => {
+    const { ctx } = spaceContext();
+    const { nodes } = await canvasSeed().seed(
+      { ...options, hideWhere: [{ 'data.author': 'did:ada' }, { 'data.origin': 'call-1' }] },
+      ctx,
+    );
+
+    // One clause matches each card, and neither matches both.
+    expect(nodes).toEqual([]);
+  });
+
+  it('hides nothing for an empty clause, rather than everything it matches', async () => {
+    const { ctx } = spaceContext();
+    const { nodes } = await canvasSeed().seed({ ...options, hideWhere: {} }, ctx);
+
+    expect(nodes.map((n) => n.label)).toEqual(['Placed', 'Loose']);
   });
 });
 
@@ -1776,7 +1801,12 @@ describe('canvasSeed — model relations', () => {
     });
 
     const { nodes } = await canvasSeed().seed(
-      { canvas: 'b1', relations: { children: true }, origin: 'origin', onlyFrom: 'call-1' },
+      {
+        canvas: 'b1',
+        relations: { children: true },
+        origin: 'origin',
+        hideWhere: { 'data.origin': { not: 'call-1' } },
+      },
       ctx,
     );
 
@@ -1930,7 +1960,7 @@ describe('canvasSeed — model relations', () => {
 
   it('keeps a pulled child under "this call" only when its origin was actually read', async () => {
     /*
-      `onlyFrom` filters a pulled child by `origin` — which is a *relation*, so AD4M returns it
+      `hideWhere` judges a pulled child by its `origin` — which is a *relation*, so AD4M returns it
       only when the read asks, and then as the record it points at (`{ id }`), not a plain
       field. The pull's reads never asked, so every pulled child read as from nowhere and the
       filter dropped them all. The mock here honours the include the way the backend does.
@@ -1956,7 +1986,12 @@ describe('canvasSeed — model relations', () => {
     } as ExpanderContext;
 
     const { nodes } = await canvasSeed().seed(
-      { canvas: 'b1', relations: { children: true }, origin: 'extractedFrom', onlyFrom: 'call-1' },
+      {
+        canvas: 'b1',
+        relations: { children: true },
+        origin: 'extractedFrom',
+        hideWhere: { 'data.origin': { not: 'call-1' } },
+      },
       ctx,
     );
 

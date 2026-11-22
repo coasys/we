@@ -117,9 +117,16 @@ export const ROOT_KNOWN_EXPR = 'spaceStore.rootLoaded';
  */
 export const channelPath = (idExpr: string): string => withView(`spaceStore.spacePath + '?channel=' + (${idExpr})`);
 
-/** A call's address: its record's own page, drawn by the call view. */
+/**
+ * A call's address: its record's own page, drawn by the call view.
+ *
+ * The id goes in twice. `id` names the record the page draws; `call` is the parameter the call and
+ * transcribe modules read for "the call on screen" (`routeStore.params.call`), so the interpretation
+ * panel, its count on the call bar and the transcript all follow the page's call rather than the
+ * call this agent has joined.
+ */
 export const callPath = (idExpr: string): string =>
-  withView(`spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (${idExpr})`);
+  withView(`spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (${idExpr}) + '&call=' + (${idExpr})`);
 
 /** A person's address: their profile, drawn as the view. */
 export const personPath = (didExpr: string): string => withView(`spaceStore.spacePath + '/person?did=' + (${didExpr})`);

@@ -1424,7 +1424,7 @@ export const seedBundles: Bundle[] = [
                                   $invoke: 'routeStore.navigate',
                                   args: [
                                     {
-                                      $: "(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (split(event.detail.value, '|')[1])) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (split(event.detail.value, '|')[1]), '?') ? '&' : '?') + 'view=canvas' : '')",
+                                      $: "(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (split(event.detail.value, '|')[1]) + '&call=' + (split(event.detail.value, '|')[1])) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (split(event.detail.value, '|')[1]) + '&call=' + (split(event.detail.value, '|')[1]), '?') ? '&' : '?') + 'view=canvas' : '')",
                                     },
                                   ],
                                 },
@@ -21271,6 +21271,60 @@ export const seedBundles: Bundle[] = [
                       },
                     },
                     {
+                      type: '$if',
+                      props: {
+                        condition: { $: "'transcribe' in spaceStore.activeModules" },
+                        then: {
+                          type: 'we-tooltip',
+                          props: { content: 'Interpretation', placement: 'bottom' },
+                          children: [
+                            {
+                              type: 'we-button',
+                              props: {
+                                variant: 'ghost',
+                                size: 'md',
+                                square: {
+                                  $: '!count(modules.transcribe.proposalsFor[routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : spaceStore.root)])',
+                                },
+                                label: {
+                                  $: "count(modules.transcribe.proposalsFor[routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : spaceStore.root)]) ? `Interpretation, ${count(modules.transcribe.proposalsFor[routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : spaceStore.root)])} ${plural(count(modules.transcribe.proposalsFor[routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : spaceStore.root)]), 'suggestion', 'suggestions')} to review` : 'Interpretation'",
+                                },
+                                expanded: { $: 'modules.transcribe.extractionOpen' },
+                                onClick: { $invoke: 'spaceStore.launchModule', args: ['transcribe:extraction'] },
+                              },
+                              children: [
+                                {
+                                  type: '$if',
+                                  props: {
+                                    condition: { $: 'modules.transcribe.passRunning' },
+                                    then: { type: 'we-animated-icon', props: { name: 'spinner' } },
+                                    else: { type: 'we-icon', props: { name: 'sparkle' } },
+                                  },
+                                },
+                                {
+                                  type: '$if',
+                                  props: {
+                                    condition: {
+                                      $: 'count(modules.transcribe.proposalsFor[routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : spaceStore.root)])',
+                                    },
+                                    then: {
+                                      type: 'we-badge',
+                                      props: { size: 'xs', variant: 'solid', tone: 'accent' },
+                                      children: [
+                                        {
+                                          $: 'count(modules.transcribe.proposalsFor[routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : spaceStore.root)])',
+                                        },
+                                      ],
+                                    },
+                                  },
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                      },
+                    },
+                    {
                       type: 'we-tooltip',
                       props: { content: 'Export the transcript', placement: 'bottom' },
                       children: [
@@ -21372,6 +21426,7 @@ export const seedBundles: Bundle[] = [
                       newNoteOpen: { type: 'boolean', initial: false },
                       noteOpen: { type: 'boolean', initial: false },
                       vocabOpen: { type: 'array', initial: [] },
+                      others: { type: 'string', initial: 'dim', persist: 'coasys.canvas.others' },
                       treeMode: { type: 'boolean', initial: false, syncParam: { name: 'tree', push: true } },
                       spine: { type: 'string', initial: '', syncParam: 'spine' },
                       order: { type: 'string', initial: 'manual', syncParam: 'order' },
@@ -21888,6 +21943,31 @@ export const seedBundles: Bundle[] = [
                             },
                           },
                           {
+                            type: '$if',
+                            props: {
+                              condition: {
+                                $: "!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'calls') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open))",
+                              },
+                              then: {
+                                type: 'DropdownMenu',
+                                props: {
+                                  triggerIcon: {
+                                    $: "local.others == 'hide' ? 'eye-slash' : local.others == 'dim' ? 'circle-half' : 'eye'",
+                                  },
+                                  triggerLabel: {
+                                    $: "local.others == 'hide' ? 'Others hidden' : local.others == 'dim' ? 'Others dimmed' : 'Showing everything'",
+                                  },
+                                  triggerTitle: 'What happens to everything outside what is chosen',
+                                  triggerVariant: 'ghost',
+                                  items: {
+                                    $: "[{ type: 'group', id: 'rest', label: 'Everything else', items: [{ id: 'dim', label: 'Dim', icon: 'circle-half', selected: local.others == 'dim' }, { id: 'hide', label: 'Hide', icon: 'eye-slash', selected: local.others == 'hide' }, { id: 'show', label: 'Show', icon: 'eye', selected: local.others != 'dim' && local.others != 'hide' }] }]",
+                                  },
+                                  onSelect: { $setLocal: 'others', value: { $: 'arg.id' } },
+                                },
+                              },
+                            },
+                          },
+                          {
                             type: 'Row',
                             props: { gap: '100', p: '100', r: 'control', bg: 'surface-sunken', flexShrink: 0 },
                             children: [
@@ -21956,6 +22036,9 @@ export const seedBundles: Bundle[] = [
                                   relations: {
                                     $: 'local.treeMode && treeSpine({ value: local.spine }).relations ? { children: true } : false',
                                   },
+                                  hideWhere: {
+                                    $: "(local.others) == 'hide' ? (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? [{ 'data.origin': { not: ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') } }] : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'calls') ? [{ 'data.origin': { exists: false } }, { 'data.origin': spaceStore.root }] : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? [{ 'data.author': { not: ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') } }] : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open) ? [{ 'data.recordId': { not: workflowStore.open.records.map(r, r.record) } }] : null) : null",
+                                  },
                                 },
                               },
                               layout: {
@@ -22015,13 +22098,19 @@ export const seedBundles: Bundle[] = [
                                   style: { borderColor: 'warning-text', borderWidth: 2 },
                                 },
                                 {
-                                  $: "((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? [{ when: { 'data.origin': { not: ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') } }, style: { opacity: 0.1 } }] : []",
+                                  $: "(((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') && ((local.others) == 'dim' || (local.others) == 'hide')) ? [{ when: { 'data.origin': { not: ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') } }, style: { opacity: 0.1 } }] : []",
                                 },
                                 {
-                                  $: "((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? [{ when: { 'data.author': { not: ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') } }, style: { opacity: 0.1 } }] : []",
+                                  $: "(((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'calls') && ((local.others) == 'dim' || (local.others) == 'hide')) ? [{ when: { 'data.origin': { exists: false } }, style: { opacity: 0.1 } }] : []",
                                 },
                                 {
-                                  $: "((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open) ? [{ when: { 'data.recordId': { not: (workflowStore.open.records.map(r, r.record)) } }, style: { opacity: 0.1 } }] : []",
+                                  $: "(((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'calls') && ((local.others) == 'dim' || (local.others) == 'hide')) ? [{ when: { 'data.origin': spaceStore.root }, style: { opacity: 0.1 } }] : []",
+                                },
+                                {
+                                  $: "(((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') && ((local.others) == 'dim' || (local.others) == 'hide')) ? [{ when: { 'data.author': { not: ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') } }, style: { opacity: 0.1 } }] : []",
+                                },
+                                {
+                                  $: "(((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open) && ((local.others) == 'dim' || (local.others) == 'hide')) ? [{ when: { 'data.recordId': { not: workflowStore.open.records.map(r, r.record) } }, style: { opacity: 0.1 } }] : []",
                                 },
                               ],
                               edgeStyle: [
@@ -28710,7 +28799,7 @@ export const seedBundles: Bundle[] = [
                                             $invoke: 'routeStore.navigate',
                                             args: [
                                               {
-                                                $: "(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (call.id)) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (call.id), '?') ? '&' : '?') + 'view=canvas' : '')",
+                                                $: "(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (call.id) + '&call=' + (call.id)) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (call.id) + '&call=' + (call.id), '?') ? '&' : '?') + 'view=canvas' : '')",
                                               },
                                             ],
                                           },

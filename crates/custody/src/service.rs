@@ -1038,6 +1038,8 @@ async fn run_revoke(
             &unlocking,
             &did,
             std::slice::from_ref(&key_id),
+            // No "missing since" in this step: the device is revoked from now.
+            None,
             &CLOCK,
         )
         .await

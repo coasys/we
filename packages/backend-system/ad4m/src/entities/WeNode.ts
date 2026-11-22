@@ -10,8 +10,8 @@ export class WeNode extends Ad4mModel {
     DIDs — see WE_NODE_RELATIONS in @we/entities for why the split is not arbitrary. This class is
     hand-written rather than generated, so it is the one place the manifest's answer is repeated by
     hand; `coreManifest.test.ts` holds the two in step. The declaration is also written into the shape
-    as `ad4m://polymorphic`, which is what the executor applies at every include depth — and what
-    `shapeIsStale` compares, so a space whose shape predates the flag is rewritten.
+    as `ad4m://polymorphic`, which is what the executor applies at every include depth; a space whose
+    shape predates the flag gets it when `registerShapes` diffs the shape.
   */
   @HasMany({ through: 'we://response', polymorphic: true })
   responses: string[] = [];
