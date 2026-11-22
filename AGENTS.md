@@ -218,7 +218,7 @@ what is a fact about the *type*; reify what is a claim about a *pair*.
 **Before changing anything about boards, read docs/architecture/boards.md.** A board's columns are
 records, and a column is *a saved query with an arrangement*: what is in it comes from each task's
 `status`, and the column's ordered `children` are only where the cards sit. That split is why work an
-extraction pass writes appears on every board without anyone placing it, why deleting a column must
+interpretation pass writes appears on every board without anyone placing it, why deleting a column must
 never delete its cards, and why the link state can be inconsistent after a partition and the board
 still renders one answer. The same doc records where new per-column state goes, so the entity does
 not accrete a scalar per feature.
@@ -596,10 +596,10 @@ registers (listed last). Wrong-typed input answers with the empty value of its k
     signalTypesByUse(options) — Reaction types ordered by how many PEOPLE reacted with each, most first — never by what they said, since a total of values cannot compare a rating with a vote and a downvoted type would sort below one nobody has used. Ties keep the order they arrived in, so a panel does not reshuffle as reactions come in. Muted authors are left out of the count. It orders and nothing else: which types a surface draws is a filter, and stays in the schema — which is what keeps an overflow count evaluable, since reordering a list cannot change how long it is. Sorting is here because the expression language has no sort, the grammar is closed, and these types come from a subscription rather than a query that could carry an `order`. Pass `of` — the record's id — and the order SETTLES: it is worked out the first time that record's reactions are drawn and then held, so a reaction somebody withdraws does not slide down the column under their cursor. It has to be held outside the template, because a reaction surface sits inside an `$each` over a query and a subscription hands the renderer fresh objects, which remounts the row and takes any `$localState` with it. Types the settled order has never seen are appended by use, so nothing new is hidden; the order is dropped when the space changes. Options: of (the record whose order this is), types (the rows to order), signals (the record's `signals`, hydrated), muted (spaceStore.mutedDids), limit (keep the first N of that order).  e.g. signalTypesByUse({ of: row.id, types: filter(local.signalTypes, { retired: { not: true } }), signals: row.signals, muted: spaceStore.mutedDids, limit: 4 })
     voices(options) — Whose reactions a weighted score was made from, as a list a reader turns voices up and down in — { did, name, avatar, cards, mean, weight, share, mine, pretend }, the busiest first. `weight` is how much the voice counts (0–100) and `share` its part of everybody's say. Options: summary (what a GraphView's onSeedSummary reported — the canvas seed's `{ type, voices }`), param (the weights as the address holds them, `did=50,did=0`), profiles (profileStore.profiles), me (me.did).  e.g. voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did })
     voicesParam(options) — The weights address form with one voice changed — options param, did and weight (0–100) — or, with only (a DID) and voices (the listed rows), every voice at nothing but that one. A voice back at full is left out, so putting everything back leaves a clean address.  e.g. voicesParam({ param: local.voices, did: voice.did, weight: event.detail })
-    formatJson(options) — A JSON string indented for reading, or the text unchanged when it will not parse — which is the case worth showing rather than swallowing. Options: text. For displaying a stored blob (an extraction pass’s prompt and response); a schema has no JSON.stringify of its own.  e.g. formatJson({ text: pass.prompt })
+    formatJson(options) — A JSON string indented for reading, or the text unchanged when it will not parse — which is the case worth showing rather than swallowing. Options: text. For displaying a stored blob (an interpretation pass’s prompt and response); a schema has no JSON.stringify of its own.  e.g. formatJson({ text: pass.prompt })
     treeSpines(options) — The choices a tree-mode spine picker offers: the space's named connection kinds, then every typed relation the installed models declare, grouped under "Model relations" and spelled rel:Class.prop — plus rel:* for all of them. Pass kinds (a RelationshipType query), shapes (shapeStore.spaceShapes) and foreign (datasetStore.currentDatasetEntities).  e.g. treeSpines({ kinds: local.relationshipKinds, shapes: shapeStore.spaceShapes, foreign: datasetStore.currentDatasetEntities })
     treeSpine(options) — A tree spine as the tree reads it, from the picker's value (local.spine): its kind — any, relationship (with id) or relation (with class and prop for one, without for all) — and selector (the forest layout's spine), offSpine (the when of a rule drawing the other lines faint; absent for any) and relations (whether the canvas seed should draw the models' relations). The one reader of the spelling, so pass this rather than local.spine to anything that needs the spine. Options: value.  e.g. treeSpine({ value: local.spine }).selector
-    generatedRun(options) — Whether a model made a record: { by: "run", run } naming the run that wrote it (a transcribed line, a record an extraction pass or an agent made, a reply in the editor’s chat), or null for what a person made. Reads the record’s own generatedBy, as an id or an included record, so it needs no query. Ask this rather than reading the relation. Options: record.  e.g. generatedRun({ record: post }) ? 'Written by AI' : ''
+    generatedRun(options) — Whether a model made a record: { by: "run", run } naming the run that wrote it (a transcribed line, a record an interpretation pass or an agent made, a reply in the editor’s chat), or null for what a person made. Reads the record’s own generatedBy, as an id or an included record, so it needs no query. Ask this rather than reading the relation. Options: record.  e.g. generatedRun({ record: post }) ? 'Written by AI' : ''
 
 The where-object — one grammar shared by filter(), find(), and $query's where. Keys are field names;
 values may be expressions (in an expression) or tokens (in a $query):
@@ -734,7 +734,7 @@ the template was not written for. Put the query inside an $each over a list of m
 the row:
 {
   "type": "$each",
-  "props": { "items": { "$": "shapeStore.extractionTargets" }, "as": "target" },
+  "props": { "items": { "$": "shapeStore.interpretationCandidates" }, "as": "target" },
   "children": [{
     "type": "Column",
     "$queries": { "found": { "entity": { "$": "target" }, "order": { "createdAt": "asc" } } },
@@ -756,7 +756,7 @@ are on this canvas", or anything whose total or emptiness you need to read above
 {
   "$queries": {
     "produced": {
-      "entity": { "$": "shapeStore.extractionCandidates" },
+      "entity": { "$": "shapeStore.interpretationCandidates" },
       "scope": { "anchor": "CollectionBlock", "via": "children", "anchorId": { "$": "local.callId" } },
       "order": { "createdAt": "desc" },
       "limit": 50
@@ -1938,7 +1938,7 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
   - connections: string — Reified relation entity to draw as lines between the cards — e.g. "Relationship". Only pairs whose two ends are both on the canvas are drawn, since a line to something elsewhere would leave the canvas. Each line carries the record it stands for, so clicking one can open it. Omit for a canvas with no connections.
   - typeStyles: string — Entity holding this canvas's colour per kind of thing — WE passes "TypeStyle". Read onto every node as `canvasTypeColor`, for a style rule to pick up with `{ from: "data.canvasTypeColor" }`. This is what a canvas's key writes.
   - routes: string — Entity holding how this canvas draws its connections — WE passes "EdgeRoute". Read onto each edge as `sourceAnchor` / `targetAnchor`, which pin which SIDE of a card a line leaves and arrives on (`n`, `e`, `s`, `w`) instead of letting the geometry decide. Per canvas, like a placement: the same connection shown on two canvases is tidied on each separately. Also carries the points a line is bent through, read onto the edge as `waypoints`. Pair with onEdgeAnchor/recordStore.anchorOnCanvas and onEdgeReroute/recordStore.rerouteOnCanvas to let people set them.
-  - pending: string[] — Record ids whose card stands for a suggestion nobody has agreed to yet — an extraction pass can stage a whole record, so it is on the canvas and answers every query the accepted ones do. Read onto the matching node as `data.pending`, for a style rule or a node action to pick up with `{ when: { "data.pending": true } }` — the `data.` prefix is required, since a bare key reads a node field rather than seeded data, and matches nothing here. Ids rather than a query because only the capability that staged them knows which they are.
+  - pending: string[] — Record ids whose card stands for a suggestion nobody has agreed to yet — an interpretation pass can stage a whole record, so it is on the canvas and answers every query the accepted ones do. Read onto the matching node as `data.pending`, for a style rule or a node action to pick up with `{ when: { "data.pending": true } }` — the `data.` prefix is required, since a bare key reads a node field rather than seeded data, and matches nothing here. Ids rather than a query because only the capability that staged them knows which they are.
   - changed: string[] — Record ids that are agreed but carry a suggested change — a staged edit to something a person already owns. Read onto the matching node as `data.changed`. Separate from `pending` because it wants the opposite drawing: the record is settled, so mark it rather than fade it.
   - hidden: string[] — Record ids to leave off the canvas entirely — no card, and no connection to or from one. For narrowing what is shown (hiding suggestions nobody has agreed to), where an opacity rule would still leave the card pressable and its lines drawn.
   - counts: string[] — Relations to count on each card, read onto its data as `<name>Count` — `["signals", "responses"]` for "what have people made of this". The projections ride in the read the seed already makes, so a canvas of three hundred cards pays nothing extra; a query per card would be three hundred subscriptions. A type that does not declare the relation carries no count rather than refusing the read, since a refusal would take that whole type off the canvas. Absent for a count of zero, like every other unset field, so a rule can ask whether it is there.
@@ -3214,13 +3214,13 @@ IdentityStore:
 
 InterpretationStore:
 - State:
-  - activity: InterpretationActivityView[] — every extraction pass this agent knows about, its own and its peers’, running first then most recent. Each row carries display-ready strings: `label` is a whole clause ("Anna is waiting on the model", "Extracted 3 records"), `elapsed` is `m:ss` while running and empty once settled, `name`/`avatar`/`runner` identify who is running it, and `mine` says whether it is this agent’s. Only a row with `mine` carries `prompt`/`response` — a peer’s exchange is never sent live; read it from the call’s extraction runs (`ModelRun` records under `runs`) once the pass settles — so gate a details affordance on `hasDetail`
-  - runningCount: number — how many passes are still in flight. What a collapsed "N extractions running" summary counts
+  - activity: InterpretationActivityView[] — every interpretation pass this agent knows about, its own and its peers’, running first then most recent. Each row carries display-ready strings: `label` is a whole clause ("Anna is waiting on the model", "Found 3 records"), `elapsed` is `m:ss` while running and empty once settled, `name`/`avatar`/`runner` identify who is running it, and `mine` says whether it is this agent’s. Only a row with `mine` carries `prompt`/`response` — a peer’s exchange is never sent live; read it from the call’s interpretation runs (`ModelRun` records under `runs`) once the pass settles — so gate a details affordance on `hasDetail`
+  - runningCount: number — how many passes are still in flight. What a collapsed "N interpretations running" summary counts
   - hasActivity: boolean — whether there is anything to show at all. Counts settled rows too, so a bar gated on it does not vanish the instant a pass finishes and take its result with it
   - runningPasses: InterpretationActivityView[] — the passes still in flight, for a readout that lists them
   - settledPasses: InterpretationActivityView[] — the passes that have finished, newest first
-  - settledCount: number — how many have finished. What a collapsed "N extractions processed" line counts
-  - capable: boolean — whether this node can interpret AT ALL, as distinct from being able to and having no model configured. Answered by asking the backend rather than by testing the client library, so it is false against a node whose executor predates the extraction stack. False means no fix exists from inside the app — say so rather than offering a control that cannot work
+  - settledCount: number — how many have finished. What a collapsed "N interpretations processed" line counts
+  - capable: boolean — whether this node can interpret AT ALL, as distinct from being able to and having no model configured. Answered by asking the backend rather than by testing the client library, so it is false against a node whose executor predates the interpretation stack. False means no fix exists from inside the app — say so rather than offering a control that cannot work
 - Actions:
   - dismissSettled(): forgets every finished row, leaving anything still running. A running pass is not this agent’s to dismiss
 
@@ -3296,7 +3296,7 @@ RecordStore:
   - dropOnCanvas(canvas: string, payload): puts something dragged in from elsewhere onto a canvas where it landed. Takes the graph's onDrop payload as it arrives. A record from this space is placed as it is; something from another dataset is brought in first (the bringIn rule) and placed — a whole post or note as a post, a single block as itself (a copy of the block, or a lone EmbedBlock quoting somebody else's), owned by the canvas. Refuses, with a toast, anything that is not a record — an agent, a space
   - bringIn(payload): takes a `we-drop-zone`'s dropped detail ({ items }) into the space on screen as posts — `onDropped: { $invoke: 'recordStore.bringIn', args: [{ $: 'event.detail' }] }`. Your own note or post becomes a copy (a post from another shared space records sourceRef/sourceName, shown as 'Also posted in …'); anybody else's post or block becomes a new post quoting it through an EmbedBlock carrying sourceAuthor and sourceName. Things already in this space are ignored. Each new post shows a toast with Undo
   - updateRecordField(entity: string, id: string, field: string, value): changes one property of one record — the inspector's edit mode. Takes the field name so one action serves every control; the value is coerced by the field's declared kind and a control's { detail } is unwrapped. An empty string is not written, so a text field cannot be cleared this way
-  - rekeyConnection(id: string): rewrites a Relationship's dedup key (`connection`) from its label and both ends' titles, which is how an extraction pass reads the structure people drew. updateRecordField does it already; call this after saving a Relationship's label through record.update
+  - rekeyConnection(id: string): rewrites a Relationship's dedup key (`connection`) from its label and both ends' titles, which is how an interpretation pass reads the structure people drew. updateRecordField does it already; call this after saving a Relationship's label through record.update
   - removeFromCanvas(canvas: string, node: string | string[]): takes a record — or a whole selection — off a canvas, leaving the records themselves alone. A card the canvas owns survives as an unplaced one in the tray. Takes one id or a list, so a selection is not a special case: pass the graph's onDeleteSelection or onSelectionAction records as event.records.map(r, r.recordId). UNDOABLE, which is why this rather than deleteRecords is what a canvas should bind its Delete key to
   - deleteRecords(records): deletes several records for everyone in the space, asking ONCE. Takes the graph's onDeleteSelection or onSelectionAction `records` as they arrive — [{ recordId, recordType }]. The host raises its own confirmation and counts the list, which is why this exists: a template looping record.delete stacks one dialog per card. Irreversible and outside the undo history — a delete drops the record's links and a re-create earns a new id, so anything pointing at the old record breaks
   - undoCanvas(canvas: string): puts back the last thing this agent did to the arrangement of THAT canvas — a move, a resize, a colour, a card taken off, a card moved in a tree. Replayed as a NEW write rather than as a rollback, so a peer’s changes in between are not discarded and a card somebody else has moved since is skipped rather than dragged back out from under them. Pass the same canvas id the GraphView’s canvas seed reads; the stack scopes itself to it, so pressing undo after opening another canvas replays nothing. Gate a control on recordStore.canvasHistory.canUndo
@@ -3485,15 +3485,15 @@ ShapeStore:
   - aiAvailable: boolean — AI model generation is available (the agent has a Claude API key configured)
   - generating: boolean — an AI generation is in flight
   - hintEntities: { entity, source: 'core' | 'shape' }[] — entities offering AI-hint tuning in this space: core interpretable vocabulary (TaskBlock, EventBlock, Relationship) plus the space's own shapes
-  - extractionCandidates: string[] — entity names an extraction pass COULD write here: core vocabulary that declares itself extractable, plus every adopted shape that does. Candidacy, not a decision — which of these a collection actually looks for is two layers down (spaceStore.extractionTargets, the default a new collection copies, then the collection's own list). Read it to offer a choice, and to display findings: a card should show a record somebody extracted an hour ago even if the target has since been switched off
-  - extractionCandidatesLoaded: boolean — extractionCandidates is the whole list: the space's models and the classes it already had have both been read. Until then the list is missing members that are coming; wait for this before treating the list as decided
+  - interpretationCandidates: string[] — entity names an interpretation pass COULD write here: core vocabulary that declares itself interpretable, plus every adopted shape that does. Candidacy, not a decision — which of these a collection actually looks for is two layers down (spaceStore.interpretationTargets, the default a new collection copies, then the collection's own list). Read it to offer a choice, and to display findings: a card should show a record somebody interpreted an hour ago even if the target has since been switched off
+  - interpretationCandidatesLoaded: boolean — interpretationCandidates is the whole list: the space's models and the classes it already had have both been read. Until then the list is missing members that are coming; wait for this before treating the list as decided
   - relationshipTargets: { label, value }[] — what a relationship may point at here, ready for a we-select: this space's own models, then block types, then other apps' models. Core infrastructure entities are deliberately absent
   - identityOptions: { label, value }[] — "None" plus every named property of the open draft, for the identity picker. Built in the store because a schema can map options but cannot prepend one
   - nameOptions: { label, value }[] — "Work it out" (naming the field it worked out, "Work it out (title)") plus every named property of the open draft, for the naming-field picker. A different first entry from identityOptions on purpose: no identity means no dedup key, where no naming field means the name is DERIVED (a property called name or title, else whichever string is required or first) — there is no such thing as a record with no name
   - draftNameMember: string — the row id of the field that will name a record of the open draft: the one chosen, or the one worked out while the picker says Work it out. Empty when no field qualifies. For a badge on that field's row: { $: 'member.rowId == shapeStore.draftNameMember' }
   - hintEditor: the hint editor state ({ entity, classHint, defaultClassHint, rows: { name, hint, defaultHint }[], customized }) or null while closed — non-nullness mounts the hint editor modal
   - hintBusy: boolean — the hint editor is loading or saving
-  - extractionNeedsIdentity: boolean — the open draft would be extracted into and has no field to recognise what it already wrote, so every pass duplicates everything. A warning to put beside the switch, not a refusal: the wizard saves either way
+  - interpretationNeedsIdentity: boolean — the open draft would be interpreted into and has no field to recognise what it already wrote, so every pass duplicates everything. A warning to put beside the switch, not a refusal: the wizard saves either way
   - memberOptions: { rowId, options }[] — each member's default-value picker entries. Read with find(shapeStore.memberOptions, { rowId: member.rowId }) rather than off member: rows are mutated in place while typing, so values hanging off the row cannot be reactive
   - expandedMembers: string[] — rowIds whose detail panel is open. Read with { $: 'member.rowId in shapeStore.expandedMembers' }; a new row and any row an error names open themselves. Generation leaves rows closed — a collapsed row shows its hint, so what was generated is readable without opening anything
   - generateIntent: 'none' | 'generate' | 'regenerate' | 'replace' — what the generate button would do right now, given what the draft holds. Label it "Regenerate" on 'regenerate' and 'replace' and "Generate" otherwise — 'none' is an empty draft, which has nothing to re-run, so testing for 'generate' alone labels a fresh form wrongly. Disable only on 'none', and route the click through requestGenerateFields, which decides whether to ask first
@@ -3504,9 +3504,9 @@ ShapeStore:
   - openShapeWizard(shapeRecordId?): opens the model wizard — empty for a new model, or pre-filled from a stored shape to edit it
   - cancelShapeWizard(): closes the wizard, discarding the draft
   - setShapeField(field: 'name' | 'description' | 'icon' | 'classHint', value): sets one top-level draft field
-  - setIdentityMember(rowId): chooses which member identifies duplicates for AI extraction; 'none' clears it. At most one, which is why it is a picker rather than a per-row flag
+  - setIdentityMember(rowId): chooses which member identifies duplicates for AI interpretation; 'none' clears it. At most one, which is why it is a picker rather than a per-row flag
   - setNameMember(rowId): chooses which member NAMES an instance — the heading on a card, the caption on a canvas, the label on a drag chip; 'none' returns it to being worked out. Not the same question as setIdentityMember: a dedup key may be a composite nobody would recognise (an event's is its title and day joined), where this is the one short string every surface shows when it has room for one line
-  - setExtractable(on: boolean): allows or refuses an AI extraction pass writing instances of the open draft. Its own action rather than a setShapeField case, because the value is a boolean and that field takes strings
+  - setInterpretable(on: boolean): allows or refuses an AI interpretation pass writing instances of the open draft. Its own action rather than a setShapeField case, because the value is a boolean and that field takes strings
   - addProperty(): appends an empty property (scalar field) row to the draft
   - addRelationship(): appends an empty relationship (edge to another model) row to the draft
   - removeMember(rowId): removes one member row
@@ -3654,7 +3654,7 @@ SpaceStore:
   - missingModules: string[] — of those, the ones this agent has not installed. Non-empty means the template is mounting a component nothing provides, so part of the page silently renders nothing. Empty in the ordinary case
   - activeModules: string[] — what actually renders here for this agent: registered ∩ installed ∩ enabled, less the modules muted in this space. Module chrome and the launcher rail gate on this; enabledModules alone is not sufficient
   - moduleInstallSettings: { id, name, description, icon, installed, surface, switchable, capabilities }[] — every registered module and whether this agent wants it anywhere. `capabilities` is what a person is agreeing to — derived from the module's manifest (its permissions and the kernels it reaches) and what it contributes (a panel, storage in the space), never authored, so it cannot go stale. The global Settings → Modules list, and the only place an 'app', 'capability' or agent-scoped module is decided about: a contribution is gated at the layer where it renders, and only 'chrome' (panels, slots, rail) and 'content' (sections, blocks) render inside a space. `surface` is derived from what the module contributes. Unset, every registered module counts as installed — a seed entry's `enabled: false` is about spaces, not people. Its per-space counterpart is `modules` on each spaceList row, which carries enabled/installed/visible/active together and lists the community-decided modules only: chrome or content, and not agent-scoped. A community-decided module a space has off takes its sections and its space-level settings out of that space
-  - moduleLaunchers: { id, icon, label, active, busy, concealed }[] — one entry per module panel that asks for a rail button, plus the launchers a module declares of its own; what the host module rail renders. `id` is a panel’s dock id (`<moduleId>:<name>`) or a launcher’s key, and is what launchModule takes. `active` is the module reporting its surface open; `concealed` says that panel is open and out of sight — a background tab of a stack, folded to its bar, or in a lane collapsed to its edge — so light the button on `mod.active && !mod.concealed`, since pressing a concealed one brings the panel forward rather than closing it. `busy` says the module is working in the background — an extraction pass running — and is independent of `active`, so a rail can show work going on behind a closed panel. Pair with { $invoke: "spaceStore.launchModule", args: [{ $: "mod.id" }] }
+  - moduleLaunchers: { id, icon, label, active, busy, concealed }[] — one entry per module panel that asks for a rail button, plus the launchers a module declares of its own; what the host module rail renders. `id` is a panel’s dock id (`<moduleId>:<name>`) or a launcher’s key, and is what launchModule takes. `active` is the module reporting its surface open; `concealed` says that panel is open and out of sight — a background tab of a stack, folded to its bar, or in a lane collapsed to its edge — so light the button on `mod.active && !mod.concealed`, since pressing a concealed one brings the panel forward rather than closing it. `busy` says the module is working in the background — an interpretation pass running — and is independent of `active`, so a rail can show work going on behind a closed panel. Pair with { $invoke: "spaceStore.launchModule", args: [{ $: "mod.id" }] }
   - spaceViews: ResolvedView[] — this space's sections resolved: which view renders at which segment, in the space's order, each carrying its schema. The host builds the route tree from it; a nav strip reads viewNav, which is this without the payload
   - routableViews: ResolvedView[] — every view that could render here, at its permanent segment — what routes are built from. Separate from spaceViews because it changes when a view is installed, not when a switch is flicked
   - enabledViewIds: string[] — ids of the sections the community has turned on here. What a route body is gated on; not the nav list, which also drops this agent's hidden ones — hiding a section for yourself must not make its URL refuse you
@@ -3670,13 +3670,13 @@ SpaceStore:
   - spaceModuleSettings: SettingRow[] — what each capability that declares settings is set to FOR THIS COMMUNITY, as rows a screen renders directly: { group, groupLabel, key, label, description, type, options, value, source, set, locked, lockedBy }. `value` is already resolved across every level that had an opinion; `source` names the level that decided it ('default' when nobody did); `set` says whether THIS level holds an opinion, so a reset has something to undo; `locked` says a level that BINDS this one has forced it and the control must be disabled rather than springing back — a member's private refusal does not bind the community, so it never locks this list. Built from what modules declare, so a module that adds a setting gets a control with nothing to register
   - myModuleSettings: SettingRow[] — the same rows, for what THIS AGENT has decided in THIS space. Private, held in the root dataset. The most specific of the four levels
   - agentModuleSettings: SettingRow[] — the same rows, for what THIS AGENT has decided everywhere. Private. Render it in global settings, where the question is what you want in every space
-  - autoInterpret: boolean — whether a NEW collection here (a call, a channel) starts out extracted into records as it grows. A community default, copied onto each collection when it is made — a conversation already under way keeps its own answer, read with autoExtractFor. Readable by every member; writing it is space-settings
-  - root: string — the id of this space's collection: the one CollectionBlock (kind 'space') everything top-level hangs off — calls, loose messages, posts, channels, extracted items, the canvas. Scope a top-level read through it: { anchor: 'CollectionBlock', via: 'children', anchorId: spaceStore.root }. Empty outside a space, and in a space made before spaces had one
+  - autoInterpret: boolean — whether a NEW collection here (a call, a channel) starts out interpreted into records as it grows. A community default, copied onto each collection when it is made — a conversation already under way keeps its own answer, read with autoInterpretFor. Readable by every member; writing it is space-settings
+  - root: string — the id of this space's collection: the one CollectionBlock (kind 'space') everything top-level hangs off — calls, loose messages, posts, channels, interpreted items, the canvas. Scope a top-level read through it: { anchor: 'CollectionBlock', via: 'children', anchorId: spaceStore.root }. Empty outside a space, and in a space made before spaces had one
   - landmarks: Record<name, id> — the records this space names as its landmarks, e.g. spaceStore.landmarks.canvas is the space's canvas. Written by the space's starter at creation. A landmark can be absent — a space can switch template and a template must never assume what another set up — so guard every read
   - landmarksLoaded: boolean — the landmarks have answered for the space on screen. Until then an absent landmark is not yet an answer, so gate a 'there is no board yet' on it: { $: 'spaceStore.landmarksLoaded && !spaceStore.landmarks.board' }. Not on `root`, which arrives first
   - rootLoaded: boolean — root has answered for the space on screen. Until then an empty root is not yet an answer, so gate anything that compares an address with root on it — { $: 'spaceStore.rootLoaded' } around an $if on `channel == spaceStore.root` — or the wrong branch mounts, reads, and is torn down when root arrives
   - firstScreenOpen: boolean — the first screen after boot is up: the Feed's first page drawn, or the screen drawn with no Feed on it. True from then on. Put it as the `when` of a $queries read the opening screen does not draw (a sidebar's list) so the read starts after that screen rather than beside it — { when: { $: 'spaceStore.firstScreenOpen' } }
-  - extractionTargets: string[] — the models a NEW collection here starts out extracting. The middle of three layers: shapeStore.extractionCandidates says what COULD be extracted, this says which of them a new conversation begins with, and each collection then holds its own list, which its participants change (modules.transcribe.extractionFor[id].targets). A default, copied when a collection is made. Unset falls back to the two classes that were hardcoded before the setting existed, so no space silently stops extracting. Writing it is space-settings
+  - interpretationTargets: string[] — the models a NEW collection here starts out interpreting. The middle of three layers: shapeStore.interpretationCandidates says what COULD be interpreted, this says which of them a new conversation begins with, and each collection then holds its own list, which its participants change (modules.transcribe.interpretationFor[id].targets). A default, copied when a collection is made. Unset falls back to the two classes that were hardcoded before the setting existed, so no space silently stops interpreting. Writing it is space-settings
   - taskWorkflowRule: '' | 'next' | 'next-and-back' — how a task may move between this space's states, in their order: anywhere, on to the next only, or on and back one. Anything but '' runs the states as a workflow, so a move the rule does not allow is refused on the board — say so beside a picker of states
   - taskWorkflowEnabled: boolean — this space’s task states ask for agreement: some state needs more than one approval, or names whose approval counts. Where true, a card dragged into such a state waits instead of moving, and arrangedBoard(…).workflow[card.id] describes what it is waiting on. Gate an explanation of the waiting on it; the board needs nothing else
   - archivedWorkflows: string[] — the names of the workflows this space has put away. An archived workflow keeps its records, which still show and can still finish, but is not offered for starting on anything new; workflowStore.workflows marks each one `archived`
@@ -3713,12 +3713,12 @@ SpaceStore:
   - setSpaceModuleSetting(group: string, key: string, value?, spaceUuid?): sets one of a capability's settings for everyone in a space — `group` is the module id and `key` the setting's key, both off the row. **Omit `value` to clear it**, which returns the level to having no opinion: a stored value that happens to equal the default goes on overruling everything less specific while its control reads as untouched. Omit spaceUuid for the space on screen
   - setMyModuleSetting(group: string, key: string, value?, spaceUuid?): the same, for this agent in one space. Private — written to the root dataset, never to the space. Omitting `value` clears it
   - setAgentModuleSetting(group: string, key: string, value?): the same, for this agent in every space. Private, and global, so there is no space to name. Omitting `value` clears it
-  - autoExtractFor(collectionId): whether ONE COLLECTION — a call, a channel, the space collection (spaceStore.root) — is extracted as it grows: its own answer, copied from the space's default when it was made. A function rather than a value because the answer is per collection, like canAdministerSpace. False until the collection has been read
-  - setAutoExtractFor(collectionId, on): turns automatic extraction on or off for ONE COLLECTION, for everyone in it. A call's participants decide for their call; the space collection is the community's, so only somebody who administers the space can change it — check canSetExtractionFor first. Leaves the space's default alone. Does not stop a pass already running: those tokens are spent
-  - canSetExtractionFor(collectionId): whether this agent may change what one collection extracts — anyone for a call or channel, only an administrator for the space collection. Gate the switch on it rather than letting the store refuse the press
-  - setAutoInterpret(enabled: boolean, spaceUuid?): sets whether a NEW collection in a space starts out extracted as it grows. A default: conversations already under way keep their own answer. Omit spaceUuid for the space on screen
+  - autoInterpretFor(collectionId): whether ONE COLLECTION — a call, a channel, the space collection (spaceStore.root) — is interpreted as it grows: its own answer, copied from the space's default when it was made. A function rather than a value because the answer is per collection, like canAdministerSpace. False until the collection has been read
+  - setAutoInterpretFor(collectionId, on): turns automatic interpretation on or off for ONE COLLECTION, for everyone in it. A call's participants decide for their call; the space collection is the community's, so only somebody who administers the space can change it — check canSetInterpretationFor first. Leaves the space's default alone. Does not stop a pass already running: those tokens are spent
+  - canSetInterpretationFor(collectionId): whether this agent may change what one collection interprets — anyone for a call or channel, only an administrator for the space collection. Gate the switch on it rather than letting the store refuse the press
+  - setAutoInterpret(enabled: boolean, spaceUuid?): sets whether a NEW collection in a space starts out interpreted as it grows. A default: conversations already under way keep their own answer. Omit spaceUuid for the space on screen
   - setThreadMode(mode: 'fractal' | 'flat', spaceUuid?): sets how deep conversations go here — whether a reply may itself be replied to. A decision about what may be ADDED, never about what is stored: replies are a tree either way, so switching to flat leaves existing threads drawn as they are and switching back restores the button that grows them. Read it back as spaceStore.currentSpace.threadMode; anything but 'flat' means fractal, so a space that predates the setting reads as fractal. Omit spaceUuid for the space on screen
-  - setExtractionTarget(entity: string, on: boolean, spaceUuid?): adds or removes one model from what a NEW collection here starts out extracting. Writes the resolved list, so the first toggle also pins whatever was on by fallback. A default: each collection holds its own list afterwards
+  - setInterpretationTarget(entity: string, on: boolean, spaceUuid?): adds or removes one model from what a NEW collection here starts out interpreting. Writes the resolved list, so the first toggle also pins whatever was on by fallback. A default: each collection holds its own list afterwards
   - setModuleInstalled(moduleId: string, installed: boolean): turns a module on or off for this agent in every space. Personal — writes AgentSettings.installedModules in the root dataset, so no other member sees it
   - setModuleVisible(moduleId: string, visible: boolean, spaceUuid?): shows or hides a module for this agent in one space, without changing what the community runs. Private: written to the root dataset, never to the space. Phrased positively so a switch can pass `event.detail` bare — wrapping it in another token would evaluate at render time and send a constant
   - setViewEnabled(viewId: string, enabled: boolean, spaceUuid?): adds or removes a section from a space. The community’s decision — every member sees it. Omit spaceUuid for the space on screen
@@ -3760,7 +3760,7 @@ SpaceStore:
   - copyShareLink(uuid: string): copies that space's share link to the clipboard, with a toast either way. No-op for a personal space, which has no global id and so no shareable link — read `spaceList[].shareLink` to decide whether to offer the control at all
   - copyGuestLink(uuid: string): copies that space's guest invite link — a URL that creates an account on the space's host and joins, with no sign-up and no download. Empty, and the control hidden, unless BOTH this app's origin and the node's URL are addresses a recipient could reach: a loopback address on either half resolves to the reader's own machine. Read `spaceList[].guestLink` to decide whether to offer it; `shareLink` is the one for somebody who already has WE
   - exportCallTranscript(callId: string): writes the call's transcript to a .txt file (one line per utterance: name, timestamp, text) and downloads it. Read-only and client-side — it reads the shared record and writes to the caller's own device
-  - exportExtractionLog(callId: string): writes everything extraction did with the call to a Markdown file and downloads it — the settings it ran under, the transcript once, every member's passes with their prompts and responses verbatim, the records written as they are stored now, and the suggestions still awaiting a decision. For handing to a person or a model investigating the extraction. Read-only and client-side, like exportCallTranscript
+  - exportInterpretationLog(callId: string): writes everything interpretation did with the call to a Markdown file and downloads it — the settings it ran under, the transcript once, every member's passes with their prompts and responses verbatim, the records written as they are stored now, and the suggestions still awaiting a decision. For handing to a person or a model investigating the interpretation. Read-only and client-side, like exportCallTranscript
   - removeSpaceFromGlobal(spaceUuid: string): withdraws a space's listing from the global discovery space, leaving the space itself alone. Only its author may; removeSpace does this for you
 
 TemplateStore:
@@ -4007,11 +4007,11 @@ Needs: kernels records, presence, ephemeral, media, peerConnection, call; permis
 Turns what is said in a call into text blocks in the space.
 Needs: kernels records, presence, media, transcription, interpretation; permissions microphone.
 - State (read in an expression as `modules.transcribe.<name>`):
-  - autoExtract — Whether the call this agent is in is extracted as it happens — its own answer.
+  - autoInterpret — Whether the call this agent is in is interpreted as it happens — its own answer.
   - autoJoined — Recording was started by the call rather than by this agent pressing record.
   - available — There is audio to listen to — a microphone the host is capturing.
   - callAgents — Everyone in this call, recording or not — the denominator of coverage; empty outside a call.
-  - callId — The record extraction decisions for this call are written against — the call’s own record from its first second.
+  - callId — The record interpretation decisions for this call are written against — the call’s own record from its first second.
   - callOnScreenLive — Somebody is in the call the address names right now.
   - canConnectServer — Whether a speech server was found on the node’s machine that this connection may connect in one step.
   - canEditProposals — Whether an edited suggestion can be written back on accept.
@@ -4023,17 +4023,17 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - editingProposal — The suggestion open for editing, or empty when none is.
   - enabled — Whether this agent is recording their own microphone into the call.
   - error — Why the session stopped, when status is error; empty otherwise.
-  - extractable — Whether this node can interpret at all — false when it has no language model.
-  - extractCount — How many records the last pass wrote.
-  - extractedId — The collection the last finished pass ran on, or empty.
-  - extractError — Why the last pass failed; empty otherwise.
-  - extractingId — The collection a pass is running on right now, or empty.
-  - extractionFor — What one collection can extract, by record id — { targets, canChoose, canExtract, auto }, read as extractionFor[id].
-  - extractionOpen — Whether the extraction panel is open.
-  - extractStatus — How the last one-shot extraction pass went — idle, running, done or error.
-  - extractTurns — How many transcript turns the last pass read.
   - heard — Something has been said that the record does not hold yet — buffered, being written or still with the model.
   - inCall — Whether this agent is in a call right now.
+  - interpretable — Whether this node can interpret at all — false when it has no language model.
+  - interpretationFor — What one collection can interpret, by record id — { targets, canChoose, canInterpret, auto }, read as interpretationFor[id].
+  - interpretationOpen — Whether the interpretation panel is open.
+  - interpretCount — How many records the last pass wrote.
+  - interpretedId — The collection the last finished pass ran on, or empty.
+  - interpretError — Why the last pass failed; empty otherwise.
+  - interpretingId — The collection a pass is running on right now, or empty.
+  - interpretStatus — How the last one-shot interpretation pass went — idle, running, done or error.
+  - interpretTurns — How many transcript turns the last pass read.
   - invited — Somebody else in this call is recording and this agent is not, having not opted out.
   - invitedBy — The agent id of the first peer recording this call, or empty when none is.
   - level — Microphone loudness as the voice detector measures it, 0–1.
@@ -4046,7 +4046,7 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - modelUnreadyText — Why the model cannot run yet, ready to show — "Downloading the speech model — 45%", "The speech server is not answering".
   - open — Whether the transcript panel is open.
   - partialCoverage — Someone in this call is not being transcribed.
-  - passRunning — Whether any extraction pass is running right now, this node’s or a peer’s.
+  - passRunning — Whether any interpretation pass is running right now, this node’s or a peer’s.
   - pending — Words heard that are not yet a row in the transcript — buffered or being written, newest last.
   - pendingIds — Every record still awaiting a decision, by id, across every call asked about.
   - pendingProposals — The same suggestions as rows — { id, kind, entity, fields, summary }.
@@ -4069,7 +4069,7 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - transcriptFromStart — Whether the transcript is being read from its beginning rather than following the live end.
   - transcriptShown — How many transcript lines are loaded right now.
   - unconfirmedIds — Records a pass made that nobody has kept yet, by id.
-  - watchProblem — Why the standing extraction watch is not running here; empty when it is.
+  - watchProblem — Why the standing interpretation watch is not running here; empty when it is.
 - Actions (`{ "$invoke": "modules.transcribe.<name>" }`):
   - acceptProposal — Keeps a suggestion, as proposed or as edited.
   - addMessage — Writes something a person typed into a transcript, as a typed line — with its marks, when the composer gave any.
@@ -4077,17 +4077,17 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - cancelProposalEdit — Closes the open draft, discarding what was typed.
   - cancelReply — Puts a reply down without sending it.
   - cancelTiedDecision — Puts the decision waiting in tiedDecision down without making it.
-  - closeExtractionPanel — Closes the extraction panel.
+  - closeInterpretationPanel — Closes the interpretation panel.
   - closePanel — Closes the transcript panel.
   - confirmTiedDecision — Carries out the decision waiting in tiedDecision, with everything tied to it.
   - connectServer — Connects the speech server found on the node’s machine, makes its transcription model the default, and resumes recording that was waiting on one.
   - dismissChange — Dismisses one suggested change, leaving the record as it was.
   - editProposal — Opens one suggestion for editing, seeded with what the model proposed.
   - editUtterance — Corrects the words on a line of the transcript, marking a spoken line as corrected.
-  - extract — Runs one extraction pass over the call this agent is transcribing.
-  - extractCollection — Runs one extraction pass over any call’s record, by id.
   - flushNow — Writes what has been heard so far without waiting for the buffer to fill.
-  - openExtractionPanel — Opens the extraction panel.
+  - interpret — Runs one interpretation pass over the call this agent is transcribing.
+  - interpretCollection — Runs one interpretation pass over any call’s record, by id.
+  - openInterpretationPanel — Opens the interpretation panel.
   - openPanel — Opens the transcript panel.
   - readTranscriptFromStart — Shows the beginning of the transcript, to be read forwards.
   - readTranscriptLive — Goes back to following the end of the transcript.
@@ -4098,10 +4098,10 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - showMoreTranscript — Loads one more page of the transcript, in whichever direction it is being read.
   - startReply — Starts a reply to one line of the transcript — pass { id, text, author } — which the transcript's composer then sends as a reply.
   - toggle — Starts or stops recording this agent’s microphone into the call, and opens the transcript when starting.
-  - toggleAutoExtract — Turns automatic extraction on or off for one collection, for everyone in it; defaults to the live call.
-  - toggleExtractionTarget — Includes or excludes one model from what a call extracts, for everyone in it; defaults to the live call.
-- Parts: `transcribe.transcriptFeed` (subject: routeStore.params.call ? routeStore.params.call : modules.transcribe.collectionId), `transcribe.transcriptLines` (subject: modules.transcribe.collectionId), `transcribe.transcriptComposer`, `transcribe.captureMeter`, `transcribe.captureStatus`, `transcribe.coverage`, `transcribe.extractionTargets`, `transcribe.pendingUtterance`
-- Panels (`meta.panels[].dock`): `transcript` "Transcript" (module-owned openness), `extraction` "Extraction" (module-owned openness)
+  - toggleAutoInterpret — Turns automatic interpretation on or off for one collection, for everyone in it; defaults to the live call.
+  - toggleInterpretationTarget — Includes or excludes one model from what a call interprets, for everyone in it; defaults to the live call.
+- Parts: `transcribe.transcriptFeed` (subject: routeStore.params.call ? routeStore.params.call : modules.transcribe.collectionId), `transcribe.transcriptLines` (subject: modules.transcribe.collectionId), `transcribe.transcriptComposer`, `transcribe.captureMeter`, `transcribe.captureStatus`, `transcribe.coverage`, `transcribe.interpretationTargets`, `transcribe.pendingUtterance`
+- Panels (`meta.panels[].dock`): `transcript` "Transcript" (module-owned openness), `interpretation` "Interpretation" (module-owned openness)
 - Settings: `recordCalls` (boolean; deployment, agent, space, agent-in-space) — Record calls automatically; `timelineOrder` (enum; agent) — Newest messages
 - Presence activities: `transcribe` { id: string, recording: boolean, anchor: object, collection: string }
 - Functions:
@@ -4116,13 +4116,13 @@ Needs: kernels records, interpretation.
   - callFeedHasMore — Whether there is more of the call beyond its Feed’s window.
   - callFeedLoaded — Whether the call’s Feed has answered for this call yet.
   - callFeedRoot — The call whose Feed is drawn — the one shown most recently — or empty.
-  - callFeedRows — The Feed of the call on screen: every line said, typed or answered in it, and a row per group of things extracted from it, merged by time. Rows are shaped as `feedRows`' are; a line's `source` says how it arrived ('spoken', 'typed', 'corrected', or none for a bot or the system).
+  - callFeedRows — The Feed of the call on screen: every line said, typed or answered in it, and a row per group of things found in it, merged by time. Rows are shaped as `feedRows`' are; a line's `source` says how it arrived ('spoken', 'typed', 'corrected', or none for a bot or the system).
   - feedFromStart — Whether the Feed is read from the beginning rather than the live end.
   - feedHasMore — Whether there is more of the space beyond the Feed’s window.
   - feedLoaded — Whether the Feed has answered for this space yet.
   - feedOpen — Whether the Feed panel is open.
   - feedRoot — The space collection the Feed reads, and writes typed messages into.
-  - feedRows — The Feed's window: every message in the space and a row per group of things extracted or made, merged by time — newest first while following the live end, oldest first from the start. A row is { kind: 'line', id, at, author, text, marks, source, call, callTitle, replyTo } or { kind: 'activity', id, at, author, origin, originTitle, summary, items, suggested }.
+  - feedRows — The Feed's window: every message in the space and a row per group of things interpretation found or somebody made, merged by time — newest first while following the live end, oldest first from the start. A row is { kind: 'line', id, at, author, text, marks, source, call, callTitle, replyTo } or { kind: 'activity', id, at, author, origin, originTitle, summary, items, suggested }.
   - replyingTo — The line a reply is being written to — { id, text, author, surface } — or null. `surface` is the list it was started from, 'feed' or 'callFeed', so only that list's composer answers it.
   - showCallTranscripts — Whether this reader asked the Feed to draw the lines calls spoke — off until they do, in this space only.
   - timelineOrientation — Which way round this reader draws the Feed — 'newestBottom' or 'newestTop'. Their own setting.
@@ -6115,7 +6115,7 @@ env vars and CI homes: `docs/testing/e2e.md`.
 
 Every live test runs a fresh **multi-user** executor from the same chooser, as a hosted node does, and
 signs up an account on it. The spaces suite is the coasys-spaces product suite (space, call and
-extraction, social DNA, two workflows, an agent over MCP, the canvas, the page and a theme) — a stub
+interpretation, social DNA, two workflows, an agent over MCP, the canvas, the page and a theme) — a stub
 LLM by default, `--tier real` for a real model. Its Feed checks are `it.todo`, pending a product bug
 (the Feed does not read a class a bundle declares); its env vars and backlog are in
 `apps/we-web/e2e/coasys-spaces/README.md`. A failing journey step leaves a screenshot, the page's
