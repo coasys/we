@@ -11,9 +11,11 @@
  * Dublin Core), `we://` only for what has none. The executor ignores them; they are ordinary links, so
  * they sync and are governed like the rest of the shape.
  *
- * Reading is the reverse: structure from the SHACL, everything else from the annotations, into the
- * manifest that was saved. Every function here is pure over links, so the round trip is tested
- * without an executor (`tests/shapeCodec.test.ts`).
+ * Reading is the reverse: structure from the shape the executor returns for the class (`shapes()`),
+ * everything else from the annotation links on its nodes, into the manifest that was saved. The
+ * executor keeps those links when it registers the class again, so nothing here has to put them back.
+ * Every function here is pure over a shape and links, so the round trip is tested without an executor
+ * (`tests/shapeCodec.test.ts`).
  *
  * ## What reading cannot get back, and how it says so
  *
@@ -118,6 +120,21 @@ function entityOf(manifest: EntityManifest): [string, EntitySchema] {
   const entries = Object.entries(manifest.entities);
   if (entries.length !== 1) throw new Error('shapes: a space shape declares exactly one entity');
   return entries[0];
+}
+
+/**
+ * A stored model as this file reads one: the shape `shapes()` returns for its class, and every link
+ * sourced at that shape's nodes (`shapeNodes`) — the annotations, and whatever else is there.
+ */
+export interface HeldShape {
+  shape: SHACLShape;
+  links: readonly LinkLike[];
+}
+
+/** The nodes a shape's links are on: its node shape first, then each field's property shape. */
+export function shapeNodes(shape: SHACLShape): string[] {
+  const { shapeUri, fields } = nodesOf(shape.toLinks());
+  return [shapeUri, ...fields.values()];
 }
 
 /** The shape's node and each field's property shape, by field name, as the SHACL links name them. */
@@ -290,12 +307,11 @@ export interface ReadShape {
 }
 
 /**
- * A stored shape read back: its structure from the SHACL, the rest from its annotations. `links` are
- * every link sourced at the shape's node and at its property shapes. `null` when they hold no shape
- * WE wrote — one without a `shapeId` is somebody else's.
+ * A stored shape read back: its structure from the shape, the rest from the annotations among
+ * `links`. `null` when they hold no shape WE wrote — one without a `shapeId` is somebody else's.
  */
-export function readShape(links: readonly LinkLike[]): ReadShape | null {
-  const { shapeUri, fields } = nodesOf(links);
+export function readShape({ shape, links }: HeldShape): ReadShape | null {
+  const { shapeUri, fields } = nodesOf(shape.toLinks());
   const at = (source: string | undefined, predicate: string) =>
     source ? links.find((l) => l.source === source && l.predicate === predicate)?.target : undefined;
   const value = (source: string | undefined, predicate: string) => {
@@ -306,7 +322,7 @@ export function readShape(links: readonly LinkLike[]): ReadShape | null {
   const shapeId = value(shapeUri, ANNOTATION.shapeId);
   if (typeof shapeId !== 'string' || !shapeId) return null;
 
-  const json = SHACLShape.fromLinks(links as never, shapeUri).toJSON() as {
+  const json = shape.toJSON() as unknown as {
     target_class?: string;
     interpretation_hint?: string;
     properties: RawProperty[];
@@ -451,20 +467,20 @@ export function linkKey(link: LinkLike): string {
  * Whether a stored shape says exactly what its manifest can hold: rebuilt from the manifest read back
  * — compiled, and annotated again — it reads the same as what is stored.
  *
- * Compared as the SDK reads a shape (`fromLinks`) rather than link for link, because the executor
- * writes a shape's links itself from its JSON, and how it spells them is its own business; plus the
- * annotations, link for link, since those are this file's. A field, a constraint or an annotation
- * nothing here writes makes the two differ — including one on a predicate the SDK does not read.
+ * The shapes are compared as the SDK reads one back from its links, so a field the executor fills in
+ * by default on one side and the SDK leaves out on the other is not a difference; the annotations are
+ * compared link for link, since those are this file's. A field, a constraint or an annotation nothing
+ * here writes makes the two differ — including a link on a predicate the SDK does not read, which
+ * shows up among `stored.links` and among nothing the rebuild writes.
  */
-export function sameShape(stored: readonly LinkLike[], rebuilt: readonly LinkLike[]): boolean {
+export function sameShape(stored: HeldShape, rebuilt: HeldShape): boolean {
   /*
-    As the SDK reads it, with the property shapes in one order: an executor lists them in its own,
-    and the same shape read in two orders is the same shape. Order is what `sh:order` says, and that
-    is an annotation, compared below.
+    With the property shapes in one order: an executor lists them in its own, and the same shape read
+    in two orders is the same shape. Order is what `sh:order` says, and that is an annotation,
+    compared below.
   */
-  const asRead = (links: readonly LinkLike[]) => {
-    const { shapeUri } = nodesOf(links);
-    const json = SHACLShape.fromLinks(links as never, shapeUri).toJSON() as {
+  const asRead = (shape: SHACLShape) => {
+    const json = SHACLShape.fromLinks(shape.toLinks(), shape.nodeShapeUri).toJSON() as unknown as {
       properties?: { path?: string; name?: string }[];
     };
     // By path, then name: several relations can share one path (containment's).
@@ -473,13 +489,16 @@ export function sameShape(stored: readonly LinkLike[], rebuilt: readonly LinkLik
     return JSON.stringify(sortKeys({ ...json, properties }));
   };
   const annotations = (links: readonly LinkLike[]) => new Set(links.filter(isAnnotation).map(linkKey));
-  const a = annotations(stored);
-  const b = annotations(rebuilt);
+  const a = annotations(stored.links);
+  const b = annotations(rebuilt.links);
   // A predicate the SDK does not read is invisible to the comparison above, so a constraint it has
   // no field for would pass it. Any node and predicate a rebuild does not write is one saving drops.
-  const written = new Set(rebuilt.map((l) => `${l.source}\u0000${l.predicate ?? ''}`));
-  const unknown = stored.some((l) => !written.has(`${l.source}\u0000${l.predicate ?? ''}`));
-  return !unknown && asRead(stored) === asRead(rebuilt) && a.size === b.size && [...a].every((key) => b.has(key));
+  const pair = (l: LinkLike) => `${l.source}\u0000${l.predicate ?? ''}`;
+  const written = new Set([...(rebuilt.shape.toLinks() as LinkLike[]), ...rebuilt.links].map(pair));
+  const unknown = stored.links.some((l) => !written.has(pair(l)));
+  return (
+    !unknown && asRead(stored.shape) === asRead(rebuilt.shape) && a.size === b.size && [...a].every((key) => b.has(key))
+  );
 }
 
 /** A JSON value with every object's keys in one order, so two readings compare as text. */

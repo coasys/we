@@ -117,9 +117,16 @@ export const ROOT_KNOWN_EXPR = 'spaceStore.rootLoaded';
  */
 export const channelPath = (idExpr: string): string => withView(`spaceStore.spacePath + '?channel=' + (${idExpr})`);
 
-/** A call's address: its record's own page, drawn by the call view. */
+/**
+ * A call's address: its record's own page, drawn by the call view.
+ *
+ * The id goes in twice. `id` names the record the page draws; `call` is the parameter the call and
+ * transcribe modules read for "the call on screen" (`routeStore.params.call`), so the interpretation
+ * panel, its count on the call bar and the transcript all follow the page's call rather than the
+ * call this agent has joined.
+ */
 export const callPath = (idExpr: string): string =>
-  withView(`spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (${idExpr})`);
+  withView(`spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (${idExpr}) + '&call=' + (${idExpr})`);
 
 /** A person's address: their profile, drawn as the view. */
 export const personPath = (didExpr: string): string => withView(`spaceStore.spacePath + '/person?did=' + (${didExpr})`);
@@ -151,7 +158,12 @@ export const SELECTED_EXPR = [
   `routeStore.params.card && ${INSPECTED_DNA} ? 'dna|model|' + routeStore.params.cardType`,
   `: (${PAGE_EXPR}) == 'record' ? 'call|' + routeStore.params.id`,
   `: (${PAGE_EXPR}) == 'person' ? 'person|' + routeStore.params.did`,
-  `: (${PAGE_EXPR}) == 'workflows' ? (workflowStore.open ? 'workflow|' + workflowStore.open.name : 'group|workflows')`,
+  /*
+    A record chosen on the flows page lights its row under Active flows. One that has finished has no
+    row there, so nothing is lit: asking whether it is still running would take this expression past
+    the length an expression may be.
+  */
+  `: (${PAGE_EXPR}) == 'workflows' ? (workflowStore.open ? (routeStore.params.card ? 'run|' + workflowStore.open.name + '|' + routeStore.params.card : 'workflow|' + workflowStore.open.name) : 'group|workflows')`,
   `: (${PAGE_EXPR}) in [${GROUP_PAGES.filter((p) => p !== 'workflows')
     .map((p) => `'${p}'`)
     .join(', ')}] ? 'group|' + (${PAGE_EXPR})`,

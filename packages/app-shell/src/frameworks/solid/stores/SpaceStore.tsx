@@ -20,6 +20,7 @@ import {
   parseAppliesTo,
   resolveInvolvementTypes,
 } from '@shared/involvements';
+import { reportModuleRefusal } from '@shared/moduleSchemaRefusal';
 import {
   clearSetting,
   type LevelValues,
@@ -1575,7 +1576,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (first !== 'space' || !segment) return;
     const ds = datasets.find((d) => datasetAddressedBy(d, segment));
     if (!ds) return;
-    datasetStore.prepareDataset(ds);
     void templateStore.preloadSpaceTemplates(ds).catch(() => {});
     // Its record too: the template it shows is named there, and its collection — what the Feed
     // reads — is taken from this read rather than read again. The other spaces wait for the list.
@@ -1724,7 +1724,9 @@ export function SpaceStoreProvider(props: ParentProps) {
 
       // Register SDNA models (full set, same as switchDataset uses)
       const schemas = session.backendPorts()!.schemas;
-      await schemas.installSpace(spaceHandle, moduleRegistry.moduleSchemas(schemas));
+      await schemas
+        .installSpace(spaceHandle, moduleRegistry.moduleSchemas(schemas))
+        .catch(reportModuleRefusal('SpaceStore: createSpace'));
 
       // Process avatar image if provided
       const avatarData = avatarFile
@@ -1886,7 +1888,9 @@ export function SpaceStoreProvider(props: ParentProps) {
 
     // Additive/idempotent — does not remove or touch the dataset's existing foreign SDNA.
     const initSchemas = session.backendPorts()!.schemas;
-    await initSchemas.installSpace(ds.handle, moduleRegistry.moduleSchemas(initSchemas));
+    await initSchemas
+      .installSpace(ds.handle, moduleRegistry.moduleSchemas(initSchemas))
+      .catch(reportModuleRefusal('SpaceStore: initializeAsWeSpace'));
 
     let avatarData: FileData | undefined;
     if (avatarValue instanceof File) {
@@ -1988,7 +1992,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     // so once the dataset has synced this writes only what the creator and earlier joiners
     // have not — never a duplicate copy.
     const joinSchemas = session.backendPorts()!.schemas;
-    await joinSchemas.installSpace(joinedHandle, moduleRegistry.moduleSchemas(joinSchemas));
+    await joinSchemas
+      .installSpace(joinedHandle, moduleRegistry.moduleSchemas(joinSchemas))
+      .catch(reportModuleRefusal('SpaceStore: joinSpace'));
 
     // Track locally so gates derived from the dataset list (marketplaceJoined, the sidebar,
     // the seed-configured global/marketplace slots) update with the join.
@@ -5613,16 +5619,40 @@ export function SpaceStoreProvider(props: ParentProps) {
    * keeps `TaskBlock` and `EventBlock` rather than being reduced to the one thing just ticked — and
    * a model that becomes a candidate in a later release does not silently join a space that has
    * already decided.
+   *
+   * Published before it is stored, and queued like a default save. Each switch writes the *whole*
+   * list, so the next one has to read this one's list rather than the copy from before it. The
+   * executor shows a write as soon as it lands, which is before this call resumes to publish, and a
+   * live row from before the write can replace the copy in the meantime — either one drops the class
+   * the switch just turned on. The queue keeps an older write, whose list does not have the later
+   * switch, from finishing last and storing that.
    */
   async function setExtractionTarget(entity: string, on: boolean, spaceUuid?: string) {
     const ds = targetDataset(spaceUuid);
     const space = ds ? heldSpace(ds) : undefined;
     if (!ds || !space) return;
-    const current = parseEntityList(space.extractionTargets) ?? LEGACY_EXTRACTION_TARGETS;
+    const save = defaultSaveFor(ds, 'extractionTargets');
+    const isNewest = save.ops.begin();
+    const base = save.pending > 0 && save.value !== undefined ? save.value : space.extractionTargets;
+    const current = parseEntityList(base) ?? LEGACY_EXTRACTION_TARGETS;
     const next = new Set(current);
     if (on) next.add(entity);
     else next.delete(entity);
-    await writeSpaceFields(ds, space, { extractionTargets: JSON.stringify([...next]) });
+    const extractionTargets = JSON.stringify([...next]);
+    save.value = extractionTargets;
+    save.pending += 1;
+    try {
+      publishSpaceFields(ds, { extractionTargets });
+      await queueDefaultWrite(save, async () => writeSpaceFields(ds, space, { extractionTargets }, isNewest));
+      save.confirmed = extractionTargets;
+    } catch (error) {
+      // Only the newest save takes the paint back — an earlier one failing leaves the later one's.
+      if (isNewest()) publishSpaceFields(ds, { extractionTargets: save.confirmed });
+      throw error;
+    } finally {
+      save.pending -= 1;
+      if (!save.pending) defaultSaves.delete(save.key);
+    }
   }
 
   async function setModuleEnabled(moduleId: string, enabled: boolean, spaceUuid?: string) {
@@ -5886,17 +5916,21 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
   >();
 
-  /** The newest choice of each default still being saved for a dataset, for a live row to show over. */
+  /**
+   * The newest choice of each default still being saved, and of the extraction list, for a live row
+   * to show over. The extraction list is one of these saves too: a switch merges into the list
+   * already published, and a row from before that write must not put the old list back.
+   */
   const pendingDefaults = (ds: AppDataset): Partial<Space> => {
     const fields: Partial<Space> = {};
-    for (const field of ['defaultTemplateId', 'defaultThemeId'] as const) {
+    for (const field of ['defaultTemplateId', 'defaultThemeId', 'extractionTargets'] as const) {
       const save = defaultSaves.get(`${ds.id}:${field}`);
       if (save) fields[field] = save.value;
     }
     return fields;
   };
 
-  const defaultSaveFor = (ds: AppDataset, field: 'defaultTemplateId' | 'defaultThemeId') => {
+  const defaultSaveFor = (ds: AppDataset, field: 'defaultTemplateId' | 'defaultThemeId' | 'extractionTargets') => {
     const key = `${ds.id}:${field}`;
     let save = defaultSaves.get(key);
     if (!save) {

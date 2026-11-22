@@ -1243,46 +1243,42 @@ describe('choosing a device', () => {
     expect(sent(tracks, 'audio')).toBe(chosenTrack);
   });
 
-  /*
-    The reverse order: a switch already asking for a microphone, then an unmute. The unmute used to
-    start a request of its own beside the switch's. A late refusal of it set the state to muted
-    while the switch's microphone was sending; a late grant appended a second live microphone. The
-    unmute waits for the switch instead, and unmutes the microphone the switch got.
-  */
-  // Each answer comes after the switch has landed: the order that went wrong.
-  const late = <T>(settle: (resolve: (value: T) => void, reject: (error: Error) => void) => void) =>
-    new Promise<T>((resolve, reject) => setTimeout(() => settle(resolve, reject), 20));
-  it.each([
-    ['refuses', () => late<MediaStream>((_, reject) => reject(new Error('NotAllowedError')))],
-    ['grants', () => late<MediaStream>((resolve) => resolve(fakeStream([fakeTrack('audio')])))],
-  ])('unmutes the microphone a switch is getting, whatever a second request would answer (%s)', async (_, second) => {
-    const camera = fakeTrack('video');
+  it('remembers a microphone chosen while none is open, and opens that one on unmute', async () => {
+    // Choosing a device that is off must not open it: the light would come on for nothing.
     const chosenTrack = fakeTrack('audio');
-    let joined = false;
-    let release: (() => void) | undefined;
-    const { controller, tracks, states } = setup({
-      getUserMedia: vi.fn((constraints: MediaStreamConstraints) => {
-        if (!constraints.audio) return Promise.resolve(fakeStream([camera]));
-        if (!joined) return Promise.reject(new Error('NotAllowedError'));
-        // The first microphone request after the join is the switch's; any later one is a second.
-        if (release) return second();
-        return new Promise<MediaStream>((resolve) => (release = () => resolve(fakeStream([chosenTrack]))));
-      }),
-    });
+    const getUserMedia = vi.fn(async () => fakeStream([chosenTrack]));
+    const { controller, tracks } = setup({ getUserMedia });
+    await controller.setAudioEnabled(false);
+    await controller.setVideoEnabled(false);
     await controller.start();
-    expect(controller.state().audioEnabled).toBe(false);
-    joined = true;
 
-    const switching = controller.setDevice('audio', 'mic-2');
-    await vi.waitFor(() => expect(release).toBeDefined());
-    const unmuting = controller.setAudioEnabled(true);
-    release!();
-    await Promise.all([switching, unmuting]);
+    expect(await controller.setDevice('audio', 'mic-2')).toBe(true);
+    expect(getUserMedia).not.toHaveBeenCalled();
 
-    const live = controller.localStream()?.getAudioTracks() ?? [];
-    expect(live).toEqual([chosenTrack]);
+    await controller.setAudioEnabled(true);
+    expect(getUserMedia).toHaveBeenCalledWith({
+      audio: expect.objectContaining({ deviceId: { exact: 'mic-2' } }),
+    });
+    expect(controller.localStream()?.getAudioTracks()).toEqual([chosenTrack]);
     expect(sent(tracks, 'audio')).toBe(chosenTrack);
-    expect(controller.state().audioEnabled).toBe(true);
-    expect(states.at(-1)?.audioEnabled).toBe(chosenTrack.enabled);
+  });
+});
+
+describe('starting with the microphone and camera off', () => {
+  it('opens nothing, and holds one empty stream for devices turned on later', async () => {
+    const { controller, devices } = setup();
+    await controller.setAudioEnabled(false);
+    await controller.setVideoEnabled(false);
+    await controller.start();
+
+    expect(devices.getUserMedia).not.toHaveBeenCalled();
+    const stream = controller.localStream();
+    expect(stream?.getTracks()).toEqual([]);
+    expect(controller.state()).toMatchObject({ audioEnabled: false, videoEnabled: false });
+
+    // The camera joins that same stream when it is turned on.
+    await controller.setVideoEnabled(true);
+    expect(controller.localStream()).toBe(stream);
+    expect(stream?.getVideoTracks()).toHaveLength(1);
   });
 });

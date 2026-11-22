@@ -1315,69 +1315,6 @@
                   ]
                 },
                 {
-                  "type": "$if",
-                  "props": {
-                    "condition": { "$": "count(modules.call.liveCalls)" },
-                    "then": {
-                      "type": "Column",
-                      "props": { "px": "300", "pb": "300" },
-                      "children": [
-                        {
-                          "type": "we-button",
-                          "props": {
-                            "variant": "ghost",
-                            "width": "100%",
-                            "ax": "start",
-                            "gap": "200",
-                            "onClick": [
-                              {
-                                "$if": {
-                                  "condition": { "$": "modules.call.active && !modules.call.elsewhere" },
-                                  "then": [
-                                    {
-                                      "$invoke": "routeStore.navigate",
-                                      "args": [
-                                        {
-                                          "$": "(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (modules.call.callRecordId)) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (modules.call.callRecordId), '?') ? '&' : '?') + 'view=canvas' : '')"
-                                        }
-                                      ]
-                                    },
-                                    { "$invoke": "modules.call.goToCall" }
-                                  ],
-                                  "else": { "$invoke": "modules.call.goToCall" }
-                                }
-                              }
-                            ]
-                          },
-                          "children": [
-                            {
-                              "type": "we-animated-icon",
-                              "props": { "name": "live", "color": "success", "size": "xs" }
-                            },
-                            {
-                              "type": "we-text",
-                              "props": {
-                                "variant": "footnote",
-                                "color": "text-muted",
-                                "flex": "1",
-                                "minWidth": "0",
-                                "truncate": true,
-                                "ta": "left"
-                              },
-                              "children": [{ "$": "`Call running · ${first(modules.call.liveCalls).count} in it`" }]
-                            },
-                            {
-                              "type": "we-text",
-                              "props": { "variant": "footnote", "color": "accent" },
-                              "children": [{ "$": "modules.call.active && !modules.call.elsewhere ? 'Open' : 'Join'" }]
-                            }
-                          ]
-                        }
-                      ]
-                    }
-                  }
-                },
-                {
                   "type": "Column",
                   "props": { "flex": "1", "minHeight": "0", "overflowY": "auto", "px": "200" },
                   "children": [
@@ -1391,12 +1328,14 @@
                       "props": {
                         "label": "This space",
                         "selected": {
-                          "$": "((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna ? ((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') == 'all' ? 'group|dna' : startsWith((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), 'policy|') ? 'dnaprop|' + (routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') : startsWith((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), 'model|') ? 'dna|model|' + split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] : 'dnakind|' + (routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all')) : routeStore.params.card && routeStore.params.cardType in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'] ? 'dna|model|' + routeStore.params.cardType : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' ? 'call|' + routeStore.params.id : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? 'person|' + routeStore.params.did : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' ? (workflowStore.open ? 'workflow|' + workflowStore.open.name : 'group|workflows') : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') in ['channels', 'calls', 'people'] ? 'group|' + (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') : 'channel|' + (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)"
+                          "$": "((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna ? ((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') == 'all' ? 'group|dna' : startsWith((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), 'policy|') ? 'dnaprop|' + (routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') : startsWith((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), 'model|') ? 'dna|model|' + split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] : 'dnakind|' + (routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all')) : routeStore.params.card && routeStore.params.cardType in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'] ? 'dna|model|' + routeStore.params.cardType : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' ? 'call|' + routeStore.params.id : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? 'person|' + routeStore.params.did : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' ? (workflowStore.open ? (routeStore.params.card ? 'run|' + workflowStore.open.name + '|' + routeStore.params.card : 'workflow|' + workflowStore.open.name) : 'group|workflows') : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') in ['channels', 'calls', 'people'] ? 'group|' + (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') : 'channel|' + (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)"
                         },
                         "onSelect": [
                           {
                             "$if": {
-                              "condition": { "$": "startsWith(event.detail.value, 'group|')" },
+                              "condition": {
+                                "$": "startsWith(event.detail.value, 'group|') && event.detail.value != 'group|dna'"
+                              },
                               "then": { "$toggleLocalIn": "openRows", "value": { "$": "event.detail.value" } }
                             }
                           },
@@ -1434,19 +1373,54 @@
                           {
                             "$if": {
                               "condition": { "$": "event.detail.value == 'group|dna'" },
-                              "then": {
-                                "$if": {
-                                  "condition": { "$": "routeStore.params.view == 'canvas'" },
-                                  "then": { "$invoke": "routeStore.setParam", "args": ["dna", { "$": "'all'" }] },
-                                  "else": {
-                                    "$invoke": "routeStore.navigate",
-                                    "args": [
-                                      { "$": "spaceStore.spacePath + '/dna'" },
-                                      { "$": "{ query: { dna: 'all' } }" }
-                                    ]
+                              "then": [
+                                {
+                                  "$if": {
+                                    "condition": { "$": "'group|dna' in local.openRows" },
+                                    "then": [
+                                      {
+                                        "$setLocal": "openRows",
+                                        "value": { "$": "local.openRows.filter(k, k != 'group|dna')" }
+                                      },
+                                      {
+                                        "$if": {
+                                          "condition": {
+                                            "$": "(((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') != 'all'"
+                                          },
+                                          "then": { "$invoke": "routeStore.setParam", "args": ["dna", "all"] }
+                                        }
+                                      },
+                                      {
+                                        "$if": {
+                                          "condition": {
+                                            "$": "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open"
+                                          },
+                                          "then": { "$invoke": "workflowStore.closeWorkflow" }
+                                        }
+                                      }
+                                    ],
+                                    "else": {
+                                      "$if": {
+                                        "condition": { "$": "!('group|dna' in local.openRows)" },
+                                        "then": { "$toggleLocalIn": "openRows", "value": "group|dna" }
+                                      }
+                                    }
+                                  }
+                                },
+                                {
+                                  "$if": {
+                                    "condition": { "$": "routeStore.params.view == 'canvas'" },
+                                    "then": { "$invoke": "routeStore.setParam", "args": ["dna", { "$": "'all'" }] },
+                                    "else": {
+                                      "$invoke": "routeStore.navigate",
+                                      "args": [
+                                        { "$": "spaceStore.spacePath + '/dna'" },
+                                        { "$": "{ query: { dna: 'all' } }" }
+                                      ]
+                                    }
                                   }
                                 }
-                              }
+                              ]
                             }
                           },
                           {
@@ -1469,7 +1443,7 @@
                                 "$invoke": "routeStore.navigate",
                                 "args": [
                                   {
-                                    "$": "(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (split(event.detail.value, '|')[1])) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (split(event.detail.value, '|')[1]), '?') ? '&' : '?') + 'view=canvas' : '')"
+                                    "$": "(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (split(event.detail.value, '|')[1]) + '&call=' + (split(event.detail.value, '|')[1])) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (split(event.detail.value, '|')[1]) + '&call=' + (split(event.detail.value, '|')[1]), '?') ? '&' : '?') + 'view=canvas' : '')"
                                   }
                                 ]
                               }
@@ -1489,6 +1463,26 @@
                                     {
                                       "$": "(spaceStore.spacePath + '/workflows') + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/workflows', '?') ? '&' : '?') + 'view=canvas' : '')"
                                     }
+                                  ]
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "$if": {
+                              "condition": { "$": "startsWith(event.detail.value, 'run|')" },
+                              "then": [
+                                {
+                                  "$invoke": "workflowStore.openWorkflow",
+                                  "args": [{ "$": "split(event.detail.value, '|')[1]" }]
+                                },
+                                {
+                                  "$invoke": "routeStore.navigate",
+                                  "args": [
+                                    {
+                                      "$": "(spaceStore.spacePath + '/workflows') + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/workflows', '?') ? '&' : '?') + 'view=canvas' : '')"
+                                    },
+                                    { "$": "{ query: { card: split(event.detail.value, '|')[2] } }" }
                                   ]
                                 }
                               ]
@@ -1537,8 +1531,40 @@
                           },
                           {
                             "$if": {
-                              "condition": { "$": "startsWith(event.detail.value, 'dnagroup|')" },
+                              "condition": {
+                                "$": "startsWith(event.detail.value, 'dnagroup|') && event.detail.value != 'dnagroup|flows'"
+                              },
                               "then": { "$toggleLocalIn": "openRows", "value": { "$": "event.detail.value" } }
+                            }
+                          },
+                          {
+                            "$if": {
+                              "condition": { "$": "event.detail.value == 'dnagroup|flows'" },
+                              "then": {
+                                "$if": {
+                                  "condition": { "$": "'dnagroup|flows' in local.openRows" },
+                                  "then": [
+                                    {
+                                      "$setLocal": "openRows",
+                                      "value": { "$": "local.openRows.filter(k, k != 'dnagroup|flows')" }
+                                    },
+                                    {
+                                      "$if": {
+                                        "condition": {
+                                          "$": "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open"
+                                        },
+                                        "then": { "$invoke": "workflowStore.closeWorkflow" }
+                                      }
+                                    }
+                                  ],
+                                  "else": {
+                                    "$if": {
+                                      "condition": { "$": "!('dnagroup|flows' in local.openRows)" },
+                                      "then": { "$toggleLocalIn": "openRows", "value": "dnagroup|flows" }
+                                    }
+                                  }
+                                }
+                              }
                             }
                           },
                           {
@@ -1708,14 +1734,78 @@
                                           "props": {
                                             "condition": { "$": "find(modules.call.liveCalls, { recordId: call.id })" },
                                             "then": {
-                                              "type": "we-badge",
-                                              "props": { "tone": "success", "size": "xs" },
+                                              "type": "Row",
+                                              "props": { "gap": "100", "ay": "center" },
                                               "children": [
                                                 {
-                                                  "type": "we-animated-icon",
-                                                  "props": { "name": "live", "color": "success" }
+                                                  "type": "we-tooltip",
+                                                  "props": { "placement": "right" },
+                                                  "children": [
+                                                    {
+                                                      "type": "div",
+                                                      "slot": "content",
+                                                      "children": [
+                                                        {
+                                                          "type": "Column",
+                                                          "props": { "gap": "200", "textAlign": "left" },
+                                                          "children": [
+                                                            {
+                                                              "type": "$each",
+                                                              "props": {
+                                                                "items": {
+                                                                  "$": "find(modules.call.liveCalls, { recordId: call.id }).faces"
+                                                                },
+                                                                "as": "person"
+                                                              },
+                                                              "children": [
+                                                                {
+                                                                  "type": "Row",
+                                                                  "props": { "ay": "center", "gap": "200" },
+                                                                  "children": [
+                                                                    {
+                                                                      "type": "we-avatar",
+                                                                      "props": {
+                                                                        "size": "xs",
+                                                                        "image": { "$": "person.image" },
+                                                                        "hash": { "$": "person.hash" }
+                                                                      }
+                                                                    },
+                                                                    {
+                                                                      "type": "we-text",
+                                                                      "props": { "fontSize": "200" },
+                                                                      "children": [{ "$": "person.initials" }]
+                                                                    }
+                                                                  ]
+                                                                }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    },
+                                                    {
+                                                      "type": "AvatarStack",
+                                                      "props": {
+                                                        "avatars": {
+                                                          "$": "find(modules.call.liveCalls, { recordId: call.id }).faces.map(f, { image: f.image, hash: f.hash })"
+                                                        },
+                                                        "max": 3,
+                                                        "size": "xs"
+                                                      }
+                                                    }
+                                                  ]
                                                 },
-                                                "Live"
+                                                {
+                                                  "type": "we-badge",
+                                                  "props": { "tone": "success", "size": "xs" },
+                                                  "children": [
+                                                    {
+                                                      "type": "we-animated-icon",
+                                                      "props": { "name": "live", "color": "success" }
+                                                    },
+                                                    "Live"
+                                                  ]
+                                                }
                                               ]
                                             },
                                             "else": {
@@ -1744,7 +1834,7 @@
                             "value": "group|workflows",
                             "open": { "$": "'group|workflows' in local.openRows" },
                             "onOpenChange": { "$toggleLocalIn": "openRows", "value": "group|workflows" },
-                            "expandable": { "$": "count(workflowStore.workflows.filter(f, !f.archived)) > 0" }
+                            "expandable": { "$": "count(workflowStore.active) > 0" }
                           },
                           "children": [
                             {
@@ -1758,7 +1848,7 @@
                                 {
                                   "type": "we-text",
                                   "props": { "truncate": true, "flex": "1", "minWidth": "0" },
-                                  "children": ["Workflows"]
+                                  "children": ["Active flows"]
                                 },
                                 {
                                   "type": "Row",
@@ -1767,33 +1857,13 @@
                                     {
                                       "type": "$if",
                                       "props": {
-                                        "condition": { "$": "count(workflowStore.workflows.filter(f, !f.archived))" },
+                                        "condition": { "$": "count(workflowStore.active)" },
                                         "then": {
                                           "type": "we-badge",
                                           "props": { "variant": "soft", "size": "xs" },
-                                          "children": [{ "$": "count(workflowStore.workflows.filter(f, !f.archived))" }]
+                                          "children": [{ "$": "count(workflowStore.active)" }]
                                         }
                                       }
-                                    },
-                                    {
-                                      "type": "we-tooltip",
-                                      "props": { "content": "New workflow", "placement": "right" },
-                                      "children": [
-                                        {
-                                          "type": "we-button",
-                                          "props": {
-                                            "variant": "ghost",
-                                            "size": "xs",
-                                            "square": true,
-                                            "label": "New workflow",
-                                            "onClick": {
-                                              "$invoke": "routeStore.navigate",
-                                              "args": [{ "$": "spaceStore.spacePath + '/workflows' + '?new=1'" }]
-                                            }
-                                          },
-                                          "children": [{ "type": "we-icon", "props": { "name": "plus" } }]
-                                        }
-                                      ]
                                     }
                                   ]
                                 }
@@ -1801,15 +1871,12 @@
                             },
                             {
                               "type": "$each",
-                              "props": {
-                                "items": { "$": "workflowStore.workflows.filter(f, !f.archived)" },
-                                "as": "workflow"
-                              },
+                              "props": { "items": { "$": "workflowStore.active" }, "as": "run" },
                               "children": [
                                 {
                                   "type": "we-tree-item",
                                   "slot": "children",
-                                  "props": { "value": { "$": "'workflow|' + workflow.name" } },
+                                  "props": { "value": { "$": "'run|' + run.workflow + '|' + run.record" } },
                                   "children": [
                                     {
                                       "type": "Row",
@@ -1817,23 +1884,28 @@
                                       "children": [
                                         {
                                           "type": "we-icon",
-                                          "props": { "name": "flow-arrow", "size": "sm", "color": "text-faint" }
+                                          "props": {
+                                            "name": {
+                                              "$": "run.stalled ? 'warning' : run.waiting ? 'hourglass-medium' : 'flow-arrow'"
+                                            },
+                                            "size": "sm",
+                                            "color": "text-faint"
+                                          }
                                         },
                                         {
                                           "type": "we-text",
                                           "props": { "truncate": true, "flex": "1", "minWidth": "0" },
-                                          "children": [{ "$": "workflow.label" }]
+                                          "children": [{ "$": "run.title" }]
                                         },
                                         {
-                                          "type": "$if",
+                                          "type": "we-text",
                                           "props": {
-                                            "condition": { "$": "workflow.records" },
-                                            "then": {
-                                              "type": "we-badge",
-                                              "props": { "variant": "soft", "size": "xs" },
-                                              "children": [{ "$": "workflow.records" }]
-                                            }
-                                          }
+                                            "variant": "footnote",
+                                            "color": "text-faint",
+                                            "truncate": true,
+                                            "maxWidth": "96px"
+                                          },
+                                          "children": [{ "$": "run.stateLabel" }]
                                         }
                                       ]
                                     }
@@ -1924,28 +1996,42 @@
                           "props": {
                             "value": "group|dna",
                             "open": {
-                              "$": "(('group|dna') in local.openRows) || ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && ((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') != 'all'))"
+                              "$": "'group|dna' in local.openRows || ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') != 'all') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open)"
                             },
                             "onOpenChange": {
                               "$if": {
-                                "condition": {
-                                  "$": "!event.detail.open && ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && ((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') != 'all'))"
+                                "condition": { "$": "event.detail.open" },
+                                "then": {
+                                  "$if": {
+                                    "condition": { "$": "!('group|dna' in local.openRows)" },
+                                    "then": { "$toggleLocalIn": "openRows", "value": "group|dna" }
+                                  }
                                 },
-                                "then": [
-                                  { "$invoke": "routeStore.setParam", "args": ["dna", { "$": "'all'" }] },
+                                "else": [
+                                  {
+                                    "$setLocal": "openRows",
+                                    "value": { "$": "local.openRows.filter(k, k != 'group|dna')" }
+                                  },
                                   {
                                     "$if": {
-                                      "condition": { "$": "('group|dna') in local.openRows" },
-                                      "then": { "$toggleLocalIn": "openRows", "value": { "$": "'group|dna'" } }
+                                      "condition": {
+                                        "$": "(((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') != 'all'"
+                                      },
+                                      "then": { "$invoke": "routeStore.setParam", "args": ["dna", "all"] }
+                                    }
+                                  },
+                                  {
+                                    "$if": {
+                                      "condition": {
+                                        "$": "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open"
+                                      },
+                                      "then": { "$invoke": "workflowStore.closeWorkflow" }
                                     }
                                   }
-                                ],
-                                "else": { "$toggleLocalIn": "openRows", "value": { "$": "'group|dna'" } }
+                                ]
                               }
                             },
-                            "expandable": {
-                              "$": "sum([{ key: 'space', label: 'This space', classes: recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), rows: recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), sub: [] }, { key: 'other', label: 'Other apps', classes: distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' }), rows: distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' }), sub: [] }, { key: 'we', label: 'Built in', classes: distinct([{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], recordStore.creatableEntities.filter(k, k.group != 'This space' && !(k.value in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(k, { id: k.value, label: k.label, icon: k.icon })), rows: [{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], sub: [{ key: 'blocks', label: 'Blocks', classes: recordStore.creatableEntities.filter(k, k.group != 'This space' && !(k.value in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(k, { id: k.value, label: k.label, icon: k.icon }) }].filter(s, count(s.classes) > 0) }].filter(g, count(g.classes) > 0).map(g, count(g.classes))) > 0"
-                            }
+                            "expandable": true
                           },
                           "children": [
                             {
@@ -1966,14 +2052,14 @@
                                       "type": "$if",
                                       "props": {
                                         "condition": {
-                                          "$": "sum([{ key: 'space', label: 'This space', classes: recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), rows: recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), sub: [] }, { key: 'other', label: 'Other apps', classes: distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' }), rows: distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' }), sub: [] }, { key: 'we', label: 'Built in', classes: distinct([{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], recordStore.creatableEntities.filter(k, k.group != 'This space' && !(k.value in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(k, { id: k.value, label: k.label, icon: k.icon })), rows: [{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], sub: [{ key: 'blocks', label: 'Blocks', classes: recordStore.creatableEntities.filter(k, k.group != 'This space' && !(k.value in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(k, { id: k.value, label: k.label, icon: k.icon }) }].filter(s, count(s.classes) > 0) }].filter(g, count(g.classes) > 0).map(g, count(g.classes)))"
+                                          "$": "sum([{ key: 'models', label: 'Models', classes: distinct(recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' })), rows: distinct(recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' })), sub: [] }, { key: 'we', label: 'Built in', classes: distinct([{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], recordStore.creatableEntities.filter(k, k.group != 'This space' && !(k.value in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(k, { id: k.value, label: k.label, icon: k.icon })), rows: [{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], sub: [{ key: 'blocks', label: 'Blocks', classes: recordStore.creatableEntities.filter(k, k.group != 'This space' && !(k.value in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(k, { id: k.value, label: k.label, icon: k.icon }) }].filter(s, count(s.classes) > 0) }].filter(g, g.key == 'models' || count(g.classes) > 0).map(g, count(g.classes)))"
                                         },
                                         "then": {
                                           "type": "we-badge",
                                           "props": { "variant": "soft", "size": "xs" },
                                           "children": [
                                             {
-                                              "$": "sum([{ key: 'space', label: 'This space', classes: recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), rows: recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), sub: [] }, { key: 'other', label: 'Other apps', classes: distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' }), rows: distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' }), sub: [] }, { key: 'we', label: 'Built in', classes: distinct([{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], recordStore.creatableEntities.filter(k, k.group != 'This space' && !(k.value in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(k, { id: k.value, label: k.label, icon: k.icon })), rows: [{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], sub: [{ key: 'blocks', label: 'Blocks', classes: recordStore.creatableEntities.filter(k, k.group != 'This space' && !(k.value in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(k, { id: k.value, label: k.label, icon: k.icon }) }].filter(s, count(s.classes) > 0) }].filter(g, count(g.classes) > 0).map(g, count(g.classes)))"
+                                              "$": "sum([{ key: 'models', label: 'Models', classes: distinct(recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' })), rows: distinct(recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' })), sub: [] }, { key: 'we', label: 'Built in', classes: distinct([{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], recordStore.creatableEntities.filter(k, k.group != 'This space' && !(k.value in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(k, { id: k.value, label: k.label, icon: k.icon })), rows: [{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], sub: [{ key: 'blocks', label: 'Blocks', classes: recordStore.creatableEntities.filter(k, k.group != 'This space' && !(k.value in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(k, { id: k.value, label: k.label, icon: k.icon }) }].filter(s, count(s.classes) > 0) }].filter(g, g.key == 'models' || count(g.classes) > 0).map(g, count(g.classes)))"
                                             }
                                           ]
                                         }
@@ -1987,7 +2073,7 @@
                               "type": "$each",
                               "props": {
                                 "items": {
-                                  "$": "[{ key: 'space', label: 'This space', classes: recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), rows: recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), sub: [] }, { key: 'other', label: 'Other apps', classes: distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' }), rows: distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' }), sub: [] }, { key: 'we', label: 'Built in', classes: distinct([{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], recordStore.creatableEntities.filter(k, k.group != 'This space' && !(k.value in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(k, { id: k.value, label: k.label, icon: k.icon })), rows: [{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], sub: [{ key: 'blocks', label: 'Blocks', classes: recordStore.creatableEntities.filter(k, k.group != 'This space' && !(k.value in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(k, { id: k.value, label: k.label, icon: k.icon }) }].filter(s, count(s.classes) > 0) }].filter(g, count(g.classes) > 0)"
+                                  "$": "[{ key: 'models', label: 'Models', classes: distinct(recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' })), rows: distinct(recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' })), sub: [] }, { key: 'we', label: 'Built in', classes: distinct([{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], recordStore.creatableEntities.filter(k, k.group != 'This space' && !(k.value in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(k, { id: k.value, label: k.label, icon: k.icon })), rows: [{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], sub: [{ key: 'blocks', label: 'Blocks', classes: recordStore.creatableEntities.filter(k, k.group != 'This space' && !(k.value in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(k, { id: k.value, label: k.label, icon: k.icon }) }].filter(s, count(s.classes) > 0) }].filter(g, g.key == 'models' || count(g.classes) > 0).filter(g, g.key == 'models')"
                                 },
                                 "as": "group"
                               },
@@ -2033,9 +2119,639 @@
                                         {
                                           "type": "we-icon",
                                           "props": {
-                                            "name": {
-                                              "$": "group.key == 'we' ? 'cube' : group.key == 'space' ? 'users-three' : 'package'"
+                                            "name": { "$": "group.key == 'we' ? 'cube' : 'shapes'" },
+                                            "size": "sm",
+                                            "color": "text-faint"
+                                          }
+                                        },
+                                        {
+                                          "type": "we-text",
+                                          "props": { "truncate": true, "flex": "1", "minWidth": "0" },
+                                          "children": [{ "$": "group.label" }]
+                                        },
+                                        {
+                                          "type": "$if",
+                                          "props": {
+                                            "condition": { "$": "count(group.classes)" },
+                                            "then": {
+                                              "type": "we-badge",
+                                              "props": { "variant": "soft", "size": "xs" },
+                                              "children": [{ "$": "count(group.classes)" }]
+                                            }
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "$each",
+                                      "props": { "items": { "$": "group.rows" }, "as": "cls" },
+                                      "children": [
+                                        {
+                                          "type": "we-tree-item",
+                                          "slot": "children",
+                                          "props": { "value": { "$": "'dna|model|' + cls.id" } },
+                                          "children": [
+                                            {
+                                              "type": "Row",
+                                              "props": {
+                                                "gap": "200",
+                                                "ay": "center",
+                                                "minWidth": "0",
+                                                "width": "100%"
+                                              },
+                                              "children": [
+                                                {
+                                                  "type": "we-icon",
+                                                  "props": {
+                                                    "name": { "$": "cls.icon" },
+                                                    "size": "sm",
+                                                    "color": "text-faint"
+                                                  }
+                                                },
+                                                {
+                                                  "type": "we-text",
+                                                  "props": { "truncate": true, "flex": "1", "minWidth": "0" },
+                                                  "children": [{ "$": "cls.label" }]
+                                                },
+                                                {
+                                                  "type": "$if",
+                                                  "props": {
+                                                    "condition": { "$": "cls.namespace" },
+                                                    "then": {
+                                                      "type": "we-text",
+                                                      "props": {
+                                                        "variant": "footnote",
+                                                        "color": "text-faint",
+                                                        "truncate": true,
+                                                        "maxWidth": "96px"
+                                                      },
+                                                      "children": [{ "$": "cls.namespace" }]
+                                                    }
+                                                  }
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "$each",
+                                      "props": { "items": { "$": "group.sub" }, "as": "sub" },
+                                      "children": [
+                                        {
+                                          "type": "we-tree-item",
+                                          "slot": "children",
+                                          "props": {
+                                            "value": { "$": "'dnagroup|' + group.key + '.' + sub.key" },
+                                            "open": {
+                                              "$": "(('dnagroup|' + group.key + '.' + sub.key) in local.openRows) || ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), 'model|') && sub.classes.exists(c, c.id == split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1])))"
                                             },
+                                            "onOpenChange": {
+                                              "$if": {
+                                                "condition": {
+                                                  "$": "!event.detail.open && ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), 'model|') && sub.classes.exists(c, c.id == split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1])))"
+                                                },
+                                                "then": [
+                                                  {
+                                                    "$invoke": "routeStore.setParam",
+                                                    "args": ["dna", { "$": "'all'" }]
+                                                  },
+                                                  {
+                                                    "$if": {
+                                                      "condition": {
+                                                        "$": "('dnagroup|' + group.key + '.' + sub.key) in local.openRows"
+                                                      },
+                                                      "then": {
+                                                        "$toggleLocalIn": "openRows",
+                                                        "value": { "$": "'dnagroup|' + group.key + '.' + sub.key" }
+                                                      }
+                                                    }
+                                                  }
+                                                ],
+                                                "else": {
+                                                  "$toggleLocalIn": "openRows",
+                                                  "value": { "$": "'dnagroup|' + group.key + '.' + sub.key" }
+                                                }
+                                              }
+                                            },
+                                            "expandable": { "$": "count(sub.classes) > 0" }
+                                          },
+                                          "children": [
+                                            {
+                                              "type": "Row",
+                                              "props": {
+                                                "gap": "200",
+                                                "ay": "center",
+                                                "minWidth": "0",
+                                                "width": "100%"
+                                              },
+                                              "children": [
+                                                {
+                                                  "type": "we-icon",
+                                                  "props": {
+                                                    "name": "squares-four",
+                                                    "size": "sm",
+                                                    "color": "text-faint"
+                                                  }
+                                                },
+                                                {
+                                                  "type": "we-text",
+                                                  "props": { "truncate": true, "flex": "1", "minWidth": "0" },
+                                                  "children": [{ "$": "sub.label" }]
+                                                },
+                                                {
+                                                  "type": "$if",
+                                                  "props": {
+                                                    "condition": { "$": "count(sub.classes)" },
+                                                    "then": {
+                                                      "type": "we-badge",
+                                                      "props": { "variant": "soft", "size": "xs" },
+                                                      "children": [{ "$": "count(sub.classes)" }]
+                                                    }
+                                                  }
+                                                }
+                                              ]
+                                            },
+                                            {
+                                              "type": "$each",
+                                              "props": { "items": { "$": "sub.classes" }, "as": "cls" },
+                                              "children": [
+                                                {
+                                                  "type": "we-tree-item",
+                                                  "slot": "children",
+                                                  "props": { "value": { "$": "'dna|model|' + cls.id" } },
+                                                  "children": [
+                                                    {
+                                                      "type": "Row",
+                                                      "props": {
+                                                        "gap": "200",
+                                                        "ay": "center",
+                                                        "minWidth": "0",
+                                                        "width": "100%"
+                                                      },
+                                                      "children": [
+                                                        {
+                                                          "type": "we-icon",
+                                                          "props": {
+                                                            "name": { "$": "cls.icon" },
+                                                            "size": "sm",
+                                                            "color": "text-faint"
+                                                          }
+                                                        },
+                                                        {
+                                                          "type": "we-text",
+                                                          "props": { "truncate": true, "flex": "1", "minWidth": "0" },
+                                                          "children": [{ "$": "cls.label" }]
+                                                        },
+                                                        {
+                                                          "type": "$if",
+                                                          "props": {
+                                                            "condition": { "$": "cls.namespace" },
+                                                            "then": {
+                                                              "type": "we-text",
+                                                              "props": {
+                                                                "variant": "footnote",
+                                                                "color": "text-faint",
+                                                                "truncate": true,
+                                                                "maxWidth": "96px"
+                                                              },
+                                                              "children": [{ "$": "cls.namespace" }]
+                                                            }
+                                                          }
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "we-tree-item",
+                              "slot": "children",
+                              "props": {
+                                "value": "dnagroup|flows",
+                                "open": {
+                                  "$": "'dnagroup|flows' in local.openRows || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open)"
+                                },
+                                "onOpenChange": {
+                                  "$if": {
+                                    "condition": { "$": "event.detail.open" },
+                                    "then": {
+                                      "$if": {
+                                        "condition": { "$": "!('dnagroup|flows' in local.openRows)" },
+                                        "then": { "$toggleLocalIn": "openRows", "value": "dnagroup|flows" }
+                                      }
+                                    },
+                                    "else": [
+                                      {
+                                        "$setLocal": "openRows",
+                                        "value": { "$": "local.openRows.filter(k, k != 'dnagroup|flows')" }
+                                      },
+                                      {
+                                        "$if": {
+                                          "condition": {
+                                            "$": "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open"
+                                          },
+                                          "then": { "$invoke": "workflowStore.closeWorkflow" }
+                                        }
+                                      }
+                                    ]
+                                  }
+                                },
+                                "expandable": { "$": "count(workflowStore.workflows.filter(f, !f.archived)) > 0" }
+                              },
+                              "children": [
+                                {
+                                  "type": "Row",
+                                  "props": { "gap": "200", "ay": "center", "minWidth": "0", "width": "100%" },
+                                  "children": [
+                                    {
+                                      "type": "we-icon",
+                                      "props": { "name": "flow-arrow", "size": "sm", "color": "text-faint" }
+                                    },
+                                    {
+                                      "type": "we-text",
+                                      "props": { "truncate": true, "flex": "1", "minWidth": "0" },
+                                      "children": ["Flows"]
+                                    },
+                                    {
+                                      "type": "Row",
+                                      "props": { "gap": "100", "ay": "center" },
+                                      "children": [
+                                        {
+                                          "type": "$if",
+                                          "props": {
+                                            "condition": {
+                                              "$": "count(workflowStore.workflows.filter(f, !f.archived))"
+                                            },
+                                            "then": {
+                                              "type": "we-badge",
+                                              "props": { "variant": "soft", "size": "xs" },
+                                              "children": [
+                                                { "$": "count(workflowStore.workflows.filter(f, !f.archived))" }
+                                              ]
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "type": "we-tooltip",
+                                          "props": { "content": "New flow", "placement": "right" },
+                                          "children": [
+                                            {
+                                              "type": "we-button",
+                                              "props": {
+                                                "variant": "ghost",
+                                                "size": "xs",
+                                                "square": true,
+                                                "label": "New flow",
+                                                "onClick": {
+                                                  "$invoke": "routeStore.navigate",
+                                                  "args": [{ "$": "spaceStore.spacePath + '/workflows' + '?new=1'" }]
+                                                }
+                                              },
+                                              "children": [{ "type": "we-icon", "props": { "name": "plus" } }]
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "$each",
+                                  "props": {
+                                    "items": { "$": "workflowStore.workflows.filter(f, !f.archived)" },
+                                    "as": "workflow"
+                                  },
+                                  "children": [
+                                    {
+                                      "type": "we-tree-item",
+                                      "slot": "children",
+                                      "props": { "value": { "$": "'workflow|' + workflow.name" } },
+                                      "children": [
+                                        {
+                                          "type": "Row",
+                                          "props": { "gap": "200", "ay": "center", "minWidth": "0", "width": "100%" },
+                                          "children": [
+                                            {
+                                              "type": "we-icon",
+                                              "props": { "name": "flow-arrow", "size": "sm", "color": "text-faint" }
+                                            },
+                                            {
+                                              "type": "we-text",
+                                              "props": { "truncate": true, "flex": "1", "minWidth": "0" },
+                                              "children": [{ "$": "workflow.label" }]
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "we-tree-item",
+                              "slot": "children",
+                              "props": {
+                                "value": "group|templates",
+                                "open": { "$": "'group|templates' in local.openRows" },
+                                "onOpenChange": { "$toggleLocalIn": "openRows", "value": "group|templates" },
+                                "expandable": {
+                                  "$": "count(distinct(find(templateStore.switcherGroups, { label: 'Built-in' }).items.filter(t, t.id == spaceStore.spaceDefaultTemplateId || t.id == templateStore.currentSwitcherId), find(templateStore.switcherGroups, { label: 'Space templates' }).items, find(templateStore.switcherGroups, { label: 'My templates' }).items)) > 0"
+                                }
+                              },
+                              "children": [
+                                {
+                                  "type": "Row",
+                                  "props": { "gap": "200", "ay": "center", "minWidth": "0", "width": "100%" },
+                                  "children": [
+                                    {
+                                      "type": "we-icon",
+                                      "props": { "name": "layout", "size": "sm", "color": "text-faint" }
+                                    },
+                                    {
+                                      "type": "we-text",
+                                      "props": { "truncate": true, "flex": "1", "minWidth": "0" },
+                                      "children": ["Templates"]
+                                    },
+                                    {
+                                      "type": "Row",
+                                      "props": { "gap": "100", "ay": "center" },
+                                      "children": [
+                                        {
+                                          "type": "$if",
+                                          "props": {
+                                            "condition": {
+                                              "$": "count(distinct(find(templateStore.switcherGroups, { label: 'Built-in' }).items.filter(t, t.id == spaceStore.spaceDefaultTemplateId || t.id == templateStore.currentSwitcherId), find(templateStore.switcherGroups, { label: 'Space templates' }).items, find(templateStore.switcherGroups, { label: 'My templates' }).items))"
+                                            },
+                                            "then": {
+                                              "type": "we-badge",
+                                              "props": { "variant": "soft", "size": "xs" },
+                                              "children": [
+                                                {
+                                                  "$": "count(distinct(find(templateStore.switcherGroups, { label: 'Built-in' }).items.filter(t, t.id == spaceStore.spaceDefaultTemplateId || t.id == templateStore.currentSwitcherId), find(templateStore.switcherGroups, { label: 'Space templates' }).items, find(templateStore.switcherGroups, { label: 'My templates' }).items))"
+                                                }
+                                              ]
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "type": "we-tooltip",
+                                          "props": { "content": "New template", "placement": "top" },
+                                          "children": [
+                                            {
+                                              "type": "we-button",
+                                              "props": {
+                                                "size": "xs",
+                                                "variant": "ghost",
+                                                "square": true,
+                                                "label": "New template",
+                                                "onClick": { "$invoke": "editorStore.startFresh" }
+                                              },
+                                              "children": [{ "type": "we-icon", "props": { "name": "plus" } }]
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "$each",
+                                  "props": {
+                                    "items": {
+                                      "$": "distinct(find(templateStore.switcherGroups, { label: 'Built-in' }).items.filter(t, t.id == spaceStore.spaceDefaultTemplateId || t.id == templateStore.currentSwitcherId), find(templateStore.switcherGroups, { label: 'Space templates' }).items, find(templateStore.switcherGroups, { label: 'My templates' }).items)"
+                                    },
+                                    "as": "template"
+                                  },
+                                  "children": [
+                                    {
+                                      "type": "we-tree-item",
+                                      "slot": "children",
+                                      "props": { "value": { "$": "'template|' + template.id" } },
+                                      "children": [
+                                        {
+                                          "type": "Row",
+                                          "props": { "gap": "200", "ay": "center", "minWidth": "0", "width": "100%" },
+                                          "children": [
+                                            {
+                                              "type": "we-icon",
+                                              "props": {
+                                                "name": { "$": "template.icon" },
+                                                "size": "sm",
+                                                "color": "text-faint"
+                                              }
+                                            },
+                                            {
+                                              "type": "we-text",
+                                              "props": { "truncate": true, "flex": "1", "minWidth": "0" },
+                                              "children": [{ "$": "template.name" }]
+                                            },
+                                            {
+                                              "type": "$if",
+                                              "props": {
+                                                "condition": { "$": "template.id == templateStore.currentSwitcherId" },
+                                                "then": {
+                                                  "type": "we-icon",
+                                                  "props": { "name": "check", "color": "accent-text" }
+                                                }
+                                              }
+                                            },
+                                            {
+                                              "type": "$if",
+                                              "props": {
+                                                "condition": {
+                                                  "$": "template.id == spaceStore.spaceDefaultTemplateId"
+                                                },
+                                                "then": {
+                                                  "type": "we-tooltip",
+                                                  "props": { "content": "This space's default", "placement": "top" },
+                                                  "children": [
+                                                    {
+                                                      "type": "we-icon",
+                                                      "props": {
+                                                        "name": "star",
+                                                        "weight": "fill",
+                                                        "color": "warning-text"
+                                                      }
+                                                    }
+                                                  ]
+                                                }
+                                              }
+                                            },
+                                            {
+                                              "type": "$if",
+                                              "props": {
+                                                "condition": {
+                                                  "$": "template.id == templateStore.currentSwitcherId && shellStore.layoutDirty"
+                                                },
+                                                "then": {
+                                                  "type": "we-tooltip",
+                                                  "props": {
+                                                    "content": "Reset panels to this template's layout",
+                                                    "placement": "top"
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "type": "we-button",
+                                                      "props": {
+                                                        "variant": "ghost",
+                                                        "square": true,
+                                                        "size": "sm",
+                                                        "color": "text-faint",
+                                                        "hoverProps": { "color": "text" },
+                                                        "onClick": { "$invoke": "shellStore.resetTemplateLayout" }
+                                                      },
+                                                      "children": [
+                                                        {
+                                                          "type": "we-icon",
+                                                          "props": {
+                                                            "name": "arrow-counter-clockwise",
+                                                            "weight": "regular"
+                                                          }
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                }
+                                              }
+                                            },
+                                            {
+                                              "type": "$if",
+                                              "props": {
+                                                "condition": { "$": "template.editable" },
+                                                "then": {
+                                                  "type": "we-tooltip",
+                                                  "props": { "content": "Edit this template", "placement": "top" },
+                                                  "children": [
+                                                    {
+                                                      "type": "we-button",
+                                                      "props": {
+                                                        "variant": "ghost",
+                                                        "square": true,
+                                                        "size": "sm",
+                                                        "color": "text-faint",
+                                                        "hoverProps": { "color": "text" },
+                                                        "onClick": [
+                                                          {
+                                                            "$invoke": "templateStore.switchTemplate",
+                                                            "args": [{ "$": "template.id" }]
+                                                          },
+                                                          {
+                                                            "$invoke": "editorStore.enterTemplateEditing",
+                                                            "args": ["edit"]
+                                                          }
+                                                        ]
+                                                      },
+                                                      "children": [
+                                                        {
+                                                          "type": "we-icon",
+                                                          "props": { "name": "pencil-simple", "weight": "regular" }
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                }
+                                              }
+                                            },
+                                            {
+                                              "type": "we-tooltip",
+                                              "props": { "content": "Fork this template", "placement": "top" },
+                                              "children": [
+                                                {
+                                                  "type": "we-button",
+                                                  "props": {
+                                                    "variant": "ghost",
+                                                    "square": true,
+                                                    "size": "sm",
+                                                    "color": "text-faint",
+                                                    "hoverProps": { "color": "text" },
+                                                    "onClick": [
+                                                      {
+                                                        "$invoke": "templateStore.switchTemplate",
+                                                        "args": [{ "$": "template.id" }]
+                                                      },
+                                                      { "$invoke": "editorStore.startFork" }
+                                                    ]
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "type": "we-icon",
+                                                      "props": { "name": "git-fork", "weight": "regular" }
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "$each",
+                              "props": {
+                                "items": {
+                                  "$": "[{ key: 'models', label: 'Models', classes: distinct(recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' })), rows: distinct(recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' })), sub: [] }, { key: 'we', label: 'Built in', classes: distinct([{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], recordStore.creatableEntities.filter(k, k.group != 'This space' && !(k.value in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(k, { id: k.value, label: k.label, icon: k.icon })), rows: [{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], sub: [{ key: 'blocks', label: 'Blocks', classes: recordStore.creatableEntities.filter(k, k.group != 'This space' && !(k.value in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(k, { id: k.value, label: k.label, icon: k.icon }) }].filter(s, count(s.classes) > 0) }].filter(g, g.key == 'models' || count(g.classes) > 0).filter(g, g.key == 'we')"
+                                },
+                                "as": "group"
+                              },
+                              "children": [
+                                {
+                                  "type": "we-tree-item",
+                                  "slot": "children",
+                                  "props": {
+                                    "value": { "$": "'dnagroup|' + group.key" },
+                                    "open": {
+                                      "$": "(('dnagroup|' + group.key) in local.openRows) || ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), 'model|') && group.classes.exists(c, c.id == split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1])))"
+                                    },
+                                    "onOpenChange": {
+                                      "$if": {
+                                        "condition": {
+                                          "$": "!event.detail.open && ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), 'model|') && group.classes.exists(c, c.id == split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1])))"
+                                        },
+                                        "then": [
+                                          { "$invoke": "routeStore.setParam", "args": ["dna", { "$": "'all'" }] },
+                                          {
+                                            "$if": {
+                                              "condition": { "$": "('dnagroup|' + group.key) in local.openRows" },
+                                              "then": {
+                                                "$toggleLocalIn": "openRows",
+                                                "value": { "$": "'dnagroup|' + group.key" }
+                                              }
+                                            }
+                                          }
+                                        ],
+                                        "else": {
+                                          "$toggleLocalIn": "openRows",
+                                          "value": { "$": "'dnagroup|' + group.key" }
+                                        }
+                                      }
+                                    },
+                                    "expandable": { "$": "count(group.classes) > 0" }
+                                  },
+                                  "children": [
+                                    {
+                                      "type": "Row",
+                                      "props": { "gap": "200", "ay": "center", "minWidth": "0", "width": "100%" },
+                                      "children": [
+                                        {
+                                          "type": "we-icon",
+                                          "props": {
+                                            "name": { "$": "group.key == 'we' ? 'cube' : 'shapes'" },
                                             "size": "sm",
                                             "color": "text-faint"
                                           }
@@ -2321,241 +3037,6 @@
                                               "type": "we-text",
                                               "props": { "truncate": true, "flex": "1", "minWidth": "0" },
                                               "children": [{ "$": "rule" }]
-                                            }
-                                          ]
-                                        }
-                                      ]
-                                    }
-                                  ]
-                                }
-                              ]
-                            }
-                          ]
-                        },
-                        {
-                          "type": "we-tree-item",
-                          "props": {
-                            "value": "group|templates",
-                            "open": { "$": "'group|templates' in local.openRows" },
-                            "onOpenChange": { "$toggleLocalIn": "openRows", "value": "group|templates" },
-                            "expandable": {
-                              "$": "count(distinct(find(templateStore.switcherGroups, { label: 'Built-in' }).items.filter(t, t.id == spaceStore.spaceDefaultTemplateId || t.id == templateStore.currentSwitcherId), find(templateStore.switcherGroups, { label: 'Space templates' }).items, find(templateStore.switcherGroups, { label: 'My templates' }).items)) > 0"
-                            }
-                          },
-                          "children": [
-                            {
-                              "type": "Row",
-                              "props": { "gap": "200", "ay": "center", "minWidth": "0", "width": "100%" },
-                              "children": [
-                                {
-                                  "type": "we-icon",
-                                  "props": { "name": "layout", "size": "sm", "color": "text-faint" }
-                                },
-                                {
-                                  "type": "we-text",
-                                  "props": { "truncate": true, "flex": "1", "minWidth": "0" },
-                                  "children": ["Templates"]
-                                },
-                                {
-                                  "type": "Row",
-                                  "props": { "gap": "100", "ay": "center" },
-                                  "children": [
-                                    {
-                                      "type": "$if",
-                                      "props": {
-                                        "condition": {
-                                          "$": "count(distinct(find(templateStore.switcherGroups, { label: 'Built-in' }).items.filter(t, t.id == spaceStore.spaceDefaultTemplateId || t.id == templateStore.currentSwitcherId), find(templateStore.switcherGroups, { label: 'Space templates' }).items, find(templateStore.switcherGroups, { label: 'My templates' }).items))"
-                                        },
-                                        "then": {
-                                          "type": "we-badge",
-                                          "props": { "variant": "soft", "size": "xs" },
-                                          "children": [
-                                            {
-                                              "$": "count(distinct(find(templateStore.switcherGroups, { label: 'Built-in' }).items.filter(t, t.id == spaceStore.spaceDefaultTemplateId || t.id == templateStore.currentSwitcherId), find(templateStore.switcherGroups, { label: 'Space templates' }).items, find(templateStore.switcherGroups, { label: 'My templates' }).items))"
-                                            }
-                                          ]
-                                        }
-                                      }
-                                    },
-                                    {
-                                      "type": "we-tooltip",
-                                      "props": { "content": "New template", "placement": "top" },
-                                      "children": [
-                                        {
-                                          "type": "we-button",
-                                          "props": {
-                                            "size": "xs",
-                                            "variant": "ghost",
-                                            "square": true,
-                                            "label": "New template",
-                                            "onClick": { "$invoke": "editorStore.startFresh" }
-                                          },
-                                          "children": [{ "type": "we-icon", "props": { "name": "plus" } }]
-                                        }
-                                      ]
-                                    }
-                                  ]
-                                }
-                              ]
-                            },
-                            {
-                              "type": "$each",
-                              "props": {
-                                "items": {
-                                  "$": "distinct(find(templateStore.switcherGroups, { label: 'Built-in' }).items.filter(t, t.id == spaceStore.spaceDefaultTemplateId || t.id == templateStore.currentSwitcherId), find(templateStore.switcherGroups, { label: 'Space templates' }).items, find(templateStore.switcherGroups, { label: 'My templates' }).items)"
-                                },
-                                "as": "template"
-                              },
-                              "children": [
-                                {
-                                  "type": "we-tree-item",
-                                  "slot": "children",
-                                  "props": { "value": { "$": "'template|' + template.id" } },
-                                  "children": [
-                                    {
-                                      "type": "Row",
-                                      "props": { "gap": "200", "ay": "center", "minWidth": "0", "width": "100%" },
-                                      "children": [
-                                        {
-                                          "type": "we-icon",
-                                          "props": {
-                                            "name": { "$": "template.icon" },
-                                            "size": "sm",
-                                            "color": "text-faint"
-                                          }
-                                        },
-                                        {
-                                          "type": "we-text",
-                                          "props": { "truncate": true, "flex": "1", "minWidth": "0" },
-                                          "children": [{ "$": "template.name" }]
-                                        },
-                                        {
-                                          "type": "$if",
-                                          "props": {
-                                            "condition": { "$": "template.id == templateStore.currentSwitcherId" },
-                                            "then": {
-                                              "type": "we-icon",
-                                              "props": { "name": "check", "color": "accent-text" }
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "type": "$if",
-                                          "props": {
-                                            "condition": { "$": "template.id == spaceStore.spaceDefaultTemplateId" },
-                                            "then": {
-                                              "type": "we-tooltip",
-                                              "props": { "content": "This space's default", "placement": "top" },
-                                              "children": [
-                                                {
-                                                  "type": "we-icon",
-                                                  "props": { "name": "star", "weight": "fill", "color": "warning-text" }
-                                                }
-                                              ]
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "type": "$if",
-                                          "props": {
-                                            "condition": {
-                                              "$": "template.id == templateStore.currentSwitcherId && shellStore.layoutDirty"
-                                            },
-                                            "then": {
-                                              "type": "we-tooltip",
-                                              "props": {
-                                                "content": "Reset panels to this template's layout",
-                                                "placement": "top"
-                                              },
-                                              "children": [
-                                                {
-                                                  "type": "we-button",
-                                                  "props": {
-                                                    "variant": "ghost",
-                                                    "square": true,
-                                                    "size": "sm",
-                                                    "color": "text-faint",
-                                                    "hoverProps": { "color": "text" },
-                                                    "onClick": { "$invoke": "shellStore.resetTemplateLayout" }
-                                                  },
-                                                  "children": [
-                                                    {
-                                                      "type": "we-icon",
-                                                      "props": {
-                                                        "name": "arrow-counter-clockwise",
-                                                        "weight": "regular"
-                                                      }
-                                                    }
-                                                  ]
-                                                }
-                                              ]
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "type": "$if",
-                                          "props": {
-                                            "condition": { "$": "template.editable" },
-                                            "then": {
-                                              "type": "we-tooltip",
-                                              "props": { "content": "Edit this template", "placement": "top" },
-                                              "children": [
-                                                {
-                                                  "type": "we-button",
-                                                  "props": {
-                                                    "variant": "ghost",
-                                                    "square": true,
-                                                    "size": "sm",
-                                                    "color": "text-faint",
-                                                    "hoverProps": { "color": "text" },
-                                                    "onClick": [
-                                                      {
-                                                        "$invoke": "templateStore.switchTemplate",
-                                                        "args": [{ "$": "template.id" }]
-                                                      },
-                                                      {
-                                                        "$invoke": "editorStore.enterTemplateEditing",
-                                                        "args": ["edit"]
-                                                      }
-                                                    ]
-                                                  },
-                                                  "children": [
-                                                    {
-                                                      "type": "we-icon",
-                                                      "props": { "name": "pencil-simple", "weight": "regular" }
-                                                    }
-                                                  ]
-                                                }
-                                              ]
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "type": "we-tooltip",
-                                          "props": { "content": "Fork this template", "placement": "top" },
-                                          "children": [
-                                            {
-                                              "type": "we-button",
-                                              "props": {
-                                                "variant": "ghost",
-                                                "square": true,
-                                                "size": "sm",
-                                                "color": "text-faint",
-                                                "hoverProps": { "color": "text" },
-                                                "onClick": [
-                                                  {
-                                                    "$invoke": "templateStore.switchTemplate",
-                                                    "args": [{ "$": "template.id" }]
-                                                  },
-                                                  { "$invoke": "editorStore.startFork" }
-                                                ]
-                                              },
-                                              "children": [
-                                                {
-                                                  "type": "we-icon",
-                                                  "props": { "name": "git-fork", "weight": "regular" }
-                                                }
-                                              ]
                                             }
                                           ]
                                         }
@@ -18434,6 +18915,29 @@
                   {
                     "type": "$if",
                     "props": {
+                      "condition": { "$": "modules.call.callRecordId != routeStore.params.id" },
+                      "then": {
+                        "type": "we-button",
+                        "props": {
+                          "variant": "solid",
+                          "size": "sm",
+                          "onClick": {
+                            "$invoke": "modules.call.continueCall",
+                            "args": [{ "$": "routeStore.params.id" }]
+                          }
+                        },
+                        "children": [
+                          { "type": "we-icon", "props": { "name": "phone" } },
+                          {
+                            "$": "find(modules.call.liveCalls, { recordId: routeStore.params.id }) ? 'Join' : 'Pick it back up'"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "type": "$if",
+                    "props": {
                       "condition": { "$": "find(modules.call.liveCalls, { recordId: routeStore.params.id })" },
                       "then": {
                         "type": "we-badge",
@@ -18441,6 +18945,60 @@
                         "children": [
                           { "type": "we-animated-icon", "props": { "name": "live", "color": "success" } },
                           "Live"
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "type": "$if",
+                    "props": {
+                      "condition": { "$": "'transcribe' in spaceStore.activeModules" },
+                      "then": {
+                        "type": "we-tooltip",
+                        "props": { "content": "Interpretation", "placement": "bottom" },
+                        "children": [
+                          {
+                            "type": "we-button",
+                            "props": {
+                              "variant": "ghost",
+                              "size": "md",
+                              "square": {
+                                "$": "!count(modules.transcribe.proposalsFor[routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : spaceStore.root)])"
+                              },
+                              "label": {
+                                "$": "count(modules.transcribe.proposalsFor[routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : spaceStore.root)]) ? `Interpretation, ${count(modules.transcribe.proposalsFor[routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : spaceStore.root)])} ${plural(count(modules.transcribe.proposalsFor[routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : spaceStore.root)]), 'suggestion', 'suggestions')} to review` : 'Interpretation'"
+                              },
+                              "expanded": { "$": "modules.transcribe.extractionOpen" },
+                              "onClick": { "$invoke": "spaceStore.launchModule", "args": ["transcribe:extraction"] }
+                            },
+                            "children": [
+                              {
+                                "type": "$if",
+                                "props": {
+                                  "condition": { "$": "modules.transcribe.passRunning" },
+                                  "then": { "type": "we-animated-icon", "props": { "name": "spinner" } },
+                                  "else": { "type": "we-icon", "props": { "name": "sparkle" } }
+                                }
+                              },
+                              {
+                                "type": "$if",
+                                "props": {
+                                  "condition": {
+                                    "$": "count(modules.transcribe.proposalsFor[routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : spaceStore.root)])"
+                                  },
+                                  "then": {
+                                    "type": "we-badge",
+                                    "props": { "size": "xs", "variant": "solid", "tone": "accent" },
+                                    "children": [
+                                      {
+                                        "$": "count(modules.transcribe.proposalsFor[routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : spaceStore.root)])"
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            ]
+                          }
                         ]
                       }
                     }
@@ -18506,52 +19064,8 @@
                 ]
               },
               {
-                "type": "$if",
-                "props": {
-                  "condition": { "$": "!(modules.call.callRecordId == routeStore.params.id)" },
-                  "then": {
-                    "type": "Row",
-                    "props": { "gap": "300", "p": "500", "ay": "center", "wrap": true },
-                    "children": [
-                      {
-                        "type": "we-text",
-                        "props": { "color": "text-muted", "flex": "1", "minWidth": "240px" },
-                        "children": [
-                          {
-                            "$": "find(modules.call.liveCalls, { recordId: routeStore.params.id }) ? 'This call is happening now.' : 'This call has ended. Everything said and written in it is below.'"
-                          }
-                        ]
-                      },
-                      {
-                        "type": "we-button",
-                        "props": {
-                          "variant": "solid",
-                          "onClick": {
-                            "$invoke": "modules.call.continueCall",
-                            "args": [{ "$": "routeStore.params.id" }]
-                          }
-                        },
-                        "children": [
-                          { "type": "we-icon", "props": { "name": "phone" } },
-                          {
-                            "$": "find(modules.call.liveCalls, { recordId: routeStore.params.id }) ? 'Join' : 'Pick it back up'"
-                          }
-                        ]
-                      }
-                    ]
-                  }
-                }
-              },
-              {
                 "type": "Column",
-                "props": {
-                  "flex": "1",
-                  "minHeight": "0",
-                  "minWidth": "0",
-                  "px": "500",
-                  "pb": "calc(var(--we-space-500) + var(--we-covered-bottom, 0px))",
-                  "transition": "padding-bottom 300 ease"
-                },
+                "props": { "flex": "1", "minHeight": "0", "minWidth": "0", "px": "500", "pb": "500" },
                 "children": [
                   { "type": "$part", "props": { "id": "feed.callFeed", "subject": { "$": "routeStore.params.id" } } }
                 ]
@@ -18593,6 +19107,7 @@
                     "newNoteOpen": { "type": "boolean", "initial": false },
                     "noteOpen": { "type": "boolean", "initial": false },
                     "vocabOpen": { "type": "array", "initial": [] },
+                    "others": { "type": "string", "initial": "dim", "persist": "coasys.canvas.others" },
                     "treeMode": { "type": "boolean", "initial": false, "syncParam": { "name": "tree", "push": true } },
                     "spine": { "type": "string", "initial": "", "syncParam": "spine" },
                     "order": { "type": "string", "initial": "manual", "syncParam": "order" },
@@ -18971,7 +19486,7 @@
                                       },
                                       "children": [
                                         {
-                                          "$": "{ calls: 'Calls', people: 'People', channels: 'Channels', workflows: 'Workflows' }[((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '')]"
+                                          "$": "{ calls: 'Calls', people: 'People', channels: 'Channels', workflows: 'Flows' }[((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '')]"
                                         }
                                       ]
                                     },
@@ -19017,7 +19532,7 @@
                                               "props": { "variant": "heading-sm", "truncate": true, "minWidth": "0" },
                                               "children": [
                                                 {
-                                                  "$": "{ calls: 'Calls', people: 'People', channels: 'Channels', workflows: 'Workflows' }[((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '')]"
+                                                  "$": "{ calls: 'Calls', people: 'People', channels: 'Channels', workflows: 'Flows' }[((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '')]"
                                                 }
                                               ]
                                             }
@@ -19150,6 +19665,31 @@
                           }
                         },
                         {
+                          "type": "$if",
+                          "props": {
+                            "condition": {
+                              "$": "!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'calls') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open))"
+                            },
+                            "then": {
+                              "type": "DropdownMenu",
+                              "props": {
+                                "triggerIcon": {
+                                  "$": "local.others == 'hide' ? 'eye-slash' : local.others == 'dim' ? 'circle-half' : 'eye'"
+                                },
+                                "triggerLabel": {
+                                  "$": "local.others == 'hide' ? 'Others hidden' : local.others == 'dim' ? 'Others dimmed' : 'Showing everything'"
+                                },
+                                "triggerTitle": "What happens to everything outside what is chosen",
+                                "triggerVariant": "ghost",
+                                "items": {
+                                  "$": "[{ type: 'group', id: 'rest', label: 'Everything else', items: [{ id: 'dim', label: 'Dim', icon: 'circle-half', selected: local.others == 'dim' }, { id: 'hide', label: 'Hide', icon: 'eye-slash', selected: local.others == 'hide' }, { id: 'show', label: 'Show', icon: 'eye', selected: local.others != 'dim' && local.others != 'hide' }] }]"
+                                },
+                                "onSelect": { "$setLocal": "others", "value": { "$": "arg.id" } }
+                              }
+                            }
+                          }
+                        },
+                        {
                           "type": "Row",
                           "props": {
                             "gap": "100",
@@ -19223,6 +19763,9 @@
                                 "weights": { "$": "local.voices" },
                                 "relations": {
                                   "$": "local.treeMode && treeSpine({ value: local.spine }).relations ? { children: true } : false"
+                                },
+                                "hideWhere": {
+                                  "$": "(local.others) == 'hide' ? (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? [{ 'data.origin': { not: ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') } }] : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'calls') ? [{ 'data.origin': { exists: false } }, { 'data.origin': spaceStore.root }] : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? [{ 'data.author': { not: ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') } }] : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open) ? [{ 'data.recordId': { not: workflowStore.open.records.map(r, r.record) } }] : null) : null"
                                 }
                               }
                             },
@@ -19283,13 +19826,19 @@
                                 "style": { "borderColor": "warning-text", "borderWidth": 2 }
                               },
                               {
-                                "$": "((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? [{ when: { 'data.origin': { not: ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') } }, style: { opacity: 0.1 } }] : []"
+                                "$": "(((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') && ((local.others) == 'dim' || (local.others) == 'hide')) ? [{ when: { 'data.origin': { not: ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') } }, style: { opacity: 0.1 } }] : []"
                               },
                               {
-                                "$": "((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? [{ when: { 'data.author': { not: ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') } }, style: { opacity: 0.1 } }] : []"
+                                "$": "(((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'calls') && ((local.others) == 'dim' || (local.others) == 'hide')) ? [{ when: { 'data.origin': { exists: false } }, style: { opacity: 0.1 } }] : []"
                               },
                               {
-                                "$": "((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open) ? [{ when: { 'data.recordId': { not: (workflowStore.open.records.map(r, r.record)) } }, style: { opacity: 0.1 } }] : []"
+                                "$": "(((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'calls') && ((local.others) == 'dim' || (local.others) == 'hide')) ? [{ when: { 'data.origin': spaceStore.root }, style: { opacity: 0.1 } }] : []"
+                              },
+                              {
+                                "$": "(((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') && ((local.others) == 'dim' || (local.others) == 'hide')) ? [{ when: { 'data.author': { not: ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') } }, style: { opacity: 0.1 } }] : []"
+                              },
+                              {
+                                "$": "(((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open) && ((local.others) == 'dim' || (local.others) == 'hide')) ? [{ when: { 'data.recordId': { not: workflowStore.open.records.map(r, r.record) } }, style: { opacity: 0.1 } }] : []"
                               }
                             ],
                             "edgeStyle": [
@@ -22694,14 +23243,7 @@
                         },
                         {
                           "type": "Column",
-                          "props": {
-                            "flex": "1",
-                            "minHeight": "0",
-                            "px": "500",
-                            "pt": "300",
-                            "pb": "calc(var(--we-space-500) + var(--we-covered-bottom, 0px))",
-                            "transition": "padding-bottom 300 ease"
-                          },
+                          "props": { "flex": "1", "minHeight": "0", "px": "500", "pt": "300", "pb": "500" },
                           "children": [{ "type": "$part", "props": { "id": "feed.feedView" } }]
                         }
                       ]
@@ -22727,13 +23269,7 @@
                         },
                         {
                           "type": "Column",
-                          "props": {
-                            "px": "500",
-                            "pb": "calc(var(--we-space-500) + var(--we-covered-bottom, 0px))",
-                            "pt": "200",
-                            "gap": "100",
-                            "transition": "padding-bottom 300 ease"
-                          },
+                          "props": { "px": "500", "pb": "500", "pt": "200", "gap": "100" },
                           "children": [
                             {
                               "type": "$if",
@@ -22920,7 +23456,7 @@
                         "then": {
                           "type": "we-text",
                           "props": { "variant": "heading-sm", "truncate": true, "minWidth": "0", "flexShrink": 1 },
-                          "children": ["Workflows"]
+                          "children": ["Flows"]
                         },
                         "else": {
                           "type": "Row",
@@ -22955,7 +23491,7 @@
                                 {
                                   "type": "we-text",
                                   "props": { "variant": "heading-sm", "truncate": true, "minWidth": "0" },
-                                  "children": ["Workflows"]
+                                  "children": ["Flows"]
                                 }
                               ]
                             },
@@ -24699,8 +25235,12 @@
                                                             "gap": "200",
                                                             "p": "300",
                                                             "r": "card",
-                                                            "border": "1px solid border",
-                                                            "bg": "surface"
+                                                            "border": {
+                                                              "$": "(rec.record == routeStore.params.card) ? '1px solid accent' : '1px solid border'"
+                                                            },
+                                                            "bg": {
+                                                              "$": "(rec.record == routeStore.params.card) ? 'accent-soft' : 'surface'"
+                                                            }
                                                           },
                                                           "children": [
                                                             {
@@ -24718,13 +25258,31 @@
                                                                   },
                                                                   "children": [
                                                                     {
-                                                                      "type": "we-text",
-                                                                      "props": {
-                                                                        "truncate": true,
-                                                                        "maxWidth": "360px"
-                                                                      },
+                                                                      "type": "Column",
+                                                                      "props": { "gap": "0", "ax": "start" },
                                                                       "children": [
-                                                                        { "$": "rec.title ? rec.title : 'Untitled'" }
+                                                                        {
+                                                                          "type": "we-text",
+                                                                          "props": {
+                                                                            "truncate": true,
+                                                                            "maxWidth": "360px"
+                                                                          },
+                                                                          "children": [{ "$": "rec.title" }]
+                                                                        },
+                                                                        {
+                                                                          "type": "we-text",
+                                                                          "props": {
+                                                                            "variant": "footnote",
+                                                                            "color": "text-muted",
+                                                                            "truncate": true,
+                                                                            "maxWidth": "360px"
+                                                                          },
+                                                                          "children": [
+                                                                            {
+                                                                              "$": "(rec.kind ? rec.kind + ' in ' : 'In ') + workflowStore.open.label + (rec.stateLabel ? ' · at ' + rec.stateLabel : '')"
+                                                                            }
+                                                                          ]
+                                                                        }
                                                                       ]
                                                                     }
                                                                   ]
@@ -26123,7 +26681,7 @@
                                           "$invoke": "routeStore.navigate",
                                           "args": [
                                             {
-                                              "$": "(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (call.id)) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (call.id), '?') ? '&' : '?') + 'view=canvas' : '')"
+                                              "$": "(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (call.id) + '&call=' + (call.id)) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (call.id) + '&call=' + (call.id), '?') ? '&' : '?') + 'view=canvas' : '')"
                                             }
                                           ]
                                         }
@@ -26723,7 +27281,7 @@
                   "type": "$if",
                   "props": {
                     "condition": {
-                      "$": "(routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') == 'all' && sum([{ key: 'space', label: 'This space', classes: recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), rows: recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), sub: [] }, { key: 'other', label: 'Other apps', classes: distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' }), rows: distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' }), sub: [] }, { key: 'we', label: 'Built in', classes: distinct([{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], recordStore.creatableEntities.filter(k, k.group != 'This space' && !(k.value in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(k, { id: k.value, label: k.label, icon: k.icon })), rows: [{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], sub: [{ key: 'blocks', label: 'Blocks', classes: recordStore.creatableEntities.filter(k, k.group != 'This space' && !(k.value in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(k, { id: k.value, label: k.label, icon: k.icon }) }].filter(s, count(s.classes) > 0) }].filter(g, count(g.classes) > 0).map(g, count(g.classes))) == 0 && count(spaceStore.policy.sentences) == 0"
+                      "$": "(routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') == 'all' && sum([{ key: 'models', label: 'Models', classes: distinct(recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' })), rows: distinct(recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' })), sub: [] }, { key: 'we', label: 'Built in', classes: distinct([{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], recordStore.creatableEntities.filter(k, k.group != 'This space' && !(k.value in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(k, { id: k.value, label: k.label, icon: k.icon })), rows: [{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], sub: [{ key: 'blocks', label: 'Blocks', classes: recordStore.creatableEntities.filter(k, k.group != 'This space' && !(k.value in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(k, { id: k.value, label: k.label, icon: k.icon }) }].filter(s, count(s.classes) > 0) }].filter(g, g.key == 'models' || count(g.classes) > 0).map(g, count(g.classes))) == 0 && count(spaceStore.policy.sentences) == 0"
                     },
                     "then": {
                       "type": "we-text",
@@ -26748,7 +27306,508 @@
                           "type": "$each",
                           "props": {
                             "items": {
-                              "$": "[{ key: 'space', label: 'This space', classes: recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), rows: recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), sub: [] }, { key: 'other', label: 'Other apps', classes: distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' }), rows: distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' }), sub: [] }, { key: 'we', label: 'Built in', classes: distinct([{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], recordStore.creatableEntities.filter(k, k.group != 'This space' && !(k.value in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(k, { id: k.value, label: k.label, icon: k.icon })), rows: [{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], sub: [{ key: 'blocks', label: 'Blocks', classes: recordStore.creatableEntities.filter(k, k.group != 'This space' && !(k.value in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(k, { id: k.value, label: k.label, icon: k.icon }) }].filter(s, count(s.classes) > 0) }].filter(g, count(g.classes) > 0)"
+                              "$": "[{ key: 'models', label: 'Models', classes: distinct(recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' })), rows: distinct(recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' })), sub: [] }, { key: 'we', label: 'Built in', classes: distinct([{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], recordStore.creatableEntities.filter(k, k.group != 'This space' && !(k.value in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(k, { id: k.value, label: k.label, icon: k.icon })), rows: [{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], sub: [{ key: 'blocks', label: 'Blocks', classes: recordStore.creatableEntities.filter(k, k.group != 'This space' && !(k.value in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(k, { id: k.value, label: k.label, icon: k.icon }) }].filter(s, count(s.classes) > 0) }].filter(g, g.key == 'models' || count(g.classes) > 0).filter(g, g.key == 'models')"
+                            },
+                            "as": "group"
+                          },
+                          "children": [
+                            {
+                              "type": "Column",
+                              "props": { "gap": "600" },
+                              "children": [
+                                {
+                                  "type": "Column",
+                                  "props": { "gap": "300" },
+                                  "children": [
+                                    {
+                                      "type": "Row",
+                                      "props": { "gap": "200", "ay": "center" },
+                                      "children": [
+                                        { "type": "we-icon", "props": { "name": "shapes", "color": "text-muted" } },
+                                        {
+                                          "type": "we-text",
+                                          "props": { "variant": "subheading", "fontWeight": "semibold" },
+                                          "children": [{ "$": "group.label" }]
+                                        },
+                                        {
+                                          "type": "we-text",
+                                          "props": { "color": "text-muted" },
+                                          "children": [{ "$": "count(group.rows)" }]
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "$if",
+                                      "props": {
+                                        "condition": { "$": "count(group.rows) > 0" },
+                                        "then": {
+                                          "type": "Grid",
+                                          "props": { "minChildWidth": "240px", "gap": "300" },
+                                          "children": [
+                                            {
+                                              "type": "$each",
+                                              "props": { "items": { "$": "group.rows" }, "as": "cls" },
+                                              "children": [
+                                                {
+                                                  "type": "we-button",
+                                                  "props": {
+                                                    "variant": "bare",
+                                                    "width": "100%",
+                                                    "onClick": {
+                                                      "$invoke": "routeStore.navigate",
+                                                      "args": [
+                                                        { "$": "spaceStore.spacePath + '/dna'" },
+                                                        { "$": "{ query: { dna: 'model|' + cls.id } }" }
+                                                      ]
+                                                    }
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "type": "Card",
+                                                      "props": {
+                                                        "bg": "surface",
+                                                        "gap": "300",
+                                                        "width": "100%",
+                                                        "height": "100%",
+                                                        "direction": "row",
+                                                        "ay": "center",
+                                                        "border": "1px solid transparent",
+                                                        "hoverProps": {
+                                                          "border": "1px solid accent-border",
+                                                          "shadow": "glow"
+                                                        }
+                                                      },
+                                                      "children": [
+                                                        {
+                                                          "type": "we-icon",
+                                                          "props": {
+                                                            "name": { "$": "cls.icon" },
+                                                            "color": "accent-text",
+                                                            "size": "md"
+                                                          }
+                                                        },
+                                                        {
+                                                          "type": "Column",
+                                                          "props": { "flex": "1", "minWidth": "0", "gap": "100" },
+                                                          "children": [
+                                                            {
+                                                              "type": "we-text",
+                                                              "props": { "fontWeight": "semibold", "truncate": true },
+                                                              "children": [{ "$": "cls.label" }]
+                                                            },
+                                                            {
+                                                              "type": "we-text",
+                                                              "props": {
+                                                                "variant": "footnote",
+                                                                "color": "text-muted",
+                                                                "truncate": true
+                                                              },
+                                                              "children": [
+                                                                { "$": "cls.namespace ? cls.namespace : cls.id" }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        },
+                                        "else": {
+                                          "type": "we-text",
+                                          "props": { "variant": "footnote", "color": "text-muted", "italic": true },
+                                          "children": ["No models yet. Add one in the space's settings."]
+                                        }
+                                      }
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "$each",
+                                  "props": { "items": { "$": "group.sub" }, "as": "sub" },
+                                  "children": [
+                                    {
+                                      "type": "Column",
+                                      "props": { "gap": "300" },
+                                      "children": [
+                                        {
+                                          "type": "Row",
+                                          "props": { "gap": "200", "ay": "center" },
+                                          "children": [
+                                            {
+                                              "type": "we-icon",
+                                              "props": { "name": "squares-four", "color": "text-muted" }
+                                            },
+                                            {
+                                              "type": "we-text",
+                                              "props": { "variant": "subheading", "fontWeight": "semibold" },
+                                              "children": [{ "$": "sub.label" }]
+                                            },
+                                            {
+                                              "type": "we-text",
+                                              "props": { "color": "text-muted" },
+                                              "children": [{ "$": "count(sub.classes)" }]
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "Grid",
+                                          "props": { "minChildWidth": "240px", "gap": "300" },
+                                          "children": [
+                                            {
+                                              "type": "$each",
+                                              "props": { "items": { "$": "sub.classes" }, "as": "cls" },
+                                              "children": [
+                                                {
+                                                  "type": "we-button",
+                                                  "props": {
+                                                    "variant": "bare",
+                                                    "width": "100%",
+                                                    "onClick": {
+                                                      "$invoke": "routeStore.navigate",
+                                                      "args": [
+                                                        { "$": "spaceStore.spacePath + '/dna'" },
+                                                        { "$": "{ query: { dna: 'model|' + cls.id } }" }
+                                                      ]
+                                                    }
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "type": "Card",
+                                                      "props": {
+                                                        "bg": "surface",
+                                                        "gap": "300",
+                                                        "width": "100%",
+                                                        "height": "100%",
+                                                        "direction": "row",
+                                                        "ay": "center",
+                                                        "border": "1px solid transparent",
+                                                        "hoverProps": {
+                                                          "border": "1px solid accent-border",
+                                                          "shadow": "glow"
+                                                        }
+                                                      },
+                                                      "children": [
+                                                        {
+                                                          "type": "we-icon",
+                                                          "props": {
+                                                            "name": { "$": "cls.icon" },
+                                                            "color": "accent-text",
+                                                            "size": "md"
+                                                          }
+                                                        },
+                                                        {
+                                                          "type": "Column",
+                                                          "props": { "flex": "1", "minWidth": "0", "gap": "100" },
+                                                          "children": [
+                                                            {
+                                                              "type": "we-text",
+                                                              "props": { "fontWeight": "semibold", "truncate": true },
+                                                              "children": [{ "$": "cls.label" }]
+                                                            },
+                                                            {
+                                                              "type": "we-text",
+                                                              "props": {
+                                                                "variant": "footnote",
+                                                                "color": "text-muted",
+                                                                "truncate": true
+                                                              },
+                                                              "children": [
+                                                                { "$": "cls.namespace ? cls.namespace : cls.id" }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "type": "$if",
+                  "props": {
+                    "condition": {
+                      "$": "(routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') == 'all'"
+                    },
+                    "then": {
+                      "type": "Column",
+                      "props": { "gap": "600" },
+                      "children": [
+                        {
+                          "type": "Column",
+                          "props": { "gap": "300" },
+                          "children": [
+                            {
+                              "type": "Row",
+                              "props": { "gap": "200", "ay": "center" },
+                              "children": [
+                                { "type": "we-icon", "props": { "name": "flow-arrow", "color": "text-muted" } },
+                                {
+                                  "type": "we-text",
+                                  "props": { "variant": "subheading", "fontWeight": "semibold" },
+                                  "children": ["Flows"]
+                                },
+                                {
+                                  "type": "we-text",
+                                  "props": { "color": "text-muted" },
+                                  "children": [{ "$": "count(workflowStore.workflows.filter(f, !f.archived))" }]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "$if",
+                              "props": {
+                                "condition": { "$": "count(workflowStore.workflows.filter(f, !f.archived)) > 0" },
+                                "then": {
+                                  "type": "Grid",
+                                  "props": { "minChildWidth": "240px", "gap": "300" },
+                                  "children": [
+                                    {
+                                      "type": "$each",
+                                      "props": {
+                                        "items": { "$": "workflowStore.workflows.filter(f, !f.archived)" },
+                                        "as": "workflow"
+                                      },
+                                      "children": [
+                                        {
+                                          "type": "we-button",
+                                          "props": {
+                                            "variant": "bare",
+                                            "width": "100%",
+                                            "onClick": [
+                                              {
+                                                "$invoke": "workflowStore.openWorkflow",
+                                                "args": [{ "$": "workflow.name" }]
+                                              },
+                                              {
+                                                "$invoke": "routeStore.navigate",
+                                                "args": [
+                                                  {
+                                                    "$": "(spaceStore.spacePath + '/workflows') + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/workflows', '?') ? '&' : '?') + 'view=canvas' : '')"
+                                                  }
+                                                ]
+                                              }
+                                            ]
+                                          },
+                                          "children": [
+                                            {
+                                              "type": "Card",
+                                              "props": {
+                                                "bg": "surface",
+                                                "gap": "300",
+                                                "width": "100%",
+                                                "height": "100%",
+                                                "direction": "row",
+                                                "ay": "center",
+                                                "border": "1px solid transparent",
+                                                "hoverProps": { "border": "1px solid accent-border", "shadow": "glow" }
+                                              },
+                                              "children": [
+                                                {
+                                                  "type": "we-icon",
+                                                  "props": {
+                                                    "name": "flow-arrow",
+                                                    "color": "accent-text",
+                                                    "size": "md"
+                                                  }
+                                                },
+                                                {
+                                                  "type": "Column",
+                                                  "props": { "flex": "1", "minWidth": "0", "gap": "100" },
+                                                  "children": [
+                                                    {
+                                                      "type": "we-text",
+                                                      "props": { "fontWeight": "semibold", "truncate": true },
+                                                      "children": [{ "$": "workflow.label" }]
+                                                    },
+                                                    {
+                                                      "type": "we-text",
+                                                      "props": {
+                                                        "variant": "footnote",
+                                                        "color": "text-muted",
+                                                        "truncate": true
+                                                      },
+                                                      "children": [
+                                                        {
+                                                          "$": "`${workflow.records} ${plural(workflow.records, 'record', 'records')}`"
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                "else": {
+                                  "type": "we-text",
+                                  "props": { "variant": "footnote", "color": "text-muted", "italic": true },
+                                  "children": ["No flows yet. Write one from the + beside Flows in the tree."]
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "type": "$if",
+                  "props": {
+                    "condition": {
+                      "$": "(routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') == 'all'"
+                    },
+                    "then": {
+                      "type": "Column",
+                      "props": { "gap": "600" },
+                      "children": [
+                        {
+                          "type": "Column",
+                          "props": { "gap": "300" },
+                          "children": [
+                            {
+                              "type": "Row",
+                              "props": { "gap": "200", "ay": "center" },
+                              "children": [
+                                { "type": "we-icon", "props": { "name": "layout", "color": "text-muted" } },
+                                {
+                                  "type": "we-text",
+                                  "props": { "variant": "subheading", "fontWeight": "semibold" },
+                                  "children": ["Templates"]
+                                },
+                                {
+                                  "type": "we-text",
+                                  "props": { "color": "text-muted" },
+                                  "children": [
+                                    {
+                                      "$": "count(distinct(find(templateStore.switcherGroups, { label: 'Built-in' }).items.filter(t, t.id == spaceStore.spaceDefaultTemplateId || t.id == templateStore.currentSwitcherId), find(templateStore.switcherGroups, { label: 'Space templates' }).items, find(templateStore.switcherGroups, { label: 'My templates' }).items))"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "Grid",
+                              "props": { "minChildWidth": "240px", "gap": "300" },
+                              "children": [
+                                {
+                                  "type": "$each",
+                                  "props": {
+                                    "items": {
+                                      "$": "distinct(find(templateStore.switcherGroups, { label: 'Built-in' }).items.filter(t, t.id == spaceStore.spaceDefaultTemplateId || t.id == templateStore.currentSwitcherId), find(templateStore.switcherGroups, { label: 'Space templates' }).items, find(templateStore.switcherGroups, { label: 'My templates' }).items)"
+                                    },
+                                    "as": "template"
+                                  },
+                                  "children": [
+                                    {
+                                      "type": "we-button",
+                                      "props": {
+                                        "variant": "bare",
+                                        "width": "100%",
+                                        "onClick": {
+                                          "$invoke": "templateStore.switchTemplate",
+                                          "args": [{ "$": "template.id" }]
+                                        }
+                                      },
+                                      "children": [
+                                        {
+                                          "type": "Card",
+                                          "props": {
+                                            "bg": "surface",
+                                            "gap": "300",
+                                            "width": "100%",
+                                            "height": "100%",
+                                            "direction": "row",
+                                            "ay": "center",
+                                            "border": {
+                                              "$": "(template.id == templateStore.currentSwitcherId) ? '1px solid accent' : '1px solid transparent'"
+                                            },
+                                            "hoverProps": { "border": "1px solid accent-border", "shadow": "glow" }
+                                          },
+                                          "children": [
+                                            {
+                                              "type": "we-icon",
+                                              "props": {
+                                                "name": { "$": "template.icon ? template.icon : 'layout'" },
+                                                "color": "accent-text",
+                                                "size": "md"
+                                              }
+                                            },
+                                            {
+                                              "type": "Column",
+                                              "props": { "flex": "1", "minWidth": "0", "gap": "100" },
+                                              "children": [
+                                                {
+                                                  "type": "we-text",
+                                                  "props": { "fontWeight": "semibold", "truncate": true },
+                                                  "children": [{ "$": "template.name" }]
+                                                }
+                                              ]
+                                            },
+                                            {
+                                              "type": "$if",
+                                              "props": {
+                                                "condition": {
+                                                  "$": "template.id == spaceStore.spaceDefaultTemplateId"
+                                                },
+                                                "then": {
+                                                  "type": "we-icon",
+                                                  "props": { "name": "star", "weight": "fill", "color": "warning-text" }
+                                                }
+                                              }
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "type": "$if",
+                  "props": {
+                    "condition": {
+                      "$": "(routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') == 'all'"
+                    },
+                    "then": {
+                      "type": "Column",
+                      "props": { "gap": "600" },
+                      "children": [
+                        {
+                          "type": "$each",
+                          "props": {
+                            "items": {
+                              "$": "[{ key: 'models', label: 'Models', classes: distinct(recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' })), rows: distinct(recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' })), sub: [] }, { key: 'we', label: 'Built in', classes: distinct([{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], recordStore.creatableEntities.filter(k, k.group != 'This space' && !(k.value in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(k, { id: k.value, label: k.label, icon: k.icon })), rows: [{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], sub: [{ key: 'blocks', label: 'Blocks', classes: recordStore.creatableEntities.filter(k, k.group != 'This space' && !(k.value in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(k, { id: k.value, label: k.label, icon: k.icon }) }].filter(s, count(s.classes) > 0) }].filter(g, g.key == 'models' || count(g.classes) > 0).filter(g, g.key == 'we')"
                             },
                             "as": "group"
                           },

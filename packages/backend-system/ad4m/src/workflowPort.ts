@@ -386,12 +386,6 @@ const millisOf = (value: unknown): number | undefined => {
   return undefined;
 };
 
-/** A class the engine registers on first use reads as absent until then, rather than as an error. */
-const unregistered = (error: unknown) =>
-  /no shacl shape stored|shape not found|class not registered|not registered/i.test(
-    error instanceof Error ? error.message : String(error),
-  );
-
 const runOf = (instance: FlowInstance): Run => {
   const startedAt = instance.startedAtMillis ?? millisOf((instance.record as { createdAt?: unknown }).createdAt);
   return {
@@ -402,35 +396,50 @@ const runOf = (instance: FlowInstance): Run => {
   };
 };
 
+/**
+ * Every run of a flow, or of one record in it. `FlowInstance` and `FlowTransitionProposal` are the
+ * executor's classes: it stores each before its first instance, and a query of one it has not stored
+ * yet answers with no instances. WE never registers them.
+ */
 async function readRuns(perspective: PerspectiveProxy, flowName: string, subject?: string): Promise<Run[]> {
-  try {
-    const instances = await FlowInstance.findAll(perspective, subject ? { flowName, subject } : { flowName });
-    return instances.map(runOf);
-  } catch (error) {
-    if (unregistered(error)) return [];
-    throw error;
-  }
+  const instances = await FlowInstance.findAll(perspective, subject ? { flowName, subject } : { flowName });
+  return instances.map(runOf);
 }
 
-/** Every proposal on these runs, with its voters, whether it settled a move, and its evidence. */
-async function readProposals(perspective: PerspectiveProxy, runs: readonly Run[]): Promise<EngineProposal[]> {
+/** The most runs one `flowFired` call may ask about; the executor answers 400 above it. */
+export const FLOW_FIRED_BATCH = 200;
+
+/**
+ * The ids of every proposal that settled a move on any of these runs, as this agent's executor
+ * recorded them: one `flowFired` call per {@link FLOW_FIRED_BATCH} runs, rather than one per run.
+ */
+export async function readFired(
+  perspective: Pick<PerspectiveProxy, 'flowFired'>,
+  runs: readonly string[],
+): Promise<Set<string>> {
+  const batches: string[][] = [];
+  for (let at = 0; at < runs.length; at += FLOW_FIRED_BATCH) batches.push(runs.slice(at, at + FLOW_FIRED_BATCH));
+  const answers = await Promise.all(batches.map((batch) => perspective.flowFired(batch)));
+  return new Set(answers.flat().flatMap((entry) => entry.fired));
+}
+
+/**
+ * Every proposal on these runs, with its voters, whether it settled a move, and its evidence.
+ * Exported for its tests; the port is the way in.
+ */
+export async function readProposals(perspective: PerspectiveProxy, runs: readonly Run[]): Promise<EngineProposal[]> {
   if (!runs.length) return [];
   const runIds = new Set(runs.map((run) => run.id));
-  let rows: FlowTransitionProposal[] = [];
-  try {
-    rows = await FlowTransitionProposal.findAll(perspective);
-  } catch (error) {
-    if (!unregistered(error)) throw error;
-  }
+  const rows = await FlowTransitionProposal.findAll(perspective);
   const mine = rows.filter((row) => runIds.has(row.flowInstance));
   if (!mine.length) return [];
 
-  // One read for every vote at once, and one per run with proposals for what settled — the executor
-  // answers settled proposals per run, and keeps them per agent, so there is no link to read instead.
+  // One read for every vote at once, and one for what settled on every run with proposals — the
+  // executor keeps settled proposals per agent, so there is no link to read instead.
   const runsWithProposals = [...new Set(mine.map((row) => row.flowInstance))];
-  const [votes, firedPerRun] = await Promise.all([
+  const [votes, fired] = await Promise.all([
     perspective.get(new LinkQuery({ predicate: ACCEPTED_BY })),
-    Promise.all(runsWithProposals.map((run) => perspective.flowFired(run))),
+    readFired(perspective, runsWithProposals),
   ]);
   const votersOf = new Map<string, string[]>();
   for (const vote of votes) {
@@ -442,7 +451,6 @@ async function readProposals(perspective: PerspectiveProxy, runs: readonly Run[]
     if (!list.includes(voter)) list.push(voter);
     votersOf.set(vote.data.source, list);
   }
-  const fired = new Set(firedPerRun.flat());
 
   return mine.map((row) => {
     const proposedAt = millisOf((row as { createdAt?: unknown }).createdAt);

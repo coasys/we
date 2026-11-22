@@ -1,40 +1,41 @@
 import type { RouteSchema, SchemaNode } from '@we/schema-shared';
-import { emptyNote } from '@we/template-kit';
+import { chooseTemplate, emptyNote, SPACE_TEMPLATE_CHOICES } from '@we/template-kit';
 
 import { viewBar } from './bar.ts';
 import {
   CLASS_COUNT,
   CLASS_DISPLAY,
-  CLASS_GROUPS,
   CLASS_ICON,
   CLASS_LABEL,
   CLASS_QUERIES,
   CLASS_ROWS,
   CLASS_ROWS_COUNT,
   CLASS_ROWS_LOADED,
+  classGroup,
   DNA_AT,
   DNA_ID,
   DNA_KIND,
   DNA_RECORD,
   dnaCrumbs,
   editDna,
+  FLOW_DEFINITIONS,
   MODEL,
   ON_CLASS,
   POLICY,
   POLICY_RULES,
 } from './dna.ts';
 import { detail, glyph, grid, tile } from './groups.ts';
-import { dnaPage, inspect } from './paths.ts';
+import { dnaPage, groupPath, inspect } from './paths.ts';
 
 /**
  * Social DNA as a page — what the tree's Social DNA rows open in Page mode, as every other group row
  * opens its page. Canvas mode draws the same classes as the vocabulary map, which shows how they
  * connect; this is the page for reading through them.
  *
- * All of it is the classes the space has, in the tree's three groups — its own, other apps', WE's —
- * and the policy. A class (`?dna=model|<name>`) is its records, drawn as its display says, whoever
- * wrote the class; one of them chosen is outlined and read in the inspector beside the page. Editing
- * is the bar's button.
+ * It reads as the tree lists it: Models (the space's own classes and other apps'), Flows, Templates,
+ * WE's built-in classes and the policy. A class (`?dna=model|<name>`) is its records, drawn as its
+ * display says, whoever wrote the class; one of them chosen is outlined and read in the inspector
+ * beside the page. Editing is the bar's button.
  */
 
 /** A section's heading: what it is, how many (`count`, an expression), and — given `onClick` — the way to it alone. */
@@ -75,43 +76,57 @@ const classTiles = (items: string): SchemaNode =>
     },
   ]);
 
-/**
- * The classes, a section a group, on the whole page: the group's own classes, then each nested
- * group (the built-in group's Blocks) as a section of its own, as the tree lists them.
- */
-const classGroups: SchemaNode = {
+/** A section of the whole page, shown while nothing in particular is in focus. */
+const onAll = (children: SchemaNode[]): SchemaNode => ({
   type: '$if',
   props: {
     condition: { $: `${DNA_AT} == 'all'` },
-    then: {
-      type: 'Column',
-      props: { gap: '600' },
+    then: { type: 'Column', props: { gap: '600' }, children },
+  },
+});
+
+/**
+ * The classes of one group, a section, on the whole page: the group's own classes, then each nested
+ * group (the built-in group's Blocks) as a section of its own, as the tree lists them. `items` lists
+ * the group, or nothing.
+ */
+const classGroups = (items: string, empty?: string): SchemaNode =>
+  onAll([
+    {
+      type: '$each',
+      props: { items: { $: items }, as: 'group' },
       children: [
         {
-          type: '$each',
-          props: { items: { $: CLASS_GROUPS }, as: 'group' },
+          type: 'Column',
+          props: { gap: '600' },
           children: [
             {
               type: 'Column',
-              props: { gap: '600' },
+              props: { gap: '300' },
+              children: [
+                heading([{ $: 'group.label' }], 'shapes', 'count(group.rows)'),
+                empty
+                  ? {
+                      type: '$if',
+                      props: {
+                        condition: { $: 'count(group.rows) > 0' },
+                        then: classTiles('group.rows'),
+                        else: emptyNote(empty),
+                      },
+                    }
+                  : classTiles('group.rows'),
+              ],
+            },
+            {
+              type: '$each',
+              props: { items: { $: 'group.sub' }, as: 'sub' },
               children: [
                 {
                   type: 'Column',
                   props: { gap: '300' },
-                  children: [heading([{ $: 'group.label' }], 'shapes', 'count(group.rows)'), classTiles('group.rows')],
-                },
-                {
-                  type: '$each',
-                  props: { items: { $: 'group.sub' }, as: 'sub' },
                   children: [
-                    {
-                      type: 'Column',
-                      props: { gap: '300' },
-                      children: [
-                        heading([{ $: 'sub.label' }], 'squares-four', 'count(sub.classes)'),
-                        classTiles('sub.classes'),
-                      ],
-                    },
+                    heading([{ $: 'sub.label' }], 'squares-four', 'count(sub.classes)'),
+                    classTiles('sub.classes'),
                   ],
                 },
               ],
@@ -120,8 +135,77 @@ const classGroups: SchemaNode = {
         },
       ],
     },
+  ]);
+
+/** The flows written here, each opening on the flows page, as its row in the tree does. */
+const flowsSection: SchemaNode = onAll([
+  {
+    type: 'Column',
+    props: { gap: '300' },
+    children: [
+      heading(['Flows'], 'flow-arrow', `count(${FLOW_DEFINITIONS})`),
+      {
+        type: '$if',
+        props: {
+          condition: { $: `count(${FLOW_DEFINITIONS}) > 0` },
+          then: grid([
+            {
+              type: '$each',
+              props: { items: { $: FLOW_DEFINITIONS }, as: 'workflow' },
+              children: [
+                tile({
+                  lead: glyph('flow-arrow'),
+                  title: { $: 'workflow.label' },
+                  detail: detail({ $: "`${workflow.records} ${plural(workflow.records, 'record', 'records')}`" }),
+                  onClick: [
+                    { $invoke: 'workflowStore.openWorkflow', args: [{ $: 'workflow.name' }] },
+                    { $invoke: 'routeStore.navigate', args: [{ $: groupPath('workflows') }] },
+                  ],
+                }),
+              ],
+            },
+          ]),
+          else: emptyNote('No flows yet. Write one from the + beside Flows in the tree.'),
+        },
+      },
+    ],
   },
-};
+]);
+
+/**
+ * The templates somebody would switch between here, as the tree lists them (`SPACE_TEMPLATE_CHOICES`):
+ * the one worn outlined, the space's default starred, and choosing one wears it.
+ */
+const templatesSection: SchemaNode = onAll([
+  {
+    type: 'Column',
+    props: { gap: '300' },
+    children: [
+      heading(['Templates'], 'layout', `count(${SPACE_TEMPLATE_CHOICES})`),
+      grid([
+        {
+          type: '$each',
+          props: { items: { $: SPACE_TEMPLATE_CHOICES }, as: 'template' },
+          children: [
+            tile({
+              lead: glyph({ $: "template.icon ? template.icon : 'layout'" }),
+              title: { $: 'template.name' },
+              badge: {
+                type: '$if',
+                props: {
+                  condition: { $: 'template.id == spaceStore.spaceDefaultTemplateId' },
+                  then: { type: 'we-icon', props: { name: 'star', weight: 'fill', color: 'warning-text' } },
+                },
+              },
+              selected: 'template.id == templateStore.currentSwitcherId',
+              onClick: chooseTemplate('template.id'),
+            }),
+          ],
+        },
+      ]),
+    ],
+  },
+]);
 
 /**
  * The class in focus: its records, from the store's list where it keeps one and from a query of the
@@ -225,7 +309,10 @@ export const dnaRoute: RouteSchema = {
             ),
           },
         },
-        classGroups,
+        classGroups(classGroup('models'), "No models yet. Add one in the space's settings."),
+        flowsSection,
+        templatesSection,
+        classGroups(classGroup('we')),
         classPage,
         policySection,
       ],

@@ -9,7 +9,7 @@ import { getEntityForDataset } from '@we/backend-ad4m';
 import { until } from '@we/e2e/waits';
 
 import { dismissNamePrompt } from '../steps/space.mjs';
-import { leaveCall, startCall, stopTranscribing, typeIntoCall, untilHeard, watchCall } from './call.mjs';
+import { leaveCall, startCall, stopTranscribing, typeIntoCall, unmute, untilHeard, watchCall } from './call.mjs';
 import { SLOW, STUB, world } from './context.mjs';
 import { DNA, records, spacePerspective, valueOf } from './dna.mjs';
 import { HEARD, LINES, roleOf, SCRIPT } from './stub-llm.mjs';
@@ -80,9 +80,9 @@ export async function enableTargets(page, names, perspective) {
     // dock frame and pressed nothing; unforced, a click that something else would take says so.
     const drawn = page.locator('we-switch').filter({ has: toggle });
     if (!(await toggle.isChecked())) await drawn.click();
-    // Each switch writes the whole list, read from the app's copy of the space
-    // (SpaceStore.tsx `setExtractionTarget`). A second click before the first write lands reads the
-    // list without the first class and writes it back without it, so each write is waited for.
+    // Each switch writes the whole list. The store publishes the merged list before that write
+    // (SpaceStore.tsx `setExtractionTarget`), and this waits until the stored row has caught up:
+    // the check below reads storage, which shows a class only once its write has landed.
     await until(stored, has(name), { timeout: 30_000, what: `${name} in the space's extraction targets` });
   }
   const all = await stored();
@@ -168,8 +168,10 @@ export async function acceptInInspector(who, perspective, record) {
  */
 export async function openInspectorWorkflows(page) {
   const name = 'Show or hide workflows';
-  const closed = page.getByRole('button', { name, expanded: false });
-  if ((await closed.count()) > 0) await closed.first().click();
+  // Wait for the inspector to draw the button first: a count before it is drawn finds nothing to open.
+  const fold = page.getByRole('button', { name }).first();
+  await fold.waitFor({ timeout: 30_000 });
+  if ((await fold.getAttribute('aria-expanded')) !== 'true') await fold.click();
   await page.getByRole('button', { name, expanded: true }).first().waitFor({ timeout: 30_000 });
 }
 
@@ -193,10 +195,10 @@ export async function joinByInvite(who, sharedUrl) {
  * Setup shared by the verticals after V2: a call in which the film's lines are said, the records
  * extraction makes of them, and the call left. Resolves with the call's id and the records by class.
  *
- * The stub tier waits for every record the script makes. The real tier waits until every line has
- * landed, stops transcribing (the fake microphone loops its recording), and then waits for a titled
- * record of each class in `needs` — the classes the vertical goes on to use — or, with none named,
- * for any record of the package.
+ * The stub tier waits for every record the script makes. The real tier unmutes (a call joins
+ * silent), waits until every line has landed, stops transcribing (the fake microphone loops its
+ * recording), and then waits for a titled record of each class in `needs` — the classes the
+ * vertical goes on to use — or, with none named, for any record of the package.
  */
 export async function callThatFinds(who, perspective, needs = []) {
   const callId = await startCall(who.page);
@@ -204,6 +206,7 @@ export async function callThatFinds(who, perspective, needs = []) {
     await watchCall(who, perspective, callId);
     await typeIntoCall(who, perspective, callId, Object.values(LINES));
   } else {
+    await unmute(who.page);
     await untilHeard(perspective, callId, HEARD, SLOW);
     await stopTranscribing(who.page);
   }

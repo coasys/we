@@ -29,7 +29,7 @@ const BEFORE_GATE = REST[REST.indexOf(GATED) - 1] ?? FIRST;
 vertical('V4 decide flow: two approvals', (v) => {
   let alice, bob, shared, perspective, bobPerspective, question;
 
-  v.step('the package and its flows are installed, and the Workflows page lists them', async () => {
+  v.step('the package and its flows are installed, and the flows page lists them', async () => {
     assert.ok(GATED, `the package has a flow with a two-approval state (${FLOW?.name})`);
     alice = await v.person('Alice');
     shared = await createSpace(alice.page, alice.account, SPACE, 'mesh');
@@ -45,8 +45,13 @@ vertical('V4 decide flow: two approvals', (v) => {
     // Loaded, not reached through the tree: the app reads a space's workflows when the space opens
     // and after its own writes, so flows another client installed show on the next load.
     await openSpacePath(alice.page, shared, '/workflows');
+    // The page's own list: each flow is a button named for it and its record count. The space tree lists
+    // the flows too, as tree items under Social DNA, so a bare text match can land on a row there.
     for (const flow of DNA.flows)
-      await alice.page.getByText(flow.name, { exact: true }).first().waitFor({ timeout: 60_000 });
+      await alice.page
+        .getByRole('button', { name: new RegExp(`^${flow.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s+\\d+$`) })
+        .first()
+        .waitFor({ timeout: 60_000 });
   });
 
   v.step('Bob joins the space', async () => {

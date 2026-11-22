@@ -245,6 +245,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     devFeatures: state('session'),
     devTools: state('session'),
     setDevTools: action('session'),
+    testPeople: state('session'),
+    setTestPeople: action('session'),
     credentialEntered: state('session'),
     credentialConfirmed: state('session'),
     // Signs in with the host field's password. No argument, so nothing a template collected can be
@@ -442,7 +444,6 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     switchDataset: ambient('navigation'),
     reorderDatasets: action('agent'),
     removeDataset: destructive('space-admin'),
-    cleanupSpaceSdna: action('space-admin'),
 
     /*
       Agent settings and the datasets that hold them.
@@ -498,7 +499,6 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     onDatasetRemoved: WIRING,
     readDatasets: WIRING,
     initSystemDatasets: WIRING,
-    prepareDataset: WIRING,
     loadDatasets: WIRING,
     subscribeToChanges: WIRING,
     getDatasetOrder: WIRING,
@@ -1559,6 +1559,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     open: state('content'),
     draft: state('view-state'),
     recordWorkflows: state('content'),
+    active: state('content'),
     refreshWorkflows: ambient('content'),
     openWorkflow: ambient('view-state'),
     closeWorkflow: ambient('view-state'),
