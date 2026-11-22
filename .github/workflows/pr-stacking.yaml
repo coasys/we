@@ -3,7 +3,7 @@
 # A PR based on another PR's branch rather than `dev` looks like any other in the PR list: GitHub
 # shows the base only on the PR's own page, as a branch name. So this keeps two things:
 #
-# - A `stacked` LABEL on every PR based on anything but `dev` or `main`, which the list shows beside
+# - A `stacked` LABEL on every PR based on anything but `dev`, `staging` or `main`, which the list shows beside
 #   the title. It follows the base alone, so it goes by itself when GitHub retargets the PR at `dev`
 #   after the PR below it merges.
 # - A CHECK that the description's `Stacked on: #N` block agrees with the base — present when the
