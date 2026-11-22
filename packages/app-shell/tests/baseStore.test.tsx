@@ -39,7 +39,7 @@ const view = (over: Partial<IdentityCustodyView> = {}): IdentityCustodyView => (
   unlock: null,
   blocked: null,
   devices: [],
-  revokedHolders: [],
+  endedHolders: [],
   requests: [],
   masterWaiting: false,
   encMismatch: false,

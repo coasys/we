@@ -277,7 +277,7 @@ export type {
   Proposal,
 } from './workflows';
 export type { CallPort, CallSessionOptions } from './call';
-export { NO_IDENTITY_CAPABILITIES } from './identity';
+export { NO_IDENTITY_CAPABILITIES, UnlinkUncertainError } from './identity';
 export { BOT_ACTIONS, BotGrantConflict, isBotGrantConflict } from './bots';
 export type {
   BotAction,
