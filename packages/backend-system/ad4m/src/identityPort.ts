@@ -71,6 +71,11 @@ export interface Ad4mCustodyHost {
    * custody service does; a phone says `false`, and Settings then does not offer it.
    */
   checksEmail?: boolean;
+  /**
+   * Whether the host adds a host as a device (`add-cloud-device`). Absent means it does, as the
+   * desktop custody service does; a phone says `false`.
+   */
+  addsHost?: boolean;
 }
 
 /** The custody service's public state, as it answers `publicState`. */
@@ -106,6 +111,8 @@ export interface Ad4mCustodyState {
   thisDevice?: { keyId: string | null; kind: string } | null;
   /** The key log lists an enc key for this computer other than the one the custody service keeps. */
   encMismatch: boolean;
+  /** Coasys cloud's address; empty when its setting is not an address. */
+  cloudUrl?: string;
 }
 
 type Raw = Record<string, unknown>;
@@ -195,6 +202,7 @@ export function readCustody(value: Ad4mCustodyState): IdentityCustodyView {
     thisDevice: readCustodyDevice(value.thisDevice),
     pending: text(value.pending),
     encMismatch: value.encMismatch,
+    cloudUrl: value.cloudUrl || null,
   };
 }
 
@@ -318,6 +326,7 @@ export function createAd4mIdentityPort(backendClient: unknown, custody?: Ad4mCus
         recoveryWords: !!custody && custody.takesWords !== false,
         emailCheck: !!custody && custody.checksEmail !== false,
         linkDevice: !!custody,
+        cloudDevice: !!custody && custody.addsHost !== false,
       };
     },
 

@@ -1,57 +1,41 @@
 /**
- * The phone's key session, over a fake executor and a fake plugin: what is signed, what the
- * executor is asked, and when a renewal happens.
+ * The key session, over a fake executor and a fake signer: what is signed, what the executor is asked,
+ * and when a renewal happens. And the computer's signer, which has its own executor sign.
  */
 import { describe, expect, it, vi } from 'vitest';
 
-import type { DeviceKeyPlugin, SessionSignRequest, SignedSessionStatement } from './deviceKey';
-import { deviceKeyPlugin } from './deviceKey';
-import { keyLoginTarget } from './deviceKeyConnector';
-import { KEY_HOST_KEY, readKeyHost, rememberKeyHost } from './keyHost';
 import {
+  executorSigner,
   keepRenewed,
   type KeySession,
   type KeySessionAgent,
+  type KeySigner,
   loginWithDeviceKey,
+  originOf,
   RENEW_BEFORE_MS,
   type RenewalClock,
   RETRY_MS,
-} from './keySession';
-import { unusedPlugin } from './unusedPlugin.testing';
+  type SessionSignRequest,
+  type SignedKeyStatement,
+} from '../src/keySession';
 
 const URL_ = 'http://127.0.0.1:12600';
 const EXECUTOR = 'did:key:z6MkExecutor';
 const SCID = 'did:scid:coasys:1:QmIdentity';
 
-function fakePlugin(overrides: Partial<DeviceKeyPlugin> = {}) {
+function fakeSigner() {
   const signed: SessionSignRequest[] = [];
-  const plugin: DeviceKeyPlugin = {
-    ...unusedPlugin(),
-    status: async () => ({
-      keys: { sign: 'z6MkPhone', enc: 'z6LSPhone', didKey: 'did:key:z6MkPhone' },
-      identity: { scid: 'QmIdentity', did: SCID, seq: 3 },
-      pending: null,
-      protection: 'tee',
-    }),
-    create: async () => {
-      throw new Error('not used');
-    },
-    join: async () => {
-      throw new Error('not used');
-    },
-    waitJoined: async () => {
-      throw new Error('not used');
-    },
-    signSession: async (request): Promise<SignedSessionStatement> => {
+  const signer: KeySigner = {
+    signSession: async (request): Promise<SignedKeyStatement> => {
       signed.push(request);
       return {
         statement: {
           v: 1,
           purpose: request.purpose,
           scid: SCID,
-          key: 'z6MkPhone',
+          key: 'z6MkDevice',
           executor: request.executor,
-          audience: new URL(request.url).origin,
+          audience: originOf(request.url),
           challenge: request.challenge,
           client: { kind: 'native' },
           ...(request.grant ? { grant: request.grant } : {}),
@@ -60,23 +44,22 @@ function fakePlugin(overrides: Partial<DeviceKeyPlugin> = {}) {
         sig: `z-signed-${signed.length}`,
       };
     },
-    ...overrides,
   };
-  return { plugin, signed };
+  return { signer, signed };
 }
 
 function fakeAgent(now: () => number) {
   let challenges = 0;
-  const logins: unknown[] = [];
-  const renewals: SignedSessionStatement[] = [];
+  const logins: { proof: SignedKeyStatement; app: unknown }[] = [];
+  const renewals: SignedKeyStatement[] = [];
   let refuseRenewals = 0;
-  const agent: KeySessionAgent = {
+  const agent = {
     sessionChallenge: async () => ({ challenge: `challenge-${++challenges}`, executor: EXECUTOR, expiresAt: 0 }),
-    loginWithKey: async (proof, app) => {
+    loginWithKey: async (proof: SignedKeyStatement, app: unknown) => {
       logins.push({ proof, app });
       return session(now());
     },
-    renewSession: async (proof) => {
+    renewSession: async (proof: SignedKeyStatement) => {
       if (refuseRenewals > 0) {
         refuseRenewals--;
         throw new Error('store-unavailable');
@@ -84,7 +67,7 @@ function fakeAgent(now: () => number) {
       renewals.push(proof);
       return { token: `token-${renewals.length + 1}`, expiresAt: Math.floor(now() / 1000) + 3600 };
     },
-  };
+  } as unknown as KeySessionAgent;
   return {
     agent,
     logins,
@@ -100,7 +83,7 @@ function session(nowMs: number): KeySession {
     token: 'token-1',
     expiresAt: Math.floor(nowMs / 1000) + 3600,
     grantId: 'grant-1',
-    role: 'app',
+    role: 'tenant',
     did: 'did:key:z6MkHostAgent',
     scid: SCID,
   };
@@ -144,29 +127,28 @@ function manualClock(start = 1_700_000_000_000) {
 
 describe('loginWithDeviceKey', () => {
   it('signs a login for the challenge and the URL it dials, and logs in with it', async () => {
-    const { plugin, signed } = fakePlugin();
+    const { signer, signed } = fakeSigner();
     const { agent, logins } = fakeAgent(() => 0);
     const app = { appName: 'WE', appDesc: 'd', appDomain: 'ad4m.weco.io' };
 
-    const result = await loginWithDeviceKey(plugin, agent, URL_, app);
+    const result = await loginWithDeviceKey(signer, agent, URL_, app);
 
     expect(signed).toEqual([{ purpose: 'login', executor: EXECUTOR, url: URL_, challenge: 'challenge-1' }]);
     expect(logins).toHaveLength(1);
-    const { proof, app: sentApp } = logins[0] as { proof: SignedSessionStatement; app: unknown };
-    expect(proof.statement.audience).toBe(URL_);
-    expect(proof.statement.grant).toBeUndefined();
-    expect(sentApp).toBe(app);
+    expect(logins[0].proof.statement.audience).toBe(URL_);
+    expect(logins[0].proof.statement.grant).toBeUndefined();
+    expect(logins[0].app).toBe(app);
     expect(result.grantId).toBe('grant-1');
   });
 
   it('passes a refusal on, so the connector can fall back', async () => {
-    const { plugin } = fakePlugin();
+    const { signer } = fakeSigner();
     const { agent } = fakeAgent(() => 0);
-    agent.loginWithKey = async () => {
+    (agent as { loginWithKey: unknown }).loginWithKey = async () => {
       throw new Error('not-known');
     };
     await expect(
-      loginWithDeviceKey(plugin, agent, URL_, { appName: 'a', appDesc: 'b', appDomain: 'c' }),
+      loginWithDeviceKey(signer, agent, URL_, { appName: 'a', appDesc: 'b', appDomain: 'c' }),
     ).rejects.toThrow('not-known');
   });
 });
@@ -174,11 +156,11 @@ describe('loginWithDeviceKey', () => {
 describe('keepRenewed', () => {
   it('renews five minutes before each expiry, naming the grant, and hands on each new token', async () => {
     const time = manualClock();
-    const { plugin, signed } = fakePlugin();
+    const { signer, signed } = fakeSigner();
     const { agent, renewals } = fakeAgent(time.now);
     const tokens: string[] = [];
     const renewal = keepRenewed({
-      plugin,
+      signer,
       agent,
       url: URL_,
       session: session(time.now()),
@@ -207,7 +189,7 @@ describe('keepRenewed', () => {
 
   it('tries a failed renewal again while the session has time, and says when it ran out', async () => {
     const time = manualClock();
-    const { plugin } = fakePlugin();
+    const { signer } = fakeSigner();
     const fake = fakeAgent(time.now);
     const expired = vi.fn();
     const tokens: string[] = [];
@@ -216,7 +198,7 @@ describe('keepRenewed', () => {
 
     fake.refuse(2);
     keepRenewed({
-      plugin,
+      signer,
       agent: fake.agent,
       url: URL_,
       session: session(time.now()),
@@ -241,10 +223,10 @@ describe('keepRenewed', () => {
 
   it('asks nothing once stopped', async () => {
     const time = manualClock();
-    const { plugin, signed } = fakePlugin();
+    const { signer, signed } = fakeSigner();
     const { agent } = fakeAgent(time.now);
     const renewal = keepRenewed({
-      plugin,
+      signer,
       agent,
       url: URL_,
       session: session(time.now()),
@@ -258,100 +240,68 @@ describe('keepRenewed', () => {
   });
 });
 
-describe('deviceKeyPlugin', () => {
-  it('is null without the native bridge or without the plugin', () => {
-    expect(deviceKeyPlugin(undefined)).toBeNull();
-    expect(deviceKeyPlugin({ isPluginAvailable: () => false, nativePromise: async () => ({}) })).toBeNull();
+describe('originOf', () => {
+  it('is the origin the executor checks: ws as http, default ports and paths left out', () => {
+    expect(originOf('https://Cloud.Example.org/rpc?x=1')).toBe('https://cloud.example.org');
+    expect(originOf('wss://cloud.example.org:443')).toBe('https://cloud.example.org');
+    expect(originOf('ws://127.0.0.1:12600/ws')).toBe('http://127.0.0.1:12600');
+    expect(originOf('http://127.0.0.1:80')).toBe('http://127.0.0.1');
   });
 
-  it('calls the plugin by name through the bridge', async () => {
-    const calls: unknown[][] = [];
-    const plugin = deviceKeyPlugin({
-      isPluginAvailable: (name) => name === 'DeviceKey',
-      nativePromise: async (...args) => {
-        calls.push(args);
-        return { progress: { state: 'waiting', detail: 'claimed' } };
-      },
+  it('refuses what is not a URL', () => {
+    expect(() => originOf('not a url')).toThrow();
+  });
+});
+
+describe('executorSigner', () => {
+  it('has this computer’s executor sign a native statement for the host it dials', async () => {
+    const asked: unknown[] = [];
+    const answer = { statement: { v: 1 }, sig: 'zSig' } as unknown as SignedKeyStatement;
+    const signer = executorSigner(
+      {
+        signSessionStatement: async (statement: unknown) => {
+          asked.push(statement);
+          return answer;
+        },
+      } as never,
+      () => 1_700_000_123_456,
+    );
+
+    const login = await signer.signSession({
+      purpose: 'login',
+      executor: EXECUTOR,
+      url: 'https://Cloud.example.org/',
+      challenge: 'c1',
     });
-    expect(plugin).not.toBeNull();
-    await plugin!.waitJoined({ seconds: 5 });
-    await plugin!.status();
-    expect(calls).toEqual([
-      ['DeviceKey', 'waitJoined', { seconds: 5 }],
-      ['DeviceKey', 'status', {}],
-    ]);
-  });
-});
+    await signer.signSession({
+      purpose: 'renew',
+      executor: EXECUTOR,
+      url: 'https://cloud.example.org',
+      challenge: 'c2',
+      grant: 'g1',
+    });
 
-describe('keyLoginTarget', () => {
-  it('logs in by key only with the plugin, an executor URL and a joined identity', async () => {
-    const { plugin } = fakePlugin();
-    expect(await keyLoginTarget({ plugin: () => plugin, keyHost: () => URL_ })).toEqual({ plugin, url: URL_ });
-    expect(await keyLoginTarget({ plugin: () => null, keyHost: () => URL_ })).toBeNull();
-    expect(await keyLoginTarget({ plugin: () => plugin, keyHost: () => null })).toBeNull();
-
-    const notJoined = fakePlugin({
-      status: async () => ({ keys: null, identity: null, pending: null, protection: 'none' }),
-    }).plugin;
-    expect(await keyLoginTarget({ plugin: () => notJoined, keyHost: () => URL_ })).toBeNull();
-
-    vi.spyOn(console, 'error').mockImplementation(() => {});
-    const broken = fakePlugin({
-      status: async () => {
-        throw new Error('Damaged');
+    expect(login).toBe(answer);
+    expect(asked).toEqual([
+      {
+        v: 1,
+        purpose: 'login',
+        executor: EXECUTOR,
+        audience: 'https://cloud.example.org',
+        challenge: 'c1',
+        client: { kind: 'native' },
+        issuedAt: 1_700_000_123,
       },
-    }).plugin;
-    expect(await keyLoginTarget({ plugin: () => broken, keyHost: () => URL_ })).toBeNull();
-  });
-
-  it('says what protection the sealing key has, and warns when it is not secure hardware', async () => {
-    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    try {
-      const joined = fakePlugin().plugin;
-      const software = {
-        ...joined,
-        status: async () => ({ ...(await joined.status()), protection: 'software' as const }),
-      };
-      // Accepted at every level: software still logs in.
-      expect(await keyLoginTarget({ plugin: () => software, keyHost: () => URL_ })).not.toBeNull();
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining('software protection'));
-
-      expect(await keyLoginTarget({ plugin: () => joined, keyHost: () => URL_ })).not.toBeNull();
-      expect(info).toHaveBeenCalledWith(expect.stringContaining('tee protection'));
-      expect(warn).toHaveBeenCalledTimes(1);
-    } finally {
-      info.mockRestore();
-      warn.mockRestore();
-    }
-  });
-});
-
-describe('the key host', () => {
-  function memory() {
-    const map = new Map<string, string>();
-    return {
-      getItem: (k: string) => map.get(k) ?? null,
-      setItem: (k: string, v: string) => void map.set(k, v),
-      removeItem: (k: string) => void map.delete(k),
-      map,
-    };
-  }
-
-  it('keeps an http(s) URL under its own key, and forgets it', () => {
-    const storage = memory();
-    expect(readKeyHost(storage)).toBeNull();
-    rememberKeyHost('https://node.example.org/', storage);
-    expect(storage.map.get(KEY_HOST_KEY)).toBe('https://node.example.org');
-    expect(readKeyHost(storage)).toBe('https://node.example.org');
-    rememberKeyHost(null, storage);
-    expect(readKeyHost(storage)).toBeNull();
-  });
-
-  it('refuses what is not http(s)', () => {
-    const storage = memory();
-    expect(() => rememberKeyHost('javascript:alert(1)', storage)).toThrow();
-    storage.map.set(KEY_HOST_KEY, 'file:///etc/passwd');
-    expect(readKeyHost(storage)).toBeNull();
+      {
+        v: 1,
+        purpose: 'renew',
+        executor: EXECUTOR,
+        audience: 'https://cloud.example.org',
+        challenge: 'c2',
+        client: { kind: 'native' },
+        grant: 'g1',
+        issuedAt: 1_700_000_123,
+      },
+    ]);
   });
 });

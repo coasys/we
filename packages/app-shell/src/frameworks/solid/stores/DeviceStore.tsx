@@ -60,6 +60,11 @@ export interface DeviceStore {
    * key of the identity.
    */
   canManage: Accessor<boolean>;
+  /**
+   * "Add a cloud device" can be offered: this computer keeps the master key and its custody service
+   * adds a host.
+   */
+  canAddCloudDevice: Accessor<boolean>;
   /** "Show code" can be offered: this computer can join an identity, and speaks for none yet. */
   canShowCode: Accessor<boolean>;
   /**
@@ -99,6 +104,11 @@ export interface DeviceStore {
   refresh: () => Promise<void>;
   /** Adds a server to the identity, by an offer link it is given. */
   addDevice: () => Promise<IdentityChangeOutcome>;
+  /**
+   * Adds a host as a device: Coasys cloud when `address` is empty, else the host at `address` (a
+   * host chosen in the cascade hands its address here).
+   */
+  addCloudDevice: (address?: string) => Promise<IdentityChangeOutcome>;
   /** Adds a device by the code it shows ("Enter code"). */
   scanDevice: () => Promise<IdentityChangeOutcome>;
   /** Shows this computer's code, for a device of the identity to add it. */
@@ -229,6 +239,7 @@ export function DeviceStoreProvider(props: ParentProps) {
   const words = () => session.identityCapabilities().recoveryWords && identity.canChange();
   const linking = () => session.identityCapabilities().linkDevice && identity.canChange();
   const canManage = () => linking() && !!identity.did() && !!identity.custody()?.holdsMaster;
+  const canAddCloudDevice = () => canManage() && session.identityCapabilities().cloudDevice;
   const masterWaiting = () => !!identity.custody()?.masterWaiting && !encMismatch();
   // This computer keeps the master key and no other active device does (or is being sent it), so
   // once it leaves, nothing that is still linked could use that key. Read from the private record's
@@ -283,6 +294,7 @@ export function DeviceStoreProvider(props: ParentProps) {
     deviceNoun: () => deviceNoun(here()),
     validCount: () => rows().filter((d) => d.valid).length,
     canManage,
+    canAddCloudDevice,
     canShowCode: () => linking() && identity.statusLoaded() && !identity.did() && !identity.custody()?.holdsMaster,
     canAskMaster: () =>
       linking() &&
@@ -311,6 +323,15 @@ export function DeviceStoreProvider(props: ParentProps) {
     error,
     refresh,
     addDevice: () => step(() => identity.open({ kind: 'add-device' })),
+    addCloudDevice: (address) => {
+      const typed = address?.trim();
+      return step(() =>
+        identity.open({
+          kind: 'add-cloud-device',
+          host: typed ? { kind: 'address', url: typed } : { kind: 'coasys' },
+        }),
+      );
+    },
     scanDevice: () => step(() => identity.open({ kind: 'scan-device' })),
     showCode: () => step(() => identity.open({ kind: 'show-code' })),
     takeMaster: () => step(() => identity.open({ kind: 'take-master' })),

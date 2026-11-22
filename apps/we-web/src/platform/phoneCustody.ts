@@ -61,6 +61,7 @@ export function phoneCustodyHost(plugin: DeviceKeyPlugin, nav: PageNav = browser
     takesWords: false,
     // The email check runs in the desktop custody service only.
     checksEmail: false,
+    addsHost: false,
 
     open(change) {
       nav.assign(identityPageUrl(change, nav.here()));

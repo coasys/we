@@ -29,6 +29,7 @@
 //! No Windows: the desktop app does not ship there. Nothing here links the executor;
 //! `tests/boundary.rs` keeps it so.
 
+pub mod cloud;
 pub mod enc;
 pub mod host;
 pub mod keylog;

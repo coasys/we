@@ -337,7 +337,24 @@ describe('the AD4M identity port with a custody service', () => {
       thisDevice: null,
       pending: null,
       encMismatch: false,
+      cloudUrl: null,
     });
+  });
+
+  it('turns adding a cloud device on for a custody service that adds hosts, off for a phone', async () => {
+    expect((await createAd4mIdentityPort(client({ status: {} }), custody()).capabilities()).cloudDevice).toBe(true);
+    const phone = createAd4mIdentityPort(client({ status: {} }), { ...custody(), addsHost: false });
+    expect((await phone.capabilities()).cloudDevice).toBe(false);
+    // With no custody service there is nothing to add it through.
+    expect((await createAd4mIdentityPort(client({ status: {} })).capabilities()).cloudDevice).toBe(false);
+  });
+
+  it('carries Coasys cloud’s address from the custody service, and none when it names none', async () => {
+    const named = createAd4mIdentityPort(client({ status: {} }), custody({ cloudUrl: 'https://cloud.example.org' }));
+    expect((await named.custody!()).cloudUrl).toBe('https://cloud.example.org');
+    // An empty address (a setting that is not one) is no address.
+    const empty = createAd4mIdentityPort(client({ status: {} }), custody({ cloudUrl: '' }));
+    expect((await empty.custody!()).cloudUrl).toBeNull();
   });
 
   it('names an identity made here whose publish has not gone through yet', async () => {
