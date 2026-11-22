@@ -26,11 +26,13 @@ use ad4m_identity_client::flows::master::{
 };
 use ad4m_identity_client::flows::requests::{self, Answered};
 use ad4m_identity_client::flows::restore::RestoreFlow;
-use ad4m_identity_client::flows::revoke::{revoke, revoke_and_rotate};
+use ad4m_identity_client::flows::revoke::{
+    finish_revoke, revoke, revoke_and_rotate, PendingRevoke, Revoked,
+};
 use ad4m_identity_client::flows::rotate::{rotate, Rotated};
 use ad4m_identity_client::flows::unlink::unlink_key;
 use ad4m_identity_client::record::{self, Change};
-use ad4m_identity_client::vault::{MasterUse, Vault};
+use ad4m_identity_client::vault::{MasterUse, Stored, Vault};
 use ad4m_identity_client::{
     ClientError, Clock, ExecutorRpc, OsRandom, Secret, Standing, SystemClock, VaultError, VaultId,
     ViaExecutor, WithEncKey,
@@ -39,7 +41,7 @@ use ad4m_identity_core::link::{DeviceString, OfferKind, CONFIRM_GRACE_S, OFFER_T
 use ad4m_identity_core::record::{DeviceEntry, DeviceKind, HoldsMaster as Holds, Place};
 use ad4m_identity_core::words::{self, Words};
 use ad4m_identity_core::{BotScope, Event, Op, BOT_ACTIONS};
-use ad4m_ldk::identity::DeviceRequestBody;
+use ad4m_ldk::identity::{DeviceRequest, DeviceRequestBody};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio::sync::{broadcast, mpsc, oneshot};
@@ -294,6 +296,8 @@ pub enum Screen {
     RevokeConfirm {
         #[serde(rename = "keyId")]
         key_id: String,
+        /// The record's name of the device, when it names it: the window shows it before the key id.
+        name: Option<String>,
         /// The device may still hold a valid master key: the key log let it keep one
         /// ([`may_hold_master`]), and a revoke leaves such a copy valid until the master key is
         /// replaced.
@@ -337,6 +341,21 @@ pub enum Screen {
         revoked: Vec<String>,
         reason: String,
         note: Option<String>,
+    },
+    /// The master key WAS replaced (master `index` is current) but the revoke that follows the
+    /// rotation was not published: the devices `key_ids` are not revoked yet. `reason`: why, in
+    /// words (the store's refusal of the time, when that was it). Not a last screen:
+    /// [`StepInput::RetryRevoke`] publishes only the revoke, from a `since` the person may correct.
+    /// `needs_words`: the 12 words are asked again first (a restore holds them still).
+    RotatedNotRevoked {
+        index: u32,
+        #[serde(rename = "keyIds")]
+        key_ids: Vec<String>,
+        /// The record's name of each of `key_ids`, in the same order: `None` where it names none.
+        names: Vec<Option<String>>,
+        reason: String,
+        #[serde(rename = "needsWords")]
+        needs_words: bool,
     },
     /// A restore's rotation is published (the identity `did` is restored and `revoked` are locked
     /// out), but this computer is not linked to it yet (`reason`). Not a last screen:
@@ -528,8 +547,8 @@ pub enum StepInput {
     },
     /// Revoke, with the passphrase where the computer needs one, and the time (ms since the epoch)
     /// from which the key is no longer trusted; none is the revoke's own time. `rotate`: also
-    /// replace the master key, which asks for the 12 words next; the rotation revokes the key in
-    /// its own event, which carries no time, so `since` does not apply.
+    /// replace the master key, which asks for the 12 words next; the rotation comes first and the
+    /// revoke follows as its own event, which carries the same `since`.
     Revoke {
         passphrase: Option<TypedSecret>,
         #[serde(default)]
@@ -547,6 +566,16 @@ pub enum StepInput {
         key_ids: Vec<String>,
         #[serde(default)]
         name: Option<String>,
+        /// The time (ms since the epoch) from which the locked-out devices are no longer trusted;
+        /// none is the revoke's own time.
+        #[serde(default)]
+        since: Option<u64>,
+    },
+    /// On `RotatedNotRevoked`: publish the revoke the rotation left, from `since` (the person may
+    /// have corrected it; none is the revoke's own time).
+    RetryRevoke {
+        #[serde(default)]
+        since: Option<u64>,
     },
     /// Yes on `RemoveMaster`.
     Remove,
@@ -600,6 +629,7 @@ impl std::fmt::Debug for StepInput {
             StepInput::Revoke { .. } => "revoke",
             StepInput::TwelveWords { .. } => "twelve-words",
             StepInput::LockOut { .. } => "lock-out",
+            StepInput::RetryRevoke { .. } => "retry-revoke",
             StepInput::Remove => "remove",
             StepInput::Discard => "discard",
             StepInput::TryAgain => "try-again",
@@ -637,10 +667,10 @@ pub struct CustodyPublic {
     /// The devices the private record names, by key id. Empty before the first record write, or
     /// when the record cannot be read now.
     pub devices: Vec<DeviceName>,
-    /// The revoked keys that may still hold a valid master key, from the key log
-    /// ([`crate::keylog::revoked_holders`]): the record drops a key's entry when it is revoked, and a
-    /// revoke does not replace the master key. Empty when the log cannot be read now.
-    pub revoked_holders: Vec<String>,
+    /// The revoked or unlinked keys that may still hold a valid master key, from the key log
+    /// ([`crate::keylog::ended_holders`]): the record drops a key's entry when it ends, and neither
+    /// a revoke nor an unlink replaces the master key. Empty when the log cannot be read now.
+    pub ended_holders: Vec<String>,
     /// The requests of other devices waiting in the identity's box.
     pub requests: Vec<RequestView>,
     /// A master key waits in this computer's inbox ("Accept master key").
@@ -1051,6 +1081,10 @@ fn failure_message(e: &ClientError) -> String {
                                  replaced. Try again in a moment."
             .into(),
         ClientError::OnlyCopy => ONLY_COPY.into(),
+        ClientError::RotatedNotRevoked { pending, .. } => format!(
+            "Your master key was replaced (master #{}), but the devices are not revoked yet.",
+            pending.index
+        ),
         ClientError::RecordBusy => {
             "Another device is changing your device list. Try again in a moment.".into()
         }
@@ -1321,7 +1355,7 @@ async fn public_state_on<R: ExecutorRpc>(
     let mut master_waiting = false;
     let mut devices = Vec::new();
     let mut requests = Vec::new();
-    let mut revoked_holders = Vec::new();
+    let mut ended_holders = Vec::new();
     let mut enc_mismatch = false;
     if let (Some(executor), Some(did)) = (executor, did.as_deref()) {
         master_waiting = master_waits(executor).await;
@@ -1380,7 +1414,7 @@ async fn public_state_on<R: ExecutorRpc>(
         };
         match executor.events(did).await {
             Ok(events) => {
-                revoked_holders = crate::keylog::revoked_holders(&events);
+                ended_holders = crate::keylog::ended_holders(&events);
                 enc_mismatch = status
                     .as_ref()
                     .is_some_and(|status| enc_lost(&events, status));
@@ -1425,7 +1459,7 @@ async fn public_state_on<R: ExecutorRpc>(
         unlock,
         blocked,
         devices,
-        revoked_holders,
+        ended_holders,
         requests,
         master_waiting,
         enc_mismatch,
@@ -4019,7 +4053,12 @@ async fn answer_on<R: ExecutorRpc>(
                     });
                     if rotated.kept.is_err() {
                         let answered = format!("The request from {device} was answered.");
-                        return replaced(rotated, joined(Some(answered), left), stopped);
+                        return replaced(
+                            rotated,
+                            revoke_targets(&request),
+                            joined(Some(answered), left),
+                            stopped,
+                        );
                     }
                     joined(handed_over(&rotated.pushes, &rotated.record, stopped), left)
                 }
@@ -4048,24 +4087,66 @@ async fn answer_on<R: ExecutorRpc>(
                 ))),
             ),
             Err(ClientError::NeedsWords) => {
+                // Read before the rotation, which rewrites the record without the devices it
+                // unlinks: a retry screen names them from here.
+                let names = record_names(executor, vault, &did).await;
                 let mut error = None;
                 let screen = loop {
-                    let Some((_typed, words)) =
-                        ask_words(vault, address, rx, reply, "answer", error.take()).await
-                    else {
-                        return;
+                    // The typed words and the parsed ones end with this block, before the wait
+                    // for a retry: a pending revoke may wait long, and holds neither.
+                    let answered = {
+                        let Some((_typed, words)) =
+                            ask_words(vault, address, rx, reply, "answer", error.take()).await
+                        else {
+                            return;
+                        };
+                        requests::answer_with_words(
+                            executor, &unlocking, &did, &request, &words, &CLOCK, &RANDOM,
+                        )
+                        .await
                     };
-                    match requests::answer_with_words(
-                        executor, &unlocking, &did, &request, &words, &CLOCK, &RANDOM,
-                    )
-                    .await
-                    {
+                    match answered {
                         Ok(answered) => {
                             let stopped = rotation_stopped(executor, &answered).await;
                             break answered_screen(answered, stopped);
                         }
                         Err(ClientError::NotTheseWords(_)) => {
                             error = Some((NOT_THESE_WORDS.into(), None))
+                        }
+                        // The master key is replaced; the revoke is not published yet.
+                        Err(ClientError::RotatedNotRevoked { pending, cause }) => {
+                            let resumed = resume_revoke(
+                                executor,
+                                vault,
+                                address,
+                                rx,
+                                reply,
+                                &unlocking,
+                                &did,
+                                Some(&request),
+                                &names,
+                                pending,
+                                cause,
+                                "answer",
+                            )
+                            .await;
+                            break match resumed {
+                                None => return,
+                                Some(Ok((revoked, pending, left))) => {
+                                    let note =
+                                        joined(handed_over(&[], &revoked.record, false), left);
+                                    match kept_after_retry(&unlocking, &did, &pending, note.clone())
+                                    {
+                                        Ok(_) => Screen::RequestAnswered {
+                                            kind,
+                                            device: device.clone(),
+                                            note,
+                                        },
+                                        Err(not_kept) => *not_kept,
+                                    }
+                                }
+                                Some(Err(e)) => failed_after_rotation(&e),
+                            };
                         }
                         Err(e) => break failed(&e),
                     }
@@ -4257,15 +4338,22 @@ fn since_refusal(e: &ClientError) -> Option<String> {
     let ClientError::Rpc(rpc) = e else {
         return None;
     };
-    if !rpc.message.contains("since") {
+    since_sentence(&rpc.message)
+}
+
+/// [`since_refusal`] for a store's message as text, the cause a [`ClientError::RotatedNotRevoked`]
+/// carries.
+fn since_sentence(message: &str) -> Option<String> {
+    if !message.contains("since") {
         return None;
     }
-    Some(if rpc.message.contains("later than") {
+    Some(if message.contains("later than") {
         "That time is in the future. Pick a time that has passed.".into()
-    } else if rpc.message.contains("before the store appended") {
+    } else if message.contains("before the store appended") {
         "That is before this device was added. Pick a later time.".into()
     } else {
-        format!("The time was refused: {}", rpc.message)
+        log::warn!("custody: the store refused the revoke's time: {message}");
+        "That time was not accepted. Pick a time after the device was linked.".into()
     })
 }
 
@@ -4349,15 +4437,20 @@ async fn unlink_on<R: ExecutorRpc>(
             continue;
         };
         let unlocking = vault.unlocking(passphrase.map(TypedSecret::into_secret));
-        match unlink_key(executor, &unlocking, &did, &key_id, &CLOCK).await {
-            Ok(head) => {
+        match unlink_key(executor, &unlocking, &did, &key_id, &CLOCK, &RANDOM).await {
+            Ok(unlinked) => {
+                if let Err(e) = &unlinked.record {
+                    log::warn!("custody: the record still lists the unlinked device: {e}");
+                }
+                // The main window's refreshes cannot unlock a sealed key; this unlock can.
+                retry_quietly(executor, &unlocking, &did).await;
                 return answer(
                     reply,
                     Ok(Screen::Unlinked {
                         key_id,
-                        seq: head.seq,
+                        seq: unlinked.head.seq,
                     }),
-                )
+                );
             }
             Err(ClientError::Vault(VaultError::Cancelled)) if needs => answer(
                 reply,
@@ -4619,8 +4712,13 @@ async fn revoke_on<R: ExecutorRpc>(
         Err(screen) => return answer(reply, Ok(screen)),
     };
     let may_hold_master = may_hold_master(executor, &did, &key_id).await;
+    // Read before the rotation: it rewrites the record without the devices it unlinks, so a retry
+    // screen after it names them from here.
+    let names = record_names(executor, vault, &did).await;
+    let name = name_in(&names, &key_id);
     let confirm = |error: Option<String>| Screen::RevokeConfirm {
         key_id: key_id.clone(),
+        name: name.clone(),
         may_hold_master,
         rotate: may_hold_master,
         passphrase: needs,
@@ -4656,19 +4754,46 @@ async fn revoke_on<R: ExecutorRpc>(
             let revoke = [ad4m_identity_core::KeyId::from(key_id.as_str())];
             let mut error = None;
             let screen = loop {
-                let Some((_typed, words)) =
-                    ask_words(vault, address, rx, reply, "revoke", error.take()).await
-                else {
-                    return;
+                // The typed words and the parsed ones end with this block, before the wait for
+                // a retry: a pending revoke may wait long, and holds neither.
+                let rotated = {
+                    let Some((_typed, words)) =
+                        ask_words(vault, address, rx, reply, "revoke", error.take()).await
+                    else {
+                        return;
+                    };
+                    revoke_and_rotate(
+                        executor, &unlocking, &did, &revoke, since, &words, &CLOCK, &RANDOM,
+                    )
+                    .await
                 };
-                match revoke_and_rotate(
-                    executor, &unlocking, &did, &revoke, &words, &CLOCK, &RANDOM,
-                )
-                .await
-                {
+                match rotated {
                     Ok(rotated) => {
                         let stopped = stopped_at_record(executor, &rotated.record).await;
-                        break replaced(rotated, None, stopped);
+                        break replaced(rotated, vec![key_id.clone()], None, stopped);
+                    }
+                    // The master key is replaced; the revoke is not published yet.
+                    Err(ClientError::RotatedNotRevoked { pending, cause }) => {
+                        let resumed = resume_revoke(
+                            executor, vault, address, rx, reply, &unlocking, &did, None, &names,
+                            pending, cause, "revoke",
+                        )
+                        .await;
+                        break match resumed {
+                            None => return,
+                            Some(Ok((revoked, pending, _))) => {
+                                let note = handed_over(&[], &revoked.record, false);
+                                match kept_after_retry(&unlocking, &did, &pending, note.clone()) {
+                                    Ok(kept) => Screen::MasterReplaced {
+                                        index: kept,
+                                        revoked: key_names(&pending),
+                                        note,
+                                    },
+                                    Err(not_kept) => *not_kept,
+                                }
+                            }
+                            Some(Err(e)) => failed_after_rotation(&e),
+                        };
                     }
                     Err(ClientError::NotTheseWords(_)) => {
                         error = Some((NOT_THESE_WORDS.into(), None))
@@ -4720,6 +4845,211 @@ async fn revoke_on<R: ExecutorRpc>(
     }
 }
 
+/// The key ids a `confirm-revoke` request names.
+fn revoke_targets(request: &DeviceRequest) -> Vec<String> {
+    match &request.body {
+        DeviceRequestBody::ConfirmRevoke { key_ids, .. } => key_ids.clone(),
+        _ => Vec::new(),
+    }
+}
+
+/// The key ids a pending revoke names.
+fn key_names(pending: &PendingRevoke) -> Vec<String> {
+    pending
+        .key_ids
+        .iter()
+        .map(|k| k.as_str().to_string())
+        .collect()
+}
+
+/// The last screen of a rotation whose revoke stopped for good (the log moved on, the words are
+/// not the current master's): the master key stands replaced, so the step never says that nothing
+/// changed.
+fn failed_after_rotation(e: &ClientError) -> Screen {
+    Screen::Failed {
+        message: format!(
+            "Your master key was replaced, but the devices are not revoked: {} Revoke them again \
+             from Devices.",
+            after_publish(e)
+        ),
+    }
+}
+
+/// The record's name for each device it lists, as `(key id, name)`: empty when the record cannot be
+/// read, so a screen falls back to the key id.
+async fn record_names<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    vault: &DesktopVault,
+    did: &str,
+) -> Vec<(String, String)> {
+    match record::read(executor, &vault.unlocking(None), did).await {
+        Ok(opened) => opened
+            .map(|o| device_names(&o.record))
+            .unwrap_or_default()
+            .into_iter()
+            .map(|d| (d.key_id, d.name))
+            .collect(),
+        Err(e) => {
+            log::warn!("custody: the device names cannot be read now: {e}");
+            Vec::new()
+        }
+    }
+}
+
+/// The name `names` gives `key_id`, if any and not blank.
+fn name_in(names: &[(String, String)], key_id: &str) -> Option<String> {
+    names
+        .iter()
+        .find(|(id, name)| id == key_id && !name.trim().is_empty())
+        .map(|(_, name)| name.clone())
+}
+
+/// What a [`Screen::RotatedNotRevoked`] says is wrong, in words: the store's refusal of the time
+/// when that was it, else the cause. Never a word or a passphrase: the cause is the executor's.
+fn not_revoked_reason(cause: &str) -> String {
+    since_sentence(cause).unwrap_or_else(|| {
+        log::warn!("custody: the revoke was refused: {cause}");
+        "The revoke was not accepted. Try again.".into()
+    })
+}
+
+/// Shows [`Screen::RotatedNotRevoked`] and waits for [`StepInput::RetryRevoke`]: the `since` to
+/// publish the revoke with. `None` when the window cancels (the rotation stands).
+#[allow(clippy::too_many_arguments)]
+async fn ask_retry_revoke(
+    vault: &DesktopVault,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+    pending: &PendingRevoke,
+    names: &[(String, String)],
+    cause: &str,
+    words: bool,
+) -> Option<Option<u64>> {
+    answer(
+        reply,
+        Ok(Screen::RotatedNotRevoked {
+            index: pending.index,
+            key_ids: key_names(pending),
+            names: key_names(pending)
+                .iter()
+                .map(|id| name_in(names, id))
+                .collect(),
+            reason: not_revoked_reason(cause),
+            needs_words: words,
+        }),
+    );
+    loop {
+        match next_input(vault, address, rx, reply).await? {
+            StepInput::RetryRevoke { since } => return Some(since),
+            _ => answer(reply, Err(CustodyError::WrongInput)),
+        }
+    }
+}
+
+/// The revoke a published rotation left ([`ClientError::RotatedNotRevoked`]), published on its own:
+/// [`finish_revoke`] (or [`requests::finish_answer`] when `request` is the one being answered)
+/// never rotates again. Each try shows [`Screen::RotatedNotRevoked`], asks the 12 words again (the
+/// service holds none between steps; they go to the call and are wiped on drop, never to a screen
+/// or the log) and takes a `since` the person may have corrected. A refusal of the revoke shows the
+/// screen again with the store's words. `Ok` carries the published revoke, its pending (the keys
+/// it ended) and, for a request, a note when it could not be deleted; `Err` is a refusal no retry
+/// answers (the log moved on). `None` when the window cancels.
+#[allow(clippy::too_many_arguments)]
+async fn resume_revoke<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    vault: &DesktopVault,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+    unlocking: &Unlocking<'_>,
+    did: &str,
+    request: Option<&DeviceRequest>,
+    names: &[(String, String)],
+    mut pending: PendingRevoke,
+    mut cause: String,
+    purpose: &'static str,
+) -> Option<Result<(Revoked, PendingRevoke, Option<String>), ClientError>> {
+    loop {
+        let since =
+            ask_retry_revoke(vault, address, rx, reply, &pending, names, &cause, true).await?;
+        let mut error = None;
+        loop {
+            let (_typed, words) =
+                ask_words(vault, address, rx, reply, purpose, error.take()).await?;
+            let published = match request {
+                None => finish_revoke(
+                    executor, unlocking, did, &words, &pending, since, &CLOCK, &RANDOM,
+                )
+                .await
+                .map(|revoked| (revoked, None)),
+                Some(request) => requests::finish_answer(
+                    executor, unlocking, did, request, &words, &pending, since, &CLOCK, &RANDOM,
+                )
+                .await
+                .map(|(revoked, deleted)| {
+                    let left = deleted.err().map(|e| {
+                        log::warn!("custody: the answered request was not deleted: {e}");
+                        "The request was answered, but it may still show in Requests.".to_string()
+                    });
+                    (revoked, left)
+                }),
+            };
+            match published {
+                Ok((revoked, left)) => return Some(Ok((revoked, pending, left))),
+                Err(ClientError::NotTheseWords(_)) => error = Some((NOT_THESE_WORDS.into(), None)),
+                Err(ClientError::RotatedNotRevoked {
+                    pending: again,
+                    cause: why,
+                }) => {
+                    pending = again;
+                    cause = why;
+                    break;
+                }
+                Err(e) => return Some(Err(e)),
+            }
+        }
+    }
+}
+
+/// The index this computer keeps after a retried revoke ([`resume_revoke`]) published. The first
+/// call of the step reported nothing about the keep: `revoke_and_rotate` answers only the pending
+/// revoke when the revoke fails, and the retry signs from the words and never stores a key. So the
+/// vault is asked, and a key the rotation left staged is promoted (the way `Rotated::kept` does).
+/// [`Screen::MasterNotKept`], with why and `note`, when no key at the rotation's index or later
+/// is kept; the rotation stands, and "Try again" replaces the master key once more.
+fn kept_after_retry(
+    unlocking: &Unlocking<'_>,
+    did: &str,
+    pending: &PendingRevoke,
+    note: Option<String>,
+) -> Result<u32, Box<Screen>> {
+    let kept = ad4m_identity_core::scid_of(did)
+        .ok_or(VaultError::NotFound)
+        .and_then(|scid| match unlocking.promote_master(scid, pending.index) {
+            Ok(Stored::Stored) => Ok(pending.index),
+            Ok(Stored::AlreadyNewer { kept }) => Ok(kept),
+            // Nothing staged: another app kept it already, or no key was ever staged.
+            Err(VaultError::NotFound) => match unlocking.master_index(scid)? {
+                Some(kept) if kept >= pending.index => Ok(kept),
+                _ => Err(VaultError::NotFound),
+            },
+            Err(e) => Err(e),
+        });
+    kept.map_err(|e| {
+        log::warn!(
+            "custody: master #{} is current, and this computer did not keep it: {e}",
+            pending.index
+        );
+        Box::new(Screen::MasterNotKept {
+            index: pending.index,
+            revoked: key_names(pending),
+            reason: after_publish(&ClientError::Vault(e)),
+            note,
+        })
+    })
+}
+
 /// Whether `unlocking` opens the master key of `did` kept here: a passphrase checked before a step
 /// that publishes, so a wrong one cannot leave a new key published and not kept.
 fn opens(unlocking: &Unlocking<'_>, did: &str) -> bool {
@@ -4767,12 +5097,12 @@ async fn ask_words(
 /// The last screen of a rotation that was published, saying what did not happen yet (`extra`
 /// first). When this computer could not keep the new key, [`Screen::MasterNotKept`]: the rotation
 /// stands either way, so neither screen says nothing changed.
-fn replaced(rotated: Rotated, extra: Option<String>, stopped: bool) -> Screen {
-    let revoked: Vec<String> = rotated
-        .revoked
-        .iter()
-        .map(|k| k.as_str().to_string())
-        .collect();
+fn replaced(
+    rotated: Rotated,
+    revoked: Vec<String>,
+    extra: Option<String>,
+    stopped: bool,
+) -> Screen {
     let note = joined(
         extra,
         handed_over(&rotated.pushes, &rotated.record, stopped),
@@ -4874,7 +5204,7 @@ async fn rotate_with_words<R: ExecutorRpc>(
         match rotated {
             Ok(rotated) => {
                 let stopped = stopped_at_record(executor, &rotated.record).await;
-                return Some(Ok(replaced(rotated, None, stopped)));
+                return Some(Ok(replaced(rotated, Vec::new(), None, stopped)));
             }
             Err(ClientError::NotTheseWords(_)) => error = Some((NOT_THESE_WORDS.into(), None)),
             Err(e) => return Some(Err(e)),
@@ -5285,17 +5615,20 @@ async fn restore_on<R: ExecutorRpc>(
             note,
         }),
     );
-    let (lock_out, name) = loop {
+    let (lock_out, name, since) = loop {
         let Some(input) = next_input(vault, address, rx, reply).await else {
             return;
         };
         match input {
-            StepInput::LockOut { key_ids, name }
-                if key_ids
-                    .iter()
-                    .all(|k| devices.iter().any(|d| &d.key_id == k)) =>
+            StepInput::LockOut {
+                key_ids,
+                name,
+                since,
+            } if key_ids
+                .iter()
+                .all(|k| devices.iter().any(|d| &d.key_id == k)) =>
             {
-                break (key_ids, name)
+                break (key_ids, name, since)
             }
             _ => answer(reply, Err(CustodyError::WrongInput)),
         }
@@ -5311,13 +5644,31 @@ async fn restore_on<R: ExecutorRpc>(
     // (a first restore stopped, a file of the custody folder gone) is recovered here, the words
     // checked first to make the identity's current master. "Replace master key", the way back
     // on a linked computer, refuses this one: it is not linked yet.
-    let finished = match recover_lost_epoch(executor, vault, &did, &words).await {
-        Ok(()) => flow.finish(&lock_out, entry.clone()).await,
+    let mut finished = match recover_lost_epoch(executor, vault, &did, &words).await {
+        Ok(()) => flow.finish(&lock_out, since, entry.clone()).await,
         Err(e) => Err(e),
     };
-    let restored = match finished {
-        Ok(restored) => restored,
-        Err(e) => return answer(reply, Ok(failed(&e))),
+    let restored = loop {
+        match finished {
+            Ok(restored) => break restored,
+            // The rotation is published and the lock-out's revoke is not: the flow holds the
+            // pending revoke and the words, so a retry takes only the `since`, which the person
+            // may correct, and enrols after the revoke.
+            Err(ClientError::RotatedNotRevoked { pending, cause }) => {
+                let named: Vec<(String, String)> = devices
+                    .iter()
+                    .filter_map(|d| Some((d.key_id.clone(), d.name.clone()?)))
+                    .collect();
+                let Some(since) =
+                    ask_retry_revoke(vault, address, rx, reply, &pending, &named, &cause, false)
+                        .await
+                else {
+                    return;
+                };
+                finished = flow.revoke_locked_out(since, entry.clone()).await;
+            }
+            Err(e) => return answer(reply, Ok(failed(&e))),
+        }
     };
     // Published from here: the identity is restored and the lock-out stands, whatever follows.
     let revoked: Vec<String> = restored
@@ -5719,6 +6070,11 @@ mod tests {
         refuse_publish: Cell<bool>,
         /// A refusal every publish answers with, as a store that never takes this incept.
         refuse_for_good: RefCell<Option<(u16, String)>>,
+        /// A refusal every publish after the first `n` answers with, as a store that takes a
+        /// rotation and refuses the revoke on top of it.
+        refuse_after: RefCell<Option<(u32, u16, String)>>,
+        /// The log served from the `n`th publish on, answered once that publish is taken.
+        log_from: RefCell<Option<(u32, Value)>>,
         refuse_cosign: Cell<bool>,
         /// What `identity.status` answers as `store`: a trusted one unless a test says otherwise.
         store: RefCell<Value>,
@@ -5733,7 +6089,7 @@ mod tests {
         /// ([`FakeExecutor::keep_puts`]). `None`: a put answers 404.
         keeps_record: RefCell<Option<Vec<Event>>>,
         /// Once the key's method is called, the method named beside it answers its value.
-        then: RefCell<std::collections::HashMap<&'static str, (&'static str, Value)>>,
+        then: RefCell<std::collections::HashMap<&'static str, Vec<(&'static str, Value)>>>,
         /// What a method refuses with, by name, ahead of anything it would answer.
         refusals: RefCell<std::collections::HashMap<&'static str, (u16, &'static str)>>,
         /// How long a method takes to answer, by name.
@@ -5752,6 +6108,8 @@ mod tests {
                 held: RefCell::new(None),
                 refuse_publish: Cell::new(false),
                 refuse_for_good: RefCell::new(None),
+                refuse_after: RefCell::new(None),
+                log_from: RefCell::new(None),
                 refuse_cosign: Cell::new(false),
                 store: RefCell::new(json!({ "url": "https://store.example", "trusted": true })),
                 publishes: Cell::new(0),
@@ -5786,7 +6144,11 @@ mod tests {
         /// Once `when` is called, `method` answers `value` (an `identity.acceptJoin` that lets the
         /// executor join, say).
         fn answer_after(&self, when: &'static str, method: &'static str, value: Value) {
-            self.then.borrow_mut().insert(when, (method, value));
+            self.then
+                .borrow_mut()
+                .entry(when)
+                .or_default()
+                .push((method, value));
         }
 
         /// `method` refuses with `code` and `message` from now on.
@@ -5819,7 +6181,7 @@ mod tests {
                 tokio::time::sleep(delay).await;
             }
             let then = self.then.borrow_mut().remove(method);
-            if let Some((next, value)) = then {
+            for (next, value) in then.into_iter().flatten() {
                 self.canned.borrow_mut().insert(next, value);
             }
             if let Some((code, message)) = self.refusals.borrow().get(method) {
@@ -5931,6 +6293,11 @@ mod tests {
                     if let Some((code, message)) = self.refuse_for_good.borrow().clone() {
                         return Err(answered(code, &message));
                     }
+                    if let Some((n, code, message)) = self.refuse_after.borrow().clone() {
+                        if self.publishes.get() >= n {
+                            return Err(answered(code, &message));
+                        }
+                    }
                     if self.refuse_publish.replace(false) {
                         return Err(RpcError {
                             code: 503,
@@ -5956,6 +6323,11 @@ mod tests {
                         }
                     }
                     self.publishes.set(self.publishes.get() + 1);
+                    if let Some((n, log)) = self.log_from.borrow().clone() {
+                        if self.publishes.get() >= n {
+                            self.canned.borrow_mut().insert("identity.log", log);
+                        }
+                    }
                     *self.held.borrow_mut() = Some(event.scid.clone());
                     Ok(json!({
                         "scid": event.scid, "seq": 0, "hash": "h", "time": 0,
@@ -6239,7 +6611,7 @@ mod tests {
                 kind: DeviceKind::DesktopApp,
                 holds_master: Holds::Offered,
             }],
-            revoked_holders: vec!["d3".into()],
+            ended_holders: vec!["d3".into()],
             requests: vec![RequestView {
                 id: "r1".into(),
                 kind: "send-master".into(),
@@ -6260,7 +6632,7 @@ mod tests {
         assert_eq!(public["masterWaiting"], true);
         assert_eq!(public["encMismatch"], true);
         assert_eq!(public["cloudUrl"], "https://cloud.example.org");
-        assert_eq!(public["revokedHolders"], json!(["d3"]));
+        assert_eq!(public["endedHolders"], json!(["d3"]));
         assert_eq!(public["holdsMaster"]["index"], 0);
         assert_eq!(public["blocked"], NO_STORE);
         let screen = serde_json::to_value(Screen::PendingRefused {
@@ -9849,6 +10221,7 @@ mod tests {
         assert!(may_hold_master(&executor, "did:scid:coasys:1:Qm", "d2").await);
         let confirm = serde_json::to_value(Screen::RevokeConfirm {
             key_id: "d2".into(),
+            name: Some("Test laptop".into()),
             may_hold_master: true,
             rotate: true,
             passphrase: false,
@@ -9857,6 +10230,37 @@ mod tests {
         .unwrap();
         assert_eq!(confirm["mayHoldMaster"], true);
         assert_eq!(confirm["rotate"], true);
+        assert_eq!(confirm["name"], "Test laptop");
+    }
+
+    #[test]
+    fn a_refused_revoke_is_said_in_words_never_as_the_executors_error() {
+        let raw = "executor: 400: invalid: since";
+        let said = not_revoked_reason(raw);
+        assert_eq!(
+            said,
+            "That time was not accepted. Pick a time after the device was linked."
+        );
+        assert!(said.ends_with('.') && !said.contains("executor"), "{said}");
+        assert_eq!(
+            not_revoked_reason("executor: 503: busy"),
+            "The revoke was not accepted. Try again."
+        );
+        assert_eq!(
+            not_revoked_reason("since is later than now"),
+            "That time is in the future. Pick a time that has passed."
+        );
+    }
+
+    #[test]
+    fn a_device_is_named_by_the_record_when_it_names_one() {
+        let names = vec![
+            ("d1".to_string(), "Test laptop".to_string()),
+            ("d2".to_string(), "  ".to_string()),
+        ];
+        assert_eq!(name_in(&names, "d1").as_deref(), Some("Test laptop"));
+        assert_eq!(name_in(&names, "d2"), None);
+        assert_eq!(name_in(&names, "d3"), None);
     }
 
     /// An unlink opens on its own confirm screen, and this computer cannot unlink its own key.
@@ -10284,15 +10688,36 @@ mod tests {
                 assert!(!printed.contains(word), "{printed}");
             }
         }
-        let StepInput::LockOut { key_ids, name } =
-            serde_json::from_str(r#"{"kind":"lock-out","keyIds":["d2"],"name":"Laptop"}"#).unwrap()
+        let StepInput::LockOut {
+            key_ids,
+            name,
+            since,
+        } = serde_json::from_str(r#"{"kind":"lock-out","keyIds":["d2"],"name":"Laptop"}"#).unwrap()
         else {
             panic!("expected lock-out");
         };
         assert_eq!(
-            (key_ids, name),
-            (vec!["d2".to_string()], Some("Laptop".into()))
+            (key_ids, name, since),
+            (vec!["d2".to_string()], Some("Laptop".into()), None)
         );
+        // The time the locked-out devices stopped being trusted, and the retry's.
+        let StepInput::LockOut { since, .. } =
+            serde_json::from_str(r#"{"kind":"lock-out","keyIds":["d2"],"since":1700000000000}"#)
+                .unwrap()
+        else {
+            panic!("expected lock-out");
+        };
+        assert_eq!(since, Some(1_700_000_000_000));
+        let retry: StepInput =
+            serde_json::from_str(r#"{"kind":"retry-revoke","since":1700000000000}"#).unwrap();
+        assert!(matches!(
+            retry,
+            StepInput::RetryRevoke {
+                since: Some(1_700_000_000_000)
+            }
+        ));
+        let retry: StepInput = serde_json::from_str(r#"{"kind":"retry-revoke"}"#).unwrap();
+        assert!(matches!(retry, StepInput::RetryRevoke { since: None }));
         // A revoke from a window that offers no choice replaces nothing.
         let input: StepInput = serde_json::from_str(r#"{"kind":"revoke"}"#).unwrap();
         assert!(matches!(input, StepInput::Revoke { rotate: false, .. }));
@@ -11206,18 +11631,29 @@ mod tests {
     }
 
     /// A store that refuses its next rename, as a keychain that refuses an update: the vault
-    /// cannot promote the key a rotation staged, once.
+    /// cannot promote the key a rotation staged, once (or every time, [`Self::always`]).
     struct RefusesRename {
         items: crate::store::MemoryStore,
         refuse: std::sync::atomic::AtomicBool,
+        every_time: bool,
     }
 
     impl RefusesRename {
         fn once() -> DesktopVault {
+            Self::refusing(false)
+        }
+
+        /// A vault whose store refuses every rename.
+        fn always() -> DesktopVault {
+            Self::refusing(true)
+        }
+
+        fn refusing(every_time: bool) -> DesktopVault {
             DesktopVault::new(
                 Box::new(RefusesRename {
                     items: crate::store::MemoryStore::as_kind(crate::store::StoreKind::Keychain),
                     refuse: std::sync::atomic::AtomicBool::new(true),
+                    every_time,
                 }),
                 PendingIncepts::memory(),
             )
@@ -11258,7 +11694,12 @@ mod tests {
             self.items.tag_of(name)
         }
         fn rename(&self, from: &str, to: &str) -> Result<(), VaultError> {
-            if self.refuse.swap(false, std::sync::atomic::Ordering::SeqCst) {
+            let refused = if self.every_time {
+                self.refuse.load(std::sync::atomic::Ordering::SeqCst)
+            } else {
+                self.refuse.swap(false, std::sync::atomic::Ordering::SeqCst)
+            };
+            if refused {
                 return Err(VaultError::Unavailable(
                     "the keychain refused the update".into(),
                 ));
@@ -11376,6 +11817,12 @@ mod tests {
         let phrase = phrase_of(41);
         let ex = &executor;
         let log = events.clone();
+        // Once the revoke is published the log served moves on to a rotation this restore did
+        // not make, so the enrolment after it fails.
+        ex.rpc().rpc().log_from.replace(Some((
+            2,
+            log_answer(&rotated_again(&rotated_unlinking(&events, &["d2"]))),
+        )));
         let ((), screens) = tokio::join!(
             restore_on(&executor, &vault, &address, &mut rx, &mut reply),
             async {
@@ -11387,20 +11834,21 @@ mod tests {
                         })
                         .await,
                 );
-                // The log still served is the one before the rotation, so the enrolment
-                // after it fails.
                 shown.push(
                     window
                         .step(StepInput::LockOut {
                             key_ids: vec!["d2".into()],
                             name: Some("Desk".into()),
+                            since: None,
                         })
                         .await,
                 );
-                let mut log = log.clone();
-                log.extend(published(ex));
-                serve_log(ex, &log);
-                shown.push(window.step(StepInput::TryAgain).await);
+                if matches!(shown.last(), Some(Screen::RestoreNotLinked { .. })) {
+                    let mut log = log.clone();
+                    log.extend(published(ex));
+                    serve_log(ex, &log);
+                    shown.push(window.step(StepInput::TryAgain).await);
+                }
                 shown
             }
         );
@@ -11422,12 +11870,98 @@ mod tests {
             screens[3]
         );
         assert_eq!(says_nothing_changed(&screens[2..]), None);
-        // One rotation: "Try again" published nothing and asked for no words; the vault keeps
-        // the key the rotation staged.
-        assert_eq!(executor.rpc().rpc().publishes.get(), 1);
+        // One rotation and its revoke: "Try again" published nothing and asked for no words;
+        // the vault keeps the key the rotation staged.
+        assert_eq!(executor.rpc().rpc().publishes.get(), 2);
         assert_eq!(vault.master_index(&scid).unwrap(), Some(1));
         assert_eq!(vault.staged_index(&scid).unwrap(), None);
         shows_no_word(&screens, &phrase, &[]);
+    }
+
+    /// A restore whose lock-out the store refuses after the rotation: the screen says the master key
+    /// is replaced and the devices are not revoked, asks no words (the flow holds them), and a retry
+    /// with a corrected time revokes and links this computer, without a second rotation.
+    #[tokio::test]
+    async fn a_restore_whose_lock_out_the_store_refused_is_retried_with_a_corrected_time() {
+        let (events, _) = crate::keylog::tests::log_with_d2(true);
+        let scid = events[0].scid.clone();
+        let executor = unlinked_executor(&events);
+        executor
+            .rpc()
+            .rpc()
+            .refuse_after
+            .replace(Some((1, 422, "since is later than now".into())));
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let phrase = phrase_of(41);
+        let ex = &executor;
+        let ((), screens) = tokio::join!(
+            restore_on(&executor, &vault, &address, &mut rx, &mut reply),
+            async {
+                let mut shown = vec![first.await.unwrap().unwrap()];
+                shown.push(
+                    window
+                        .step(StepInput::TwelveWords {
+                            words: phrase.clone().into(),
+                        })
+                        .await,
+                );
+                shown.push(
+                    window
+                        .step(StepInput::LockOut {
+                            key_ids: vec!["d2".into()],
+                            name: Some("Desk".into()),
+                            since: Some(1_000),
+                        })
+                        .await,
+                );
+                ex.rpc().rpc().refuse_after.replace(None);
+                shown.push(
+                    window
+                        .step(StepInput::RetryRevoke { since: Some(500) })
+                        .await,
+                );
+                shown
+            }
+        );
+        assert!(
+            matches!(&screens[2], Screen::RotatedNotRevoked { index: 1, key_ids, reason, needs_words: false, .. }
+                    if key_ids == &["d2".to_string()]
+                        && reason == "That time is in the future. Pick a time that has passed."),
+            "{:?}",
+            screens[2]
+        );
+        assert!(
+            matches!(&screens[3], Screen::Restored { key_id, revoked, .. }
+                    if key_id == "d1" && revoked == &["d2".to_string()]),
+            "{:?}",
+            screens[3]
+        );
+        // One rotation, however many revokes were tried: the refused time, then the corrected
+        // one, which the last carries. (The fake lists the refused calls too.)
+        let sent = published(&executor);
+        assert_eq!(
+            sent.iter()
+                .filter(|e| matches!(e.op, Op::Rotate { .. }))
+                .count(),
+            1
+        );
+        assert_eq!(revoke_times(&sent), vec![Some(1_000), Some(500)]);
+        assert_eq!(vault.master_index(&scid).unwrap(), Some(1));
+        shows_no_word(&screens, &phrase, &[]);
+    }
+
+    /// The `since` of each run of the same revoke in `sent`, in order.
+    fn revoke_times(sent: &[Event]) -> Vec<Option<u64>> {
+        let mut times: Vec<Option<u64>> = sent
+            .iter()
+            .filter_map(|e| match &e.op {
+                Op::Revoke { since, .. } => Some(*since),
+                _ => None,
+            })
+            .collect();
+        times.dedup();
+        times
     }
 
     /// An executor of no identity yet whose device key is d1's, serving `events` and naming
@@ -11439,6 +11973,13 @@ mod tests {
         });
         serve_log(&executor, events);
         let fake = executor.rpc().rpc();
+        // The restore's rotation (it unlinks the lock-out, d2 in these tests), served once
+        // published for the revoke of the lock-out on top of it.
+        fake.answer_after(
+            "identity.publish",
+            "identity.log",
+            log_answer(&rotated_unlinking(events, &["d2"])),
+        );
         fake.answer("identity.record", Value::Null);
         fake.answer("identity.requests", json!([]));
         fake.answer(
@@ -11478,6 +12019,7 @@ mod tests {
                         .step(StepInput::LockOut {
                             key_ids: vec!["d2".into()],
                             name: Some("Desk".into()),
+                            since: None,
                         })
                         .await,
                 );
@@ -11532,7 +12074,8 @@ mod tests {
                     if key_id == "d1" && revoked == &["d2".to_string()]),
                 "whole file {whole_file}: {screens:?}"
             );
-            assert_eq!(executor.rpc().rpc().publishes.get(), 1);
+            // The rotation and the revoke of the lock-out.
+            assert_eq!(executor.rpc().rpc().publishes.get(), 2);
             assert_eq!(vault.master_index(&scid).unwrap(), Some(1));
             assert_ne!(vault.custody_epoch(&scid).unwrap(), 0);
             assert!(vault
@@ -11670,10 +12213,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_revoke_that_also_replaces_the_master_key_leaves_no_holder_to_warn_about() {
+    async fn a_revoke_that_also_replaces_the_master_key_publishes_the_rotation_then_the_revoke() {
         let (events, _) = crate::keylog::tests::log_with_d2(true);
         let scid = events[0].scid.clone();
         let executor = executor_of(&events);
+        // The rotation the words make (unlinking d2, which is sent no new master key), which
+        // the log serves once it is published, for the revoke on top of it.
+        let rotated = rotated_unlinking(&events, &["d2"]);
+        executor
+            .rpc()
+            .rpc()
+            .answer_after("identity.publish", "identity.log", log_answer(&rotated));
         let vault = memory_vault(crate::store::StoreKind::Keychain);
         keep_master(&vault, &scid, 0);
         let (address, mut rx, mut reply, window, first) = opened();
@@ -11733,15 +12283,385 @@ mod tests {
             "{:?}",
             screens[2]
         );
-        // One event revokes d2 and replaces the master key: its copy no longer signs, so the
-        // revoked-holder warning has nothing left to say.
+        // The rotation comes first and unlinks d2, which is sent no new key; the revoke is
+        // signed by it. d2 ended at the rotation, so `ended_holders` does not list it.
         let mut log = events.clone();
         log.extend(published(&executor));
-        assert_eq!(log.len(), 3);
+        assert_eq!(log.len(), 4);
         assert!(matches!(&log[2].op, Op::Rotate { .. }));
-        assert!(crate::keylog::revoked_holders(&log).is_empty());
+        assert!(matches!(&log[3].op, Op::Revoke { .. }));
+        assert!(
+            matches!(&log[2].op, Op::Rotate { unlink, .. } if unlink.len() == 1 && unlink[0].as_str() == "d2")
+        );
+        assert!(crate::keylog::ended_holders(&log).is_empty());
         assert_eq!(vault.master_index(&scid).unwrap(), Some(1));
         shows_no_word(&screens, &phrase, &[]);
+    }
+
+    /// The retry screen names the device the way the record did before the rotation: the rotation
+    /// rewrites the private record without the devices it unlinks, so names read after it are gone
+    /// and the screen would show the key id.
+    #[tokio::test]
+    async fn the_retry_screen_names_a_device_the_rotation_took_out_of_the_record() {
+        let (events, _) = crate::keylog::tests::log_with_d2(true);
+        let scid = events[0].scid.clone();
+        let chain = ad4m_identity_core::fold(&events).unwrap();
+        let seal = |record: &ad4m_identity_core::record::PrivateRecord| {
+            let d1 = KeySigner::new(&[2u8; 32], 0);
+            let sealed = ad4m_identity_core::record::seal_record(
+                &chain,
+                1,
+                record,
+                None,
+                &d1,
+                &mut Fixed(7),
+            )
+            .unwrap();
+            let receipt = ad4m_identity_core::record::sign_receipt(
+                &scid,
+                &sealed,
+                chain.head().seq,
+                &store_key(),
+            )
+            .unwrap();
+            json!({ "record": sealed, "receipt": receipt })
+        };
+        let mut before = ad4m_identity_core::record::PrivateRecord::default();
+        before.devices.insert("d2".into(), named("Test laptop"));
+        let mut after = ad4m_identity_core::record::PrivateRecord::default();
+        after.devices.insert("d1".into(), named("This computer"));
+        let rotated = rotated_unlinking(&events, &["d2"]);
+        // Serves the record as it is before the rotation, sealed to `d1`.
+        let (executor, _) = executor_with(&events, &before);
+        let fake = executor.rpc();
+        fake.answer("identity.requests", json!([]));
+        // The rotation is published: the log is the rotated one and the record is the rewrite.
+        fake.answer_after("identity.publish", "identity.log", log_answer(&rotated));
+        fake.answer_after("identity.publish", "identity.record", seal(&after));
+        fake.refuse_after.replace(Some((
+            1,
+            422,
+            "since is before the store appended the key".into(),
+        )));
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        keep_master(&vault, &scid, 0);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let phrase = phrase_of(41);
+        let ((), screens) = tokio::join!(
+            revoke_on(
+                &executor,
+                &vault,
+                &address,
+                &mut rx,
+                &mut reply,
+                "d2".into()
+            ),
+            async {
+                let mut shown = vec![first.await.unwrap().unwrap()];
+                shown.push(
+                    window
+                        .step(StepInput::Revoke {
+                            passphrase: None,
+                            rotate: true,
+                            since: Some(1_000),
+                        })
+                        .await,
+                );
+                shown.push(
+                    window
+                        .step(StepInput::TwelveWords {
+                            words: phrase.clone().into(),
+                        })
+                        .await,
+                );
+                // Cancel on the retry screen: the rotation stands and the step ends.
+                drop(window);
+                shown
+            }
+        );
+        assert!(
+            matches!(&screens[2], Screen::RotatedNotRevoked { key_ids, names, .. }
+                if key_ids == &["d2".to_string()]
+                    && names == &[Some("Test laptop".to_string())]),
+            "{:?}",
+            screens[2]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_revoke_the_store_refuses_after_the_rotation_is_retried_on_its_own_with_a_corrected_time(
+    ) {
+        let (events, _) = crate::keylog::tests::log_with_d2(true);
+        let scid = events[0].scid.clone();
+        let executor = executor_of(&events);
+        let rotated = rotated_unlinking(&events, &["d2"]);
+        let fake = executor.rpc().rpc();
+        fake.answer_after("identity.publish", "identity.log", log_answer(&rotated));
+        // The store takes the rotation and refuses the revoke's time.
+        fake.refuse_after.replace(Some((
+            1,
+            422,
+            "since is before the store appended the key".into(),
+        )));
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        keep_master(&vault, &scid, 0);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let phrase = phrase_of(41);
+        let ex = &executor;
+        let ((), screens) = tokio::join!(
+            revoke_on(
+                &executor,
+                &vault,
+                &address,
+                &mut rx,
+                &mut reply,
+                "d2".into()
+            ),
+            async {
+                let mut shown = vec![first.await.unwrap().unwrap()];
+                shown.push(
+                    window
+                        .step(StepInput::Revoke {
+                            passphrase: None,
+                            rotate: true,
+                            since: Some(1_000),
+                        })
+                        .await,
+                );
+                shown.push(
+                    window
+                        .step(StepInput::TwelveWords {
+                            words: phrase.clone().into(),
+                        })
+                        .await,
+                );
+                // A retry that is refused again shows the screen again, with the words asked
+                // each time.
+                shown.push(
+                    window
+                        .step(StepInput::RetryRevoke { since: Some(2_000) })
+                        .await,
+                );
+                shown.push(
+                    window
+                        .step(StepInput::TwelveWords {
+                            words: phrase.clone().into(),
+                        })
+                        .await,
+                );
+                ex.rpc().rpc().refuse_after.replace(None);
+                shown.push(
+                    window
+                        .step(StepInput::RetryRevoke { since: Some(3_000) })
+                        .await,
+                );
+                shown.push(
+                    window
+                        .step(StepInput::TwelveWords {
+                            words: phrase.clone().into(),
+                        })
+                        .await,
+                );
+                shown
+            }
+        );
+        for at in [2, 4] {
+            assert!(
+                matches!(&screens[at], Screen::RotatedNotRevoked { index: 1, key_ids, reason, needs_words: true, .. }
+                    if key_ids == &["d2".to_string()]
+                        && reason == "That is before this device was added. Pick a later time."),
+                "{at}: {:?}",
+                screens[at]
+            );
+        }
+        assert!(matches!(
+            &screens[3],
+            Screen::EnterWords {
+                purpose: "revoke",
+                ..
+            }
+        ));
+        assert!(
+            matches!(&screens[6], Screen::MasterReplaced { index: 1, revoked, .. } if revoked == &["d2".to_string()]),
+            "{:?}",
+            screens[6]
+        );
+        // One rotation, never made again; each revoke tried carries the time its retry named,
+        // the last being the one taken. (The fake lists the refused calls too.)
+        let sent = published(&executor);
+        assert_eq!(
+            sent.iter()
+                .filter(|e| matches!(e.op, Op::Rotate { .. }))
+                .count(),
+            1
+        );
+        assert_eq!(
+            revoke_times(&sent),
+            vec![Some(1_000), Some(2_000), Some(3_000)]
+        );
+        assert_eq!(vault.master_index(&scid).unwrap(), Some(1));
+        shows_no_word(&screens, &phrase, &[]);
+    }
+
+    /// A revoke with a master key replacement whose rotation publishes, this computer cannot keep
+    /// the new key (`vault`'s store refuses a rename) and the revoke is refused; then the retry
+    /// publishes. The screens shown, and the identity's scid.
+    async fn retried_after_a_rotation_not_kept(vault: &DesktopVault) -> (Vec<Screen>, String) {
+        let (events, _) = crate::keylog::tests::log_with_d2(true);
+        let scid = events[0].scid.clone();
+        let executor = executor_of(&events);
+        let fake = executor.rpc().rpc();
+        fake.answer_after(
+            "identity.publish",
+            "identity.log",
+            log_answer(&rotated_unlinking(&events, &["d2"])),
+        );
+        fake.refuse_after.replace(Some((
+            1,
+            422,
+            "since is before the store appended the key".into(),
+        )));
+        keep_master(vault, &scid, 0);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let phrase = phrase_of(41);
+        let ex = &executor;
+        let said = phrase.clone();
+        let ((), screens) = tokio::join!(
+            revoke_on(&executor, vault, &address, &mut rx, &mut reply, "d2".into()),
+            // Moved in, so the window closes after the last step: a screen that waits for "Try
+            // again" ends with it.
+            async move {
+                let mut shown = vec![first.await.unwrap().unwrap()];
+                shown.push(
+                    window
+                        .step(StepInput::Revoke {
+                            passphrase: None,
+                            rotate: true,
+                            since: Some(1_000),
+                        })
+                        .await,
+                );
+                shown.push(
+                    window
+                        .step(StepInput::TwelveWords {
+                            words: said.clone().into(),
+                        })
+                        .await,
+                );
+                ex.rpc().rpc().refuse_after.replace(None);
+                shown.push(
+                    window
+                        .step(StepInput::RetryRevoke { since: Some(2_000) })
+                        .await,
+                );
+                shown.push(
+                    window
+                        .step(StepInput::TwelveWords {
+                            words: said.clone().into(),
+                        })
+                        .await,
+                );
+                shown
+            }
+        );
+        assert!(
+            matches!(&screens[2], Screen::RotatedNotRevoked { index: 1, .. }),
+            "{:?}",
+            screens[2]
+        );
+        shows_no_word(&screens, &phrase, &[]);
+        (screens, scid)
+    }
+
+    /// The retry of a revoke publishes, and the vault holds the key the rotation staged: the retry
+    /// keeps it, and the screen says the key is replaced.
+    #[tokio::test]
+    async fn a_retried_revoke_keeps_the_new_master_key_the_rotation_left_staged() {
+        let vault = RefusesRename::once();
+        let (screens, scid) = retried_after_a_rotation_not_kept(&vault).await;
+        assert!(
+            matches!(&screens[4], Screen::MasterReplaced { index: 1, revoked, .. }
+                if revoked == &["d2".to_string()]),
+            "{:?}",
+            screens[4]
+        );
+        assert_eq!(vault.master_index(&scid).unwrap(), Some(1));
+        assert_eq!(vault.staged_index(&scid).unwrap(), None);
+    }
+
+    /// The retry of a revoke publishes, and this computer still cannot keep the new key: the screen
+    /// is the one for a key not kept, never "This computer has the new master key".
+    #[tokio::test]
+    async fn a_retried_revoke_that_cannot_keep_the_new_master_key_says_so() {
+        let vault = RefusesRename::always();
+        let (screens, scid) = retried_after_a_rotation_not_kept(&vault).await;
+        assert!(
+            matches!(&screens[4], Screen::MasterNotKept { index: 1, revoked, reason, .. }
+                if revoked == &["d2".to_string()] && reason.contains("refused")),
+            "{:?}",
+            screens[4]
+        );
+        // The old key stays kept, and the new one stays staged for the way back.
+        assert_eq!(vault.master_index(&scid).unwrap(), Some(0));
+        assert_eq!(vault.staged_index(&scid).unwrap(), Some(1));
+    }
+
+    #[tokio::test]
+    async fn the_time_picked_with_a_revoke_and_a_master_key_replacement_reaches_the_revoke() {
+        let (events, _) = crate::keylog::tests::log_with_d2(true);
+        let scid = events[0].scid.clone();
+        let executor = executor_of(&events);
+        executor.rpc().rpc().answer_after(
+            "identity.publish",
+            "identity.log",
+            log_answer(&rotated_unlinking(&events, &["d2"])),
+        );
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        keep_master(&vault, &scid, 0);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let ((), screens) = tokio::join!(
+            revoke_on(
+                &executor,
+                &vault,
+                &address,
+                &mut rx,
+                &mut reply,
+                "d2".into()
+            ),
+            async {
+                let mut shown = vec![first.await.unwrap().unwrap()];
+                shown.push(
+                    window
+                        .step(StepInput::Revoke {
+                            passphrase: None,
+                            rotate: true,
+                            since: Some(1_000),
+                        })
+                        .await,
+                );
+                shown.push(
+                    window
+                        .step(StepInput::TwelveWords {
+                            words: phrase_of(41).into(),
+                        })
+                        .await,
+                );
+                shown
+            }
+        );
+        assert!(
+            matches!(&screens[2], Screen::MasterReplaced { .. }),
+            "{:?}",
+            screens[2]
+        );
+        let revoke = published(&executor).pop().unwrap();
+        assert!(matches!(
+            &revoke.op,
+            Op::Revoke {
+                since: Some(1_000),
+                ..
+            }
+        ));
     }
 
     #[tokio::test]
@@ -11988,14 +12908,25 @@ mod tests {
 
     /// The log of `log_with_d2`, rotated once to master #1 elsewhere.
     fn rotated_log() -> Vec<Event> {
-        let (mut events, _) = crate::keylog::tests::log_with_d2(true);
+        let (events, _) = crate::keylog::tests::log_with_d2(true);
+        rotated_unlinking(&events, &[])
+    }
+
+    /// `events` rotated to master #1 (the words of `phrase_of(41)`), unlinking `unlink`.
+    fn rotated_unlinking(events: &[Event], unlink: &[&str]) -> Vec<Event> {
+        let mut events = events.to_vec();
         let seed = words::seed(&words::from_entropy(&[41u8; 16]));
         let chain = ad4m_identity_core::fold(&events).unwrap();
         let m1 = words::master_key(&seed, 1).unwrap();
         let salt = bs58::encode(words::salt(&seed, 1)).into_string();
         let (next, _) = words::next_commitment(&seed, 2).unwrap();
-        events
-            .push(ad4m_identity_core::build::rotate(&chain, &m1, &salt, Some(next), &[]).unwrap());
+        let unlink: Vec<ad4m_identity_core::KeyId> = unlink
+            .iter()
+            .map(|k| ad4m_identity_core::KeyId::from(*k))
+            .collect();
+        events.push(
+            ad4m_identity_core::build::rotate(&chain, &m1, &salt, Some(next), &unlink).unwrap(),
+        );
         ad4m_identity_core::fold(&events).unwrap();
         events
     }

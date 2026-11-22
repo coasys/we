@@ -30,11 +30,13 @@ import {
   type KeyLogStoreBehind,
   type KeyLogView,
   NO_IDENTITY_CAPABILITIES,
+  UnlinkUncertainError,
 } from '@we/backend-shared';
 
 import { type BotClientLike, createAd4mBotPort } from './botPort';
 import { sharedInFlight } from './inFlight';
 import { recordMissingMethod } from './missingMethods';
+import { rpcStatus } from './rpcStatus';
 
 /** The slice of the SDK client this port uses — the whole of it, so a test can stand one in. */
 export interface IdentityClientLike {
@@ -42,6 +44,7 @@ export interface IdentityClientLike {
     status(): Promise<unknown>;
     log(did: string, from?: number, fresh?: boolean): Promise<unknown>;
     devices(): Promise<unknown>;
+    unlinkSelf(): Promise<unknown>;
   };
   on?: (type: 'identity-fork', handler: (event: unknown) => void) => () => void;
   /** `bot.*`: absent on an SDK that predates bots. */
@@ -99,7 +102,7 @@ export interface Ad4mCustodyState {
   devices?: { keyId: string; name: string; kind: string; holdsMaster: boolean | 'offered' }[];
   requests?: { id: string; kind: string; by: string; keyIds: string[]; expires: number }[];
   /** The revoked keys the key log says may still hold a valid master key. */
-  revokedHolders?: string[];
+  endedHolders?: string[];
   masterWaiting?: boolean;
   /**
    * The device this custody service answers for, where it is not the executor's: a phone's own key
@@ -193,7 +196,7 @@ export function readCustody(value: Ad4mCustodyState): IdentityCustodyView {
     unlock: value.unlock ?? null,
     blocked: value.blocked || null,
     devices,
-    revokedHolders: Array.isArray(value.revokedHolders) ? value.revokedHolders.map(String) : [],
+    endedHolders: Array.isArray(value.endedHolders) ? value.endedHolders.map(String) : [],
     requests,
     masterWaiting: value.masterWaiting === true,
     thisDevice: readCustodyDevice(value.thisDevice),
@@ -216,6 +219,7 @@ export function readIdentityStatus(value: unknown): IdentityStatusView {
     deviceKey: text(status.deviceKey) ?? '',
     keyId: text(status.keyId),
     revoked: count(status.revoked),
+    unlinked: count(status.unlinked),
     head: readHead(status.head),
     fork: readFork(status.fork),
     storeBehind: readStoreBehind(status.storeBehind),
@@ -258,6 +262,30 @@ export function readDevices(value: unknown): DeviceKeyView[] {
       expires: count(device.expires),
     };
   });
+}
+
+/**
+ * What the executor's refusal of `identity.unlinkSelf` says, in words a person reads. The executor
+ * names the reason first in the message (`no-identity`, `not-listed`, `key-dead`) with a 409, and
+ * answers 403 for an app.
+ */
+export function unlinkSelfRefusal(error: unknown): Error {
+  const message = error instanceof Error ? error.message : String(error);
+  const status = rpcStatus(error);
+  if (status === 403 || /\b403\b/.test(message)) return new Error('This app is not allowed to unlink this computer.');
+  if (message.includes('no-identity')) {
+    return new Error('This computer is not linked to an identity, so there is nothing to unlink.');
+  }
+  if (message.includes('not-listed')) {
+    return new Error("Your key log doesn't list this computer, so there is nothing to unlink.");
+  }
+  if (message.includes('key-dead')) return new Error('This computer is already unlinked.');
+  if (message.includes('cannot-retire-key')) {
+    return new Error("This computer's key could not be taken out of use, so it was not unlinked.");
+  }
+  // Anything else (a failed write, a lost reply, a closed socket) may have come after the unlink
+  // was recorded, which the executor finishes later on its own.
+  return new UnlinkUncertainError('This computer may already be unlinked. Check again, or try again.');
 }
 
 export function createAd4mIdentityPort(backendClient: unknown, custody?: Ad4mCustodyHost): IdentityPort {
@@ -313,6 +341,14 @@ export function createAd4mIdentityPort(backendClient: unknown, custody?: Ad4mCus
 
     async devices() {
       return readDevices(await client.identity.devices());
+    },
+
+    async unlinkSelf() {
+      try {
+        await client.identity.unlinkSelf();
+      } catch (error) {
+        throw unlinkSelfRefusal(error);
+      }
     },
 
     onFork(listener) {
