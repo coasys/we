@@ -43,14 +43,21 @@ describe('keyLogRows', () => {
 });
 
 describe('deviceRows', () => {
-  it('puts valid keys first and this computer on top, and offers revoke for the others only', () => {
+  it('does not offer to unlink this computer once its key is unlinked or revoked', () => {
+    const rows = deviceRows([
+      { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, unlinkedSeq: 3, revokedSeq: null },
+    ]);
+    expect(rows.map((r) => [r.status, r.canUnlink, r.canRevoke])).toEqual([['Unlinked', false, false]]);
+  });
+
+  it('puts valid keys first and this computer on top, and offers revoke for the others only, unlink for any active key', () => {
     const rows = deviceRows([
       { keyId: 'd3', sign: 'z', thisDevice: false, addedSeq: 3, unlinkedSeq: null, revokedSeq: null },
       { keyId: 'd2', sign: 'z', thisDevice: false, addedSeq: 1, unlinkedSeq: null, revokedSeq: 2 },
       { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, unlinkedSeq: null, revokedSeq: null },
     ]);
     expect(rows.map((r) => [r.keyId, r.label, r.status, r.canUnlink, r.canRevoke])).toEqual([
-      ['d1', 'This computer', 'Active', false, false],
+      ['d1', 'This computer', 'Active', true, false],
       ['d3', 'Device d3', 'Active', true, true],
       ['d2', 'Device d2', 'Revoked', false, false],
     ]);
@@ -66,7 +73,7 @@ describe('deviceRows', () => {
       { keyId: 'd4', sign: 'z', thisDevice: false, addedSeq: 6, unlinkedSeq: null, revokedSeq: null },
     ]);
     expect(rows.map((r) => [r.keyId, r.status, r.unlinked, r.revoked, r.canUnlink, r.canRevoke])).toEqual([
-      ['d1', 'Active', false, false, false, false],
+      ['d1', 'Active', false, false, true, false],
       ['d4', 'Active', false, false, true, true],
       ['d2', 'Unlinked', true, false, false, true],
       ['d3', 'Revoked', true, true, false, false],

@@ -55,7 +55,10 @@ export interface DeviceRow {
   revoked: boolean;
   /** "Active", "Unlinked" or "Revoked". */
   status: string;
-  /** Whether an unlink may be offered: a key still active that is not this computer's. */
+  /**
+   * Whether an unlink may be offered: a key still active. This computer's own may leave too, without
+   * the master key (`identity.unlinkSelf`); it is then signed out.
+   */
   canUnlink: boolean;
   /** Whether a revoke may be offered: a key not yet revoked, unlinked or not, that is not this computer's. */
   canRevoke: boolean;
@@ -239,7 +242,7 @@ export function deviceRows(
         unlinked,
         revoked,
         status: revoked ? 'Revoked' : unlinked ? 'Unlinked' : 'Active',
-        canUnlink: !revoked && !unlinked && !device.thisDevice,
+        canUnlink: !revoked && !unlinked,
         canRevoke: !revoked && !device.thisDevice,
         name,
         holdsMaster,
