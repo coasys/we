@@ -39,6 +39,17 @@ android {
             systemProperty 'jna.library.path', file('build/host-lib').absolutePath
         }
     }
+    signingConfigs {
+        // One debug key for every build, CI's included: Android installs an update only over an app
+        // signed with the same key, and Gradle's default key is new on each CI runner. A debug key
+        // signs test builds only, so it is checked in.
+        debug {
+            storeFile file('debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
