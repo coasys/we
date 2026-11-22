@@ -4704,7 +4704,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     told apart from items from a call. Its passes batch, by the engine's defaults: a few messages, or
     a quiet spell, or two minutes at the most.
   */
-  const extraction = createInterpretationRuntime({
+  const interpretation = createInterpretationRuntime({
     port: () => session.backendPorts()?.interpretation,
     dataset: () => datasetStore.currentDataset()?.handle ?? null,
     candidates: () => shapeStore.interpretationCandidates(),
@@ -4714,7 +4714,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     setAutoFor: setAutoInterpretFor,
     collectionAnswers: collectionInterpretationFor,
   });
-  onCleanup(provideModuleHostServices(extraction.services));
+  onCleanup(provideModuleHostServices(interpretation.services));
 
   let looseWatchOn: { root: string; handle: unknown } | null = null;
   createEffect(() => {
@@ -4737,7 +4737,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       */
       looseWatchOn = { root, handle };
       if (!shapeStore.interpretationCandidatesLoaded()) return;
-      void extraction.watchConversation(root, handle).catch((error: unknown) => {
+      void interpretation.watchConversation(root, handle).catch((error: unknown) => {
         console.info('SpaceStore: the space’s loose messages cannot be watched here', error);
       });
       return;
@@ -4747,7 +4747,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     // Only on the way from on to off, and only for the space it was on in: leaving a space is not
     // switching its watch off.
     if (was && was.root === root && was.handle === handle) {
-      void extraction.unwatchConversation(was.root, was.handle).catch(() => {});
+      void interpretation.unwatchConversation(was.root, was.handle).catch(() => {});
     }
   });
 
