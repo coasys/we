@@ -220,7 +220,9 @@ scripts/build-android-rust.sh  # crates/phone-custody for the phone, and its Kot
 cd android && ./gradlew :app:testDebugUnitTest assembleDebug
 ```
 
-The APK is `android/app/build/outputs/apk/debug/app-debug.apk`. Gradle needs JDK 21 and an Android
+The APK is `android/app/build/outputs/apk/debug/app-debug.apk`. Every debug build, CI's included, is
+signed with the checked-in `android/app/debug.keystore`, so a new APK installs over an older one and
+keeps its data. Gradle needs JDK 21 and an Android
 SDK (`JAVA_HOME`, `ANDROID_HOME`). The Rust half needs rustup (the crate's `rust-toolchain.toml`
 picks the channel), `cargo install cargo-ndk`, and an NDK (`ANDROID_NDK_HOME`, 27 is what was used).
 `testDebugUnitTest` runs the plugin's Kotlin over a host build of the same crate; the Keystore half
