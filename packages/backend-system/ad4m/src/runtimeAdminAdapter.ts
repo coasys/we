@@ -96,6 +96,7 @@ export const EXECUTOR_CONFIG_KINDS: Readonly<Record<string, ExecutorConfigEntry[
   ai_defaults: 'object',
   ai_endpoints: 'object',
   ai_models: 'object',
+  allow_secret_on_data_disk: 'boolean',
   app_data_path: 'text',
   auto_permit_cap_requests: 'boolean',
   hc_admin_port: 'number',

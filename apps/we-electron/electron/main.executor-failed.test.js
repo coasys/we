@@ -169,7 +169,9 @@ describe.skipIf(process.platform === 'win32' || !existsSync(join(here, 'seed-csp
       writeFileSync(join(resources, 'ad4m-executor'), fake);
       chmodSync(join(resources, 'ad4m-executor'), 0o755);
       // The first start refuses its settings; every later start serves.
-      writeFileSync(join(dataDir(), 'fake-executor.plan.json'), JSON.stringify({ steps: [78] }));
+      // Each start's storage is open (its secret given it otherwise): no keyring helper is needed.
+      writeFileSync(join(resources, 'ws-lite.cjs'), readFileSync(join(here, 'fixtures', 'ws-lite.cjs')));
+      writeFileSync(join(dataDir(), 'fake-executor.plan.json'), JSON.stringify({ steps: [78], storage: 'open' }));
 
       process.resourcesPath = resources;
       process.env.WE_AD4M_DATA_PATH = dataDir();

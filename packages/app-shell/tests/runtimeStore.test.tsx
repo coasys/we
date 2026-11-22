@@ -11,7 +11,7 @@
  * (`backendPorts`), so driving that directly is both the smaller harness and the more direct test.
  */
 import { render } from '@solidjs/testing-library';
-import type { ExecutorHost, ExecutorSettings } from '@we/app-shell/shared';
+import type { ExecutorHost, ExecutorSettings, StorageStatus } from '@we/app-shell/shared';
 import type {
   AiCapability,
   AiEndpoint,
@@ -81,6 +81,7 @@ import {
   RuntimeStoreProvider,
   useRuntimeStore,
 } from '../src/frameworks/solid/stores/RuntimeStore';
+import { LINKS_PLAIN_LINE } from '../src/shared/storageLine';
 
 function mount(): RuntimeStore {
   let store!: RuntimeStore;
@@ -243,6 +244,38 @@ describe('how the backend is started', () => {
     await vi.waitFor(() => expect(store.mcpPort()).toBe(4321));
     expect(store.mcpEnabled()).toBe(true);
     expect(store.logLevels()).toEqual([{ crate: 'holochain', level: 'debug' }]);
+  });
+
+  it('reads how the storage is kept when the settings page opens, and says nothing before', async () => {
+    let asked = 0;
+    const { host } = stubExecutor({
+      async storageStatus(): Promise<StorageStatus | null> {
+        asked += 1;
+        return {
+          state: 'open',
+          encryptedAtRest: false,
+          stores: { database: 'encrypted', languageStorage: 'encrypted', links: 'plain' },
+        };
+      },
+    });
+    executorHost = host;
+    setActiveShellView('settings');
+    ports = {};
+    const store = mount();
+
+    await vi.waitFor(() => expect(store.storageLine()).toBe(LINKS_PLAIN_LINE));
+    expect(asked).toBe(1);
+  });
+
+  it('says nothing of the storage when the host has none to report', async () => {
+    const { host } = stubExecutor({ storageStatus: async () => null });
+    executorHost = host;
+    setActiveShellView('settings');
+    ports = {};
+    const store = mount();
+
+    await vi.waitFor(() => expect(store.mcpPort()).toBe(3001));
+    expect(store.storageLine()).toBe('');
   });
 
   it('adds and edits a log level through one action, and drops an override on removal', async () => {

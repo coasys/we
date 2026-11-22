@@ -7,13 +7,14 @@
  *
  * Isolated from anything else on the machine on purpose: a fresh data directory in the temp dir,
  * free ports for the API and for Holochain (whose defaults a desktop executor already running would
- * hold), and no bootstrap, proxy or mDNS, so it never joins a network.
+ * hold), and no bootstrap, proxy or mDNS, so it never joins a network. Its storage starts sealed
+ * unless it is given a secret, so each executor gets one of its own (`storageSecretEnv`).
  *
  * The data directory's prefix is `we-live-web-` and must stay so: ad4m's own CI runs WE's journeys,
  * cleans `/tmp/we-live-web-*` afterwards, and finds an executor left running by that path.
  */
 import { spawn, spawnSync } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -28,6 +29,19 @@ export { sleep };
 
 /** The prefix of every data directory this starts. See the header. */
 export const DATA_PREFIX = 'we-live-web-';
+
+/**
+ * A storage secret made for one executor and nobody else: 32 random bytes as 64 hex characters, in
+ * a file of its own (mode 0600) that `AD4M_STORAGE_SECRET_FILE` names. Without one the executor
+ * starts sealed and answers nothing but its storage status and `storage.unlock`. It comes from a
+ * file because `run` refuses `AD4M_STORAGE_SECRET`, and the file sits on the data folder's disk,
+ * which the executor refuses too unless `AD4M_ALLOW_SECRET_ON_DATA_DISK` says it is a test.
+ */
+function storageSecretEnv(dir) {
+  const file = join(dir, 'storage-secret');
+  writeFileSync(file, `${randomBytes(32).toString('hex')}\n`, { mode: 0o600 });
+  return { AD4M_STORAGE_SECRET_FILE: file, AD4M_ALLOW_SECRET_ON_DATA_DISK: 'true' };
+}
 
 /** A TCP port free on 127.0.0.1 a moment ago. */
 export function freePort() {
@@ -61,6 +75,10 @@ export async function startExecutor({
   logFile = process.env.WE_LIVE_LOG,
 } = {}) {
   const dataPath = mkdtempSync(join(tmpdir(), DATA_PREFIX));
+  // Beside the data folder, not in it, and removed with it. It keeps the data prefix, which is how
+  // ad4m's CI finds and cleans what a run left.
+  const secretPath = mkdtempSync(join(tmpdir(), `${DATA_PREFIX}secret-`));
+  const storageSecret = storageSecretEnv(secretPath);
   const [port, hcAdminPort, hcAppPort] = [await freePort(), await freePort(), await freePort()];
   const mcpPort = mcp ? await freePort() : null;
   const adminCredential = randomUUID();
@@ -70,6 +88,7 @@ export async function startExecutor({
   const init = spawnSync(binary, ['init', '--data-path', dataPath], { encoding: 'utf8' });
   if (init.status !== 0) {
     rmSync(dataPath, { recursive: true, force: true });
+    rmSync(secretPath, { recursive: true, force: true });
     throw new Error(`ad4m-executor init failed: ${init.stderr || init.error}`);
   }
 
@@ -82,7 +101,7 @@ export async function startExecutor({
     '--hc-use-bootstrap', 'false', '--hc-use-proxy', 'false', '--hc-use-local-proxy', 'false',
     '--hc-use-mdns', 'false', '--run-dapp-server', 'false',
     ...(mcpPort ? ['--enable-mcp', 'true', '--mcp-port', String(mcpPort)] : []),
-  ], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...env } });
+  ], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...storageSecret, ...env } });
   child.stdout.on('data', (chunk) => output.push(String(chunk)));
   child.stderr.on('data', (chunk) => output.push(String(chunk)));
   let exit = null;
@@ -118,6 +137,7 @@ export async function startExecutor({
       // Only once it has gone: it writes while shutting down, and a directory removed before that is
       // recreated behind it.
       rmSync(dataPath, { recursive: true, force: true });
+      rmSync(secretPath, { recursive: true, force: true });
     })());
 
   try {

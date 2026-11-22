@@ -205,7 +205,9 @@ describe.skipIf(process.platform === 'win32' || !existsSync(join(here, 'seed-csp
         chmodSync(join(resources, to), 0o755);
       }
       writeFileSync(join(resources, 'ws-lite.cjs'), readFileSync(join(here, 'fixtures', 'ws-lite.cjs')));
-      writeFileSync(join(dataDir(), 'fake-executor.plan.json'), JSON.stringify({ steps: [] }));
+      // Each start's storage is open, so the keyring answers only for the agent here; the storage
+      // step before it is `main.storage.test.js`'s.
+      writeFileSync(join(dataDir(), 'fake-executor.plan.json'), JSON.stringify({ steps: [], storage: 'open' }));
 
       process.resourcesPath = resources;
       process.env.WE_AD4M_DATA_PATH = dataDir();
