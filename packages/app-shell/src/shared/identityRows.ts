@@ -57,7 +57,10 @@ export interface DeviceRow {
   valid: boolean;
   /** "Active", "Unlinked", "Revoked", or "Expired on 3 Dec 2026". */
   status: string;
-  /** Whether an unlink may be offered: a key still active that is not this computer's. */
+  /**
+   * Whether an unlink may be offered: a key still active. This computer's own may leave too, without
+   * the master key (`identity.unlinkSelf`); it is then signed out.
+   */
   canUnlink: boolean;
   /** Whether a revoke may be offered: a key not yet revoked, unlinked or not, that is not this computer's. */
   canRevoke: boolean;
@@ -256,8 +259,9 @@ export function deviceRows(
             : expired
               ? `Expired on ${dateOf(device.expires as number)}`
               : 'Active',
-        // Ending an expired key for good is still the key log's to record.
-        canUnlink: !revoked && !unlinked && !device.thisDevice,
+        // Ending an expired key for good is still the key log's to record; this computer's own row
+        // can end itself too (`deviceStore.unlinkThisComputer`).
+        canUnlink: !revoked && !unlinked,
         canRevoke: !revoked && !device.thisDevice,
         name,
         holdsMaster,
