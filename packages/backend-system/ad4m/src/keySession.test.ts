@@ -322,6 +322,33 @@ describe('a key session on a server', () => {
     expect(ended).not.toHaveBeenCalled();
   });
 
+  it('sends no renewal when closed while the renewal statement is signed', async () => {
+    const server = fakeServer();
+    const signer = fakeSigner();
+    const timers = fakeTimers();
+    const session = await open(server, signer, timers);
+    const remote = (session.client as KeySessionRemote).agent;
+    const renewSession = vi.spyOn(remote, 'renewSession');
+
+    // The renewal's statement waits on this computer's executor.
+    let sign!: () => void;
+    const signNow = signer.agent.signSessionStatement.getMockImplementation()!;
+    signer.agent.signSessionStatement.mockImplementationOnce(
+      (statement) => new Promise((resolve) => (sign = () => resolve(signNow(statement)))),
+    );
+    server.advance(3300);
+    const firing = timers.fire();
+    await vi.waitFor(() => expect(signer.agent.signSessionStatement).toHaveBeenCalledTimes(2));
+
+    await firing;
+    await session.close();
+    sign();
+    await flush();
+
+    expect(renewSession).not.toHaveBeenCalled();
+    expect(timers.pending.size).toBe(0);
+  });
+
   it('reads a socket closed on a revoked device as this device removed', async () => {
     const server = fakeServer();
     const timers = fakeTimers();

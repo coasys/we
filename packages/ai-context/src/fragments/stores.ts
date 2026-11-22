@@ -1011,7 +1011,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       mcpPort: 'number — the port MCP is served on',
       executorRestartPending: 'boolean — settings were changed that the running backend has not picked up',
       executorConfigFile:
-        'string — the path of the config file the backend started with, where this app may write it (the desktop app’s own executor); empty otherwise. Gate the config rows on it',
+        'string — the path of the config file the backend started with, where this app may write it (the desktop app’s own executor); empty otherwise. It names that file only: gate the config rows on canConfigureExecutor, which also offers a server’s rows',
       executorConfigRows:
         '{ id, key, value, kind, choice, editable, note }[] — every key of that file: value ready to show (empty when the file leaves the key to its default, "Default" for a fixed one), kind the control it takes, from the key’s type rather than its value (boolean | number | text, or fixed for one only shown), choice for a boolean key’s three-way select (default | on | off, default while the file leaves it to the backend), editable, and note saying why one is not (a flag of this start sets it) or that it is changed only from this computer',
       executorLogTail:

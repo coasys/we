@@ -552,6 +552,29 @@ describe('which device serves you', () => {
     expect(deviceStore.serverAddress()).toBe('https://other.example');
   });
 
+  it('drops an add answered by the backend it replaced', async () => {
+    const s = servingBackend({
+      'https://other.example': { reason: 'not-known', message: "You don't have access to this host." },
+    });
+    let answer!: () => void;
+    const add = s.port.addServer!;
+    s.port.addServer = (address) => new Promise((resolve) => (answer = () => resolve(add(address))));
+    setPorts({ identity: s.port });
+    const { devices: deviceStore } = mount();
+    await flush();
+    deviceStore.setServerAddress('https://other.example');
+    const adding = deviceStore.addServer();
+    await flush();
+
+    // The backend changes while the old one decides.
+    setPorts({ identity: servingBackend().port });
+    await flush();
+    answer();
+    await adding;
+
+    expect(deviceStore.serverError()).toBe('');
+  });
+
   it('marks the server serving now, its role, and forgets another', async () => {
     const s = servingBackend();
     setPorts({ identity: s.port });

@@ -250,6 +250,8 @@ export function DeviceStoreProvider(props: ParentProps) {
     let outcome: AddServerOutcome | null = null;
     await serverStep(async () => {
       outcome = await p.addServer!(address);
+      // The provider changed while the server was added: this answer is for the old one.
+      if (port() !== p) return;
       if (outcome.ok) {
         setServerAddress('');
         await refreshServers();

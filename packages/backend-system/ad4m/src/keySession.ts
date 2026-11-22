@@ -353,6 +353,8 @@ export async function openKeySession(
         grant: opened.grantId,
         issuedAt: now(),
       });
+      // close() may have run while the statement was signed: send nothing on a closed client.
+      if (finished) return;
       const renewed = await client.agent.renewSession(proof);
       if (finished) return;
       token = renewed.token;
