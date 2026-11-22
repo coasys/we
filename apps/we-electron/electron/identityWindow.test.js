@@ -7,7 +7,10 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { createIdentity, IDENTITY_PAGE, identityFile, isIdentityPage } from './identityWindow.js';
 
-const READY = { screen: { screen: 'identity-ready', did: 'did:scid:coasys:1:Qm', keyId: 'd1' }, outcome: 'done' };
+const READY = {
+  screen: { screen: 'identity-ready', did: 'did:scid:coasys:1:Qm', keyId: 'd1', vouched: false },
+  outcome: 'done',
+};
 const WORDS = { screen: { screen: 'show-words', words: ['w1'] }, outcome: null };
 
 function setup(answers = {}) {
@@ -261,6 +264,7 @@ describe('the identity window', () => {
       { kind: 'restore' },
       { kind: 'remove-master' },
       { kind: 'add-bot' },
+      { kind: 'check-email' },
       { kind: 'answer-request', id: 'r1' },
       { kind: 'rename', keyId: 'd2' },
       { kind: 'unlink', keyId: 'd2' },

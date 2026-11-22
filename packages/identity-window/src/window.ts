@@ -26,6 +26,7 @@ import {
   isLast,
   migrationProgress,
   oneAtATime,
+  preparingNote,
   refusedField,
   remaining,
   type Screen,
@@ -34,6 +35,7 @@ import {
   spreadWords,
   type StepInput,
   targetLine,
+  vouchedLine,
   wordNumber,
 } from './screens';
 
@@ -755,10 +757,54 @@ function body(screen: Screen): Child[] {
           button('Cancel', cancel),
         ),
       ];
+    case 'preparing': {
+      // The custody service answers once the identity is published: wait for it now. It cannot be
+      // stopped part way, so the screen offers no Cancel; the bar has no value, as the work has no count.
+      waitFor({ kind: 'wait-created' });
+      const bar = el('progress');
+      bar.setAttribute('aria-label', 'Preparing your identity');
+      const started = Date.now();
+      const note = el('p', { className: 'note' });
+      const tick = () => (note.textContent = preparingNote((Date.now() - started) / 1000));
+      tick();
+      offerTimer = window.setInterval(tick, 1000);
+      return [bar, note];
+    }
+    case 'enter-email': {
+      const email = textField('Email address', '', 'you@example.org');
+      email.input.type = 'email';
+      email.input.setAttribute('autocomplete', 'email');
+      const go = () => step({ kind: 'email', email: email.input.value.trim() });
+      return [
+        email.label,
+        ...errorLine(screen.error),
+        el('div', { className: 'row' }, button('Send the code', go, 'primary'), button('Not now', cancel)),
+      ];
+    }
+    case 'enter-email-code': {
+      const code = textField('Code', '', '123456');
+      code.input.setAttribute('inputmode', 'numeric');
+      code.input.setAttribute('autocomplete', 'one-time-code');
+      const go = () => step({ kind: 'email-code', code: code.input.value.trim() }, [code.input]);
+      return [
+        code.label,
+        ...errorLine(screen.error),
+        el('div', { className: 'row' }, button('Check', go, 'primary'), button('Not now', cancel)),
+        el(
+          'div',
+          { className: 'row' },
+          button('Send a new code', () => step({ kind: 'new-code' }, [code.input])),
+          button('Change email', () => step({ kind: 'change-email' }, [code.input])),
+        ),
+      ];
+    }
+    case 'email-checked':
+      return [el('div', { className: 'link', textContent: screen.did })];
     case 'identity-ready':
       return [
         el('div', { className: 'link', textContent: screen.did }),
         el('p', { className: 'note', textContent: `Listed as ${screen.keyId} in your key log.` }),
+        el('p', { className: 'note', textContent: vouchedLine(screen.vouched) }),
       ];
     case 'joined':
     case 'master-taken':

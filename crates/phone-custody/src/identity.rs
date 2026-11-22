@@ -109,7 +109,7 @@ impl Parts {
 pub(crate) fn phone_error(e: ClientError) -> PhoneKeyError {
     match e {
         ClientError::Vault(v) => vault_error(v),
-        ClientError::Rpc(RpcError { code, message }) => {
+        ClientError::Rpc(RpcError { code, message, .. }) => {
             if message.contains(CANCELLED) {
                 PhoneKeyError::Cancelled
             } else if code >= 500 || code == 429 {

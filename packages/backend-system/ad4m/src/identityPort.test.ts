@@ -97,6 +97,7 @@ describe('the AD4M identity port', () => {
           head,
           fork: null,
           storeBehind: { since: 1_700_000_000, seq: 0 },
+          vouched: true,
           store: { url: 'https://store.example', trusted: true },
         } satisfies IdentityStatus,
         devices: [
@@ -128,7 +129,12 @@ describe('the AD4M identity port', () => {
       keyId: 'd1',
       revoked: null,
       storeBehind: { since: 1_700_000_000, seq: 0 },
+      vouched: true,
     });
+    // An identity the store keeps no vouch note for reads as not vouched.
+    expect((await createAd4mIdentityPort(client({ status: { did: DID, vouched: false } })).status!()).vouched).toBe(
+      false,
+    );
     const devices = await port.devices!();
     expect(devices.map((d) => [d.keyId, d.thisDevice, d.unlinkedSeq, d.revokedSeq])).toEqual([
       ['d1', true, null, null],
@@ -283,6 +289,7 @@ describe('the AD4M identity port with a custody service', () => {
       keyLog: true,
       masterKey: false,
       recoveryWords: false,
+      emailCheck: false,
       linkDevice: false,
     });
   });
@@ -291,11 +298,27 @@ describe('the AD4M identity port with a custody service', () => {
     const host = custody({ blocked: '' });
     const port = createAd4mIdentityPort(client({ status: {} }), host);
     // The custody service takes the 12 words back too: replacing the master key, restoring.
-    expect(await port.capabilities()).toMatchObject({ masterKey: true, recoveryWords: true, linkDevice: true });
-    // A host that takes no words (the phone) keeps the master key and links devices, and offers
-    // neither replacing the master key nor restoring.
-    const phone = createAd4mIdentityPort(client({ status: {} }), { ...custody({}), takesWords: false });
-    expect(await phone.capabilities()).toMatchObject({ masterKey: true, recoveryWords: false, linkDevice: true });
+    expect(await port.capabilities()).toMatchObject({
+      masterKey: true,
+      recoveryWords: true,
+      emailCheck: true,
+      linkDevice: true,
+    });
+    // A host that takes no words and runs no email check (the phone) keeps the master key and links
+    // devices, and offers neither replacing the master key, restoring nor the email check.
+    const phone = createAd4mIdentityPort(client({ status: {} }), {
+      ...custody({}),
+      takesWords: false,
+      checksEmail: false,
+    });
+    expect(await phone.capabilities()).toMatchObject({
+      masterKey: true,
+      recoveryWords: false,
+      emailCheck: false,
+      linkDevice: true,
+    });
+    expect(await port.change!({ kind: 'check-email' })).toBe('done');
+    expect(host.open).toHaveBeenCalledWith({ kind: 'check-email' });
     expect(await port.change!({ kind: 'replace-master' })).toBe('done');
     expect(host.open).toHaveBeenCalledWith({ kind: 'replace-master' });
     expect(await port.change!({ kind: 'revoke', keyId: 'd2' })).toBe('done');

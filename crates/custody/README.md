@@ -196,6 +196,40 @@ The executor's agent language has to serve identity: the default mainnet agent l
 publish with "the agent language does not serve identity-append". ad4m's identity suite, and
 `tests/live.rs`, run the executor with the centralized agent language for that reason.
 
+## The proof of work
+
+The store asks a proof of work for each new identity that has no vouch note. `create` reads the
+cost from the executor (`identity.powParams`, which asks the store's `GET /v1/pow`) after the
+passphrase. A cost above `ad4m_identity_client::pow::MAX_POW_BITS` (28) is refused at once, before
+anything is kept. Then the window shows `preparing` and asks for the next screen with
+`wait-created`; the client solves the proof and publishes the incept with it. Every other publish
+(`add`, `rotate`, `revoke`) sends `pow: null`.
+
+The solve blocks the custody thread until it ends, and nothing else: the custody service runs on a
+thread of its own in the Tauri app and in the sidecar. Public-state requests and a cancel wait until
+the solve ends. A cancel then shows the screen the create ended on, because a published identity
+cannot be taken back. The resume of a pending incept (below) solves its proof too, with no
+`preparing` screen.
+
+The store's refusals are said in words: a cost too high, `429` with the wait its `data.retryAfter`
+gives, and `403` with `data.reason: "pow"` (a refused proof, which the next try solves again).
+They are read from the answer's code and its `error.data` (`{error, scope, retryAfter}`,
+`{error: "forbidden", reason}`, `{error: "already-vouched"}`, `{error: "no-identity"}`), never from the
+message's words; an answer without the data is quoted as it is said. The incept is kept for
+each of these, and the next try finishes the same identity.
+
+## The email check
+
+`check-email` vouches the identity: the platform sends a 6-digit code to an email address, and the
+token it gives for that code goes to the executor's `identity.attachNote`, which keeps the vouch
+note beside the log. `identity.status` then answers `vouched: true`. Nothing is refused while an
+identity is not vouched; Settings → Security offers the check, and the person can choose "Not now".
+
+The custody service calls the platform's `POST /api/vouch/email/start {email, did}` and
+`POST /api/vouch/email/verify {email, did, code}` (`src/platform.rs`). The platform's base URL is
+`WE_PLATFORM_URL` in the environment of the custody service, else `https://api.coasys.app`. The
+address and the code stay in the identity window and the custody service; neither reaches the app.
+
 ## Pending identities
 
 `create` keeps the identity's incept in `<custody dir>/pending-incepts.json` until its publish is
@@ -223,6 +257,7 @@ The steps the main window may open (`IdentityStep`) besides `create`, `unlink` a
 | `replace-master` | a device of the identity       | "Replace master key": takes the 12 words and publishes a `rotate`; this computer keeps the new key                                                              |
 | `restore`        | a computer of no identity yet  | "Restore with recovery phrase": finds the identity, ticks its devices to lock out (with the "Missing since" time), rotates, revokes them and adds this computer |
 | `remove-master`  | a computer with the master key | on sign out: forgets this computer's copy of the master key; refused when it is the only copy                                                                   |
+| `check-email`    | a device of the identity       | "Check my email": an email address, the code sent to it, then a vouch note kept beside the log                                                                  |
 
 `revoke` carries `rotate`: "Also replace master key", ticked by default when the key log says the
 device revoked may still hold the master key (`mayHoldMaster`, below). A revoke alone leaves that copy valid; with the choice the window takes the 12

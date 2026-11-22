@@ -1528,6 +1528,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     statusLoaded: state('keys'),
     did: state('keys'),
     keyId: state('keys'),
+    vouched: state('keys'),
+    canCheckEmail: state('keys'),
     thisDeviceRevoked: state('keys'),
     thisDeviceUnlinked: state('keys'),
     keyLog: state('keys'),
@@ -1542,6 +1544,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     refresh: ambient('keys'),
     open: action('keys'),
     makeIdentity: action('keys'),
+    checkEmail: action('keys'),
     startWithoutIdentity: action('keys'),
   },
   /*
