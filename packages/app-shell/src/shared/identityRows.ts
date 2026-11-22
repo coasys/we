@@ -67,7 +67,11 @@ export interface DeviceRow {
   valid: boolean;
   /** "Active", "Unlinked", "Revoked", or "Expired on 3 Dec 2026". */
   status: string;
-  /** Whether an unlink may be offered: a key still active that is not this computer's. */
+  /**
+   * Whether an unlink may be offered: a key still active. This computer's own may leave too, without
+   * the master key (`identity.unlinkSelf`); it is then signed out. Not a phone's own row: the executor's
+   * `unlinkSelf` retires the executor's key, so there the phone's unlink is the custody window's.
+   */
   canUnlink: boolean;
   /** Whether a revoke may be offered: a key not yet revoked, unlinked or not, that is not this computer's. */
   canRevoke: boolean;
@@ -221,14 +225,21 @@ export const DEVICE_ICONS: Record<string, string> = {
 const MASTER_WORDS = { yes: 'Has master key', offered: 'Master key sent', no: '' } as const;
 
 /**
- * A revoked device's copy of the master key: a revoke does not replace the master key, so the copy
- * stays valid. Known from the record when it still lists the device; else the key log says the
- * device was let keep the master key (`IdentityCustodyView.revokedHolders`), not that it took it.
- * A rotation at or after the revoke replaced the master key, so the copy no longer counts.
+ * A revoked or unlinked device's copy of the master key: neither a revoke nor an unlink replaces the
+ * master key, so the copy stays valid. Known from the record when it still lists the device; else
+ * the key log says the device was let keep the master key (`IdentityCustodyView.endedHolders`), not
+ * that it took it. A revoked device is lost or stolen; an unlinked one the person may still have.
+ * A rotation at or after the key ended replaced the master key, so the copy no longer counts.
  */
-const REVOKED_MASTER_WORDS = {
-  held: 'Still has your master key. Replace it to lock this device out.',
-  may: 'May still have your master key. Replace it to lock this device out.',
+const ENDED_MASTER_WORDS = {
+  revoked: {
+    held: 'Still has your master key. Replace it to lock this device out.',
+    may: 'May still have your master key. Replace it to lock this device out.',
+  },
+  unlinked: {
+    held: "Still has your master key. Replace it if you don't have this device any more.",
+    may: "May still have your master key. Replace it if you don't have this device any more.",
+  },
 } as const;
 
 /** What the private record calls `keyId`, or how the log alone would name it. */
@@ -252,7 +263,7 @@ export function deviceName(
 export function deviceRows(
   devices: DeviceKeyView[],
   names: DeviceNameView[] = [],
-  revokedHolders: string[] = [],
+  endedHolders: string[] = [],
   /** The seq of the key log's last rotation, or `null` when the master key was never replaced. */
   masterReplacedSeq: number | null = null,
   now: number = Math.floor(Date.now() / 1000),
@@ -277,17 +288,20 @@ export function deviceRows(
       const record = names.find((n) => n.keyId === device.keyId);
       const name = record?.name ?? '';
       const listed = record?.holdsMaster ?? 'no';
-      // A revoked key keeps nothing it can use as a device; a copy of the master key it took stays
-      // valid, and its row says so in a warning (`holdsMaster` is `no`, so the badge's tone warns).
-      const holdsMaster = revoked ? 'no' : listed;
-      const replacedSince = revoked && masterReplacedSeq !== null && (device.revokedSeq as number) <= masterReplacedSeq;
-      const revokedMaster =
-        !revoked || replacedSince
+      // A revoked or unlinked key keeps nothing it can use as a device; a copy of the master key it
+      // took stays valid, and its row says so in a warning (`holdsMaster` is `no`, so the badge's
+      // tone warns).
+      const words = revoked ? ENDED_MASTER_WORDS.revoked : unlinked ? ENDED_MASTER_WORDS.unlinked : null;
+      const holdsMaster = words ? 'no' : listed;
+      const endedSeq = Math.min(device.unlinkedSeq ?? Infinity, device.revokedSeq ?? Infinity);
+      const replacedSince = masterReplacedSeq !== null && endedSeq <= masterReplacedSeq;
+      const endedMaster =
+        !words || replacedSince
           ? ''
           : listed !== 'no'
-            ? REVOKED_MASTER_WORDS.held
-            : revokedHolders.includes(device.keyId)
-              ? REVOKED_MASTER_WORDS.may
+            ? words.held
+            : endedHolders.includes(device.keyId)
+              ? words.may
               : '';
       const fallback = device.thisDevice ? thisLabel : UNNAMED_DEVICE;
       return {
@@ -310,13 +324,15 @@ export function deviceRows(
             : expired
               ? `Expired on ${dateOf(device.expires as number)}`
               : 'Active',
-        // Ending an expired key for good is still the key log's to record.
-        canUnlink: !revoked && !unlinked && !device.thisDevice,
+        // Ending an expired key for good is still the key log's to record; this computer's own row
+        // can end itself too (`deviceStore.unlinkThisComputer`) — except a phone's: `identity.unlinkSelf`
+        // unlinks the key of the executor the phone reaches, not the phone's own, so no phone row offers it.
+        canUnlink: !revoked && !unlinked && !(here && device.thisDevice),
         canRevoke: !revoked && !device.thisDevice,
         name,
         holdsMaster,
-        master: revokedMaster || MASTER_WORDS[holdsMaster],
-        replaceMaster: revokedMaster !== '',
+        master: endedMaster || MASTER_WORDS[holdsMaster],
+        replaceMaster: endedMaster !== '',
       };
     });
 }
