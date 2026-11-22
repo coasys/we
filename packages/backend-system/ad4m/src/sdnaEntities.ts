@@ -47,6 +47,7 @@ import {
   VideoBlock,
   WeNode,
 } from './entities';
+import { sharedInFlight } from './inFlight';
 import { moduleOfModel } from './manifestCompiler';
 import { entityNameOfClass } from './recordTypes';
 import { rpcStatus } from './rpcStatus';
@@ -117,11 +118,153 @@ export function withTunedHints(declared: SHACLShape, stored: SHACLShape): SHACLS
 }
 
 /**
+ * Which declared-shape sets a `registerShapes` call has already carried into a perspective,
+ * remembered so a repeat ask is not paid for twice.
+ *
+ * The executor's diff makes a repeat registration correct but not cheap: the marker read plus the
+ * call is a couple of round trips, and the boot and every space switch were waiting on them even
+ * when every shape came back unchanged. Two tiers of memo say "this perspective already holds the
+ * outcome of registering this set", both keyed by the perspective's uuid — a registered shape is
+ * the perspective's, not the agent's, so the uuid alone identifies the confirmation:
+ *
+ * - **In-session** — this map. A call for a confirmed set answers `[]` at once and sends nothing,
+ *   not even the marker read. The shape could only have drifted within the session if a peer
+ *   rewrote it, which the device tier's background re-check is for; a query straight after has the
+ *   shapes the confirmation left.
+ * - **On-device** — `localStorage`, written only once `registerShapes` resolves. A hit answers `[]`
+ *   at once too, but then runs the full registration in the background, once per session: the memo
+ *   could be stale across sessions (another peer on another build rewrote a shape), so the call
+ *   goes out anyway, off the caller's wait, and anything it writes is logged. Where there is no
+ *   `localStorage` — Node, a test, a browser blocking site data — the session tier alone applies.
+ *
+ * A shape set this device has *not* confirmed — the first boot, a build that changed a model or
+ * added one, a module enabled since — has a new {@link fingerprintOf} and waits for the executor
+ * exactly as before: a model with no stored shape fails every query until then, and a write drops
+ * a property the stored shape does not know. That wait is the one the memos must never skip. A
+ * rejected registration clears both tiers, so the next call waits rather than trusting a
+ * confirmation that never completed; and calls for one set in flight together share the one
+ * request (`sharedInFlight`), so a boot and a switch racing send a single `registerShapes`.
+ */
+
+/**
+ * One shape set's place in the memo: `slot` names the set (its target classes), `print` its content.
+ * A slot holds one print, so a build that changes a set replaces its entry instead of adding one.
+ */
+interface Memo {
+  slot: string;
+  print: string;
+}
+
+/** The print this session has confirmed for each slot, by perspective uuid. */
+const confirmed = new Map<string, Map<string, string>>();
+
+const sessionHas = (uuid: string, memo: Memo) => confirmed.get(uuid)?.get(memo.slot) === memo.print;
+
+const sessionConfirm = (uuid: string, memo: Memo) => {
+  const slots = confirmed.get(uuid) ?? new Map<string, string>();
+  slots.set(memo.slot, memo.print);
+  confirmed.set(uuid, slots);
+};
+
+/**
+ * `localStorage` is not merely absent in some contexts — it **throws**: a private window, blocked
+ * site data, an opaque origin. A memo that cannot persist degrades to the session tier, never to a
+ * failed registration.
+ */
+function deviceStore(): Storage | null {
+  try {
+    return globalThis.localStorage ?? null;
+  } catch {
+    return null;
+  }
+}
+
+const DEVICE_KEY = 'we.sdna:';
+
+/** The print this device has confirmed for each slot in `uuid`; empty where there is no device store. */
+function deviceSlots(uuid: string): Record<string, string> {
+  try {
+    const parsed: unknown = JSON.parse(deviceStore()?.getItem(DEVICE_KEY + uuid) ?? '{}');
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, string>) : {};
+  } catch {
+    return {};
+  }
+}
+
+const deviceHas = (uuid: string, memo: Memo) => deviceSlots(uuid)[memo.slot] === memo.print;
+
+/** Set a slot's print on this device, or drop the slot when `print` is null. */
+function deviceWrite(uuid: string, slot: string, print: string | null): void {
+  try {
+    const slots = deviceSlots(uuid);
+    if (print === null) delete slots[slot];
+    else slots[slot] = print;
+    deviceStore()?.setItem(DEVICE_KEY + uuid, JSON.stringify(slots));
+  } catch {
+    // Quota or a blocked write: the session memo still stands, the next boot just re-registers.
+  }
+}
+
+/** Drop a slot from both tiers — a rejected registration confirmed nothing. */
+function forgetConfirmed(uuid: string, memo: Memo): void {
+  confirmed.get(uuid)?.delete(memo.slot);
+  deviceWrite(uuid, memo.slot, null);
+}
+
+/**
+ * Forget every confirmed registration for this perspective.
+ *
+ * Called where stored shapes change outside `registerModels` — a space tuning its hints writes
+ * them straight, and a reset of those hints must send the declared shape again. Either invalidates
+ * "already registered" for every set here, so the next registration looks again.
+ */
+export function forgetRegisteredShapes(p: PerspectiveProxy): void {
+  confirmed.delete(p.uuid);
+  try {
+    deviceStore()?.removeItem(DEVICE_KEY + p.uuid);
+  } catch {
+    // As `deviceWrite`.
+  }
+}
+
+/** cyrb53's mixing in 32-bit arithmetic: short, the same on every engine. */
+function hash(text: string): string {
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return `${(h2 >>> 0).toString(36)}${(h1 >>> 0).toString(36)}`;
+}
+
+/**
+ * The memo entry for the declared shapes a call would send — before the tuned-hints merge, so it
+ * costs no reads — sorted by target class, the key the executor registers under. One build
+ * serializes a shape the same way every time; a build that serializes it differently costs one
+ * awaited registration, which is also all a hash collision costs.
+ */
+function fingerprintOf(declared: readonly SHACLShape[]): Memo {
+  const sorted = [...declared].sort((a, b) => String(a.targetClass).localeCompare(String(b.targetClass)));
+  return {
+    slot: hash(sorted.map((shape) => shape.targetClass ?? '').join(' ')),
+    print: hash(JSON.stringify(sorted.map((shape) => shape.toJSON()))),
+  };
+}
+
+/**
  * Register these models' shapes in one `registerShapes` call, and answer the entities it wrote.
  *
  * The executor compares each shape with the one it stores and writes only the differences, so this
  * is safe to call on every start and on every space switch, from any number of peers. It answers
  * once the executor reads the new shapes, so a query can run straight after.
+ *
+ * Which of the three ways a call goes out — or does not — is the memo's, above: confirmed in this
+ * session, send nothing; confirmed on this device, answer now and re-check in the background;
+ * unconfirmed, run the full registration awaited, deduplicated with any caller already asking.
  *
  * **Tuned hints.** The executor counts `ad4m://interpretation_hint` as part of a shape. A space that
  * tuned its hints (the `we://interpretation_customized` marker on the shape node) would lose them to
@@ -136,35 +279,66 @@ async function registerModels(p: PerspectiveProxy, models: readonly (typeof Ad4m
     .map((model) => declaredShapeOf(model));
   if (declared.length === 0) return [];
 
-  const marked = new Set(
-    (await p.get(new LinkQuery({ predicate: HINTS_CUSTOMIZED_PREDICATE }))).map((link) => link.data.source),
-  );
-  let shapes = declared;
-  if (marked.size > 0) {
-    const stored = await p.shapes([
-      ...new Set(declared.flatMap((shape) => (shape.targetClass ? [shape.targetClass] : []))),
-    ]);
-    const tuned = new Map(
-      stored
-        .filter((record) => marked.has(record.shape.nodeShapeUri) && record.shape.targetClass)
-        .map((record) => [record.shape.targetClass!, record.shape]),
+  const memo = fingerprintOf(declared);
+  if (sessionHas(p.uuid, memo)) return [];
+  if (deviceHas(p.uuid, memo)) {
+    // Confirmed on this device already: the caller gets its answer now, and the registration that
+    // proves the memo is still true runs in the background — once per session, which marking the
+    // session tier before it starts is what guarantees.
+    sessionConfirm(p.uuid, memo);
+    void sharedInFlight(p, `sdna:${memo.slot}:${memo.print}`, () => registerDeclared(p, declared, memo)).then(
+      (written) => {
+        if (written.length) console.info(`ad4m: stored shapes had drifted; re-registered ${written.join(', ')}`);
+      },
+      // `registerDeclared` has already cleared both memo tiers, so the next call waits again.
+      (error: unknown) => {
+        if (rpcStatus(error) === 400) console.warn('ad4m: background shape registration refused', error);
+        else console.error('ad4m: background shape registration failed', error);
+      },
     );
-    shapes = declared.map((shape) => {
-      const storedShape = shape.targetClass ? tuned.get(shape.targetClass) : undefined;
-      return storedShape ? withTunedHints(shape, storedShape) : shape;
-    });
+    return [];
   }
+  return sharedInFlight(p, `sdna:${memo.slot}:${memo.print}`, () => registerDeclared(p, declared, memo));
+}
 
-  // The executor names each class it wrote by its target class IRI (two classes may share a name).
-  // The port answers entity names: the name the class is registered under in WE, or, for a class not
-  // registered yet (the registry fills when the backend's ports are made), the name of the class it
-  // sent. An executor that answered names passes through as it is.
-  const { written } = await p.registerShapes(shapes);
-  const sent = new Set(declared.map((shape) => shape.targetClass));
-  return written.map((key) => {
-    const name = entityNameOfClass(key, p);
-    return name === key && sent.has(key) ? classNameOf(key) : name;
-  });
+/** The registration itself: the marker read, the tuned-hints merge, the call, and the memo write. */
+async function registerDeclared(p: PerspectiveProxy, declared: SHACLShape[], memo: Memo): Promise<string[]> {
+  try {
+    const marked = new Set(
+      (await p.get(new LinkQuery({ predicate: HINTS_CUSTOMIZED_PREDICATE }))).map((link) => link.data.source),
+    );
+    let shapes = declared;
+    if (marked.size > 0) {
+      const stored = await p.shapes([
+        ...new Set(declared.flatMap((shape) => (shape.targetClass ? [shape.targetClass] : []))),
+      ]);
+      const tuned = new Map(
+        stored
+          .filter((record) => marked.has(record.shape.nodeShapeUri) && record.shape.targetClass)
+          .map((record) => [record.shape.targetClass!, record.shape]),
+      );
+      shapes = declared.map((shape) => {
+        const storedShape = shape.targetClass ? tuned.get(shape.targetClass) : undefined;
+        return storedShape ? withTunedHints(shape, storedShape) : shape;
+      });
+    }
+
+    // The executor names each class it wrote by its target class IRI (two classes may share a name).
+    // The port answers entity names: the name the class is registered under in WE, or, for a class not
+    // registered yet (the registry fills when the backend's ports are made), the name of the class it
+    // sent. An executor that answered names passes through as it is.
+    const { written } = await p.registerShapes(shapes);
+    sessionConfirm(p.uuid, memo);
+    deviceWrite(p.uuid, memo.slot, memo.print);
+    const sent = new Set(declared.map((shape) => shape.targetClass));
+    return written.map((key) => {
+      const name = entityNameOfClass(key, p);
+      return name === key && sent.has(key) ? classNameOf(key) : name;
+    });
+  } catch (error) {
+    forgetConfirmed(p.uuid, memo);
+    throw error;
+  }
 }
 
 /**
@@ -186,7 +360,8 @@ export async function ensureEntityRegistered(p: PerspectiveProxy, model: typeof 
 
 /**
  * Registers all root SDNA models on the given perspective. Safe to call on every boot: an unchanged
- * shape writes nothing.
+ * shape writes nothing, and a set this device already registered is confirmed rather than sent —
+ * the memo in {@link registerModels} answers at once and re-checks in the background.
  */
 export async function installRootSdna(p: PerspectiveProxy): Promise<void> {
   // Configuration only. Agent-scoped module entities install into the personal space, beside the
@@ -302,7 +477,8 @@ export const SPACE_MODELS = [
 
 /**
  * Registers all space SDNA models on the given perspective, then the modules' models. Safe to call
- * on every join, and from many peers on one shared perspective: an unchanged shape writes nothing.
+ * on every join, and from many peers on one shared perspective: an unchanged shape writes nothing,
+ * and a set this device already confirmed answers at once — see {@link registerModels}.
  */
 export async function installSpaceSdna(p: PerspectiveProxy, moduleEntities: readonly unknown[] = []): Promise<void> {
   await registerModels(p, SPACE_MODELS);
@@ -320,7 +496,9 @@ export async function installSpaceSdna(p: PerspectiveProxy, moduleEntities: read
  * A module's shapes cannot follow that rule, because a module can be enabled **after** a space
  * already exists. So this runs on every switch into a WE space. Without it, enabling a module leaves
  * every existing space unable to query its entities: "No SHACL shape stored for class X", from a
- * perspective that looks healthy. The executor writes nothing for a shape it already holds.
+ * perspective that looks healthy. The executor writes nothing for a shape it already holds — and
+ * the memo in {@link registerModels} spares the switch even that call once this device has
+ * confirmed the set, re-checking it in the background instead.
  *
  * **One `registerShapes` call per module**, and none shared with WE's own models. The executor
  * refuses a whole call — writing nothing from it — when one shape in it is refused: two shapes for
@@ -372,11 +550,13 @@ export async function installModuleSdna(p: PerspectiveProxy, moduleEntities: rea
  * its writes, and a *model* added outright would fail every query with "No SHACL shape stored for
  * class X".
  *
- * One `registerShapes` call. The executor decides what changed and writes only that; a space whose
- * shapes are current costs the call and writes nothing.
+ * One `registerShapes` call when one is needed. The executor decides what changed and writes only
+ * that; a space this device already confirmed costs no call at all — this answers `[]` at once and
+ * the re-check runs in the background, its writes logged where they land (see {@link registerModels}).
  *
  * Returns the classes it wrote, for logging, by entity name (`registerModels` maps the target class
- * IRIs the executor answers with).
+ * IRIs the executor answers with). An early `[]` means nothing this call sent — a background
+ * re-check may still write, and names what it did.
  */
 export async function refreshSpaceSdna(p: PerspectiveProxy): Promise<string[]> {
   return registerModels(p, SPACE_MODELS);

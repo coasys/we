@@ -74,9 +74,10 @@ export interface SchemaPort {
    */
   installSpace(dataset: DatasetHandle, moduleSchemas: readonly unknown[]): Promise<void>;
   /**
-   * Install only the given module schemas (runs on every space switch — diffs before writing). Each
-   * module installs on its own; a refused one rejects with {@link ModuleSchemasRefused} once the
-   * others are in.
+   * Install only the given module schemas (runs on every space switch — diffs before writing; a
+   * backend that has already confirmed the set on this device may answer at once and re-check in
+   * the background). Each module installs on its own; a refused one rejects with
+   * {@link ModuleSchemasRefused} once the others are in.
    */
   installModules(dataset: DatasetHandle, moduleSchemas: readonly unknown[]): Promise<void>;
   /**
@@ -87,9 +88,11 @@ export interface SchemaPort {
    * this build declares that the dataset never had at all. The second matters as much as the first —
    * a dataset predating a newly added entity can answer no query about it.
    *
-   * Runs on every space switch, so it must diff before writing. Returns the schemas it wrote, by
-   * entity name (a backend that addresses classes by another key maps each back), or an empty
-   * array — the common case — when everything stored was already current.
+   * Runs on every space switch, so it must diff before writing — or answer at once when this
+   * device already confirmed the set, re-checking in the background. Returns the schemas it wrote,
+   * by entity name (a backend that addresses classes by another key maps each back), or an empty
+   * array — the common case — when everything stored was already current. An early `[]` answers
+   * for this call only; a background re-check may still write, and is logged where it happens.
    */
   refreshSpace(dataset: DatasetHandle): Promise<string[]>;
   /** Ensure one schema payload is installed. Idempotent. */

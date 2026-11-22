@@ -10,7 +10,8 @@ The AD4M implementation of `@we/backend-shared`.
   inventory, including the two upstream bugs it degrades around
 - `createAd4mEphemeralPort` — the ephemeral port over perspective signals
 - `agentHelpers` — agent profiles, the identity surface
-- `sdnaEntities` — SDNA install and idempotent registration
+- `sdnaEntities` — SDNA install and idempotent registration, and the fingerprint memo that keeps a
+  repeat install off the boot's and the space switch's wait
 - `perspectiveHelpers` — foreign SHACL shapes → synthesised model classes
 - `entityRegistry` — the AD4M model class registry
 - `neutralManifest` — AD4M manifest entries → the neutral `EntityManifest`

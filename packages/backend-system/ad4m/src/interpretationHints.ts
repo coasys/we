@@ -21,7 +21,12 @@ import { Link, LinkQuery, Literal, type PerspectiveProxy, SHACLShape } from '@co
 import type { EntityHintState } from '@we/backend-shared';
 import { getEntityForDataset, getEntityTargetClass } from '@we/entities';
 
-import { ensureEntityRegistered, HINTS_CUSTOMIZED_PREDICATE, storedShapeOf } from './sdnaEntities';
+import {
+  ensureEntityRegistered,
+  forgetRegisteredShapes,
+  HINTS_CUSTOMIZED_PREDICATE,
+  storedShapeOf,
+} from './sdnaEntities';
 
 /** The names of the properties the entity's model declares: the contract's property names. */
 function declaredNames(entity: string, p: PerspectiveProxy): Set<string> {
@@ -104,6 +109,9 @@ export async function writeInterpretationHints(
 
   await replaceLink(p, shape.nodeShapeUri, HINTS_CUSTOMIZED_PREDICATE, 'true');
   await p.registerShapes([shape]);
+  // A stored shape changed outside `registerModels`, so every "already registered" it remembers is
+  // now stale — the next registration has to look again.
+  forgetRegisteredShapes(p);
 }
 
 /**
@@ -118,5 +126,8 @@ export async function resetInterpretationHints(p: PerspectiveProxy, entity: stri
   const stored = await storedShape(p, entity);
   if (!model || !stored) return;
   await replaceLink(p, stored.nodeShapeUri, HINTS_CUSTOMIZED_PREDICATE, null);
+  // The declared shape has to go out again — the whole point of a reset — so a memo saying it was
+  // already registered is exactly what to forget first.
+  forgetRegisteredShapes(p);
   await ensureEntityRegistered(p, model as never);
 }

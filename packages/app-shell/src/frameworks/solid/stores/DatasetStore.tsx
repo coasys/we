@@ -546,6 +546,8 @@ export function DatasetStoreProvider(props: ParentProps) {
       // An existing root already holds `AgentSettings`, so reading it need not wait for the
       // reinstall, which only brings shapes up to date. Settled rather than awaited alongside it:
       // a failed read must not leave the root unset, which loses every saved template and theme.
+      // (The reinstall itself resolves at once on a repeat boot: the backend confirms the set it
+      // already registered on this device rather than sending it again — see `registerModels`.)
       const early = AgentSettings.findOne(existing.handle).then(
         (settings) => ({ settings }),
         (error: unknown) => ({ error }),
@@ -825,6 +827,11 @@ export function DatasetStoreProvider(props: ParentProps) {
         //
         // Together rather than in turn: they register disjoint classes (a module's, WE's own), so
         // neither waits on the other.
+        //
+        // And on a repeat switch they wait on nothing at all: the backend confirms a set this
+        // device already registered rather than sending it again, re-checking in the background —
+        // the memo in `registerModels` (backend-ad4m). The first switch after a shape changed still
+        // waits, which is the only case the wait exists for.
         //
         // Neither failing stops the switch. The space is a WE space already, so it opens on the
         // shapes it holds; a module the backend refused is named in the error (each module installs

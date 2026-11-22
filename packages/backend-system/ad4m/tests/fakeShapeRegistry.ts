@@ -34,6 +34,9 @@ const refuse = (message: string): never => {
   throw Object.assign(new Error(message), { status: 400 });
 };
 
+/** Each fake is its own perspective: a memo keyed by uuid must not confuse one test's for another's. */
+let perspectives = 0;
+
 export function fakeShapeRegistry() {
   /** Target class IRI → its stored shape. */
   const registry = new Map<string, SHACLShape>();
@@ -46,11 +49,13 @@ export function fakeShapeRegistry() {
     /** Each call's `written`, by target class IRI. */
     written: [] as string[][],
     shapes: [] as (string[] | undefined)[],
+    /** Each `get` — the registration's marker read is one of these. */
+    gets: [] as ({ source?: string; predicate?: string } | undefined)[],
   };
   const copy = (shape: SHACLShape) => SHACLShape.fromJSON(JSON.parse(JSON.stringify(shape.toJSON())));
 
   const perspective = {
-    uuid: 'p-registry',
+    uuid: `p-registry-${++perspectives}`,
     async registerShapes(shapes: SHACLShape[]) {
       const targets = shapes.map((shape) => shape.targetClass ?? '');
       const names = targets.map(classNameOf);
@@ -96,6 +101,7 @@ export function fakeShapeRegistry() {
         .map(({ name, shape }) => ({ name, shape: copy(shape), hash: '' }));
     },
     async get(query: { source?: string; predicate?: string }) {
+      calls.gets.push(query);
       return links
         .filter(
           (l) => (!query.source || l.source === query.source) && (!query.predicate || l.predicate === query.predicate),

@@ -81,6 +81,9 @@ describe('refreshing a space', () => {
     // The stored Space shape from an older build: one property fewer.
     const older = r.registry.get(targetOf(Space))!;
     older.properties = older.properties.slice(1);
+    // A repeat call in the session sends nothing — see the memo — so the refresh runs as one for a
+    // perspective the session has not confirmed.
+    r.perspective.uuid = `${r.perspective.uuid}-again`;
 
     expect(await refreshSpaceSdna(r.proxy)).toEqual(['Space']);
     // The executor answered by target class IRI; the port answers the entity name WE registered.
@@ -95,6 +98,8 @@ describe('refreshing a space', () => {
     await installSpaceSdna(r.proxy);
     const older = r.registry.get(targetOf(Space))!;
     older.properties = older.properties.slice(1);
+    // As above: a repeat in the session sends nothing, so the refresh asks as a new perspective.
+    r.perspective.uuid = `${r.perspective.uuid}-again`;
 
     expect(await refreshSpaceSdna(r.proxy)).toEqual(['Space']);
     expect(r.registry.get('other-app://Space')!.targetClass).toBe('other-app://Space');
@@ -110,6 +115,8 @@ describe('refreshing a space', () => {
     };
     const older = r.registry.get(targetOf(Space))!;
     older.properties = older.properties.slice(1);
+    // As above: a repeat in the session sends nothing, so the refresh asks as a new perspective.
+    r.perspective.uuid = `${r.perspective.uuid}-again`;
 
     expect(await refreshSpaceSdna(r.proxy)).toEqual(['Space']);
   });
