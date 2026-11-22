@@ -6,7 +6,7 @@
 
 ## Context
 
-`@we/ai-context` generates AI context (agent instruction files for Copilot, Claude, and Cursor; a runtime `schemaContext.ts` constant; and a structured `context.json`) by extracting type information from design-system packages and models. The interpretation uses CEM parsing (primitives) and ts-morph AST analysis (components, widgets, tokens, models).
+`@we/ai-context` generates AI context (agent instruction files for Copilot, Claude, and Cursor; a runtime `schemaContext.ts` constant; and a structured `context.json`) by extracting type information from design-system packages and models. The extraction uses CEM parsing (primitives) and ts-morph AST analysis (components, widgets, tokens, models).
 
 The original `generate.ts` hardcodes all package paths. Adding a new package requires modifying the central file.
 
