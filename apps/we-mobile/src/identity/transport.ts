@@ -10,7 +10,7 @@
  * naming and revoking a device. Replacing the master key, restoring, and anything else that needs
  * the 12 words runs on a computer.
  */
-import type { IdentityTransport, RevokeTarget, Screen, StepInput } from '@we/identity-window';
+import type { IdentityTransport, RevokeTarget, Screen, StepInput } from '@coasys/identity-portal';
 
 import type { DeviceKeyPlugin, DeviceRequestView, PhoneDeviceView } from '../../../we-web/src/platform/deviceKey';
 

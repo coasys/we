@@ -254,12 +254,13 @@ we/
     │   ├── electron/
     │   └── scripts/
     │       └── generate-seed-config.cjs
-    └── we-tauri/                 # Tauri app
-        ├── src-tauri/
-        │   ├── Cargo.toml.template
-        │   └── src/generated/    # Auto-generated (gitignored)
-        └── scripts/
-            └── generate-seed-config.cjs
+    ├── we-tauri/                 # Tauri app
+    │   ├── src-tauri/
+    │   │   ├── Cargo.toml.template
+    │   │   └── src/generated/    # Auto-generated (gitignored)
+    │   └── scripts/
+    │       └── generate-seed-config.cjs
+    └── identity-site/            # coasys.id: the Connect frame (static site, not a WE host)
 ```
 
 ## Development Workflow

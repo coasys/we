@@ -193,6 +193,8 @@ pub enum Screen {
         hint: Option<String>,
         #[serde(rename = "canKeep")]
         can_keep: bool,
+        /// The new device is a browser, linked from its link: it is listed as one.
+        browser: bool,
         #[serde(rename = "ownName")]
         own_name: bool,
     },
@@ -2160,6 +2162,7 @@ async fn link_on<R: ExecutorRpc, H: ExecutorRpc>(
         own_key.as_deref(),
         vault,
         address,
+        false,
         rx,
         reply,
     )
@@ -2377,8 +2380,9 @@ fn wrong_passphrase() -> Screen {
 /// name the person gives it then: the Devices page shows every device by name from then on.
 ///
 /// Its kind is a guess: ad4m's claim carries a name hint and whether the device may keep the
-/// master key, never what the device is. One that may keep it is written as a computer, any other
-/// as a server; a phone writes its own entry as a phone app once it reads its devices
+/// master key, never what the device is. A device linked from a browser's link (`browser`) is
+/// written as a browser, which runs no executor and never keeps the master key. Of the others, one
+/// that may keep it is written as a computer, any other as a server; a phone writes its own entry as a phone app once it reads its devices
 /// (`crates/phone-custody`, `PhoneIdentity::devices`).
 #[allow(clippy::too_many_arguments)]
 async fn follow_link<R: ExecutorRpc>(
@@ -2389,6 +2393,7 @@ async fn follow_link<R: ExecutorRpc>(
     own_key: Option<&str>,
     vault: &DesktopVault,
     address: &ExecutorAddress,
+    browser: bool,
     rx: &mut Rx,
     reply: &mut Reply,
 ) {
@@ -2414,7 +2419,8 @@ async fn follow_link<R: ExecutorRpc>(
                         let screen = Screen::Match {
                             code: claim.match_code.clone(),
                             hint: claim.hint.clone(),
-                            can_keep: flow.may_keep(&claim),
+                            can_keep: flow.may_keep(&claim) && !browser,
+                            browser,
                             own_name: !own_listed,
                         };
                         claimed = Some(claim);
@@ -2430,19 +2436,25 @@ async fn follow_link<R: ExecutorRpc>(
                 this_name,
             } if claimed.is_some() => {
                 let claim = claimed.take().expect("checked above");
-                let app = flow.may_keep(&claim);
+                let app = flow.may_keep(&claim) && !browser;
                 let entry = DeviceEntry {
                     name: given_name(name)
                         .or_else(|| claim.hint.clone())
-                        .unwrap_or_else(|| "Another device".into()),
-                    kind: if app {
-                        DeviceKind::DesktopApp
-                    } else {
-                        DeviceKind::Server
+                        .unwrap_or_else(|| {
+                            if browser { "Browser" } else { "Another device" }.into()
+                        }),
+                    kind: match (browser, app) {
+                        (true, _) => DeviceKind::Browser,
+                        (false, true) => DeviceKind::DesktopApp,
+                        (false, false) => DeviceKind::Server,
                     },
-                    place: Some(if app { Place::Computer } else { Place::Server }),
+                    place: match (browser, app) {
+                        (true, _) => None,
+                        (false, true) => Some(Place::Computer),
+                        (false, false) => Some(Place::Server),
+                    },
                     address: None,
-                    runs_executor: true,
+                    runs_executor: !browser,
                     holds_master: Holds::No,
                     master_index: None,
                     vault: None,
@@ -2588,7 +2600,7 @@ async fn run_scan(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, 
 
     // The code first: one that cannot link is said before any passphrase is asked for.
     answer(reply, Ok(Screen::EnterCode { error: None }));
-    let device = loop {
+    let (device, browser) = loop {
         let Some(input) = next_input(vault, address, rx, reply).await else {
             return;
         };
@@ -2597,7 +2609,7 @@ async fn run_scan(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, 
             continue;
         };
         match check_code(&code, &store_url, CLOCK.now()) {
-            Ok(device) => break device,
+            Ok(checked) => break checked,
             Err(error) => answer(reply, Ok(Screen::EnterCode { error: Some(error) })),
         }
     };
@@ -2650,16 +2662,27 @@ async fn run_scan(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, 
         own_key.as_deref(),
         vault,
         address,
+        browser,
         rx,
         reply,
     )
     .await
 }
 
-/// The device string in `code` (its link, or the bare string), when it can be linked now through
-/// `store_url`; else what to tell the person.
-fn check_code(code: &str, store_url: &str, now: u64) -> Result<DeviceString, String> {
-    let device = DeviceString::parse(code).map_err(|_| {
+/// The device string in `code`, when it can be linked now through `store_url`; else what to tell
+/// the person. `code` is the bare string a desktop or phone shows, or the link a browser shows
+/// (`https://<auth domain>/link#<device string>`): the second is flagged, since a browser is
+/// listed as one and never keeps the master key.
+fn check_code(code: &str, store_url: &str, now: u64) -> Result<(DeviceString, bool), String> {
+    let (text, browser) = match code.trim().split_once('#') {
+        Some((origin, string))
+            if origin.starts_with("https://") || origin.starts_with("http://") =>
+        {
+            (string, true)
+        }
+        _ => (code, false),
+    };
+    let device = DeviceString::parse(text).map_err(|_| {
         "That isn't a device code. Copy the whole code from the new device.".to_string()
     })?;
     if now >= device.exp {
@@ -2671,7 +2694,7 @@ fn check_code(code: &str, store_url: &str, now: u64) -> Result<DeviceString, Str
             device.store
         ));
     }
-    Ok(device)
+    Ok((device, browser))
 }
 
 // ─── show my code (the new device's side) ────────────────────────────────────────
@@ -6241,9 +6264,9 @@ mod tests {
                 "identity.cosignIncept" => {
                     if self.refuse_cosign.get() {
                         return Err(RpcError {
+                            data: None,
                             code: 500,
                             message: "the keystore is locked".into(),
-                            data: None,
                         });
                     }
                     let mut event = Event::from_json(&p["event"]).unwrap();
@@ -6300,9 +6323,9 @@ mod tests {
                     }
                     if self.refuse_publish.replace(false) {
                         return Err(RpcError {
+                            data: None,
                             code: 503,
                             message: "the store did not answer".into(),
-                            data: None,
                         });
                     }
                     let event = Event::from_json(&p["events"][0]).unwrap();
@@ -6346,9 +6369,9 @@ mod tests {
                     Ok(json!({ "state": "ended", "cancelled": [] }))
                 }
                 other => Err(RpcError {
+                    data: None,
                     code: 404,
                     message: format!("no {other}"),
-                    data: None,
                 }),
             }
         }
@@ -7613,13 +7636,13 @@ mod tests {
     #[test]
     fn the_executors_no_store_refusal_reads_as_the_same_sentence() {
         let refusal = ClientError::Rpc(RpcError {
+            data: None,
             code: 503,
             // As the executor answers it (`IdentityService::refuse_without_store_keys`).
             message: "no-store-keys: identity.storeKeys is not set, so this executor accepts no \
                       head from the identity store and cannot bind an agent to a log; set \
                       identity.storeKeys first"
                 .into(),
-            data: None,
         });
         let expected = Screen::Failed {
             message: NO_STORE.into(),
@@ -10407,8 +10430,22 @@ mod tests {
         };
         let code = device.encode();
         // The same store with or without its trailing slash, and the code pasted with spaces.
-        let checked = check_code(&format!("  {code}\n"), "https://store.example", 999).unwrap();
+        let (checked, browser) =
+            check_code(&format!("  {code}\n"), "https://store.example", 999).unwrap();
         assert_eq!(checked.sign, device.sign);
+        assert!(!browser, "a bare string is a desktop or a phone");
+        // A browser shows a link whose fragment is the string; it is read, and flagged.
+        let link = format!("https://id.coasys.example/link#{code}");
+        let (from_link, browser) = check_code(&link, "https://store.example", 999).unwrap();
+        assert_eq!(from_link.sign, device.sign);
+        assert!(browser);
+        assert!(check_code(
+            &format!("https://id.coasys.example/link#{code}x"),
+            "https://store.example",
+            999
+        )
+        .is_err());
+        assert!(check_code(&format!("ftp://x/#{code}"), "https://store.example", 999).is_err());
         assert!(check_code(&code, "https://store.example", 1_000)
             .unwrap_err()
             .contains("expired"));
@@ -10608,6 +10645,7 @@ mod tests {
             code: "R7K Q2M".into(),
             hint: None,
             can_keep: true,
+            browser: false,
             own_name: true,
         })
         .unwrap();
@@ -10615,6 +10653,7 @@ mod tests {
             (&screen["screen"], &screen["canKeep"], &screen["ownName"]),
             (&json!("match"), &json!(true), &json!(true))
         );
+        assert_eq!(screen["browser"], false);
         let screen = serde_json::to_value(Screen::Request {
             id: "r1".into(),
             kind: "send-master",
@@ -10822,9 +10861,9 @@ mod tests {
     fn a_foreign_answer_ends_its_sentence_before_the_next_one() {
         // As the executor answers an agent language with no identity log (seen on a real computer).
         let answer = ClientError::Rpc(RpcError {
+            data: None,
             code: 503,
             message: "unavailable: the agent language does not serve identity-append".into(),
-            data: None,
         });
         let Screen::Failed { message } = unfinished(&answer) else {
             unreachable!()
@@ -10840,9 +10879,9 @@ mod tests {
 
         // An answer that ends its own sentence keeps the one stop it has.
         let stopped = ClientError::Rpc(RpcError {
+            data: None,
             code: 500,
             message: "The log is full!".into(),
-            data: None,
         });
         let Screen::Failed { message } = failed(&stopped) else {
             unreachable!()
@@ -12180,9 +12219,9 @@ mod tests {
             ClientError::Poster("bad".into()),
             ClientError::NotTheseWords("m1".into()),
             ClientError::Rpc(RpcError {
+                data: None,
                 code: 503,
                 message: "no-store-keys".into(),
-                data: None,
             }),
         ];
         for e in &errors {

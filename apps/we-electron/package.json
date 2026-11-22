@@ -40,7 +40,7 @@
     "@we/csp": "workspace:*",
     "@we/globe-layers": "workspace:*",
     "@we/globe-widget": "workspace:*",
-    "@we/identity-window": "workspace:*",
+    "@coasys/identity-portal": "workspace:*",
     "concurrently": "^10.0.6",
     "electron": "^44.10.1",
     "electron-builder": "^26.18.0",

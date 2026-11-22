@@ -63,7 +63,7 @@
   },
   "pnpm": {
     "overrides": {
-      "@coasys/ad4m": "https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@10706a271c837f881bf01cf3f38babaa71b684ac",
+      "@coasys/ad4m": "https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@82b11483e0cd60380baf40a82d5b32b385878364",
       "@coasys/ad4m-connect": "https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@10706a271c837f881bf01cf3f38babaa71b684ac",
       "prettier": "3.9.10",
       "@xmldom/xmldom": ">=0.9.12",
@@ -78,7 +78,9 @@
       "builder-util-runtime": ">=9.7.0",
       "fast-uri": ">=3.1.6",
       "qs": ">=6.16.0",
-      "tar": ">=7.5.21"
+      "tar": ">=7.5.21",
+      "@coasys/connect": "https://pkg.pr.new/coasys/ad4m/@coasys/connect@82b11483e0cd60380baf40a82d5b32b385878364",
+      "@coasys/identity-wasm": "https://pkg.pr.new/coasys/ad4m/@coasys/identity-wasm@82b11483e0cd60380baf40a82d5b32b385878364"
     }
   }
 }

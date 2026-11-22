@@ -16,6 +16,6 @@
     "tests",
     "capacitor.config.ts",
     // The identity window's stylesheet imports, which this app typechecks through `src/identity/`.
-    "../../packages/identity-window/src/virtual.d.ts"
+    "../../packages/identity-portal/src/virtual.d.ts"
   ]
 }

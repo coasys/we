@@ -1,0 +1,124 @@
+# Deploys apps/identity-site to Cloudflare Pages when a tag `site-v*` is pushed.
+#
+# Order: build once in a pinned container, deploy the staging build to the Pages branch `staging`,
+# check the live staging site against that build, and only then deploy the production build and
+# check it too. A production check that fails rolls production back to the deployment it replaced.
+#
+# One value each, in apps/identity-site/config/<env>.json: authDomain (where the site is served),
+# platform (the registry's origin) and pagesProject / pagesBranch (where it is deployed).
+# Repository settings: variables COASYS_STORE_KEY_STAGING and COASYS_STORE_KEY_PRODUCTION (the store's
+# head key, a did:key); secrets CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID.
+name: identity-site-deploy
+
+on:
+  push:
+    tags: ['site-v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: identity-site-deploy
+  cancel-in-progress: false
+
+env:
+  SITE: apps/identity-site
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # The build runs in this image, pinned by digest, so the same tag builds the same files.
+    container:
+      image: node:22.12.0-bookworm-slim@sha256:35531c52ce27b6575d69755c73e65d4468dba93a25644eed56dc12879cae9213
+    steps:
+      - uses: actions/checkout@v4
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile --filter "@we/identity-site..."
+      - name: Typecheck and unit tests
+        working-directory: ${{ env.SITE }}
+        run: |
+          pnpm typecheck
+          pnpm test
+      - name: Build staging
+        working-directory: ${{ env.SITE }}
+        env:
+          COASYS_ENV: staging
+          COASYS_STORE_KEY: ${{ vars.COASYS_STORE_KEY_STAGING }}
+        run: pnpm exec vite build --outDir dist-staging --emptyOutDir
+      - name: Build production
+        working-directory: ${{ env.SITE }}
+        env:
+          COASYS_ENV: production
+          COASYS_STORE_KEY: ${{ vars.COASYS_STORE_KEY_PRODUCTION }}
+        run: pnpm exec vite build --outDir dist-production --emptyOutDir
+      - uses: actions/upload-artifact@v4
+        with:
+          name: identity-site-dist
+          path: |
+            ${{ env.SITE }}/dist-staging
+            ${{ env.SITE }}/dist-production
+          include-hidden-files: true
+          if-no-files-found: error
+
+  staging:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: identity-site-dist
+          path: ${{ env.SITE }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.12.0
+      - name: Deploy to the staging branch and check it
+        working-directory: ${{ env.SITE }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          project=$(jq -r .pagesProject config/staging.json)
+          branch=$(jq -r .pagesBranch config/staging.json)
+          domain=$(jq -r .authDomain config/staging.json)
+          npx --yes wrangler@4 pages deploy dist-staging --project-name "$project" --branch "$branch"
+          node --experimental-strip-types scripts/check-live.ts dist-staging "$domain"
+
+  production:
+    needs: staging
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: identity-site-dist
+          path: ${{ env.SITE }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.12.0
+      - name: Deploy to production, check it, roll back if it differs
+        working-directory: ${{ env.SITE }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          project=$(jq -r .pagesProject config/production.json)
+          branch=$(jq -r .pagesBranch config/production.json)
+          domain=$(jq -r .authDomain config/production.json)
+          api="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/$project"
+          auth="Authorization: Bearer $CLOUDFLARE_API_TOKEN"
+          # The deployment that is live now, the one a rollback returns to.
+          previous=$(curl -fsS -H "$auth" "$api/deployments?env=production" | jq -r '.result[0].id')
+          npx --yes wrangler@4 pages deploy dist-production --project-name "$project" --branch "$branch"
+          if ! node --experimental-strip-types scripts/check-live.ts dist-production "$domain"; then
+            if [ "$previous" = "null" ]; then
+              echo "The live site differs from the build and there is no earlier deployment to return to"
+            else
+              echo "The live site differs from the build: rolling back to $previous"
+              curl -fsS -X POST -H "$auth" "$api/deployments/$previous/rollback" > /dev/null
+            fi
+            exit 1
+          fi

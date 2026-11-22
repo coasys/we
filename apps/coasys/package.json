@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "@coasys/ad4m": "*",
-    "@coasys/ad4m-connect": "*",
+    "@coasys/connect": "*",
     "@we/app-shell": "workspace:*",
     "@we/app-web": "workspace:*",
     "@we/backend-ad4m": "workspace:*",

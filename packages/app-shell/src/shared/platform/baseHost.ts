@@ -9,7 +9,7 @@
  * page.
  *
  * Framework-neutral, and backend-neutral: a host implements it over whatever it has — the desktop's
- * custody service and executor, the phone's device key, the browser's AD4M Connect — and the store
+ * custody service and executor, the phone's device key, the browser's Coasys Connect — and the store
  * above learns none of those names. Words, passphrases and keys never cross it: a step that needs one
  * opens the host's own identity window, and what comes back is how the step ended. The one exception
  * is the WE password a desktop with no keyring asks for ({@link BaseExecutor.givePassword}): it is

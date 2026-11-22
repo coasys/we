@@ -15,8 +15,7 @@ name: Bump ad4m
 # also moves the pin. Run it by hand for a bump sooner.
 #
 # A PR opened with GITHUB_TOKEN starts no workflows of its own, so this starts CI on the branch
-# itself, and the results appear as checks on the PR. The Netlify preview needs nothing: Netlify
-# hears about the PR from GitHub whoever opened it. Before any of that it starts the new commit's
+# itself, and the results appear as checks on the PR. Before any of that it starts the new commit's
 # executor building on `dev` (`ad4m-executor.yaml`), so it is cached once, where every PR reads it.
 #
 # Opening a PR needs the repository setting "Allow GitHub Actions to create and approve pull

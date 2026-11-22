@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  '@coasys/ad4m': https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@10706a271c837f881bf01cf3f38babaa71b684ac
+  '@coasys/ad4m': https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@82b11483e0cd60380baf40a82d5b32b385878364
   '@coasys/ad4m-connect': https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@10706a271c837f881bf01cf3f38babaa71b684ac
   prettier: 3.9.10
   '@xmldom/xmldom': '>=0.9.12'
@@ -21,6 +21,8 @@ overrides:
   fast-uri: '>=3.1.6'
   qs: '>=6.16.0'
   tar: '>=7.5.21'
+  '@coasys/connect': https://pkg.pr.new/coasys/ad4m/@coasys/connect@82b11483e0cd60380baf40a82d5b32b385878364
+  '@coasys/identity-wasm': https://pkg.pr.new/coasys/ad4m/@coasys/identity-wasm@82b11483e0cd60380baf40a82d5b32b385878364
 
 importers:
 
@@ -81,11 +83,11 @@ importers:
   apps/coasys:
     dependencies:
       '@coasys/ad4m':
-        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@10706a271c837f881bf01cf3f38babaa71b684ac
-        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@10706a271c837f881bf01cf3f38babaa71b684ac
-      '@coasys/ad4m-connect':
-        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@10706a271c837f881bf01cf3f38babaa71b684ac
-        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@10706a271c837f881bf01cf3f38babaa71b684ac
+        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@82b11483e0cd60380baf40a82d5b32b385878364
+        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@82b11483e0cd60380baf40a82d5b32b385878364
+      '@coasys/connect':
+        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/connect@82b11483e0cd60380baf40a82d5b32b385878364
+        version: https://pkg.pr.new/coasys/ad4m/@coasys/connect@82b11483e0cd60380baf40a82d5b32b385878364
       '@we/app-shell':
         specifier: workspace:*
         version: link:../../packages/app-shell
@@ -132,6 +134,49 @@ importers:
       vitest:
         specifier: ^5.0.5
         version: 5.0.5(@types/node@26.6.6)(@vitest/coverage-v8@5.0.5)(happy-dom@21.0.4)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.107.1)(tsx@4.23.15)(yaml@2.9.1))
+
+  apps/identity-site:
+    dependencies:
+      '@coasys/ad4m':
+        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@82b11483e0cd60380baf40a82d5b32b385878364
+        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@82b11483e0cd60380baf40a82d5b32b385878364
+      '@coasys/connect':
+        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/connect@82b11483e0cd60380baf40a82d5b32b385878364
+        version: https://pkg.pr.new/coasys/ad4m/@coasys/connect@82b11483e0cd60380baf40a82d5b32b385878364
+      '@coasys/identity-portal':
+        specifier: workspace:*
+        version: link:../../packages/identity-portal
+      '@coasys/identity-wasm':
+        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/identity-wasm@82b11483e0cd60380baf40a82d5b32b385878364
+        version: https://pkg.pr.new/coasys/ad4m/@coasys/identity-wasm@82b11483e0cd60380baf40a82d5b32b385878364
+      qrcode-generator:
+        specifier: ^1.4.4
+        version: 1.5.2
+    devDependencies:
+      '@playwright/test':
+        specifier: ^1.56.0
+        version: 1.65.1
+      '@types/node':
+        specifier: 26.6.6
+        version: 26.6.6
+      '@types/ws':
+        specifier: 8.18.2
+        version: 8.18.2
+      happy-dom:
+        specifier: ^20.0.0
+        version: 20.14.6
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vite:
+        specifier: ^8.3.5
+        version: 8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.107.1)(tsx@4.23.15)(yaml@2.9.1)
+      vitest:
+        specifier: ^5.0.5
+        version: 5.0.5(@types/node@26.6.6)(@vitest/coverage-v8@5.0.5)(happy-dom@20.14.6)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.107.1)(tsx@4.23.15)(yaml@2.9.1))
+      ws:
+        specifier: 8.23.0
+        version: 8.23.0
 
   apps/playgrounds/solid/graph-explorer:
     dependencies:
@@ -309,8 +354,11 @@ importers:
         version: 14.0.3
     devDependencies:
       '@coasys/ad4m':
-        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@10706a271c837f881bf01cf3f38babaa71b684ac
-        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@10706a271c837f881bf01cf3f38babaa71b684ac
+        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@82b11483e0cd60380baf40a82d5b32b385878364
+        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@82b11483e0cd60380baf40a82d5b32b385878364
+      '@coasys/identity-portal':
+        specifier: workspace:*
+        version: link:../../packages/identity-portal
       '@types/node':
         specifier: ^26.6.6
         version: 26.6.6
@@ -338,9 +386,6 @@ importers:
       '@we/globe-widget':
         specifier: workspace:*
         version: link:../../packages/module-system/globe/widget
-      '@we/identity-window':
-        specifier: workspace:*
-        version: link:../../packages/identity-window
       concurrently:
         specifier: ^10.0.6
         version: 10.0.6
@@ -383,9 +428,9 @@ importers:
       '@capacitor/ios':
         specifier: ^8.6.0
         version: 8.6.2(@capacitor/core@8.6.2)
-      '@we/identity-window':
+      '@coasys/identity-portal':
         specifier: workspace:*
-        version: link:../../packages/identity-window
+        version: link:../../packages/identity-portal
     devDependencies:
       '@capacitor/cli':
         specifier: ^8.6.0
@@ -464,8 +509,11 @@ importers:
   apps/we-tauri:
     dependencies:
       '@coasys/ad4m':
-        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@10706a271c837f881bf01cf3f38babaa71b684ac
-        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@10706a271c837f881bf01cf3f38babaa71b684ac
+        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@82b11483e0cd60380baf40a82d5b32b385878364
+        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@82b11483e0cd60380baf40a82d5b32b385878364
+      '@coasys/identity-portal':
+        specifier: workspace:*
+        version: link:../../packages/identity-portal
       '@tauri-apps/api':
         specifier: 2.12.4
         version: 2.12.4
@@ -478,9 +526,6 @@ importers:
       '@we/backend-ad4m':
         specifier: workspace:*
         version: link:../../packages/backend-system/ad4m
-      '@we/identity-window':
-        specifier: workspace:*
-        version: link:../../packages/identity-window
       solid-js:
         specifier: ^1.9.18
         version: 1.9.18
@@ -528,11 +573,11 @@ importers:
   apps/we-web:
     dependencies:
       '@coasys/ad4m':
-        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@10706a271c837f881bf01cf3f38babaa71b684ac
-        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@10706a271c837f881bf01cf3f38babaa71b684ac
-      '@coasys/ad4m-connect':
-        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@10706a271c837f881bf01cf3f38babaa71b684ac
-        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@10706a271c837f881bf01cf3f38babaa71b684ac
+        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@82b11483e0cd60380baf40a82d5b32b385878364
+        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@82b11483e0cd60380baf40a82d5b32b385878364
+      '@coasys/connect':
+        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/connect@82b11483e0cd60380baf40a82d5b32b385878364
+        version: https://pkg.pr.new/coasys/ad4m/@coasys/connect@82b11483e0cd60380baf40a82d5b32b385878364
       '@we/app-shell':
         specifier: workspace:*
         version: link:../../packages/app-shell
@@ -693,8 +738,8 @@ importers:
   packages/app-shell:
     dependencies:
       '@coasys/ad4m':
-        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@10706a271c837f881bf01cf3f38babaa71b684ac
-        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@10706a271c837f881bf01cf3f38babaa71b684ac
+        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@82b11483e0cd60380baf40a82d5b32b385878364
+        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@82b11483e0cd60380baf40a82d5b32b385878364
       '@solidjs/router':
         specifier: ^0.16.3
         version: 0.16.3(solid-js@1.9.18)
@@ -895,8 +940,8 @@ importers:
   packages/backend-system/ad4m:
     dependencies:
       '@coasys/ad4m':
-        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@10706a271c837f881bf01cf3f38babaa71b684ac
-        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@10706a271c837f881bf01cf3f38babaa71b684ac
+        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@82b11483e0cd60380baf40a82d5b32b385878364
+        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@82b11483e0cd60380baf40a82d5b32b385878364
       '@we/backend-shared':
         specifier: workspace:*
         version: link:../shared
@@ -1477,11 +1522,8 @@ importers:
   packages/e2e:
     dependencies:
       '@coasys/ad4m':
-        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@10706a271c837f881bf01cf3f38babaa71b684ac
-        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@10706a271c837f881bf01cf3f38babaa71b684ac
-      '@coasys/ad4m-connect':
-        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@10706a271c837f881bf01cf3f38babaa71b684ac
-        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@10706a271c837f881bf01cf3f38babaa71b684ac
+        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@82b11483e0cd60380baf40a82d5b32b385878364
+        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@82b11483e0cd60380baf40a82d5b32b385878364
       '@we/csp':
         specifier: workspace:*
         version: link:../csp
@@ -1719,7 +1761,7 @@ importers:
         specifier: ^5.0.5
         version: 5.0.5(@types/node@26.6.6)(@vitest/coverage-v8@5.0.5)(happy-dom@21.0.4)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.107.1)(tsx@4.23.15)(yaml@2.9.1))
 
-  packages/identity-window:
+  packages/identity-portal:
     dependencies:
       '@we/themes':
         specifier: workspace:*
@@ -1799,8 +1841,8 @@ importers:
   packages/module-system/flux:
     dependencies:
       '@coasys/ad4m':
-        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@10706a271c837f881bf01cf3f38babaa71b684ac
-        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@10706a271c837f881bf01cf3f38babaa71b684ac
+        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@82b11483e0cd60380baf40a82d5b32b385878364
+        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@82b11483e0cd60380baf40a82d5b32b385878364
     devDependencies:
       '@we/cli':
         specifier: workspace:*
@@ -2669,14 +2711,18 @@ packages:
     resolution: {integrity: sha512-ui0Rp2FR9H8QKsoR9iID/JZZbC7V8Kc6djewuFn7zXPlWa/cb4/vZ8ogIrRneZHFxh0vBrieYDaLeNn346bcEw==}
     engines: {node: '>=22.0.0'}
 
-  '@coasys/ad4m-connect@https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@10706a271c837f881bf01cf3f38babaa71b684ac':
-    resolution: {integrity: sha512-RP9NJdkjGnn3zbA3nLCXrgim1w2Ecl0AgO2TIHnip4qIvERJOnGQlkloyK/cWm7lfbfb/24+Unrb4OabfJcwkQ==, tarball: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@10706a271c837f881bf01cf3f38babaa71b684ac}
-    version: 0.13.1-staging.16
-
-  '@coasys/ad4m@https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@10706a271c837f881bf01cf3f38babaa71b684ac':
-    resolution: {integrity: sha512-2zmvvE1eajasy/i1sNhoLygBT083h+VjmQgvbz8muwxLLz7M0KMq48FLZfRuTNKmkaBqf8glcQEE0EjALbbZcA==, tarball: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@10706a271c837f881bf01cf3f38babaa71b684ac}
+  '@coasys/ad4m@https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@82b11483e0cd60380baf40a82d5b32b385878364':
+    resolution: {integrity: sha512-qg/vB3rqzHLAsMhX2ezJ0IT51XyHjoj5/inlSkipDMO4MfwhOQv+4n2y3c3QnLdx/M+O75MOQC+XV65KRt7vHA==, tarball: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@82b11483e0cd60380baf40a82d5b32b385878364}
     version: 0.13.1-staging.16
     engines: {node: '>=22'}
+
+  '@coasys/connect@https://pkg.pr.new/coasys/ad4m/@coasys/connect@82b11483e0cd60380baf40a82d5b32b385878364':
+    resolution: {integrity: sha512-ZoY280X72akYwGQYJkwNsLnYuXUjIcO8O7avO2/OkfzHEIIf7agqE5CnXZRZfEBIwFB2A8UgtbIZ0l1MjuRjtw==, tarball: https://pkg.pr.new/coasys/ad4m/@coasys/connect@82b11483e0cd60380baf40a82d5b32b385878364}
+    version: 0.13.1-staging.16
+
+  '@coasys/identity-wasm@https://pkg.pr.new/coasys/ad4m/@coasys/identity-wasm@82b11483e0cd60380baf40a82d5b32b385878364':
+    resolution: {integrity: sha512-jfgx7Ue1gpnqrWfDUETGwtqN03EdN6urMmLEajCHrpEpKv2BOFp0HKH4wtUZbC89U4Rh+1m221A4yeariD3Clw==, tarball: https://pkg.pr.new/coasys/ad4m/@coasys/identity-wasm@82b11483e0cd60380baf40a82d5b32b385878364}
+    version: 0.13.1-staging.16
 
   '@codemirror/autocomplete@6.20.3':
     resolution: {integrity: sha512-tlosUqb+3BbxCxZdu4tKeRghPFC+QM7q4X5YhKV2eCmPG+1r2F3f4AaSz5sCrFqUtX4Jh20VFTKecl16MgiV9g==}
@@ -3167,9 +3213,6 @@ packages:
   '@lit-labs/ssr-dom-shim@1.6.0':
     resolution: {integrity: sha512-VHb0ALPMTlgKjM6yIxxoQNnpKyUKLD04VzeQdsiXkMqkvYlAHxq9glGLmgbb889/1GsohSOAjvQYoiBppXFqrQ==}
 
-  '@lit/reactive-element@1.6.3':
-    resolution: {integrity: sha512-QuTgnG52Poic7uM1AN5yJ09QMe0O28e10XzSvWDz02TJiiKee4stsiownEIadWm8nYzyDAyT+gKzUoZmiWQtsQ==}
-
   '@lit/reactive-element@2.1.2':
     resolution: {integrity: sha512-pbCDiVMnne1lYUIaYNN5wrwQXDtHaYtg7YEFPeW+hws6U47WeFvISGUWekPGKWOP1ygrs0ef0o1VJMk1exos5A==}
 
@@ -3448,6 +3491,11 @@ packages:
   '@pkgr/core@0.3.6':
     resolution: {integrity: sha512-SEeaJLb3qBNF/OaXnaR1NmmBbFYk1zC0ZH/52fATcRPLFg/p791YrcyFFy44Bo9sLaGuSuLp5Q6axbb/O+v/RA==}
     engines: {node: ^14.18.0 || >=16.0.0}
+
+  '@playwright/test@1.65.1':
+    resolution: {integrity: sha512-y+NCIRm2LvY4slUVWvGh1nujJ8RF/hEisIsq2mtUPgdQC4L701bq5hZGMhrpeXjACvwvO9tj5dJqhvM6TP9lbw==}
+    engines: {node: '>=20'}
+    hasBin: true
 
   '@rolldown/binding-android-arm-eabi@1.2.16':
     resolution: {integrity: sha512-ia3DwAs0OsMGS7+IConptSiyk9pEXkOx/AbJ2n/lAGxH3QkWQus1t8d7gnAT38FCU2sQu8lUbeR6AiZFv4JxaA==}
@@ -3947,12 +3995,6 @@ packages:
     resolution: {integrity: sha512-SB8xqipSzZHUePCCLNeYxqnxq83X61/qzNhjQGbTfjxGZIeOEP7tBgWYX05Tcd6CgE02WdTJnh5b8kMZJ/+bnQ==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
 
-  '@undecaf/barcode-detector-polyfill@0.9.23':
-    resolution: {integrity: sha512-qVr7jSUbE5a30X9dByDym2NzsqyH+MFwyFiu4QSHDQMLCImTJj/et7pEcOtGqlL4UB5J6J3d0hK4/5d4MMowYA==}
-
-  '@undecaf/zbar-wasm@0.9.16':
-    resolution: {integrity: sha512-T5PcT6g+tLScGjR4WmnRErNvfKqEc3kRg2ux14wHmIDNbvNeXa0BkFK19PRK/jb6zGy5NyWtn4ko6KeNuZc/fQ==}
-
   '@vitest/coverage-v8@5.0.5':
     resolution: {integrity: sha512-4KpkGdIrSqBihx/JyP/e+S+IKB98etg1XDQiLAxksLfcShnwi1VReGeOT9NI43hLHbknosKp/1CCLn9Zgcs8mg==}
     peerDependencies:
@@ -4182,10 +4224,6 @@ packages:
   at-least-node@1.0.0:
     resolution: {integrity: sha512-+q/t7Ekv1EDY2l6Gda6LLiX14rU9TV20Wa3ofeQmwPFZbOMo9DXrLbOjFaaclkXKWidIaopwAObQDqwWtGUjqg==}
     engines: {node: '>= 4.0.0'}
-
-  auto-bind@5.0.1:
-    resolution: {integrity: sha512-ooviqdwwgfIfNmDwo94wlshcdzfO64XV0Cg6oDsDYBJfITDz1EngD2z7DkbvCWn+XIMsIqW27sEVF6qcpJrRcg==}
-    engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
 
   autolinker@4.1.5:
     resolution: {integrity: sha512-vEfYZPmvVOIuE567XBVCsx8SBgOYtjB2+S1iAaJ+HgH+DNjAcrHem2hmAeC9yaNGWayicv4yR+9UaJlkF3pvtw==}
@@ -5152,6 +5190,10 @@ packages:
     resolution: {integrity: sha512-uKmdPc+DuarnR+XqZxEuWOMw7KzzKROrx3MLeJpFnMOs78S9M5eZ+X5RieS9UcSFQqbeXzbfWuX/W9Pyajinqw==}
     engines: {node: '>=4', npm: '>=3', yarn: '>=1.3.0'}
 
+  happy-dom@20.14.6:
+    resolution: {integrity: sha512-5DDsf4QmEIlRL6NkCv/fxSjYHHkZceL/IaYQdJc2h3G7DRTEai++VTjbfL0LB9geW2VrA3+vrjF3Efx+OTtX0Q==}
+    engines: {node: '>=20.0.0'}
+
   happy-dom@21.0.4:
     resolution: {integrity: sha512-tFm+GaLBgo6o0awHnvHaNoraVo27qJ+2tZEtZ+cIa08hXbeitrxAJajLI05hsUy/2/YTKcUjQYzHe5mCcraLBw==}
     engines: {node: '>=20.0.0'}
@@ -5429,10 +5471,6 @@ packages:
     resolution: {integrity: sha512-SFNOvSJ+Dgf/9An904Yx+CgSlIPCkIpao4qo51lpee25TIRejdH3rhR4EZMGoNx3/TP3O+wzWuiTFl4sqbltzA==}
     hasBin: true
 
-  jschardet@3.1.4:
-    resolution: {integrity: sha512-/kmVISmrwVwtyYU40iQUOp3SUPk2dhNCMsZBQX0R1/jZ8maaXJ/oZIzUOiyOqcgtLnETFKYChbJ5iDC/eWmFHg==}
-    engines: {node: '>=0.1.90'}
-
   jsdom@30.0.1:
     resolution: {integrity: sha512-52v7mUVUfNQVYYqE1lcdaymWL0njO7lTLUog6ZvW2U5KsbiLk/GnZlVJ+qx0xfNJZ6Gn+KSpPNE52vurbxZwrA==}
     engines: {node: ^22.22.2 || ^24.15.0 || >=26.0.0}
@@ -5626,20 +5664,11 @@ packages:
     engines: {node: '>=22.22.1'}
     hasBin: true
 
-  lit-element@3.3.3:
-    resolution: {integrity: sha512-XbeRxmTHubXENkV4h8RIPyr8lXc+Ff28rkcQzw3G6up2xg5E8Zu1IgOWIwBLEQsu3cOVFqdYwiVi0hv0SlpqUA==}
-
   lit-element@4.2.2:
     resolution: {integrity: sha512-aFKhNToWxoyhkNDmWZwEva2SlQia+jfG0fjIWV//YeTaWrVnOxD89dPKfigCUspXFmjzOEUQpOkejH5Ly6sG0w==}
 
-  lit-html@2.8.0:
-    resolution: {integrity: sha512-o9t+MQM3P4y7M7yNzqAyjp7z+mQGa4NS4CxiyLqFPyFWyc4O+nodLrkrxSaCTrla6M5YOLaT3RpbbqjszB5g3Q==}
-
   lit-html@3.3.3:
     resolution: {integrity: sha512-el8M6jK2o3RXBnrSHX3ZKrsN8zEV63pSExTO1wYJz7QndGYZ8353e2a5PPX+qHe2aGayfnchQmkAojaWAREOIA==}
-
-  lit@2.8.0:
-    resolution: {integrity: sha512-4Sc3OFX9QHOJaHbmTMk28SYgVxLN3ePDjg7hofEft2zWlehFL3LiAuapWc4U/kYwMYJSh2hTCPZ6/LIC7ii0MA==}
 
   lit@3.3.3:
     resolution: {integrity: sha512-fycuvZg/hkpozL00lm1pEJH5nN/lr9ZXd6mJI2HSN4+Bzc+LDNdEApJ6HFbPkdFNHLvOplIIuJvxkS4XUxqirw==}
@@ -6045,6 +6074,16 @@ packages:
     engines: {node: '>=20'}
     hasBin: true
 
+  playwright-core@1.65.1:
+    resolution: {integrity: sha512-hqPpz7blSMPxWVdoeE1yiBSzXsKiVOd2k+kjCvmUywD2GPO2Dd9HfcWnq9NN0GHbNZDFgZ9JfBFr+X5/BLo0qw==}
+    engines: {node: '>=20'}
+    hasBin: true
+
+  playwright@1.65.1:
+    resolution: {integrity: sha512-vJ1FuoOrNwOKHUIVEvSt3jT1L+wjjDpwhwIstKtfvTh8XIG4FG4bIFuvNdMxi81LGfAhUgUZleVFaOLY4RIUUw==}
+    engines: {node: '>=20'}
+    hasBin: true
+
   plist@3.1.1:
     resolution: {integrity: sha512-ZIfcLJC+7E7FBFnDxm9MPmt7D+DidyQ26lewieO75AdhA2ayMtsJSES0iWzqJQbcVRSrTufQoy0DR94xHue0oA==}
     engines: {node: '>=10.4.0'}
@@ -6239,6 +6278,9 @@ packages:
   qified@0.10.1:
     resolution: {integrity: sha512-+Owyggi9IxT1ePKGafcI87ubSmxol6smwJ+RAHDQlx9+9cPwFWDiKFFCPuWhr9ignlGpZ9vDQLw67N4dcTVFEA==}
     engines: {node: '>=20'}
+
+  qrcode-generator@1.5.2:
+    resolution: {integrity: sha512-pItrW0Z9HnDBnFmgiNrY1uxRdri32Uh9EjNYLPVC2zZ3ZRIIEqBoDgm4DkvDwNNDHTK7FNkmr8zAa77BYc9xNw==}
 
   qs@6.16.0:
     resolution: {integrity: sha512-h6fhOIaRrID2CbEY2fqs+7t+UXZo+MLAnU5gRIq85uFtdiUPCdsApMlHhXogKVM4HM2DVbIjGNTTYH2OcmP1vA==}
@@ -7088,8 +7130,8 @@ packages:
     resolution: {integrity: sha512-OTIk8iR8/aCRWBqvxrzxR0hgxWpnYBblY1S5hDWBQfk/VFmJwzmJgQFN3WsoUKHISv2eAwe+PpbUzyL1CKTLXg==}
     engines: {node: ^20.17.0 || >=22.9.0}
 
-  ws@8.22.1:
-    resolution: {integrity: sha512-oyL6OPYme/CmiFvNuGzeoxCJ4nOrZE2O1FwM9MWM1AsGri6nLXB2pg+lNA8aLeXMSav0J6eIVS1j6vUPzUtK9g==}
+  ws@8.23.0:
+    resolution: {integrity: sha512-wCkmX8QMOrKjgO8HW2WyDbTSGeqkocxgDzS9iR79rEAexty6/2qzilx3Ag8Tqf9ykop3irLKle0MtVn5qjVnoQ==}
     engines: {node: '>=10.0.0'}
     peerDependencies:
       bufferutil: ^4.0.1
@@ -7506,14 +7548,7 @@ snapshots:
       '@cesium/engine': 26.4.0
       nosleep.js: 0.12.0
 
-  '@coasys/ad4m-connect@https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@10706a271c837f881bf01cf3f38babaa71b684ac':
-    dependencies:
-      '@undecaf/barcode-detector-polyfill': 0.9.23
-      '@undecaf/zbar-wasm': 0.9.16
-      auto-bind: 5.0.1
-      lit: 2.8.0
-
-  '@coasys/ad4m@https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@10706a271c837f881bf01cf3f38babaa71b684ac':
+  '@coasys/ad4m@https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@82b11483e0cd60380baf40a82d5b32b385878364':
     dependencies:
       '@holochain/client': 0.16.0
       base64-js: 1.5.1
@@ -7521,6 +7556,10 @@ snapshots:
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
+
+  '@coasys/connect@https://pkg.pr.new/coasys/ad4m/@coasys/connect@82b11483e0cd60380baf40a82d5b32b385878364': {}
+
+  '@coasys/identity-wasm@https://pkg.pr.new/coasys/ad4m/@coasys/identity-wasm@82b11483e0cd60380baf40a82d5b32b385878364': {}
 
   '@codemirror/autocomplete@6.20.3':
     dependencies:
@@ -7894,11 +7933,11 @@ snapshots:
       '@noble/ed25519': 2.3.0
       '@tauri-apps/api': 1.6.0
       emittery: 1.2.1
-      isomorphic-ws: 5.0.0(ws@8.22.1)
+      isomorphic-ws: 5.0.0(ws@8.23.0)
       js-base64: 3.9.3
       libsodium-wrappers: 0.7.16
       lodash-es: 4.18.1
-      ws: 8.22.1
+      ws: 8.23.0
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -8051,10 +8090,6 @@ snapshots:
       '@lezer/common': 1.5.2
 
   '@lit-labs/ssr-dom-shim@1.6.0': {}
-
-  '@lit/reactive-element@1.6.3':
-    dependencies:
-      '@lit-labs/ssr-dom-shim': 1.6.0
 
   '@lit/reactive-element@2.1.2':
     dependencies:
@@ -8288,6 +8323,10 @@ snapshots:
   '@phosphor-icons/core@2.1.1': {}
 
   '@pkgr/core@0.3.6': {}
+
+  '@playwright/test@1.65.1':
+    dependencies:
+      playwright: 1.65.1
 
   '@rolldown/binding-android-arm-eabi@1.2.16':
     optional: true
@@ -8710,14 +8749,6 @@ snapshots:
       '@typescript-eslint/types': 8.72.1
       eslint-visitor-keys: 5.0.1
 
-  '@undecaf/barcode-detector-polyfill@0.9.23':
-    dependencies:
-      '@undecaf/zbar-wasm': 0.9.16
-
-  '@undecaf/zbar-wasm@0.9.16':
-    dependencies:
-      jschardet: 3.1.4
-
   '@vitest/coverage-v8@5.0.5(vitest@5.0.5)':
     dependencies:
       '@bcoe/v8-coverage': 1.0.2
@@ -8959,8 +8990,6 @@ snapshots:
   asynckit@0.4.0: {}
 
   at-least-node@1.0.0: {}
-
-  auto-bind@5.0.1: {}
 
   autolinker@4.1.5:
     dependencies:
@@ -10086,6 +10115,19 @@ snapshots:
 
   h3-js@4.5.0: {}
 
+  happy-dom@20.14.6:
+    dependencies:
+      '@types/node': 26.6.6
+      '@types/whatwg-mimetype': 3.0.2
+      '@types/ws': 8.18.2
+      buffer-image-size: 0.6.4
+      entities: 7.0.1
+      whatwg-mimetype: 3.0.0
+      ws: 8.23.0
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+
   happy-dom@21.0.4:
     dependencies:
       '@types/node': 26.6.6
@@ -10094,7 +10136,7 @@ snapshots:
       buffer-image-size: 0.6.4
       entities: 7.0.1
       whatwg-mimetype: 3.0.0
-      ws: 8.22.1
+      ws: 8.23.0
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -10282,9 +10324,9 @@ snapshots:
 
   isexe@4.0.0: {}
 
-  isomorphic-ws@5.0.0(ws@8.22.1):
+  isomorphic-ws@5.0.0(ws@8.23.0):
     dependencies:
-      ws: 8.22.1
+      ws: 8.23.0
 
   isomorphic.js@0.2.5: {}
 
@@ -10321,8 +10363,6 @@ snapshots:
   js-yaml@4.3.2:
     dependencies:
       argparse: 2.0.1
-
-  jschardet@3.1.4: {}
 
   jsdom@30.0.1(@noble/hashes@2.3.0):
     dependencies:
@@ -10491,31 +10531,15 @@ snapshots:
     optionalDependencies:
       yaml: 2.9.1
 
-  lit-element@3.3.3:
-    dependencies:
-      '@lit-labs/ssr-dom-shim': 1.6.0
-      '@lit/reactive-element': 1.6.3
-      lit-html: 2.8.0
-
   lit-element@4.2.2:
     dependencies:
       '@lit-labs/ssr-dom-shim': 1.6.0
       '@lit/reactive-element': 2.1.2
       lit-html: 3.3.3
 
-  lit-html@2.8.0:
-    dependencies:
-      '@types/trusted-types': 2.0.7
-
   lit-html@3.3.3:
     dependencies:
       '@types/trusted-types': 2.0.7
-
-  lit@2.8.0:
-    dependencies:
-      '@lit/reactive-element': 1.6.3
-      lit-element: 3.3.3
-      lit-html: 2.8.0
 
   lit@3.3.3:
     dependencies:
@@ -10909,6 +10933,12 @@ snapshots:
 
   playwright-core@1.64.1: {}
 
+  playwright-core@1.65.1: {}
+
+  playwright@1.65.1:
+    dependencies:
+      playwright-core: 1.65.1
+
   plist@3.1.1:
     dependencies:
       '@xmldom/xmldom': 0.9.12
@@ -11124,6 +11154,8 @@ snapshots:
   qified@0.10.1:
     dependencies:
       hookified: 2.2.0
+
+  qrcode-generator@1.5.2: {}
 
   qs@6.16.0:
     dependencies:
@@ -11926,6 +11958,30 @@ snapshots:
     optionalDependencies:
       vite: 8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.107.1)(tsx@4.23.15)(yaml@2.9.1)
 
+  vitest@5.0.5(@types/node@26.6.6)(@vitest/coverage-v8@5.0.5)(happy-dom@20.14.6)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.107.1)(tsx@4.23.15)(yaml@2.9.1)):
+    dependencies:
+      '@types/chai': 5.2.3
+      '@vitest/mocker': 5.0.5(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.107.1)(tsx@4.23.15)(yaml@2.9.1))
+      chai: 6.3.0
+      es-module-lexer: 2.3.2
+      expect-type: 1.4.0
+      magic-string: 1.4.3
+      obug: 3.0.0
+      picomatch: 4.0.7
+      std-env: 4.3.0
+      tinybench: 6.2.2
+      tinyexec: 1.3.1
+      tinyglobby: 0.2.17
+      vite: 8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.107.1)(tsx@4.23.15)(yaml@2.9.1)
+      why-is-node-running: 3.2.1
+    optionalDependencies:
+      '@types/node': 26.6.6
+      '@vitest/coverage-v8': 5.0.5(vitest@5.0.5)
+      happy-dom: 20.14.6
+      jsdom: 30.0.1(@noble/hashes@2.3.0)
+    transitivePeerDependencies:
+      - msw
+
   vitest@5.0.5(@types/node@26.6.6)(@vitest/coverage-v8@5.0.5)(happy-dom@21.0.4)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.107.1)(tsx@4.23.15)(yaml@2.9.1)):
     dependencies:
       '@types/chai': 5.2.3
@@ -12034,7 +12090,7 @@ snapshots:
     dependencies:
       signal-exit: 4.1.0
 
-  ws@8.22.1: {}
+  ws@8.23.0: {}
 
   xcode@4.0.0:
     dependencies:

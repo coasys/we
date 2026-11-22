@@ -3,7 +3,7 @@
  *
  * WE is served over plain HTTP on a LAN or a tailnet during development and demos, and a browser
  * withholds `randomUUID` outside a secure context — while `getRandomValues`, which is the part that
- * has to be unguessable, is available everywhere. ad4m-connect calls `randomUUID` when it mints a
+ * has to be unguessable, is available everywhere. `@coasys/connect` calls `randomUUID` when it mints a
  * guest identity, so without this a guest link fails on exactly the deployments it is demonstrated
  * on.
  *

@@ -494,7 +494,7 @@ export interface Ad4mAgentSessionOptions {
   /**
    * The connector already read `agent.status` and found the agent unlocked, before the port existed.
    *
-   * ad4m-connect hands a web app its client only once `agent.status` has answered initialised and
+   * @coasys/connect hands a web app its client only once `agent.status` has answered initialised and
    * unlocked (`readAuth` → `authenticated`), so the shell's own first `status()` asked the executor a
    * question the connection had just answered. With this set, that first answer is the one the
    * connection got; every later `status()` asks the executor, so a lock afterwards is still seen.

@@ -112,7 +112,7 @@ describe('templates the catalogue marks dev', () => {
 
 /*
   Which builds have developer features: every one Vite serves, and a build only when asked, which is
-  how Netlify's `dev` and its previews get them and production does not (scripts/netlify-build.sh).
+  how the staging build gets them and production does not (scripts/web-build.sh).
 */
 describe('whether a build has developer features', () => {
   it('is on while serving and off in a build, unless the build says otherwise', () => {

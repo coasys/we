@@ -1,10 +1,11 @@
 /**
  * Guest connector — connects to a hosted AD4M node with auto-generated credentials.
  *
- * Uses `Ad4mConnect.connectAsGuest()` from `@coasys/ad4m-connect/core` to skip the auth UI
+ * Uses `Ad4mConnect.connectAsGuest()` from `@coasys/connect/core` to skip the Connect frame
  * entirely. A guest arrives via a URL (`/join/<spaceId>?host=<hostUrl>`), gets an identity
- * auto-created on the target node, and lands directly in the space. Credentials persist in
- * localStorage so refreshing the page re-uses the same guest account.
+ * auto-created on the target node, and lands directly in the space. The account's credentials
+ * persist in localStorage (scoped to the host) and the host is marked for the tab
+ * (`storedSession`), so refreshing the page logs in as the same guest. The token stays in memory.
  *
  * Paired with the normal `webPlatform` adapter — only the backend connector changes.
  *
@@ -12,14 +13,17 @@
  * `@we/app-shell/shared`'s `guestLink`, alongside the builder that writes one, so the two cannot
  * drift. This module is only the AD4M half.
  */
-import Ad4mConnect from '@coasys/ad4m-connect/core';
+import Ad4mConnect from '@coasys/connect/core';
 import type { BackendConnector, BackendInitResult, GuestJoinTarget } from '@we/app-shell/shared';
 import { parseGuestLink } from '@we/app-shell/shared';
 import { capabilitiesFromToken, createAd4mBackendPorts } from '@we/backend-ad4m';
 import weSeed from '@we/seed-file';
 
+import { APP_ENDPOINTS, APP_ID } from './endpoints';
+import { forgetGuestHost, rememberGuestHost } from './storedSession';
+
 export type { GuestJoinTarget };
-export { hasStoredSession } from './storedSession';
+export { storedGuestHost } from './storedSession';
 
 /**
  * Read guest parameters from the current URL.
@@ -45,10 +49,10 @@ export function createGuestConnector(hostUrl: string): BackendConnector {
         appInfo: {
           name: 'WE',
           description: 'Social media for the new internet',
-          url: window.location.origin,
           iconPath: 'https://avatars.githubusercontent.com/u/34165012',
         },
-        url: hostUrl,
+        appId: APP_ID,
+        endpoints: { authDomain: APP_ENDPOINTS.identityOrigin },
         /*
           Required by the options type and unread on this path: `connectAsGuest` creates an account
           and logs in, where the ordinary flow asks for a capability grant. So what the guest holds
@@ -61,6 +65,7 @@ export function createGuestConnector(hostUrl: string): BackendConnector {
       });
 
       const client = await core.connectAsGuest(hostUrl);
+      rememberGuestHost(hostUrl);
       const capabilities = capabilitiesFromToken(core.token);
 
       return {
@@ -75,8 +80,11 @@ export function createGuestConnector(hostUrl: string): BackendConnector {
           linkServerUrl: (weSeed.ad4m as { linkServerUrl?: string }).linkServerUrl,
           connection: () => (core.baseUrl ? { url: core.baseUrl, token: core.token } : null),
         }),
-        // Ending the session forgets the token and the host choice.
-        disconnect: () => core.disconnect(),
+        // Ending the session forgets the token and the tab's guest mark.
+        disconnect: async () => {
+          forgetGuestHost();
+          await core.disconnect();
+        },
         ...(core.token ? { connection: { port: core.port, token: core.token, url: core.baseUrl } } : {}),
       };
     },

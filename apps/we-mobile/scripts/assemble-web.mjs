@@ -11,7 +11,7 @@
  *    Android System WebView is older than WE's build needs (`android.minWebViewVersion`), or when
  *    WE's page fails to load (`server.errorPath`). See src/webViewFloor.ts.
  * 3. Builds `www/mobile/identity.html`, the phone's identity page: the shared identity window
- *    (`@we/identity-window`) over the `DeviceKey` plugin, under the window's own policy. WE opens it
+ *    (`@coasys/identity-portal`) over the `DeviceKey` plugin, under the window's own policy. WE opens it
  *    to join an identity and for each identity change. See src/identity/. It wears the app's theme,
  *    name and mark as the app's screens before a session do, from the seed the Coasys app is built
  *    for (`WE_SEED`, as apps/coasys/vite.config.ts defaults it).
@@ -20,7 +20,7 @@ import { cpSync, existsSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { identityWindowConfig } from '@we/identity-window/vite';
+import { identityWindowConfig } from '@coasys/identity-portal/vite';
 import { build } from 'vite';
 
 import { seedBase } from '../../../scripts/seed-vite.mjs';
@@ -36,7 +36,7 @@ if (!existsSync(join(weDist, 'index.html'))) {
 
 rmSync(www, { recursive: true, force: true });
 cpSync(weDist, www, { recursive: true });
-// Netlify's files: nothing in a Capacitor app reads them.
+// The web host's files: nothing in a Capacitor app reads them.
 for (const f of ['_headers', '_redirects']) rmSync(join(www, f), { force: true });
 
 await build({

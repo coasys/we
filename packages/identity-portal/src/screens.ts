@@ -48,7 +48,7 @@ export type Screen =
   /** The key log lists the host. `active`: it serves the person now. */
   | { screen: 'cloud-added'; host: string; active: boolean }
   | { screen: 'offer'; link: string; qrSvg: string; expires: number }
-  | { screen: 'match'; code: string; hint: string | null; canKeep: boolean; ownName: boolean }
+  | { screen: 'match'; code: string; hint: string | null; canKeep: boolean; browser?: boolean; ownName: boolean }
   | { screen: 'linked'; seq: number; masterSent: boolean; note: string | null }
   | { screen: 'enter-code'; error: string | null }
   /** A device of no identity yet joins one by the offer a device of the identity shows (the phone). */
@@ -427,8 +427,10 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
       };
     case 'match':
       return {
-        title: screen.hint ? `Link ${screen.hint}?` : 'Link this device?',
-        lead: 'Check that the code matches on both devices.',
+        title: screen.hint ? `Link ${screen.hint}?` : screen.browser ? 'Link this browser?' : 'Link this device?',
+        lead: screen.browser
+          ? 'Check that the code matches in the browser. It signs in as you, and it never holds your master key.'
+          : 'Check that the code matches on both devices.',
       };
     case 'linked':
       return {

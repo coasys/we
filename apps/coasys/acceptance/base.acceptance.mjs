@@ -14,12 +14,11 @@
  * Needs `pnpm build:coasys` first, and Chrome (`WE_CHROME`, `/usr/bin/google-chrome` by default).
  * `WE_COASYS_SHOTS=<dir>` keeps a screenshot after each step.
  */
-import { createReadStream, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, mkdirSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { dirname, extname, join, normalize } from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 import { chromium } from 'playwright-core';
@@ -28,16 +27,6 @@ const DIST = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist');
 const CHROME = process.env.WE_CHROME ?? '/usr/bin/google-chrome';
 const SHOTS = process.env.WE_COASYS_SHOTS ?? null;
 const STEP_MS = 20_000;
-
-/**
- * The namespace the AD4M Connect this app bundles keeps its keys under: `${version}/`, its package's
- * version (its `setLocal`). A session written under any other is one the page would not resume.
- */
-const CONNECT_PREFIX = (() => {
-  const utils = createRequire(import.meta.url).resolve('@coasys/ad4m-connect/utils');
-  const { version } = JSON.parse(readFileSync(join(dirname(utils), '..', 'package.json'), 'utf8'));
-  return `${version}/`;
-})();
 
 const MIME = {
   '.html': 'text/html',
@@ -166,10 +155,10 @@ describe('the phone, with no identity and no executor', () => {
     await control(page, 'Skip for now').click();
     await sees(page, 'Where to keep your spaces');
     await sees(page, '127.0.0.1:9');
-    await sees(page, 'A host');
+    await sees(page, 'Link this browser');
     await sees(page, 'Hosts run by Coasys and by communities will appear here.');
     await shot(page, 'phone-connection-choice');
-    await control(page, 'A host').click();
+    await control(page, 'Link this browser').click();
     await handedOff(page);
     await shot(page, 'phone-hand-off');
     // "Skip for now" is remembered on the device: a reload asks no first-run question again.
@@ -183,7 +172,7 @@ describe('the phone, with no identity and no executor', () => {
     await control(page, 'Skip for now').click();
     await sees(page, 'Where to keep your spaces');
     await context.setOffline(true);
-    await control(page, 'A host').click();
+    await control(page, 'Link this browser').click();
     await sees(page, 'Can’t connect');
     await shot(page, 'phone-offline');
     await control(page, 'Try again').click();
@@ -195,38 +184,30 @@ describe('the phone, with no identity and no executor', () => {
   });
 
   /*
-    Found on a real phone: relaunched with the executor AD4M Connect signed in to last switched off,
-    the app drew AD4M Connect's own "How would you like to connect?" instead of the base's offline
-    state. The session is the shape ad4m-connect stores, against an address where nothing listens.
+    Coasys Connect keeps no executor in this page: the token is in memory and the browser key is the
+    frame's, so a reload asks the frame again and there is no "last executor" to be unreachable.
   */
-  it("relaunches to the offline state when AD4M Connect's last executor does not answer", async () => {
+  it('keeps no session in this page across a reload', async () => {
     const { context, page } = await open({ phone: true });
     await control(page, 'Skip for now').click();
-    await control(page, 'A host').click();
+    await control(page, 'Link this browser').click();
     await handedOff(page);
-    await page.evaluate(
-      ({ prefix, url }) => {
-        localStorage.setItem(`${prefix}ad4m-token`, 'a-test-token');
-        localStorage.setItem(`${prefix}ad4m-url`, url);
-      },
-      { prefix: CONNECT_PREFIX, url: 'http://127.0.0.1:9' },
+    const stored = await page.evaluate(() => [...Object.keys(localStorage), ...Object.keys(sessionStorage)]);
+    assert.deepEqual(
+      stored.filter((key) => /token|ad4m-url/.test(key)),
+      [],
     );
-    await page.reload();
-    await sees(page, 'Can’t connect');
-    await sees(page, "Can't reach 127.0.0.1:9");
-    assert.equal(await page.getByText('How would you like to connect?').count(), 0);
-    await shot(page, 'phone-relaunch-offline');
     await context.close();
   });
 });
 
 describe('the browser, with no executor', () => {
-  it('asks no first-run question, offers a host, and hands off', async () => {
+  it('asks no first-run question, offers to link this browser, and hands off', async () => {
     const { context, page } = await open();
     await sees(page, 'Where to keep your spaces');
     assert.equal(await page.getByText('Create new identity').count(), 0);
     await shot(page, 'web-connection-choice');
-    await control(page, 'A host').click();
+    await control(page, 'Link this browser').click();
     await handedOff(page);
     await shot(page, 'web-hand-off');
     await context.close();

@@ -1278,7 +1278,7 @@ describe('first run', () => {
   }, 10000);
 
   it('ends the connection when that is what the session is, rather than showing a lock that is not there', async () => {
-    // A remote node reached over ad4m-connect: already unlocked, and never unlocked by a password
+    // A remote node reached through Coasys Connect: already unlocked, and never unlocked by a password
     // this app holds. Returning to the sign-in form asked for a password against a keystore that is
     // not there — refused every time, while reloading walked straight back in, because nothing
     // about the session had actually ended.

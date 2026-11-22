@@ -1,6 +1,6 @@
 /**
  * The phone's host: its identity read from the device key plugin, the one door it opens, and the
- * places it offers — the executor its key logs in to, and AD4M Connect.
+ * places it offers — the executor its key logs in to, and Coasys Connect.
  */
 import type { BackendConnector } from '@we/app-shell/shared';
 import type { DeviceKeyPlugin, PhoneIdentityView } from '@we/app-web/platform/deviceKey';
@@ -16,7 +16,7 @@ import {
   phoneIdentitySource,
   WORDS_ON_A_COMPUTER,
 } from './phone';
-import { CONNECT, ConnectUnreachable } from './web';
+import { CONNECT } from './web';
 
 const DID = 'did:scid:coasys:1:QmTestIdentity';
 const KEY_HOST = 'https://executor.example:12000';
@@ -118,7 +118,7 @@ describe('keyHostConnection', () => {
 });
 
 describe('the phone host', () => {
-  it('offers the key host first when the phone was told one, and AD4M Connect always', async () => {
+  it('offers the key host first when the phone was told one, and Coasys Connect always', async () => {
     const told = phoneBaseHost({ plugin: plugin(), fallback, keyHost: () => KEY_HOST, nav: nav() });
     expect((await told.connections()).map((c) => c.kind)).toEqual(['key-host', 'connect']);
     const none = phoneBaseHost({ plugin: plugin(), fallback, keyHost: () => null, nav: nav() });
@@ -137,59 +137,12 @@ describe('the phone host', () => {
     expect(Object.keys(deps).sort()).toEqual(['keyHost', 'nav', 'plugin']);
   });
 
-  it('hands AD4M Connect the browser connector', async () => {
+  it('hands Coasys Connect the browser connector, as it is, whether it was chosen or resumed', async () => {
     const keyConnector = vi.fn();
-    const initialize = vi.fn(async () => ({}));
-    const host = phoneBaseHost({
-      plugin: plugin(),
-      fallback: { initialize } as unknown as BackendConnector,
-      nav: nav(),
-      keyConnector,
-      remembered: () => null,
-    });
-    await (await host.connector(CONNECT)).initialize({} as never);
-    expect(initialize).toHaveBeenCalledTimes(1);
+    const host = phoneBaseHost({ plugin: plugin(), fallback, nav: nav(), keyConnector });
+    expect(await host.connector(CONNECT)).toBe(fallback);
+    expect(await host.connector(CONNECT, { chosen: true })).toBe(fallback);
     expect(keyConnector).not.toHaveBeenCalled();
-  });
-
-  /*
-    Found on a real phone: relaunched with the executor AD4M Connect signed in to last switched off,
-    the app drew AD4M Connect's own connect screen rather than the base's offline state.
-  */
-  it("hands back as unreachable when AD4M Connect's last executor does not answer", async () => {
-    const initialize = vi.fn(async () => ({}));
-    const host = phoneBaseHost({
-      plugin: plugin(),
-      fallback: { initialize } as unknown as BackendConnector,
-      nav: nav(),
-      online: () => true,
-      remembered: () => 'http://10.0.2.2:12000',
-      reach: async () => {
-        throw new TypeError('Failed to fetch');
-      },
-    });
-    const failed = await (await host.connector(CONNECT)).initialize({} as never).catch((e: unknown) => e);
-    expect(failed).toBeInstanceOf(ConnectUnreachable);
-    expect(host.isUnreachable?.(failed)).toBe(true);
-    expect(initialize).not.toHaveBeenCalled();
-  });
-
-  it('opens AD4M Connect when the person chooses it, without asking that executor first', async () => {
-    const initialize = vi.fn(async () => ({}));
-    const reach = vi.fn(async () => {
-      throw new TypeError('Failed to fetch');
-    });
-    const host = phoneBaseHost({
-      plugin: plugin(),
-      fallback: { initialize } as unknown as BackendConnector,
-      nav: nav(),
-      online: () => true,
-      remembered: () => 'http://10.0.2.2:12000',
-      reach,
-    });
-    await (await host.connector(CONNECT, { chosen: true })).initialize({} as never);
-    expect(reach).not.toHaveBeenCalled();
-    expect(initialize).toHaveBeenCalledTimes(1);
   });
 
   it('tells a place it could not reach from one that refused', () => {

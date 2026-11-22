@@ -76,9 +76,9 @@ describe('AD4M agent session — unlock that outlasts the RPC timeout', () => {
     expect(isSessionTimeout(await settled)).toBe(true);
   });
 
-  it('waits out a timeout thrown by the SDK copy bundled in ad4m-connect', async () => {
-    // The app's client throws ad4m-connect's own `RpcError`, a different class from the one
-    // `@coasys/ad4m` exports — this stands in for it, with the same shape.
+  it('waits out a timeout thrown by a second copy of the SDK', async () => {
+    // A client built from another copy of the SDK (two versions in one bundle) throws that copy's
+    // `RpcError`, a different class from the one `@coasys/ad4m` exports — this stands in for it, with the same shape.
     class BundledRpcError extends Error {
       constructor(
         public status: number,

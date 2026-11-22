@@ -168,7 +168,7 @@ export function devFeatures(command, env = process.env) {
 /**
  * The deployment's app before a session, as a build outside the app needs it: the theme its screens
  * before a session are drawn in, and its name and mark. The desktop identity windows and the phone's
- * identity page are built with these (`identityWindowConfig` in `@we/identity-window/vite`), so the
+ * identity page are built with these (`identityWindowConfig` in `@coasys/identity-portal/vite`), so the
  * page that shows the 12 words looks like the app around it without running any of the app.
  *
  * The same choice `deploymentBase` in `@we/app-shell` makes from the built-in bundles: the app the

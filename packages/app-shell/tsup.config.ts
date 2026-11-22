@@ -20,7 +20,7 @@ export default defineConfig({
     'solid-js/web',
     '@solidjs/router',
     '@coasys/ad4m',
-    '@coasys/ad4m-connect',
+    '@coasys/connect',
     'three',
     'gsap',
     /^@we\//, // All @we/* packages

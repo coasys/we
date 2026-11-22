@@ -1,166 +1,48 @@
 /**
- * Does this browser already hold somebody's real AD4M session?
+ * Which node a guest tab is on, kept for the life of the tab and nothing longer.
  *
- * Split out from `guestConnector`, importing nothing but ad4m-connect's own storage read (`utils`,
- * which imports nothing itself), so the one decision that stands between a guest link and an agent's
- * existing identity can be tested without an executor, a connect client or a DOM. It reads
- * localStorage and answers a question; that is the whole module.
+ * A guest link (`/join/<space>?host=<url>`) boots the guest connector, and `BootController` then
+ * rewrites the URL to `/space/<id>`: the next load of the same tab carries no host, so without a
+ * marker it would take Coasys Connect and ask a guest to link a browser. `sessionStorage` holds the
+ * host for the tab (it is gone with it, and a new tab starts from the link or from Connect).
+ *
+ * It is the host's address and no token: sessions live in memory only, and the guest connector logs
+ * in again with the account it keeps per host.
  */
-import { getLocal } from '@coasys/ad4m-connect/utils';
+const GUEST_HOST_KEY = 'we-guest-host';
 
-/*
-  The three keys ad4m-connect writes, named without their prefix.
-
-  Read here, never written — this module does not manage them, it only asks what is there.
-*/
-const AD4M_TOKEN_KEY = 'ad4m-token';
-const AD4M_URL_KEY = 'ad4m-url';
-const AD4M_PORT_KEY = 'ad4m-port';
-/** ad4m-connect's port where none is stored (its `DEFAULT_PORT`). */
-const AD4M_DEFAULT_PORT = 12000;
-
-/** Mirrors ad4m-connect's own normalisation, so the marker below is looked up under the key it wrote. */
-function guestMarkerKey(hostUrl: string): string {
-  return `ad4m-guest-email-${hostUrl.replace(/\/+$/, '').toLowerCase()}`;
-}
-
-/**
- * Everything in localStorage, as pairs. Throws outright in some privacy configurations, and an
- * unreadable store holds nothing.
- */
-function localEntries(): [string, string][] {
+/** The storage of this tab; an unreadable one (some privacy settings throw) holds nothing. */
+function tabStorage(): Storage | null {
   try {
-    // `length` and `key(i)` rather than `Object.keys` — the indexed form is the Storage interface
-    // proper, where enumerating own properties happens to work only because localStorage is an
-    // exotic object.
-    const out: [string, string][] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key !== null) out.push([key, localStorage.getItem(key) ?? '']);
-    }
-    return out;
+    return globalThis.sessionStorage ?? null;
   } catch {
-    return [];
+    return null;
   }
 }
 
-/**
- * The prefix `key` carries, if it is `suffix` under one — `''` for a bare key, `'0.13.0/'` for a
- * namespaced one, and `null` when it is some other key entirely.
- *
- * ## Why this is not just `localStorage.getItem('ad4m-token')`
- *
- * It was, and that is what made the check below dead code. ad4m-connect namespaces every key it
- * writes with its own package version — `setLocal` writes `` `${version}/${key}` `` — and has done
- * since April 2023. So the unprefixed spelling matched nothing in any browser, `hasStoredSession`
- * returned `false` for everyone, and the branch that stops a guest link replacing a real session
- * never ran once.
- *
- * Reading the version back to rebuild the exact key would restore the bug the day ad4m-connect is
- * upgraded, which is precisely how it arrived. Matching on the suffix instead means the check
- * cannot be broken by a version bump, and it also finds a session left by an *older* version —
- * still somebody's identity, and still not ours to overwrite.
- */
-function prefixOf(key: string, suffix: string): string | null {
-  if (key === suffix) return '';
-  return key.endsWith(`/${suffix}`) ? key.slice(0, key.length - suffix.length) : null;
-}
-
-/**
- * Whether this browser already holds a session that is somebody's actual identity.
- *
- * `connectAsGuest` writes `ad4m-token` and `ad4m-url` — the two keys *every* boot reads — so it does
- * not add a guest session beside an existing one, it replaces it. An agent who had signed in here
- * and then clicked a guest link would come back on their next visit as the guest, on the inviter's
- * node, with no sign that anything had happened and no prompt to get back. The entry point uses
- * this to decline the guest path in that case.
- *
- * A token belonging to a guest does not count: `connectAsGuest` records one per host under
- * `ad4m-guest-email-<host>`, so a stored url with a matching marker is a throwaway identity this
- * same flow created, and there is nothing there to protect.
- *
- * The url and the marker are read under the *same* prefix as the token that named them. Mixing
- * prefixes would let a real session under one version be excused by a guest marker under another.
- */
-/**
- * The host this browser holds a **guest** session on, or null.
- *
- * ## Why a reload needs to be able to ask
- *
- * `BackendInitResult.guest` is set once, by the guest connector, and never persisted — so the flag
- * lasts exactly as long as the tab. `BootController` then rewrites the URL to `/space/<id>`, and
- * the next load takes the ordinary connector, which knows nothing about guests. A reloaded guest
- * became an ordinary local user: the name prompt reappeared every launch with the wrong sentence
- * ("your account was set up outside WE" — it was not, this app made it minutes ago), they could
- * never see whose node they were on, and `administersNode` rested entirely on the executor
- * answering `isMultiUser` honestly.
- *
- * The marker is already on disk. `connectAsGuest` writes `ad4m-guest-email-<host>` per host, and
- * `ad4m-url` says which host the live session is against — so "is this session a guest's" is
- * answerable from what is there, with nothing new to persist and nothing to keep in sync.
- *
- * The inverse of {@link hasStoredSession}, and deliberately built from the same parts: one of them
- * being wrong about what a guest session looks like while the other is right is the failure worth
- * designing out.
- */
+/** The host this tab is a guest on, or null. */
 export function storedGuestHost(): string | null {
-  const entries = localEntries();
-  const read = (key: string): string | null => entries.find(([k]) => k === key)?.[1] || null;
-
-  for (const [key, token] of entries) {
-    const prefix = prefixOf(key, AD4M_TOKEN_KEY);
-    if (prefix === null || !token) continue;
-    const url = read(`${prefix}${AD4M_URL_KEY}`);
-    if (url && read(`${prefix}${guestMarkerKey(url)}`)) return url;
+  try {
+    return tabStorage()?.getItem(GUEST_HOST_KEY) || null;
+  } catch {
+    return null;
   }
-  return null;
 }
 
-export function hasStoredSession(): boolean {
-  const entries = localEntries();
-  const read = (key: string): string | null => entries.find(([k]) => k === key)?.[1] || null;
-
-  for (const [key, token] of entries) {
-    const prefix = prefixOf(key, AD4M_TOKEN_KEY);
-    if (prefix === null || !token) continue;
-    const url = read(`${prefix}${AD4M_URL_KEY}`);
-    if (!url || !read(`${prefix}${guestMarkerKey(url)}`)) return true;
+/** Marks this tab as a guest on `hostUrl`. */
+export function rememberGuestHost(hostUrl: string): void {
+  try {
+    tabStorage()?.setItem(GUEST_HOST_KEY, hostUrl);
+  } catch {
+    // A tab that cannot remember is a tab whose reload asks Connect again.
   }
-  return false;
 }
 
-/**
- * The executor ad4m-connect will open on this load, as the http base it checks (`${base}/health`),
- * when it holds a session to open there; null when it holds none.
- *
- * ## Why the base app asks
- *
- * ad4m-connect goes back to the executor it signed in to last, and when that one does not answer it
- * draws its own "How would you like to connect?" over the page, as if the person had never chosen.
- * The base app has an offline state for exactly that, with the reason and "Try again", so it asks
- * where the session is and whether that place answers before ad4m-connect is started. Without a
- * session nothing has been chosen yet, and ad4m-connect's screen is the right first step.
- *
- * ad4m-connect reads only its own version's keys (`${version}/${key}`, the version of its package).
- * So this reads with ad4m-connect's own `getLocal`, from the copy this app bundles: the namespace is
- * the one the running client will read, whatever version that is, and a session left by any other
- * version (older, after an upgrade; newer, after a downgrade) is one it will not resume and so is
- * not probed. Unlike {@link hasStoredSession}, which is about protecting any session at all, this
- * asks what this client will do next.
- */
-export function rememberedSessionBase(): string | null {
-  const read = (key: string): string | null => {
-    try {
-      return getLocal(key) || null;
-    } catch {
-      // A storage the browser refuses: nothing is remembered.
-      return null;
-    }
-  };
-  if (!read(AD4M_TOKEN_KEY)) return null;
-
-  const port = Number.parseInt(read(AD4M_PORT_KEY) ?? '', 10) || AD4M_DEFAULT_PORT;
-  const url = read(AD4M_URL_KEY) ?? `http://localhost:${port}`;
-  // ad4m-connect's `baseUrl`: a ws(s) address as http(s), then `/health` after it.
-  return url.replace(/^ws(s?):\/\//, (_, s: string) => `http${s}://`).replace(/\/+$/, '');
+/** Ends the mark: the tab is nobody's guest. */
+export function forgetGuestHost(): void {
+  try {
+    tabStorage()?.removeItem(GUEST_HOST_KEY);
+  } catch {
+    // Nothing was kept.
+  }
 }

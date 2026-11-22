@@ -12,6 +12,7 @@ import solidPlugin from 'vite-plugin-solid';
 process.env.WE_SEED ??= 'seeds/coasys.seed.json';
 
 const { seedPath, weSeed } = await import('../../scripts/seed-vite.mjs');
+const { endpointsDefine } = await import('../we-web/config/endpoints.mjs');
 
 /*
   The same build as `apps/we-web`'s — the policy, the globe's assets, the shell's aliases and the
@@ -19,6 +20,8 @@ const { seedPath, weSeed } = await import('../../scripts/seed-vite.mjs');
   and hands over to WE's app once a connection is chosen. Its public files are WE's web app's.
 */
 export default defineConfig({
+  // Read by `@we/app-web`'s endpoints module, which this app's Connect connector imports.
+  define: { __APP_ENDPOINTS__: endpointsDefine() },
   assetsInclude: ['**/*.glb'],
   publicDir: path.resolve(import.meta.dirname, '../we-web/public'),
   plugins: [
@@ -40,7 +43,7 @@ export default defineConfig({
     // See apps/we-web/vite.config.ts: the chunks above the default are the on-demand viewers.
     chunkSizeWarningLimit: 3500,
   },
-  optimizeDeps: { exclude: ['@coasys/ad4m', '@coasys/ad4m-connect'] },
+  optimizeDeps: { exclude: ['@coasys/ad4m', '@coasys/connect'] },
   resolve: {
     alias: {
       '@shared': path.resolve(import.meta.dirname, '../../packages/app-shell/src/shared'),

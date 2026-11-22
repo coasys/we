@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildContentSecurityPolicy, seedSources, SKYBOX_TEXTURES } from './index.js';
+import { buildContentSecurityPolicy, seedSources, SKYBOX_TEXTURES, webHeadersFile } from './index.js';
 
 /** One directive's sources, as a list — so a substring of one source cannot pass for another. */
 function sources(policy, name) {
@@ -15,7 +15,7 @@ const development = buildContentSecurityPolicy({ host: 'electron', dev: true });
 describe('the content security policy', () => {
   it('refuses to let WE be framed by anybody, except where a meta tag cannot say so', () => {
     expect(production).toContain("frame-ancestors 'none'");
-    // A meta tag ignores frame-ancestors and the browser warns; Netlify's header carries it instead.
+    // A meta tag ignores frame-ancestors and the browser warns; the Pages header carries it instead.
     expect(buildContentSecurityPolicy({ host: 'web', meta: true })).not.toContain('frame-ancestors');
   });
 
@@ -154,6 +154,30 @@ describe('what a deployment adds', () => {
 
   it('refuses a list that is not a list', () => {
     expect(() => seedSources({ contentSecurity: { frames: 'https://a.example' } })).toThrow(/must be a list/);
+  });
+});
+
+describe('the web host header file', () => {
+  const file = webHeadersFile(buildContentSecurityPolicy({ host: 'web' }));
+  const header = (name) => file.split('\n').find((line) => line.trim().startsWith(`${name}:`));
+
+  it('applies to every path and carries the policy with frame-ancestors', () => {
+    expect(file.startsWith('/*\n')).toBe(true);
+    expect(header('Content-Security-Policy')).toContain("frame-ancestors 'none'");
+  });
+
+  it("lets the web app frame Connect's auth domain, and no desktop host", () => {
+    const frames = sources(buildContentSecurityPolicy({ host: 'web' }), 'frame-src');
+    expect(frames).toEqual(expect.arrayContaining(['https://coasys.id', 'https://staging.coasys.id']));
+    expect(sources(production, 'frame-src')).not.toContain('https://coasys.id');
+  });
+
+  it('keeps opener links to popups only, and leaks no referrer', () => {
+    expect(header('Cross-Origin-Opener-Policy')).toBe('  Cross-Origin-Opener-Policy: same-origin-allow-popups');
+    expect(header('Referrer-Policy')).toBe('  Referrer-Policy: no-referrer');
+    expect(header('Strict-Transport-Security')).toContain('max-age=31536000');
+    expect(header('X-Content-Type-Options')).toContain('nosniff');
+    expect(header('Permissions-Policy')).toContain('geolocation=()');
   });
 });
 

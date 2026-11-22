@@ -3,9 +3,6 @@ import type { Browser, BrowserContext, Page } from 'playwright-core';
 /** Headless Chrome with a fake camera and microphone; `fakeAudio` is a WAV the microphone plays. */
 export function launchBrowser(options?: { fakeAudio?: string; headless?: boolean }): Promise<Browser>;
 
-/** The ad4m-connect version its session keys are stored under. */
-export function connectVersion(): string;
-
 export interface Device {
   name: string;
   context: BrowserContext;

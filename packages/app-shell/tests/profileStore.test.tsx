@@ -111,7 +111,7 @@ describe('a fetch that started before a local write', () => {
  * Asking somebody who arrived without a name what they are called.
  *
  * The whole risk here is asking the wrong person. An identity created outside WE — the ADAM
- * Launcher, Flux, a hosted node reached through ad4m-connect — already exists when WE boots, so the
+ * Launcher, Flux, a hosted node reached through Coasys Connect — already exists when WE boots, so the
  * setup screen that collects a name is skipped and nobody is ever asked. But an empty profile and an
  * unfetched one look identical, so a prompt gated on emptiness alone appears in front of *everybody*
  * on every launch and vanishes a moment later. That flash is what `ownProfileLoaded` exists for.

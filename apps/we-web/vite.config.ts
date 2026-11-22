@@ -6,11 +6,16 @@ import { defineConfig } from 'vite';
 import solidPlugin from 'vite-plugin-solid';
 
 import { seedPath, weSeed } from '../../scripts/seed-vite.mjs';
+import { endpointsDefine } from './config/endpoints.mjs';
+
+// The endpoints this build serves: `config/<COASYS_ENV>.json`, see `config/endpoints.mjs`.
+const endpoints = endpointsDefine();
 
 export default defineConfig({
+  define: { __APP_ENDPOINTS__: endpoints },
   assetsInclude: ['**/*.glb'],
   /*
-    The Content-Security-Policy, as a meta tag — and for Netlify a `_headers` file as well, for
+    The Content-Security-Policy, as a meta tag — and for Cloudflare Pages a `_headers` file as well, for
     `frame-ancestors`, which a meta tag cannot carry. Built by `@we/csp`, the same builder Electron's
     header comes from. The rewrite lets the globe load under a policy without 'unsafe-eval'.
   */
@@ -53,7 +58,7 @@ export default defineConfig({
   },
   // Never pre-bundle local file: deps — hard links break on rebuild, causing
   // Vite's dep optimizer cache to serve stale content after restart.
-  optimizeDeps: { exclude: ['@coasys/ad4m', '@coasys/ad4m-connect'] },
+  optimizeDeps: { exclude: ['@coasys/ad4m', '@coasys/connect'] },
   resolve: {
     alias: {
       // Resolve @we/app-shell internal aliases

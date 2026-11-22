@@ -20,7 +20,7 @@
   "dependencies": {
     "@we/app-shell": "workspace:*",
     "@coasys/ad4m": "*",
-    "@coasys/ad4m-connect": "*",
+    "@coasys/connect": "*",
     "solid-js": "^1.9.18",
     "@we/backend-ad4m": "workspace:*"
   },

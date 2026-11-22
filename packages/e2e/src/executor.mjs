@@ -169,8 +169,8 @@ export async function startExecutor({
 }
 
 /**
- * An account on a multi-user executor, signed in: what ad4m-connect's email and password screen ends
- * with. No email is sent, and none is needed: the admin client grants the account free access.
+ * An account on a multi-user executor, signed in: a user made on the node, and the token it
+ * logs in with. No email is sent, and none is needed: the admin client grants the account free access.
  */
 export async function signUp(executor, email, password = 'test123') {
   await within(executor.admin.agent.createUser(email, password), 120_000, 'agent.createUser');

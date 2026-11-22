@@ -1,210 +1,68 @@
 /**
- * The check that stands between a guest link and somebody's real identity.
- *
- * Every case here was previously answered `false`, because the probe named the keys without the
- * version prefix ad4m-connect has written since April 2023. That is the reason the tests are
- * written against *prefixed* keys throughout, with the unprefixed spelling covered only as the
- * legacy case: a test built on the shape the bug assumed would have passed while the bug was live.
+ * The guest mark of a tab. A reload of a guest tab has to stay a guest, a new tab has to start
+ * clean, and a browser whose storage throws holds nothing.
  */
-import { getLocal, setLocal } from '@coasys/ad4m-connect/utils';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { hasStoredSession, rememberedSessionBase, storedGuestHost } from './storedSession';
+import { forgetGuestHost, rememberGuestHost, storedGuestHost } from './storedSession';
 
-const V = '0.13.0-test-interpretation-2/';
-const HOST = 'https://node.example.org';
-
-class MemoryStorage {
-  private map = new Map<string, string>();
-  getItem(key: string): string | null {
-    return this.map.get(key) ?? null;
-  }
-  setItem(key: string, value: string): void {
-    this.map.set(key, value);
-  }
-  removeItem(key: string): void {
-    this.map.delete(key);
-  }
-  clear(): void {
-    this.map.clear();
-  }
-  get length(): number {
-    return this.map.size;
-  }
-  key(i: number): string | null {
-    return [...this.map.keys()][i] ?? null;
-  }
+function memoryStorage(): Storage {
+  const data = new Map<string, string>();
+  return {
+    get length() {
+      return data.size;
+    },
+    clear: () => data.clear(),
+    getItem: (key) => data.get(key) ?? null,
+    key: (index) => [...data.keys()][index] ?? null,
+    removeItem: (key) => void data.delete(key),
+    setItem: (key, value) => void data.set(key, value),
+  };
 }
 
-function useStorage(store: unknown): void {
-  Object.defineProperty(globalThis, 'localStorage', { value: store, configurable: true, writable: true });
-}
-
-let storage: MemoryStorage;
-
-beforeEach(() => {
-  storage = new MemoryStorage();
-  useStorage(storage);
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
-describe('hasStoredSession', () => {
-  it('is false with nothing stored', () => {
-    expect(hasStoredSession()).toBe(false);
-  });
-
-  it('finds a real session written under the version prefix', () => {
-    storage.setItem(`${V}ad4m-token`, 'tok');
-    storage.setItem(`${V}ad4m-url`, HOST);
-    expect(hasStoredSession()).toBe(true);
-  });
-
-  it('finds a real session written without a prefix, as older builds wrote it', () => {
-    storage.setItem('ad4m-token', 'tok');
-    storage.setItem('ad4m-url', HOST);
-    expect(hasStoredSession()).toBe(true);
-  });
-
-  it('does not count a guest session this flow created', () => {
-    storage.setItem(`${V}ad4m-token`, 'tok');
-    storage.setItem(`${V}ad4m-url`, HOST);
-    storage.setItem(`${V}ad4m-guest-email-${HOST}`, 'guest-abc@flux.demo');
-    expect(hasStoredSession()).toBe(false);
-  });
-
-  it('normalises the host the same way ad4m-connect does when it writes the marker', () => {
-    storage.setItem(`${V}ad4m-token`, 'tok');
-    storage.setItem(`${V}ad4m-url`, `${HOST.toUpperCase()}///`);
-    storage.setItem(`${V}ad4m-guest-email-${HOST}`, 'guest-abc@flux.demo');
-    expect(hasStoredSession()).toBe(false);
-  });
-
-  it('counts a token with no url at all — nothing says it is a guest', () => {
-    storage.setItem(`${V}ad4m-token`, 'tok');
-    expect(hasStoredSession()).toBe(true);
-  });
-
-  it('ignores an empty token', () => {
-    storage.setItem(`${V}ad4m-token`, '');
-    storage.setItem(`${V}ad4m-url`, HOST);
-    expect(hasStoredSession()).toBe(false);
-  });
-
-  it('does not let a guest marker under one version excuse a session under another', () => {
-    storage.setItem('0.12.0/ad4m-token', 'real');
-    storage.setItem('0.12.0/ad4m-url', HOST);
-    storage.setItem(`${V}ad4m-guest-email-${HOST}`, 'guest-abc@flux.demo');
-    expect(hasStoredSession()).toBe(true);
-  });
-
-  it('is false when localStorage throws, as it does in some privacy configurations', () => {
-    useStorage(
-      new Proxy(
-        {},
-        {
-          get() {
-            throw new Error('access denied');
-          },
-        },
-      ),
-    );
-    expect(hasStoredSession()).toBe(false);
-  });
-});
-
-describe('storedGuestHost', () => {
-  /*
-    The inverse question, and the one a *reload* has to ask. `BackendInitResult.guest` lives as long
-    as the tab, and `BootController` rewrites the URL — so every load after the first comes through
-    the ordinary connector, which knew nothing about guests and treated one as a local user.
-  */
-  it('is null with nothing stored', () => {
+describe('the guest mark of a tab', () => {
+  it('holds nothing until a guest connects', () => {
+    vi.stubGlobal('sessionStorage', memoryStorage());
     expect(storedGuestHost()).toBeNull();
   });
 
-  it('names the host when the live session is a guest one', () => {
-    storage.setItem(`${V}ad4m-token`, 'tok');
-    storage.setItem(`${V}ad4m-url`, HOST);
-    storage.setItem(`${V}ad4m-guest-email-${HOST}`, 'guest-abc@flux.demo');
-    expect(storedGuestHost()).toBe(HOST);
-  });
-
-  it('is null for a real session, which is exactly when hasStoredSession is true', () => {
-    storage.setItem(`${V}ad4m-token`, 'tok');
-    storage.setItem(`${V}ad4m-url`, HOST);
+  it('keeps the host a guest connected to, until the guest disconnects', () => {
+    vi.stubGlobal('sessionStorage', memoryStorage());
+    rememberGuestHost('https://node.example.org');
+    expect(storedGuestHost()).toBe('https://node.example.org');
+    forgetGuestHost();
     expect(storedGuestHost()).toBeNull();
-    expect(hasStoredSession()).toBe(true);
   });
 
-  it('never answers yes to both, whichever prefix the credentials are under', () => {
-    // The two are built from the same parts precisely so they cannot disagree about what a guest
-    // session looks like.
-    storage.setItem('ad4m-token', 'tok');
-    storage.setItem('ad4m-url', HOST);
-    storage.setItem(`ad4m-guest-email-${HOST}`, 'guest-abc@flux.demo');
-    expect(storedGuestHost()).toBe(HOST);
-    expect(hasStoredSession()).toBe(false);
-  });
-});
-
-/*
-  Where a relaunch will go. ad4m-connect opens the executor it signed in to last, and when that one
-  does not answer it draws its own connect screen: the base app asks this first, so a place that
-  cannot be reached is its offline state instead.
-*/
-describe('rememberedSessionBase', () => {
-  /** Writes as the AD4M Connect this app bundles does: under its own version's namespace. */
-  const write = (key: string, value: string) => setLocal(key, value);
-
-  it('is null with nothing stored, and for a url with no token beside it', () => {
-    expect(rememberedSessionBase()).toBeNull();
-    write('ad4m-url', HOST);
-    expect(rememberedSessionBase()).toBeNull();
+  it('is kept in the tab, never in localStorage, and carries no token', () => {
+    const tab = memoryStorage();
+    const local = memoryStorage();
+    vi.stubGlobal('sessionStorage', tab);
+    vi.stubGlobal('localStorage', local);
+    rememberGuestHost('https://node.example.org');
+    expect(local.length).toBe(0);
+    expect(tab.length).toBe(1);
+    expect(tab.getItem(tab.key(0)!)).toBe('https://node.example.org');
   });
 
-  it("is the executor a stored session is against, as ad4m-connect's http base", () => {
-    write('ad4m-token', 'tok');
-    write('ad4m-url', 'ws://10.0.2.2:12000');
-    expect(rememberedSessionBase()).toBe('http://10.0.2.2:12000');
-    write('ad4m-url', 'wss://node.example.org/');
-    expect(rememberedSessionBase()).toBe('https://node.example.org');
-    write('ad4m-url', HOST);
-    expect(rememberedSessionBase()).toBe(HOST);
-  });
-
-  it("is ad4m-connect's default address for a token stored with no url", () => {
-    write('ad4m-token', 'tok');
-    expect(rememberedSessionBase()).toBe('http://localhost:12000');
-    write('ad4m-port', '12100');
-    expect(rememberedSessionBase()).toBe('http://localhost:12100');
-  });
-
-  /*
-    Lal's review of coasys/we#438: this read the numerically newest version that held a token, which
-    need not be the one the running client reads. After an upgrade that left only an older version's
-    keys, the base probed an executor the new client would never go back to.
-  */
-  it('reads only the namespace of the AD4M Connect this app bundles, never another version', () => {
-    storage.setItem('0.9.0/ad4m-token', 'old');
-    storage.setItem('0.9.0/ad4m-url', 'https://old.example.org');
-    storage.setItem('999.0.0/ad4m-token', 'newer');
-    storage.setItem('999.0.0/ad4m-url', 'https://newer.example.org');
-    storage.setItem('ad4m-token', 'bare');
-    expect(rememberedSessionBase()).toBeNull();
-
-    write('ad4m-token', 'tok');
-    write('ad4m-url', HOST);
-    expect(rememberedSessionBase()).toBe(HOST);
-    // The bundled client's own read agrees on which key that is.
-    expect(getLocal('ad4m-url')).toBe(HOST);
-  });
-
-  it('is null where localStorage cannot be read', () => {
-    Object.defineProperty(globalThis, 'localStorage', {
-      get() {
+  it('holds nothing where the storage throws', () => {
+    vi.stubGlobal('sessionStorage', {
+      getItem: () => {
         throw new Error('denied');
       },
-      configurable: true,
+      setItem: () => {
+        throw new Error('denied');
+      },
+      removeItem: () => {
+        throw new Error('denied');
+      },
     });
-    expect(rememberedSessionBase()).toBeNull();
+    expect(() => rememberGuestHost('https://node.example.org')).not.toThrow();
+    expect(storedGuestHost()).toBeNull();
+    expect(() => forgetGuestHost()).not.toThrow();
   });
 });
