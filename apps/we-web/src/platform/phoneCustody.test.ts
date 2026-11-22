@@ -112,7 +112,7 @@ describe('the phone custody host', () => {
         { id: 'r1', kind: 'send-master', by: 'd3', keyIds: [], expires: 1_800_000_000 },
         { id: 'r2', kind: 'confirm-revoke', by: 'd3', keyIds: ['d3'], expires: 1_800_000_000 },
       ],
-      revokedHolders: ['d4'],
+      endedHolders: ['d4'],
       masterWaiting: false,
       // The phone's own key is this device, not the key of the executor it reaches.
       thisDevice: { keyId: 'd2', kind: 'phone-app' },

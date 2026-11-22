@@ -248,6 +248,7 @@ export function phoneTransport(start: PhoneStart, deps: PhoneTransportDeps): Ide
         return {
           screen: 'revoke-confirm',
           keyId: device.keyId,
+          name: device.name || null,
           mayHoldMaster: device.mayKeepMaster,
           rotate: false,
           passphrase: false,
@@ -314,9 +315,10 @@ export function phoneTransport(start: PhoneStart, deps: PhoneTransportDeps): Ide
       }
       case 'revoke': {
         if (!device) return failed('This device isn’t linked.');
-        const confirm: Screen = {
+        const confirm: Extract<Screen, { screen: 'revoke-confirm' }> = {
           screen: 'revoke-confirm',
           keyId: device.keyId,
+          name: device.name || null,
           mayHoldMaster: device.mayKeepMaster,
           rotate: false,
           passphrase: false,
