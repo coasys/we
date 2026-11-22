@@ -2209,7 +2209,8 @@ const coasysBar = (): Scenario => {
 };
 
 /**
- * A running call's bar: Live and the transcript export at its end, beside Page and Canvas, in Glow.
+ * A running call's bar: Live, the way to the interpretation panel and the transcript export at its end,
+ * beside Page and Canvas, in Glow.
  */
 const coasysCallBar = (live = true): Scenario => {
   const glow = BUNDLE_LAB_THEMES.find((t) => t.label === 'coasys-glow')?.theme ?? {};
@@ -2230,8 +2231,15 @@ const coasysCallBar = (live = true): Scenario => {
     stores: {
       routeStore: { params: {}, templateSegments: [], setParam: () => {}, navigate: () => {} },
       shellStore: { collapsedLanes: [] },
-      modules: { call: { liveCalls: live ? [{ recordId: 'call-1', count: 2 }] : [] } },
-      spaceStore: { exportCallTranscript: (id: string) => ((globalThis as { __exported?: string }).__exported = id) },
+      modules: {
+        call: { liveCalls: live ? [{ recordId: 'call-1', count: 2 }] : [] },
+        transcribe: { extractionOpen: false },
+      },
+      spaceStore: {
+        activeModules: ['call', 'transcribe'],
+        exportCallTranscript: (id: string) => ((globalThis as { __exported?: string }).__exported = id),
+        launchModule: (id: string) => ((globalThis as { __launched?: string }).__launched = id),
+      },
     },
   };
 };
