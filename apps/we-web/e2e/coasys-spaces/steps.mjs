@@ -1,6 +1,6 @@
 /**
  * Steps more than one vertical takes through the screen: open a part of a space, choose what calls
- * look for, accept a suggestion in the inspector — and what the stub tier expects extraction to find.
+ * look for, accept a suggestion in the inspector — and what the stub tier expects interpretation to find.
  */
 import assert from 'node:assert/strict';
 
@@ -15,7 +15,7 @@ import { DNA, records, spacePerspective, valueOf } from './dna.mjs';
 import { HEARD, LINES, roleOf, SCRIPT } from './stub-llm.mjs';
 
 /**
- * Why the Feed steps are todos. The Feed reads each of the space's extraction targets through the
+ * Why the Feed steps are todos. The Feed reads each of the space's interpretation targets through the
  * module host's `findEntities`, which looks the class up in the global entity registry
  * (app-shell TemplateProvider.tsx:487, `getEntity`). A class a bundle declares in the space, such as
  * the starter's `Question`, is not there, so that read throws. The Feed reads every kind in one
@@ -81,12 +81,12 @@ export async function enableTargets(page, names, perspective) {
     const drawn = page.locator('we-switch').filter({ has: toggle });
     if (!(await toggle.isChecked())) await drawn.click();
     // Each switch writes the whole list. The store publishes the merged list before that write
-    // (SpaceStore.tsx `setExtractionTarget`), and this waits until the stored row has caught up:
+    // (SpaceStore.tsx `setInterpretationTarget`), and this waits until the stored row has caught up:
     // the check below reads storage, which shows a class only once its write has landed.
-    await until(stored, has(name), { timeout: 30_000, what: `${name} in the space's extraction targets` });
+    await until(stored, has(name), { timeout: 30_000, what: `${name} in the space's interpretation targets` });
   }
   const all = await stored();
-  for (const name of names) assert.ok(has(name)(all), `${name} is still an extraction target`);
+  for (const name of names) assert.ok(has(name)(all), `${name} is still an interpretation target`);
   // Closed again: the panel lies over the space's own controls (Page, Canvas) on a narrow window.
   await closeSpaceSettings(page);
 }
@@ -143,9 +143,9 @@ export async function acceptInInspector(who, perspective, record) {
   const staged = async () => (await ports.interpretation.proposals(perspective)).map((p) => p.id);
   assert.ok((await staged()).includes(record.id), `"${record.title}" is pending before it is accepted`);
   await openOnCanvas(page, record.title);
-  const pending = page.getByText('Extraction proposed this — pending acceptance.');
+  const pending = page.getByText('Interpretation proposed this — pending acceptance.');
   await pending.waitFor({ timeout: 60_000 });
-  // The inspector's own "Accept": the Extraction panel, earlier in the page, has one per suggestion.
+  // The inspector's own "Accept": the Interpretation panel, earlier in the page, has one per suggestion.
   // The innermost element that holds the note and the inspector's "Reject — removes it" is the
   // inspector's prompt; descendants come after their ancestors, so it is the last match.
   const prompt = page
@@ -193,7 +193,7 @@ export async function joinByInvite(who, sharedUrl) {
 
 /**
  * Setup shared by the verticals after V2: a call in which the film's lines are said, the records
- * extraction makes of them, and the call left. Resolves with the call's id and the records by class.
+ * interpretation makes of them, and the call left. Resolves with the call's id and the records by class.
  *
  * The stub tier waits for every record the script makes. The real tier unmutes (a call joins
  * silent), waits until every line has landed, stops transcribing (the fake microphone loops its
@@ -211,19 +211,19 @@ export async function callThatFinds(who, perspective, needs = []) {
     await stopTranscribing(who.page);
   }
   const found = new Map();
-  await untilExtracted(perspective, callId, found, STUB ? expectedRecords() : null, needs);
+  await untilInterpreted(perspective, callId, found, STUB ? expectedRecords() : null, needs);
   await leaveCall(who.page);
   return { callId, found };
 }
 
 /**
- * Waits for what extraction makes of a call: with `want`, every scripted record; without, a titled
+ * Waits for what interpretation makes of a call: with `want`, every scripted record; without, a titled
  * record of each class in `needs`, or, with no `needs`, any record of the package. Matched on class,
  * not title: a real model's titles are its own. When it times out, the error says why a pass did not
  * run or found nothing — the call's watch as the executor stores it, the turns its scope query reads,
  * and what the model was asked — since the executor logs none of that at its default level.
  */
-export async function untilExtracted(perspective, callId, found, want, needs = []) {
+export async function untilInterpreted(perspective, callId, found, want, needs = []) {
   if (want && want.length === 0) {
     // Nothing to wait for would pass on the first read, and assert nothing.
     throw new Error(
@@ -241,8 +241,8 @@ export async function untilExtracted(perspective, callId, found, want, needs = [
   const what = want
     ? 'the scripted records'
     : needs.length
-      ? `an extracted ${needs.join(' and ')}`
-      : 'an extracted record of the package';
+      ? `an interpreted ${needs.join(' and ')}`
+      : 'an interpreted record of the package';
   try {
     await until(
       async () => {
@@ -255,14 +255,14 @@ export async function untilExtracted(perspective, callId, found, want, needs = [
       { timeout: SLOW, interval: 2_000, what },
     );
   } catch (error) {
-    const facts = await extractionFacts(perspective, callId).catch((e) => ({ unreadable: e.message }));
+    const facts = await interpretationFacts(perspective, callId).catch((e) => ({ unreadable: e.message }));
     error.message += `\n${JSON.stringify(facts, null, 2)}`;
     throw error;
   }
 }
 
-/** What the executor holds of a call's watch, and what it would read: see {@link untilExtracted}. */
-async function extractionFacts(perspective, callId) {
+/** What the executor holds of a call's watch, and what it would read: see {@link untilInterpreted}. */
+async function interpretationFacts(perspective, callId) {
   const { stub } = await world();
   // The watch id the app gives a call's watch (DatasetStore `watchIdFor`).
   const node = `ad4m://autoprocessor/we-call-${callId.replace(/[^a-zA-Z0-9]+/g, '-')}`;
@@ -302,7 +302,7 @@ export function recordOf(found, className) {
 
 /**
  * Opens a record into the inspector by pressing its card on the canvas. Found inside the canvas's own
- * element: the Extraction panel lists the same title, earlier in the page. The canvas names no role
+ * element: the Interpretation panel lists the same title, earlier in the page. The canvas names no role
  * or label, so its class is the one hold there is.
  */
 export async function openOnCanvas(page, title) {
