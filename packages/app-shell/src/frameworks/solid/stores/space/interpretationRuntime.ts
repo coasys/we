@@ -3,7 +3,7 @@
  * how it is written down, and the standing watch that runs passes as a conversation grows.
  *
  * Owned by SpaceStore, because every answer it needs is the space's — what this space could extract
- * (ShapeStore, above it), what one collection extracts and whether it is extracted as it grows (the
+ * (ShapeStore, above it), what one collection extracts and whether it is interpreted as it grows (the
  * collections' own settings, which SpaceStore reads). It reads them directly; nothing is lent.
  */
 import { gatherTranscriptTurns, type TurnRecord } from '@shared/interpretation/transcriptTurns';
@@ -160,7 +160,7 @@ const watchIdFor = (collectionId: string) => `we-call-${collectionId.replace(/[^
 */
 const watchOps = oneAtATime();
 
-export interface ExtractionRuntimeDeps {
+export interface InterpretationRuntimeDeps {
   /**
    * The backend's interpretation port, read on every call: the backend connects after the stores
    * are built, and a backend that cannot interpret never sets it.
@@ -168,7 +168,7 @@ export interface ExtractionRuntimeDeps {
   port: () => InterpretationPort | undefined;
   /** The dataset on screen. */
   dataset: () => DatasetProxy | null;
-  /** What could be extracted here — core vocabulary marked extractable, plus this space's models. */
+  /** What could be interpreted here — core vocabulary marked interpretable, plus this space's models. */
   candidates: () => string[];
   /** Whether `candidates` is the whole list yet. */
   candidatesLoaded: () => boolean;
@@ -185,7 +185,7 @@ export interface ExtractionRuntimeDeps {
   collectionAnswers: (handle: DatasetHandle, collectionId: string) => Promise<{ auto: boolean; classes: string[] }>;
 }
 
-export interface ExtractionRuntime {
+export interface InterpretationRuntime {
   /**
    * Keep a standing extraction watch on one conversation, filing what it finds into the space
    * collection. What a module's `watchCollection` reaches; also the space's own, for its loose
@@ -198,7 +198,7 @@ export interface ExtractionRuntime {
   services: ModuleHostServices;
 }
 
-export function createExtractionRuntime(deps: ExtractionRuntimeDeps): ExtractionRuntime {
+export function createInterpretationRuntime(deps: InterpretationRuntimeDeps): InterpretationRuntime {
   /**
    * The class list one pass over this collection should ask for.
    *
@@ -240,10 +240,10 @@ export function createExtractionRuntime(deps: ExtractionRuntimeDeps): Extraction
         record for the space on screen and the only answer for a call in another.
       */
       const { auto, classes } = await deps.collectionAnswers(handle, collectionId);
-      if (!auto) throw new Error('interpretation: automatic extraction is off for this collection');
+      if (!auto) throw new Error('interpretation: automatic interpretation is off for this collection');
       // Refused rather than registered empty: the executor rejects a processor with no classes, and
       // "this space has marked nothing for extraction" is a sentence worth saying in its own words.
-      if (!classes.length) throw new Error('interpretation: nothing in this space is marked for AI extraction');
+      if (!classes.length) throw new Error('interpretation: nothing in this space is marked for AI interpretation');
 
       await watch(handle, {
         watchId: watchIdFor(collectionId),
@@ -275,7 +275,7 @@ export function createExtractionRuntime(deps: ExtractionRuntimeDeps): Extraction
       never sees the resolution: candidacy, the space's default and the collection's own list are
       questions it has no business knowing about, and it is handed the answer.
     */
-    extractionTargets: (collectionId: string) => {
+    interpretationTargets: (collectionId: string) => {
       const active = targetsForCollection(collectionId);
       return deps.candidates().map((entity) => ({
         entity,
@@ -288,9 +288,9 @@ export function createExtractionRuntime(deps: ExtractionRuntimeDeps): Extraction
       part that had arrived would be removed and registered again when the rest did. The list above
       does not wait for this; what registers from it does.
     */
-    extractionTargetsLoaded: () => deps.candidatesLoaded(),
+    interpretationTargetsLoaded: () => deps.candidatesLoaded(),
     setAutoInterpret: (collectionId: string, on: boolean) => deps.setAutoFor(collectionId, on),
-    setExtractionTarget: (collectionId: string, entity: string, on: boolean) =>
+    setInterpretationTarget: (collectionId: string, entity: string, on: boolean) =>
       deps.setTargetFor(collectionId, entity, on),
 
     // Gathering the turns is the host's half of the job: the port takes turns, and a module has no

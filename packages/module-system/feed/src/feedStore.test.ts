@@ -636,7 +636,7 @@ describe('the Feed reading only when something changed', () => {
     await vi.runAllTimersAsync();
 
     close();
-    // A call goes on elsewhere: lines are said, and extraction stages more.
+    // A call goes on elsewhere: lines are said, and interpretation stages more.
     s.write('TextBlock', 'call-3');
     s.write('TextBlock', 'call-3');
     staged.move(['task-1', 'task-2']);

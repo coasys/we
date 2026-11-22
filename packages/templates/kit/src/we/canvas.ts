@@ -30,7 +30,7 @@ import type { SchemaProp } from '@we/schema-shared';
 import { CHANGED, UNCONFIRMED } from './suggestions.ts';
 
 /** The kinds of record extraction can make — what an unplaced card on a canvas can be. */
-export const EXTRACTABLE = 'shapeStore.extractionCandidates';
+export const INTERPRETABLE = 'shapeStore.interpretationCandidates';
 
 export interface CanvasSeedOptions {
   /** The canvas record — its placements are its own. */
@@ -44,7 +44,7 @@ export function canvasSeedOptions({ canvas, members }: CanvasSeedOptions): Recor
   return {
     canvas,
     members,
-    contains: { $: EXTRACTABLE },
+    contains: { $: INTERPRETABLE },
     // Where each card came from, for a badge or a lens by conversation.
     origin: 'extractedFrom',
     // Which run made each card, for its "by AI" mark — see `generatedRun` in `@we/entities`.

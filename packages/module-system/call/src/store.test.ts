@@ -2594,7 +2594,7 @@ describe('the spotlight', () => {
  * `let`, though — a closure over it returns the right value whenever it is *called*, and tells the
  * reactive graph nothing. So anything binding to `callRecordId` was evaluated once, against the
  * frame before the call existed, and never re-evaluated: a board, a transcript feed and an
- * extraction readout sat empty beside a call that was plainly running.
+ * interpretation readout sat empty beside a call that was plainly running.
  *
  * Pinned against a **tracking** primitive rather than the closure the harness above injects,
  * because a plain `let` passes every assertion a non-tracking signal can make — which is the whole

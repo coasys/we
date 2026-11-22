@@ -235,7 +235,7 @@ export function createFeedStore(deps: ModuleStoreDeps) {
     callFeedRoot: state(callRoot, 'The call whose Feed is drawn — the one shown most recently — or empty.'),
     callFeedRows: state(
       call.feedRows,
-      "The Feed of the call on screen: every line said, typed or answered in it, and a row per group of things extracted from it, merged by time. Rows are shaped as `feedRows`' are; a line's `source` says how it arrived ('spoken', 'typed', 'corrected', or none for a bot or the system).",
+      "The Feed of the call on screen: every line said, typed or answered in it, and a row per group of things found in it, merged by time. Rows are shaped as `feedRows`' are; a line's `source` says how it arrived ('spoken', 'typed', 'corrected', or none for a bot or the system).",
     ),
     callFeedHasMore: state(call.feedHasMore, 'Whether there is more of the call beyond its Feed’s window.'),
     callFeedLoaded: state(call.feedLoaded, 'Whether the call’s Feed has answered for this call yet.'),

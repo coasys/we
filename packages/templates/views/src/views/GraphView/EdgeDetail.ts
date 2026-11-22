@@ -224,7 +224,7 @@ const editing: SchemaNode = {
                       ],
                       // The graph re-reads, so the line's label and its colour change with it.
                       onSuccess: [
-                        // The key quotes the label, and the next extraction pass reads the claim from it.
+                        // The key quotes the label, and the next interpretation pass reads the claim from it.
                         { $invoke: 'recordStore.rekeyConnection', args: [{ $: 'link.id' }] },
                         { $setLocal: 'editOpen', value: false },
                         { $setLocal: 'revision', value: { $: 'local.revision + 1' } },

@@ -133,7 +133,7 @@ function readProperty(object: unknown, property: string): unknown {
  * through `a[b]`, for no reason anybody chose. `readProperty` below already knows what to do with
  * one; it was never being handed it.
  *
- * A store keying its answers by an id it cannot enumerate — `modules.transcribe.extractionFor[<call>]`
+ * A store keying its answers by an id it cannot enumerate — `modules.transcribe.interpretationFor[<call>]`
  * — has no other shape available: a plain object cannot hold every id, and a `Proxy` fails the
  * `property in base` guard that `readProperty` applies for prototype safety.
  */
