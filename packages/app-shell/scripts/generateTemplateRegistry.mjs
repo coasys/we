@@ -37,9 +37,9 @@ const outPath = seedFile.generatedPath(
  * a seed, which would have to repeat it in every seed, or in its `meta`, which travels with a shared
  * template to somebody for whom it means nothing. Every showcase template is marked: they are
  * studies of what the template and theme systems can express, not yet things to ship, and only
- * `default` and `workshop` are in a production build. Shipping one is one edit: drop the mark, and
- * give a template named after a product it imitates a descriptive name in the picker, since that
- * name is fine only while it ships to nobody.
+ * `default`, `workshop` and `acorn` are in a production build. Shipping one is one edit: drop the
+ * mark, and give a template named after a product it imitates a descriptive name in the picker,
+ * since that name is fine only while it ships to nobody.
  *
  * The catalogue lives here rather than being discovered from the filesystem, because a template's
  * *id* is a stable public name — it appears in `we-seed.json`, in `AgentSettings.defaultTemplateId`,
@@ -58,6 +58,7 @@ const CATALOGUE = {
   scrapbook: { module: '@we/template-showcase', export: 'scrapbookTemplate', dev: true },
   'theme-lab': { module: '@we/template-showcase', export: 'themeLabTemplate', dev: true },
   workshop: { module: '@we/template-showcase', export: 'workshopTemplate' },
+  acorn: { module: '@we/template-acorn', export: 'acornTemplate' },
 };
 
 const seed = seedFile.readSeed();
@@ -86,16 +87,30 @@ for (const id of ids) {
   byModule.get(entry.module).push({ id, export: entry.export });
 }
 
-const imports = [...byModule.entries()]
-  .map(([module, entries]) => {
-    const names = [...new Set(entries.map((e) => e.export))].sort();
-    return `import { ${names.join(', ')} } from '${module}';`;
-  })
-  .join('\n');
-
 const member = (id) => `${JSON.stringify(id)}: ${CATALOGUE[id].export},`;
 const shipped = ids.filter((id) => !CATALOGUE[id].dev);
 const devOnly = ids.filter((id) => CATALOGUE[id].dev);
+
+/*
+  Imports sorted by source, and the names inside each by name, as `simple-import-sort` would sort
+  them — its comparator, an `en` collator with base sensitivity and numeric segments, copied here so
+  the pre-commit hook and this generator agree on the file byte for byte: CI fails a build that
+  leaves the tree dirty. The *map* below keeps the seed's order, which is the one that means
+  something.
+*/
+const collator = new Intl.Collator('en', { sensitivity: 'base', numeric: true });
+const compare = (a, b) => collator.compare(a, b) || (a < b ? -1 : a > b ? 1 : 0);
+const imports = [
+  ...(devOnly.length ? [{ from: '@we/module-shared', line: `import { DEV_FEATURES } from '@we/module-shared';` }] : []),
+  { from: '@we/schema-shared', line: `import type { TemplateSchema } from '@we/schema-shared';` },
+  ...[...byModule.entries()].map(([module, entries]) => {
+    const names = [...new Set(entries.map((e) => e.export))].sort(compare);
+    return { from: module, line: `import { ${names.join(', ')} } from '${module}';` };
+  }),
+]
+  .sort((a, b) => compare(a.from, b.from))
+  .map(({ line }) => line)
+  .join('\n');
 /*
   The developer templates as a spread behind the build's constant. In a production build
   `DEV_FEATURES` is `false`, the spread is of nothing and their exports go unused, so the bundler
@@ -119,7 +134,6 @@ const output = `/**
  * entirely — a deployment that wants none of the showcase templates ships none of their bytes.
  * A template the catalogue marks \`dev\` is in only where the build has developer features.
  */
-${devOnly.length ? "import { DEV_FEATURES } from '@we/module-shared';\n" : ''}import type { TemplateSchema } from '@we/schema-shared';
 ${imports}
 
 export const bundledTemplates: Record<string, TemplateSchema> = {

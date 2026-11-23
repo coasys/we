@@ -534,6 +534,74 @@ export const seedBundles: Bundle[] = [
                                         },
                                       ],
                                     },
+                                    {
+                                      type: '$if',
+                                      props: {
+                                        condition: { $: 'spaceStore.acornAvailable' },
+                                        then: {
+                                          type: 'we-button',
+                                          props: {
+                                            variant: 'ghost',
+                                            size: 'lg',
+                                            width: '100%',
+                                            height: 'auto',
+                                            ax: 'start',
+                                            ay: 'center',
+                                            gap: '200',
+                                            py: '300',
+                                            px: { $: 'local.railInset' },
+                                            label: 'Acorn projects',
+                                            onClick: { $invoke: 'shellStore.setAcornProjectsOpen', args: [true] },
+                                            bg: { $: "false ? 'accent-soft' : ''" },
+                                            color: { $: "false ? 'accent-text' : 'text-muted'" },
+                                            hoverProps: {
+                                              $: "false ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-hover', color: 'text' }",
+                                            },
+                                            activeProps: {
+                                              $: "false ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-active', color: 'text' }",
+                                            },
+                                          },
+                                          children: [
+                                            {
+                                              type: 'Row',
+                                              props: {
+                                                width: '2rem',
+                                                height: '2rem',
+                                                ax: 'center',
+                                                ay: 'center',
+                                                flexShrink: '0',
+                                              },
+                                              children: [{ type: 'we-icon', props: { name: 'acorn', size: 'sm' } }],
+                                            },
+                                            {
+                                              type: '$if',
+                                              props: {
+                                                condition: { $: 'local.expanded' },
+                                                enterTransition: [
+                                                  { type: 'reveal', axis: 'inline', duration: 250 },
+                                                  { type: 'fade', duration: 150 },
+                                                ],
+                                                exitTransition: [
+                                                  { type: 'reveal', axis: 'inline', duration: 250 },
+                                                  { type: 'fade', duration: 150 },
+                                                ],
+                                                then: {
+                                                  type: 'Row',
+                                                  props: { gap: '200', ay: 'center', minWidth: '0' },
+                                                  children: [
+                                                    {
+                                                      type: 'we-text',
+                                                      props: { truncate: true, fontSize: '300' },
+                                                      children: ['Acorn projects'],
+                                                    },
+                                                  ],
+                                                },
+                                              },
+                                            },
+                                          ],
+                                        },
+                                      },
+                                    },
                                   ],
                                 },
                               ],

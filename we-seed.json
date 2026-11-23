@@ -20,6 +20,7 @@
     "globe",
     "graph",
     "flux",
+    "acorn",
     {
       "id": "polls",
       "enabled": false
@@ -35,9 +36,22 @@
     "trello",
     "events",
     "scrapbook",
-    "theme-lab"
+    "theme-lab",
+    "acorn"
   ],
-  "views": ["about", "cards", "graph", "globe", "boards", "calendar"],
+  "views": [
+    "about",
+    "cards",
+    "graph",
+    "globe",
+    "boards",
+    "calendar",
+    "acorn-outcomes",
+    "acorn-table",
+    "acorn-priority",
+    "acorn-map",
+    "acorn-settings"
+  ],
   "spaceStarters": [
     {
       "id": "we-default",
