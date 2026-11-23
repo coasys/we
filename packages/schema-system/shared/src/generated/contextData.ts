@@ -2385,7 +2385,6 @@ export const contextData: ContextData = {
         templateName: { type: 'string' },
         templateIcon: { type: 'string' },
         isReadOnly: { type: 'boolean' },
-        hasPendingChanges: { type: 'boolean' },
         pickerOpen: { type: 'boolean' },
         pickerAction: { type: 'string' },
         pickerDefaultName: { type: 'string' },

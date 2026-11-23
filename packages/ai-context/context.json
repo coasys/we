@@ -6486,9 +6486,6 @@
         "isReadOnly": {
           "type": "boolean"
         },
-        "hasPendingChanges": {
-          "type": "boolean"
-        },
         "pickerOpen": {
           "type": "boolean"
         },
