@@ -2,6 +2,7 @@ import { boardOptimism } from '@shared/boardOptimism';
 import { createBoardActions, type CreateBoardOptions } from '@shared/boards';
 import { spaceStarterChoices } from '@shared/bundles/bundleStarter';
 import { installBundleWorkflows } from '@shared/bundles/installWorkflows';
+import { setUpForApp } from '@shared/bundles/setUpForApp';
 import { callParamToWrite } from '@shared/callOnScreen';
 import {
   CONTAINER_ACTIVITY_QUERY,
@@ -945,20 +946,21 @@ export function SpaceStoreProvider(props: ParentProps) {
    * the app; an empty space gets none of it. A built-in bundle's sections are built in, so nothing is
    * copied. What does not go in is reported and leaves the space as it is: the space exists.
    */
-  async function setUpForApp(bundleId: string, spaceId: string, handle: DatasetHandle): Promise<void> {
+  async function setUpNewSpaceForApp(bundleId: string, spaceId: string, handle: DatasetHandle): Promise<void> {
     const pieces = seedBundlePieces.find((bundle) => bundle.bundleId === bundleId);
     if (!pieces) return;
-    const problems = pieces.recordTypes.length
-      ? await shapeStore.addRecordTypes(pieces.bundleId, pieces.recordTypes, spaceId)
-      : [];
-    if (!problems.length)
-      problems.push(...(await installBundleWorkflows(session.backendPorts()?.workflows, handle, pieces.workflows)));
+    const problems = await setUpForApp({
+      addRecordTypes: async () =>
+        pieces.recordTypes.length ? shapeStore.addRecordTypes(pieces.bundleId, pieces.recordTypes, spaceId) : [],
+      installWorkflows: () => installBundleWorkflows(session.backendPorts()?.workflows, handle, pieces.workflows),
+      finish: async () => {
+        for (const section of pieces.sections) await setViewEnabled(section.id, true, spaceId);
+      },
+    });
     if (problems.length) {
       console.warn(`SpaceStore: the new space was not set up for ${pieces.name}`, problems);
       toastService.add(`The space was made, but not set up for ${pieces.name}: ${problems[0]}`, 'warning', 8000);
-      return;
     }
-    for (const section of pieces.sections) await setViewEnabled(section.id, true, spaceId);
   }
   const [creatingSpace, setCreatingSpace] = createSignal(false);
   /**
@@ -1827,7 +1829,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       await datasetStore.trackDataset(spaceRef);
       setMySpaces((prev) => [...prev, spaceRecord]);
       // Before sharing, so a member who joins finds the app's record types already there.
-      if (choice.bundleId) await setUpForApp(choice.bundleId, spaceRef.id, spaceHandle);
+      if (choice.bundleId) await setUpNewSpaceForApp(choice.bundleId, spaceRef.id, spaceHandle);
 
       // Space.create returns relations unhydrated, so the listing is given avatarData,
       // coverImageData and locationData directly rather than reading them back from spaceRecord.

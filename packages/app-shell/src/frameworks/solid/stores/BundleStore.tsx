@@ -33,6 +33,7 @@ import {
 } from '@shared/bundles/installedBundles';
 import { installBundleWorkflows } from '@shared/bundles/installWorkflows';
 import { judgeBundle, modulesNamedBy } from '@shared/bundles/judgeBundle';
+import { setUpForApp } from '@shared/bundles/setUpForApp';
 import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import { seedBundlePieces } from '@shared/registries/seedBundles';
 import { explain } from '@shared/userMessage';
@@ -565,29 +566,26 @@ export function BundleStoreProvider(props: ParentProps) {
   async function setUpSpace(source: SetUpSource, spaceId: string): Promise<string[]> {
     if (!spacesYouRun().some((row) => row.uuid === spaceId))
       return ['only whoever runs a space can set it up for an app'];
-    const problems = source.recordTypes.length
-      ? await shapeStore.addRecordTypes(source.id, source.recordTypes, spaceId)
-      : [];
     // A section reading a record type the space holds under another definition would draw its
     // records as though they were this app's, so a space that refused one gets no sections either.
-    if (problems.length) {
-      console.warn(`Not setting a space up for “${source.name}”:`, problems);
-      return problems;
-    }
-    const workflowProblems = await installBundleWorkflows(
-      session.backendPorts()?.workflows,
-      datasetStore.datasets().find((dataset) => dataset.id === spaceId)?.handle,
-      source.workflows,
-    );
-    if (workflowProblems.length) {
-      console.warn(`Not setting a space up for “${source.name}”:`, workflowProblems);
-      return workflowProblems;
-    }
-    await copySectionsInto(source, spaceId);
-    const row = spacesYouRun().find((r) => r.uuid === spaceId);
-    const enabled = new Set((row?.views ?? []).filter((view) => view.enabled).map((view) => view.id));
-    for (const section of source.sections)
-      if (!enabled.has(section)) await spaceStore.setViewEnabled(section, true, spaceId);
+    const problems = await setUpForApp({
+      addRecordTypes: async () =>
+        source.recordTypes.length ? shapeStore.addRecordTypes(source.id, source.recordTypes, spaceId) : [],
+      installWorkflows: () =>
+        installBundleWorkflows(
+          session.backendPorts()?.workflows,
+          datasetStore.datasets().find((dataset) => dataset.id === spaceId)?.handle,
+          source.workflows,
+        ),
+      finish: async () => {
+        await copySectionsInto(source, spaceId);
+        const row = spacesYouRun().find((r) => r.uuid === spaceId);
+        const enabled = new Set((row?.views ?? []).filter((view) => view.enabled).map((view) => view.id));
+        for (const section of source.sections)
+          if (!enabled.has(section)) await spaceStore.setViewEnabled(section, true, spaceId);
+      },
+    });
+    if (problems.length) console.warn(`Not setting a space up for “${source.name}”:`, problems);
     return problems;
   }
 
