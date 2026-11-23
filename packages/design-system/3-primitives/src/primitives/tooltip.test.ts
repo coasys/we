@@ -203,7 +203,7 @@ describe('what counts as something to say', () => {
     */
     const el = await mount({}, '<we-badge>x</we-badge><div slot="content"><we-text></we-text></div>');
     const text = el.querySelector('we-text') as HTMLElement & { text: string; updateComplete: Promise<unknown> };
-    text.text = 'Extracted from the conversation';
+    text.text = 'Interpreted from the conversation';
     await text.updateComplete;
 
     hover(el);

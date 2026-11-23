@@ -14,7 +14,14 @@ const [first, second, third] = groups;
 const judged = (over: { groups?: CapabilityGroup[]; modules?: string[]; recordTypes?: string[] } = {}) => ({
   groups: over.groups ?? [first],
   modules: over.modules ?? ['polls'],
-  adds: { spaceTemplates: [], sections: [], pages: [], themes: [], recordTypes: over.recordTypes ?? ['Species'] },
+  adds: {
+    spaceTemplates: [],
+    sections: [],
+    pages: [],
+    themes: [],
+    recordTypes: over.recordTypes ?? ['Species'],
+    workflows: [],
+  },
 });
 
 describe('what a newer version asks for', () => {
@@ -55,6 +62,7 @@ describe('the agreement on the install record', () => {
     pages: [],
     themes: [],
     recordTypes: [],
+    workflows: [],
   } as never;
 
   it('is kept, and read back with the record', () => {

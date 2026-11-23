@@ -92,20 +92,20 @@ describe('draftToManifest', () => {
   });
 
   /*
-    Extraction eligibility survives the round trip, and is absent rather than false when off.
+    Interpretation eligibility survives the round trip, and is absent rather than false when off.
 
     The whole point of the flag is that a community can mark its own model as something an
     interpreter may write into — so a form that took the tick and dropped it at lowering would
     reproduce, one layer down, the exact gap it exists to close.
   */
-  it('carries the extraction flag onto the entity when it is set', () => {
+  it('carries the interpretation flag onto the entity when it is set', () => {
     const draft = { ...sightingDraft(), extractable: true };
     const result = draftToManifest(draft, UUID);
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.manifest.entities.Sighting.extractable).toBe(true);
   });
 
-  it('omits the extraction flag rather than writing false', () => {
+  it('omits the interpretation flag rather than writing false', () => {
     const result = draftToManifest(sightingDraft(), UUID);
     expect(result.ok).toBe(true);
     // Same rule as `required` and `identity`: a stored definition reads as the declarations
@@ -358,10 +358,10 @@ describe('manifestToDraft', () => {
     if (second.ok) expect(second.manifest).toEqual(first.manifest);
   });
 
-  it('lifts the extraction flag back onto the draft, so editing does not silently clear it', () => {
+  it('lifts the interpretation flag back onto the draft, so editing does not silently clear it', () => {
     const first = draftToManifest({ ...sightingDraft(), extractable: true }, UUID);
     if (!first.ok) throw new Error('fixture failed');
-    // Opening a stored model in the wizard and saving it again must not turn extraction off — the
+    // Opening a stored model in the wizard and saving it again must not turn interpretation off — the
     // one direction this could fail in that nobody would notice until a pass stopped finding things.
     expect(manifestToDraft('Sighting', first.manifest).extractable).toBe(true);
   });

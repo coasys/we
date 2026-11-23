@@ -6521,9 +6521,6 @@
         "isReadOnly": {
           "type": "boolean"
         },
-        "hasPendingChanges": {
-          "type": "boolean"
-        },
         "pickerOpen": {
           "type": "boolean"
         },
@@ -7492,10 +7489,10 @@
           "type": "array",
           "properties": ["entity", "source"]
         },
-        "extractionCandidates": {
+        "interpretationCandidates": {
           "type": "array"
         },
-        "extractionCandidatesLoaded": {
+        "interpretationCandidatesLoaded": {
           "type": "boolean"
         },
         "relationshipTargets": {
@@ -7520,7 +7517,7 @@
         "hintBusy": {
           "type": "boolean"
         },
-        "extractionNeedsIdentity": {
+        "interpretationNeedsIdentity": {
           "type": "boolean"
         },
         "memberOptions": {
@@ -7549,7 +7546,7 @@
         "setShapeField",
         "setIdentityMember",
         "setNameMember",
-        "setExtractable",
+        "setInterpretable",
         "addProperty",
         "addRelationship",
         "removeMember",
@@ -7578,7 +7575,7 @@
         "setShapeField",
         "setIdentityMember",
         "setNameMember",
-        "setExtractable",
+        "setInterpretable",
         "addProperty",
         "addRelationship",
         "removeMember",
@@ -7599,7 +7596,7 @@
         "setShapeField",
         "setIdentityMember",
         "setNameMember",
-        "setExtractable",
+        "setInterpretable",
         "removeMember",
         "setMemberField",
         "reorderMembers",
@@ -8051,7 +8048,7 @@
         "firstScreenOpen": {
           "type": "boolean"
         },
-        "extractionTargets": {
+        "interpretationTargets": {
           "type": "array"
         },
         "taskWorkflowRule": {
@@ -8102,12 +8099,12 @@
         "setSpaceModuleSetting",
         "setMyModuleSetting",
         "setAgentModuleSetting",
-        "autoExtractFor",
-        "setAutoExtractFor",
-        "canSetExtractionFor",
+        "autoInterpretFor",
+        "setAutoInterpretFor",
+        "canSetInterpretationFor",
         "setAutoInterpret",
         "setThreadMode",
-        "setExtractionTarget",
+        "setInterpretationTarget",
         "setModuleInstalled",
         "setModuleVisible",
         "setViewEnabled",
@@ -8149,10 +8146,16 @@
         "copyShareLink",
         "copyGuestLink",
         "exportCallTranscript",
-        "exportExtractionLog",
+        "exportInterpretationLog",
         "removeSpaceFromGlobal"
       ],
-      "ambient": ["autoExtractFor", "canSetExtractionFor", "navigateToSpace", "openRecordRef", "canAdministerSpace"],
+      "ambient": [
+        "autoInterpretFor",
+        "canSetInterpretationFor",
+        "navigateToSpace",
+        "openRecordRef",
+        "canAdministerSpace"
+      ],
       "destructive": ["removeSpace", "deleteCollection", "removeSpaceFromGlobal"],
       "needsArgs": [
         "createSpace",
@@ -8184,12 +8187,12 @@
         "setSpaceModuleSetting",
         "setMyModuleSetting",
         "setAgentModuleSetting",
-        "autoExtractFor",
-        "setAutoExtractFor",
-        "canSetExtractionFor",
+        "autoInterpretFor",
+        "setAutoInterpretFor",
+        "canSetInterpretationFor",
         "setAutoInterpret",
         "setThreadMode",
-        "setExtractionTarget",
+        "setInterpretationTarget",
         "setModuleInstalled",
         "setModuleVisible",
         "setViewEnabled",
@@ -8230,7 +8233,7 @@
         "copyShareLink",
         "copyGuestLink",
         "exportCallTranscript",
-        "exportExtractionLog",
+        "exportInterpretationLog",
         "removeSpaceFromGlobal"
       ]
     },
@@ -8758,7 +8761,7 @@
     {
       "name": "formatJson",
       "params": ["options"],
-      "doc": "A JSON string indented for reading, or the text unchanged when it will not parse — which is the case worth showing rather than swallowing. Options: text. For displaying a stored blob (an extraction pass’s prompt and response); a schema has no JSON.stringify of its own.",
+      "doc": "A JSON string indented for reading, or the text unchanged when it will not parse — which is the case worth showing rather than swallowing. Options: text. For displaying a stored blob (an interpretation pass’s prompt and response); a schema has no JSON.stringify of its own.",
       "example": "formatJson({ text: pass.prompt })"
     },
     {
@@ -8776,7 +8779,7 @@
     {
       "name": "generatedRun",
       "params": ["options"],
-      "doc": "Whether a model made a record: { by: \"run\", run } naming the run that wrote it (a transcribed line, a record an extraction pass or an agent made, a reply in the editor’s chat), or null for what a person made. Reads the record’s own generatedBy, as an id or an included record, so it needs no query. Ask this rather than reading the relation. Options: record.",
+      "doc": "Whether a model made a record: { by: \"run\", run } naming the run that wrote it (a transcribed line, a record an interpretation pass or an agent made, a reply in the editor’s chat), or null for what a person made. Reads the record’s own generatedBy, as an id or an included record, so it needs no query. Ask this rather than reading the relation. Options: record.",
       "example": "generatedRun({ record: post }) ? 'Written by AI' : ''"
     }
   ],

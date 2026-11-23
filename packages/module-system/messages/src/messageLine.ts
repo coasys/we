@@ -21,7 +21,11 @@
  *
  * What it reads off a line: `id`, `author`, `text`, `marks` (as `content`), `source`, `createdAt`,
  * `updatedAt` and `replyTo` — the shape `threadLines` gives a transcript's rows, and the Feed's
- * lines carry the same.
+ * lines carry the same — and `sending`, which dims a line sent and not yet read back.
+ *
+ * A line sent and not yet written has an empty `id`, and offers neither Reply nor Edit: both name a
+ * line by its id, and a reply to `''` would be lost. They come back when the write hands the id
+ * over, even while the line is still dimmed.
  */
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
@@ -59,6 +63,8 @@ export function messageLine(opts: {
                       nowhere else.
                     */
           gap: '100',
+          // A line sent and not yet read back, dimmed as the Feed dims what is still a suggestion.
+          opacity: { $: `${as}.sending ? 0.6 : 1` },
           /*
                       The row knows whether the pointer is on it, so its pencil can keep out of the
                       way until it is wanted.
@@ -349,35 +355,42 @@ export function messageLine(opts: {
                           `editUtterance` for what that costs and what is recorded about it.
                         */
               // Answer this line — the composer below then says so, and sends a reply.
+              // Not on a line with no id yet: a reply to it has nothing to point at.
               {
-                type: 'we-tooltip',
-                props: { content: 'Reply' },
-                children: [
-                  {
-                    type: 'we-button',
-                    props: {
-                      label: 'Reply',
-                      size: 'xs',
-                      variant: 'bare',
-                      color: 'text-faint',
-                      opacity: { $: 'local.pointerOnRow ? 1 : 0' },
-                      onClick: {
-                        $invoke: `${actions}.startReply`,
-                        args: [
-                          {
-                            $: `{ id: ${as}.id, text: ${as}.text, author: ${as}.author, surface: '${opts.surface}' }`,
+                type: '$if',
+                props: {
+                  condition: { $: `${as}.id != ''` },
+                  then: {
+                    type: 'we-tooltip',
+                    props: { content: 'Reply' },
+                    children: [
+                      {
+                        type: 'we-button',
+                        props: {
+                          label: 'Reply',
+                          size: 'xs',
+                          variant: 'bare',
+                          color: 'text-faint',
+                          opacity: { $: 'local.pointerOnRow ? 1 : 0' },
+                          onClick: {
+                            $invoke: `${actions}.startReply`,
+                            args: [
+                              {
+                                $: `{ id: ${as}.id, text: ${as}.text, author: ${as}.author, surface: '${opts.surface}' }`,
+                              },
+                            ],
                           },
-                        ],
+                        },
+                        children: [{ type: 'we-icon', props: { name: 'arrow-bend-up-left' } }],
                       },
-                    },
-                    children: [{ type: 'we-icon', props: { name: 'arrow-bend-up-left' } }],
+                    ],
                   },
-                ],
+                },
               },
               {
                 type: '$if',
                 props: {
-                  condition: { $: '!local.mending' },
+                  condition: { $: `!local.mending && ${as}.id != ''` },
                   then: {
                     type: 'we-tooltip',
                     props: { content: 'Edit text' },

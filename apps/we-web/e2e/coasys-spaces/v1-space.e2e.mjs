@@ -44,6 +44,19 @@ vertical('V1 space: create, invite, join', (v) => {
     for (const shape of ['TaskBlock', 'CollectionBlock', 'TextBlock', 'EventBlock']) {
       assert.ok(names.includes(shape), `${shape} is a shape of the space (has: ${names.join(', ')})`);
     }
+    // Made from Coasys's kit, the space is set up for Coasys: its conversation types, in its own vocabulary.
+    const coasys = await until(
+      () => shaclNames(perspective),
+      (n) => ['AgendaItem', 'DiscussionTopic', 'Position', 'Question'].every((name) => n.includes(name)),
+      { timeout: 60_000, what: 'Coasys’s conversation record types, set up with the space' },
+    );
+    assert.ok(coasys.includes('Question'), `the space has Coasys's record types (has: ${coasys.join(', ')})`);
+    const workflows = await until(
+      () => alice.ports.workflows.list(perspective),
+      (rows) => rows.some((w) => w.name === 'ConversationTopic'),
+      { timeout: 60_000, what: 'the ConversationTopic workflow, installed with the space' },
+    );
+    assert.ok(workflows.some((w) => w.name === 'ConversationTopic'));
     // Social DNA lists the classes; a class's records are on its own page, opened from its tile.
     await alice.page.goto(`${(await world()).app.url}/space/${shared.replace('neighbourhood://', '')}/dna`);
     await alice.page.getByRole('button', { name: 'Task TaskBlock' }).waitFor({ timeout: 60_000 });

@@ -12,10 +12,12 @@
  *
  * Enter and the button run the same handler: the button calls the composer's own `submit`, handed
  * out through `onReady`, which sends through `onSubmit` exactly as Enter does and empties the line.
- * So the in-flight guard written once in `onSubmit` covers both, and a slow write cannot be sent
- * twice from either.
+ * So whatever `onSubmit` does covers both.
  *
- * The caller declares `sending` above this, since its handler raises and lowers it.
+ * A caller whose write is slow and shown only once done can guard against a second send: declare a
+ * `sending` local its handler raises and lowers, skip `onSubmit` while it is up, and pass
+ * `sending: { $: 'local.sending' }` so the button disables and spins too. A caller that draws the
+ * message at once has nothing in flight to wait for, and passes none.
  */
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
@@ -24,8 +26,13 @@ export interface LineComposerOptions {
   placeholder: string;
   /** What the button says when hovered, and to a screen reader. */
   sendLabel: string;
-  /** Sends one line — `event.text` and `event.marks`. Guard it on `local.sending`. */
+  /** Sends one line — `event.text` and `event.marks`. */
   onSubmit: SchemaProp;
+  /**
+   * An expression for "a send is in flight". When given, the send button is disabled and shows a
+   * spinner while it holds; the caller guards `onSubmit` on the same expression.
+   */
+  sending?: SchemaProp;
   /**
    * The name of a `function` local the caller declares, to receive a call that puts the caret in
    * the box: `{ $callLocal: '<name>' }` from anything on the page that invites somebody to write.
@@ -73,8 +80,7 @@ export function lineComposer(opts: LineComposerOptions): SchemaNode {
               label: opts.sendLabel,
               square: true,
               variant: 'soft',
-              disabled: { $: 'local.sending' },
-              loading: { $: 'local.sending' },
+              ...(opts.sending === undefined ? {} : { disabled: opts.sending, loading: opts.sending }),
               onClick: { $callLocal: 'sendLine' },
             },
             children: [{ type: 'we-icon', props: { name: 'paper-plane-tilt' } }],

@@ -10,7 +10,7 @@
  * returned a boolean, so the method name it had just read went nowhere.
  *
  * The cost was real. A workshop ran for a day against a host whose executor predated
- * `perspective.subjectClassesOf`, and every suggestion in the extraction panel rendered as a flat
+ * `perspective.subjectClassesOf`, and every suggestion in the interpretation panel rendered as a flat
  * `label: … · startDate: …` line instead of a card. Nothing anywhere said why — not a console line,
  * not a settings page — because a 404 was the one outcome the guard deliberately swallowed whole.
  *

@@ -19,7 +19,7 @@
 // `dev`, and the block still says it is waiting. So the description is checked against the base
 // on every event that can change either:
 //
-//   - based on `dev` or `main`: no block (a leftover one is an error);
+//   - based on `dev`, `staging` or `main`: no block (a leftover one is an error);
 //   - based on anything else: a block, naming an open pull request whose branch is that base.
 //
 // One leftover is not a mistake but the ordinary end of a stack: the parent merged, GitHub
@@ -55,8 +55,8 @@
 
 import { pathToFileURL } from 'node:url';
 
-/** Branches a pull request is not stacked on: `dev` for work, `main` for a release. */
-const TRUNKS = new Set(['dev', 'main']);
+/** Branches a pull request is not stacked on: `dev` for work, `staging` and `main` for a release. */
+const TRUNKS = new Set(['dev', 'staging', 'main']);
 
 const ALERT = '> [!IMPORTANT]';
 const HEADING = /^> ### Stacked on: #(\S+)$/;

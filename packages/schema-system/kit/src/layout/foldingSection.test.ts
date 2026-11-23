@@ -116,7 +116,7 @@ describe('one field per section, or one field for many sections', () => {
   it('asks a set by membership, for sections that come from data', () => {
     /*
       A `$localState` field name is fixed when the template is written and the rows are not — one
-      section per extraction pass, per type on a key, per reaction — so the open ones are held as a
+      section per interpretation pass, per type on a key, per reaction — so the open ones are held as a
       set of ids. Without this the fragment would serve only the sections somebody named in advance,
       which is half of them.
     */

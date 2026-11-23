@@ -13,6 +13,7 @@ import { coasysAbout } from './about.ts';
 import { coasysApp } from './app.ts';
 import { coasysBootScreen } from './boot.ts';
 import { coasysBrand } from './brand.ts';
+import { conversationShapes, conversationTopicWorkflow } from './conversation.ts';
 import { coasysSpace } from './space/shell.ts';
 import { coasysStarter } from './starter.ts';
 import { coasysTheme, glowTheme } from './themes.ts';
@@ -31,7 +32,9 @@ export const coasys: Cartridge = {
   themes: [coasysTheme],
   brand: coasysBrand,
   bootScreen: coasysBootScreen,
-  shapes: [],
+  // What a call is interpreted into, and how a topic moves: the app's own vocabulary, not WE's.
+  shapes: conversationShapes,
+  workflows: [conversationTopicWorkflow],
   modules: ['call', 'transcribe', 'feed', 'graph'],
   // Every space a member opens in Coasys is drawn as a Coasys space.
   display: 'ours',

@@ -1615,6 +1615,69 @@ describe('transport and device lifetime', () => {
     });
 
     /*
+      The session ends an SFU call itself when the backend's rebuilds give up (`gave-up`), or the
+      call server refuses the session as another agent's (`refused`). Without a listener the call
+      stayed "joined" over a session the SDK had already stopped — a dead call. It is let go like a
+      leave: devices released, the reason said, and joining again the person's choice.
+    */
+    describe('when the session ends the call itself', () => {
+      const settle = async () => {
+        for (let i = 0; i < 6; i++) await Promise.resolve();
+      };
+
+      it('lets go of the call and says the connection gave up', async () => {
+        const { store, session, fire, published, cleared } = await inCallWith('did:someone');
+        const id = store.callId();
+        expect(id).toBeTruthy();
+        await store.toggleAudio();
+        expect(published.at(-1)).not.toBeNull();
+
+        // A give-up tells each participant it left first, then ends the call.
+        fire('participant-left', { participantId: 'did:someone', did: 'did:someone' });
+        fire('error', new Error('rebuild attempts exhausted'));
+        fire('call-ended', { reason: 'gave-up', error: new Error('rebuild attempts exhausted') });
+        await settle();
+
+        expect(store.callId()).toBeNull();
+        expect(store.tiles()).toEqual([]);
+        expect(store.problem()).toMatch(/lost its connection/);
+        expect(session.destroyed, 'the session is let go like on a leave').toBe(true);
+        expect(published.at(-1), 'the camera and the microphone are released').toBeNull();
+        expect(cleared).toEqual([['call', id]]);
+      });
+
+      it('says the call server refused this session, as a terminal end', async () => {
+        const { store, session, fire } = await inCallWith('did:someone');
+
+        fire('call-ended', { reason: 'refused', error: new Error('session belongs to another agent') });
+        await settle();
+
+        expect(store.callId()).toBeNull();
+        expect(store.tiles()).toEqual([]);
+        expect(store.problem()).toMatch(/refused this session/);
+        expect(session.destroyed).toBe(true);
+      });
+
+      it('does not rejoin by itself, and joins again when the person asks', async () => {
+        const { store, fire, sessions } = await inCallWith('did:someone');
+        const id = store.callId() as string;
+
+        fire('call-ended', { reason: 'gave-up', error: new Error('rebuild attempts exhausted') });
+        await settle();
+
+        expect(store.callId()).toBeNull();
+        expect(sessions, 'no session is built to rejoin').toHaveLength(1);
+
+        await store.joinCall(id);
+        await settle();
+
+        expect(store.callId()).toBe(id);
+        expect(sessions).toHaveLength(2);
+        expect(store.problem(), 'joining again clears the notice').toBeNull();
+      });
+    });
+
+    /*
       A remote track and the stream holding it, as a browser hands them over: both are event targets,
       and a track's `muted` flips on its own as RTP stops and starts — with nothing told about it but
       the track's own listeners.
@@ -2594,7 +2657,7 @@ describe('the spotlight', () => {
  * `let`, though — a closure over it returns the right value whenever it is *called*, and tells the
  * reactive graph nothing. So anything binding to `callRecordId` was evaluated once, against the
  * frame before the call existed, and never re-evaluated: a board, a transcript feed and an
- * extraction readout sat empty beside a call that was plainly running.
+ * interpretation readout sat empty beside a call that was plainly running.
  *
  * Pinned against a **tracking** primitive rather than the closure the harness above injects,
  * because a plain `let` passes every assertion a non-tracking signal can make — which is the whole
