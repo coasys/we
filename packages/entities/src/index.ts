@@ -128,14 +128,14 @@ export { decodeFileAsString, decodeFileAsJson, encodeJsonFileData } from './util
 export { createJsonShapeStore } from './shapeStore';
 export { decodeTemplateFile, encodeTemplateFile, type StoredSchema, TEMPLATE_FILE_NAME } from './utils/templateFile';
 export {
-  collectionExtractionDefaults,
-  LEGACY_EXTRACTION_TARGETS,
+  collectionInterpretationDefaults,
+  LEGACY_INTERPRETATION_TARGETS,
   parseEntityList,
-  resolveCollectionAutoExtract,
-  resolveCollectionExtractionTargets,
-  resolveSpaceExtractionTargets,
-  withExtractionDefaults,
-} from './utils/collectionExtraction';
+  resolveCollectionAutoInterpret,
+  resolveCollectionInterpretationTargets,
+  resolveSpaceInterpretationTargets,
+  withInterpretationDefaults,
+} from './utils/collectionInterpretation';
 export { completeResponse, respondsThrough } from './utils/responses';
 
 /**

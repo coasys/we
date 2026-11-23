@@ -1822,7 +1822,7 @@ export function ThemePanel() {
 
         <PanelScroll>
           {/*
-            Sections spaced as the extraction panel spaces its own — `500`, well clear of the `200`
+            Sections spaced as the interpretation panel spaces its own — `500`, well clear of the `200`
             between a heading and its rows: closer, and the end of one open section and the start
             of the next read as one list.
           */}

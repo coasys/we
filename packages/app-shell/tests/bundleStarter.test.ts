@@ -9,8 +9,15 @@ import { describe, expect, it } from 'vitest';
 const seedStarter: SpaceStarter = { id: 'seed', name: 'Workshop' };
 const appStarter: SpaceStarter = { id: 'app', name: 'Kit', description: 'A tree and a view', icon: 'dna' };
 const builtIn = [
-  { bundleId: 'coasys', name: 'Coasys app', brand: { name: 'Coasys' }, starters: [appStarter] },
-  { bundleId: 'plain', name: 'Plain', starters: [] },
+  {
+    bundleId: 'coasys',
+    name: 'Coasys app',
+    brand: { name: 'Coasys' },
+    starters: [appStarter],
+    recordTypes: [],
+    workflows: [],
+  },
+  { bundleId: 'plain', name: 'Plain', starters: [], recordTypes: [], workflows: [] },
 ];
 const inApp = (bundle?: string) => ({ source: bundle ? { bundle, version: '1', piece: 'app' } : undefined });
 const ids = (facts: Parameters<typeof spaceStarterChoices>[0]) => spaceStarterChoices(facts).map((c) => c.id);
@@ -31,6 +38,21 @@ describe('what a new space can start with', () => {
   it('leaves out an installed app’s starter — it is somebody else’s, and not asked about yet', () => {
     // An installed app's bundle is never among the seed's, whatever starters it carries.
     expect(ids({ app: inApp('stranger'), builtIn, seed: [seedStarter] })).toEqual(['seed', NO_STARTER]);
+  });
+
+  it('says which app a kit came with, so a space made from it is set up for that app', () => {
+    const [first] = spaceStarterChoices({ app: inApp('coasys'), builtIn, seed: [seedStarter] });
+    expect(first.bundleId).toBe('coasys');
+    const [seed] = spaceStarterChoices({ app: inApp(), builtIn, seed: [seedStarter] });
+    expect(seed.bundleId).toBeUndefined();
+  });
+
+  it('counts the app’s record types and workflows among what its kit includes', () => {
+    const types = [{ name: 'Question', manifest: { version: '1', entities: {} } }];
+    const flows = [{ name: 'Discuss', entities: ['Question'], states: [{ name: 'raised' }], transitions: [] }];
+    const bringing = [{ ...builtIn[0], recordTypes: [...types, { ...types[0], name: 'Position' }], workflows: flows }];
+    const [first] = spaceStarterChoices({ app: inApp('coasys'), builtIn: bringing, seed: undefined });
+    expect(first.includes).toBe('2 record types · 1 workflow');
   });
 
   it('always offers an empty space, last, which applies no starter', () => {

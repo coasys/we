@@ -291,6 +291,9 @@ node scripts/ad4m-executor.mjs --path    # print which binary would run
 The pinned one is the executor ad4m's CI built for that commit (the same files as above), kept in
 a cache outside the repositories, one directory per commit:
 `~/.cache/we/ad4m-executor/<commit>/ad4m-executor` (under `$XDG_CACHE_HOME` when that is set).
+A version pin's commit is its npm `gitHead`. With npm out of reach, the resolver runs the commit
+that `crates/custody/Cargo.toml` names, which `pnpm bump:ad4m` writes with every pin, so a cached
+executor still starts offline. An unknown version still fails.
 Keyed by commit, a file there is that commit's executor, so nothing has to be checked: switching to
 a branch that pins another commit finds it, or downloads it once, and every WE checkout on the
 machine shares the cache. The five most recently used commits are kept. `pnpm dev:electron` runs the

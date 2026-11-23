@@ -5,8 +5,8 @@
  *
  * Moves WE's pin of @coasys/ad4m and @coasys/ad4m-connect: the root `pnpm.overrides`, which decide
  * what every workspace package installs. Nothing else declares a version (the packages say `*`), so
- * a bump is that and the lockfile — and the custody crate's ad4m revs and its Cargo.lock, which build
- * the desktop app's Rust against the same commit.
+ * a bump is that and the lockfile — and the ad4m revs and Cargo.lock of each crate under `crates/`,
+ * which build the desktop and phone apps' Rust against the same commit.
  *
  * Two kinds of target (scripts/ad4m-pin.mjs has why):
  *
@@ -48,6 +48,7 @@ import { join } from 'node:path';
 
 import {
   AD4M_REPO,
+  AD4M_REV,
   describePin,
   lockfileSnapshots,
   PACKAGES,
@@ -321,7 +322,6 @@ console.log(`Pinned ${PACKAGES.join(' and ')} to ${describePin(next)}${commit ? 
   desktop app, phone-custody for the phone) moves with the pin, and its lockfile with it; a bump
   that moved only the JavaScript left the apps' Rust on the old ad4m, unnoticed until a release.
 */
-const AD4M_REV = /(git = "https:\/\/github\.com\/coasys\/ad4m", rev = ")[0-9a-f]+(")/g;
 const AD4M_CRATE = /^([\w-]+) = \{ git = "https:\/\/github\.com\/coasys\/ad4m"/gm;
 for (const crate of readdirSync(join(ROOT, 'crates'))) {
   const crateDir = join(ROOT, 'crates', crate);
@@ -335,7 +335,7 @@ for (const crate of readdirSync(join(ROOT, 'crates'))) {
     );
     continue;
   }
-  const moved = text.replace(AD4M_REV, `$1${to}$2`);
+  const moved = text.replace(AD4M_REV, `$1${to}$3`);
   if (moved === text) continue;
   writeFileSync(manifest, moved);
   console.log(`Moved crates/${crate} to ad4m ${to.slice(0, 9)}.`);

@@ -23,7 +23,7 @@ repository at all.**
 ### 2. You author templates and themes seriously
 
 You want the generated schema reference: the **Component Registry**, **Design Tokens** and **Schema
-Operators** sections of [CLAUDE.md](./CLAUDE.md). They are extracted from the code on every build, so
+Operators** sections of [CLAUDE.md](./CLAUDE.md). They are interpreted from the code on every build, so
 they list exactly the components, props and tokens that actually exist — no drift, and every AI
 coding assistant reads the same file.
 

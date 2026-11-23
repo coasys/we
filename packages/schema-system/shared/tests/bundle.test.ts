@@ -71,6 +71,32 @@ describe('reading a bundle', () => {
   });
 });
 
+describe('workflows a bundle brings', () => {
+  const sighting = {
+    name: 'Confirm',
+    entities: ['Species'],
+    states: [{ name: 'seen', hint: 'Somebody says they saw it' }, { name: 'confirmed' }],
+    transitions: [{ from: 'seen', to: 'confirmed', name: 'Confirm' }],
+  };
+
+  it('reads them in the shape a workflow is installed in', () => {
+    expect(readBundle({ ...minimal(), workflows: [sighting] })).toMatchObject({
+      bundle: { workflows: [{ name: 'Confirm' }] },
+      problems: [],
+    });
+  });
+
+  it('refuses one that is not a workflow, one that breaks a workflow’s rules, and a name used twice', () => {
+    expect(paths({ ...minimal(), workflows: {} })).toContain('workflows');
+    expect(paths({ ...minimal(), workflows: [{ name: 'Confirm' }] })).toContain('workflows.0');
+    expect(paths({ ...minimal(), workflows: [{ ...sighting, name: 'not a name' }] })).toContain('workflows.0');
+    expect(
+      paths({ ...minimal(), workflows: [{ ...sighting, transitions: [{ from: 'seen', to: 'gone' }] }] }),
+    ).toContain('workflows.0');
+    expect(paths({ ...minimal(), workflows: [sighting, sighting] })).toContain('workflows.1.name');
+  });
+});
+
 describe('the themes a bundle offers', () => {
   const two = [
     { id: 'flat', name: 'Flat', overrides: {} },

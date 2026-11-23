@@ -12,7 +12,7 @@ import { agentByline, emptyState, field, formModal, modelMark, sectionLabel } fr
  * ## Where the events come from
  *
  * Ordinary `EventBlock` records, whoever made them. Some are composed by hand; some are written by
- * the extraction pass over a call transcript, which is the point — a meeting where somebody said
+ * the interpretation pass over a call transcript, which is the point — a meeting where somebody said
  * "let's do the design review next Tuesday at 3" puts that on the calendar without anyone filling
  * in a form. Both are one list, deliberately: an event is an event, and provenance belongs on the
  * record rather than in a second list. The record carries it, and `modelMark` draws it on the row.
@@ -703,7 +703,7 @@ export const calendarView: TemplateSchema = {
                   icon: 'calendar',
                   label: 'events',
                   message:
-                    'Nothing scheduled yet. Add an event, or record a call — extraction writes down the times people agree on.',
+                    'Nothing scheduled yet. Add an event, or record a call — interpretation writes down the times people agree on.',
                 }),
               },
             },

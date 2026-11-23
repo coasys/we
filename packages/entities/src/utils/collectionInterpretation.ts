@@ -36,7 +36,7 @@
  * that empty means "not decided", and reading it as "none" would make a space that never touched
  * the setting extract nothing with nothing on screen to say why.
  */
-export const LEGACY_EXTRACTION_TARGETS = ['TaskBlock', 'EventBlock'];
+export const LEGACY_INTERPRETATION_TARGETS = ['TaskBlock', 'EventBlock'];
 
 /**
  * A JSON array of entity names as stored on `Space.extractionTargets` and
@@ -66,8 +66,11 @@ export function parseEntityList(raw: string | undefined | null): string[] | null
  * extraction. Order follows `candidates` so a list reads the same way every time rather than in
  * whatever order somebody happened to tick things.
  */
-export function resolveSpaceExtractionTargets(candidates: readonly string[], spaceRaw: string | undefined): string[] {
-  const chosen = parseEntityList(spaceRaw) ?? LEGACY_EXTRACTION_TARGETS;
+export function resolveSpaceInterpretationTargets(
+  candidates: readonly string[],
+  spaceRaw: string | undefined,
+): string[] {
+  const chosen = parseEntityList(spaceRaw) ?? LEGACY_INTERPRETATION_TARGETS;
   return candidates.filter((entity) => chosen.includes(entity));
 }
 
@@ -75,18 +78,18 @@ export function resolveSpaceExtractionTargets(candidates: readonly string[], spa
  * The models one collection extracts: its own list, else — for a collection made without a copy —
  * the space's. Narrowed to the candidates either way.
  */
-export function resolveCollectionExtractionTargets(
+export function resolveCollectionInterpretationTargets(
   candidates: readonly string[],
   spaceRaw: string | undefined,
   ownRaw: string | undefined,
 ): string[] {
   const own = parseEntityList(ownRaw);
-  if (!own) return resolveSpaceExtractionTargets(candidates, spaceRaw);
+  if (!own) return resolveSpaceInterpretationTargets(candidates, spaceRaw);
   return candidates.filter((entity) => own.includes(entity));
 }
 
 /** Whether one collection is extracted as it grows: its own answer, else the space's default. */
-export function resolveCollectionAutoExtract(spaceAuto: boolean, own: boolean | undefined | null): boolean {
+export function resolveCollectionAutoInterpret(spaceAuto: boolean, own: boolean | undefined | null): boolean {
   return typeof own === 'boolean' ? own : spaceAuto;
 }
 
@@ -100,13 +103,13 @@ export function resolveCollectionAutoExtract(spaceAuto: boolean, own: boolean | 
  * `undefined` for a dataset with no space, which leaves the collection unset — and an unset
  * collection reads as off wherever there is no space to defer to.
  */
-export function collectionExtractionDefaults(
+export function collectionInterpretationDefaults(
   space: { autoInterpret?: boolean; extractionTargets?: string } | null | undefined,
 ): { autoExtract: boolean; extractionTargets: string } | undefined {
   if (!space) return undefined;
   return {
     autoExtract: space.autoInterpret === true,
-    extractionTargets: JSON.stringify(parseEntityList(space.extractionTargets) ?? LEGACY_EXTRACTION_TARGETS),
+    extractionTargets: JSON.stringify(parseEntityList(space.extractionTargets) ?? LEGACY_INTERPRETATION_TARGETS),
   };
 }
 
@@ -118,12 +121,12 @@ export function collectionExtractionDefaults(
  * every post would be two links on each for an answer nobody asks. Anything that is not a
  * collection, or a dataset with no space, is returned as it came.
  */
-export function withExtractionDefaults(
+export function withInterpretationDefaults(
   entity: string,
   fields: Record<string, unknown>,
   space: { autoInterpret?: boolean; extractionTargets?: string } | null | undefined,
 ): Record<string, unknown> {
   if (entity !== 'CollectionBlock' || fields.mode !== 'feed' || 'autoExtract' in fields) return fields;
-  const defaults = collectionExtractionDefaults(space);
+  const defaults = collectionInterpretationDefaults(space);
   return defaults ? { ...defaults, ...fields } : fields;
 }
