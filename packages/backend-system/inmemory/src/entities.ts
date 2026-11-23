@@ -60,16 +60,16 @@ interface RelationInfo {
 const manyForeignKey = (entity: string, relation: string) => `__${entity}_${relation}`;
 
 /**
- * One field written to an existing row — where `''` clears it, as it does in production.
+ * One field written to an existing row — where `''` and `null` clear it, as they do in production.
  *
  * Production removes a cleared property rather than storing an empty one, so the record then has no
  * value for it: it still reads back as its declared default, and no query matches it — not
  * `{ field: '' }`, not `{ field: { not: x } }`. This backend used to keep the `''`, so a cleared field
- * went on matching a `not` here and dropped out of the same query in production. Creation is not a
- * clear: a `''` written then, a default included, is a value on both backends.
+ * went on matching a `not` here and dropped out of the same query in production. Creation follows the
+ * same rule: an explicit `''` or `null` is not written, though a declared default still is.
  */
 function writeField(row: Record<string, unknown>, key: string, value: unknown): void {
-  if (value === '') delete row[key];
+  if (value === '' || value === null) delete row[key];
   else row[key] = value;
 }
 
@@ -394,7 +394,7 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         const changed: Record<string, unknown> = {};
         for (const [key, value] of Object.entries(this as unknown as Record<string, unknown>)) {
           if (typeof value === 'function' || key.startsWith('$')) continue;
-          // Only what changed: an unchanged `''` from creation is a value, not a clear.
+          // Only what changed: a `''` over a field the row has no value for is not a change.
           if (row[key] === value || (value === '' && !(key in row))) continue;
           changed[key] = value;
         }
@@ -536,6 +536,7 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         };
         for (const [key, value] of Object.entries(data)) {
           if (relationNames.has(key)) continue;
+          if (value === '' || value === null) continue;
           row[key] = value;
         }
         tableOf(dataset, name).push(row);

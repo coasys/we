@@ -351,29 +351,27 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
       });
       test(
         'records.not-excludes-absent',
-        'an inequality skips a value never written or since cleared, and keeps an empty one written at creation',
+        "an inequality skips a value never written, given as '' or null at creation, or since cleared",
         async () => {
           // `{ field: { not: x } }` over a record with no value for the field excludes it, as SQL's
-          // `!=` excludes NULL. Which records have no value is the subtle part, and it is the same on
-          // every backend: one where the field was never written, and one where it was cleared with
-          // `''` — a clear removes the property, so it reads back as its default and no query
-          // matches it. A `''` written at creation, a declared default included, is a value.
+          // `!=` excludes NULL. `''` and `null` mean no value, and it is the same on every backend:
+          // one never written, one given as `''` or `null` at creation (which is not written), and
+          // one cleared later (which removes the property) are all absent, and no query matches
+          // them. Over a field with no declared default, as `Space.url` is — a declared default is
+          // written for a record that has none, so it is a value.
           const Space = model('Space');
           await Space.create(subject.dataset, { name: 'Addressed', description: 'd', url: 'somewhere' });
-          await Space.create(subject.dataset, { name: 'Unaddressed', description: 'd' });
-
-          const Task = model('TaskBlock');
-          const cleared = await Task.create(subject.dataset, { title: 'Cleared', assignee: 'ann' });
-          await Task.update(subject.dataset, cleared.id, { assignee: '' });
-          await Task.create(subject.dataset, { title: 'Empty', assignee: '' });
-          await Task.create(subject.dataset, { title: 'Bob', assignee: 'bob' });
+          await Space.create(subject.dataset, { name: 'Never', description: 'd' });
+          await Space.create(subject.dataset, { name: 'Empty', description: 'd', url: '' });
+          await Space.create(subject.dataset, { name: 'Null', description: 'd', url: null });
+          const cleared = await Space.create(subject.dataset, { name: 'Cleared', description: 'd', url: 'ann' });
+          await Space.update(subject.dataset, cleared.id, { url: '' });
 
           const names = async (entity: string, where: Record<string, unknown>) =>
             (await reader(entity).findAll(subject.dataset, { where })).map((r) => r.name ?? r.title).sort();
           expect(await names('Space', { url: { not: 'elsewhere' } })).toEqual(['Addressed']);
-          expect(await names('TaskBlock', { assignee: { not: 'bob' } })).toEqual(['Empty']);
-          expect(await names('TaskBlock', { assignee: { not: ['bob', 'carol'] } })).toEqual(['Empty']);
-          expect(await names('TaskBlock', { assignee: '' })).toEqual(['Empty']);
+          expect(await names('Space', { url: { not: ['elsewhere', 'nowhere'] } })).toEqual(['Addressed']);
+          expect(await names('Space', { url: '' })).toEqual([]);
         },
       );
     });
