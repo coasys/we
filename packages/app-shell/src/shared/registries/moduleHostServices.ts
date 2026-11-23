@@ -82,6 +82,11 @@ export interface ModuleHostServices {
    * Forwarded to a module as `showCallOnScreen`; see there for when it writes.
    */
   showCallOnScreen?: (recordId: string, datasetUri: string | null) => void;
+  /**
+   * Go to the page of the space on screen that draws a module's part, answering whether there was
+   * one — bound by the store that holds the address. Forwarded as `showPart`; see there.
+   */
+  showPart?: (part: string) => boolean;
   selfId?: () => string | null;
   ephemeral?: EphemeralPort;
   presence?: {
@@ -693,6 +698,7 @@ export function createModuleStoreDeps(framework: {
     spaceRoot: tracked(() => services.spaceRoot?.() ?? ''),
     callOnScreen: tracked(() => services.callOnScreen?.() ?? null),
     showCallOnScreen: (recordId, datasetUri) => services.showCallOnScreen?.(recordId, datasetUri),
+    showPart: (part) => services.showPart?.(part) ?? false,
     datasetRefKey: tracked(() => services.datasetRefKey?.() ?? ''),
     selfId: tracked(() => services.selfId?.() ?? null),
     notify: (tone, message, options) => services.notify?.(tone, message, options),

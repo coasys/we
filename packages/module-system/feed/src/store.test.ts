@@ -53,6 +53,8 @@ function harness(
   spaceRoot: () => string = () => 'root-1',
   /** The kinds of record extraction writes in this space. */
   targets: string[] = [],
+  /** The host's `showPart` — absent, as on a host that has none. */
+  showPart?: (part: string) => boolean,
 ) {
   const held = typeof reads === 'function' ? null : reads;
   const find =
@@ -140,6 +142,7 @@ function harness(
     notify: (_tone: string, message: string, options?: unknown) => void notices.push({ message, options }),
     kernels: { records, interpretation },
     firstScreen,
+    ...(showPart && { showPart }),
   } as never) as Record<string, (...args: unknown[]) => unknown>;
   return {
     store,
@@ -663,5 +666,58 @@ describe('the Feed of one call', () => {
     const newest = h.subscribed.filter((s) => s.entity === 'TextBlock' && s.query.limit === 1);
     expect(newest.map((s) => s.query.within)).toEqual(['call-9']);
     vi.useRealTimers();
+  });
+});
+
+describe('a bot’s notice', () => {
+  /** A bot's new line in the space, raised as a notice, and the notice's Open. */
+  async function noticeOpen(showPart?: (part: string) => boolean) {
+    vi.useFakeTimers();
+    const h = harness(
+      [],
+      {},
+      async () => [],
+      () => 'root-1',
+      [],
+      showPart,
+    );
+    await vi.runAllTimersAsync();
+    const watch = h.subscribed.findIndex((s) => s.entity === 'TextBlock' && s.query.limit === 20);
+    h.answer[watch]([]);
+    h.answer[watch]([{ id: 'bot-1', author: 'did:bot', text: 'the answer', partOf: '' }]);
+    await vi.advanceTimersByTimeAsync(BOT_BURST_MS);
+    const open = (h.notices[0]?.options as { action?: { label: string; run: () => void } } | undefined)?.action;
+    vi.useRealTimers();
+    return { h, open };
+  }
+
+  it('opens the space’s Feed page where the template has one, not a window over it', async () => {
+    /*
+      In a Coasys space the Feed is the root channel's page. Open raised the Feed panel as a window
+      over the call instead of going to that page, which is where the space's own tree goes.
+    */
+    const asked: string[] = [];
+    const { h, open } = await noticeOpen((part) => {
+      asked.push(part);
+      return true;
+    });
+    expect(open?.label).toBe('Open');
+    open?.run();
+    expect(asked).toEqual(['feed.feedView']);
+    expect(h.store.feedOpen()).toBe(false);
+    // At its newest line, as the panel was.
+    expect(h.store.feedFromStart()).toBe(false);
+  });
+
+  it('opens the Feed panel where no page of the space draws the Feed', async () => {
+    const { h, open } = await noticeOpen(() => false);
+    open?.run();
+    expect(h.store.feedOpen()).toBe(true);
+  });
+
+  it('opens the Feed panel on a host that cannot say where the Feed is drawn', async () => {
+    const { h, open } = await noticeOpen();
+    open?.run();
+    expect(h.store.feedOpen()).toBe(true);
   });
 });
