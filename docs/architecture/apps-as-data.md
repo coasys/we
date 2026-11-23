@@ -26,6 +26,7 @@ data the host already understands.
 | `brand`                                 | `{ name, mark?, wordmark?, about?, aboutPage? }`: what the app calls itself. See "Whitelabelling".          |
 | `bootScreen`                            | A node: the app's own sign-in screen, placing WE's sign-in form or the host's `CredentialField`. See below. |
 | `recordTypes`                           | `{ name, icon?, description?, manifest }`, one entity each, as the model wizard writes it.                  |
+| `workflows`                             | `WorkflowDefinition`s, as `WorkflowPort.install` takes them: what the app's records move through.           |
 | `display`                               | `{ spaces: 'ours' \| 'theirs', template? }` — see "How an app shows spaces".                                |
 | `starters`                              | Space starters, as a seed's `spaceStarters` are: what a space made in the app begins with. See below.       |
 
@@ -74,13 +75,15 @@ only Close. Decided by content, not version — the install record keeps a diges
 
 ## Whose is what
 
-| Piece                       | Belongs to | So                                                                        |
-| --------------------------- | ---------- | ------------------------------------------------------------------------- |
-| App, space templates, theme | The person | In their library; another member of the same space may be in another app. |
-| Record types, sections      | The space  | Added to the spaces their installer runs and ticks, for everyone in each. |
+| Piece                             | Belongs to | So                                                                        |
+| --------------------------------- | ---------- | ------------------------------------------------------------------------- |
+| App, space templates, theme       | The person | In their library; another member of the same space may be in another app. |
+| Record types, workflows, sections | The space  | Added to the spaces their installer runs and ticks, for everyone in each. |
 
 **Setting a space up** adds the app's record types (`shapeStore.addRecordTypes`, recognised by
-`shapeId: we://shapes/bundle/<id>/<name>` so it never adds one twice) and switches its sections on.
+`shapeId: we://shapes/bundle/<id>/<name>` so it never adds one twice), installs its workflows through
+`WorkflowPort` (after the record types they are about; installing one again writes only what
+differs), and switches its sections on.
 A space that already has a record type of the same name it did not get from this app is not set up
 at all — sections reading somebody else's `Species` would draw its records as though they were this
 app's — and says so. That is decided per space, never at install: installing writes only to a
