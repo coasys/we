@@ -75,6 +75,74 @@ describe('createLiveQuery', () => {
     await expect(live.first).rejects.toThrow('no');
     expect(live.getSnapshot()).toMatchObject({ status: 'error' });
   });
+
+  it('settles first and calls the other listeners when one throws', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const live = createLiveQuery(source(1));
+    const after = vi.fn();
+    live.subscribe(() => {
+      throw new Error('listener');
+    });
+    live.subscribe(after);
+    expect(await live.first).toBe(1);
+    expect(after).toHaveBeenCalledTimes(1);
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
+    live.dispose();
+  });
+
+  it('calls no listener after one disposes the handle or removes another', async () => {
+    const live = createLiveQuery(source(1));
+    const later = vi.fn();
+    let removeLater!: () => void;
+    live.subscribe(() => removeLater());
+    removeLater = live.subscribe(later);
+    const disposing = createLiveQuery(source(1));
+    const afterDispose = vi.fn();
+    disposing.subscribe(() => disposing.dispose());
+    disposing.subscribe(afterDispose);
+    await Promise.all([live.first, disposing.first]);
+    expect(later).not.toHaveBeenCalled();
+    expect(afterDispose).not.toHaveBeenCalled();
+    live.dispose();
+  });
+
+  it('reads again after a change heard during a read, so the newest state lands last', async () => {
+    let value = 'A';
+    const pending: (() => void)[] = [];
+    let changed!: () => void;
+    const live = createLiveQuery({
+      // Each read sees the value when it starts and answers when the test releases it.
+      read: () => {
+        const seen = value;
+        return new Promise<string>((resolve) => pending.push(() => resolve(seen)));
+      },
+      watch: (cb) => {
+        changed = cb;
+        return () => undefined;
+      },
+    });
+    await tick();
+    value = 'B';
+    changed();
+    expect(pending).toHaveLength(1);
+    pending.shift()!();
+    expect(await live.first).toBe('A');
+    await tick();
+    expect(pending).toHaveLength(1);
+    value = 'C';
+    changed();
+    changed();
+    pending.shift()!();
+    await tick();
+    expect(live.getSnapshot().data).toBe('B');
+    expect(pending).toHaveLength(1);
+    pending.shift()!();
+    await tick();
+    expect(live.getSnapshot().data).toBe('C');
+    expect(pending).toHaveLength(0);
+    live.dispose();
+  });
 });
 
 describe('combineLiveQueries', () => {
@@ -97,6 +165,18 @@ describe('combineLiveQueries', () => {
     });
     const live = combineLiveQueries([createLiveQuery(source(1)), bad], ([x, y]) => x + y);
     await expect(live.first).rejects.toThrow('down');
+  });
+
+  it('opens on combine([]) with no parts', async () => {
+    const live = combineLiveQueries<number, number[]>([], (data) => data);
+    expect(await live.first).toEqual([]);
+  });
+
+  it('fails when combine throws on the opening result', async () => {
+    const live = combineLiveQueries([createLiveQuery(source(1))], () => {
+      throw new Error('combine');
+    });
+    await expect(live.first).rejects.toThrow('combine');
   });
 });
 

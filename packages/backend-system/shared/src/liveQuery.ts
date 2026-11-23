@@ -74,9 +74,22 @@ function createStore<T>(onDispose: () => void) {
   // The caller may never read `first`; a failure must not become an unhandled rejection.
   first.catch(() => undefined);
 
+  // A listener that throws must not stop the others, nor the store: report it and go on.
+  const call = (fn: (snapshot: Snapshot<T>) => void, next: Snapshot<T>) => {
+    try {
+      fn(next);
+    } catch (error) {
+      console.error('A live query listener threw', error);
+    }
+  };
+
+  // A listener may dispose the handle or remove another listener; neither runs after that.
   const publish = (next: Snapshot<T>) => {
     snapshot = next;
-    for (const fn of [...listeners]) fn(next);
+    for (const fn of [...listeners]) {
+      if (disposed) return;
+      if (listeners.has(fn)) call(fn, next);
+    }
   };
 
   const live: LiveQuery<T> = {
@@ -85,7 +98,7 @@ function createStore<T>(onDispose: () => void) {
     subscribe: (fn) => {
       if (disposed) return () => undefined;
       listeners.add(fn);
-      if (snapshot.status !== 'loading') fn(snapshot);
+      if (snapshot.status !== 'loading') call(fn, snapshot);
       return () => void listeners.delete(fn);
     },
     dispose: () => {
@@ -106,15 +119,15 @@ function createStore<T>(onDispose: () => void) {
       if (snapshot.status === 'ready' && text !== undefined && text === lastText) return;
       const opening = snapshot.status === 'loading';
       lastText = text;
-      publish({ status: 'ready', data, initial: opening });
       if (opening) resolveFirst(data);
+      publish({ status: 'ready', data, initial: opening });
     },
     /** The first open failed. */
     fail(reason: unknown) {
       if (disposed || snapshot.status !== 'loading') return;
       const error = asError(reason);
-      publish({ status: 'error', error, initial: false });
       rejectFirst(error);
+      publish({ status: 'error', error, initial: false });
       live.dispose();
     },
     get disposed() {
@@ -127,8 +140,10 @@ function createStore<T>(onDispose: () => void) {
  * A live query over a source that can be read and can say when it may have changed.
  *
  * The read runs once to open the handle, then again on each change; a result equal to the last (keys
- * compared in sorted order) makes no new snapshot. A read that fails before the first result fails the
- * handle; one that fails after it is skipped, and the last result stays.
+ * compared in sorted order) makes no new snapshot. Reads run one at a time: a change heard while a
+ * read runs, the opening one included, starts one more read after it, so the newest state always
+ * lands last. A read that fails before the first result fails the handle; one that fails after it is
+ * skipped, and the last result stays.
  */
 export function createLiveQuery<T>(source: {
   read: () => T | Promise<T>;
@@ -137,18 +152,24 @@ export function createLiveQuery<T>(source: {
   let stop: (() => void) | undefined;
   const store = createStore<T>(() => stop?.());
 
+  let reading = false;
+  let changed = false;
   const refresh = async () => {
-    try {
-      store.offer(await source.read());
-    } catch (error) {
-      store.fail(error);
+    changed = true;
+    if (reading) return;
+    reading = true;
+    while (changed && !store.disposed) {
+      changed = false;
+      try {
+        store.offer(await source.read());
+      } catch (error) {
+        store.fail(error);
+      }
     }
+    reading = false;
   };
 
-  // Changes seen before the first result are covered by it, so only later ones read again.
-  stop = source.watch(() => {
-    if (store.live.getSnapshot().status === 'ready') void refresh();
-  });
+  stop = source.watch(() => void refresh());
   if (store.disposed) stop();
   queueMicrotask(() => void refresh());
   return store.live;
@@ -156,7 +177,9 @@ export function createLiveQuery<T>(source: {
 
 /**
  * One live query made of several. It opens when every part has opened, then follows any of them; a
- * part that fails to open fails it. `combine` receives the parts' data in the order they were given.
+ * part that fails to open fails it. `combine` receives the parts' data in the order they were given;
+ * with no parts it opens on `combine([])`. A `combine` that throws before the first result fails the
+ * handle; later a throw skips that result.
  */
 export function combineLiveQueries<S, T>(parts: readonly LiveQuery<S>[], combine: (data: S[]) => T): LiveQuery<T> {
   const stops: (() => void)[] = [];
@@ -166,6 +189,14 @@ export function combineLiveQueries<S, T>(parts: readonly LiveQuery<S>[], combine
   });
   const latest: (S | undefined)[] = parts.map(() => undefined);
   const ready = parts.map(() => false);
+  const offerCombined = () => {
+    try {
+      store.offer(combine(latest as S[]));
+    } catch (error) {
+      store.fail(error);
+    }
+  };
+  if (parts.length === 0) queueMicrotask(offerCombined);
 
   parts.forEach((part, i) => {
     stops.push(
@@ -173,7 +204,7 @@ export function combineLiveQueries<S, T>(parts: readonly LiveQuery<S>[], combine
         if (snapshot.status !== 'ready') return;
         latest[i] = snapshot.data;
         ready[i] = true;
-        if (ready.every(Boolean)) store.offer(combine(latest as S[]));
+        if (ready.every(Boolean)) offerCombined();
       }),
     );
     part.first.catch((error: unknown) => store.fail(error));

@@ -5798,7 +5798,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
     // `taskStates` too: the order of the space's states rides on the same record — see the effect
     // beside `loadTaskStateOrder`.
-    const builder = Space.query(ds.handle, {
+    const live = Space.query(ds.handle, {
       where: spaceSelfWhere(ds),
       include: { location: true, taskStates: true },
     });
@@ -5811,11 +5811,18 @@ export function SpaceStoreProvider(props: ParentProps) {
       if (space) pushedSpaces.add(space);
       setCurrentSpace(space);
     };
-    builder.subscribe((snapshot) => {
+    let stopped = false;
+    live.subscribe((snapshot) => {
       if (snapshot.status === 'ready' && snapshot.data) handleResult(snapshot.data.results);
     });
-    builder.first.catch(() => setCurrentSpace(null));
-    onCleanup(() => builder.dispose());
+    // Disposing rejects `first`: after a switch, the old effect must not clear the new space.
+    live.first.catch(() => {
+      if (!stopped) setCurrentSpace(null);
+    });
+    onCleanup(() => {
+      stopped = true;
+      live.dispose();
+    });
   });
 
   /*
