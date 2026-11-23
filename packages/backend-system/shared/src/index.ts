@@ -122,6 +122,7 @@ export { combineEntityRows, entityNamesOf, unionByFanOut } from './queryUnion';
 export type { EntityRows, UnionPart } from './queryUnion';
 export type { QueryDiagnostic, QueryRouting } from './queryRouting';
 export { executeQueryIR } from './queryEngine';
+export { compareValue, filterMatches, isAbsent, matchesWhere } from './whereMatch';
 export { rangeCompare, isRangeOp, RANGE_OPS } from './rangeCompare';
 export type { RangeOp } from './rangeCompare';
 export type { Row, InMemoryDataset, InMemoryRelation } from './queryEngine';

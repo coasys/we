@@ -221,6 +221,20 @@ describe('evaluation', () => {
     expect(run('find(items, { tags: { exists: false } }).name', { items })).toBe('Bob');
     expect(run("find(items, { name: 'Zed' }).name", { items })).toBeUndefined();
   });
+  it('matches an absent value with no comparison but exists, as a $query does', () => {
+    const items = [
+      { name: 'Anna', role: 'admin' },
+      { name: 'Bob', role: 'member' },
+      { name: 'Cy' },
+      { name: 'Di', role: '' },
+    ];
+    expect(run("filter(items, { role: { not: 'admin' } }).map(i, i.name)", { items })).toEqual(['Bob']);
+    expect(run("filter(items, { role: { not: ['admin', 'owner'] } }).map(i, i.name)", { items })).toEqual(['Bob']);
+    expect(run("filter(items, { role: { contains: '' } }).map(i, i.name)", { items })).toEqual(['Anna', 'Bob']);
+    expect(run("filter(items, { role: '' }).map(i, i.name)", { items })).toEqual([]);
+    expect(run('filter(items, { role: { exists: false } }).map(i, i.name)', { items })).toEqual(['Cy', 'Di']);
+    expect(run("find(items, { role: { not: 'member' } }).name", { items })).toBe('Anna');
+  });
   it('takes range bounds in a where-object, with the same meaning a $query gives them', () => {
     const roots = {
       events: [

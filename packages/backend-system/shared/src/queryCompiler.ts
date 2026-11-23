@@ -56,7 +56,7 @@ export interface CompileResult {
  * it always has. On a to-many that is very nearly `some: {}`, and the overlap is harmless — an
  * author reaching for a quantifier writes the quantifier.
  */
-function leafCondition(field: string, cond: unknown): Filter {
+export function leafFilter(field: string, cond: unknown): Filter {
   if (cond !== null && typeof cond === 'object' && !Array.isArray(cond)) {
     const c = cond as Record<string, unknown>;
     // `{ comments: { some: {} } }` — has at least one; `{ some: { body: 'spam' } }` — has one that
@@ -77,8 +77,10 @@ function leafCondition(field: string, cond: unknown): Filter {
     // flat where clause, so a prefix match fell through to the equality below and compared a field
     // against the operator *object* — matching nothing, silently. A calendar reads a day out of a
     // datetime this way (`startDate startsWith '2026-08-15'`), and read "no events" every time.
-    if ('startsWith' in c) return { field, op: 'startsWith', value: c.startsWith as Scalar };
-    if ('endsWith' in c) return { field, op: 'endsWith', value: c.endsWith as Scalar };
+    // Anchored matches are case-sensitive where `contains` is not: they read structured strings (a
+    // date, an id out of a URI), and the grammar says so wherever it is evaluated.
+    if ('startsWith' in c) return { field, op: 'startsWith', value: c.startsWith as Scalar, caseSensitive: true };
+    if ('endsWith' in c) return { field, op: 'endsWith', value: c.endsWith as Scalar, caseSensitive: true };
     if ('exists' in c) return { field, op: 'exists', value: c.exists as Scalar };
     /*
       Range bounds. The IR, the engine and the production backend all had them; the flat grammar did not, so
@@ -113,7 +115,7 @@ function translateWhere(where: Record<string, unknown>): Filter | undefined {
       const f = translateWhere(cond as Record<string, unknown>);
       if (f) clauses.push({ not: f });
     } else {
-      clauses.push(leafCondition(key, cond));
+      clauses.push(leafFilter(key, cond));
     }
   }
   if (clauses.length === 0) return undefined;

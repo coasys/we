@@ -18,7 +18,7 @@
  * ```
  */
 import type { Activity, EphemeralPort, Peer, PublishResult } from '@we/backend-shared';
-import { createInMemoryEphemeralPort, InMemoryBus } from '@we/backend-shared';
+import { createInMemoryEphemeralPort, InMemoryBus, matchesWhere } from '@we/backend-shared';
 import type {
   AgentDataKernel,
   ComposedDocument,
@@ -72,13 +72,9 @@ export function fakeDeps(overrides: Partial<ModuleStoreDeps> = {}): ModuleStoreD
 /** A row as the fake stores it: whatever was written, plus `id` and `author`. */
 export type FakeRow = Record<string, unknown> & { id: string; author: string };
 
-/** What a query's `where` may say against the fake — equality per key, and `in` for a list. */
+/** A query's `where` against the fake, read as every backend reads it — an absent value matching no comparison. */
 function matches(row: Record<string, unknown>, where: Record<string, unknown> | undefined): boolean {
-  return Object.entries(where ?? {}).every(([key, value]) => {
-    if (Array.isArray(value)) return value.includes(row[key]);
-    if (value && typeof value === 'object' && 'not' in value) return row[key] !== value.not;
-    return row[key] === value;
-  });
+  return where ? matchesWhere(row, where) : true;
 }
 
 /** A field as the text rows are ordered by: a scalar as it prints, anything else as nothing. */

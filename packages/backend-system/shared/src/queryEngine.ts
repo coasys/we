@@ -7,9 +7,9 @@
  * Pure and framework-agnostic. Operates on plain rows plus a relation map (target + cardinality +
  * foreign key) — the minimal shape any in-memory dataset can provide.
  */
-import type { Aggregation, Filter, IncludeMap, Op, QueryIR, Scalar, Scope, SortKey } from './queryIR';
-import { rangeCompare } from './rangeCompare';
+import type { Aggregation, Filter, IncludeMap, QueryIR, Scope, SortKey } from './queryIR';
 import { RECORD_TYPE_KEY } from './recordContract';
+import { filterMatches } from './whereMatch';
 
 export type Row = Record<string, unknown> & { id: string | number };
 
@@ -31,59 +31,6 @@ export interface InMemoryRelation {
 export interface InMemoryDataset {
   tables: Record<string, Row[]>;
   relations?: Record<string, Record<string, InMemoryRelation>>;
-}
-
-// ─── operators ──────────────────────────────────────────────────────────────────
-
-/** No value: never written, or cleared — a cleared property is removed, not stored as `''`. */
-const isAbsent = (value: unknown) => value == null;
-
-/**
- * A field's value as the text operators search it: text as written, a number, boolean or list as it
- * prints. A record has no text to search; printed, it would be `[object Object]`, which `contains`
- * would find "object" in.
- */
-function searchText(value: unknown): string {
-  if (typeof value === 'string') return value;
-  if (typeof value === 'number' || typeof value === 'boolean' || Array.isArray(value)) return String(value);
-  return '';
-}
-
-function compareOp(actual: unknown, op: Op, value: Scalar | Scalar[], caseSensitive?: boolean): boolean {
-  switch (op) {
-    case 'eq':
-      return actual === value;
-    // A record that never had the field does not match an inequality, any more than an equality —
-    // the production backend's answer, where `!=` over an unbound value excludes the row, as SQL's
-    // three-valued logic excludes NULL. This engine used to answer the other way, so a `not` passed
-    // every test here and came back short in production. `exists: false` is how to ask for absence.
-    case 'ne':
-      return !isAbsent(actual) && actual !== value;
-    case 'lt':
-    case 'lte':
-    case 'gt':
-    case 'gte':
-      return rangeCompare(actual, op, value);
-    case 'in':
-      return Array.isArray(value) && value.includes(actual as Scalar);
-    case 'nin':
-      return !isAbsent(actual) && Array.isArray(value) && !value.includes(actual as Scalar);
-    case 'exists':
-      return value === false ? actual == null : actual != null;
-    case 'contains':
-    case 'startsWith':
-    case 'endsWith': {
-      let a = searchText(actual);
-      let v = String(value ?? '');
-      if (!caseSensitive) {
-        a = a.toLowerCase();
-        v = v.toLowerCase();
-      }
-      return op === 'contains' ? a.includes(v) : op === 'startsWith' ? a.startsWith(v) : a.endsWith(v);
-    }
-    default:
-      return false;
-  }
 }
 
 // ─── relations ──────────────────────────────────────────────────────────────────
@@ -142,18 +89,18 @@ function inDeclaredOrder(rows: Row[], order: unknown): Row[] {
 // ─── filter ─────────────────────────────────────────────────────────────────────
 
 function matchesFilter(row: Row, filter: Filter, entity: string, data: InMemoryDataset): boolean {
-  if ('and' in filter) return filter.and.every((f) => matchesFilter(row, f, entity, data));
-  if ('or' in filter) return filter.or.some((f) => matchesFilter(row, f, entity, data));
-  if ('not' in filter) return !matchesFilter(row, filter.not, entity, data);
-  if ('rel' in filter) {
-    const resolved = relatedRows(row, entity, filter.rel, data);
-    if (!resolved) return false;
-    const matched = filter.where
-      ? resolved.rows.filter((r) => matchesFilter(r, filter.where!, resolved.rel.target, data))
-      : resolved.rows;
-    return filter.op === 'none' ? matched.length === 0 : matched.length > 0;
-  }
-  return compareOp(row[filter.field], filter.op, filter.value, filter.caseSensitive);
+  return filterMatches(
+    filter,
+    (field) => row[field],
+    (rel, op, where) => {
+      const resolved = relatedRows(row, entity, rel, data);
+      if (!resolved) return false;
+      const matched = where
+        ? resolved.rows.filter((r) => matchesFilter(r, where, resolved.rel.target, data))
+        : resolved.rows;
+      return op === 'none' ? matched.length === 0 : matched.length > 0;
+    },
+  );
 }
 
 // ─── sort ───────────────────────────────────────────────────────────────────────
