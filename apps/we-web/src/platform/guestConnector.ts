@@ -18,6 +18,8 @@ import { parseGuestLink } from '@we/app-shell/shared';
 import { capabilitiesFromToken, createAd4mBackendPorts } from '@we/backend-ad4m';
 import weSeed from '@we/seed-file';
 
+import { closingOnFailure, sessionClient } from './sessionClient';
+
 export type { GuestJoinTarget };
 export { hasStoredSession } from './storedSession';
 
@@ -60,14 +62,14 @@ export function createGuestConnector(hostUrl: string): BackendConnector {
         capabilities: [{ with: { domain: '*', pointers: ['*'] }, can: ['*'] }],
       });
 
-      const client = await core.connectAsGuest(hostUrl);
+      // `connectAsGuest` answers connect's vendored client — an older SDK copy with no mount,
+      // `shapes()` or `instance*` writes. The session's client is this bundle's own.
+      await core.connectAsGuest(hostUrl);
+      const client = sessionClient(core);
       const capabilities = capabilitiesFromToken(core.token);
 
-      return {
-        client,
-        // This identity was created by the link, not chosen. See `BackendInitResult.guest`.
-        guest: true,
-        ports: createAd4mBackendPorts(client, ctx, {
+      const ports = closingOnFailure(client, () =>
+        createAd4mBackendPorts(client, ctx, {
           administersNode: false,
           // A guest logs in to a grant, never the node's operator credential.
           operator: false,
@@ -75,8 +77,18 @@ export function createGuestConnector(hostUrl: string): BackendConnector {
           linkServerUrl: (weSeed.ad4m as { linkServerUrl?: string }).linkServerUrl,
           connection: () => (core.baseUrl ? { url: core.baseUrl, token: core.token } : null),
         }),
+      );
+
+      return {
+        client,
+        // This identity was created by the link, not chosen. See `BackendInitResult.guest`.
+        guest: true,
+        ports,
         // Ending the session forgets the token and the host choice.
-        disconnect: () => core.disconnect(),
+        disconnect: async () => {
+          client.close();
+          await core.disconnect();
+        },
         ...(core.token ? { connection: { port: core.port, token: core.token, url: core.baseUrl } } : {}),
       };
     },

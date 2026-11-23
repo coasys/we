@@ -3,6 +3,7 @@ import type { BackendConnector, BackendInitResult } from '@we/app-shell/shared';
 import { capabilitiesFromToken, createAd4mBackendPorts, holdsOperatorCredential } from '@we/backend-ad4m';
 import weSeed from '@we/seed-file';
 
+import { closingOnFailure, sessionClient } from './sessionClient';
 import { storedGuestHost } from './storedSession';
 
 export const ad4mConnector: BackendConnector = {
@@ -29,7 +30,7 @@ export const ad4mConnector: BackendConnector = {
 
     // Resolves when the user has connected and authorised WE — the connect UI is up until then, so
     // this is where a web boot waits.
-    const client = await connecting;
+    await connecting;
 
     // Whether this connection operates the node it reached. A host chosen from the connect UI is
     // somebody else's by definition; a multi-user executor is one where this agent is a user rather
@@ -64,11 +65,16 @@ export const ad4mConnector: BackendConnector = {
     const guestHost = storedGuestHost();
     const isGuest = !!guestHost && (!core.baseUrl || core.baseUrl === guestHost);
 
-    return {
-      client,
-      // A guest never operates the node, whatever the executor says about itself. This is the app
-      // declining to offer node-wide controls, which is a decision it can make locally and should.
-      ports: createAd4mBackendPorts(client, ctx, {
+    /*
+      The client `connecting` answers is connect's own vendored copy of the SDK — a second,
+      older Ad4mClient whose PerspectiveProxy carries no mount, no `shapes()` and no `instance*`
+      writes. The session's client is this bundle's own `@coasys/ad4m`, over the same transport
+      and token — one SDK copy in the bundle, and every RPC the ports call is on it. See
+      `sessionClient` for why that is not simply the url.
+    */
+    const client = sessionClient(core);
+    const ports = closingOnFailure(client, () =>
+      createAd4mBackendPorts(client, ctx, {
         administersNode: administersNode && !isGuest,
         // Whether the token is the executor's operator credential or a grant. The app token this
         // connector asks for is a grant, so it is not the operator however much it holds — and the
@@ -82,6 +88,13 @@ export const ad4mConnector: BackendConnector = {
         // Read on each use: ad4m-connect replaces the token when a session is re-authorised.
         connection: () => (core.baseUrl ? { url: core.baseUrl, token: core.token } : null),
       }),
+    );
+
+    return {
+      client,
+      // A guest never operates the node, whatever the executor says about itself. This is the app
+      // declining to offer node-wide controls, which is a decision it can make locally and should.
+      ports,
       ...(isGuest ? { guest: true as const } : {}),
       // Only for a host chosen from the directory. A local executor is not somewhere the user needs
       // telling about, and pointing at "your own machine" would be noise in the settings page.
@@ -114,7 +127,10 @@ export const ad4mConnector: BackendConnector = {
       // unlocked with a password it holds, so there is no lock to close — ending the session means
       // forgetting the token and the chosen host, which is what `core.disconnect` does. The shell
       // reloads afterwards, which brings the connect UI back.
-      disconnect: () => core.disconnect(),
+      disconnect: async () => {
+        client.close();
+        await core.disconnect();
+      },
       // Use baseUrl (not url) so wss:// remote-host URLs are normalized to https:// before
       // being forwarded in AD4M_CONFIG — the embedded app's startsWith('http') guard would
       // otherwise reject raw wss:// URLs and fall back to localhost.
