@@ -128,7 +128,7 @@ export interface SectionLabelOptions {
 /**
  * A named region inside a panel — quieter than the panel's own name, so the two do not compete.
  *
- * Its absence is why the workshop's extraction panel had no title: the caps line in it said
+ * Its absence is why the workshop's interpretation panel had no title: the caps line in it said
  * "Extracted", which is what the list below it holds rather than what the panel is, and having only
  * one caps treatment made that read as the name.
  */

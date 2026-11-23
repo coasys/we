@@ -106,7 +106,7 @@ widget). That is packaging; the modules still do not reach for each other at run
 
 ## A join between two capabilities is a policy, and policies live with the state they read
 
-"While a call's transcript is growing, keep extracting from it" is not transcription and not
+"While a call's transcript is growing, keep interpreting it" belongs to neither transcription nor
 interpretation. It is a **policy**, and putting it inside either capability is what creates a
 dependency between them — which is exactly how `@we/module-transcribe` came to hold the watch
 lifecycle and re-publish nine of interpretation's members.
@@ -164,7 +164,7 @@ Modules ship presentation, as data. `@we/module-notes` and `@we/module-call` con
 code at all; every piece of their UI is a schema fragment. That is right and does not change.
 
 What is wrong is presentation being _only_ available whole. A module's panel is usually several
-surfaces in one — the transcribe panel is a feed, a record control, an extraction readout, a
+surfaces in one — the transcribe panel is a feed, a record control, an interpretation readout, a
 proposals review and a target list — and an interface that wants them arranged differently can today
 only hand-write copies. So:
 

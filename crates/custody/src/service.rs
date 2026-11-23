@@ -12,6 +12,12 @@
 //!
 //! The client's futures are not `Send` (their RPC trait is `?Send`), so the service runs on a
 //! thread of its own with a current-thread runtime; [`CustodyHandle`] is the `Send` way in.
+//!
+//! A state read asks the vault's plain reads on a separate thread ([`keychain_call`]), one call at a
+//! time, so an unlock prompt does not stop the custody task: a flow still answers Cancel and the
+//! claim's deadline while the read waits. A flow's own unlock, and the master key a read takes while
+//! it unlocks, still call the vault on the custody task: the identity client's vault is synchronous
+//! and its futures are not `Send`. Those calls happen between screens, not while a claim is awaited.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -43,6 +49,43 @@ use crate::vault::{DesktopVault, Unlocking};
 
 static CLOCK: SystemClock = SystemClock;
 static RANDOM: OsRandom = OsRandom;
+
+/// Runs `job` on the process's one keychain thread and completes when the job does.
+///
+/// The OS keychain and the Secret Service answer on the thread that calls them, and that call can
+/// sit inside an unlock prompt. The custody task never makes the call. It waits on this thread,
+/// and while it waits it can still select on Cancel and the claim deadline. The thread runs one
+/// job at a time, so a second read stays queued behind the prompt instead of opening another.
+/// The job is sent when this is called, which is when the future is first polled, not when the
+/// future is built: a read kept queued behind another has not entered the keychain yet.
+fn keychain_call<T: Send + 'static>(
+    job: impl FnOnce() -> T + Send + 'static,
+) -> impl std::future::Future<Output = T> {
+    let (tx, rx) = oneshot::channel();
+    keychain_sender()
+        .send(Box::new(move || {
+            let _ = tx.send(job());
+        }))
+        .expect("custody keychain thread");
+    async move { rx.await.expect("custody keychain thread ended") }
+}
+
+fn keychain_sender() -> &'static std::sync::mpsc::Sender<Box<dyn FnOnce() + Send>> {
+    static SENDER: std::sync::OnceLock<std::sync::mpsc::Sender<Box<dyn FnOnce() + Send>>> =
+        std::sync::OnceLock::new();
+    SENDER.get_or_init(|| {
+        let (tx, rx) = std::sync::mpsc::channel::<Box<dyn FnOnce() + Send>>();
+        std::thread::Builder::new()
+            .name("custody-keychain".into())
+            .spawn(move || {
+                while let Ok(job) = rx.recv() {
+                    job();
+                }
+            })
+            .expect("custody keychain thread");
+        tx
+    })
+}
 
 /// How often a device that showed its code asks whether the holder confirmed.
 const JOIN_POLL: Duration = Duration::from_secs(2);
@@ -530,7 +573,8 @@ impl CustodyHandle {
 }
 
 /// Starts the custody thread.
-pub fn spawn(vault: DesktopVault, executor: ExecutorAddress) -> CustodyHandle {
+pub fn spawn(vault: impl Into<Arc<DesktopVault>>, executor: ExecutorAddress) -> CustodyHandle {
+    let vault = vault.into();
     let (tx, rx) = mpsc::unbounded_channel();
     std::thread::Builder::new()
         .name("custody".into())
@@ -553,7 +597,7 @@ type Rx = mpsc::UnboundedReceiver<Request>;
 /// key is kept for, is asked first.
 async fn connect(
     address: &ExecutorAddress,
-    vault: &DesktopVault,
+    vault: &Arc<DesktopVault>,
 ) -> Result<ViaExecutor<WithEncKey<WsRpcClient>>, String> {
     let (rpc, device_key) = reach(address).await?;
     with_enc_key(rpc, &device_key, vault)
@@ -583,7 +627,7 @@ async fn reach(address: &ExecutorAddress) -> Result<(WsRpcClient, String), Strin
 fn with_enc_key<R: ExecutorRpc>(
     rpc: R,
     device_key: &str,
-    vault: &DesktopVault,
+    vault: &Arc<DesktopVault>,
 ) -> Result<ViaExecutor<WithEncKey<R>>, String> {
     let enc = CustodyEncKey::for_device(vault.shared_store(), device_key)
         .map_err(|e| enc_key_unkept(&e))?;
@@ -676,7 +720,7 @@ fn failed(e: &ClientError) -> Screen {
 /// ([`StateReads`]). The reads outlive the flow that took them: one still under way when a step
 /// ends is kept here and polled beside the next request, so a stalled read holds no later request,
 /// and every state request is answered once its read ends.
-async fn serve(vault: DesktopVault, address: ExecutorAddress, mut rx: Rx) {
+async fn serve(vault: Arc<DesktopVault>, address: ExecutorAddress, mut rx: Rx) {
     let mut reads = StateReads::new(&vault, &address);
     while let Some((step, reply)) = idle(&mut reads, &mut rx).await {
         run_step(step, &mut reads, &mut rx, &mut Some(reply)).await;
@@ -688,34 +732,97 @@ async fn serve(vault: DesktopVault, address: ExecutorAddress, mut rx: Rx) {
 /// flow answers its own, and a read a step before it left under way goes on beside it ([`beside`]).
 async fn run_step(step: IdentityStep, reads: &mut StateReads<'_>, rx: &mut Rx, reply: &mut Reply) {
     let (vault, address) = (reads.vault, reads.address);
+    // What `beside` forwards to a flow: everything but the state requests, which `reads` keeps.
+    let (to_flow, mut flow_rx) = mpsc::unbounded_channel();
     match step {
         IdentityStep::ShowCode => run_show_code(reads, rx, reply).await,
-        IdentityStep::Create => beside(reads, run_create(vault, address, rx, reply)).await,
-        IdentityStep::AddDevice => beside(reads, run_link(vault, address, rx, reply)).await,
-        IdentityStep::ScanDevice => beside(reads, run_scan(vault, address, rx, reply)).await,
-        IdentityStep::TakeMaster => beside(reads, run_take_master(vault, address, rx, reply)).await,
-        IdentityStep::AskMaster => beside(reads, run_ask_master(vault, address, reply)).await,
+        IdentityStep::Create => {
+            let flow = run_create(vault, address, &mut flow_rx, reply);
+            beside(reads, rx, to_flow, flow).await
+        }
+        IdentityStep::AddDevice => {
+            let flow = run_link(vault, address, &mut flow_rx, reply);
+            beside(reads, rx, to_flow, flow).await
+        }
+        IdentityStep::ScanDevice => {
+            let flow = run_scan(vault, address, &mut flow_rx, reply);
+            beside(reads, rx, to_flow, flow).await
+        }
+        IdentityStep::TakeMaster => {
+            let flow = run_take_master(vault, address, &mut flow_rx, reply);
+            beside(reads, rx, to_flow, flow).await
+        }
+        IdentityStep::AskMaster => {
+            beside(reads, rx, to_flow, run_ask_master(vault, address, reply)).await
+        }
         IdentityStep::AnswerRequest { id } => {
-            beside(reads, run_answer(vault, address, rx, reply, id)).await
+            let flow = run_answer(vault, address, &mut flow_rx, reply, id);
+            beside(reads, rx, to_flow, flow).await
         }
         IdentityStep::Rename { key_id } => {
-            beside(reads, run_rename(vault, address, rx, reply, key_id)).await
+            let flow = run_rename(vault, address, &mut flow_rx, reply, key_id);
+            beside(reads, rx, to_flow, flow).await
         }
         IdentityStep::Unlink { key_id } => {
-            beside(reads, run_unlink(vault, address, rx, reply, key_id)).await
+            let flow = run_unlink(vault, address, &mut flow_rx, reply, key_id);
+            beside(reads, rx, to_flow, flow).await
         }
         IdentityStep::Revoke { key_id } => {
-            beside(reads, run_revoke(vault, address, rx, reply, key_id)).await
+            let flow = run_revoke(vault, address, &mut flow_rx, reply, key_id);
+            beside(reads, rx, to_flow, flow).await
+        }
+    }
+    refuse_late(reads, &mut flow_rx);
+}
+
+/// Answers what reached a flow's channel as it ended the way the next request would have been: a
+/// step input has no step, a second start finds one open, a cancel finds nothing to cancel.
+fn refuse_late(reads: &mut StateReads<'_>, flow_rx: &mut Rx) {
+    while let Ok(request) = flow_rx.try_recv() {
+        match request {
+            Request::Step(_, r) => {
+                let _ = r.send(Err(CustodyError::NoStep));
+            }
+            Request::Start(_, r) => {
+                let _ = r.send(Err(CustodyError::Busy));
+            }
+            Request::Cancel(r) => {
+                let _ = r.send(None);
+            }
+            Request::Public(r) => reads.ask(r),
         }
     }
 }
 
-/// Runs `flow` with the reads already under way going on beside it ([`StateReads::drive`]), so
-/// their requests are answered as each read ends rather than after the flow.
-async fn beside(reads: &mut StateReads<'_>, flow: impl std::future::Future<Output = ()>) {
-    tokio::select! {
-        () = flow => {}
-        never = reads.drive() => match never {},
+/// Runs `flow` with the window's requests going to it through `to_flow`, and the state requests
+/// taken into `reads` on the way ([`StateReads::recv`]). The reads, the ones a step before left
+/// under way too, are answered as each ends rather than after the flow, and a read waiting in the
+/// keychain ([`keychain_call`]) holds neither the flow's Cancel nor its claim deadline: the flow
+/// never sees a state request.
+async fn beside(
+    reads: &mut StateReads<'_>,
+    rx: &mut Rx,
+    to_flow: mpsc::UnboundedSender<Request>,
+    flow: impl std::future::Future<Output = ()>,
+) {
+    let mut to_flow = Some(to_flow);
+    tokio::pin!(flow);
+    loop {
+        tokio::select! {
+            () = &mut flow => return,
+            request = reads.recv(rx) => match request {
+                Some(request) => {
+                    if let Some(to_flow) = &to_flow {
+                        let _ = to_flow.send(request);
+                    }
+                }
+                // The app is gone: the flow sees its channel end, as it would the window's.
+                None => {
+                    drop(to_flow.take());
+                    return flow.await;
+                }
+            },
+        }
     }
 }
 
@@ -750,7 +857,7 @@ async fn idle(
 /// because it already speaks for another identity, is forgotten.
 async fn finish_pending<R: ExecutorRpc>(
     executor: &ViaExecutor<R>,
-    vault: &DesktopVault,
+    vault: &Arc<DesktopVault>,
 ) -> Result<Option<Created>, ClientError> {
     let _one = FINISHING.lock().await;
     finish_pending_locked(executor, vault).await
@@ -763,7 +870,7 @@ static FINISHING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 async fn finish_pending_locked<R: ExecutorRpc>(
     executor: &ViaExecutor<R>,
-    vault: &DesktopVault,
+    vault: &Arc<DesktopVault>,
 ) -> Result<Option<Created>, ClientError> {
     if vault.pending_incepts()?.is_empty() {
         return Ok(None);
@@ -787,7 +894,7 @@ async fn finish_pending_locked<R: ExecutorRpc>(
 }
 
 /// The kept incept that lists `device_key` — this executor's, when it is the executor's own key.
-fn own_pending(vault: &DesktopVault, device_key: &str) -> Result<Option<Event>, VaultError> {
+fn own_pending(vault: &Arc<DesktopVault>, device_key: &str) -> Result<Option<Event>, VaultError> {
     Ok(vault.pending_incepts()?.into_iter().find(|incept| {
         matches!(&incept.op, Op::Incept { add, .. } if add.iter().any(|d| d.sign == device_key))
     }))
@@ -827,7 +934,10 @@ fn refused_for_good(e: &ClientError, did: &str) -> Option<(String, bool)> {
 
 /// [`finish_pending`] for a state read: skipped while a step is finishing the incept itself, so the
 /// read never waits on the step.
-async fn finish_pending_quietly<R: ExecutorRpc>(executor: &ViaExecutor<R>, vault: &DesktopVault) {
+async fn finish_pending_quietly<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    vault: &Arc<DesktopVault>,
+) {
     let Ok(_one) = FINISHING.try_lock() else {
         return;
     };
@@ -836,7 +946,7 @@ async fn finish_pending_quietly<R: ExecutorRpc>(executor: &ViaExecutor<R>, vault
     }
 }
 
-async fn public_state(vault: &DesktopVault, address: &ExecutorAddress) -> CustodyPublic {
+async fn public_state(vault: &Arc<DesktopVault>, address: &ExecutorAddress) -> CustodyPublic {
     match reach(address).await {
         Ok((rpc, device_key)) => public_state_reached(rpc, &device_key, vault).await,
         // Not answering: nothing is known, and a step asks again.
@@ -850,7 +960,7 @@ async fn public_state(vault: &DesktopVault, address: &ExecutorAddress) -> Custod
 async fn public_state_reached<R: ExecutorRpc>(
     rpc: R,
     device_key: &str,
-    vault: &DesktopVault,
+    vault: &Arc<DesktopVault>,
 ) -> CustodyPublic {
     match with_enc_key(rpc, device_key, vault) {
         Ok(executor) => public_state_on(Some(&executor), vault).await,
@@ -867,7 +977,7 @@ async fn public_state_reached<R: ExecutorRpc>(
 /// [`public_state`] with the executor, when it answers.
 async fn public_state_on<R: ExecutorRpc>(
     executor: Option<&ViaExecutor<R>>,
-    vault: &DesktopVault,
+    vault: &Arc<DesktopVault>,
 ) -> CustodyPublic {
     let status = match executor {
         Some(executor) => {
@@ -891,7 +1001,10 @@ async fn public_state_on<R: ExecutorRpc>(
         // app starts and whenever the main window asks: the keychain's own unlock guards it, as
         // it guards the key made here. A sealed item needs the passphrase, so the person takes
         // it in the identity window ("Accept master key").
-        let held = ad4m_identity_core::scid_of(did).map(|scid| held_sealed(vault, scid));
+        let held = match ad4m_identity_core::scid_of(did) {
+            Some(scid) => Some(held_sealed_off(vault, scid).await),
+            None => None,
+        };
         // The same unlock pushes again what the retry list keeps: a master key given to a device
         // whose push the app did not see through. `retry_pushes` unlocks only when a push is left.
         if let Some(Ok(Some(false))) = held {
@@ -899,7 +1012,7 @@ async fn public_state_on<R: ExecutorRpc>(
         }
         // Not held yet: where a new item goes decides. Held: where it rests.
         let os_unlocks = match held {
-            Some(Ok(None)) => !vault.needs_passphrase(),
+            Some(Ok(None)) => !needs_passphrase_off(vault).await,
             Some(Ok(Some(sealed))) => !sealed,
             _ => false,
         };
@@ -932,10 +1045,8 @@ async fn public_state_on<R: ExecutorRpc>(
         requests = waiting_requests(executor).await;
     }
     // Whether this identity's key is held here and, if so, whether it is sealed.
-    let sealed = did
-        .as_deref()
-        .and_then(ad4m_identity_core::scid_of)
-        .and_then(|scid| match held_sealed(vault, scid) {
+    let sealed = match did.as_deref().and_then(ad4m_identity_core::scid_of) {
+        Some(scid) => match held_sealed_off(vault, scid).await {
             Ok(sealed) => sealed,
             // The store could not be asked (no Secret Service, a keychain error, a copy on both
             // sides): reported as not known to hold one, and logged so the cause is not lost.
@@ -943,11 +1054,17 @@ async fn public_state_on<R: ExecutorRpc>(
                 log::warn!("custody: cannot tell whether the master key is held here: {e}");
                 None
             }
-        });
+        },
+        None => None,
+    };
     // The index sits inside the sealed item; only master #0 is held for now (no rotation yet).
     let holds_master = sealed.map(|_| HoldsMaster { index: 0 });
     // The unlock of the key reported as held; with none held, the unlock a new one would get.
-    let unlock = if sealed.unwrap_or_else(|| vault.needs_passphrase()) {
+    let needs_new = match sealed {
+        Some(_) => false,
+        None => needs_passphrase_off(vault).await,
+    };
+    let unlock = if sealed.unwrap_or(needs_new) {
         "passphrase"
     } else {
         // The operating system's own prompt: Touch ID or the login password on macOS, the Secret
@@ -1053,11 +1170,27 @@ async fn waiting_requests<R: ExecutorRpc>(executor: &ViaExecutor<R>) -> Vec<Requ
 
 /// `None` when `scid`'s key is not held here; else whether it is sealed under a passphrase — from
 /// where that one item rests, never from where a new one would go.
-fn held_sealed(vault: &DesktopVault, scid: &str) -> Result<Option<bool>, VaultError> {
+fn held_sealed(vault: &Arc<DesktopVault>, scid: &str) -> Result<Option<bool>, VaultError> {
     if !vault.holds(scid)? {
         return Ok(None);
     }
     Ok(Some(vault.needs_passphrase_for(scid)?))
+}
+
+/// [`held_sealed`] off the custody task ([`keychain_call`]): the read can sit inside an unlock
+/// prompt, and the task must stay free to answer Cancel meanwhile.
+async fn held_sealed_off(
+    vault: &Arc<DesktopVault>,
+    scid: &str,
+) -> Result<Option<bool>, VaultError> {
+    let (vault, scid) = (Arc::clone(vault), scid.to_string());
+    keychain_call(move || held_sealed(&vault, &scid)).await
+}
+
+/// Whether a new item would be sealed under a passphrase here, asked off the custody task.
+async fn needs_passphrase_off(vault: &Arc<DesktopVault>) -> bool {
+    let vault = Arc::clone(vault);
+    keychain_call(move || vault.needs_passphrase()).await
 }
 
 type Reply = Option<oneshot::Sender<Result<Screen, CustodyError>>>;
@@ -1072,7 +1205,7 @@ fn answer(reply: &mut Reply, screen: Result<Screen, CustodyError>) {
 /// The next request inside a flow: a step input (with its reply slot filled), or the flow's end.
 /// A second `Start` while a step is open is refused, and `Public` is answered in passing.
 async fn next_input(
-    vault: &DesktopVault,
+    vault: &Arc<DesktopVault>,
     address: &ExecutorAddress,
     rx: &mut Rx,
     reply: &mut Reply,
@@ -1091,7 +1224,7 @@ async fn next_input(
 /// [`next_input`], for a flow that must end something before the cancel is answered: the flow's
 /// end comes with the cancel's reply (`None` when the window went away).
 async fn next_input_or_cancel(
-    vault: &DesktopVault,
+    vault: &Arc<DesktopVault>,
     address: &ExecutorAddress,
     rx: &mut Rx,
     reply: &mut Reply,
@@ -1137,7 +1270,7 @@ fn passphrase_error(problem: PassphraseProblem) -> Option<String> {
 // ─── create ─────────────────────────────────────────────────────────────────────
 
 async fn run_create(
-    vault: &DesktopVault,
+    vault: &Arc<DesktopVault>,
     address: &ExecutorAddress,
     rx: &mut Rx,
     reply: &mut Reply,
@@ -1152,7 +1285,7 @@ async fn run_create(
 /// [`run_create`] once the executor answers.
 async fn create_on<R: ExecutorRpc>(
     executor: &ViaExecutor<R>,
-    vault: &DesktopVault,
+    vault: &Arc<DesktopVault>,
     address: &ExecutorAddress,
     rx: &mut Rx,
     reply: &mut Reply,
@@ -1288,7 +1421,7 @@ async fn create_on<R: ExecutorRpc>(
 /// holds no log that names it.
 async fn offer_discard<R: ExecutorRpc>(
     executor: &ViaExecutor<R>,
-    vault: &DesktopVault,
+    vault: &Arc<DesktopVault>,
     address: &ExecutorAddress,
     rx: &mut Rx,
     reply: &mut Reply,
@@ -1349,22 +1482,40 @@ async fn offer_discard<R: ExecutorRpc>(
 
 /// Whether a flow on the key of `did`, an identity already made, asks for a passphrase: decided by
 /// where that key rests here, since two identities on one computer can rest in different stores.
-fn passphrase_for(vault: &DesktopVault, did: &str) -> Result<bool, ClientError> {
+fn passphrase_for(vault: &Arc<DesktopVault>, did: &str) -> Result<bool, ClientError> {
     let scid = ad4m_identity_core::scid_of(did).ok_or(VaultError::NotFound)?;
     Ok(vault.needs_passphrase_for(scid)?)
 }
 
-async fn run_link(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, reply: &mut Reply) {
+async fn run_link(
+    vault: &Arc<DesktopVault>,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+) {
     let executor = match connect(address, vault).await {
         Ok(e) => e,
         Err(message) => return answer(reply, Ok(Screen::Failed { message })),
     };
+    link_on(&executor, vault, address, rx, reply, &CLOCK).await
+}
+
+/// [`run_link`] once the executor answers. `clock` is the offer's clock: the claim deadline is the
+/// time the offer opened plus its lifetime, checked while [`LinkFlow::wait_for_claim`] is polled.
+async fn link_on<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    vault: &Arc<DesktopVault>,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+    clock: &dyn Clock,
+) {
     // The offer names the store the executor uses, and the claiming device publishes through it.
-    let store_url = match trusted_store(&executor).await {
+    let store_url = match trusted_store(executor).await {
         Ok(url) => url,
         Err(refused) => return answer(reply, Ok(refused)),
     };
-    let (did, own_key) = match holder_of(&executor, vault).await {
+    let (did, own_key) = match holder_of(executor, vault).await {
         Ok(holder) => holder,
         Err(screen) => return answer(reply, Ok(screen)),
     };
@@ -1392,13 +1543,13 @@ async fn run_link(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, 
             unlocking = vault.unlocking(Some(Secret::new(p)));
         }
         match LinkFlow::open(
-            &executor,
+            executor,
             &unlocking,
             &did,
             OfferKind::Node,
             None,
             &store_url,
-            &CLOCK,
+            clock,
             &RANDOM,
         )
         .await
@@ -1416,12 +1567,12 @@ async fn run_link(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, 
         Ok(Screen::Offer {
             qr_svg: qr_svg(&link),
             link,
-            expires: offer_expiry(),
+            expires: offer_expiry(clock),
         }),
     );
     follow_link(
         &flow,
-        &executor,
+        executor,
         &unlocking,
         &did,
         own_key.as_deref(),
@@ -1437,7 +1588,7 @@ async fn run_link(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, 
 /// pending identity first. A screen that ends the step when there is none.
 async fn holder_of<R: ExecutorRpc>(
     executor: &ViaExecutor<R>,
-    vault: &DesktopVault,
+    vault: &Arc<DesktopVault>,
 ) -> Result<(String, Option<String>), Screen> {
     finish_pending_quietly(executor, vault).await;
     match executor.status().await {
@@ -1470,7 +1621,7 @@ async fn follow_link<R: ExecutorRpc>(
     unlocking: &Unlocking<'_>,
     did: &str,
     own_key: Option<&str>,
-    vault: &DesktopVault,
+    vault: &Arc<DesktopVault>,
     address: &ExecutorAddress,
     rx: &mut Rx,
     reply: &mut Reply,
@@ -1620,7 +1771,12 @@ async fn retry_quietly<R: ExecutorRpc>(
 
 /// The holder takes the new device's code (scanned or pasted), opens an offer bound to its key and
 /// puts the ticket where the device reads it; then the link goes on as one the device claimed.
-async fn run_scan(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, reply: &mut Reply) {
+async fn run_scan(
+    vault: &Arc<DesktopVault>,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+) {
     let executor = match connect(address, vault).await {
         Ok(e) => e,
         Err(message) => return answer(reply, Ok(Screen::Failed { message })),
@@ -1691,7 +1847,7 @@ async fn run_scan(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, 
     answer(
         reply,
         Ok(Screen::CodeSent {
-            expires: offer_expiry(),
+            expires: offer_expiry(&CLOCK),
         }),
     );
     follow_link(
@@ -2443,7 +2599,7 @@ async fn cancel_claim<R: ExecutorRpc>(
 /// was answered goes on beside the next request ([`idle`]) or the next flow ([`beside`]), so it
 /// never holds them, and [`StateReads::finish`] answers whatever is left once the app is gone.
 struct StateReads<'a> {
-    vault: &'a DesktopVault,
+    vault: &'a Arc<DesktopVault>,
     address: &'a ExecutorAddress,
     /// The read under way and the requests it answers.
     reading: Option<Reading<'a>>,
@@ -2457,7 +2613,7 @@ type Reading<'a> = (
 );
 
 impl<'a> StateReads<'a> {
-    fn new(vault: &'a DesktopVault, address: &'a ExecutorAddress) -> Self {
+    fn new(vault: &'a Arc<DesktopVault>, address: &'a ExecutorAddress) -> Self {
         StateReads {
             vault,
             address,
@@ -2512,14 +2668,6 @@ impl<'a> StateReads<'a> {
     /// is gone, so no state request is left unanswered.
     async fn finish(&mut self) {
         while self.reading.is_some() {
-            self.answer_one().await;
-        }
-    }
-
-    /// Answers every read under way and starts each next one, forever: beside a flow that answers
-    /// its own state requests, so the reads a step before it left are not held until it ends.
-    async fn drive(&mut self) -> std::convert::Infallible {
-        loop {
             self.answer_one().await;
         }
     }
@@ -2634,7 +2782,7 @@ fn cancelled_here() -> Screen {
 /// A passphrase for a new sealed item, asked until it passes [`seal::check_new`]; `None` when
 /// the window cancels.
 async fn new_passphrase(
-    vault: &DesktopVault,
+    vault: &Arc<DesktopVault>,
     address: &ExecutorAddress,
     rx: &mut Rx,
     reply: &mut Reply,
@@ -2668,7 +2816,7 @@ async fn new_passphrase(
 /// keeps a new item: behind the OS unlock, or sealed under a passphrase set here. Where the OS
 /// unlocks it the key is also taken without this step ([`public_state_on`]).
 async fn run_take_master(
-    vault: &DesktopVault,
+    vault: &Arc<DesktopVault>,
     address: &ExecutorAddress,
     rx: &mut Rx,
     reply: &mut Reply,
@@ -2686,7 +2834,7 @@ const NO_MASTER_WAITING: &str = "No master key was sent to this computer. Ask fo
 /// [`run_take_master`] once the executor answers.
 async fn take_master_on<R: ExecutorRpc>(
     executor: &ViaExecutor<R>,
-    vault: &DesktopVault,
+    vault: &Arc<DesktopVault>,
     address: &ExecutorAddress,
     rx: &mut Rx,
     reply: &mut Reply,
@@ -2773,7 +2921,7 @@ async fn take_master_on<R: ExecutorRpc>(
 
 /// A linked app without the master key asks the identity's other devices for it: a
 /// `send-master` request in the identity's box, which a holder answers.
-async fn run_ask_master(vault: &DesktopVault, address: &ExecutorAddress, reply: &mut Reply) {
+async fn run_ask_master(vault: &Arc<DesktopVault>, address: &ExecutorAddress, reply: &mut Reply) {
     let executor = match connect(address, vault).await {
         Ok(e) => e,
         Err(message) => return answer(reply, Ok(Screen::Failed { message })),
@@ -2782,7 +2930,10 @@ async fn run_ask_master(vault: &DesktopVault, address: &ExecutorAddress, reply: 
 }
 
 /// [`run_ask_master`] once the executor answers.
-async fn ask_master_on<R: ExecutorRpc>(executor: &ViaExecutor<R>, vault: &DesktopVault) -> Screen {
+async fn ask_master_on<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    vault: &Arc<DesktopVault>,
+) -> Screen {
     let status = match executor.status().await {
         Ok(status) => status,
         Err(e) => return failed(&ClientError::Rpc(e)),
@@ -2827,7 +2978,7 @@ async fn ask_master_on<R: ExecutorRpc>(executor: &ViaExecutor<R>, vault: &Deskto
 /// when the person says yes. Saying no is closing the window: the request waits until it
 /// expires, for another holder to answer.
 async fn run_answer(
-    vault: &DesktopVault,
+    vault: &Arc<DesktopVault>,
     address: &ExecutorAddress,
     rx: &mut Rx,
     reply: &mut Reply,
@@ -2843,7 +2994,7 @@ async fn run_answer(
 /// [`run_answer`] once the executor answers.
 async fn answer_on<R: ExecutorRpc>(
     executor: &ViaExecutor<R>,
-    vault: &DesktopVault,
+    vault: &Arc<DesktopVault>,
     address: &ExecutorAddress,
     rx: &mut Rx,
     reply: &mut Reply,
@@ -2996,7 +3147,7 @@ async fn answer_on<R: ExecutorRpc>(
 /// Names the device `key_id` in the identity's private record. Any linked device may: the record
 /// is written with this executor's device key, and no master key is unlocked.
 async fn run_rename(
-    vault: &DesktopVault,
+    vault: &Arc<DesktopVault>,
     address: &ExecutorAddress,
     rx: &mut Rx,
     reply: &mut Reply,
@@ -3012,7 +3163,7 @@ async fn run_rename(
 /// [`run_rename`] once the executor answers.
 async fn rename_on<R: ExecutorRpc>(
     executor: &ViaExecutor<R>,
-    vault: &DesktopVault,
+    vault: &Arc<DesktopVault>,
     address: &ExecutorAddress,
     rx: &mut Rx,
     reply: &mut Reply,
@@ -3106,7 +3257,7 @@ async fn rename_on<R: ExecutorRpc>(
 }
 
 /// Resolves when the window cancels; answers `Public` in passing and refuses anything else.
-async fn wait_cancel(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx) {
+async fn wait_cancel(vault: &Arc<DesktopVault>, address: &ExecutorAddress, rx: &mut Rx) {
     if let Some(cancel) = next_cancel(vault, address, rx).await {
         let _ = cancel.send(None);
     }
@@ -3115,7 +3266,7 @@ async fn wait_cancel(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut R
 /// [`wait_cancel`], for a flow that must end something before the cancel is answered: the
 /// cancel's reply, `None` when the window went away.
 async fn next_cancel(
-    vault: &DesktopVault,
+    vault: &Arc<DesktopVault>,
     address: &ExecutorAddress,
     rx: &mut Rx,
 ) -> Option<CancelReply> {
@@ -3136,8 +3287,8 @@ async fn next_cancel(
     }
 }
 
-fn offer_expiry() -> u64 {
-    ad4m_identity_client::Clock::now(&CLOCK) + ad4m_identity_core::link::OFFER_TTL_S
+fn offer_expiry(clock: &dyn Clock) -> u64 {
+    clock.now() + ad4m_identity_core::link::OFFER_TTL_S
 }
 
 /// The offer link as a QR code, SVG, drawn in the theme's colours by the window's CSS.
@@ -3177,7 +3328,7 @@ fn since_refusal(e: &ClientError) -> Option<String> {
 /// passphrase is needed. `Err` is the screen that ends the step.
 async fn open_key_change<R: ExecutorRpc>(
     executor: &ViaExecutor<R>,
-    vault: &DesktopVault,
+    vault: &Arc<DesktopVault>,
     key_id: &str,
     own_key_refused: &str,
 ) -> Result<(String, bool), Screen> {
@@ -3202,7 +3353,7 @@ async fn open_key_change<R: ExecutorRpc>(
 }
 
 async fn run_unlink(
-    vault: &DesktopVault,
+    vault: &Arc<DesktopVault>,
     address: &ExecutorAddress,
     rx: &mut Rx,
     reply: &mut Reply,
@@ -3218,7 +3369,7 @@ async fn run_unlink(
 /// [`run_unlink`] once the executor answers.
 async fn unlink_on<R: ExecutorRpc>(
     executor: &ViaExecutor<R>,
-    vault: &DesktopVault,
+    vault: &Arc<DesktopVault>,
     address: &ExecutorAddress,
     rx: &mut Rx,
     reply: &mut Reply,
@@ -3281,7 +3432,7 @@ async fn unlink_on<R: ExecutorRpc>(
 }
 
 async fn run_revoke(
-    vault: &DesktopVault,
+    vault: &Arc<DesktopVault>,
     address: &ExecutorAddress,
     rx: &mut Rx,
     reply: &mut Reply,
@@ -3297,7 +3448,7 @@ async fn run_revoke(
 /// [`run_revoke`] once the executor answers.
 async fn revoke_on<R: ExecutorRpc>(
     executor: &ViaExecutor<R>,
-    vault: &DesktopVault,
+    vault: &Arc<DesktopVault>,
     address: &ExecutorAddress,
     rx: &mut Rx,
     reply: &mut Reply,
@@ -3585,6 +3736,134 @@ mod tests {
     }
 
     /// A create of fixed words, past the two words typed back.
+    /// A store whose reads sit inside an unlock prompt until it is let through, as the OS
+    /// keychain's can. A reader that blocked the custody task would hold everything else with it.
+    struct PromptStore {
+        inner: crate::store::MemoryStore,
+        open: Arc<(std::sync::Mutex<bool>, std::sync::Condvar)>,
+    }
+
+    impl PromptStore {
+        fn pass(&self) {
+            let (held, released) = &*self.open;
+            let mut held = held.lock().unwrap();
+            while *held {
+                held = released.wait(held).unwrap();
+            }
+        }
+    }
+
+    impl crate::store::SecretStore for PromptStore {
+        fn kind(&self) -> crate::store::StoreKind {
+            self.inner.kind()
+        }
+        fn kind_of(&self, n: &str) -> Result<crate::store::StoreKind, VaultError> {
+            self.pass();
+            self.inner.kind_of(n)
+        }
+        fn put(&self, n: &str, b: &[u8]) -> Result<(), VaultError> {
+            self.inner.put(n, b)
+        }
+        fn get(&self, n: &str) -> Result<Option<Vec<u8>>, VaultError> {
+            self.pass();
+            self.inner.get(n)
+        }
+        fn contains(&self, n: &str) -> Result<bool, VaultError> {
+            self.pass();
+            self.inner.contains(n)
+        }
+        fn delete(&self, n: &str) -> Result<(), VaultError> {
+            self.inner.delete(n)
+        }
+        fn claim_secret(
+            &self,
+            n: &str,
+            b: &[u8],
+        ) -> Result<zeroize::Zeroizing<Vec<u8>>, VaultError> {
+            self.inner.claim_secret(n, b)
+        }
+    }
+
+    /// A state read whose keychain half waits in an unlock prompt leaves the custody task free: a
+    /// timer on the same task fires, and the read finishes once the prompt does. With the read on
+    /// the task, the timer never gets its turn and the read ends only when the prompt does.
+    #[tokio::test]
+    async fn a_state_read_waiting_in_the_keychain_leaves_the_custody_task_free() {
+        let open = Arc::new((std::sync::Mutex::new(false), std::sync::Condvar::new()));
+        let vault = Arc::new(DesktopVault::with_kdf(
+            Box::new(PromptStore {
+                inner: crate::store::MemoryStore::as_kind(crate::store::StoreKind::Keychain),
+                open: Arc::clone(&open),
+            }),
+            PendingIncepts::memory(),
+            CHEAP,
+        ));
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        confirmed(41)
+            .finish(&executor, &vault.unlocking(None))
+            .await
+            .expect("create");
+        fn let_through(open: &(std::sync::Mutex<bool>, std::sync::Condvar)) {
+            *open.0.lock().unwrap() = false;
+            open.1.notify_all();
+        }
+        *open.0.lock().unwrap() = true;
+        // If the read blocks the task, this frees it after three seconds and the test fails below.
+        let watchdog = std::thread::spawn({
+            let open = Arc::clone(&open);
+            move || {
+                std::thread::sleep(Duration::from_secs(3));
+                let_through(&open);
+            }
+        });
+        let read = public_state_on(Some(&executor), &vault);
+        tokio::pin!(read);
+        let started = std::time::Instant::now();
+        tokio::select! {
+            _ = &mut read => panic!("the read ended while the keychain was in its prompt"),
+            () = tokio::time::sleep(Duration::from_millis(300)) => {}
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "the custody task waited on the keychain"
+        );
+        let_through(&open);
+        let public = tokio::time::timeout(Duration::from_secs(5), read)
+            .await
+            .expect("the read ends once the prompt does");
+        assert!(public.did.is_some(), "{public:?}");
+        watchdog.join().unwrap();
+    }
+
+    /// A flow under `beside` is not shown state requests, and its Cancel is answered while the
+    /// state request waits: the read stays with `reads`, which answers it.
+    #[tokio::test]
+    async fn a_flow_under_beside_gets_its_cancel_and_never_a_state_request() {
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, _, window, _) = opened();
+        let mut reads = StateReads::new(&vault, &address);
+        let (to_flow, mut flow_rx) = mpsc::unbounded_channel();
+        let flow = async {
+            let Some(Request::Cancel(r)) = flow_rx.recv().await else {
+                panic!("the flow was shown something but its cancel");
+            };
+            let _ = r.send(None);
+        };
+        let (public_tx, public) = oneshot::channel();
+        window.tx.send(Request::Public(public_tx)).unwrap();
+        let (cancel_tx, cancelled) = oneshot::channel();
+        window.tx.send(Request::Cancel(cancel_tx)).unwrap();
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            beside(&mut reads, &mut rx, to_flow, flow),
+        )
+        .await
+        .expect("the flow ended on its cancel");
+        assert_eq!(cancelled.await.unwrap(), None);
+        reads.finish().await;
+        assert!(public.await.is_ok(), "the state request was answered");
+    }
+
     fn confirmed(entropy: u8) -> CreateFlow {
         let words = words::from_entropy(&[entropy; 16]);
         let list: Vec<String> = words.words().iter().map(|w| w.to_string()).collect();
@@ -3598,12 +3877,12 @@ mod tests {
     }
 
     /// The desktop vault over `dir`, as the app opens it on each start.
-    fn open_vault(dir: &std::path::Path) -> DesktopVault {
-        DesktopVault::with_kdf(
+    fn open_vault(dir: &std::path::Path) -> Arc<DesktopVault> {
+        Arc::new(DesktopVault::with_kdf(
             Box::new(FileStore::new(dir)),
             PendingIncepts::file(dir),
             CHEAP,
-        )
+        ))
     }
 
     fn pass() -> Option<Secret<String>> {
@@ -3937,10 +4216,10 @@ mod tests {
     /// executor's store, and not set while nothing is known.
     #[tokio::test]
     async fn the_public_state_is_blocked_when_the_executor_has_no_store_it_trusts() {
-        let vault = DesktopVault::new(
+        let vault = Arc::new(DesktopVault::new(
             Box::new(crate::store::MemoryStore::new()),
             PendingIncepts::memory(),
-        );
+        ));
         let executor = ViaExecutor::new(FakeExecutor::new());
         assert_eq!(public_state_on(Some(&executor), &vault).await.blocked, None);
         for store in [
@@ -3997,10 +4276,10 @@ mod tests {
     /// offline: the main window is told why nothing can be done, in a step's own words.
     #[tokio::test]
     async fn a_store_that_cannot_keep_the_enc_key_reaches_the_person_not_offline() {
-        let vault = DesktopVault::new(
+        let vault = Arc::new(DesktopVault::new(
             Box::new(NoClaims(crate::store::MemoryStore::new())),
             PendingIncepts::memory(),
-        );
+        ));
         let fake = FakeExecutor::new();
         let device_key = Signer::key(&fake.device).as_str().to_string();
         let public = public_state_reached(fake, &device_key, &vault).await;
@@ -4024,10 +4303,10 @@ mod tests {
         assert_eq!(json["blocked"], blocked);
 
         // A store that keeps it: not blocked, and the executor's state is read.
-        let vault = DesktopVault::new(
+        let vault = Arc::new(DesktopVault::new(
             Box::new(crate::store::MemoryStore::new()),
             PendingIncepts::memory(),
-        );
+        ));
         let public = public_state_reached(FakeExecutor::new(), &device_key, &vault).await;
         assert_eq!(public.blocked, None);
     }
@@ -4040,10 +4319,10 @@ mod tests {
 
     #[tokio::test]
     async fn a_step_input_with_no_step_open_is_refused_and_cancel_is_harmless() {
-        let vault = DesktopVault::new(
+        let vault = Arc::new(DesktopVault::new(
             Box::new(crate::store::MemoryStore::new()),
             crate::pending::PendingIncepts::memory(),
-        );
+        ));
         let handle = spawn(
             vault,
             ExecutorAddress {
@@ -4082,10 +4361,10 @@ mod tests {
         ] {
             let executor = ViaExecutor::new(FakeExecutor::new());
             *executor.rpc().store.borrow_mut() = store;
-            let vault = DesktopVault::new(
+            let vault = Arc::new(DesktopVault::new(
                 Box::new(crate::store::MemoryStore::new()),
                 PendingIncepts::memory(),
-            );
+            ));
             let screens =
                 run_create_on(&executor, &vault, |_, first| async move { vec![first] }).await;
             assert_eq!(
@@ -4295,7 +4574,7 @@ mod tests {
     /// The step ends when the driver returns (the window closes).
     async fn run_create_on<F, Fut>(
         executor: &ViaExecutor<FakeExecutor>,
-        vault: &DesktopVault,
+        vault: &Arc<DesktopVault>,
         window: F,
     ) -> Vec<Screen>
     where
@@ -4356,11 +4635,11 @@ mod tests {
         (address, rx, Some(first_tx), Window { tx }, first_rx)
     }
 
-    fn memory_vault(kind: crate::store::StoreKind) -> DesktopVault {
-        DesktopVault::new(
+    fn memory_vault(kind: crate::store::StoreKind) -> Arc<DesktopVault> {
+        Arc::new(DesktopVault::new(
             Box::new(crate::store::MemoryStore::as_kind(kind)),
             PendingIncepts::memory(),
-        )
+        ))
     }
 
     /// [`show_code_on`] on its own, without the service around it: its state reads its own, every
@@ -4368,7 +4647,7 @@ mod tests {
     async fn show_code_alone(
         executor: &ViaExecutor<FakeExecutor>,
         events: broadcast::Receiver<Value>,
-        vault: &DesktopVault,
+        vault: &Arc<DesktopVault>,
         address: &ExecutorAddress,
         rx: &mut Rx,
         reply: &mut Reply,
@@ -4394,7 +4673,7 @@ mod tests {
     /// with `listed` (this vault's custody enc key when `None`), and the executor's sealed inbox
     /// holds master #0 sealed to that key, as `m1`. Answers the identity's SCID.
     fn joined_executor(
-        vault: &DesktopVault,
+        vault: &Arc<DesktopVault>,
         listed: Option<String>,
     ) -> (ViaExecutor<WithEncKey<FakeExecutor>>, String) {
         use ad4m_identity_client::EncKey;
@@ -5256,7 +5535,7 @@ mod tests {
     async fn show_code_served(
         executor: &ViaExecutor<FakeExecutor>,
         events: broadcast::Receiver<Value>,
-        vault: &DesktopVault,
+        vault: &Arc<DesktopVault>,
         address: &ExecutorAddress,
         rx: &mut Rx,
         reply: &mut Reply,

@@ -104,7 +104,7 @@ The line under the heading is yours: say what a reviewer of this PR should and s
 where it merges if that is not `dev`. The PR template carries the block, commented out.
 
 GitHub shows a PR's base branch on its own page, as a branch name, and nowhere in the list. So the
-`PR stacking` workflow labels every PR based on anything but `dev` or `main` as `stacked`, which the
+`PR stacking` workflow labels every PR based on anything but `dev`, `staging` or `main` as `stacked`, which the
 list shows beside the title, and checks the block against the base. It also ends the title with
 `(stacked on #N)`, naming the PR whose branch the base is, since a label can't say which one. Don't
 type the suffix yourself: the workflow writes it from the base, corrects it after a rebase onto

@@ -30,7 +30,7 @@ vi.mock('../src/frameworks/solid/stores/ProfileStore', () => ({
   useProfileStore: () => ({ fetchProfile: async () => undefined, profiles: () => [] }),
 }));
 vi.mock('../src/frameworks/solid/stores/SpaceStore', () => ({
-  useSpaceStore: () => ({ autoInterpret: () => false, autoExtractFor: () => false }),
+  useSpaceStore: () => ({ autoInterpret: () => false, autoInterpretFor: () => false }),
 }));
 
 let published: ModuleHostServices = {};

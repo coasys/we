@@ -509,6 +509,16 @@ export function createCallStore(deps: ModuleStoreDeps) {
    */
   const REPLACED = 'You joined this call from another tab, so it ended here.';
   /**
+   * The session's own verdict that the call is over (`call-ended`), as opposed to another tab
+   * taking it (`replaced`). `gave-up` is a connection the backend's rebuilds could not save;
+   * `refused` is the call server saying this session is another agent's. Both are said plainly,
+   * because a silent end reads as a dropped call — and both leave the session already stopped, so
+   * joining again is the person's choice rather than anything automatic.
+   */
+  const CALL_GAVE_UP = 'The call lost its connection for good, so it ended here. You can join again.';
+  const CALL_REFUSED = 'The call server refused this session, so the call ended here. You can join again.';
+  const CALL_ENDED = 'The call ended here. You can join again.';
+  /**
    * The microphone this agent is sending, as a signal rather than a read through to the controller.
    *
    * It has to be a signal because of *when* the stream appears. `join` sets `callId` and only then
@@ -1071,7 +1081,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
    * template binds to it. A plain `let` is invisible to the reactive graph, so every surface reading
    * "which call is this" resolved once — against the frame before the call existed — and never
    * heard about the record that arrived a moment later. It read as the board, the transcript and
-   * the extraction panel all ignoring a call that was plainly running.
+   * the interpretation panel all ignoring a call that was plainly running.
    */
   const [callRecord, setCallRecord] = signal<string | null>(null);
 
@@ -1212,6 +1222,17 @@ export function createCallStore(deps: ModuleStoreDeps) {
     on('replaced', () => {
       teardown();
       setProblem(REPLACED);
+    });
+    /*
+      The session ended the call itself: the backend's rebuilds gave up (`gave-up`), or the call
+      server refused this session as another agent's (`refused`). The session is already stopped —
+      and its roster already emptied — so like `replaced` the call is let go and the reason said,
+      rather than rebuilt or silently dead.
+    */
+    on('call-ended', (event) => {
+      const reason = (event as { reason?: unknown } | null)?.reason;
+      teardown();
+      setProblem(reason === 'refused' ? CALL_REFUSED : reason === 'gave-up' ? CALL_GAVE_UP : CALL_ENDED);
     });
     session.on('error', (err: unknown) => console.error('call: backend error', err));
 

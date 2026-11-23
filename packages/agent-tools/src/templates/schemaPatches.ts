@@ -2,7 +2,7 @@
  * schemaPatches — applying the `update_schema` tool's ID-based patches to a template schema.
  *
  * The tool layer between the AI infrastructure (which produces patch payloads) and the edit
- * session (which decides whether a validated result is applied or buffered). Pure schema
+ * session (which decides whether a validated result is kept). Pure schema
  * mechanics — no Solid, no stores, no network.
  */
 import type { DefinitionUses, SchemaNode } from '@we/schema-shared';

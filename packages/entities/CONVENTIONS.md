@@ -160,12 +160,12 @@ it marks it, in the same write, and the run's `kind` says what kind of writing i
 
 The writers today:
 
-| Writer                              | Run                                                | Marked                                                                                                                                 |
-| ----------------------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| The agent's data tools              | the conversation's, `agent`                        | what they create; what they change is an `Amendment`                                                                                   |
-| The editor's own chat               | one per reply, `chat`, hung off the chat           | the reply's `TextBlock`; the person's messages carry nothing                                                                           |
-| The transcriber                     | one per speaker, call and model, `transcription`   | each spoken line, beside `source: 'spoken'`                                                                                            |
-| An extraction pass somebody presses | one per pass, `extraction`, opened before the pass | what the pass _made_, by the backend (`run` on the interpretation port), since only it knows which records it made rather than matched |
+| Writer                                  | Run                                                | Marked                                                                                                                                 |
+| --------------------------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| The agent's data tools                  | the conversation's, `agent`                        | what they create; what they change is an `Amendment`                                                                                   |
+| The editor's own chat                   | one per reply, `chat`, hung off the chat           | the reply's `TextBlock`; the person's messages carry nothing                                                                           |
+| The transcriber                         | one per speaker, call and model, `transcription`   | each spoken line, beside `source: 'spoken'`                                                                                            |
+| An interpretation pass somebody presses | one per pass, `extraction`, opened before the pass | what the pass _made_, by the backend (`run` on the interpretation port), since only it knows which records it made rather than matched |
 
 Ask **`generatedRun(record)`** (`@we/entities`, and the host expression function of the same name)
 rather than reading the relation. It answers "did a model write this"; what kind of writing is the

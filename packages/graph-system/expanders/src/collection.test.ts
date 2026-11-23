@@ -196,7 +196,7 @@ describe('propertyExpander', () => {
 
 describe('what a collection is opened into by default', () => {
   it('draws the block types interpretation writes, without being told they exist', async () => {
-    // A call's collection acquires tasks and events without anyone composing them — the extraction
+    // A call's collection acquires tasks and events without anyone composing them — the interpretation
     // pass parents them straight onto it. They used to have to be named in a default list, and
     // before they were, a successful extraction was indistinguishable from one that found nothing.
     const { context } = contextWith(() => [

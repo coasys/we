@@ -1,12 +1,10 @@
 /**
  * The social DNA package: reading it, installing it, and reading back the records of its classes.
  *
- * A package is a WE bundle (`format: "we-bundle"`, see docs/architecture/apps-as-data.md) with one
- * addition: `flows`, a list of `WorkflowDefinition`s (`@we/backend-shared`, workflows.ts). The bundle
- * half installs through the app — Settings → Apps & templates → "Install an app from a file" — which
- * is the path a person takes. Bundles have no field for flows yet, so the flows are installed from
- * Node through the workflow port (`createAd4mBackendPorts(client).workflows.install`), the same port
- * the app's Workflows page writes through. The README documents the format.
+ * A package is a WE bundle (`format: "we-bundle"`, see docs/architecture/apps-as-data.md): record types
+ * and the `workflows` they move through. It installs through the app — Settings → Apps & templates →
+ * "Install an app from a file" — which is the path a person takes, and setting the space up installs
+ * the workflows with the record types. The README documents the format.
  *
  * Records are read straight from the space's links, by each class's flag and property predicates as
  * the package declares them: what is asserted is what is stored, not what a store chose to show.
@@ -45,7 +43,7 @@ export function readDna(path = DNA_PATH) {
     bundle,
     name: bundle.name,
     classes,
-    flows: bundle.flows ?? [],
+    workflows: bundle.workflows ?? [],
     byName: (n) => classes.find((c) => c.name === n),
   };
 }
@@ -166,20 +164,23 @@ export async function installDnaThroughUi(who, spaceName, perspective, path = DN
   await page.getByRole('tree', { name: 'This space' }).waitFor({ timeout: 60_000 });
 }
 
-/** Installs the package's flows into a space through the workflow port, and checks they read back. */
-export async function installFlows(ports, perspective) {
+/** The package's workflows, which setting the space up installed, read back through the workflow port. */
+export async function expectWorkflows(ports, perspective) {
   // A flow's evidence names a relation of its record ("responses" of a Task). The port resolves it from
   // the shapes declared in this process — the app declares a space's shapes when it opens the space
   // (ShapeStore), and this process declares the package's, under the same module id the app uses.
   for (const recordType of DNA.bundle.recordTypes ?? []) {
     ports.schemas.declareInDataset(perspective, recordType.manifest, { moduleId: `shape/${recordType.name}` });
   }
-  for (const flow of DNA.flows) await ports.workflows.install(perspective, flow);
-  const listed = await ports.workflows.list(perspective);
-  for (const flow of DNA.flows) {
+  const listed = await until(
+    () => ports.workflows.list(perspective),
+    (rows) => DNA.workflows.every((flow) => rows.some((w) => w.name === flow.name)),
+    { timeout: 60_000, what: 'the package’s workflows, installed when the space was set up' },
+  );
+  for (const flow of DNA.workflows) {
     assert.ok(
       listed.some((w) => w.name === flow.name),
-      `flow ${flow.name} is listed after install (listed: ${listed.map((w) => w.name).join(', ')})`,
+      `workflow ${flow.name} is listed after install (listed: ${listed.map((w) => w.name).join(', ')})`,
     );
   }
 }

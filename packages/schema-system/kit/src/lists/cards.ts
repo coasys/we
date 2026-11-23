@@ -43,7 +43,7 @@ export interface CardShellOptions {
    */
   localState?: Record<string, LocalStateField>;
   /**
-   * Subscriptions the card holds — a call's transcript, what extraction wrote onto it. Declared on
+   * Subscriptions the card holds — a call's transcript, what interpretation wrote onto it. Declared on
    * the card so they can name the row (`call.id`), which nothing above the `$each` can.
    */
   queries?: Record<string, QueryStateField>;

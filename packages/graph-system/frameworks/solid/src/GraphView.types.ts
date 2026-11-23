@@ -798,7 +798,7 @@ export interface GraphRegion {
 /**
  * A mark drawn on the canvas at a world point by something outside the graph.
  *
- * A live cursor, a pin on a card, a highlight on something an extraction pass touched. The graph
+ * A live cursor, a pin on a card, a highlight on something an interpretation pass touched. The graph
  * positions it and nothing else: what it *is* comes from the host, exactly as `nodeContent` does, so a
  * graph package meant to be portable never learns what a cursor or a comment is.
  *

@@ -79,7 +79,7 @@ describe('a panel header', () => {
       far edge, beside the switch or the record button, and reads as a control of theirs.
     */
     const aside = { type: 'we-switch' };
-    const header = panelHeader({ title: 'Extraction', help: 'A model reads the transcript.', aside });
+    const header = panelHeader({ title: 'Interpretation', help: 'A model reads the transcript.', aside });
     const name = header.children?.[0] as { type: string; props: Record<string, unknown>; children: unknown[] };
 
     expect(name.type).toBe('Row');
@@ -93,10 +93,10 @@ describe('a panel header', () => {
 
 describe('a section label', () => {
   it('is quieter than a panel own name, so the two do not compete', () => {
-    const props = (sectionLabel({ label: 'Extracted' }).children?.[0] as { props: Record<string, unknown> }).props;
+    const props = (sectionLabel({ label: 'Interpreted' }).children?.[0] as { props: Record<string, unknown> }).props;
 
     expect(props).toMatchObject(SECTION_LABEL_PROPS);
-    // The distinction the extraction panel had no way to draw: its only capitalised line said what
+    // The distinction the interpretation panel had no way to draw: its only capitalised line said what
     // the list below held, and with one treatment available that read as the panel's name.
     expect(SECTION_LABEL_PROPS.color).not.toBe(PANEL_TITLE_PROPS.color);
     expect(SECTION_LABEL_PROPS.variant).not.toBe(PANEL_TITLE_PROPS.variant);
@@ -119,7 +119,7 @@ describe('a section label', () => {
     expect(sectionLabel({ label: 'States', aside: { type: 'we-switch' } }).props?.minHeight).not.toBe(
       panelHeader({ title: 'Key', aside: { type: 'we-switch' } }).props?.minHeight,
     );
-    expect(sectionLabel({ label: 'Extracted' }).props?.minHeight).toBeUndefined();
+    expect(sectionLabel({ label: 'Interpreted' }).props?.minHeight).toBeUndefined();
   });
 });
 
@@ -127,19 +127,19 @@ describe('a panel shell', () => {
   it('opens with the header, before anything conditional', () => {
     // The failure this prevents: a title below a `$if`, which is missing in the state that most
     // needs a name — the one where the panel is explaining why it has nothing to show.
-    const shell = panelShell({ title: 'Extraction', children: [{ type: '$if' }] });
+    const shell = panelShell({ title: 'Interpretation', children: [{ type: '$if' }] });
 
-    expect(shell.children?.[0]).toEqual(panelHeader({ title: 'Extraction' }));
+    expect(shell.children?.[0]).toEqual(panelHeader({ title: 'Interpretation' }));
   });
 
   it('hands the header everything it takes', () => {
     // The options type extends the header's, so a new header option typechecks on the shell and
     // is silently dropped unless it is forwarded — which is how `help` first shipped as nothing.
     const aside = { type: 'we-switch' };
-    const shell = panelShell({ title: 'Extraction', help: 'A model reads the transcript.', aside, children: [] });
+    const shell = panelShell({ title: 'Interpretation', help: 'A model reads the transcript.', aside, children: [] });
 
     expect(shell.children?.[0]).toEqual(
-      panelHeader({ title: 'Extraction', help: 'A model reads the transcript.', aside }),
+      panelHeader({ title: 'Interpretation', help: 'A model reads the transcript.', aside }),
     );
   });
 

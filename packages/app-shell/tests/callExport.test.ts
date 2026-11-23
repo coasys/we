@@ -1,8 +1,8 @@
 import {
   exportFileName,
-  type ExtractionLogInput,
   fenced,
-  formatExtractionLog,
+  formatInterpretationLog,
+  type InterpretationLogInput,
   plainFields,
   transcriptLine,
 } from '@shared/interpretation/callExport';
@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 
 const nameFor = (did: string) => (did === 'did:key:anna' ? 'Anna' : did);
 
-const input = (overrides: Partial<ExtractionLogInput> = {}): ExtractionLogInput => ({
+const input = (overrides: Partial<InterpretationLogInput> = {}): InterpretationLogInput => ({
   callId: 'call-1',
   callTitle: 'Planning',
   exportedAt: new Date('2026-09-14T12:00:00.000Z'),
@@ -75,9 +75,9 @@ describe('a stored record as data', () => {
   });
 });
 
-describe('the extraction log', () => {
+describe('the interpretation log', () => {
   it('lists passes oldest first with the prompt and response verbatim', () => {
-    const log = formatExtractionLog(
+    const log = formatInterpretationLog(
       input({
         passes: [
           { createdAt: '2026-09-14T11:30:00.000Z', trigger: 'auto', prompt: 'second prompt', output: 'plain' },
@@ -105,7 +105,7 @@ describe('the extraction log', () => {
   });
 
   it('carries the settings, the transcript once, the records and what is still waiting', () => {
-    const log = formatExtractionLog(
+    const log = formatInterpretationLog(
       input({
         passes: [{ createdAt: '2026-09-14T11:10:00.000Z' }],
         records: [{ id: 'task-1', __subjectClass: 'TaskBlock', title: 'Ship it' }],
@@ -117,7 +117,7 @@ describe('the extraction log', () => {
     expect(log).toContain('- Space default: TaskBlock, EventBlock');
     expect(log).toContain('Anna, 2026-09-14T11:00:00.000Z: Ship it Friday');
     expect(log).toContain('### TaskBlock: `task-1`');
-    expect(log).toContain('- Awaiting a decision: yes — made by extraction, not kept yet');
+    expect(log).toContain('- Awaiting a decision: yes — made by interpretation, not kept yet');
     expect(log).toContain('### New TaskBlock: `task-1`');
     // A pass from before prompts were stored says so rather than showing an empty fence.
     expect(log).toContain('#### Prompt\n\n_Not recorded._');
@@ -144,7 +144,7 @@ describe('the accepted changes section', () => {
   };
 
   it('names the record, the property and both values', () => {
-    const log = formatExtractionLog(input({ amendments: [amendment] }));
+    const log = formatInterpretationLog(input({ amendments: [amendment] }));
 
     expect(log).toContain('## Accepted changes (1)');
     expect(log).toContain('### TaskBlock: `task-1`');
@@ -156,7 +156,7 @@ describe('the accepted changes section', () => {
   it('credits whoever kept it, not whoever wrote the record', () => {
     // The two are routinely different people — a change is proposed about somebody else's task and
     // accepted by whoever was reviewing — and which is which is the question a log answers.
-    const log = formatExtractionLog(input({ amendments: [amendment] }));
+    const log = formatInterpretationLog(input({ amendments: [amendment] }));
 
     expect(log).toContain('- Kept by: Anna (`did:key:anna`)');
   });
@@ -164,14 +164,14 @@ describe('the accepted changes section', () => {
   it('quotes an empty previous value rather than leaving a gap', () => {
     // A property filled in for the first time is an ordinary amendment and the common one. Unquoted,
     // the line reads as though the log failed to record something.
-    const log = formatExtractionLog(input({ amendments: [{ ...amendment, previousValue: '' }] }));
+    const log = formatInterpretationLog(input({ amendments: [{ ...amendment, previousValue: '' }] }));
 
     expect(log).toContain('- Was: ""');
   });
 
   it('says so when nothing was changed, rather than leaving the section out', () => {
     // The same rule the sections above follow: an absent heading reads as a log that forgot to ask.
-    const log = formatExtractionLog(input());
+    const log = formatInterpretationLog(input());
 
     expect(log).toContain('## Accepted changes (0)');
     expect(log).toContain('_No suggested change to an existing record has been kept on this call._');

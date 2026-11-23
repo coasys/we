@@ -9,6 +9,7 @@
  * space starter sets. One function for both routes, so a seed bundle and an installed one cannot
  * drift apart in what they put where.
  */
+import type { WorkflowDefinition } from '@we/backend-shared';
 import {
   type Bundle,
   type BundleBrand,
@@ -36,6 +37,8 @@ export interface BundlePieces {
   /** The themes it offers, its default first, each under the bundle's id. */
   themes: BundleTheme[];
   recordTypes: BundleRecordType[];
+  /** The workflows its records move through, installed when a space is set up for it. */
+  workflows: WorkflowDefinition[];
   /** The policy, with the template it names already put under the bundle's id. */
   display?: { spaces: 'ours' | 'theirs'; template?: string };
   brand?: BundleBrand;
@@ -83,6 +86,7 @@ export function bundlePieces(bundle: Bundle): BundlePieces {
     pages: (bundle.pages ?? []).map(land),
     themes: themes.map((theme) => ({ ...theme, id: id(theme.id) })),
     recordTypes: bundle.recordTypes ?? [],
+    workflows: bundle.workflows ?? [],
     ...(bundle.display
       ? {
           display: {

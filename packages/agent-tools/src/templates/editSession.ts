@@ -65,8 +65,7 @@ export interface EditSessionOptions {
   accept: (template: TemplateSchema) => Promise<string> | string;
   /**
    * The line shown after a run of accepted patches, given how many that run has applied so far —
-   * a run being consecutive turns with nothing said between them, which the caller may name. A
-   * read-only template says its changes await a fork.
+   * a run being consecutive turns with nothing said between them, which the caller may name.
    */
   acceptedLine?: (patches: number) => string;
   /** Called whenever what the conversation panel should show changes: the transcript so far, then a live tail. */
