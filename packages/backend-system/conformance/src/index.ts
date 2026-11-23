@@ -132,6 +132,8 @@ export const CONFORMANCE_CASES = [
   'records.round-trip',
   'records.empty-clears',
   'records.not-excludes-absent',
+  'records.clear-stays-cleared',
+  'records.required-not-cleared',
   'schema.module-entity',
   'schema.hints-round-trip',
   'schema.shapes-round-trip',
@@ -372,6 +374,47 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
           expect(await names('Space', { url: { not: 'elsewhere' } })).toEqual(['Addressed']);
           expect(await names('Space', { url: { not: ['elsewhere', 'nowhere'] } })).toEqual(['Addressed']);
           expect(await names('Space', { url: '' })).toEqual([]);
+        },
+      );
+
+      test(
+        'records.clear-stays-cleared',
+        'a cleared property is not written back by a save of another field',
+        async () => {
+          // A cleared property reads back as its declared default. A save that took that default for a
+          // change would write it back, and the property would be present again: a save writes what
+          // the caller changed since the record was read, and nothing else.
+          const Task = model('TaskBlock');
+          const task = await Task.create(subject.dataset, { title: 'Clear me', priority: 'high' });
+          await Task.update(subject.dataset, task.id, { priority: '' });
+
+          const [instance] = await reader('TaskBlock').findAll(subject.dataset, { where: { id: task.id } });
+          (instance as unknown as { title: string }).title = 'Renamed';
+          await (instance as unknown as { save(): Promise<void> }).save();
+
+          expect(await reader('TaskBlock').findAll(subject.dataset, { where: { title: 'Renamed' } })).toHaveLength(1);
+          expect(await reader('TaskBlock').findAll(subject.dataset, { where: { priority: 'medium' } })).toHaveLength(0);
+        },
+      );
+
+      test(
+        'records.required-not-cleared',
+        'a required property cannot be cleared, through update or save',
+        async () => {
+          // The same rule as the one that makes '' and null clear an optional property: a required one
+          // is refused, with nothing written, since the record would no longer be what it was declared.
+          const Task = model('TaskBlock');
+          const task = await Task.create(subject.dataset, { title: 'Keep me' });
+          const refused = 'Property "title" is required and cannot be cleared';
+
+          await expect(Task.update(subject.dataset, task.id, { title: '' })).rejects.toThrow(refused);
+          await expect(Task.update(subject.dataset, task.id, { title: null })).rejects.toThrow(refused);
+
+          const [instance] = await reader('TaskBlock').findAll(subject.dataset, { where: { id: task.id } });
+          (instance as unknown as { title: string }).title = '';
+          await expect((instance as unknown as { save(): Promise<void> }).save()).rejects.toThrow(refused);
+
+          expect(await reader('TaskBlock').findAll(subject.dataset, { where: { title: 'Keep me' } })).toHaveLength(1);
         },
       );
     });

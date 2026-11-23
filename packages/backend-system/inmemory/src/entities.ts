@@ -355,6 +355,18 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
     /** Instances remember where they came from, so `save()` and `delete()` need no argument. */
     const homes = new WeakMap<object, DatasetEntry>();
 
+    /** What each instance held when it was read, so `save()` writes only what the caller changed since. */
+    const loaded = new WeakMap<object, Record<string, unknown>>();
+
+    /** A required property is refused a `''` or `null` before anything is written, as the SDK refuses it. */
+    const checkClearable = (changed: Record<string, unknown>) => {
+      for (const [key, value] of Object.entries(changed)) {
+        if ((value === '' || value === null) && entity.properties[key]?.required) {
+          throw new Error(`Property "${key}" is required and cannot be cleared`);
+        }
+      }
+    };
+
     /** The row as it stands now, for a check to read — copied before the write changes it. */
     const copied = (row: AnyRow | null) => {
       const before = row ? { ...row } : null;
@@ -394,11 +406,13 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         const changed: Record<string, unknown> = {};
         for (const [key, value] of Object.entries(this as unknown as Record<string, unknown>)) {
           if (typeof value === 'function' || key.startsWith('$')) continue;
-          // Only what changed: a `''` over a field the row has no value for is not a change.
-          if (row[key] === value || (value === '' && !(key in row))) continue;
+          // Only what the caller changed since the read: a default standing in for a cleared field
+          // is not a change, and must not write the field back.
+          if (row[key] === value || loaded.get(this)?.[key] === value) continue;
           changed[key] = value;
         }
         if (!Object.keys(changed).length) return;
+        checkClearable(changed);
         await checkEntityWrite({
           dataset: dataset,
           entity: name,
@@ -451,6 +465,7 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
           }
           instance[key] = value;
         }
+        loaded.set(instance, { ...instance });
         return instance;
       }
 
@@ -580,6 +595,7 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         const row = tableOf(dataset, name).find((r) => r.id === id);
         if (!row) return null;
         const changed = Object.fromEntries(Object.entries(data).filter(([key]) => !relationNames.has(key)));
+        checkClearable(changed);
         await checkEntityWrite({ dataset: handle, entity: name, kind: 'edit', id, data: changed, record: copied(row) });
         for (const [key, value] of Object.entries(changed)) writeField(row, key, value);
         row.updatedAt = new Date().toISOString();
