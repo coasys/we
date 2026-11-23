@@ -36,6 +36,17 @@ export interface DestructiveFacts {
 
 const responsesOf = (count: number) => `${count} ${count === 1 ? 'response' : 'responses'}`;
 
+/*
+  The record's kind in a person's words, not the class name — 'AcornOutcome' is
+  what the model is called in code; 'outcome' is what somebody answering the
+  dialog calls it. The `Acorn` namespace prefix goes first, then camelCase opens
+  into words ('OutcomeLink' → 'outcome link').
+*/
+const readableKind = (entity: string): string => {
+  const words = entity.replace(/^Acorn/, '').replace(/([a-z0-9])([A-Z])/g, '$1 $2');
+  return words.charAt(0).toLowerCase() + words.slice(1);
+};
+
 export function describeDestructive(
   path: string,
   args: unknown[],
@@ -45,7 +56,7 @@ export function describeDestructive(
   switch (path) {
     case 'record.delete':
       return {
-        title: entity ? `Delete this ${entity}?` : 'Delete this record?',
+        title: entity ? `Delete this ${readableKind(entity)}?` : 'Delete this record?',
         body: 'It will be removed for everyone in this space. This cannot be undone.',
       };
     case 'recordStore.deleteRecords': {
