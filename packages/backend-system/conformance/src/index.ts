@@ -37,8 +37,9 @@ import { CORE_MANIFEST } from '@we/entities/manifest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { describeTemplateQueries, TEMPLATE_QUERY_CASES, type TemplateQueryCase } from './templateQueries';
+import { describeWriteCases, WRITE_CASES, type WriteCase } from './writes';
 
-export { TEMPLATE_QUERY_CASES, type TemplateQueryCase };
+export { TEMPLATE_QUERY_CASES, type TemplateQueryCase, WRITE_CASES, type WriteCase };
 
 /** One fresh backend, ready for a case to write into. */
 export interface ConformanceSubject {
@@ -163,8 +164,11 @@ export const CONFORMANCE_CASES = [
   'workflows.remove-refused-with-records',
 ] as const;
 
-/** Every case a harness can name in `knownGaps` — the per-case ones above and the template queries. */
-export type ConformanceCase = (typeof CONFORMANCE_CASES)[number] | TemplateQueryCase;
+/**
+ * Every case a harness can name in `knownGaps` — the per-case ones above, grouped and named writes,
+ * and the template queries.
+ */
+export type ConformanceCase = (typeof CONFORMANCE_CASES)[number] | WriteCase | TemplateQueryCase;
 
 interface Row {
   id: string;
@@ -1134,5 +1138,6 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
     });
   });
 
+  describeWriteCases(name, harness, timeout);
   describeTemplateQueries(name, harness, timeout);
 }
