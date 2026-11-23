@@ -374,9 +374,8 @@ const relationshipKind: SchemaNode = {
                                 square: true,
                                 label: 'Leave the kind unnamed',
                                 flexShrink: '0',
-                                // An empty string, which the AD4M adapter reads as "clear this
-                                // property" — see `clearOnEmpty`. Not null or undefined: those still
-                                // skip, so that an ordinary partial save is not data loss.
+                                // An empty string, which the SDK reads as "clear this
+                                // property".
                                 onClick: {
                                   $invoke: 'recordStore.updateRecordField',
                                   args: ['Relationship', { $: 'routeStore.params.card' }, 'relationshipTypeId', ''],
