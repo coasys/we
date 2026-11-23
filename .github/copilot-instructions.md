@@ -6578,8 +6578,11 @@ name, or a Prolog query makes it re-run the subscription on every diff. `onPropo
 What the SDK and executor do around a subscription, so a watch can rely on it:
 
 - A live query has one handle: `first` is the first result, `subscribe(fn)` calls `fn` at once with
-  the current snapshot and then on each change, and `dispose()` stops it. A snapshot says
-  `initial` for the value the handle opened on, so a watch that only wants changes skips that one.
+  the current snapshot once the query is no longer loading (while it loads, the first call comes when
+  it opens, so never rely on data being there synchronously) and then on each change, and
+  `dispose()` stops it. A snapshot says `initial` for the value the handle opened on, so a watch
+  that only wants changes acts only on `status === 'ready' && !initial`: a handle that fails to open
+  sends one `error` snapshot, which is not a change.
   Read the first result from the handle rather than reading and watching separately.
 - After a websocket reconnect, the SDK re-opens the query and hands the current result to every
   subscriber, so a watch hears a refresh rather than nothing.

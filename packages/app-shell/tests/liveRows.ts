@@ -28,9 +28,21 @@ export function liveRows<T = unknown>(initial: T[]): LiveQuery<LivePage<T>> & { 
  * settles. `onAsk` runs when something starts listening.
  */
 export function heldLive<T>(live: LiveQuery<T>, gate: Promise<unknown>, onAsk?: () => void): LiveQuery<T> {
+  let rejectFirst!: (error: Error) => void;
+  const first = new Promise<T>((resolve, reject) => {
+    rejectFirst = reject;
+    void gate.then(() => live.first).then(resolve, reject);
+  });
+  // Nobody may read it; a rejection must not go unhandled.
+  first.catch(() => undefined);
   return {
     ...live,
-    first: gate.then(() => live.first),
+    first,
+    // Disposed while held: the pending first result is rejected, as a real handle's is.
+    dispose: () => {
+      rejectFirst(new Error('The live query was disposed before it answered'));
+      live.dispose();
+    },
     subscribe: (fn) => {
       onAsk?.();
       let stop = () => {};

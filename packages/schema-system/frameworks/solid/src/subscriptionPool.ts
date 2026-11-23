@@ -143,13 +143,25 @@ export function acquireSubscription(
     created.live.subscribe((snapshot) => {
       if (snapshot.status !== 'ready' || !snapshot.data) return;
       created.latest = snapshot.data.results;
-      for (const each of [...created.listeners]) each.onRows(snapshot.data.results);
+      for (const each of [...created.listeners]) {
+        try {
+          each.onRows(snapshot.data.results);
+        } catch (error) {
+          console.error('A subscription listener threw', error);
+        }
+      }
     });
     created.live.first.catch((err: unknown) => {
       created.failed = true;
       created.error = err;
       // A handle disposed before it answered rejects too; nobody is left to hear that.
-      for (const each of [...created.listeners]) each.onError(err);
+      for (const each of [...created.listeners]) {
+        try {
+          each.onError(err);
+        } catch (error) {
+          console.error('A subscription listener threw', error);
+        }
+      }
     });
   }
 

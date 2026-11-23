@@ -200,4 +200,25 @@ describe('two watches on one perspective', () => {
     expect(calls).toBe(2);
     expect(heard).toBe(1);
   });
+
+  it('does not report a change when the watch failed to open', async () => {
+    const port = createAd4mInterpretationPort();
+    const p = perspective(async () => true);
+    // The SDK's live query when opening fails: `first` rejects and listeners hear an error snapshot.
+    (p.handle as { liveSparql: unknown }).liveSparql = () => {
+      const first = Promise.reject(new Error('executor unreachable'));
+      return {
+        first,
+        subscribe(fn: (snapshot: { status: string; initial: boolean }) => void) {
+          void first.catch(() => fn({ status: 'error', initial: false }));
+          return () => {};
+        },
+        dispose() {},
+      };
+    };
+    let heard = 0;
+
+    await expect(port.onProposalsChanged!(p.handle, () => heard++)).rejects.toThrow('executor unreachable');
+    expect(heard).toBe(0);
+  });
 });

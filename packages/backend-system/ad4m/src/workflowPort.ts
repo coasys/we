@@ -660,9 +660,9 @@ export function createAd4mWorkflowPort(selfId: () => string | undefined = () => 
       const started = Promise.all([
         ...WATCHED_PREDICATES.map((predicate) => {
           const live = perspective.liveSparql(`SELECT ?s ?o WHERE { ?s <${predicate}> ?o }`);
-          // The first snapshot is the rows as they are now, not a change.
+          // The first snapshot is the rows as they are now, not a change; a failed open is no change either.
           live.subscribe((snapshot) => {
-            if (!snapshot.initial) notify(predicate);
+            if (snapshot.status === 'ready' && !snapshot.initial) notify(predicate);
           });
           return live.first.then(() => live);
         }),

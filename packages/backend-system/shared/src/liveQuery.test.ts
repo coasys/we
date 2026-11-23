@@ -178,6 +178,19 @@ describe('combineLiveQueries', () => {
     });
     await expect(live.first).rejects.toThrow('combine');
   });
+
+  it('gives the combiner a copy, so one that reorders its argument leaves the parts in place', async () => {
+    const a = source(1);
+    const b = source(10);
+    const live = combineLiveQueries([createLiveQuery(a), createLiveQuery(b)], (data) =>
+      data.sort((x, y) => y - x).reduce((sum, n) => sum + n, 0),
+    );
+    expect(await live.first).toBe(11);
+    a.set(2);
+    await tick();
+    expect(live.getSnapshot().data).toBe(12);
+    live.dispose();
+  });
 });
 
 describe('mapLiveQuery', () => {
@@ -218,5 +231,22 @@ describe('mapLiveQuery', () => {
       throw new Error('no');
     });
     await expect(mapped.first).rejects.toThrow('no');
+  });
+
+  it('does not start a queued map once the mapped handle is disposed', async () => {
+    const src = source(1);
+    let release!: () => void;
+    const started: number[] = [];
+    const mapped = mapLiveQuery(createLiveQuery(src), (n) => {
+      started.push(n);
+      return new Promise<number>((resolve) => (release = () => resolve(n)));
+    });
+    await tick();
+    src.set(2); // queued behind the map of 1, which has not finished
+    await tick();
+    mapped.dispose();
+    release();
+    await tick();
+    expect(started).toEqual([1]);
   });
 });

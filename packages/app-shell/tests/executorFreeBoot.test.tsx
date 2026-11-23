@@ -3006,6 +3006,24 @@ describe('following a space from the rows its live queries push', () => {
     reads.mockRestore();
   }, 10000);
 
+  it('reads the landmarks once when their watch fails to open', async () => {
+    // The watch's first result is what answers for the landmarks; without it they stayed loading.
+    let failing!: ReturnType<typeof vi.spyOn>;
+    const { stores } = await openSpace('Landmark Watch Fails', () => {
+      failing = vi
+        .spyOn(getEntity('SpaceLandmark') as unknown as { query: (...a: unknown[]) => unknown }, 'query')
+        .mockImplementation(() => ({
+          first: Promise.reject(new Error('executor unreachable')),
+          getSnapshot: () => ({ status: 'error', initial: false }),
+          subscribe: () => () => undefined,
+          dispose: () => undefined,
+        }));
+    });
+    await vi.waitFor(() => expect(stores.spaces.landmarksLoaded()).toBe(true));
+    expect(failing).toHaveBeenCalled();
+    failing.mockRestore();
+  }, 10000);
+
   it('hears a new task state without reading the states again', async () => {
     const { stores, handle } = await openSpace('Pushed States');
     const reads = spyFindAll('TaskState');
@@ -3068,6 +3086,36 @@ describe('following a space from the rows its live queries push', () => {
     expect(reads).not.toHaveBeenCalled();
     reads.mockRestore();
   }, 10000);
+
+  it('keeps the stored policy in force when the policy watch fails to open', async () => {
+    /*
+      The watch's first result is the only read of the versions. When it failed, the policy was marked
+      loaded with no versions, and an empty list is the open policy: writes were judged by it instead
+      of by the policy the space stores.
+    */
+    const { stores, handle } = await openSpace('Policy Watch Fails');
+    const here = stores.datasets.currentDataset()!.id;
+    await Policy.create(handle, { document: JSON.stringify(COMMUNITY_POLICY) } as never);
+    await vi.waitFor(() => expect(stores.spaces.policy().preset).toBe('community'));
+
+    await stores.spaces.createSpace('Policy Elsewhere', 'x', 'personal', 'hidden');
+    const elsewhere = (await lifecycle.list()).find((d) => d.name === 'Policy Elsewhere')!;
+    await stores.datasets.switchDataset(elsewhere.id);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.name).toBe('Policy Elsewhere'));
+
+    const failing = vi
+      .spyOn(getEntity('Policy') as unknown as { query: (...a: unknown[]) => unknown }, 'query')
+      .mockImplementation(() => ({
+        first: Promise.reject(new Error('executor unreachable')),
+        getSnapshot: () => ({ status: 'error', initial: false }),
+        subscribe: () => () => undefined,
+        dispose: () => undefined,
+      }));
+    await stores.datasets.switchDataset(here);
+    await vi.waitFor(() => expect(stores.spaces.policy()).toMatchObject({ loaded: true, preset: 'community' }));
+    expect(failing).toHaveBeenCalled();
+    failing.mockRestore();
+  }, 15000);
 
   it('hears a collection switched off without reading it again, and never hydrates its contents', async () => {
     // The space's own collection is asked about on entering, so watch from before that.

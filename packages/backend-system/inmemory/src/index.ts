@@ -49,7 +49,8 @@ export function createInMemoryBackend(config: BackendConfig) {
 
   function run(entity: string, opts: QueryOpts): Row[] {
     const { ir } = compileQuery({ entity, ...opts });
-    return executeQueryIR(ir, dataset);
+    // Detached from the table: a later mutate() must not change a result a snapshot already holds.
+    return structuredClone(executeQueryIR(ir, dataset));
   }
 
   function getEntity(name: string) {

@@ -322,3 +322,35 @@ describe('readProposals', () => {
     expect(Object.fromEntries(proposals.map((p) => [p.id, p.settled]))).toEqual({ 'p-fired': true, 'p-open': false });
   });
 });
+
+describe('watch', () => {
+  it('does not read again for a live query that failed to open', async () => {
+    const get = vi.fn(async () => []);
+    // The SDK's live query when opening fails: `first` rejects and listeners hear an error snapshot.
+    const failing = () => {
+      const first = Promise.reject(new Error('executor unreachable'));
+      return {
+        first,
+        subscribe(fn: (snapshot: { status: string; initial: boolean }) => void) {
+          void first.catch(() => fn({ status: 'error', initial: false }));
+          return () => {};
+        },
+        dispose() {},
+      };
+    };
+    const perspective = { get, liveSparql: failing, onFlowStateChanged: () => () => {} };
+    const onChange = vi.fn();
+    const warned = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await expect(createAd4mWorkflowPort().watch!(perspective as never, 'Tasks', onChange)).rejects.toThrow(
+      'executor unreachable',
+    );
+    await new Promise((r) => setTimeout(r, 150));
+
+    // A read that ran would have been warned about, whether or not it got as far as `get`.
+    expect(warned.mock.calls.filter((call) => String(call[0]).includes('could not read'))).toEqual([]);
+    expect(get).not.toHaveBeenCalled();
+    expect(onChange).not.toHaveBeenCalled();
+    warned.mockRestore();
+  });
+});

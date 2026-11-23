@@ -1328,9 +1328,9 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
       if (!watch) {
         const listeners = new Set<() => void>();
         const live = perspective.liveSparql(`SELECT ?base ?kind WHERE { ?base <${OVERLAY_KIND_PREDICATE}> ?kind }`);
-        // The first snapshot is the rows as they are now, not a change.
+        // The first snapshot is the rows as they are now, not a change; a failed open is no change either.
         live.subscribe((snapshot) => {
-          if (snapshot.initial) return;
+          if (snapshot.status !== 'ready' || snapshot.initial) return;
           for (const listener of [...listeners]) listener();
         });
         const started = live.first.then(() => live);

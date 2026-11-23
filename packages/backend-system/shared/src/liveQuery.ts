@@ -191,7 +191,7 @@ export function combineLiveQueries<S, T>(parts: readonly LiveQuery<S>[], combine
   const ready = parts.map(() => false);
   const offerCombined = () => {
     try {
-      store.offer(combine(latest as S[]));
+      store.offer(combine([...latest] as S[]));
     } catch (error) {
       store.fail(error);
     }
@@ -229,6 +229,8 @@ export function mapLiveQuery<S, T>(live: LiveQuery<S>, map: (data: S) => T | Pro
     if (snapshot.status !== 'ready') return;
     const data = snapshot.data as S;
     chain = chain.then(async () => {
+      // Disposed while this result waited its turn: do not start the map.
+      if (store.disposed) return;
       try {
         store.offer(await map(data));
       } catch (error) {

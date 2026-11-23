@@ -77,6 +77,39 @@ describe('a shared subscription', () => {
     expect(b).toHaveBeenLastCalledWith([{ id: 'i1' }, { id: 'i2' }]);
   });
 
+  it('keeps delivering to the others when one listener throws', async () => {
+    const { Model, builders } = model();
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const b = vi.fn();
+    const bError = vi.fn();
+    acquireSubscription(
+      Model,
+      dataset,
+      question,
+      () => {
+        throw new Error('first listener');
+      },
+      () => {
+        throw new Error('first listener');
+      },
+    );
+    acquireSubscription(Model, dataset, question, b, bError);
+
+    builders[0].answer([{ id: 'i1' }]);
+    await tick();
+    expect(b).toHaveBeenCalledWith([{ id: 'i1' }]);
+
+    const failing = model();
+    acquireSubscription(failing.Model, dataset, { where: { kind: 'other' } }, vi.fn(), () => {
+      throw new Error('first listener');
+    });
+    acquireSubscription(failing.Model, dataset, { where: { kind: 'other' } }, vi.fn(), bError);
+    failing.builders[0].fail(new Error('down'));
+    await tick();
+    expect(bError).toHaveBeenCalledWith(expect.objectContaining({ message: 'down' }));
+    quiet.mockRestore();
+  });
+
   it('shares by entity name, whatever object the host wraps the model in', async () => {
     // The AD4M bindings build a fresh wrapper on every lookup; keyed by object, nothing ever matched.
     const { Model, builders } = model();

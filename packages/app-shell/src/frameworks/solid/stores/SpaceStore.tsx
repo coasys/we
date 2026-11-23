@@ -2992,6 +2992,9 @@ export function SpaceStoreProvider(props: ParentProps) {
       });
       watch.first.catch((error: unknown) => {
         console.warn('SpaceStore: could not watch the space’s landmarks', error);
+        // The watch never opened, so nothing else answers for the landmarks: read them once. A handle
+        // disposed on leaving the space rejects too; `stopped` keeps that from starting a read.
+        if (!stopped) void untrack(() => reloadSpaceStructure(true));
       });
     }
     void untrack(() => reloadSpaceStructure(false));
@@ -4109,12 +4112,21 @@ export function SpaceStoreProvider(props: ParentProps) {
     // The pushed rows are every version, whole — the read `reloadPolicy` makes — so a new version is
     // applied from them. A later push supersedes an earlier one still resolving its authors.
     let pushed = 0;
-    const follow = (rows: Policy[]): Promise<void> => {
-      if (stopped) return Promise.resolve();
+    // Whether the newest push is in `policyRows`; false while it resolves, and if it could not be.
+    let applied = Promise.resolve(false);
+    const follow = (rows: Policy[]): void => {
+      if (stopped) return;
       const turn = ++pushed;
-      return policyVersionsOf(rows).then(
-        (versions) => void (!stopped && turn === pushed && setPolicyRows(versions)),
-        (error: unknown) => console.warn('SpaceStore: could not read the space’s policy', error),
+      applied = policyVersionsOf(rows).then(
+        (versions) => {
+          if (stopped || turn !== pushed) return false;
+          setPolicyRows(versions);
+          return true;
+        },
+        (error: unknown) => {
+          console.warn('SpaceStore: could not read the space’s policy', error);
+          return false;
+        },
       );
     };
     void (async () => {
@@ -4129,17 +4141,28 @@ export function SpaceStoreProvider(props: ParentProps) {
       if (stopped) return;
       // The query's first result is every version, which is what a read would have given.
       watch = Policy.query(dataset, {});
-      let opened: Promise<void> = Promise.resolve();
       watch.subscribe((s) => {
-        if (s.status !== 'ready' || !s.data) return;
-        const applied = follow(s.data.results);
-        if (s.initial) opened = applied;
+        if (s.status === 'ready' && s.data) follow(s.data.results);
       });
-      await watch.first.then(
-        () => opened,
-        (error: unknown) => console.warn('SpaceStore: could not watch the space’s policy', error),
-      );
-      if (!stopped) setPolicyLoaded(true);
+      let held = false;
+      try {
+        await watch.first;
+        // Settled once the newest push is in: a push that lands while an earlier one resolves its
+        // authors replaces it, and loaded must not be told before the rows it carries are applied.
+        let seen: Promise<boolean> | undefined;
+        while (seen !== applied) held = await (seen = applied);
+      } catch (error) {
+        if (stopped) return;
+        console.warn('SpaceStore: could not watch the space’s policy', error);
+      }
+      if (stopped) return;
+      /*
+        No page of versions reached `policyRows`: the watch failed to open, or the newest page could
+        not be turned into versions. An empty list is the open policy, which would judge every write,
+        so read the stored versions instead; that read marks the policy loaded.
+      */
+      if (!held) await untrack(reloadPolicy);
+      else setPolicyLoaded(true);
     })();
   });
 
