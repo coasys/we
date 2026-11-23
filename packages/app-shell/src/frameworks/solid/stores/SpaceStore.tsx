@@ -3629,7 +3629,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    * otherwise unfixable — withdraw it and make another, losing every task sitting in it. Offered
    * with the same framing the create form uses, which is what makes the consequence visible.
    *
-   * **An empty string clears**, rather than being skipped — see `clearOnEmpty` in the AD4M adapter.
+   * **An empty string clears**, rather than being skipped — the SDK clears a property set to `''` or `null`.
    * That is what makes a reset back to the template's default possible without deleting the state.
    *
    * By slug, like its two neighbours: it is what a task and a screen both hold.

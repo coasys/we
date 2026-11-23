@@ -9,8 +9,7 @@
  *
  * ## Why it installs on the base class
  *
- * Exactly the reasoning in `clearOnEmpty.ts`, which does the same thing one layer down: the model
- * classes are generated from the manifest, compiled from a manifest at runtime, or built from
+ * The model classes are generated from the manifest, compiled from a manifest at runtime, or built from
  * foreign SHACL, and they all extend `Ad4mModel`. Installing here covers all three, **including
  * classes that do not exist yet** — a community defines a shape this afternoon and its relations are
  * writable through the contract with nothing further registered.
@@ -22,7 +21,7 @@
  *
  * `addRelationValue` / `removeRelationValue` / `setRelationValues` are declared private. They are
  * reachable at runtime, and this package already reaches into AD4M internals where it must (see
- * `clearOnEmpty`'s `_perspective` / `_snapshot`), but there is no *need* here: the named accessors
+ * `writeChecks.ts`), but there is no *need* here: the named accessors
  * are public API, they are what every existing call site in WE uses, and the name is derived the
  * same way AD4M derives it. Reaching past a public method that does the job would be borrowing a
  * maintenance risk for nothing.
@@ -134,7 +133,7 @@ async function accessorFor(
 /**
  * Install the relation writes on `Ad4mModel`. Idempotent.
  *
- * Called once when the adapter builds its ports, beside `installClearOnEmpty`.
+ * Called once when the adapter builds its ports.
  */
 export function installRelationWrites(model: typeof Ad4mModel): void {
   const statics = model as unknown as Record<string | symbol, unknown>;
