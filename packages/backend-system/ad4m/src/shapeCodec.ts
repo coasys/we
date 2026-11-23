@@ -28,6 +28,7 @@
 import { Literal, SHACLShape } from '@coasys/ad4m';
 import { CONTAINMENT_PREDICATE, type EntityManifest, type EntitySchema, type ShapeInput } from '@we/backend-shared';
 
+import { classNameOf } from './className';
 import { toAd4mPredicate } from './containment';
 import * as KnownEntities from './entities';
 
@@ -356,7 +357,11 @@ export function readShape({ shape, links }: HeldShape): ReadShape | null {
     interpretation_hint?: string;
     properties: RawProperty[];
   };
-  const name = (json.target_class ?? '').replace(/^we:\/\//, '');
+  // The class's own name, and the vocabulary it is in when that is not WE's own: a class another
+  // vocabulary names (`conv://Question`) reads back with its namespace, so saving it keeps the IRI.
+  const targetClass = json.target_class ?? '';
+  const name = classNameOf(targetClass);
+  const namespace = targetClass.slice(0, targetClass.length - name.length);
   // The annotation wins when it is present, including when it disagrees with the native link.
   // A native parent is one URI that names a class this package generates — not a name cut out of the URI.
   const annotatedParent = value(shapeUri, ANNOTATION.extends);
@@ -382,6 +387,9 @@ export function readShape({ shape, links }: HeldShape): ReadShape | null {
   const annotatedAbstract = value(shapeUri, ANNOTATION.abstract);
   if (annotatedAbstract !== undefined) entity.abstract = annotatedAbstract as EntitySchema['abstract'];
   else if (shape.isAbstract === true) entity.abstract = true;
+  // A type with no flag field is known by its required fields; a minted flag reads back as declared.
+  if (!flag && !entity.abstract) entity.flag = false;
+  if (namespace && namespace !== 'we://') entity.namespace = namespace;
   set('extractable', ANNOTATION.extractable);
   set('blockable', ANNOTATION.blockable);
   set('composed', ANNOTATION.composed);

@@ -43,7 +43,10 @@ import { toAd4mOptions } from './options';
 
 /** A manifest entry plus the declared extras the neutral projection has no place for. */
 export type CompilableEntry = EntityManifestEntry & {
-  flag?: { predicate: string; value: string };
+  /** `false`: no type marker at all — a record is one when it has the required fields. */
+  flag?: { predicate: string; value: string } | false;
+  /** The class's IRI prefix, where the declaration names one. See `EntitySchema.namespace`. */
+  namespace?: string;
   /** Name of the parent entity — resolved to its *class* at build time, where the link lives. */
   extends?: string;
   abstract?: boolean;
@@ -134,11 +137,14 @@ export function buildEntityFromEntry(
   // orphan every existing instance.
   // An abstract entity is never instantiated, so it carries no type marker — minting one anyway
   // would tag every subtype's instances as the base type too.
-  const flag = entry.abstract
-    ? undefined
-    : entry.flag
-      ? { through: entry.flag.predicate, value: entry.flag.value }
-      : opts?.flag;
+  // A declaration that says it has no marker gets none minted either: its records are known by
+  // their required fields, as the vocabulary it comes from wrote them.
+  const flag =
+    entry.abstract || entry.flag === false
+      ? undefined
+      : entry.flag
+        ? { through: entry.flag.predicate, value: entry.flag.value }
+        : opts?.flag;
   if (flag) {
     proto.flag = '';
     fieldDefaults.flag = '';
@@ -208,6 +214,9 @@ export function buildEntityFromEntry(
 
   Model({
     name: entry.name,
+    // Pinned where the declaration names it. Otherwise the SDK takes the scheme of the first field,
+    // which is the minted flag's `we://`.
+    ...(entry.namespace !== undefined ? { namespace: entry.namespace } : {}),
     // An abstract entity compiles to AD4M's own abstract: it can never be created, and the
     // executor's model query matches its members by structure.
     ...(entry.abstract ? { abstract: true } : {}),
@@ -284,6 +293,7 @@ export function manifestToEntries(manifest: EntityManifest, opts: CompileManifes
       name,
       targetClass: '',
       flag: entity.flag,
+      ...(entity.namespace !== undefined ? { namespace: entity.namespace } : {}),
       // The *declared* parent, even after flattening merged its members in: the class binding in
       // buildEntityFromEntry is what a stored shape can name, the members alone cannot.
       ...(entity.extends ? { extends: entity.extends } : {}),

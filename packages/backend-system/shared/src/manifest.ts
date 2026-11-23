@@ -266,8 +266,22 @@ export interface EntitySchema {
    * backends need a marker, and WE's is a fixed predicate/value pair written on every instance.
    * Declared rather than derived because the value is part of the vocabulary — `we://space` is
    * not something a compiler should invent.
+   *
+   * Absent, a backend that needs a marker mints one. `false` says there is none: a record is of this
+   * type when it has the type's required fields, so the type must declare at least one. That is how
+   * a vocabulary from outside WE is usually written, with no field that says what a record is, and
+   * declaring it so lets a type match records another app wrote under that vocabulary.
    */
-  flag?: { predicate: string; value: string };
+  flag?: { predicate: string; value: string } | false;
+
+  /**
+   * The vocabulary the type's class belongs to, as an IRI prefix: `'conv://'` makes `Question` the
+   * class `conv://Question`. Absent, a backend names the class in its own way.
+   *
+   * For a type that is part of a vocabulary from outside WE — a cartridge bringing shapes of its own,
+   * records another app already holds — whose name has to stay that vocabulary's.
+   */
+  namespace?: string;
 
   /**
    * Name of an entity whose properties, relations and flag this one also has.
@@ -464,7 +478,8 @@ const relationSchema = z.object({
 const entitySchema = z.object({
   properties: z.record(z.string(), propertySchema),
   relations: z.record(z.string(), relationSchema),
-  flag: z.object({ predicate: z.string(), value: z.string() }).optional(),
+  flag: z.union([z.object({ predicate: z.string(), value: z.string() }), z.literal(false)]).optional(),
+  namespace: z.string().optional(),
   extends: z.string().optional(),
   abstract: z.boolean().optional(),
   interpretationHint: z.string().optional(),
@@ -545,6 +560,20 @@ export function validateManifest(
       errors.push({
         path: `entities.${entityName}.extractable`,
         message: 'an abstract entity cannot be an interpretation target — nothing is ever an instance of it',
+      });
+    }
+    // With no marker, a record is of the type when it has the type's required fields. With none
+    // required, every record in the dataset would be one.
+    if (entity.flag === false && !entity.abstract && !Object.values(entity.properties).some((p) => p.required)) {
+      errors.push({
+        path: `entities.${entityName}.flag`,
+        message: 'a type with no flag needs a required property — it is how a record is known to be one',
+      });
+    }
+    if (entity.namespace !== undefined && !/^[a-z][a-z0-9+.-]*:\/\/([^\s]*[/#])?$/i.test(entity.namespace)) {
+      errors.push({
+        path: `entities.${entityName}.namespace`,
+        message: `"${entity.namespace}" is not an IRI prefix — ending in "://", "/" or "#", as "conv://" or "https://example.org/ns#"`,
       });
     }
     // A block is edited collaboratively inside a document, so resolving two concurrent edits needs

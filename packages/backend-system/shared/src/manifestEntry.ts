@@ -118,7 +118,7 @@ export function manifestEntries(
       name,
       // The graph marker, where the entity declares one. Empty is legitimate — a backend that keeps
       // entities in their own container has no use for it.
-      targetClass: entity.flag?.value ?? '',
+      targetClass: entity.flag ? entity.flag.value : '',
       ...(entity.interpretationHint ? { interpretationHint: entity.interpretationHint } : {}),
       ...(nameProperty ? { nameProperty } : {}),
       properties: [
