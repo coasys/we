@@ -615,3 +615,53 @@ describe('the annotations', () => {
     for (const link of annotations) expect(nodes.has(link.source)).toBe(true);
   });
 });
+
+describe('a model in a vocabulary of its own', () => {
+  /** As a cartridge bringing its own shapes writes one: its own namespace, known by its required fields. */
+  const QUESTION: EntityManifest = {
+    version: '1',
+    entities: {
+      Question: {
+        namespace: 'conv://',
+        flag: false,
+        interpretationHint: 'A question the group leaves open',
+        properties: {
+          text: { type: 'string', predicate: 'conv://text', required: true, identity: true },
+          askedBy: { type: 'string', predicate: 'conv://askedBy' },
+        },
+        relations: {},
+      } as EntitySchema,
+    },
+  };
+
+  it('is the class its vocabulary names, with no type marker', () => {
+    const shape = compiledShape(input(QUESTION));
+    expect(shape.targetClass).toBe('conv://Question');
+    expect(shape.nodeShapeUri).toBe('conv://QuestionShape');
+    expect(shape.toJSON().properties.map((p) => p.name)).not.toContain('flag');
+  });
+
+  it('takes its namespace from the declaration, not from its first field', () => {
+    // The SDK otherwise names the class after the first field's scheme: here the minted `we://flag`,
+    // or a field in another vocabulary than the class.
+    const flagged = { ...QUESTION.entities.Question, flag: undefined };
+    expect(compiledShape(input({ ...QUESTION, entities: { Question: flagged } })).targetClass).toBe('conv://Question');
+    const elsewhere = { ...QUESTION.entities.Question, namespace: 'https://example.org/ns#' };
+    const held = stored(input({ ...QUESTION, entities: { Question: elsewhere } }));
+    expect(held.shape.targetClass).toBe('https://example.org/ns#Question');
+    expect(readShape(held)?.manifest.entities.Question.namespace).toBe('https://example.org/ns#');
+  });
+
+  it('reads back as the manifest it was saved as, and can be saved again without loss', () => {
+    const held = stored(input(QUESTION));
+    expect(readShape(held)?.manifest).toEqual(QUESTION);
+    expect(sameShape(held, rebuilt(held))).toBe(true);
+  });
+
+  it('keeps a minted flag and WE’s own namespace out of the manifest it reads back', () => {
+    // The common case is unchanged: a model WE named reads back with neither field.
+    const read = readShape(stored(input(SIGHTING)))!.manifest.entities.Sighting;
+    expect(read.namespace).toBeUndefined();
+    expect(read.flag).toEqual(SIGHTING.entities.Sighting.flag);
+  });
+});

@@ -4,28 +4,29 @@ The Coasys app as a cartridge: WE whitelabelled, with nothing of WE's own code c
 builds it in with `seeds/coasys.seed.json`; anybody can install `bundles/coasys.bundle.json` from a
 file in Settings.
 
-| File                                    | What it is                                                                                                  |
-| --------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `index.ts`                              | The cartridge: what it brings, the modules it needs, how it shows spaces                                    |
-| `brand.ts`                              | The name, the mark and the About page                                                                       |
-| `assets/mark.svg`                       | The Coasys logo as the app draws it — the bundle reads it                                                   |
-| `assets/icon.svg`                       | The desktop icon: the logo on Glow's indigo tile — the seed names it, `@we/brand` renders every size        |
-| `boot.ts`                               | The sign-in screen: WE's sign-in form and accounts as parts, in Coasys's frame                              |
-| `themes.ts`                             | Coasys, Josh's theme, with a light and a dark side; Coasys Glow, Nico's, dark only                          |
-| `assets/BricolageGrotesque-latin.woff2` | Glow's typeface (SIL OFL 1.1), carried in its `fontFaces` as a `data:` URL                                  |
-| `app.ts`                                | The chrome around every space: one rail, no module rail                                                     |
-| `firstRun.ts`                           | "Welcome to Coasys": make your identity here, or start without one                                          |
-| `space/shell.ts`                        | A space as one tree and one view, on a home lane                                                            |
-| `space/tree.ts`                         | The tree: the Feed, calls, running flows, people, Social DNA, themes                                        |
-| `space/dna.ts`                          | Social DNA, named once: Models (the space's and other apps' classes), WE's, flows, the focus, crumbs        |
-| `space/vocabulary.ts`                   | WE's vocabulary classes as Social DNA shows them — labels, glyphs, the store list two of them are read from |
-| `space/socialDna.ts`                    | The Social DNA page: Models, Flows, Templates, Built in, a class's records, the policy                      |
-| `space/views.ts`                        | The pages: the Feed, the flows, and a call's own page                                                       |
-| `space/canvas.ts`                       | Canvas mode: the space's canvas, dimmed to what the tree has chosen, and the vocabulary map                 |
-| `space/bar.ts`                          | The bar over every view, with the Page / Canvas switch at its end                                           |
-| `space/lockup.ts`                       | The mark and name, where the rail and the sign-in screen both draw them                                     |
-| `space/paths.ts`                        | The addresses the tree and the views share                                                                  |
-| `space/marks.ts`                        | The live dot and the count pill the tree and the views share                                                |
+| File                                    | What it is                                                                                                      |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `index.ts`                              | The cartridge: what it brings, the modules it needs, how it shows spaces                                        |
+| `brand.ts`                              | The name, the mark and the About page                                                                           |
+| `assets/mark.svg`                       | The Coasys logo as the app draws it — the bundle reads it                                                       |
+| `assets/icon.svg`                       | The desktop icon: the logo on Glow's indigo tile — the seed names it, `@we/brand` renders every size            |
+| `boot.ts`                               | The sign-in screen: WE's sign-in form and accounts as parts, in Coasys's frame                                  |
+| `themes.ts`                             | Coasys, Josh's theme, with a light and a dark side; Coasys Glow, Nico's, dark only                              |
+| `assets/BricolageGrotesque-latin.woff2` | Glow's typeface (SIL OFL 1.1), carried in its `fontFaces` as a `data:` URL                                      |
+| `app.ts`                                | The chrome around every space: one rail, no module rail                                                         |
+| `firstRun.ts`                           | "Welcome to Coasys": make your identity here, or start without one                                              |
+| `space/shell.ts`                        | A space as one tree and one view, on a home lane                                                                |
+| `space/tree.ts`                         | The tree: the Feed, calls, running flows, people, Social DNA, themes                                            |
+| `space/dna.ts`                          | Social DNA, named once: Models (the space's and other apps' classes), WE's, flows, the focus, crumbs            |
+| `space/vocabulary.ts`                   | WE's vocabulary classes as Social DNA shows them — labels, glyphs, the store list two of them are read from     |
+| `space/socialDna.ts`                    | The Social DNA page: Models, Flows, Templates, Built in, a class's records, the policy                          |
+| `space/views.ts`                        | The pages: the Feed, the flows, and a call's own page                                                           |
+| `space/canvas.ts`                       | Canvas mode: the space's canvas, dimmed to what the tree has chosen, and the vocabulary map                     |
+| `space/bar.ts`                          | The bar over every view, with the Page / Canvas switch at its end                                               |
+| `space/lockup.ts`                       | The mark and name, where the rail and the sign-in screen both draw them                                         |
+| `space/paths.ts`                        | The addresses the tree and the views share                                                                      |
+| `space/marks.ts`                        | The live dot and the count pill the tree and the views share                                                    |
+| `conversation.ts`                       | What a call is interpreted into (agenda, topics, positions, open questions) and how a topic moves, in `conv://` |
 
 After any change, write the bundle again and check it in:
 

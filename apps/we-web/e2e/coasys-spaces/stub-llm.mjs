@@ -25,7 +25,7 @@
  *
  * {@link SCRIPT} maps what the suite says in a call to the records a model should find in it, by the
  * class's role rather than its exact name: a space whose classes are the social DNA package's
- * (`Question`, `Tension`, `Decision`, `Task`) gets those, and the Coasys starter's `TaskBlock` gets
+ * (`TeamQuestion`, `Tension`, `Decision`, `Task`) gets those, and the Coasys starter's `TaskBlock` gets
  * the task. Only classes the prompt offers are answered, only fields the prompt lists are filled, and
  * a record whose title the prompt lists as existing is not proposed again — the same discipline a
  * real model is asked for, so the executor's dedup is not what makes the result converge.
@@ -89,7 +89,8 @@ export const SCRIPT = [
  */
 export function roleOf(className) {
   const name = String(className).toLowerCase().split(/[/#:]/).pop();
-  if (name === 'question') return 'question';
+  // The package's question. Coasys's own `Question` is a target too, and the stub writes none of it.
+  if (name === 'teamquestion') return 'question';
   if (name === 'tension') return 'tension';
   if (name === 'decision') return 'decision';
   if (name === 'task' || name === 'taskblock') return 'task';

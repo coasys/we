@@ -1380,7 +1380,9 @@ describe('dataset lifecycle through the real stores', () => {
       // In the starter's own words, with its own glyph and what it writes counted from its records.
       expect(kit).toMatchObject({ app: 'Coasys', name: "Coasys's starter kit", icon: 'dna' });
       expect(kit.description).toContain('Social DNA');
-      expect(kit.includes).toBe('1 reaction · 3 task states · 5 ways to be involved · a canvas · a board');
+      expect(kit.includes).toBe(
+        '1 reaction · 3 task states · 5 ways to be involved · a canvas · a board · 4 record types · 1 workflow',
+      );
       // A template chooses by id; the records stay in the store.
       expect(kit).not.toHaveProperty('starter');
       expect(rest.map((c) => c.id)).toEqual([NO_STARTER]);

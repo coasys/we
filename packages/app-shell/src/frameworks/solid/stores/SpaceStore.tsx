@@ -1,6 +1,8 @@
 import { boardOptimism } from '@shared/boardOptimism';
 import { createBoardActions, type CreateBoardOptions } from '@shared/boards';
 import { spaceStarterChoices } from '@shared/bundles/bundleStarter';
+import { installBundleWorkflows } from '@shared/bundles/installWorkflows';
+import { setUpForApp } from '@shared/bundles/setUpForApp';
 import { callParamToWrite } from '@shared/callOnScreen';
 import {
   CONTAINER_ACTIVITY_QUERY,
@@ -120,7 +122,14 @@ import {
   viewSettings,
 } from '@shared/viewResolution';
 import { evidenceLabel, refusalWords } from '@shared/workflowViews';
-import type { AgentProfileSummary, DatasetRef, EntityStatic, RecordInstance, WorkflowView } from '@we/backend-shared';
+import type {
+  AgentProfileSummary,
+  DatasetHandle,
+  DatasetRef,
+  EntityStatic,
+  RecordInstance,
+  WorkflowView,
+} from '@we/backend-shared';
 import { isPolicyRefusal, parseServerUrl, SELF_PERSONS, trace, validatePolicy } from '@we/backend-shared';
 import type { ContentInput } from '@we/block-shared';
 import {
@@ -923,13 +932,36 @@ export function SpaceStoreProvider(props: ParentProps) {
   );
   // The starters themselves stay in the store: a template chooses one by id and never handles records.
   const starterChoices = createMemo(() => starterChoiceList().map(({ starter: _starter, ...option }) => option));
-  /** The starter a choice applies — the default for none, and a refusal for one that is not offered. */
-  const chosenStarter = (id: string | undefined) => {
+  /** The choice a create applies — the default for none, and a refusal for one that is not offered. */
+  const chosenStarterChoice = (id: string | undefined) => {
     const choices = starterChoiceList();
     const choice = id ? choices.find((c) => c.id === id) : choices[0];
     if (!choice) throw new Error(`${id} is not something a new space can start with here.`);
-    return choice.starter;
+    return choice;
   };
+
+  /**
+   * A space made from an app's starter is set up for that app, as "Set up a space…" would: its record
+   * types, then the workflows they move through, then its sections. Choosing the app's kit is choosing
+   * the app; an empty space gets none of it. A built-in bundle's sections are built in, so nothing is
+   * copied. What does not go in is reported and leaves the space as it is: the space exists.
+   */
+  async function setUpNewSpaceForApp(bundleId: string, spaceId: string, handle: DatasetHandle): Promise<void> {
+    const pieces = seedBundlePieces.find((bundle) => bundle.bundleId === bundleId);
+    if (!pieces) return;
+    const problems = await setUpForApp({
+      addRecordTypes: async () =>
+        pieces.recordTypes.length ? shapeStore.addRecordTypes(pieces.bundleId, pieces.recordTypes, spaceId) : [],
+      installWorkflows: () => installBundleWorkflows(session.backendPorts()?.workflows, handle, pieces.workflows),
+      finish: async () => {
+        for (const section of pieces.sections) await setViewEnabled(section.id, true, spaceId);
+      },
+    });
+    if (problems.length) {
+      console.warn(`SpaceStore: the new space was not set up for ${pieces.name}`, problems);
+      toastService.add(`The space was made, but not set up for ${pieces.name}: ${problems[0]}`, 'warning', 8000);
+    }
+  }
   const [creatingSpace, setCreatingSpace] = createSignal(false);
   /**
    * Spaces being shared, or whose share failed, by dataset id — with what the share was asked for,
@@ -1726,7 +1758,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     try {
       // Before anything exists, like the server check: a choice that is no longer offered is refused
       // rather than quietly swapped for the default.
-      const starter = chosenStarter(starterId);
+      const choice = chosenStarterChoice(starterId);
+      const starter = choice.starter;
       // Sharing follows in the background, so a server it would refuse is caught here, before a
       // space exists that could then only be left unshared.
       if (access === 'shared' && server && !parseServerUrl(server)) {
@@ -1795,6 +1828,8 @@ export function SpaceStoreProvider(props: ParentProps) {
       // change event (which may lag, or on web may not fire at all).
       await datasetStore.trackDataset(spaceRef);
       setMySpaces((prev) => [...prev, spaceRecord]);
+      // Before sharing, so a member who joins finds the app's record types already there.
+      if (choice.bundleId) await setUpNewSpaceForApp(choice.bundleId, spaceRef.id, spaceHandle);
 
       // Space.create returns relations unhydrated, so the listing is given avatarData,
       // coverImageData and locationData directly rather than reading them back from spaceRecord.
@@ -1918,7 +1953,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
 
     // Nobody chooses here — the dialog that turns a dataset into a space has no starter picker.
-    const starter = chosenStarter(undefined);
+    const starter = chosenStarterChoice(undefined).starter;
     const spaceData: SpaceInput = {
       uuid: ds.id,
       url: ds.sharedId,
