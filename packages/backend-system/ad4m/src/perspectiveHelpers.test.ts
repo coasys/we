@@ -1,4 +1,4 @@
-import type { PerspectiveProxy, SHACLShape } from '@coasys/ad4m';
+import { getRelationsMetadata, type PerspectiveProxy, type SHACLShape } from '@coasys/ad4m';
 import { describe, expect, it, vi } from 'vitest';
 
 // ── Mock the WE entity registry ──────────────────────────────────────────────
@@ -412,5 +412,29 @@ describe('buildEntityManifest', () => {
       { name: 'Comment', shape: comment },
     ]);
     expect(entries.find((e) => e.name === 'Comment')!.properties[0]).toMatchObject({ reverseOf: 'items' });
+  });
+});
+describe('buildEntityClasses', () => {
+  // A mounted language's shape, as the Acorn language declares `topPriorityOutcomes`: a
+  // reference collection with no `sh:class`. The executor refuses to include such a relation
+  // unless the read says `polymorphic: true`, and the SDK only says so for a relation whose
+  // metadata carries the flag.
+  it('reads an untyped reference collection polymorphically, and a typed one as its class', () => {
+    const shape = {
+      nodeShapeUri: 'acorn://AcornProjectMetaShape',
+      targetClass: 'acorn://AcornProjectMeta',
+      properties: [
+        { path: 'acorn://name', name: 'name', maxCount: 1 },
+        { path: 'acorn://topPriorityOutcomes', name: 'topPriorityOutcomes', nodeKind: 'IRI' },
+        { path: 'acorn://members', name: 'members', nodeKind: 'IRI', class: 'acorn://AcornMember' },
+      ],
+      parentShapes: [],
+    } as unknown as SHACLShape;
+
+    const { AcornProjectMeta } = buildEntityClasses([{ name: 'AcornProjectMeta', shape }]);
+    const relations = getRelationsMetadata(AcornProjectMeta as never) as Record<string, { polymorphic?: boolean }>;
+
+    expect(relations.topPriorityOutcomes?.polymorphic).toBe(true);
+    expect(relations.members?.polymorphic).toBeUndefined();
   });
 });

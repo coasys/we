@@ -1,4 +1,4 @@
-import { Ad4mModel, type PerspectiveProxy, type SHACLShape } from '@coasys/ad4m';
+import { Ad4mModel, getRelationsMetadata, type PerspectiveProxy, type SHACLShape } from '@coasys/ad4m';
 import { type EntityClass, getEntity, getEntityTargetClass, getRegisteredEntityNames } from '@we/entities';
 
 import { classNameOf } from './className';
@@ -142,6 +142,14 @@ export function buildEntityClasses(shapes: ForeignShape[]): Record<string, Entit
   for (const { name, shape } of shapes) {
     const local = shape.targetClass ? classNameOf(shape.targetClass) : name;
     const cls = Ad4mModel.fromSHACL(shape, local, classResolver);
+    // `fromSHACL` records no `polymorphic` on a relation. A reference with no `sh:class` has no
+    // class to hydrate into, and the executor refuses to include it unless the read is
+    // polymorphic — the same rule `resolvesPolymorphically` applies to a declared manifest.
+    const relations = getRelationsMetadata(cls as never) as Record<string, { polymorphic?: boolean }>;
+    for (const prop of shape.properties) {
+      const relation = prop.name ? relations[prop.name] : undefined;
+      if (relation && (prop.polymorphic ?? (prop.nodeKind === 'IRI' && !prop.class))) relation.polymorphic = true;
+    }
     byLocalName[local] ??= cls;
     byLocalName[`${local}Shape`] ??= cls;
     const shared = perName.get(name)! > 1;
