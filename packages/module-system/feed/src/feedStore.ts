@@ -21,12 +21,14 @@
  * moved. The same answer the transcript's cards are marked from, read from the host rather than from
  * another module, which this one may not depend on.
  */
+import { lineContent, TYPED } from '@we/messages';
 import type { InterpretationKernel, ModuleStoreDeps, RecordsKernel } from '@we/module-shared';
 
 import {
   CALL_FIELDS,
   FEED_FIRST_PAGE,
   FEED_PAGE,
+  type FeedLine,
   FeedReadStopped,
   type FeedRow,
   markPending,
@@ -71,8 +73,22 @@ export interface FeedDeps {
    * so flipping it re-reads.
    */
   showSpoken?: () => boolean;
-  /** Write a message — the store's own, so typed lines and feed messages are written one way. */
-  write: (collection: string, text: string, marks?: string) => Promise<string | null>;
+  /** This agent's id, for the author of a line drawn before it is written. */
+  selfId?: () => string | null;
+  /**
+   * Write a message under `holder` — the store's own, so typed lines and feed messages are written
+   * one way. Resolves with the new record's id, or `null` when there was nowhere to write it.
+   */
+  write: (holder: FeedHolder, text: string, marks?: string) => Promise<string | null>;
+}
+
+/** What a message is written under: the collection it is a child of, or the line it answers. */
+export type FeedHolder = { id: string; relation: string; entity?: string };
+
+/** A line sent from here, drawn at once; `line.id` is the record's once the write has said it. */
+interface SentLine {
+  key: number;
+  line: FeedLine;
 }
 
 export function createFeed(deps: FeedDeps) {
@@ -98,6 +114,26 @@ export function createFeed(deps: FeedDeps) {
   const showSpoken = () => deps.showSpoken?.() ?? true;
   const [rows, setRows] = signal<FeedRow[]>([]);
   const [hasMore, setHasMore] = signal(false);
+  /*
+    What was sent from here and no read of the window has shown yet. A send draws its line at once
+    rather than after the write's round trips and the re-read that follows, and a read that has the
+    record takes its place — see `post`. The same overlay as the board's and the canvas's: held beside
+    what was read, never written into it.
+  */
+  const [sent, setSent] = signal<SentLine[]>([]);
+  let sentKeys = 0;
+  let lastSentAt = 0;
+  /*
+    The window and the lines sent into it, in the window's order. Where the window does not reach the
+    end the line would land at (anchored at the start, with more beyond), it is not drawn: the real
+    line is not in this window either.
+  */
+  const drawnRows = (): FeedRow[] => {
+    const mine = sent();
+    if (!mine.length || (fromStart() && hasMore())) return rows();
+    const sign = fromStart() ? 1 : -1;
+    return [...rows(), ...mine.map((entry) => entry.line)].sort((a, b) => sign * (Date.parse(a.at) - Date.parse(b.at)));
+  };
   const [loaded, setLoaded] = signal(false);
   /*
     The last read failed, readable without subscribing: the looking effect asks it to owe a read on
@@ -128,6 +164,7 @@ export function createFeed(deps: FeedDeps) {
     if (ds === datasetWas && now === rootWas) return;
     datasetWas = ds;
     setRows([]);
+    setSent([]);
     setLoaded(false);
     setAnswered(false);
     /*
@@ -229,6 +266,12 @@ export function createFeed(deps: FeedDeps) {
       fromStart() === anchoredAtStart &&
       showSpoken() === spoken;
     const activityTypes = (deps.interpretation?.targets(activityRoot) ?? []).map((t) => t.entity);
+    // Sent lines whose record this read starts after: it is the answer on them, found or not.
+    const askedAfter = new Set(
+      sent()
+        .map((entry) => entry.line.id)
+        .filter(Boolean),
+    );
     try {
       const result = await readFeedWindow((entity, query) => records?.find(entity, query) ?? Promise.resolve([]), {
         root: space,
@@ -244,6 +287,8 @@ export function createFeed(deps: FeedDeps) {
       if (same()) {
         // Marked with the suggestions as they are now, which may have settled while it ran.
         setRows(markPending(result.rows, new Set(unconfirmed())));
+        const read = new Set(result.rows.map((row) => row.id));
+        setSent(sent().filter(({ line }) => !(line.id && (read.has(line.id) || askedAfter.has(line.id)))));
         setHasMore(result.hasMore);
         setLoaded(true);
         setAnswered(true);
@@ -266,6 +311,48 @@ export function createFeed(deps: FeedDeps) {
       reading = false;
       start();
     }
+  }
+
+  /**
+   * One line, drawn the moment it is sent and written behind it. Its id is only known once the write
+   * resolves, so a read matches it by that id and never before: one that lands first leaves it be. A
+   * failed write takes it down and says so to whoever sent it.
+   */
+  async function post(holder: FeedHolder, text: string, marks?: string, replyTo: FeedLine['replyTo'] = null) {
+    const words = text.trim();
+    // Strictly later than the last, so two sends in one millisecond keep the order they were made in.
+    lastSentAt = Math.max(Date.now(), lastSentAt + 1);
+    const at = new Date(lastSentAt).toISOString();
+    const key = ++sentKeys;
+    const line: FeedLine = {
+      kind: 'line',
+      id: '',
+      at,
+      createdAt: at,
+      updatedAt: at,
+      author: deps.selfId?.() ?? '',
+      text: words,
+      marks: marks ?? '',
+      source: TYPED,
+      call: '',
+      callTitle: '',
+      replyTo,
+      content: lineContent({ text: words, marks }),
+      sending: true,
+    };
+    setSent([...sent(), { key, line }]);
+    const forget = () => setSent(sent().filter((entry) => entry.key !== key));
+    try {
+      const id = await deps.write(holder, words, marks);
+      if (!id) return forget();
+      // A read may have landed with it while the write was resolving.
+      if (rows().some((row) => row.id === id)) return forget();
+      setSent(sent().map((entry) => (entry.key === key ? { key, line: { ...entry.line, id } } : entry)));
+    } catch (error) {
+      forget();
+      throw error;
+    }
+    changed();
   }
 
   /** Something may have changed: read it after a burst settles, or on coming back if nobody is looking. */
@@ -438,6 +525,8 @@ export function createFeed(deps: FeedDeps) {
       see it arrive. The store's own, so not a public member.
     */
     followingLive: () => looking() && !fromStart() && answered(),
+    // Answering a line: the store's, which knows which of its two windows the reply was started in.
+    post,
     feedOpen: state(open, 'Whether the Feed panel is open.'),
     openFeed: action(() => setOpen(true), 'Opens the Feed panel.', { ambient: true }),
     closeFeed: action(() => setOpen(false), 'Closes the Feed panel.', { ambient: true }),
@@ -451,8 +540,8 @@ export function createFeed(deps: FeedDeps) {
       ambient: true,
     }),
     feedRows: state(
-      rows,
-      "The Feed's window: every message in the space and a row per group of things extracted or made, merged by time — newest first while following the live end, oldest first from the start. A row is { kind: 'line', id, at, author, text, marks, source, call, callTitle, replyTo } or { kind: 'activity', id, at, author, origin, originTitle, summary, items, suggested }.",
+      drawnRows,
+      "The Feed's window: every message in the space and a row per group of things extracted or made, merged by time — newest first while following the live end, oldest first from the start. A message sent from here is in it at once, with `sending` true until a read has it. A row is { kind: 'line', id, at, author, text, marks, source, call, callTitle, replyTo, sending } or { kind: 'activity', id, at, author, origin, originTitle, summary, items, suggested }.",
     ),
     feedHasMore: state(hasMore, 'Whether there is more of the space beyond the Feed’s window.'),
     feedLoaded: state(loaded, 'Whether the Feed has answered for this space yet.'),
@@ -480,8 +569,7 @@ export function createFeed(deps: FeedDeps) {
     sendToFeed: action(async (text: string, marks?: string) => {
       const space = root();
       if (!space || !text?.trim()) return;
-      await deps.write(space, text, marks);
-      changed();
+      await post({ id: space, relation: 'children', entity: 'CollectionBlock' }, text, marks);
     }, 'Writes a message straight into the space, outside any call — with its marks, when the composer gave any.'),
   };
 }
