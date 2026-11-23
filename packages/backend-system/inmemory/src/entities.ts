@@ -422,6 +422,8 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
           record: copied(row),
         });
         for (const [key, value] of Object.entries(changed)) writeField(row, key, value);
+        // What was just saved is the new baseline, so changing a field back is a change again.
+        loaded.set(this, { ...(this as unknown as Record<string, unknown>) });
         notify(dataset);
       }
 

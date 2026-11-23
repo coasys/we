@@ -394,6 +394,11 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
 
           expect(await reader('TaskBlock').findAll(subject.dataset, { where: { title: 'Renamed' } })).toHaveLength(1);
           expect(await reader('TaskBlock').findAll(subject.dataset, { where: { priority: 'medium' } })).toHaveLength(0);
+
+          // Changed back on the same instance after that save, it is a change again.
+          (instance as unknown as { title: string }).title = 'Clear me';
+          await (instance as unknown as { save(): Promise<void> }).save();
+          expect(await reader('TaskBlock').findAll(subject.dataset, { where: { title: 'Clear me' } })).toHaveLength(1);
         },
       );
 
@@ -411,8 +416,10 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
           await expect(Task.update(subject.dataset, task.id, { title: null })).rejects.toThrow(refused);
 
           const [instance] = await reader('TaskBlock').findAll(subject.dataset, { where: { id: task.id } });
-          (instance as unknown as { title: string }).title = '';
-          await expect((instance as unknown as { save(): Promise<void> }).save()).rejects.toThrow(refused);
+          for (const empty of ['', null]) {
+            (instance as unknown as { title: string | null }).title = empty;
+            await expect((instance as unknown as { save(): Promise<void> }).save()).rejects.toThrow(refused);
+          }
 
           expect(await reader('TaskBlock').findAll(subject.dataset, { where: { title: 'Keep me' } })).toHaveLength(1);
         },
