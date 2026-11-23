@@ -25,15 +25,18 @@ import { ACORN_VIEWS } from '@we/template-acorn';
  * the bundle).
  *
  * The hash names a build, not a thing: this is `acorn-ad4m` `language/build/bundle.js`
- * as built 2026-11-20 (production build of `b11-own-update-signal` head `f3200b4`:
- * `b10-snapshot-deadline` plus the own-update signal fix) — on the mount-aware zomes
- * the S2-0 instance-write path requires, with the 15 s snapshot deadline the mount
- * retry below is classified for. A rebuilt bundle is a new hash, so the constant
+ * as built 2026-11-20 (production build of `b12-number-datatypes` head `801101b`:
+ * `b11-own-update-signal` plus number and boolean datatypes on the mount props, so a
+ * `siblingOrder` written here reaches stock as the integer it is) — on the mount-aware
+ * zomes the S2-0 instance-write path requires, with the 15 s snapshot deadline the
+ * mount retry below is classified for. The bundle's esbuild path comments make the
+ * hash depend on where `node_modules` sits: `language/node_modules` is a symlink to
+ * `acorn-ad4m/language/node_modules`, as b11 was built. A rebuilt bundle is a new hash, so the constant
  * goes where the sequence that needs it lives rather than where a caller might
  * guess it — `createAcornProject` takes a `sourceLanguageHash` override for a host
  * holding a different build.
  */
-export const ACORN_BASE_LANGUAGE = 'QmzSYwdjznoG7hYCeCENt1LRzssrvV6AqiED2dcSCYWFZ5Ncfhx';
+export const ACORN_BASE_LANGUAGE = 'QmzSYwdpgFHDkE41q6ouh4Kudn1R6YkhPbJkLqghseuY6buU2nj';
 
 /** The template an opened Acorn project renders through — the space's `defaultTemplateId`. */
 export const ACORN_TEMPLATE_ID = 'acorn';

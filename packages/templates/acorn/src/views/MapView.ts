@@ -1,47 +1,35 @@
 import type { TemplateSchema } from '@we/schema-shared';
 
 /**
- * The outcome tree as a map — the view Acorn is named for.
+ * The outcome tree as a map — the view Acorn is named for (`MapView`).
  *
- * A stub where the canvas lands in S2-8: the section exists so a space can already turn the
- * map on and so the list of what it will draw is real data rather than a screenshot of one.
- * The connections that become the tree's edges are queried here already, as the count line.
+ * The module's `acorn.mapView` part draws it (S2-8): Acorn's tree as tidy trees side by side,
+ * siblings in sibling order, each card the statement with its computed scope and status, and a
+ * double-click on a card opening the expanded outcome. Always Acorn's Classic layout, whatever the
+ * project's layering algorithm. The map edits as Acorn's does (S2-9): a new root or child outcome, a
+ * line dragged from one card to another, Delete on a line or a card. Moving a card to another parent
+ * or another place among its siblings is not here yet.
+ *
+ * It needs the graph module as well as Acorn's, because the canvas is the graph module's
+ * `GraphView`.
  */
 export const acornMapView: TemplateSchema = {
   meta: {
     name: 'Map',
-    description: 'The outcome tree drawn as a zoomable map — stub until the canvas lands in S2-8',
+    description: 'The outcome tree drawn as a zoomable map — each outcome a card, each connection a line',
     icon: 'map-pin',
     role: 'view',
     segment: 'map',
-    requires: { modules: ['acorn'] },
+    requires: { modules: ['acorn', 'graph'] },
   },
   type: 'Column',
-  props: { p: '500', gap: '300', width: '100%', maxWidth: 'var(--we-layout-lg)', mx: 'auto' },
+  props: { p: '500', gap: '300', width: '100%' },
   children: [
     {
       type: 'we-text',
       props: { fontSize: 'xl', fontWeight: 'bold' },
       children: ['Map'],
     },
-    {
-      type: 'we-text',
-      props: { tone: 'secondary' },
-      children: ['The outcome-tree canvas lands in S2-8. These are the outcomes it will draw:'],
-    },
-    {
-      type: '$each',
-      props: {
-        items: { $query: { entity: 'AcornOutcome', order: { timestampCreated: 'asc' } } },
-        as: 'outcome',
-      },
-      children: [
-        {
-          type: 'we-text',
-          props: { fontWeight: 'medium' },
-          children: [{ $: 'outcome.content' }],
-        },
-      ],
-    },
+    { type: '$part', props: { id: 'acorn.mapView' } },
   ],
 };

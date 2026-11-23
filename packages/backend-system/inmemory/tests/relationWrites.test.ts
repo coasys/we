@@ -204,3 +204,42 @@ describe('reached through the entity stand-in', () => {
     );
   });
 });
+
+/*
+  `update` with a relation in its data — what `record.update(entity, id, { list: [...] })` sends.
+  AD4M's model update writes it (a mounted Acorn collection is written no other way); this
+  backend used to drop it, so the same template write replaced a list on one host and was a
+  no-op on the other.
+*/
+describe('a relation named in an update', () => {
+  it('replaces a to-many relation with the list given, in order', async () => {
+    await Collection.update(dataset, column.id, { arranges: [cards[2].id, cards[0].id] });
+    expect(await arrangesOf(column.id)).toEqual([cards[2].id, cards[0].id]);
+
+    await Collection.update(dataset, column.id, { arranges: [cards[0].id, cards[2].id] });
+    expect(await arrangesOf(column.id)).toEqual([cards[0].id, cards[2].id]);
+  });
+
+  it('an empty list empties it, and the scalar fields beside it still land', async () => {
+    await Collection.update(dataset, column.id, { arranges: [cards[1].id] });
+    await Collection.update(dataset, column.id, { arranges: [], title: 'Renamed' });
+    expect(await arrangesOf(column.id)).toEqual([]);
+    const found = (await Collection.findOne(dataset, { where: { id: column.id } })) as unknown as { title: string };
+    expect(found.title).toBe('Renamed');
+  });
+
+  it('points a to-one relation, and unlinks it when given nothing', async () => {
+    const boardOf = async () =>
+      ((await Collection.findOne(dataset, { where: { id: column.id } })) as unknown as { board?: string }).board;
+    await Collection.update(dataset, column.id, { board: other.id });
+    expect(await boardOf()).toBe(other.id);
+    await Collection.update(dataset, column.id, { board: null });
+    expect(await boardOf()).toBeFalsy();
+  });
+
+  it('leaves a relation the update does not name alone', async () => {
+    await Collection.update(dataset, column.id, { arranges: [cards[1].id] });
+    await Collection.update(dataset, column.id, { title: 'Only the title' });
+    expect(await arrangesOf(column.id)).toEqual([cards[1].id]);
+  });
+});

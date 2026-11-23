@@ -68,6 +68,20 @@ const manyForeignKey = (entity: string, relation: string) => `__${entity}_${rela
  * went on matching a `not` here and dropped out of the same query in production. Creation follows the
  * same rule: an explicit `''` or `null` is not written, though a declared default still is.
  */
+/**
+ * Whether a relation as a row holds it and as an update names it are the same links — a to-many as
+ * the same ids in the same order, since the order of an ordered relation is part of what is written,
+ * and a to-one as the same id, with nothing and `''` both meaning unlinked.
+ */
+function sameLinks(stored: unknown, named: string | string[] | null | undefined): boolean {
+  const idOf = (v: unknown) => (typeof v === 'string' ? v : ((v as { id?: unknown } | null)?.id ?? ''));
+  if (Array.isArray(named)) {
+    const current = Array.isArray(stored) ? stored.map(idOf) : [];
+    return current.length === named.length && current.every((id, i) => id === named[i]);
+  }
+  return (stored == null ? '' : idOf(stored)) === (named ?? '');
+}
+
 function writeField(row: Record<string, unknown>, key: string, value: unknown): void {
   if (value === '' || value === null) delete row[key];
   else row[key] = value;
@@ -199,11 +213,12 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
   };
 
   /*
-    Instances whose relation writes are part of a create rather than writes of their own: the new
-    record's relations named in its data, and the link to its parent. The create was checked as a
-    whole, which is what the production adapter does too — its parent link is written with the record.
+    Instances whose relation writes are part of a create or an update rather than writes of their own:
+    the relations named in its data, and a new record's link to its parent. The write was checked as a
+    whole, which is what the production adapter does too — its parent link is written with the record,
+    and its save suppresses the relation checks of the fields it has already judged.
   */
-  const writingCreate = new WeakSet<object>();
+  const writingWhole = new WeakSet<object>();
 
   const linkUnder = async (dataset: DatasetEntry, parent: ParentRef, childId: string) => {
     const under = relationUnder(dataset, parent);
@@ -212,11 +227,11 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
     const instance = parentClass.hydrate(dataset, under.row);
     const add = instance[`add${under.relation.charAt(0).toUpperCase()}${under.relation.slice(1)}`];
     if (typeof add !== 'function') return;
-    writingCreate.add(instance);
+    writingWhole.add(instance);
     try {
       await (add as (id: string) => Promise<void>).call(instance, childId);
     } finally {
-      writingCreate.delete(instance);
+      writingWhole.delete(instance);
     }
   };
 
@@ -376,9 +391,9 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
     const checkDelete = (dataset: DatasetEntry, row: AnyRow) =>
       checkEntityWrite({ dataset, entity: name, kind: 'delete', id: row.id as string, record: copied(row) });
 
-    /** A relation write on `instance`, unless it is part of the create that made it. */
+    /** A relation write on `instance`, unless it is part of a create or update already checked whole. */
     const checkRelation = (dataset: DatasetEntry, instance: AnyRow, relation: string, kind: 'add' | 'remove') => {
-      if (writingCreate.has(instance)) return;
+      if (writingWhole.has(instance)) return;
       const row = tableOf(dataset, name).find((r) => r.id === instance.id);
       return checkEntityWrite({
         dataset,
@@ -559,11 +574,11 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         tableOf(dataset, name).push(row);
         notify(dataset);
         const instance = Entity.hydrate(dataset, row);
-        writingCreate.add(instance);
+        writingWhole.add(instance);
         try {
           await Entity.linkNamedRelations(instance, data);
         } finally {
-          writingCreate.delete(instance);
+          writingWhole.delete(instance);
         }
         if (options?.parent) await linkUnder(dataset, options.parent, row.id as string);
         return instance;
@@ -596,13 +611,82 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         const dataset = datasetOf(handle);
         const row = tableOf(dataset, name).find((r) => r.id === id);
         if (!row) return null;
-        const changed = Object.fromEntries(Object.entries(data).filter(([key]) => !relationNames.has(key)));
+        /*
+          The whole update is judged before any of it is written, against the record as it stands.
+
+          Relations used to be left out of the edit check and written afterwards through their own
+          accessors, so a field allowlist never saw them — a member allowed only a task's status could
+          change its comments in the same update — and a relation check that refused did so after the
+          scalars, the timestamp and any earlier relation had landed. Now every changed field goes to
+          the one edit check, relations included, and the relation writes it then makes are not asked
+          about again: what AD4M's save does (`writeChecks.ts`). A relation given as it already stands
+          is not a change, so it is not judged — AD4M's `changedFields` leaves it out the same way.
+        */
+        const relationValues = Entity.readNamedRelations(data);
+        const changed: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(data)) {
+          if (!relationNames.has(key)) changed[key] = value;
+          else if (relationValues.has(key) && !sameLinks(row[key], relationValues.get(key))) changed[key] = value;
+        }
         checkClearable(changed);
         await checkEntityWrite({ dataset: handle, entity: name, kind: 'edit', id, data: changed, record: copied(row) });
-        for (const [key, value] of Object.entries(changed)) writeField(row, key, value);
+        for (const [key, value] of Object.entries(changed)) if (!relationNames.has(key)) writeField(row, key, value);
         row.updatedAt = new Date().toISOString();
+        const instance = Entity.hydrate(dataset, row);
+        writingWhole.add(instance);
+        try {
+          await Entity.setNamedRelations(instance, new Map([...relationValues].filter(([key]) => key in changed)));
+        } finally {
+          writingWhole.delete(instance);
+        }
         notify(dataset);
         return Entity.hydrate(dataset, row);
+      }
+
+      /**
+       * The relations an update names, as ids: a list for a to-many, an id or `null` for a to-one.
+       * Read before anything is written, so a value that is not a record or its id refuses the update
+       * rather than failing halfway through it. A relation given `undefined` is not named.
+       */
+      private static readNamedRelations(data: Record<string, unknown>): Map<string, string | string[] | null> {
+        const out = new Map<string, string | string[] | null>();
+        const idOf = (key: string, one: unknown): string => {
+          const id = typeof one === 'string' ? one : (one as AnyRow | null)?.id;
+          if (typeof id !== 'string' || !id) {
+            throw new Error(`${name}.update(): "${key}" names something that is not a record or its id`);
+          }
+          return id;
+        };
+        for (const [key, value] of Object.entries(data)) {
+          if (!relationNames.has(key) || value === undefined) continue;
+          if (relations.find((r) => r.name === key)?.cardinality === 'many') {
+            const ids = (Array.isArray(value) ? value : value === null ? [] : [value]).map((one) => idOf(key, one));
+            out.set(key, ids);
+          } else {
+            out.set(key, value === null || value === '' ? null : idOf(key, value));
+          }
+        }
+        return out;
+      }
+
+      private static async setNamedRelations(
+        instance: Entity,
+        values: Map<string, string | string[] | null>,
+      ): Promise<void> {
+        /*
+          Relations named in an update are written, not dropped — `linkNamedRelations`' reason, for
+          the update. AD4M's `update` writes a to-many relation as the whole new list (a mounted
+          Acorn collection, `tags` or `topPriorityOutcomes`, is written no other way), and this one
+          ignored it, so the same `record.update` replaced a list on one backend and did nothing on
+          the other. Through `set<Relation>`, which keeps the foreign keys like every other relation
+          write here. A to-one relation given nothing is unlinked.
+        */
+        for (const [key, value] of values) {
+          const suffix = `${key.charAt(0).toUpperCase()}${key.slice(1)}`;
+          const accessors = instance as unknown as Record<string, (arg: unknown) => Promise<void>>;
+          if (value === null) await accessors[`remove${suffix}`].call(instance, null);
+          else await accessors[`set${suffix}`].call(instance, value);
+        }
       }
 
       /**

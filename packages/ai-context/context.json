@@ -10586,7 +10586,7 @@
           "inputs": [
             {
               "name": "outcome",
-              "description": "the AcornOutcome record shown expanded"
+              "description": "the AcornOutcome record opened; the part reads it again by id, with its tags, and opens its children in its place"
             }
           ]
         },
@@ -10644,6 +10644,132 @@
           "params": ["outcome"],
           "doc": "One line on an outcome — status, task progress and scope, joined where present.",
           "example": "acornOutcomeSummary({ outcome: outcome })"
+        },
+        {
+          "name": "acornTasksAdded",
+          "params": ["taskList", "task"],
+          "doc": "The task list with one more, not yet done, task at its end — as the JSON text `taskList` holds.",
+          "example": "acornTasksAdded({ taskList: outcome.taskList, task: local.newTask })"
+        },
+        {
+          "name": "acornTasksToggled",
+          "params": ["taskList", "index"],
+          "doc": "The task list with the task at `index` marked done, or not done again — as JSON text.",
+          "example": "acornTasksToggled({ taskList: outcome.taskList, index: index })"
+        },
+        {
+          "name": "acornTasksRemoved",
+          "params": ["taskList", "index"],
+          "doc": "The task list without the task at `index` — as JSON text.",
+          "example": "acornTasksRemoved({ taskList: outcome.taskList, index: index })"
+        },
+        {
+          "name": "acornChildren",
+          "params": ["outcome", "outcomes", "connections"],
+          "doc": "An outcome's child outcomes, in sibling order — joined through the AcornConnection records.",
+          "example": "acornChildren({ outcome: outcome.id, outcomes: local.outcomes, connections: local.connections })"
+        },
+        {
+          "name": "acornNextSiblingOrder",
+          "params": ["parent", "connections"],
+          "doc": "The siblingOrder a new child of `parent` is written with — one below its lowest sibling's, so Acorn draws it on the right; 0 when it has none. Never below the zome's i32: a row already at the lowest order gets that order again.",
+          "example": "acornNextSiblingOrder({ parent: outcome.id, connections: local.connections })"
+        },
+        {
+          "name": "acornRollup",
+          "params": ["outcome", "outcomes", "connections"],
+          "doc": "Acorn's computed scope and status for an outcome from its descendants — { scope, status, uncertains, smallsAchieved, smallsTotal, tasksAchieved, tasksTotal, children }.",
+          "example": "acornRollup({ outcome: outcome, outcomes: local.outcomes, connections: local.connections }).status"
+        },
+        {
+          "name": "acornRollupLabel",
+          "params": ["rollup"],
+          "doc": "A roll-up as a person reads it — 'Partially achieved · 1/2 smalls · 1 uncertain'.",
+          "example": "acornRollupLabel({ rollup: acornRollup({ outcome: outcome, outcomes: local.outcomes, connections: local.connections }) })"
+        },
+        {
+          "name": "acornAuthor",
+          "params": ["did", "profiles"],
+          "doc": "Who an agent DID is in the project — the AcornProfile's name, or the DID's short form when no profile names it.",
+          "example": "acornAuthor({ did: comment.creator, profiles: local.profiles })"
+        },
+        {
+          "name": "acornWhen",
+          "params": ["timestamp"],
+          "doc": "An Acorn timestamp — unix seconds, or milliseconds — as 'YYYY-MM-DD HH:mm' (UTC), or '' when unset.",
+          "example": "acornWhen({ timestamp: comment.unixTimestamp })"
+        },
+        {
+          "name": "acornTableRows",
+          "params": ["outcomes", "connections", "tags", "priorities", "collapsed", "filter"],
+          "doc": "The outcome table's rows — the tree depth-first, each { id, outcome, depth, number, scope, status, progress, children, open, priority, tags }; `filter` is { keyword, highPriority, statuses, scopes, tags }, and a filtered table draws every match at its depth, as Acorn's does.",
+          "example": "acornTableRows({ outcomes: local.outcomes, connections: local.connections, tags: local.tags, priorities: first(local.meta).topPriorityOutcomes, collapsed: local.collapsed, filter: { keyword: local.keyword } })"
+        },
+        {
+          "name": "acornMapGraph",
+          "params": ["outcomes", "connections"],
+          "doc": "The outcome map as a GraphView literal seed — { literal: true, nodes, edges }: a node per outcome (id the graph's record address for the outcome, so the graph reports its recordId; type AcornOutcome, label its statement, data { content, scopeType and achievementStatus as Acorn computes them, status the computed code, rank its place in the tree a forest layout draws, each card under the parent forest places it under, for its sortBy }) and an edge per connection between two drawn outcomes, standing for its AcornConnection record (reifiedAs).",
+          "example": "acornMapGraph({ outcomes: local.outcomes, connections: local.connections })"
+        },
+        {
+          "name": "acornConnectRefusal",
+          "params": ["parent", "child", "connections"],
+          "doc": "Why a connection from `parent` to `child` (outcome ids) is not one Acorn makes — an outcome to itself, a child already under the parent, or a loop (the child above the parent, through any of its parents) — or '' when it may be made.",
+          "example": "acornConnectRefusal({ parent: event.sourceId, child: event.targetId, connections: local.connections })"
+        },
+        {
+          "name": "acornLinks",
+          "params": ["connections", "add"],
+          "doc": "The connections as links — `{ parent, child }` outcome ids, each pair once, sorted — with `add` (one more link) among them. One canonical value however a subscription orders or hydrates the records, so the map's set of lines can be held as a working value (acornWorking) while a line it wrote has not read back.",
+          "example": "acornLinks({ connections: local.connections, add: { parent: event.sourceId, child: event.targetId } })"
+        },
+        {
+          "name": "acornArrange",
+          "params": ["outcome", "into", "target", "order", "outcomes", "connections", "links"],
+          "doc": "What a card dragged on the map writes — GraphView's onNodeArrange (`into` child or sibling of `target`, `order` its new row left to right) as a plan of at most two writes: { refusal, notice, move (the connection it hangs from, moved to `parent` at `siblingOrder`), create (a root's new connection from `parent` to `child`), updates ([{ id, siblingOrder }] along its own row: one where there is room, else stock's swap one place over), pending (those writes, for acornPendingAdd) }. Refuses what acornConnectRefusal refuses, checked against `links` without the line moved, and a reorder that would renumber the row.",
+          "example": "acornArrange({ outcome: event.recordId, into: event.into, target: event.targetId, order: event.order, outcomes: local.outcomes, connections: local.connections })"
+        },
+        {
+          "name": "acornSiblingMove",
+          "params": ["selected", "direction", "outcomes", "connections"],
+          "doc": "Shift+← / Shift+→ on the map: the selected card (one card address or outcome id in `selected`) swapped with the sibling drawn on its `direction` ('left' or 'right') side — the same plan as acornArrange. Stock's alterSiblingOrder (two `updates`) where that draws the two swapped; in a tied group, or at the limits of the zome's i32, the one or two writes that do. None at the end of a row or with no single selection; a `refusal` for a root, or where two writes cannot.",
+          "example": "acornSiblingMove({ selected: local.selected, direction: 'left', outcomes: local.outcomes, connections: local.connections })"
+        },
+        {
+          "name": "acornPending",
+          "params": ["connections", "pending"],
+          "doc": "The connections with the map's move writes that have not read back (`pending`, from acornPendingAdd) drawn in: each stands while its connection still holds the parent and siblingOrder it replaced, and is settled for good once it holds anything else — what was written, or somebody else's value.",
+          "example": "acornPending({ connections: local.connections, pending: local.moveWork })"
+        },
+        {
+          "name": "acornPendingAdd",
+          "params": ["connections", "pending", "add"],
+          "doc": "The pending move writes after one more move: those still standing (see acornPending), less any for a connection `add` writes again, then `add`. Without `add`, the writes still standing — none once every one has read back.",
+          "example": "acornPendingAdd({ connections: local.connections, pending: local.moveWork, add: local.plan.pending })"
+        },
+        {
+          "name": "acornWorking",
+          "params": ["stored", "working", "written"],
+          "doc": "The whole-field value the next edit starts from. `stored` is the value as subscribed, `working` the last one this view wrote, `written` its history (acornWritten). While that write is unsettled — the stored value is one it replaced on the way — the working value stands, so an edit builds on the one before it. Once the stored value is the one written, or one this view never saw, the history is settled for good and the stored value is the truth again, so a later change elsewhere back to an earlier value is drawn.",
+          "example": "acornWorking({ stored: outcome.taskList, working: local.taskWork, written: local.taskWritten })"
+        },
+        {
+          "name": "acornWaiting",
+          "params": ["stored", "written"],
+          "doc": "Whether a whole-field write is still waiting to read back: `written` (its history, acornWritten) is unsettled against `stored`, the value as subscribed — see acornWorking.",
+          "example": "acornWaiting({ stored: outcome.taskList, written: local.taskWritten })"
+        },
+        {
+          "name": "acornWritten",
+          "params": ["stored", "working", "written"],
+          "doc": "The history after a whole-field edit: what is still unsettled of `written` (the history before it — nothing, once the last write read back or was overtaken), then the stored value the edit replaces and `working`, the value it writes. Recorded as canonical text, for acornWorking to compare against.",
+          "example": "acornWritten({ stored: meta.topPriorityOutcomes, working: local.prioWork, written: local.prioWritten })"
+        },
+        {
+          "name": "acornPriorityOrder",
+          "params": ["stored", "visible"],
+          "doc": "The project's priority ids after a reorder of the drawn ones. `stored` is the list as kept, `visible` the drawn ids in their new order; each place a drawn id held takes the next of `visible`, and an id that is not drawn — its outcome not loaded, or gone — keeps its place. No stored id is dropped, and each is kept once.",
+          "example": "acornPriorityOrder({ stored: meta.topPriorityOutcomes, visible: event.detail })"
         }
       ],
       "views": [],
