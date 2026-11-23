@@ -1,8 +1,8 @@
+import { markReactive, REACTIVE_ACCESSOR } from '@we/expressions';
 import { describe, expect, it } from 'vitest';
 
 import { resolveProp } from './dispatcher';
 import { isDeferredArg } from './expression';
-import { markReactive, REACTIVE_ACCESSOR } from './reactive';
 import { noMemo } from './types';
 
 const unwrap = (value: unknown): unknown =>

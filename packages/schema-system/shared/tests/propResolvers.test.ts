@@ -1,9 +1,9 @@
+import { markReactive, REACTIVE_ACCESSOR } from '@we/expressions';
 import { describe, expect, it, vi } from 'vitest';
 
-import { noMemo, REACTIVE_ACCESSOR, resolveProp, resolveProps, splitProps } from '../src/propResolvers';
+import { noMemo, resolveProp, resolveProps, splitProps } from '../src/propResolvers';
 import type { LocalFieldMeta } from '../src/propResolvers/local';
 import { resolveResetLocalProp, resolveSetLocalProp, resolveTouchProp } from '../src/propResolvers/local';
-import { markReactive } from '../src/propResolvers/reactive';
 import type { Memo } from '../src/propResolvers/types';
 
 /**

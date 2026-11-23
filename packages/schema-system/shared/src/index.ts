@@ -78,15 +78,13 @@ export {
   scopeIsAnchored,
   resolveQueryProp,
   splitProps,
-  markReactive,
-  REACTIVE_ACCESSOR,
   deepUnwrap,
   noMemo,
   setLocalWarningSink,
 } from './propResolvers';
 export type { LocalFieldMeta, LocalMetaMap } from './propResolvers';
 export { DEFERRED_ARG, isDeferredArg, setExpressionWarningSink } from './propResolvers/expression';
-export * from './expressions';
+export * from '@we/expressions';
 export { hasToken } from './predicates';
 export { isTemplateElement, refusedProp, TEMPLATE_HTML_ELEMENTS } from './templateElements';
 export {

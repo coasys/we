@@ -15,19 +15,20 @@
  * is substituted there. Inside a handler array or a lifecycle array the context already carries
  * `event`/`result`, so the same expression simply evaluates.
  */
-import type { EvaluationEnv } from '../expressions';
+import type { EvaluationEnv } from '@we/expressions';
 import {
   CALL_TIME_ROOTS,
   callbackValue,
   evaluateExpression,
   ExpressionSyntaxError,
   getFunction,
+  markReactive,
   namespace,
   parseCached,
   readValue,
   referencedRoots,
-} from '../expressions';
-import { markReactive } from './reactive';
+} from '@we/expressions';
+
 import { type Memo, noMemo, type Props } from './types';
 
 /** Tags a function the action dispatcher must call with the callback argument to get the value. */

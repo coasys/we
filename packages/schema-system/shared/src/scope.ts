@@ -12,9 +12,10 @@
  * the same question and could be rebased on this later.
  */
 
+import type { Expr } from '@we/expressions';
+import { isExpressionToken, parseExpression } from '@we/expressions';
+
 import type { EntityEntry, StateMemberMeta, StoreEntry } from './contextTypes';
-import type { Expr } from './expressions';
-import { isExpressionToken, parseExpression } from './expressions';
 import { isPropsSchemaNode, isSchemaChild } from './treeUtils';
 import type { SchemaNode } from './types';
 

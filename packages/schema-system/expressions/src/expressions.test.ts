@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { markReactive } from '../propResolvers/reactive';
 import { referencedPaths, referencedRoots } from './ast';
 import { checkExpression, isCallTime } from './check';
 import { evaluateExpression, namespace } from './evaluate';
-import { listFunctions } from './functions';
+import { CORE_FUNCTIONS, defineFunction, getFunction, isCoreFunction, listFunctions } from './functions';
 import { ExpressionSyntaxError, parseExpression } from './parser';
 import { printExpression } from './printer';
+import { markReactive } from './reactive';
 
 const env = (roots: Record<string, unknown>, sources: Record<string, (options: unknown) => unknown> = {}) => ({
   root: (name: string) => ({ bound: name in roots, value: roots[name] }),
@@ -313,5 +313,69 @@ describe('checking', () => {
 
   it('is lenient about unknown roots in a fragment', () => {
     expect(checkExpression(parseExpression('anything.at.all'), { ...scope, strict: false, locals: null })).toEqual([]);
+  });
+});
+
+describe('the core subset', () => {
+  // A host's function, registered the way a host registers one: after the core library has loaded.
+  defineFunction({
+    name: 'hostGreeting',
+    category: 'text',
+    params: ['name', 'field?'],
+    namesLocal: true,
+    doc: 'A host function, for the test.',
+    example: "hostGreeting('search')",
+    impl: ([name]) => `hello ${String(name)}`,
+  });
+
+  const scope = {
+    storeNames: new Set<string>(),
+    storeMembers: new Map<string, Set<string>>(),
+    locals: new Set(['search']),
+    contextNames: new Set(['input']),
+    strict: true,
+    hostFunctions: new Set(['calendarMonth']),
+  };
+  const check = (source: string, functions?: 'all' | 'core') =>
+    checkExpression(parseExpression(source), { ...scope, functions });
+
+  it('is every function the language defines, and none a host adds', () => {
+    for (const name of ['count', 'filter', 'find', 'distinct', 'join', 'plural', 'round', 'pick']) {
+      expect(isCoreFunction(name)).toBe(true);
+    }
+    expect(CORE_FUNCTIONS.has('hostGreeting')).toBe(false);
+    expect(getFunction('hostGreeting')).toBeDefined();
+    expect([...CORE_FUNCTIONS].every((name) => getFunction(name) !== undefined)).toBe(true);
+  });
+
+  it('cannot be redefined by a host', () => {
+    expect(() =>
+      defineFunction({ name: 'count', category: 'list', params: ['items'], doc: '', example: '', impl: () => 0 }),
+    ).toThrow(/core expression function/);
+    expect(getFunction('count')?.impl([[1, 2]], { context: {}, stores: {} })).toBe(2);
+  });
+
+  it("refuses a host function under functions: 'core', however it was registered", () => {
+    expect(check("count(input.items) > 0 && join(input.tags, ', ') != ''", 'core')).toEqual([]);
+
+    const [registered] = check("hostGreeting('search')", 'core');
+    expect(registered.severity).toBe('error');
+    expect(registered.message).toMatch(/"hostGreeting" is not a core function/);
+
+    const [source] = check('calendarMonth({})', 'core');
+    expect(source.severity).toBe('error');
+    expect(source.message).toMatch(/"calendarMonth" is not a core function/);
+
+    // The nearest name offered is a core one.
+    expect(check('cont(input.items)', 'core')[0].message).toMatch(/did you mean count\(\)/);
+  });
+
+  it('admits host functions by default', () => {
+    expect(check("hostGreeting('search')")).toEqual([]);
+    expect(check('calendarMonth({})', 'all')).toEqual([]);
+  });
+
+  it('holds a namesLocal argument to the declared locals', () => {
+    expect(check("hostGreeting('serch')")[0].message).toMatch(/names a field \$localState does not declare.*'search'/);
   });
 });

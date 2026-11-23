@@ -6,9 +6,11 @@
  * Anything computed on the way in — the value to set, the entry to toggle — is an expression
  * evaluated when the handler fires, with the event in scope.
  */
+import { REACTIVE_ACCESSOR } from '@we/expressions';
+
+import { defineFormFunctions } from '../formFunctions';
 import type { resolveProp } from './dispatcher';
 import { isDeferredArg } from './expression';
-import { REACTIVE_ACCESSOR } from './reactive';
 import type { Memo, Props } from './types';
 import { noMemo } from './types';
 
@@ -42,6 +44,9 @@ export type LocalFieldMeta = {
 };
 
 export type LocalMetaMap = Record<string, LocalFieldMeta>;
+
+// The readers of what these handlers write; see `formFunctions.ts`.
+defineFormFunctions();
 
 /**
  * A value written by a handler, as it is at the moment the handler fires.

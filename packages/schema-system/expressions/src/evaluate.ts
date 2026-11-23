@@ -25,10 +25,10 @@
  * — which is exactly what the operator resolvers did with their per-operand `resolvePropFn` calls,
  * with one memo instead of one per operator.
  */
-import { REACTIVE_ACCESSOR } from '../propResolvers/reactive';
 import type { Expr } from './ast';
 import { DENIED_PROPERTIES } from './ast';
 import { readField } from './reach';
+import { REACTIVE_ACCESSOR } from './reactive';
 import { asText } from './where';
 
 /**

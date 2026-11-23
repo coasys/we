@@ -1,7 +1,7 @@
+import { REACTIVE_ACCESSOR } from '@we/expressions';
 import { describe, expect, it } from 'vitest';
 
 import { resolveProp } from './dispatcher';
-import { REACTIVE_ACCESSOR } from './reactive';
 
 const unwrap = (value: unknown): unknown =>
   typeof value === 'function' && REACTIVE_ACCESSOR in value ? (value as unknown as () => unknown)() : value;

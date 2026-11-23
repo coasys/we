@@ -33,9 +33,8 @@ import { register } from 'node:module';
 import { join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import type { Expr, ObjectExpr } from '../expressions/ast';
-import { parseExpression } from '../expressions/parser';
-import { printExpression } from '../expressions/printer';
+import type { Expr, ObjectExpr } from '@we/expressions';
+import { parseExpression, printExpression } from '@we/expressions';
 
 register('./assetHooks.mjs', import.meta.url);
 

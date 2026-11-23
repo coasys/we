@@ -15,8 +15,9 @@
  * was meant — a `then` holding a node rendered nothing, silently, which blanked the sign-in screen
  * once with every check passing.
  */
+import { REACTIVE_ACCESSOR } from '@we/expressions';
+
 import type { resolveProp } from './dispatcher';
-import { REACTIVE_ACCESSOR } from './reactive';
 import type { Props } from './types';
 import { noMemo } from './types';
 

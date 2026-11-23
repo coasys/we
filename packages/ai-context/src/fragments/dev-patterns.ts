@@ -430,7 +430,7 @@ For per-file validation or other options, see the **Schema Validation** section 
 **No new value operators, and no new syntax.** The value layer is one expression language —
 \`{ "$": "count(local.rows) > 0 && local.search != ''" }\` — with a closed grammar (references,
 comparison, boolean and arithmetic operators, interpolation, a ternary, five comprehension macros)
-and an open **function library** (\`packages/schema-system/shared/src/expressions/functions.ts\`).
+and an open **function library** (\`packages/schema-system/expressions/src/functions.ts\`).
 There are no other value tokens: a store read, a local read, a comparison, a count, a label — each
 is an expression, and a plain string anywhere in a schema is text.
 

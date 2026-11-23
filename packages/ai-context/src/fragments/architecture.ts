@@ -90,6 +90,7 @@ Glossary (these terms pervade stores, models, and \`$query\`/\`perspective\` in 
 | \`@we/template-kit\` | templates/kit | The same, for fragments that read WE's own stores (\`profileStore\`, \`spaceStore\`) | Agnostic |
 | \`@we/template-shell\` · \`@we/template-default\` | templates/* | WE's shell surfaces and built-in space templates, as data | Agnostic |
 | \`@we/editor\` | packages/editor | Template/theme editing surface, embeddable via \`EditorHost\` | Solid (mount fn at the boundary) |
+| \`@we/expressions\` | schema-system/expressions | The expression language: grammar, checker, evaluator and the core function library, with the subset an operation may call (\`CORE_FUNCTIONS\`); depends only on the backend contract | **Agnostic** |
 | \`@we/schema-shared\` | schema-system/shared | Schema semantics: prop resolvers, validation, indexer, registry types, reactivity port | **Agnostic** |
 | \`@we/schema-solid\` | schema-system/frameworks/solid | The schema renderer (walks the tree, mounts components) | Solid (thin adapter) |
 | \`@we/backend-shared\` | backend-system/shared | The backend contract: \`DataSource\`, query IR + engine, ephemeral, presence & transcription ports, model manifest | **Agnostic** |
@@ -133,7 +134,7 @@ that declares \`backends: ['ad4m']\` — nothing else. See \`docs/architecture/p
 2. **Schema semantics live in \`@we/schema-shared\`, parameterized by a reactivity port.** All token
    resolution (\`{ $ }\` expressions, \`$invoke\`, \`$query\`, \`$setLocal\`, …) is in \`propResolvers/\`.
    \`resolveProp(value, stores, context, memo)\` takes a framework-injected memoization function
-   (\`memo\`), and \`markReactive()\` (see \`propResolvers/reactive.ts\`) tags accessors so a renderer
+   (\`memo\`), and \`markReactive()\` (from \`@we/expressions\`, whose evaluator reads the tag) tags accessors so a renderer
    knows a prop is reactive. The entire schema engine AND its reactivity wiring are framework-neutral;
    a framework only injects its signal primitive.
 

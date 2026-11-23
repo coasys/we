@@ -8,6 +8,8 @@ framework's reactivity primitive rather than importing one.
 **Anything the renderer needs to turn a template into DOM.**
 
 - `SchemaNode` and the token types
+- the form-state readers (`formFunctions.ts`), registered into the expression library as this
+  host's functions
 - `propResolvers/` — `{ $ }` expressions, `$invoke`, `$setLocal`, the handler `$if`, `$query`, …
 - validation — structural, semantic, field-level
 - `indexer` / `sections` — addressing and patching a stored template
@@ -15,7 +17,9 @@ framework's reactivity primitive rather than importing one.
 
 ## What doesn't
 
-**Anything about where data comes from.** That is `@we/backend-shared`. **Anything about declaring or
+**The expression language itself** — grammar, checker, evaluator, core library. That is
+`@we/expressions`, which this package depends on and re-exports, so that code with no renderer can
+evaluate an expression. **Anything about where data comes from.** That is `@we/backend-shared`. **Anything about declaring or
 mounting a module.** That is `@we/module-shared`.
 
 ## The re-export

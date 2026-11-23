@@ -61,7 +61,16 @@ export { printExpression, printLiteral, quote } from './printer';
 export type { EvaluationEnv, Namespace } from './evaluate';
 export { callbackValue, evaluateExpression, NAMESPACE, namespace, readValue } from './evaluate';
 export type { ExpressionCallEnv, FunctionCategory, FunctionSpec } from './functions';
-export { arityOf, defineFunction, getFunction, hasFunction, listFunctions } from './functions';
+export {
+  arityOf,
+  CORE_FUNCTIONS,
+  defineFunction,
+  getFunction,
+  hasFunction,
+  isCoreFunction,
+  listFunctions,
+} from './functions';
+export { markReactive, REACTIVE_ACCESSOR } from './reactive';
 export type { ExpressionIssue, ExpressionScope } from './check';
 export { checkExpression, isCallTime, suggest } from './check';
 export { matchesWhere } from './where';

@@ -1,16 +1,26 @@
 import { BASE_CLASS_LAYERS, CSS_PROP_TO_VAR_SUFFIX, getKeysForLayers, layerKeyMap, tierKeys } from '@we/design-utils';
+import type { Expr } from '@we/expressions';
+import {
+  checkExpression,
+  ExpressionSyntaxError,
+  isCallTime,
+  isExpressionToken,
+  parseExpression,
+} from '@we/expressions';
 import { role, semanticValues, space, TONES } from '@we/tokens';
 
 import type { ContextData, StateMemberMeta } from './contextTypes';
 import { expandDefinitions } from './definitions';
-import { checkExpression, ExpressionSyntaxError, isCallTime, isExpressionToken, parseExpression } from './expressions';
-import type { Expr } from './expressions/ast';
+import { defineFormFunctions } from './formFunctions';
 import { HOST_PART_IDS, isHostPartId } from './hostPartIds';
 import { isRelativePath } from './navigationPaths';
 import { parseRecordViewKey } from './recordViews';
 import { isTemplateElement } from './templateElements';
 import type { ValidationError, ValidationResult } from './validators';
 import { validateStructure } from './validators';
+
+// Calls to the form-state readers are checked against their signatures, so they must be registered.
+defineFormFunctions();
 
 /**
  * What to say when a colour turns up where a style belongs.

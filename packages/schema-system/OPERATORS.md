@@ -38,7 +38,7 @@ membership), `! && ||` (answering with booleans), `??` (fallback value), `a ? b 
 `.find(x, …)`, `.exists(x, …)`, `.all(x, …)`.
 
 **Functions** — `f(a, b)` and `a.f(b)` are the same call; a value's own methods are never callable.
-The library is in [`shared/src/expressions/functions.ts`](shared/src/expressions/functions.ts) and
+The library is in [`expressions/src/functions.ts`](expressions/src/functions.ts) and
 is listed in the generated reference from that registry. Host-registered sources
 (`packages/app-shell/src/shared/sources/index.ts`) are callable the same way.
 

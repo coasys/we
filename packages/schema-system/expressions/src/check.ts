@@ -10,7 +10,7 @@
  */
 import type { Expr, Span } from './ast';
 import { CALL_TIME_ROOTS, referencedPaths, walkExpr, WELL_KNOWN_ROOTS } from './ast';
-import { arityOf, getFunction, listFunctions } from './functions';
+import { arityOf, CORE_FUNCTIONS, getFunction, listFunctions } from './functions';
 
 export interface ExpressionScope {
   /** Store names a schema may address. */
@@ -36,6 +36,13 @@ export interface ExpressionScope {
    * an unknown module id or member is an error, with the nearest right one.
    */
   moduleMembers?: ReadonlyMap<string, ReadonlySet<string> | null>;
+  /**
+   * Which functions an expression may call. `'all'`, the default, is every registered function and
+   * every `hostFunctions` name. `'core'` is the core library alone (`CORE_FUNCTIONS`): an expression
+   * that has to mean the same on every host — a declared operation — cannot call what only one host
+   * provides, so a host function is an error there however it was registered.
+   */
+  functions?: 'all' | 'core';
 }
 
 export interface ExpressionIssue {
@@ -43,8 +50,6 @@ export interface ExpressionIssue {
   severity: 'error' | 'warning';
   span: Span;
 }
-
-const FIELD_READERS = new Set(['error', 'valid', 'touched']);
 
 export function checkExpression(expr: Expr, scope: ExpressionScope): ExpressionIssue[] {
   const issues: ExpressionIssue[] = [];
@@ -181,21 +186,19 @@ export function checkExpression(expr: Expr, scope: ExpressionScope): ExpressionI
       return;
     }
     if (node.kind !== 'call') return;
-    // The form-state readers name a field as a string; it has to be one the scope declares.
-    if (FIELD_READERS.has(node.callee) && scope.locals !== null) {
-      const [field] = node.args;
-      if (field?.kind === 'literal' && typeof field.value === 'string' && !scope.locals.has(field.value)) {
-        const hint = suggest(field.value, scope.locals);
+    const coreOnly = scope.functions === 'core';
+    const spec = coreOnly && !CORE_FUNCTIONS.has(node.callee) ? undefined : getFunction(node.callee);
+    const given = node.args.length + (node.receiver ? 1 : 0);
+    if (!spec) {
+      if (coreOnly) {
+        const hint = suggest(node.callee, CORE_FUNCTIONS);
         issues.push({
-          message: `${node.callee}('${field.value}') names a field $localState does not declare here${hint ? ` — did you mean '${hint}'?` : ''}`,
+          message: `"${node.callee}" is not a core function${hint ? ` — did you mean ${hint}()?` : ''}. Only the core library is callable here, because a function one host provides means nothing on another`,
           severity: 'error',
           span: node.span,
         });
+        return;
       }
-    }
-    const spec = getFunction(node.callee);
-    const given = node.args.length + (node.receiver ? 1 : 0);
-    if (!spec) {
       if (scope.hostFunctions?.has(node.callee)) return;
       const hint = suggest(node.callee, [...listFunctions().map((fn) => fn.name), ...(scope.hostFunctions ?? [])]);
       issues.push({
@@ -206,6 +209,18 @@ export function checkExpression(expr: Expr, scope: ExpressionScope): ExpressionI
         span: node.span,
       });
       return;
+    }
+    // A function whose first argument names a field, as a string; it has to be one the scope declares.
+    if (spec.namesLocal && scope.locals !== null) {
+      const [field] = node.args;
+      if (field?.kind === 'literal' && typeof field.value === 'string' && !scope.locals.has(field.value)) {
+        const hint = suggest(field.value, scope.locals);
+        issues.push({
+          message: `${node.callee}('${field.value}') names a field $localState does not declare here${hint ? ` — did you mean '${hint}'?` : ''}`,
+          severity: 'error',
+          span: node.span,
+        });
+      }
     }
     const [min, max] = arityOf(spec);
     if (given < min || given > max) {

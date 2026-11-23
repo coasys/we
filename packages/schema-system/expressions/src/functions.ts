@@ -22,8 +22,16 @@
  * answers with the empty value of its kind (`[]`, `''`, `0`, `false`, `undefined`), because a
  * template that renders too little is recoverable and one that throws mid-paint takes the tree with
  * it.
+ *
+ * ## Core and host functions
+ *
+ * Every function defined in this file is **core**: it means the same wherever the language runs,
+ * because its implementation ships with the language. A host adds its own through the same
+ * `defineFunction` (the form-state readers are one host's), and those are the host's: another host
+ * may not have them, or may answer differently. Something that has to evaluate identically
+ * everywhere — a declared operation, run by whichever backend holds the data — is checked with
+ * `functions: 'core'` (see `check.ts`), which refuses every name outside `CORE_FUNCTIONS`.
  */
-import type { LocalMetaMap } from '../propResolvers/local';
 import { readField } from './reach';
 import { asText, matchesWhere } from './where';
 
@@ -46,12 +54,24 @@ export interface FunctionSpec {
   /** A call as a template would write it. */
   example: string;
   impl: (args: unknown[], env: ExpressionCallEnv) => unknown;
+  /**
+   * The first argument names a `local` field as a string, as the form-state readers' does. The
+   * checker holds that name to the fields the scope declares, as it does `local.<name>`.
+   */
+  namesLocal?: boolean;
 }
 
 const registry = new Map<string, FunctionSpec>();
 
-/** Register a function. Re-registering a name replaces it — a host may refine a built-in. */
+/** Filled in once every core function below has been defined; `null` until then. */
+let core: ReadonlySet<string> | null = null;
+
+/**
+ * Register a function. Re-registering a host function replaces it. A core function cannot be
+ * replaced: its meaning is the same on every host, which is the reason the core set exists.
+ */
 export function defineFunction(spec: FunctionSpec): void {
+  if (core?.has(spec.name)) throw new Error(`"${spec.name}" is a core expression function and cannot be redefined`);
   registry.set(spec.name, spec);
 }
 
@@ -92,10 +112,6 @@ const asNumber = (value: unknown): number => {
 };
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
-
-function meta(env: ExpressionCallEnv): LocalMetaMap | undefined {
-  return env.context.$localMeta as LocalMetaMap | undefined;
-}
 
 // ── Lists ───────────────────────────────────────────────────────────────────
 
@@ -357,51 +373,15 @@ defineFunction({
   },
 });
 
-// ── Form state ──────────────────────────────────────────────────────────────
+// ── The core set ────────────────────────────────────────────────────────────
 
-defineFunction({
-  name: 'error',
-  category: 'form',
-  params: ['field'],
-  doc: "A field's first validation message, once it has been touched; empty otherwise. The field is named as a string.",
-  example: "error('email')",
-  impl: ([field], env) => {
-    const entry = meta(env)?.[asText(field)];
-    return entry && entry.touched() ? (entry.errors()[0] ?? '') : '';
-  },
-});
+/**
+ * The names of the core library: every function this file defines, and nothing a host registers.
+ * Taken here, after the last definition above and before any host can have added one.
+ */
+export const CORE_FUNCTIONS: ReadonlySet<string> = (core = new Set(registry.keys()));
 
-defineFunction({
-  name: 'valid',
-  category: 'form',
-  params: ['field'],
-  doc: 'Whether every validation rule on the field passes, touched or not. True for a field with no rules.',
-  example: "valid('email')",
-  impl: ([field], env) => {
-    const entry = meta(env)?.[asText(field)];
-    return entry ? entry.errors().length === 0 : true;
-  },
-});
-
-defineFunction({
-  name: 'touched',
-  category: 'form',
-  params: ['field'],
-  doc: 'Whether the field has been blurred or marked with $touch.',
-  example: "touched('email')",
-  impl: ([field], env) => meta(env)?.[asText(field)]?.touched() ?? false,
-});
-
-defineFunction({
-  name: 'formValid',
-  category: 'form',
-  params: [],
-  doc: 'Whether every validated field in the enclosing $localState scope passes.',
-  example: 'formValid()',
-  impl: (_args, env) => {
-    const map = meta(env);
-    const fields = env.context.$localScopeFields as string[] | undefined;
-    if (!map || !fields) return true;
-    return fields.every((name) => (map[name]?.errors().length ?? 0) === 0);
-  },
-});
+/** Whether `name` is one of the core library's functions rather than a host's. */
+export function isCoreFunction(name: string): boolean {
+  return CORE_FUNCTIONS.has(name);
+}
