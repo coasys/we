@@ -1,45 +1,45 @@
-                  │
-                  │
-    Coasys        │
-                  │
-                  │
-                  │
-                  │
-                  │
-                  │
-     Spaces       │
-                  │
-                  │
-                  │
-                  │
-     Settings     │
-                  │
-                  │
-                  │
-                  │
-     Profile      │
-                  │
-                  │
-                  │
-                  │
-   About          │
-   Log out        │
-                  │
-                  │
-                  │
-                  │
-                  │
-                  │
-                  │
-                  │
-                  │
-                  │
-                  │
-                  │
-                  │
-                  │
-                  │
-                  │
-                  │
-                  │
- /  ·  8 nodes   tab/↑↓ focus · enter activate · ←/→ fold · q quit
+           │PAGEBODY
+           │
+    Coasys │
+           │
+           │
+           │
+           │
+           │
+           │
+     Sp…   │
+           │
+           │
+           │
+           │
+     Se…   │
+           │
+           │
+           │
+           │
+     Pr…   │
+           │
+           │
+           │
+           │
+   About   │
+   Log out │
+           │
+           │
+           │
+           │
+           │
+           │
+           │
+           │
+           │
+           │
+           │
+           │
+           │
+           │
+           │
+           │
+           │
+           │
+ /  ·  10 nodes   tab/↑↓ focus · enter activate · ←/→ fold · q quit
