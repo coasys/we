@@ -23,7 +23,7 @@ const mintedUnder = (parent: string, name: string) => `we://interpreted/${encode
 
 /**
  * Enough of a `PerspectiveProxy` for `proposals` to run: the overlays it reads, and the links a
- * scope is resolved through. `shapes` throws the way a runtime with no shapes would, which
+ * scope is resolved through. `shapes()` throws the way a runtime with no shapes would, which
  * the adapter is meant to degrade over rather than fail on.
  */
 function perspectiveWith(

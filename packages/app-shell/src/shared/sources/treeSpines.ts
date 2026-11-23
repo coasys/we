@@ -1,0 +1,201 @@
+/**
+ * The choices a tree's spine picker offers: the space's named connection kinds, plus every relation
+ * the installed models declare — the second list being the whole point of following a tree built
+ * out of the data rather than out of `Relationship` records.
+ *
+ * ## Why a host function
+ *
+ * The two halves come from different places — kinds are records a `$query` subscribes to, model
+ * relations are a manifest — and an expression cannot concatenate two lists. Merging them here also
+ * lets the value encoding live in one place: a picker value is a string (`rel:` prefixed for a model
+ * relation, a bare id for a connection kind, exactly as an address bar saved before this existed
+ * spells it), and {@link parseSpine} is the one codec that turns it into the typed {@link Spine} the
+ * layout's selector and `arrangeOnTree` read, so nothing compares the spelling again.
+ *
+ * ## What it decides
+ *
+ * - **Only typed relations.** A relation naming no target class (`CollectionBlock.children`,
+ *   `Relationship.source`) could join anything to anything — not a spine, and the canvas seed
+ *   already refuses to follow it.
+ * - **The models are the merged manifest** — core entities, then the space's own shapes, then the
+ *   foreign schemas it installed — the same precedence the graph's `models` answers, so a shape that
+ *   shadows a core name picks the same relation the canvas follows.
+ * - **"All model relations" is one choice**, the `relation` spine with no class or property (picker value `rel:*`). It filters the tree to edges typed
+ *   `relation` — the claims the models hold — where the empty choice ("Any connection") follows
+ *   every line there is, relations and connections alike.
+ */
+import { type EntityManifestEntry, manifestEntries } from '@we/backend-shared';
+import { CORE_MANIFEST } from '@we/entities/manifest';
+import { followedRelations } from '@we/graph-expanders';
+
+import { toEntityShape } from '../graphEntityShape';
+
+/** A shape record as `shapeStore.spaceShapes` hands one over — only the fields this reads. */
+interface ShapeInput {
+  name: string;
+  manifest?: { entities: Record<string, unknown> } | null;
+  problems?: unknown[];
+}
+
+interface KindInput {
+  id?: string;
+  name?: string;
+  icon?: string;
+}
+
+/**
+ * What a tree's spine follows — the one reading of the picker's value.
+ *
+ * - `any`: every line there is ("Any connection"), relations and drawn connections alike;
+ * - `relationship`: drawn connections of one `RelationshipType`, by its id;
+ * - `relation`: the relations the models declare — all of them, or one, by class and property.
+ *
+ * A picker and an address hold the spine as a string (`?spine=`), so it has a spelling: empty, a bare
+ * kind id (what a link saved before relations existed holds), `rel:*` and `rel:Class.prop`. Only
+ * {@link parseSpine} reads that spelling and only {@link spineValue} writes it; everything else takes
+ * the typed value, which is what keeps a reader from comparing `data.relation` with `*` again.
+ */
+export type Spine =
+  | { kind: 'any' }
+  | { kind: 'relationship'; id: string }
+  | { kind: 'relation'; class?: undefined; prop?: undefined }
+  | { kind: 'relation'; class: string; prop: string };
+
+const RELATION = 'rel:';
+
+/** The spine a picker value or an address names; a spine already typed is taken as it is. */
+export function parseSpine(value: unknown): Spine {
+  if (value && typeof value === 'object') {
+    const spine = value as Partial<{ kind: string; id: string; class: string; prop: string }>;
+    if (spine.kind === 'relationship' && typeof spine.id === 'string' && spine.id)
+      return { kind: 'relationship', id: spine.id };
+    if (spine.kind === 'relation') {
+      return typeof spine.class === 'string' && spine.class && typeof spine.prop === 'string' && spine.prop
+        ? { kind: 'relation', class: spine.class, prop: spine.prop }
+        : { kind: 'relation' };
+    }
+    return { kind: 'any' };
+  }
+  if (typeof value !== 'string' || !value) return { kind: 'any' };
+  if (!value.startsWith(RELATION)) return { kind: 'relationship', id: value };
+  const named = value.slice(RELATION.length);
+  if (named === '*') return { kind: 'relation' };
+  const dot = named.indexOf('.');
+  return dot > 0 && dot < named.length - 1
+    ? { kind: 'relation', class: named.slice(0, dot), prop: named.slice(dot + 1) }
+    : { kind: 'any' };
+}
+
+/** A spine's spelling, for a picker option and the address. */
+export function spineValue(spine: Spine): string {
+  if (spine.kind === 'relationship') return spine.id;
+  if (spine.kind === 'relation') return spine.class ? `${RELATION}${spine.class}.${spine.prop}` : `${RELATION}*`;
+  return '';
+}
+
+/**
+ * A spine as the tree reads it — the host function the kit's expressions call, so no template decodes
+ * the spelling itself:
+ *
+ * - `selector`: the `forest` layout's `spine` — which field of a line makes a parent, and the value it
+ *   must hold. Empty for "any", which the layout reads as every line;
+ * - `offSpine`: the `when` of the faint-line rule — the lines that are not the spine, or nothing;
+ * - `relations`: whether the canvas seed should draw the models' relations — not under one connection
+ *   kind, whose tree is built from `Relationship` records alone.
+ */
+export function treeSpine(options: { value?: unknown } = {}): Spine & {
+  value: string;
+  selector: { field: string; value: string };
+  offSpine?: Record<string, unknown>;
+  relations: boolean;
+} {
+  const spine = parseSpine(options.value);
+  const [field, value] =
+    spine.kind === 'relation'
+      ? spine.class
+        ? ['data.relation', `${spine.class}.${spine.prop}`]
+        : ['type', 'relation']
+      : ['data.relationshipTypeId', spine.kind === 'relationship' ? spine.id : ''];
+  return {
+    ...spine,
+    value: spineValue(spine),
+    selector: { field, value },
+    ...(spine.kind === 'any' ? {} : { offSpine: { [field]: { not: value } } }),
+    relations: spine.kind !== 'relationship',
+  };
+}
+
+export interface SpineOption {
+  label: string;
+  value: string;
+  icon?: string;
+  group?: string;
+}
+
+/**
+ * Every entity this dataset means by its models — the same three-source merge `GraphHost` performs
+ * for `models`, so the relations offered are the relations the canvas actually follows.
+ */
+export function modelManifestEntries(options: {
+  shapes?: readonly ShapeInput[];
+  foreign?: readonly EntityManifestEntry[];
+}): EntityManifestEntry[] {
+  const core = manifestEntries(CORE_MANIFEST);
+  const known = new Set(core.map((entry) => entry.name));
+  const entries: EntityManifestEntry[] = [...core];
+  for (const shape of options.shapes ?? []) {
+    if (!shape.manifest || shape.problems?.length || known.has(shape.name)) continue;
+    for (const entry of manifestEntries(shape.manifest as never, { parents: CORE_MANIFEST })) {
+      if (known.has(entry.name)) continue;
+      known.add(entry.name);
+      entries.push(entry);
+    }
+  }
+  for (const entry of options.foreign ?? []) {
+    if (known.has(entry.name)) continue;
+    known.add(entry.name);
+    entries.push(entry);
+  }
+  return entries;
+}
+
+export function treeSpines(options: {
+  kinds?: readonly KindInput[];
+  shapes?: readonly ShapeInput[];
+  foreign?: readonly EntityManifestEntry[];
+}): SpineOption[] {
+  /*
+    The relations the canvas follows, by the same rule it follows them by (`followedRelations`): typed,
+    forward only, and never to or from WE's bookkeeping — `signals`, `runs`, `generatedBy` would offer
+    the furniture beside the community's structure, then a tree full of it. A spine on a relation the
+    seed never draws would select an edge that is not there.
+  */
+  const relations: SpineOption[] = followedRelations(modelManifestEntries(options).map(toEntityShape)).map(
+    (relation) => ({
+      label: `${relation.holder} › ${relation.name}`,
+      value: spineValue({ kind: 'relation', class: relation.holder, prop: relation.name }),
+      icon: 'link',
+      group: 'Model relations',
+    }),
+  );
+  return [
+    ...(options.kinds ?? [])
+      .filter((kind) => typeof kind.id === 'string' && kind.id)
+      .map((kind) => ({
+        label: kind.name ?? kind.id!,
+        value: spineValue({ kind: 'relationship', id: kind.id! }),
+        icon: kind.icon,
+      })),
+    ...(relations.length
+      ? [
+          {
+            label: 'All model relations',
+            value: spineValue({ kind: 'relation' }),
+            icon: 'tree-structure',
+            group: 'Model relations',
+          },
+          ...relations,
+        ]
+      : []),
+  ];
+}

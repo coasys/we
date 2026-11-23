@@ -78,6 +78,7 @@ import {
   templateChanges,
 } from '../../../shared/templateSync';
 import { type AppDataset, canonicalSpaceId, useDatasetStore } from './DatasetStore';
+import { latestPerSpace } from './latestPerSpace';
 import { useRouteStore } from './RouteStore';
 import { useSessionStore } from './SessionStore';
 import { createSpaceRecordWait } from './spaceRecordWait';
@@ -913,11 +914,23 @@ export function TemplateStoreProvider(props: ParentProps) {
     setSpaceTemplateIdSet(read.ids);
   }
 
+  /**
+   * Which space's templates were last asked to be put in the lists. A read that was started for one
+   * space and answers after another's was asked for is cached but not placed — placed, it would
+   * replace the newer space's templates with its own, and a choice for the newer space naming an id
+   * both define would be applied from the wrong one. It is a turn count rather than "is the dataset
+   * current" because a preload puts a space's templates in place *before* the switch to it.
+   */
+  let spaceTemplateTurn = 0;
+
   /** Load templates from a space perspective, merge into allTemplates, and populate the cache */
   async function loadSpaceTemplates(dataset: AppDataset): Promise<void> {
+    const turn = ++spaceTemplateTurn;
     clearSpaceTemplates();
     try {
-      placeSpaceTemplates(dataset, await readSpaceTemplates(dataset));
+      const read = await readSpaceTemplates(dataset);
+      if (turn === spaceTemplateTurn) placeSpaceTemplates(dataset, read);
+      else spaceTemplateCache.set(dataset.id, read);
     } catch (error) {
       console.error('TemplateStore: loadSpaceTemplates error', error);
     }
@@ -950,6 +963,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     if (inFlight) return inFlight;
     const cached = spaceTemplateCache.get(dataset.id);
     if (cached) {
+      spaceTemplateTurn++;
       clearSpaceTemplates();
       if (cached.schemas.length > 0) {
         cached.models.forEach((model, id) => spaceTemplateMap.set(id, model));
@@ -1167,6 +1181,17 @@ export function TemplateStoreProvider(props: ParentProps) {
     await chooseSpaceTemplate(perspective, fallback, options);
   }
 
+  /*
+    Chooses overlap: a republish for a failed default save starts another choose while an earlier
+    one is still inside the preference read, and the earlier one's record — read before the
+    rollback landed — must not paint over the newer one's. `latest` makes the newest choose the
+    only one still current after the await, and the record is re-read after it, so even the newest
+    answers with what the record says now rather than what it said when the choose began. Kept per
+    space: a choose still reading for the space just left must not stale the one for the space the
+    user is in now.
+  */
+  const chooseLatestFor = latestPerSpace();
+
   /**
    * Which template this space shows, from what has already been read — its record, this agent's
    * override, the templates loaded. The half of `applySpaceTemplate` after the preload, so the
@@ -1177,8 +1202,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     fallback?: string,
     options: { shownEarly?: boolean } = {},
   ): Promise<void> {
-    // Use mySpaces cache for defaultTemplateId — avoids a redundant Space.findOne round-trip
-    const cachedSpace = resolveSpaceFromPerspective(perspective);
+    const still = chooseLatestFor(perspective.id).begin();
 
     // Read per-space preferences from we-root directly rather than through SpaceStore, which mounts
     // below this one — the same reason `provideSpaceLookup` exists.
@@ -1186,6 +1210,12 @@ export function TemplateStoreProvider(props: ParentProps) {
     const templateOverride = rootPerspective
       ? await migrateAndReadTemplateOverride(rootPerspective, perspective)
       : FOLLOW_SPACE;
+    if (!still()) return;
+
+    // Use mySpaces cache for defaultTemplateId — avoids a redundant Space.findOne round-trip. Read
+    // after the await: the record can have changed under the wait — a save rolled back republishes
+    // the stored id — and this paints what it says now.
+    const cachedSpace = resolveSpaceFromPerspective(perspective);
 
     // The override names *which* template this agent wants here, so it answers on its own —
     // including when the space set no default at all, which the community-default path cannot act

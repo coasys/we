@@ -9,12 +9,89 @@
  * Read through the store's window (`feedRows`, see `feed.ts`), drawn with the shared `timeline`, so
  * it scrolls, pages and re-anchors exactly as the transcript does, which way round its reader chose.
  * Two placements of one stream: the module's panel, and a view a template places as a page.
+ *
+ * ## Two scopes, one Feed
+ *
+ * The same stream scoped to one call (`callFeedView`): the same line, the same three choices and the
+ * same box, read from and written into the call's collection (`callFeedRows`, `sendToCallFeed`). In
+ * a call, Everything is every line said, typed or answered there; Messages is what people typed; Bots
+ * is what bots wrote. The space's transcripts switch is not there — a call's own Feed is where its
+ * spoken lines are read. Each scope below is a `FeedScope`; the panel, the view and the call's view
+ * are the same body drawn over one.
  */
-import { messageLine, SPOKEN } from '@we/messages';
+import { messageLine, SPOKEN, TYPED } from '@we/messages';
 import { lineComposer, panelShell, timeline, timelineMoreAt, timelineOrder } from '@we/schema-kit';
 import type { SchemaNode } from '@we/schema-shared';
 
-const FROM_START = 'modules.feed.feedFromStart';
+/**
+ * What a Feed body is drawn over: where its rows, its window and its box are in the store, and the
+ * words that name what it is the Feed of.
+ */
+interface FeedScope {
+  /** Which composer a reply started on one of its lines belongs to — see `replyingTo`. */
+  surface: 'feed' | 'callFeed';
+  /** The rows drawn under Everything — an expression over the store's window. */
+  visible: string;
+  /** Which of those are Messages — a condition on `r`. */
+  message: string;
+  hasMore: string;
+  loaded: string;
+  fromStart: string;
+  showMore: string;
+  readLive: string;
+  readFromStart: string;
+  send: string;
+  /** What the window is of, for the words around it — "the space", "the call". */
+  of: string;
+  /** What an empty Everything says. */
+  empty: string;
+  /** The space's choice to draw its calls' spoken lines — not a call's to make. */
+  transcriptsSwitch: boolean;
+}
+
+/** The space's Feed. */
+const SPACE: FeedScope = {
+  surface: 'feed',
+  /*
+    The lines a call spoke, kept out until this reader asks for them in this space — the per-space
+    `showCallTranscripts` setting, off by default. Only `source == 'spoken'` goes: a heard line
+    somebody corrected is no longer verbatim speech, and a line with no source is a bot's or a call's
+    own item — all still drawn.
+  */
+  visible:
+    'modules.feed.showCallTranscripts ? modules.feed.feedRows : ' +
+    `modules.feed.feedRows.filter(r, !(r.kind == 'line' && r.source == '${SPOKEN}'))`,
+  // Every line the space's window holds — a call's spoken lines are already out unless asked for.
+  message: "r.kind == 'line'",
+  hasMore: 'modules.feed.feedHasMore',
+  loaded: 'modules.feed.feedLoaded',
+  fromStart: 'modules.feed.feedFromStart',
+  showMore: 'modules.feed.showMoreFeed',
+  readLive: 'modules.feed.readFeedLive',
+  readFromStart: 'modules.feed.readFeedFromStart',
+  send: 'modules.feed.sendToFeed',
+  of: 'the space',
+  empty: 'Nothing said here yet. Calls, messages and what is found in them appear here.',
+  transcriptsSwitch: true,
+};
+
+/** The Feed of one call: every line in it, whatever the space's transcripts choice. */
+const CALL: FeedScope = {
+  surface: 'callFeed',
+  visible: 'modules.feed.callFeedRows',
+  // What people typed: not what the call heard (spoken, or heard and then mended), and not a bot's.
+  message: `r.kind == 'line' && r.source == '${TYPED}' && !(r.author in modules.feed.botAuthors)`,
+  hasMore: 'modules.feed.callFeedHasMore',
+  loaded: 'modules.feed.callFeedLoaded',
+  fromStart: 'modules.feed.callFeedFromStart',
+  showMore: 'modules.feed.showMoreCallFeed',
+  readLive: 'modules.feed.readCallFeedLive',
+  readFromStart: 'modules.feed.readCallFeedFromStart',
+  send: 'modules.feed.sendToCallFeed',
+  of: 'the call',
+  empty: 'Nothing said or written in this call yet. What is said, typed and found in it appears here.',
+  transcriptsSwitch: false,
+};
 
 /** Which way round this reader draws the Feed — their own setting (`timelineOrder`). */
 const TIMELINE_ORIENTATION = 'modules.feed.timelineOrientation';
@@ -49,44 +126,16 @@ const timelineOrderButton: SchemaNode = {
   ],
 };
 
-/** A reply is being written to one of the Feed's lines — the Feed's own `replyingTo`. */
-const FEED_REPLY = 'modules.feed.replyingTo';
+/** A reply is being written to one of this list's lines — the Feed's own `replyingTo`, started here. */
+const replyHere = (scope: FeedScope) => `modules.feed.replyingTo.surface == '${scope.surface}'`;
 
 /** A line whose author's own profile says it is a bot — see the store's `botAuthors`. */
 const BOT_LINE = 'row.author in modules.feed.botAuthors';
 
-/*
-  The lines a call spoke, kept out until this reader asks for them in this space — the per-space
-  `showCallTranscripts` setting, off by default. Only `source == 'spoken'` goes: a heard line
-  somebody corrected is no longer verbatim speech, and a line with no source is a bot's or a call's
-  own item — all still drawn.
-*/
-const VISIBLE =
-  'modules.feed.showCallTranscripts ? modules.feed.feedRows : ' +
-  `modules.feed.feedRows.filter(r, !(r.kind == 'line' && r.source == '${SPOKEN}'))`;
-
 /** What the window draws: everything, only messages, or only bots' messages — the reader's choice. */
-const ROWS =
-  `local.feedShow == 'bots' ? (${VISIBLE}).filter(r, r.kind == 'line' && r.author in modules.feed.botAuthors) ` +
-  `: local.feedShow == 'messages' ? (${VISIBLE}).filter(r, r.kind == 'line') : (${VISIBLE})`;
-
-/** The words on the "more is coming" line, by which way the window grows. */
-const MORE_WORDS = { $: `${FROM_START} ? 'Later in the space…' : 'Earlier in the space…'` };
-
-const more = (end: 'start' | 'end'): SchemaNode => ({
-  type: '$if',
-  props: {
-    condition: { $: `modules.feed.feedHasMore && ${timelineMoreAt(end, FROM_START, TIMELINE_ORIENTATION)}` },
-    then: {
-      type: 'Row',
-      props: { 'data-we-more': end, ay: 'center', gap: '300', py: '200' },
-      children: [
-        { type: 'we-animated-icon', props: { name: 'spinner', size: 'xs', color: 'text-faint' } },
-        { type: 'we-text', props: { variant: 'footnote', color: 'text-faint' }, children: [MORE_WORDS] },
-      ],
-    },
-  },
-});
+const rowsOf = (scope: FeedScope) =>
+  `local.feedShow == 'bots' ? (${scope.visible}).filter(r, r.kind == 'line' && r.author in modules.feed.botAuthors) ` +
+  `: local.feedShow == 'messages' ? (${scope.visible}).filter(r, ${scope.message}) : (${scope.visible})`;
 
 /**
  * Where a line came from, beside its time: the call, which opens it, and whether a bot wrote it.
@@ -140,13 +189,14 @@ const origin: SchemaNode = {
 };
 
 /** One message, drawn exactly as the transcript draws one — see `messageLine`. */
-const line: SchemaNode = messageLine({
-  as: 'row',
-  actions: 'modules.feed',
-  surface: 'feed',
-  relative: false,
-  extra: origin,
-});
+const line = (scope: FeedScope): SchemaNode =>
+  messageLine({
+    as: 'row',
+    actions: 'modules.feed',
+    surface: scope.surface,
+    relative: false,
+    extra: origin,
+  });
 
 /**
  * What extraction found, or somebody made, grouped — "3 tasks and 1 event, from Monday sync" — with
@@ -217,16 +267,15 @@ const activity: SchemaNode = {
   ],
 };
 
-/** The box at the foot: a message into the space, or a reply to the line chosen. */
-const composer: SchemaNode = {
+/** The box at the foot: a message into the space or the call, or a reply to the line chosen in this list. */
+const composer = (scope: FeedScope): SchemaNode => ({
   type: 'Column',
   props: { gap: '100', width: '100%', mt: '100' },
-  $localState: { sending: { type: 'boolean', initial: false } },
   children: [
     {
       type: '$if',
       props: {
-        condition: { $: FEED_REPLY },
+        condition: { $: replyHere(scope) },
         then: {
           type: 'Row',
           props: { gap: '200', ay: 'center' },
@@ -247,86 +296,90 @@ const composer: SchemaNode = {
     },
     // The block composer in its one-line mode, as the transcript's — see `lineComposer`.
     lineComposer({
-      placeholder: 'Write to the space…',
-      sendLabel: 'Send to the space',
+      placeholder: `Write to ${scope.of}…`,
+      sendLabel: `Send to ${scope.of}`,
+      /*
+        Each submit writes at once, drawn before the write resolves, and the composer empties
+        itself on submit, so one submit does not send the same text twice. There is no in-flight
+        guard; a failed write is reported by the store (the line comes down) rather than held in
+        the box.
+      */
       onSubmit: {
         $if: {
-          condition: { $: '!local.sending' },
-          then: [
-            { $setLocal: 'sending', value: true },
-            {
-              $if: {
-                condition: { $: FEED_REPLY },
-                then: {
-                  $invoke: 'modules.feed.reply',
-                  args: [{ $: 'modules.feed.replyingTo.id' }, { $: 'event.text' }, { $: 'event.marks' }],
-                  onFinally: [{ $setLocal: 'sending', value: false }],
-                },
-                else: {
-                  $invoke: 'modules.feed.sendToFeed',
-                  args: [{ $: 'event.text' }, { $: 'event.marks' }],
-                  onFinally: [{ $setLocal: 'sending', value: false }],
-                },
-              },
-            },
-          ],
+          condition: { $: replyHere(scope) },
+          then: {
+            $invoke: 'modules.feed.reply',
+            args: [{ $: 'modules.feed.replyingTo.id' }, { $: 'event.text' }, { $: 'event.marks' }],
+          },
+          else: { $invoke: scope.send, args: [{ $: 'event.text' }, { $: 'event.marks' }] },
         },
       },
     }),
   ],
-};
+});
 
 /** The stream itself: every line and activity row, in the window, which way round the reader chose. */
-const feedTimeline: SchemaNode = timeline({
-  fromStart: FROM_START,
-  orientation: TIMELINE_ORIENTATION,
-  onLoadOlder: { $invoke: 'modules.feed.showMoreFeed' },
-  onLoadNewer: { $invoke: 'modules.feed.showMoreFeed' },
-  onJumpNewest: { $invoke: 'modules.feed.readFeedLive' },
-  onJumpOldest: { $invoke: 'modules.feed.readFeedFromStart' },
-  children: [
-    {
-      type: 'Column',
-      props: { gap: '400' },
-      children: [
-        more('start'),
-        {
-          type: '$if',
-          props: {
-            condition: { $: `count(${ROWS})` },
-            then: {
-              type: '$each',
-              props: { items: { $: timelineOrder(ROWS, FROM_START, TIMELINE_ORIENTATION) }, as: 'row' },
-              children: [
-                {
-                  type: '$if',
-                  props: { condition: { $: "row.kind == 'line'" }, then: line, else: activity },
+const feedTimeline = (scope: FeedScope): SchemaNode => {
+  const rows = rowsOf(scope);
+  return timeline({
+    fromStart: scope.fromStart,
+    orientation: TIMELINE_ORIENTATION,
+    onLoadOlder: { $invoke: scope.showMore },
+    onLoadNewer: { $invoke: scope.showMore },
+    onJumpNewest: { $invoke: scope.readLive },
+    onJumpOldest: { $invoke: scope.readFromStart },
+    children: [
+      {
+        type: 'Column',
+        props: {
+          gap: '400',
+          /*
+            The end with rows beyond it that are not loaded, for the scroller's jump button there to ask
+            for them rather than scroll (see `data-we-more` on `we-scroll-area`). Only the edge away from
+            the anchor can have more, so one marker on the list says it, and nothing is drawn for it.
+          */
+          'data-we-more': {
+            $: `${scope.hasMore} ? (${timelineMoreAt('start', scope.fromStart, TIMELINE_ORIENTATION)} ? 'start' : 'end') : ''`,
+          },
+        },
+        children: [
+          {
+            type: '$if',
+            props: {
+              condition: { $: `count(${rows})` },
+              then: {
+                type: '$each',
+                props: { items: { $: timelineOrder(rows, scope.fromStart, TIMELINE_ORIENTATION) }, as: 'row' },
+                children: [
+                  {
+                    type: '$if',
+                    props: { condition: { $: "row.kind == 'line'" }, then: line(scope), else: activity },
+                  },
+                ],
+              },
+              else: {
+                type: '$if',
+                props: {
+                  condition: { $: scope.loaded },
+                  then: {
+                    type: 'we-text',
+                    props: { variant: 'footnote', color: 'text-muted' },
+                    children: [
+                      {
+                        $: `local.feedShow == 'bots' ? 'No bot has written in this part of ${scope.of}.' : local.feedShow == 'messages' ? 'Nobody has written in this part of ${scope.of}.' : '${scope.empty}'`,
+                      },
+                    ],
+                  },
+                  else: { type: 'we-animated-icon', props: { name: 'spinner', size: 'sm' } },
                 },
-              ],
-            },
-            else: {
-              type: '$if',
-              props: {
-                condition: { $: 'modules.feed.feedLoaded' },
-                then: {
-                  type: 'we-text',
-                  props: { variant: 'footnote', color: 'text-muted' },
-                  children: [
-                    {
-                      $: "local.feedShow == 'bots' ? 'No bot has written in this part of the space.' : 'Nothing said here yet. Calls, messages and what is found in them appear here.'",
-                    },
-                  ],
-                },
-                else: { type: 'we-animated-icon', props: { name: 'spinner', size: 'sm' } },
               },
             },
           },
-        },
-        more('end'),
-      ],
-    },
-  ],
-});
+        ],
+      },
+    ],
+  });
+};
 
 /** One of the reader's three choices of what the Feed shows. */
 const showButton = (value: string, label: string): SchemaNode => ({
@@ -364,7 +417,7 @@ const transcriptsSwitch: SchemaNode = {
 };
 
 /** What the Feed shows — everything, messages, or bots' messages — and which way round: the reader's own. */
-const feedControls: SchemaNode = {
+const feedControls = (scope: FeedScope): SchemaNode => ({
   type: 'Row',
   props: { gap: '100', ay: 'center' },
   children: [
@@ -372,14 +425,25 @@ const feedControls: SchemaNode = {
     showButton('messages', 'Messages'),
     showButton('bots', 'Bots'),
     timelineOrderButton,
-    transcriptsSwitch,
+    ...(scope.transcriptsSwitch ? [transcriptsSwitch] : []),
   ],
-};
+});
 
-/** The reader's choice of what the Feed shows, kept on this device — declared where the controls and the list meet. */
-const FEED_LOCALS = {
-  feedShow: { type: 'string', initial: 'all', persist: 'feed.show' },
-} as const;
+/**
+ * The reader's choice of what the Feed shows, kept on this device — declared where the controls and
+ * the list meet. A call's is kept apart: Messages there is a narrower thing than in the space.
+ */
+const feedLocals = (scope: FeedScope) =>
+  ({
+    feedShow: { type: 'string', initial: 'all', persist: scope.surface === 'feed' ? 'feed.show' : 'feed.callShow' },
+  }) as const;
+
+/** The stream and its box, under its reader's choices — a view's body, for either scope. */
+const feedBody = (scope: FeedScope): SchemaNode[] => [
+  { type: 'Row', props: { ax: 'end' }, children: [feedControls(scope)] },
+  { type: 'Column', props: { flex: '1', minHeight: '0' }, children: [feedTimeline(scope)] },
+  composer(scope),
+];
 
 /**
  * The Feed as a panel, beside whatever is on screen — the module's own placement, with its help.
@@ -387,13 +451,13 @@ const FEED_LOCALS = {
 export const feedPanel: SchemaNode = {
   type: 'Column',
   props: { width: '100%', height: '100%' },
-  $localState: FEED_LOCALS,
+  $localState: feedLocals(SPACE),
   children: [
     panelShell({
       title: 'Feed',
-      aside: feedControls,
+      aside: feedControls(SPACE),
       help: 'Everything said and written in this space — every call, messages typed outside calls, and replies — with what was found in it as it is found. Newest at the top or the bottom is yours to choose.',
-      children: [feedTimeline, composer],
+      children: [feedTimeline(SPACE), composer(SPACE)],
     }),
   ],
 };
@@ -409,10 +473,30 @@ export const feedPanel: SchemaNode = {
 export const feedView: SchemaNode = {
   type: 'Column',
   props: { width: '100%', height: '100%', gap: '200' },
-  $localState: FEED_LOCALS,
-  children: [
-    { type: 'Row', props: { ax: 'end' }, children: [feedControls] },
-    { type: 'Column', props: { flex: '1', minHeight: '0' }, children: [feedTimeline] },
-    composer,
-  ],
+  $localState: feedLocals(SPACE),
+  children: feedBody(SPACE),
+};
+
+/**
+ * The Feed of one call, for a page to place: the same stream and box, read from and written into the
+ * call the part is pointed at — its subject, `routeStore.params.call` unless the placement points it
+ * elsewhere. The host hands that call to the store as the part is drawn and takes it back as it goes
+ * (`whileShown`), so this reads only while it is on screen, and only that call.
+ */
+export const callFeedView: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'routeStore.params.call' },
+    then: {
+      type: 'Column',
+      props: { width: '100%', height: '100%', gap: '200' },
+      $localState: feedLocals(CALL),
+      children: feedBody(CALL),
+    },
+    else: {
+      type: 'we-text',
+      props: { variant: 'footnote', color: 'text-muted' },
+      children: ['No call is chosen.'],
+    },
+  },
 };

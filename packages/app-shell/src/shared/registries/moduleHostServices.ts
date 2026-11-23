@@ -703,7 +703,11 @@ export function createModuleStoreDeps(framework: {
       onRemoved: (cb) => services.datasets?.onRemoved?.(cb) ?? (() => {}),
     },
     firstScreen: framework.firstScreen
-      ? { waiting: () => framework.firstScreen?.waiting(), answered: () => framework.firstScreen?.answered() }
+      ? {
+          waiting: () => framework.firstScreen?.waiting(),
+          answered: () => framework.firstScreen?.answered(),
+          held: () => framework.firstScreen?.open() === false,
+        }
       : undefined,
     identities: {
       get: (agentId) => services.identities?.get(agentId),

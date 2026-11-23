@@ -5,9 +5,9 @@
  *
  * What the engine then does with the links is the engine's business and is not tested here.
  */
-import { SHACLFlow } from '@coasys/ad4m';
+import { FlowTransitionProposal, SHACLFlow } from '@coasys/ad4m';
 import type { WorkflowDefinition } from '@we/backend-shared';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   createAd4mWorkflowPort,
@@ -16,6 +16,7 @@ import {
   isEditable,
   moveRefusal,
   readFired,
+  readProposals,
   toShaclFlow,
 } from '../src/workflowPort';
 
@@ -279,11 +280,9 @@ describe('readFired', () => {
 
   it('splits more runs than the executor takes in one call into batches it accepts', async () => {
     const flowFired = answering();
-    const runs = Array.from({ length: 450 }, (_, i) => `run-${i}`);
+    const runs = Array.from({ length: FLOW_FIRED_BATCH * 2 + 1 }, (_, i) => `run-${i}`);
     const fired = await readFired({ flowFired }, runs);
-    expect(FLOW_FIRED_BATCH).toBeLessThanOrEqual(200);
-    expect(flowFired.mock.calls.map(([batch]) => batch.length)).toEqual([200, 200, 50]);
-    expect(flowFired.mock.calls.flatMap(([batch]) => batch)).toEqual(runs);
+    expect(flowFired.mock.calls.map(([batch]) => batch.length)).toEqual([FLOW_FIRED_BATCH, FLOW_FIRED_BATCH, 1]);
     expect(fired.size).toBe(runs.length);
   });
 
@@ -292,5 +291,34 @@ describe('readFired', () => {
     expect((await readFired({ flowFired }, [])).size).toBe(0);
     expect(flowFired).not.toHaveBeenCalled();
     expect((await readFired({ flowFired }, ['run-a'])).size).toBe(0);
+  });
+});
+
+describe('readProposals', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('marks a proposal settled only when this agent’s executor recorded it firing', async () => {
+    /*
+      Two runs, one proposal each: the executor says the first fired and names nothing on the
+      second. `settled` is read from that answer and nothing else — there is no link that says it.
+    */
+    const rows = [
+      { id: 'p-fired', flowInstance: 'run-a', fromState: 'todo', toState: 'done', proposer: 'did:a', evidence: [] },
+      { id: 'p-open', flowInstance: 'run-b', fromState: 'todo', toState: 'doing', proposer: 'did:b', evidence: [] },
+    ];
+    vi.spyOn(FlowTransitionProposal, 'findAll').mockResolvedValue(rows as never);
+    const flowFired = vi.fn(async (instances: string[]) =>
+      instances.map((instance) => ({ instance, fired: instance === 'run-a' ? ['p-fired'] : [] })),
+    );
+    const perspective = { get: async () => [], flowFired };
+
+    const proposals = await readProposals(perspective as never, [
+      { id: 'run-a', subject: 'task-a', state: 'todo' },
+      { id: 'run-b', subject: 'task-b', state: 'todo' },
+    ]);
+
+    // Both runs asked about in the one call.
+    expect(flowFired).toHaveBeenCalledTimes(1);
+    expect(Object.fromEntries(proposals.map((p) => [p.id, p.settled]))).toEqual({ 'p-fired': true, 'p-open': false });
   });
 });

@@ -25,19 +25,29 @@ import {
   chooseTemplate,
   chooseTheme,
   FOCUS_DIM,
+  OTHER_APP_CLASS_NAMES,
   SPACE_TEMPLATE_CHOICES,
   templateChoice,
   themeChoice,
-  VOCABULARY_BUCKETS,
+  VOCABULARY_OPENS,
 } from '@we/template-kit';
 import { describe, expect, it } from 'vitest';
 
 import { coasysFirstRun } from './coasys/firstRun.ts';
 import { canvasPane } from './coasys/space/canvas.ts';
-import { DNA_LISTS } from './coasys/space/dna.ts';
+import {
+  CLASS_GROUPS,
+  CLASS_ROWS,
+  CLASS_ROWS_COUNT,
+  classGroup,
+  DNA_AT,
+  dnaCrumbs,
+  OTHER_CLASSES,
+} from './coasys/space/dna.ts';
 import { callPath, groupPath, personPath, SELECTED_EXPR } from './coasys/space/paths.ts';
 import { treeSection } from './coasys/space/tree.ts';
-import { callPage, spaceRoutes } from './coasys/space/views.ts';
+import { callBarAside, callPage, spaceRoutes } from './coasys/space/views.ts';
+import { WE_VOCABULARY } from './coasys/space/vocabulary.ts';
 import { bundleFileName, type Cartridge, cartridgeBundles, coasys, fieldGuide, toolLibrary } from './index.ts';
 
 const contextData = JSON.parse(readFileSync(resolve(import.meta.dirname, '../../../ai-context/context.json'), 'utf-8'));
@@ -137,6 +147,138 @@ describe('the Coasys cartridge', () => {
   });
 
   /*
+    WE's rail carries the extraction panel's button; this interface has no rail, so the call page is
+    where a way back to the panel has to live. It is the rail's own action — `launchModule` on the
+    panel's dock — so a press toggles and an open-but-hidden panel is brought forward, not closed.
+  */
+  it('opens the extraction panel from a call’s bar, the rail’s own way', () => {
+    const aside = { children: callBarAside("'call-1'") };
+    const button = findNode(
+      aside,
+      (n) => n.type === 'we-button' && JSON.stringify(n.props).includes('transcribe:extraction'),
+    )!;
+    expect(button).toBeDefined();
+    // "Interpretation" is the word the team agreed on, on the button and on its tooltip.
+    const tooltip = findNode(
+      aside,
+      (n) => n.type === 'we-tooltip' && (n as { children?: unknown[] }).children?.[0] === button,
+    );
+    expect((tooltip?.props as { content?: unknown } | undefined)?.content).toBe('Interpretation');
+    expect(JSON.stringify(callBarAside("'call-1'"))).not.toContain('Extraction');
+    expect(JSON.stringify(button.props)).toContain('spaceStore.launchModule');
+    expect(JSON.stringify(button.props)).toContain('transcribe:extraction');
+    // The panel's own glyph, and its state on the button.
+    expect(JSON.stringify(button)).toContain('sparkle');
+    expect(JSON.stringify(button.props)).toContain('modules.transcribe.extractionOpen');
+    // The transcript export it sits beside is still offered the same way.
+    expect(JSON.stringify(callBarAside("'call-1'"))).toContain('spaceStore.exportCallTranscript');
+  });
+
+  /*
+    The button opens a panel of the transcribe module, and the rail offers only the modules a space
+    has on: with transcription off, `launchModule` opens nothing. So the button stands under the
+    same gate the rail uses, and the export beside it does not.
+  */
+  it('offers the Interpretation button only where the space has transcription on', () => {
+    type Node = { type?: string; props?: Record<string, unknown>; children?: unknown[] };
+    const aside = callBarAside("'call-1'") as Node[];
+    const gate = aside.find((n) => n.type === '$if' && JSON.stringify(n.props).includes('transcribe:extraction')) as
+      Node | undefined;
+    expect((gate?.props?.condition as { $?: string } | undefined)?.$).toBe("'transcribe' in spaceStore.activeModules");
+    const exportNode = aside[aside.length - 1];
+    expect(JSON.stringify(exportNode)).toContain('spaceStore.exportCallTranscript');
+    expect(JSON.stringify(exportNode)).not.toContain('activeModules');
+  });
+
+  /*
+    A call's page names its call to the modules, not only to the record view: the panel, its count
+    on the button and the transcript read `routeStore.params.call`, so an address without it showed
+    the joined call (or the space) on another call's page.
+  */
+  it('puts the call on its page’s address the way the modules read it', () => {
+    const url = new URL(
+      evaluateExpression(parseExpression(callPath("'c9'")), {
+        root: (name) => ({
+          bound: name === 'spaceStore' || name === 'routeStore',
+          value: name === 'spaceStore' ? { spacePath: '/space/s1' } : { params: {}, query: {}, templateSegments: [] },
+        }),
+        call: (name, args) =>
+          listFunctions()
+            .find((f) => f.name === name)
+            ?.impl(args, { context: {}, stores: {} }),
+      }) as string,
+      'http://we.test',
+    );
+    expect(url.searchParams.get('id')).toBe('c9');
+    expect(url.searchParams.get('call')).toBe('c9');
+  });
+
+  /*
+    What the panel holds, on the button that opens it: how many suggestions are waiting for somebody
+    to keep or drop them, and a spinner while a pass runs — both at once. Counted for the conversation
+    the panel itself shows, so the number is what opening it will list. No badge at zero: a 0 is a
+    mark with nothing to say. Evaluated by the expression engine the renderer uses.
+  */
+  it('shows on its button how many suggestions wait, and that a pass is running', () => {
+    const evaluate = (source: string, roots: Record<string, unknown>) =>
+      evaluateExpression(parseExpression(source), {
+        root: (name) => ({ bound: name in roots, value: roots[name] }),
+        call: (name, args) =>
+          listFunctions()
+            .find((f) => f.name === name)
+            ?.impl(args, { context: {}, stores: {} }),
+      });
+    const roots = (waiting: number, running = false) => ({
+      routeStore: { params: { call: 'call-1' } },
+      spaceStore: { root: 'space-root' },
+      modules: {
+        transcribe: {
+          callId: '',
+          passRunning: running,
+          proposalsFor: { 'call-1': Array.from({ length: waiting }, (_, i) => ({ id: `p${i}` })) },
+        },
+      },
+    });
+    type Node = { type?: string; props?: Record<string, unknown>; children?: unknown[] };
+    const button = findNode(
+      { children: callBarAside("'call-1'") },
+      (n) => n.type === 'we-button' && JSON.stringify(n.props).includes('transcribe:extraction'),
+    ) as Node;
+    const subject =
+      'routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : ' +
+      'spaceStore.root)';
+    expect(JSON.stringify(button)).toContain(`modules.transcribe.proposalsFor[${subject}]`);
+
+    const badgeGate = findNode(button, (n) => n.type === '$if' && JSON.stringify(n).includes('we-badge')) as Node;
+    const gate = (badgeGate.props!.condition as { $: string }).$;
+    expect(evaluate(gate, roots(0))).toBeFalsy();
+    expect(evaluate(gate, roots(3))).toBeTruthy();
+    const badge = findNode(badgeGate.props!.then, (n) => n.type === 'we-badge') as Node;
+    expect(evaluate((badge.children![0] as { $: string }).$, roots(3))).toBe(3);
+
+    // Its name says the count, since a screen reader is not shown the badge.
+    const label = (button.props!.label as { $: string }).$;
+    expect(evaluate(label, roots(0))).toBe('Interpretation');
+    expect(evaluate(label, roots(1))).toBe('Interpretation, 1 suggestion to review');
+    expect(evaluate(label, roots(3))).toBe('Interpretation, 3 suggestions to review');
+
+    // Square while it holds one glyph; widened to take the badge beside it.
+    const square = (button.props!.square as { $: string }).$;
+    expect(evaluate(square, roots(0))).toBe(true);
+    expect(evaluate(square, roots(3))).toBe(false);
+
+    // The spinner takes the glyph's place while a pass runs, and the badge stays.
+    const busyGate = findNode(
+      button,
+      (n) => n.type === '$if' && JSON.stringify(n).includes('we-animated-icon'),
+    ) as Node;
+    const busy = (busyGate.props!.condition as { $: string }).$;
+    expect(evaluate(busy, roots(3, true))).toBe(true);
+    expect(evaluate(busy, roots(3, false))).toBe(false);
+    expect(evaluate(gate, roots(3, true))).toBeTruthy();
+  });
+
+  /*
     "Find or ask" scopes its chat to the member's *local* perspective id. `Space.uuid` is the
     creator's own local uuid, synced verbatim into every member's copy — on a joined space it names
     a perspective this device does not hold, so a chat pinned to it ran against nobody's graph (and
@@ -174,6 +316,49 @@ describe('the Coasys cartridge', () => {
       spaceName: 'Garden club',
       draft: 'what is growing?',
     });
+  });
+
+  /*
+    A call's page is where somebody outside the call, or reading it after it ended, finds it. Its body
+    is the call's Feed — the space's Feed scoped to this call: everything said, typed and answered in
+    it, with the box to write into it — for everyone, and not behind the gate that offers a way in.
+  */
+  it('draws the call’s Feed as its body, pointed at the call the address names, to everyone', () => {
+    const parts = findAll(callPage, (n) => n.type === '$part').map(
+      (n) => (n.props as { id?: unknown } | undefined)?.id,
+    );
+    expect(parts).toContain('feed.callFeed');
+    // One stream, not a transcript beside a second list.
+    expect(parts).not.toContain('transcribe.transcriptFeed');
+    expect(parts).not.toContain('transcribe.callMessages');
+
+    const placement = findNode(
+      callPage,
+      (n) => n.type === '$part' && (n.props as { id?: unknown } | undefined)?.id === 'feed.callFeed',
+    );
+    expect((placement!.props as { subject?: unknown }).subject).toEqual({ $: 'routeStore.params.id' });
+
+    // Not inside any `$if`: nothing about the reader or the call's state hides it.
+    const gated = findNode(callPage, (n) => n.type === '$if' && JSON.stringify(n).includes('"feed.callFeed"'));
+    expect(gated).toBeUndefined();
+  });
+
+  it('keeps the call page’s bar, its way in, and no fixed-width column that a phone cannot hold', () => {
+    const json = JSON.stringify(callPage);
+    expect(json).toContain('"call.renameCallButton"');
+    expect(json).toContain('modules.call.continueCall');
+    expect(json).not.toContain('"22rem"');
+  });
+
+  it('offers the way into the call in its bar, before Live and the transcript, to somebody not in it', () => {
+    const aside = callBarAside('id');
+    const way = aside[0] as SchemaNode;
+    expect((way.props as { condition?: unknown }).condition).toEqual({ $: 'modules.call.callRecordId != id' });
+    expect(JSON.stringify(way)).toContain('modules.call.continueCall');
+    expect(JSON.stringify(way)).toContain('Pick it back up');
+    expect(JSON.stringify(aside[1])).toContain('Live');
+    // No sentence about the call above the Feed: the bar's Live badge and the Feed say it.
+    expect(JSON.stringify(callPage)).not.toMatch(/This call (has ended|is happening now)/);
   });
 
   it('brings its own name, mark, sign-in screen and theme', () => {
@@ -260,38 +445,19 @@ describe('the Coasys cartridge', () => {
     between in this space, not every built-in the deployment carries.
   */
   describe('a call running in the space', () => {
-    /** The tree's `$if` gated on a live call — the subtree that is the running-call entry. */
-    const running = () =>
-      findNode(
-        treeSection,
-        (n) =>
-          n.type === '$if' &&
-          JSON.stringify((n.props as { condition?: unknown } | undefined)?.condition) ===
-            JSON.stringify({ $: 'count(modules.call.liveCalls)' }),
-      )!;
+    it('shows as its row under Calls, with a Live tag, and nowhere else in the tree', () => {
+      const json = JSON.stringify(treeSection);
+      // The row under Calls is the way back in; a second entry above the tree only repeated it.
+      expect(json).toContain('"Live"');
+      expect(json).not.toContain('Call running');
+    });
 
-    it('is a single entry that joins or opens it — not a line beside a second affordance', () => {
-      const subtree = running();
-      const json = JSON.stringify(subtree);
-      /*
-        One way in, branching at press time like the row's label does: "Join" joins the call
-        running here through `goToCall`, and "Open" — shown to somebody already in it — navigates
-        to the call's own page, which is what it did before the row was unified and what the
-        review asked back. A second destination beside the text is still the repeat it refuses.
-      */
-      expect(json).toContain('modules.call.goToCall');
-      expect(json).toContain('routeStore.navigate');
-      expect(json).not.toContain('modules.call.joinCall');
-
-      // The Open branch goes to the call's record page — the address its own view answers.
-      expect(json).toContain('record/CollectionBlock?kind=call&id=');
-
-      // The line itself is the entry: "Call running · N in it" lives inside the one button, not
-      // next to it, so pressing anywhere on the row does the thing the row reports.
-      const buttons = findAll(subtree, (n) => n.type === 'we-button');
-      expect(buttons, 'the entry is more than one control').toHaveLength(1);
-      const text = findAll(buttons[0], (n) => n.type === 'we-text' && JSON.stringify(n).includes('Call running'));
-      expect(text, 'the call-running line is not inside the entry').toHaveLength(1);
+    it("draws who is in it on its row: their faces, and everyone's picture and name on hover", () => {
+      const stack = findNode(treeSection, (n) => n.type === 'AvatarStack')!;
+      expect(JSON.stringify(stack.props)).toContain('find(modules.call.liveCalls, { recordId: call.id }).faces');
+      const roster = findNode(treeSection, (n) => n.type === 'we-tooltip' && JSON.stringify(n).includes('AvatarStack'));
+      expect(roster, 'the faces have no roster on hover').toBeTruthy();
+      expect(JSON.stringify(roster)).toContain('person.initials');
     });
   });
 
@@ -341,6 +507,7 @@ describe('the Coasys cartridge', () => {
         spaceStore: { spacePath: '/space/s1', landmarks: { canvas: 'c1' }, policy: { sentences: [] } },
         workflowStore: { open: null },
         shapeStore: { spaceShapes: [] },
+        local: { others: 'dim' },
         ...extra,
       };
       return (prop: unknown) =>
@@ -353,7 +520,29 @@ describe('the Coasys cartridge', () => {
         });
     };
     const graph = findNode(canvasPane, (n) => n.type === 'GraphView')!;
-    const focusRules = ((graph.props as { nodeStyle: unknown[] }).nodeStyle as unknown[]).slice(-3);
+    const focusRules = ((graph.props as { nodeStyle: unknown[] }).nodeStyle as unknown[]).slice(-5);
+    const hideWhere = (graph.props as { seeds: { options: { hideWhere: unknown } } }).seeds.options.hideWhere;
+    /** Which of these cards the rules dim, by the graph's own style resolver. */
+    const dimmedOf = (rules: unknown[], cards: { id: string; data: Record<string, unknown> }[]) =>
+      cards
+        .filter(
+          (card) =>
+            (
+              resolveStyle({ kind: 'entity', type: 'TaskBlock', ...card } as never, rules as never) as {
+                opacity?: number;
+              }
+            ).opacity === FOCUS_DIM,
+        )
+        .map((card) => card.id);
+    const SPACE = {
+      spacePath: '/space/s1',
+      root: 'space-root',
+      landmarks: { canvas: 'c1' },
+      policy: { sentences: [] },
+    };
+    const fromCall = { id: 'from-call', data: { origin: 'call-1' } };
+    const fromFeed = { id: 'from-feed', data: { origin: 'space-root' } };
+    const byHand = { id: 'by-hand', data: {} };
     const dims = (evaluate: (p: unknown) => unknown) => focusRules.flatMap((rule) => evaluate(rule) as unknown[]);
 
     it('says what to do on an empty canvas, rather than the canvas’s address', () => {
@@ -385,9 +574,51 @@ describe('the Coasys cartridge', () => {
       expect(dims(at(['record'], { kind: 'task', id: 't1', view: 'canvas' }))).toEqual([]);
     });
 
+    /*
+      Calls chosen as a group lit nothing: only one call dimmed the canvas. It lights what any call
+      produced now, over a card from a call, one found in the Feed, and one made by hand.
+    */
+    it('dims what came from no call when Calls is chosen', () => {
+      const rules = dims(at(['calls'], { view: 'canvas' }, { spaceStore: SPACE }));
+      expect(dimmedOf(rules, [fromCall, fromFeed, byHand])).toEqual(['from-feed', 'by-hand']);
+    });
+
+    it('hides what it would dim, and leaves everything alone when the reader asks to see it all', () => {
+      const hiding = at(['calls'], { view: 'canvas' }, { spaceStore: SPACE, local: { others: 'hide' } });
+      expect(hiding(hideWhere)).toEqual([{ 'data.origin': { exists: false } }, { 'data.origin': 'space-root' }]);
+      // Still faded while the canvas reads again without them.
+      expect(dimmedOf(dims(hiding), [fromCall, fromFeed, byHand])).toEqual(['from-feed', 'by-hand']);
+      expect(
+        at(['record'], { kind: 'call', id: 'call-1', view: 'canvas' }, { local: { others: 'hide' } })(hideWhere),
+      ).toEqual([{ 'data.origin': { not: 'call-1' } }]);
+
+      const showing = at(['calls'], { view: 'canvas' }, { spaceStore: SPACE, local: { others: 'show' } });
+      expect(dims(showing)).toEqual([]);
+      expect(showing(hideWhere)).toBeNull();
+      // Dimming hides nothing, and nothing chosen hides nothing.
+      expect(at(['calls'], { view: 'canvas' }, { spaceStore: SPACE })(hideWhere)).toBeNull();
+      expect(at([], { view: 'canvas' }, { local: { others: 'hide' } })(hideWhere)).toBeNull();
+    });
+
+    it('offers the choice in the bar only while something is chosen', () => {
+      const shown = findNode(
+        canvasPane,
+        (n) =>
+          n.type === '$if' &&
+          JSON.stringify((n.props as { then?: unknown } | undefined)?.then ?? '').includes('Everything else'),
+      )!;
+      const condition = (shown.props as { condition: unknown }).condition;
+      expect(at(['calls'], { view: 'canvas' }, { spaceStore: SPACE })(condition)).toBe(true);
+      expect(at(['person'], { did: 'did:ada', view: 'canvas' })(condition)).toBe(true);
+      expect(at([], { view: 'canvas' })(condition)).toBe(false);
+      expect(at(['record'], { kind: 'task', id: 't1', view: 'canvas' })(condition)).toBe(false);
+    });
+
     it('is carried by every navigation the tree makes, so choosing another thing stays on the canvas', () => {
       const evaluate = at([], { view: 'canvas' });
-      expect(evaluate({ $: callPath("'c9'") })).toBe('/space/s1/record/CollectionBlock?kind=call&id=c9&view=canvas');
+      expect(evaluate({ $: callPath("'c9'") })).toBe(
+        '/space/s1/record/CollectionBlock?kind=call&id=c9&call=c9&view=canvas',
+      );
       expect(evaluate({ $: personPath("'did:ada'") })).toBe('/space/s1/person?did=did:ada&view=canvas');
       expect(evaluate({ $: groupPath('calls') })).toBe('/space/s1/calls?view=canvas');
       expect(at([], {})({ $: groupPath('calls') })).toBe('/space/s1/calls');
@@ -425,10 +656,10 @@ describe('the Coasys cartridge', () => {
           .filter((n) => (resolveStyle(n as never, rules as never) as { opacity?: number }).opacity === FOCUS_DIM)
           .map((n) => n.id);
       };
-      // A kind: the others dimmed, and nothing of its own.
-      expect(dimmed({ dna: 'signal' })).toEqual(['states', 'rule']);
-      // A definition: its siblings as well, while what it opened into stays whole.
-      expect(dimmed({ dna: 'signal|like' })).toEqual(['rating', 'states', 'rule']);
+      // A class: the others dimmed, and nothing of its own.
+      expect(dimmed({ dna: 'model|SignalType' })).toEqual(['states', 'rule']);
+      // One of its records: its siblings as well, while what it opened into stays whole.
+      expect(dimmed({ dna: 'model|SignalType|like' })).toEqual(['rating', 'states', 'rule']);
       // The policy is Social DNA too: one rule, by its words.
       expect(dimmed({ dna: 'policy|Members can make anything.' })).toEqual(['signals', 'like', 'rating', 'states']);
       // All of it, nothing dimmed.
@@ -437,17 +668,28 @@ describe('the Coasys cartridge', () => {
       // What the tree chose is centred: a definition, or a kind's bucket; all of it, nothing.
       const focus = (vocab.props as { focus: unknown; focusCentre: boolean }).focus;
       expect((vocab.props as { focusCentre: boolean }).focusCentre).toBe(true);
-      expect(at([], { view: 'canvas', dna: 'signal|like' })(focus)).toBe('like');
-      expect(at([], { view: 'canvas', dna: 'signal' })(focus)).toBe('we-graph://cluster/vocabulary/signals');
+      expect(at([], { view: 'canvas', dna: 'model|SignalType|like' })(focus)).toBe('like');
+      expect(at([], { view: 'canvas', dna: 'model|SignalType' })(focus)).toBe('we-graph://cluster/vocabulary/signals');
       expect(at([], { view: 'canvas', dna: 'policy|Members can make anything.' })(focus)).toBe(
         'policy:Members can make anything.',
       );
       expect(at([], { view: 'canvas', dna: 'all' })(focus)).toBe('');
 
-      // The chosen definition is opened into what it is, beside its kind.
-      expect(at([], { view: 'canvas', dna: 'signal|like' })(props.open)).toEqual([
+      // The chosen record is opened into what it is, beside its class's bucket.
+      expect(at([], { view: 'canvas', dna: 'model|SignalType|like' })(props.open)).toEqual([
         'we-graph://cluster/vocabulary/signals',
         'like',
+      ]);
+      // A class of the space's own or of another app is a model on the map: centred, and opened into its records.
+      const models = { recordStore: { creatableEntities: [{ value: 'Sighting', group: 'This space' }] } };
+      expect(at([], { view: 'canvas', dna: 'model|Sighting' }, models)(focus)).toBe('Sighting');
+      expect(at([], { view: 'canvas', dna: 'model|Sighting' }, models)(props.open)).toEqual([
+        'we-graph://cluster/vocabulary/models',
+        'Sighting',
+      ]);
+      expect(at([], { view: 'canvas', dna: 'model|Question' }, models)(props.open)).toEqual([
+        'we-graph://cluster/vocabulary/other',
+        'Question',
       ]);
     });
 
@@ -472,7 +714,7 @@ describe('the Coasys cartridge', () => {
       expect(pressed('Recipe', '$schema')).toBe(false);
 
       // Read beside a page, a definition lights its own row.
-      expect(at(['feed'], { card: 'like', cardType: 'SignalType' })({ $: SELECTED_EXPR })).toBe('dna|signal|like');
+      expect(at(['feed'], { card: 'like', cardType: 'SignalType' })({ $: SELECTED_EXPR })).toBe('dna|model|SignalType');
       expect(at(['feed'], { card: 't1', cardType: 'TaskBlock' })({ $: SELECTED_EXPR })).not.toContain('dna|');
       // The policy is still lit by its words on the canvas.
       expect(at([], { view: 'canvas', dna: 'policy|Members can make anything.' })({ $: SELECTED_EXPR })).toBe(
@@ -491,13 +733,20 @@ describe('the Coasys cartridge', () => {
       const press = (vocab.props as { onNodeClick: { $if: { condition: unknown; then: { args: unknown[] } } }[] })
         .onNodeClick[0].$if;
       const focusOf = (event: Record<string, unknown>) => {
-        const evaluate = at([], { view: 'canvas', dna: 'state' }, { event });
+        const evaluate = at([], { view: 'canvas', dna: 'model|TaskState' }, { event });
         return evaluate(press.condition) ? [press.then.args[0], evaluate(press.then.args[1])] : null;
       };
-      expect(focusOf({ type: 'vocabulary', kind: 'cluster', data: { bucket: 'signals' } })).toEqual(['dna', 'signal']);
+      expect(focusOf({ type: 'vocabulary', kind: 'cluster', data: { bucket: 'signals' } })).toEqual([
+        'dna',
+        'model|SignalType',
+      ]);
       expect(focusOf({ type: 'SignalType', recordId: 'like', data: { bucket: 'signals' } })).toEqual([
         'dna',
-        'signal|like',
+        'model|SignalType|like',
+      ]);
+      expect(focusOf({ type: '$schema', data: { bucket: 'other', entity: 'Question' } })).toEqual([
+        'dna',
+        'model|Question',
       ]);
       expect(focusOf({ type: '$schema', data: { bucket: 'models', entity: 'TaskBlock' } })).toEqual([
         'dna',
@@ -510,39 +759,258 @@ describe('the Coasys cartridge', () => {
       // What a definition is used for leaves the focus where it was.
       expect(focusOf({ type: 'TaskBlock', recordId: 't1', data: {} })).toBeNull();
 
-      // The tree opens Social DNA and the kind around a definition in focus, and nothing else.
+      // The tree opens Social DNA and the group around a class in focus, and nothing else.
+      // A row by its value: a literal one (Social DNA) as written, an expression by its open state.
+      const row = (value: string) =>
+        findNode(
+          treeSection,
+          (n) =>
+            (n.props as { value?: unknown } | undefined)?.value === value.replace(/'/g, '') ||
+            String(JSON.stringify((n.props as { open?: unknown } | undefined)?.open)).includes(
+              `((${value}) in local.openRows)`,
+            ),
+        )!;
+      const open = (value: string, params: Record<string, string>, extra = {}) =>
+        at([], params, { local: { openRows: [] }, ...extra })((row(value).props as { open: unknown }).open);
+      const onCanvas = { view: 'canvas', dna: 'model|SignalType|like' };
+      const we = { group: { key: 'we', classes: [{ id: 'SignalType' }, { id: 'TaskBlock' }] } };
+      const other = { group: { key: 'models', classes: [{ id: 'Question' }] } };
+      expect(open("'group|dna'", onCanvas)).toBe(true);
+      expect(open("'dnagroup|' + group.key", onCanvas, we)).toBe(true);
+      expect(open("'dnagroup|' + group.key", onCanvas, other)).toBe(false);
+      expect(open("'dnagroup|' + group.key", { view: 'canvas', dna: 'all' }, we)).toBe(false);
+    });
+
+    /*
+      One tree of classes: Models — the space's own and other apps', one list, another app's carrying its
+      namespace — and WE's, its vocabulary first, in the settings' order and words, then its built-in
+      blocks. There is no second reading to switch to.
+    */
+    it('lists Social DNA as classes in two groups, Models and Built in, with no lens to switch', () => {
+      const evaluate = at(
+        [],
+        {},
+        {
+          recordStore: {
+            creatableEntities: [
+              { value: 'Sighting', label: 'Sighting', icon: 'binoculars', group: 'This space' },
+              { value: 'TaskBlock', label: 'Task', icon: 'check', group: 'Built in' },
+            ],
+            plumbingClasses: [],
+            displays: {},
+          },
+          datasetStore: { currentDatasetEntities: [{ name: 'Question', targetClass: 'conv://Question' }] },
+        },
+      );
+      type Cls = { id: string; label: string };
+      const groups = evaluate({ $: CLASS_GROUPS }) as {
+        key: string;
+        label: string;
+        classes: Cls[];
+        rows: Cls[];
+        sub: { key: string; label: string; classes: Cls[] }[];
+      }[];
+      expect(groups.map((g) => [g.key, g.label])).toEqual([
+        ['models', 'Models'],
+        ['we', 'Built in'],
+      ]);
+      // The space's own model first, then another app's class, which says its namespace.
+      expect(groups[0].rows.map((c) => [c.id, (c as Cls & { namespace?: string }).namespace ?? ''])).toEqual([
+        ['Sighting', ''],
+        ['Question', 'conv://'],
+      ]);
+      expect(groups[1].classes.map((c) => [c.id, c.label])).toEqual([
+        ['SignalType', 'Signal types'],
+        ['RelationshipType', 'Connection types'],
+        ['TaskState', 'Task states'],
+        ['InvolvementType', 'Involvement'],
+        ['Topic', 'Topics'],
+        ['TaskBlock', 'Task'],
+      ]);
+      // The vocabulary is listed in the group itself; the blocks sit together in one nested group.
+      expect(groups[1].rows.map((c) => c.id)).toEqual([
+        'SignalType',
+        'RelationshipType',
+        'TaskState',
+        'InvolvementType',
+        'Topic',
+      ]);
+      expect(groups[1].sub.map((s) => [s.key, s.label, s.classes.map((c) => c.id)])).toEqual([
+        ['blocks', 'Blocks', ['TaskBlock']],
+      ]);
+      // Models lists its classes directly and nests nothing.
+      expect(groups[0].sub).toEqual([]);
+      const tree = JSON.stringify(treeSection);
+      expect(tree).not.toContain('dnaLens');
+      expect(tree).not.toContain('dnakind|signal');
+      expect(tree).toContain("'dna|model|' + cls.id");
+      expect(tree).toContain('group.sub');
+    });
+
+    /*
+      Social DNA holds Models, Flows and Templates, then the built-in classes and the policy. The top
+      level is what happens in the space: Active flows lists the records still running, and Templates
+      is no longer a group of its own.
+    */
+    it('holds Models, Flows, Templates, Built in and Policy, and lists the active flows at the top', () => {
+      type Node = { type?: string; slot?: string; props?: Record<string, unknown>; children?: unknown[] };
+      const label = (row: Node) =>
+        ((row.children?.[0] as Node).children as Node[]).find((c) => c.type === 'we-text')?.children?.[0];
+      // A group of classes is drawn by an `$each` over that one group: named here by the group it lists.
+      const groupOf = (items: string) =>
+        items === classGroup('models') ? 'Models' : items === classGroup('we') ? 'Built in' : items;
+      const describe = (row: Node) =>
+        row.type === '$each' ? groupOf((row.props?.items as { $: string }).$) : label(row);
+      const tree = findNode(treeSection, (n) => n.type === 'we-tree') as Node;
+      const top = tree.children as Node[];
+      expect(top.map((row) => row.props?.value)).toEqual([
+        { $: "'channel|' + spaceStore.root" },
+        'group|calls',
+        'group|workflows',
+        'group|people',
+        'group|dna',
+        'group|themes',
+      ]);
+      expect(top.map(label)).toEqual(['Feed', 'Calls', 'Active flows', 'People', 'Social DNA', 'Themes']);
+
+      const dna = top.find((row) => row.props?.value === 'group|dna')!;
+      const inside = (dna.children as Node[]).slice(1);
+      expect(inside.map(describe)).toEqual(['Models', 'Flows', 'Templates', 'Built in', 'Policy']);
+      // Every row inside Social DNA is nested in its children slot.
+      for (const row of inside)
+        expect(row.type === '$each' ? (row.children?.[0] as Node).slot : row.slot).toBe('children');
+
+      // Social DNA's Flows lists the flows written, each opening as before, with the + that writes one.
+      const flows = inside[1];
+      expect(flows.props?.value).toBe('dnagroup|flows');
+      expect(JSON.stringify(flows)).toContain("'workflow|' + workflow.name");
+      expect(JSON.stringify(flows)).toContain('"New flow"');
+      // A flow is a definition, counted no more than a model is: what is running is counted at the top.
+      expect(JSON.stringify(flows)).not.toContain('workflow.records');
+      // Templates moved in unchanged: its rows, its + and its value.
+      expect(inside[2].props?.value).toBe('group|templates');
+      expect(JSON.stringify(inside[2])).toContain('"New template"');
+
+      // Active flows lists a row for each record still running, and opens like any group with rows.
+      const active = top[2];
+      const runs = (active.children as Node[]).find((c) => c.type === '$each')!;
+      expect(runs.props?.items).toEqual({ $: 'workflowStore.active' });
+      expect((runs.children?.[0] as Node).props?.value).toEqual({ $: "'run|' + run.workflow + '|' + run.record" });
+      expect(active.props?.expandable).toEqual({ $: 'count(workflowStore.active) > 0' });
+      // Its count is its rows, so it adds up when opened.
+      expect(JSON.stringify(active)).toContain('count(workflowStore.active)');
+    });
+
+    // A record's row opens its flow on the flows page with the record chosen, and is lit there.
+    it('opens a running record in its flow, and lights its row while it is chosen there', () => {
+      const select = JSON.stringify(
+        (findNode(treeSection, (n) => n.type === 'we-tree') as { props: { onSelect: unknown } }).props.onSelect,
+      );
+      expect(select).toContain("startsWith(event.detail.value, 'run|')");
+      // The id rides in `query`, so one carrying encoded characters reads back as itself.
+      expect(select).toContain("{ query: { card: split(event.detail.value, '|')[2] } }");
+      expect(select).not.toContain("'?card='");
+      const lit = (params: Record<string, string>) =>
+        at(['workflows'], params, { workflowStore: { open: { name: 'review' } } })({ $: SELECTED_EXPR });
+      expect(lit({ card: 'r1' })).toBe('run|review|r1');
+      // No record chosen: the flow's own row.
+      expect(lit({})).toBe('workflow|review');
+    });
+
+    /*
+      A flow opened from the flows page has to be seen lit, not chosen inside a closed row: a chosen
+      flow holds the rows above it open. Active flows open holds nothing else open — it is its own row.
+    */
+    it('opens Social DNA around a flow chosen, and only around that', () => {
+      const rowOf = (value: string) => findNode(treeSection, (n) => (n.props as { value?: unknown })?.value === value)!;
+      const open = (value: string, openRows: string[], path: string[] = [], extra = {}) =>
+        at(path, {}, { local: { openRows }, ...extra })((rowOf(value).props as { open: unknown }).open);
+      expect(open('group|dna', ['group|dna'])).toBe(true);
+      expect(open('group|dna', ['group|workflows'])).toBe(false);
+      expect(open('dnagroup|flows', ['group|workflows'])).toBe(false);
+      // A flow chosen on the flows page lights its row, so the rows above it open.
+      const chosen = { workflowStore: { open: { name: 'review' } } };
+      expect(open('group|dna', [], ['workflows'], chosen)).toBe(true);
+      expect(open('dnagroup|flows', [], ['workflows'], chosen)).toBe(true);
+      // Nothing saved and nothing chosen: closed.
+      expect(open('group|dna', [])).toBe(false);
+      expect(open('dnagroup|flows', [], ['workflows'])).toBe(false);
+    });
+
+    it('reads the Social DNA page in the order the tree lists it', () => {
+      const page = JSON.stringify(spaceRoutes.find((route) => route.path === '/dna'));
+      const at = [
+        JSON.stringify(classGroup('models')).slice(1, -1),
+        '["Flows"]',
+        '["Templates"]',
+        JSON.stringify(classGroup('we')).slice(1, -1),
+        '["Policy"]',
+      ].map((part) => page.indexOf(part));
+      expect(at.every((i) => i >= 0)).toBe(true);
+      expect([...at].sort((a, b) => a - b)).toEqual(at);
+      expect(page).not.toContain('Workflows');
+    });
+
+    it('nests no Blocks group in the built-in group when the space offers no blocks', () => {
+      const evaluate = at(
+        [],
+        {},
+        {
+          recordStore: { creatableEntities: [], plumbingClasses: [], displays: {} },
+          datasetStore: { currentDatasetEntities: [] },
+        },
+      );
+      const groups = evaluate({ $: CLASS_GROUPS }) as { label: string; classes: unknown[]; sub: unknown[] }[];
+      // Models is listed with nothing in it: it is one of the three things Social DNA holds.
+      expect(groups.map((g) => [g.label, g.classes.length])).toEqual([
+        ['Models', 0],
+        ['Built in', 5],
+      ]);
+      expect(groups[1].sub).toEqual([]);
+    });
+
+    it('lists a vocabulary class once, as a row, even if it were ever offered as built-in content', () => {
+      const evaluate = at(
+        [],
+        {},
+        {
+          recordStore: {
+            creatableEntities: [
+              { value: 'Topic', label: 'Topic', icon: 'hash', group: 'Built in' },
+              { value: 'TaskBlock', label: 'Task', icon: 'check', group: 'Built in' },
+            ],
+            plumbingClasses: [],
+            displays: {},
+          },
+          datasetStore: { currentDatasetEntities: [] },
+        },
+      );
+      type Cls = { id: string };
+      const [, builtIn] = evaluate({ $: CLASS_GROUPS }) as { rows: Cls[]; sub: { classes: Cls[] }[] }[];
+      expect(builtIn.rows.map((c) => c.id)).toContain('Topic');
+      expect(builtIn.sub.map((s) => s.classes.map((c) => c.id))).toEqual([['TaskBlock']]);
+    });
+
+    it('keeps the Blocks row open while a block is in focus, and not for a vocabulary class', () => {
       const row = (value: string) =>
         findNode(treeSection, (n) =>
           String(JSON.stringify((n.props as { open?: unknown } | undefined)?.open)).includes(
             `((${value}) in local.openRows)`,
           ),
         )!;
-      const open = (value: string, params: Record<string, string>) =>
-        at([], params, { local: { openRows: [] } })((row(value).props as { open: unknown }).open);
-      const onCanvas = { view: 'canvas', dna: 'signal|like' };
-      expect(open("'group|dna'", onCanvas)).toBe(true);
-      expect(open("'dnakind|signal'", onCanvas)).toBe(true);
-      expect(open("'dnakind|state'", onCanvas)).toBe(false);
-      expect(open("'dnakind|signal'", { view: 'canvas', dna: 'all' })).toBe(false);
-    });
-
-    it('lists every model the map does under Models, by name', () => {
-      const models = DNA_LISTS.find((list) => list.kind === 'model')!;
-      const evaluate = at(
-        [],
-        {},
-        {
-          recordStore: {
-            creatableEntities: [{ value: 'TaskBlock', label: 'Task', icon: 'check', description: 'Work' }],
+      const blocks = "'dnagroup|' + group.key + '.' + sub.key";
+      const open = (dna: string) =>
+        at(
+          [],
+          { view: 'canvas', dna },
+          {
+            local: { openRows: [] },
+            group: { key: 'we' },
+            sub: { key: 'blocks', classes: [{ id: 'TaskBlock' }] },
           },
-        },
-      );
-      expect(evaluate({ $: models.items })).toEqual([
-        { id: 'TaskBlock', name: 'Task', icon: 'check', description: 'Work' },
-      ]);
-      expect(JSON.stringify(VOCABULARY_BUCKETS)).toContain(
-        "key: 'models', label: 'Models', models: recordStore.creatableEntities",
-      );
+        )((row(blocks).props as { open: unknown }).open);
+      expect(open('model|TaskBlock')).toBe(true);
+      expect(open('model|SignalType')).toBe(false);
     });
 
     /*
@@ -554,9 +1022,33 @@ describe('the Coasys cartridge', () => {
       expect(JSON.stringify(treeSection)).not.toContain('"shellStore.openSpaceSettings","args":["vocabulary"');
       expect(spaceRoutes.map((route) => route.path)).toContain('/dna');
       expect(at(['dna'], { dna: 'all' })({ $: SELECTED_EXPR })).toBe('group|dna');
-      expect(at(['dna'], { dna: 'signal' })({ $: SELECTED_EXPR })).toBe('dnakind|signal');
+      expect(at(['dna'], { dna: 'model|SignalType' })({ $: SELECTED_EXPR })).toBe('dna|model|SignalType');
+      expect(at(['dna'], { dna: 'model|SignalType|like' })({ $: SELECTED_EXPR })).toBe('dna|model|SignalType');
+      expect(at(['dna'], { dna: 'policy' })({ $: SELECTED_EXPR })).toBe('dnakind|policy');
       // Anywhere else in Page mode, a leftover focus lights nothing.
-      expect(at(['people'], { dna: 'signal' })({ $: SELECTED_EXPR })).toBe('group|people');
+      expect(at(['people'], { dna: 'model|SignalType' })({ $: SELECTED_EXPR })).toBe('group|people');
+    });
+
+    /*
+      Bookmarks from before a class was a model: `signal`, `signal|like`, `class|Question`. Each lands
+      on the class it meant, a record id kept; a kind nobody knows lands on the whole.
+    */
+    it('lands an old ?dna= value on the class it meant, or on all', () => {
+      const focus = (dna: string) => at(['dna'], { dna })({ $: DNA_AT });
+      expect(focus('signal')).toBe('model|SignalType');
+      expect(focus('signal|like')).toBe('model|SignalType|like');
+      expect(focus('connection')).toBe('model|RelationshipType');
+      expect(focus('relationship')).toBe('model|RelationshipType');
+      expect(focus('taskstate|done')).toBe('model|TaskState|done');
+      expect(focus('involvement')).toBe('model|InvolvementType');
+      expect(focus('topic')).toBe('model|Topic');
+      expect(focus('class|Question')).toBe('model|Question');
+      expect(focus('class|Question|q1')).toBe('model|Question|q1');
+      expect(focus('nonsense|x')).toBe('all');
+      expect(focus('model|SignalType|like')).toBe('model|SignalType|like');
+      expect(focus('policy|Anyone may post')).toBe('policy|Anyone may post');
+      expect(at(['dna'], {})({ $: DNA_AT })).toBe('all');
+      expect(at(['dna'], { dna: 'signal' })({ $: SELECTED_EXPR })).toBe('dna|model|SignalType');
     });
 
     /*
@@ -567,28 +1059,74 @@ describe('the Coasys cartridge', () => {
     it('lists Social DNA on its page, where the canvas draws the map', () => {
       const page = spaceRoutes.find((route) => route.path === '/dna')!;
       expect(findNode(page, (n) => n.type === 'GraphView')).toBeUndefined();
-      const sections = findAll(page, (n) => n.type === '$if' && JSON.stringify(n.props).includes("== 'all' && count("))
-        .map((n) => (n.props as { condition: unknown }).condition)
-        .filter((condition) => !JSON.stringify(condition).includes('== 0'));
+      // A class's page reads the store's list where one is named — Task states in the community's
+      // order, one a slug — and queries the class otherwise.
+      const query = (page.$queries as Record<string, { when: unknown }>).classRows;
       const data = {
-        local: { signalTypes: [{ id: 'like', name: 'Like' }], relationshipTypes: [], topics: [{ id: 'x', name: 'X' }] },
         spaceStore: {
           spacePath: '/space/s1',
-          taskStates: [],
-          involvementTypes: [],
-          policy: { sentences: ['A rule.'] },
+          taskStates: [
+            { id: 'b', name: 'Doing' },
+            { id: 'a', name: 'Done' },
+          ],
         },
+        local: { classRows: [{ id: 'q1', body: 'Why?' }] },
       };
-      const shown = (dna?: string) => sections.map((condition) => at(['dna'], dna ? { dna } : {}, data)(condition));
-      // Every kind with something in it; one kind alone, even an empty one; a definition, its kind.
-      expect(shown()).toEqual([true, false, false, false, true, false, true]);
-      expect(shown('state')).toEqual([false, false, true, false, false, false, false]);
-      expect(shown('signal|like')).toEqual([true, false, false, false, false, false, false]);
-      // The chosen card is outlined.
-      const card = findNode(page, (n) => n.type === 'Card' && JSON.stringify(n.props).includes("== 'signal'"))!;
+      expect(at(['dna'], { dna: 'model|TaskState' }, data)({ $: CLASS_ROWS })).toEqual(data.spaceStore.taskStates);
+      expect(at(['dna'], { dna: 'model|TaskState' }, data)(query.when)).toBe(false);
+      expect(at(['dna'], { dna: 'model|Question' }, data)({ $: CLASS_ROWS })).toEqual(data.local.classRows);
+      expect(at(['dna'], { dna: 'model|Question' }, data)(query.when)).toBe(true);
+      expect(at(['dna'], { dna: 'all' }, data)(query.when)).toBe(false);
+      // The record chosen is outlined.
+      const card = findNode(page, (n) => n.type === 'Card' && JSON.stringify(n.props).includes('row.id'))!;
       const border = (card.props as { border: unknown }).border;
-      expect(at(['dna'], { dna: 'signal|like' }, { def: { id: 'like' } })(border)).toBe('1px solid accent');
-      expect(at(['dna'], { dna: 'signal|like' }, { def: { id: 'love' } })(border)).toBe('1px solid transparent');
+      expect(at(['dna'], { dna: 'model|Question|q1' }, { row: { id: 'q1' } })(border)).toBe('1px solid accent');
+      expect(at(['dna'], { dna: 'model|Question|q1' }, { row: { id: 'q2' } })(border)).toBe('1px solid transparent');
+    });
+
+    /*
+      WE's own vocabulary (signal types, connection types, topics) is read whole, by name, as it was
+      before classes were models; any other class reads its newest hundred. A class page whose read is
+      limited says "100+" when the limit is hit, and a record beyond the first page still has its crumb.
+    */
+    it("reads WE's vocabulary by name with no limit, and any other class newest first, a hundred", () => {
+      const page = spaceRoutes.find((route) => route.path === '/dna')!;
+      const queries = page.$queries as Record<string, Record<string, unknown>>;
+      const data = { local: { vocabRows: [{ id: 'a' }], classRows: [{ id: 'q1' }] } };
+      for (const cls of ['SignalType', 'RelationshipType', 'Topic']) {
+        const evaluate = at(['dna'], { dna: `model|${cls}` }, data);
+        expect(evaluate(queries.vocabRows.when)).toBe(true);
+        expect(evaluate(queries.classRows.when)).toBe(false);
+        expect(evaluate({ $: CLASS_ROWS })).toEqual(data.local.vocabRows);
+      }
+      expect(queries.vocabRows.order).toEqual({ name: 'asc' });
+      expect(queries.vocabRows).not.toHaveProperty('limit');
+      expect(queries.classRows).toMatchObject({ order: { createdAt: 'desc' }, limit: 100 });
+      expect(at(['dna'], { dna: 'model|Question' }, data)(queries.vocabRows.when)).toBe(false);
+      expect(at(['dna'], { dna: 'model|TaskState' }, data)(queries.vocabRows.when)).toBe(false);
+    });
+
+    it('says 100+ in the heading when a limited read is full, and still names a record beyond it', () => {
+      const rows = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `q${i}`, name: `Q${i}` }));
+      const count = (n: number, dna = 'model|Question') =>
+        at(['dna'], { dna }, { local: { classRows: rows(n), vocabRows: rows(n) } })({ $: CLASS_ROWS_COUNT });
+      expect(count(100)).toBe('100+');
+      expect(count(40)).toBe(40);
+      expect(count(150, 'model|Topic')).toBe(150);
+
+      const crumb = dnaCrumbs()[2].label as { $: string };
+      const data = (record: unknown[]) => ({
+        recordStore: { displays: { Question: { title: 'name', label: 'Question' } } },
+        local: { classRows: rows(100), classRecord: record },
+      });
+      const at500 = { dna: 'model|Question|q500' };
+      expect(at(['dna'], at500, data([{ id: 'q500', name: 'Far' }]))(crumb)).toBe('Far');
+      expect(at(['dna'], at500, data([]))(crumb)).toBe('Record');
+      expect(at(['dna'], { dna: 'model|Question|q3' }, data([]))(crumb)).toBe('Q3');
+      const query = (spaceRoutes.find((route) => route.path === '/dna')!.$queries as Record<string, { when: unknown }>)
+        .classRecord;
+      expect(at(['dna'], at500, data([]))(query.when)).toBe(true);
+      expect(at(['dna'], { dna: 'model|Question' }, data([]))(query.when)).toBe(false);
     });
 
     /*
@@ -631,7 +1169,8 @@ describe('the Coasys cartridge', () => {
         trail(bar(node), at(path, params, { shellStore: { collapsedLanes: [] }, ...extra }));
       const route = (path: string) => spaceRoutes.find((r) => r.path === path)! as SchemaNode;
       const dnaData = {
-        local: { signalTypes: [{ id: 'like', name: 'Like' }], relationshipTypes: [], topics: [] },
+        local: { vocabRows: [{ id: 'like', name: 'Like' }] },
+        recordStore: { displays: { SignalType: { label: 'Signal type', title: 'name' } } },
         spaceStore: { spacePath: '/space/s1', taskStates: [], involvementTypes: [], policy: { sentences: [] } },
       };
 
@@ -645,24 +1184,29 @@ describe('the Coasys cartridge', () => {
         ]);
         const open = { name: 'review', label: 'Review' };
         expect(trailAt(route('/workflows'), ['workflows'], {}, { workflowStore: { open } })).toEqual([
-          { label: 'Workflows', to: '/space/s1/workflows' },
+          { label: 'Flows', to: '/space/s1/workflows' },
           { label: 'Review' },
         ]);
-        expect(trailAt(route('/workflows'), ['workflows'], {})).toEqual([{ label: 'Workflows' }]);
+        expect(trailAt(route('/workflows'), ['workflows'], {})).toEqual([{ label: 'Flows' }]);
         expect(trailAt(route('/calls'), ['calls'], {})).toEqual([{ label: 'Calls' }]);
       });
 
-      it('goes back up through Social DNA, a kind of it and a definition, on its page or the canvas', () => {
-        expect(trailAt(route('/dna'), ['dna'], { dna: 'signal|like' }, dnaData)).toEqual([
+      it('goes back up through Social DNA, a class and one of its records, on its page or the canvas', () => {
+        expect(trailAt(route('/dna'), ['dna'], { dna: 'model|SignalType|like' }, dnaData)).toEqual([
           { label: 'Social DNA', to: '/space/s1/dna?dna=all' },
-          { label: 'Signal types', to: '/space/s1/dna?dna=signal' },
+          { label: 'Signal types', to: '/space/s1/dna?dna=model%7CSignalType' },
           { label: 'Like' },
+        ]);
+        expect(trailAt(route('/dna'), ['dna'], { dna: 'policy|A rule.' }, dnaData)).toEqual([
+          { label: 'Social DNA', to: '/space/s1/dna?dna=all' },
+          { label: 'Policy', to: '/space/s1/dna?dna=policy' },
+          { label: 'A rule.' },
         ]);
         expect(trailAt(route('/dna'), ['dna'], { dna: 'all' }, dnaData)).toEqual([{ label: 'Social DNA' }]);
         // On the canvas the same steps, which stay on it.
-        expect(trailAt(canvasPane, [], { view: 'canvas', dna: 'signal|like' }, dnaData)).toEqual([
+        expect(trailAt(canvasPane, [], { view: 'canvas', dna: 'model|SignalType|like' }, dnaData)).toEqual([
           { label: 'Social DNA', to: '?dna=all' },
-          { label: 'Signal types', to: '?dna=signal' },
+          { label: 'Signal types', to: '?dna=model|SignalType' },
           { label: 'Like' },
         ]);
         expect(
@@ -729,7 +1273,10 @@ describe('the Coasys cartridge', () => {
           is a different graph with a layout of its own.
         */
         expect(graphJson.match(/"layout":/g)).toHaveLength(1);
-        expect(graphJson).toContain("{ type: 'forest', options: { spine: { field: 'data.relationshipTypeId'");
+        // The spine is the Workshop's, read once by `treeSpine` — nothing here decodes its spelling.
+        expect(graphJson).toContain("{ type: 'forest', options: { spine: treeSpine({ value: local.spine }).selector");
+        expect(graphJson).not.toContain('startsWith(local.spine');
+        expect(graphJson).not.toContain('split(local.spine');
         // Freeform as it was: manual, parked at the canvas's own card size. Nothing about the
         // positions people arranged is read by the tree, so switching back finds every card.
         expect(graphJson).toContain("{ type: 'manual', options: { size: { width: 200, height: 140 }");
@@ -742,7 +1289,7 @@ describe('the Coasys cartridge', () => {
         expect(graphJson).toContain("'select', { type: 'arrange-nodes'");
         // A drag in the tree writes the structure the layout reads, not a position it then erases.
         expect(graphJson).toContain('"onNodeArrange":{"$invoke":"recordStore.arrangeOnTree"');
-        expect(graphJson).toContain('{"$":"local.spine"}');
+        expect(graphJson).toContain('{"$":"treeSpine({ value: local.spine })"}');
         expect(graphJson).toContain('"onNodeDragEnd":{"$invoke":"recordStore.dragOnCanvas"');
       });
 
@@ -752,9 +1299,20 @@ describe('the Coasys cartridge', () => {
       });
 
       it('draws the connections it is not following, faintly', () => {
-        expect(graphJson).toContain("{ 'data.relationshipTypeId': { not: local.spine } }");
+        expect(graphJson).toContain('{ when: treeSpine({ value: local.spine }).offSpine,');
         expect(graphJson).toContain('opacity: 0.25');
         expect(graphJson).toContain("sourceAnchor: 's', targetAnchor: 'n'");
+      });
+
+      it('follows the models’ own relations in the tree, as the spine picker offers them', () => {
+        /*
+          The picker lists `rel:Class.prop` spines and the layout reads `data.relation`, but those
+          edges exist only when the seed is asked for them. Without `relations` a model-relation
+          spine drew every card in the unconnected zone.
+        */
+        expect(graphJson).toContain(
+          '"relations":{"$":"local.treeMode && treeSpine({ value: local.spine }).relations ? { children: true } : false"}',
+        );
       });
 
       it('fetches the reactions whenever the tree is up, so ordering by one is a re-sort and not a reload', () => {
@@ -772,7 +1330,8 @@ describe('the Coasys cartridge', () => {
 
       it('offers the spine and the order in the strip', () => {
         expect(pane).toContain('"placeholder":"Any connection"');
-        expect(pane).toContain('local.relationshipKinds.map(k, { label: k.name, value: k.id, icon: k.icon })');
+        // The kinds plus the space's model relations, the same list the Workshop's strip offers.
+        expect(pane).toContain('treeSpines({ kinds: local.relationshipKinds, shapes: shapeStore.spaceShapes');
         expect(pane).toContain('"value":"manual"');
         expect(pane).toContain('"value":"date"');
         expect(pane).toContain('"value":"newest"');
@@ -837,6 +1396,66 @@ function findAll(root: unknown, match: (node: { type?: string; props?: unknown }
   walk(root);
   return found;
 }
+
+/*
+  Another app's classes, as Social DNA lists them: one template expression over the classes the space
+  carries, rather than a store member grouping them — WE's plumbing is the one value it reads that a
+  template could not name for itself.
+*/
+describe("Social DNA's classes from other apps", () => {
+  const evaluate = (source: string) => {
+    const roots: Record<string, unknown> = {
+      datasetStore: {
+        // By name, as the store publishes them.
+        currentDatasetEntities: [
+          { name: 'Channel', targetClass: 'flux://Channel' },
+          { name: 'Nest', targetClass: 'birds://Nest' },
+          { name: 'Nest', targetClass: 'birds://Nest' },
+          { name: 'Question', targetClass: 'conv://Question' },
+          { name: 'Sighting', targetClass: 'birds://Sighting' },
+          { name: 'Space', targetClass: 'old://Space' },
+          { name: 'Topic', targetClass: 'old://Topic' },
+        ],
+      },
+      recordStore: {
+        creatableEntities: [
+          { value: 'Sighting', label: 'Sighting', icon: 'binoculars', group: 'This space' },
+          { value: 'TaskBlock', label: 'Task', icon: 'check-square', group: 'Built in' },
+        ],
+        plumbingClasses: ['Space', 'SignalType'],
+        displays: { Channel: { label: 'Channel' }, Question: { label: 'Question' } },
+      },
+    };
+    return evaluateExpression(parseExpression(source), {
+      root: (name) => ({ bound: name in roots, value: roots[name] }),
+      call: (name, args) =>
+        listFunctions()
+          .find((f) => f.name === name)
+          ?.impl(args, { context: {}, stores: {} }),
+    });
+  };
+
+  it('lists them flat, in the order the store gives them, each with its namespace as secondary text', () => {
+    expect(evaluate(OTHER_CLASSES)).toEqual([
+      { id: 'Channel', label: 'Channel', icon: 'cube', namespace: 'flux://' },
+      { id: 'Nest', label: 'Nest', icon: 'cube', namespace: 'birds://' },
+      { id: 'Question', label: 'Question', icon: 'cube', namespace: 'conv://' },
+    ]);
+  });
+
+  it("reads the same names as the vocabulary map's other bucket, and WE's vocabulary is the kit's", () => {
+    expect(WE_VOCABULARY.map((c) => c.name)).toEqual(Object.keys(VOCABULARY_OPENS));
+    expect(OTHER_CLASSES.startsWith(OTHER_APP_CLASS_NAMES)).toBe(true);
+  });
+
+  it("leaves WE's plumbing out, and lists a class once — not again where the space's or WE's has its name", () => {
+    const names = (evaluate(OTHER_CLASSES) as { id: string }[]).map((c) => c.id);
+    expect(names).not.toContain('Space');
+    expect(names).not.toContain('Topic');
+    expect(names).not.toContain('Sighting');
+    expect(names.filter((n) => n === 'Nest')).toHaveLength(1);
+  });
+});
 
 describe('the lookup that read every tool as available', () => {
   /*

@@ -8,7 +8,7 @@
  * inspection.
  */
 import { markAction, markState, storeSurface } from '@we/module-shared';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { DEFAULT_ICE_SERVERS } from './mesh';
 import { parseCallMessage } from './protocol';
@@ -416,6 +416,10 @@ describe('transport and device lifetime', () => {
        * presence from one that did not.
        */
       reactive?: boolean;
+      /** What the machine answers when asked for devices; by default, a microphone every time. */
+      getUserMedia?: (constraints: MediaStreamConstraints) => Promise<MediaStream>;
+      /** What the machine answers when asked for a screen; by default, a refusal. */
+      getDisplayMedia?: () => Promise<MediaStream>;
     } = {},
   ) {
     const tracked = options.reactive ? trackingReactivity() : null;
@@ -567,10 +571,12 @@ describe('transport and device lifetime', () => {
           },
         },
         media: {
-          getUserMedia: async () => mic,
-          getDisplayMedia: async () => {
-            throw new Error('no screen here');
-          },
+          getUserMedia: options.getUserMedia ?? (async () => mic),
+          getDisplayMedia:
+            options.getDisplayMedia ??
+            (async () => {
+              throw new Error('no screen here');
+            }),
           publish: (stream: MediaStream | null) => void publishedMedia.push(stream),
           input: () => publishedMedia.at(-1) ?? null,
           // A machine with nothing to choose between, which is one of the ordinary states the
@@ -734,13 +740,149 @@ describe('transport and device lifetime', () => {
 
     await store.startCall();
     await Promise.resolve();
-    expect(published).toEqual([mic]);
+    // Joined with the microphone off: nothing to hear, so nothing is published — a listener handed
+    // the empty stream would build an audio graph from nothing.
+    expect(published).toEqual([]);
 
-    store.toggleAudio();
-    expect(published).toEqual([mic]);
+    // The camera alone still gives a listener nothing to hear.
+    await store.toggleVideo();
+    expect(published).toEqual([]);
+
+    await store.toggleAudio();
+    const opened = published.at(-1) as MediaStream;
+    expect(opened.getAudioTracks()).toEqual(mic.getAudioTracks());
+
+    // Muting again keeps the same capture, so nothing new is published.
+    await store.toggleAudio();
+    expect(published.at(-1)).toBe(opened);
 
     store.leave();
-    expect(published).toEqual([mic, null]);
+    expect(published.at(-1)).toBeNull();
+  });
+
+  /*
+    A phone whose app had no microphone permission joined with neither camera nor microphone, and
+    unmuting never brought audio back. The controller now keeps whichever device is granted and asks
+    again on unmute; what the store owes on top is saying so, because a missing microphone — unlike
+    a missing camera — is invisible to the person it belongs to.
+  */
+  describe('a microphone that is refused while the camera is granted', () => {
+    const cameraOnly = () => {
+      let allowAudio = false;
+      const camera = { kind: 'video', enabled: true, readyState: 'live', stop() {}, addEventListener() {} };
+      const microphone = { kind: 'audio', enabled: true, readyState: 'live', stop() {}, addEventListener() {} };
+      const harness = callable({
+        getUserMedia: async (constraints) => {
+          if (constraints.audio && !allowAudio) throw new Error('NotAllowedError');
+          return new MediaStream([(constraints.audio ? microphone : camera) as unknown as MediaStreamTrack]);
+        },
+      });
+      return { ...harness, grant: () => (allowAudio = true) };
+    };
+
+    it('joins with both off, asking for neither, so nothing is refused yet', async () => {
+      const { store } = cameraOnly();
+
+      await store.startCall();
+      await Promise.resolve();
+
+      expect(store.media()).toMatchObject({ audioEnabled: false, videoEnabled: false });
+      expect(store.problem()).toBeNull();
+    });
+
+    it('says so again when unmuting is refused', async () => {
+      const { store } = cameraOnly();
+      await store.startCall();
+      await Promise.resolve();
+      store.dismissProblem();
+
+      await store.toggleAudio();
+
+      expect(store.media().audioEnabled).toBe(false);
+      expect(store.problem()).toMatch(/microphone/);
+    });
+
+    it('unmutes, and clears the message, once the permission has been granted', async () => {
+      const { store, grant, published } = cameraOnly();
+      await store.startCall();
+      await Promise.resolve();
+
+      grant();
+      await store.toggleAudio();
+
+      expect(store.media().audioEnabled).toBe(true);
+      expect(store.problem()).toBeNull();
+      // The stream with the microphone in it is what the transcriber is handed.
+      expect((published.at(-1) as MediaStream | null)?.getAudioTracks()).toHaveLength(1);
+    });
+
+    it('does not report an unmute of a call already left against the next call', async () => {
+      // The unmute in the first call waits on its permission prompt; the person leaves, joins a
+      // second call with a working microphone and mutes it. The first prompt then refuses.
+      let refuseFirstUnmute: (() => void) | undefined;
+      let microphoneIs: 'refused' | 'prompting' | 'granted' = 'refused';
+      const microphone = { kind: 'audio', enabled: true, readyState: 'live', stop() {}, addEventListener() {} };
+      const camera = { kind: 'video', enabled: true, readyState: 'live', stop() {}, addEventListener() {} };
+      const { store } = callable({
+        getUserMedia: async (constraints) => {
+          if (constraints.audio && microphoneIs === 'refused') throw new Error('NotAllowedError');
+          if (constraints.audio && microphoneIs === 'prompting') {
+            await new Promise<void>((resolve) => (refuseFirstUnmute = resolve));
+            throw new Error('NotAllowedError');
+          }
+          return new MediaStream([(constraints.audio ? microphone : camera) as unknown as MediaStreamTrack]);
+        },
+      });
+      await store.startCall();
+      await Promise.resolve();
+      microphoneIs = 'prompting';
+      const firstUnmute = store.toggleAudio();
+      await vi.waitFor(() => expect(refuseFirstUnmute).toBeDefined());
+
+      microphoneIs = 'granted';
+      store.leave();
+      await store.startCall();
+      await Promise.resolve();
+      // On, then muted again.
+      await store.toggleAudio();
+      await store.toggleAudio();
+      expect(store.media().audioEnabled).toBe(false);
+      expect(store.problem()).toBeNull();
+
+      refuseFirstUnmute?.();
+      await firstUnmute;
+
+      expect(store.problem()).toBeNull();
+    });
+
+    it('does not report a camera refused after its call was left', async () => {
+      // The camera-on waits on its permission prompt; the person leaves; the prompt then refuses.
+      let refuseCamera: (() => void) | undefined;
+      let cameraIs: 'refused' | 'prompting' = 'refused';
+      const microphone = { kind: 'audio', enabled: true, readyState: 'live', stop() {}, addEventListener() {} };
+      const { store } = callable({
+        getUserMedia: async (constraints) => {
+          if (constraints.video && cameraIs === 'refused') throw new Error('NotAllowedError');
+          if (constraints.video) {
+            await new Promise<void>((resolve) => (refuseCamera = resolve));
+            throw new Error('NotAllowedError');
+          }
+          return new MediaStream([microphone as unknown as MediaStreamTrack]);
+        },
+      });
+      await store.startCall();
+      await Promise.resolve();
+      cameraIs = 'prompting';
+      const cameraOn = store.toggleVideo();
+      await vi.waitFor(() => expect(refuseCamera).toBeDefined());
+
+      store.leave();
+      expect(store.problem()).toBeNull();
+      refuseCamera?.();
+      await cameraOn;
+
+      expect(store.problem()).toBeNull();
+    });
   });
 
   it('refuses to join on a host that lends no peer connections, and writes nothing', async () => {
@@ -1130,10 +1272,12 @@ describe('transport and device lifetime', () => {
         participants: [] as { participantId: string; agentDid: string; stream: MediaStream; hasVideo?: boolean }[],
         joinedWith: null as MediaStream | null,
         destroyed: false,
-        join: async (stream: MediaStream) => void (session.joinedWith = stream),
+        join: async (stream: MediaStream): Promise<void> => void (session.joinedWith = stream),
         leave: async () => {},
         destroy: async () => void (session.destroyed = true),
-        replaceTrack: async () => {},
+        /** Every track handed over after the join, as `[kind, track]`. */
+        sent: [] as [string, MediaStreamTrack | null][],
+        replaceTrack: async (kind: string, track: MediaStreamTrack | null) => void session.sent.push([kind, track]),
         setQualityPreference: async () => {},
         getState: () => 'active',
         on: (event: string, cb: (...args: unknown[]) => void) => {
@@ -1191,6 +1335,120 @@ describe('transport and device lifetime', () => {
       await Promise.resolve();
       expect(stateOf()?.retrying).toBe(false);
       expect(stateOf()?.transport, 'read from the session once the pair connects').toBe('relay');
+    });
+
+    /*
+      Calls start with both devices off, so the session joins with an empty stream. A device turned
+      on before the join finished changed nothing the session could see: track changes wait for the
+      join, and the join had taken the stream as it stood. The other side saw no video.
+    */
+    describe('a device turned on while the session joins', () => {
+      const track = (kind: string) =>
+        ({ kind, enabled: true, readyState: 'live', stop() {}, addEventListener() {} }) as unknown as MediaStreamTrack;
+      const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+      /** A session built once `built` resolves, whose join waits for `finishJoin`. */
+      function joining(
+        options: {
+          built?: Promise<void>;
+          getUserMedia?: (constraints: MediaStreamConstraints) => Promise<MediaStream>;
+          getDisplayMedia?: () => Promise<MediaStream>;
+        } = {},
+      ) {
+        const fake = fakeSession();
+        let finish = () => {};
+        fake.session.join = (stream: MediaStream) => {
+          fake.session.joinedWith = stream;
+          return new Promise<void>((resolve) => (finish = resolve));
+        };
+        const camera = track('video');
+        const microphone = track('audio');
+        const harness = callable({
+          backend: async () => {
+            await options.built;
+            return fake.session;
+          },
+          getUserMedia: options.getUserMedia ?? (async (asked) => new MediaStream([asked.audio ? microphone : camera])),
+          ...(options.getDisplayMedia ? { getDisplayMedia: options.getDisplayMedia } : {}),
+        });
+        return { ...harness, fake, camera, microphone, finishJoin: () => finish() };
+      }
+
+      it('sends a camera turned on during the join', async () => {
+        const { store, fake, camera, finishJoin } = joining();
+
+        const starting = store.startCall();
+        await settle();
+        expect(fake.session.joinedWith?.getTracks(), 'joined with nothing on').toEqual([]);
+        await store.toggleVideo();
+        finishJoin();
+        await starting;
+        await settle();
+
+        expect(fake.session.sent).toEqual([['video', camera]]);
+      });
+
+      it('sends a microphone that lands as the join ends', async () => {
+        // Read when the session counts as joined, not when `join` returns: between the two, a
+        // microphone that lands is dropped by `onTrackChanged` and missed by an earlier reading.
+        let grant = () => {};
+        const { store, fake, microphone, finishJoin } = joining({
+          getUserMedia: () => new Promise((resolve) => (grant = () => resolve(new MediaStream([microphone])))),
+        });
+
+        const starting = store.startCall();
+        await settle();
+        const unmuting = store.toggleAudio();
+        await settle();
+        finishJoin();
+        grant();
+        await Promise.all([starting, unmuting]);
+        await settle();
+
+        expect(fake.session.sent).toEqual([['audio', microphone]]);
+      });
+
+      it('sends the microphone, not the screen, when unmuted while sharing during the join', async () => {
+        // While sharing, the display stream is the screen: it holds no microphone.
+        const screen = track('video');
+        const { store, fake, microphone, finishJoin } = joining({
+          getDisplayMedia: async () => new MediaStream([screen]),
+        });
+
+        const starting = store.startCall();
+        await settle();
+        await store.toggleScreenShare();
+        await store.toggleAudio();
+        finishJoin();
+        await starting;
+        await settle();
+
+        expect(fake.session.sent).toEqual(
+          expect.arrayContaining([
+            ['audio', microphone],
+            ['video', screen],
+          ]),
+        );
+      });
+
+      it('keeps a camera pressed while the session was still being built', async () => {
+        let build = () => {};
+        const { store, fake, camera, finishJoin } = joining({
+          built: new Promise<void>((resolve) => (build = resolve)),
+        });
+
+        const starting = store.startCall();
+        await settle();
+        await store.toggleVideo();
+        build();
+        await settle();
+        finishJoin();
+        await starting;
+        await settle();
+
+        expect(store.media().videoEnabled, 'the press is not turned off again').toBe(true);
+        expect(fake.session.joinedWith?.getVideoTracks()).toEqual([camera]);
+      });
     });
 
     it('reconnects a peer through the session', async () => {
@@ -1309,6 +1567,9 @@ describe('transport and device lifetime', () => {
         const { store, session, fire, published, cleared } = await inCallWith('did:someone');
         const id = store.callId();
         expect(id).toBeTruthy();
+        // A microphone on, so there is something to release.
+        await store.toggleAudio();
+        expect(published.at(-1)).not.toBeNull();
 
         fire('replaced', { participantId: 'session-this-tab' });
         await settle();
@@ -1343,6 +1604,69 @@ describe('transport and device lifetime', () => {
         const id = store.callId() as string;
         fire('replaced', { participantId: 'session-this-tab' });
         await settle();
+
+        await store.joinCall(id);
+        await settle();
+
+        expect(store.callId()).toBe(id);
+        expect(sessions).toHaveLength(2);
+        expect(store.problem(), 'joining again clears the notice').toBeNull();
+      });
+    });
+
+    /*
+      The session ends an SFU call itself when the backend's rebuilds give up (`gave-up`), or the
+      call server refuses the session as another agent's (`refused`). Without a listener the call
+      stayed "joined" over a session the SDK had already stopped — a dead call. It is let go like a
+      leave: devices released, the reason said, and joining again the person's choice.
+    */
+    describe('when the session ends the call itself', () => {
+      const settle = async () => {
+        for (let i = 0; i < 6; i++) await Promise.resolve();
+      };
+
+      it('lets go of the call and says the connection gave up', async () => {
+        const { store, session, fire, published, cleared } = await inCallWith('did:someone');
+        const id = store.callId();
+        expect(id).toBeTruthy();
+        await store.toggleAudio();
+        expect(published.at(-1)).not.toBeNull();
+
+        // A give-up tells each participant it left first, then ends the call.
+        fire('participant-left', { participantId: 'did:someone', did: 'did:someone' });
+        fire('error', new Error('rebuild attempts exhausted'));
+        fire('call-ended', { reason: 'gave-up', error: new Error('rebuild attempts exhausted') });
+        await settle();
+
+        expect(store.callId()).toBeNull();
+        expect(store.tiles()).toEqual([]);
+        expect(store.problem()).toMatch(/lost its connection/);
+        expect(session.destroyed, 'the session is let go like on a leave').toBe(true);
+        expect(published.at(-1), 'the camera and the microphone are released').toBeNull();
+        expect(cleared).toEqual([['call', id]]);
+      });
+
+      it('says the call server refused this session, as a terminal end', async () => {
+        const { store, session, fire } = await inCallWith('did:someone');
+
+        fire('call-ended', { reason: 'refused', error: new Error('session belongs to another agent') });
+        await settle();
+
+        expect(store.callId()).toBeNull();
+        expect(store.tiles()).toEqual([]);
+        expect(store.problem()).toMatch(/refused this session/);
+        expect(session.destroyed).toBe(true);
+      });
+
+      it('does not rejoin by itself, and joins again when the person asks', async () => {
+        const { store, fire, sessions } = await inCallWith('did:someone');
+        const id = store.callId() as string;
+
+        fire('call-ended', { reason: 'gave-up', error: new Error('rebuild attempts exhausted') });
+        await settle();
+
+        expect(store.callId()).toBeNull();
+        expect(sessions, 'no session is built to rejoin').toHaveLength(1);
 
         await store.joinCall(id);
         await settle();
@@ -1505,7 +1829,7 @@ describe('transport and device lifetime', () => {
     */
     describe('the topology a call runs on', () => {
       const settle = async () => {
-        for (let i = 0; i < 6; i++) await Promise.resolve();
+        for (let i = 0; i < 10; i++) await Promise.resolve();
       };
       const lastTopology = (activities: Record<string, unknown>[]) => activities.at(-1)?.topology;
 
