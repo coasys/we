@@ -31,10 +31,13 @@ import {
   withInstalled,
   withoutInstalled,
 } from '@shared/bundles/installedBundles';
+import { installBundleWorkflows } from '@shared/bundles/installWorkflows';
 import { judgeBundle, modulesNamedBy } from '@shared/bundles/judgeBundle';
+import { setUpForApp } from '@shared/bundles/setUpForApp';
 import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import { seedBundlePieces } from '@shared/registries/seedBundles';
 import { explain } from '@shared/userMessage';
+import type { WorkflowDefinition } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import { type Bundle, type BundleRecordType, readBundle, type TemplateSchema } from '@we/schema-shared';
@@ -150,6 +153,8 @@ interface SetUpSource {
   name: string;
   sections: string[];
   recordTypes: BundleRecordType[];
+  /** The workflows its records move through, installed after the record types they are about. */
+  workflows: WorkflowDefinition[];
   /**
    * Whether its sections have to be copied into the space for everyone in it to have them. An installed
    * app's live in one person's library; a deployment's are built in for every member already.
@@ -217,6 +222,7 @@ export function BundleStoreProvider(props: ParentProps) {
       name: pieces.name,
       sections: pieces.sections.map((section) => section.id),
       recordTypes: pieces.recordTypes,
+      workflows: pieces.workflows,
       copySections: false,
     })),
     ...installedList().map((entry) => ({
@@ -224,6 +230,7 @@ export function BundleStoreProvider(props: ParentProps) {
       name: entry.name,
       sections: entry.sections,
       recordTypes: entry.recordTypes,
+      workflows: entry.workflows ?? [],
       copySections: true,
     })),
   ];
@@ -234,8 +241,8 @@ export function BundleStoreProvider(props: ParentProps) {
   /** The spaces this agent runs — the only ones an app's record types and sections may go into. */
   const spacesYouRun = createMemo(() => spaceStore.spaceList().filter((row) => row.isWeSpace && row.canAdminister));
 
-  const needsSpace = (source: Pick<SetUpSource, 'recordTypes' | 'sections'>) =>
-    source.recordTypes.length > 0 || source.sections.length > 0;
+  const needsSpace = (source: Pick<SetUpSource, 'recordTypes' | 'sections'> & { workflows?: unknown[] }) =>
+    source.recordTypes.length > 0 || source.sections.length > 0 || (source.workflows?.length ?? 0) > 0;
 
   /**
    * Whether one space has what a bundle needs. Its sections switched on is the sign, since set-up
@@ -381,6 +388,10 @@ export function BundleStoreProvider(props: ParentProps) {
           ? `A theme, “${judged.adds.themes[0]}”`
           : `${judged.adds.themes.length} themes: ${named(judged.adds.themes)}`,
       );
+    if (judged.adds.workflows.length)
+      adds.push(
+        `${plural(judged.adds.workflows.length, 'workflow', 'workflows')} its records move through: ${named(judged.adds.workflows)}`,
+      );
     if (judged.adds.brand) adds.push(`Its own name and look: it calls itself “${judged.adds.brand}”`);
     if (judged.adds.bootScreen) adds.push('Its own sign-in screen, around the app’s password field');
 
@@ -411,7 +422,7 @@ export function BundleStoreProvider(props: ParentProps) {
         modulesToTurnOn: judged.modulesToTurnOn.map((module) => module.name),
         modulesNotInBuild: judged.modulesNotInBuild,
         recordTypes,
-        needsSpace: recordTypes.length > 0 || judged.adds.sections.length > 0,
+        needsSpace: recordTypes.length > 0 || judged.adds.sections.length > 0 || judged.adds.workflows.length > 0,
         display: bundle.display?.spaces ?? '',
       },
     });
@@ -555,20 +566,26 @@ export function BundleStoreProvider(props: ParentProps) {
   async function setUpSpace(source: SetUpSource, spaceId: string): Promise<string[]> {
     if (!spacesYouRun().some((row) => row.uuid === spaceId))
       return ['only whoever runs a space can set it up for an app'];
-    const problems = source.recordTypes.length
-      ? await shapeStore.addRecordTypes(source.id, source.recordTypes, spaceId)
-      : [];
     // A section reading a record type the space holds under another definition would draw its
     // records as though they were this app's, so a space that refused one gets no sections either.
-    if (problems.length) {
-      console.warn(`Not setting a space up for “${source.name}”:`, problems);
-      return problems;
-    }
-    await copySectionsInto(source, spaceId);
-    const row = spacesYouRun().find((r) => r.uuid === spaceId);
-    const enabled = new Set((row?.views ?? []).filter((view) => view.enabled).map((view) => view.id));
-    for (const section of source.sections)
-      if (!enabled.has(section)) await spaceStore.setViewEnabled(section, true, spaceId);
+    const problems = await setUpForApp({
+      addRecordTypes: async () =>
+        source.recordTypes.length ? shapeStore.addRecordTypes(source.id, source.recordTypes, spaceId) : [],
+      installWorkflows: () =>
+        installBundleWorkflows(
+          session.backendPorts()?.workflows,
+          datasetStore.datasets().find((dataset) => dataset.id === spaceId)?.handle,
+          source.workflows,
+        ),
+      finish: async () => {
+        await copySectionsInto(source, spaceId);
+        const row = spacesYouRun().find((r) => r.uuid === spaceId);
+        const enabled = new Set((row?.views ?? []).filter((view) => view.enabled).map((view) => view.id));
+        for (const section of source.sections)
+          if (!enabled.has(section)) await spaceStore.setViewEnabled(section, true, spaceId);
+      },
+    });
+    if (problems.length) console.warn(`Not setting a space up for “${source.name}”:`, problems);
     return problems;
   }
 

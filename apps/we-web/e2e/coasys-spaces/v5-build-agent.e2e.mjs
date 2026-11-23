@@ -16,7 +16,7 @@ import { mcpSession } from '@we/e2e/mcp';
 
 import { createSpace } from '../steps/space.mjs';
 import { CALL_STEP, SLOW, STUB, until, vertical, world } from './context.mjs';
-import { DNA, installDnaThroughUi, installFlows, records, spacePerspective } from './dna.mjs';
+import { DNA, installDnaThroughUi, expectWorkflows, records, spacePerspective } from './dna.mjs';
 import { untilItem } from './flows.mjs';
 import {
   callThatFinds,
@@ -28,7 +28,7 @@ import {
 } from './steps.mjs';
 
 const SPACE = 'Ship it';
-const FLOW = DNA.flows.find((f) => f.name === 'Build') ?? DNA.flows.at(-1);
+const FLOW = DNA.workflows.find((f) => f.name === 'Build') ?? DNA.workflows.at(-1);
 const CLASS = FLOW?.entities[0];
 const STATES = (FLOW?.states ?? []).map((s) => s.name);
 const SHIPPED = FLOW?.states.find((s) => s.requires?.some((r) => r.kind === 'evidence'))?.name;
@@ -36,6 +36,50 @@ const EVIDENCE = FLOW?.states.find((s) => s.name === SHIPPED)?.requires.find((r)
 const BEFORE = STATES.slice(1, STATES.indexOf(SHIPPED));
 const OWNER = 'Coasys agent';
 const SHIPPED_URL = 'https://example.org/releases/sync-rebuild';
+
+/**
+ * Names on the open workflow menu.
+ *
+ * `we-menu-item` puts `role="menuitem"` on a div in its shadow root. The label is a `we-text`
+ * assigned to that div's slot, so `innerText` on the div stays empty and `allInnerTexts()` reports
+ * an open menu as having no items. The accessible name is the slotted label, which is what
+ * `getByRole('menuitem', { name })` matches.
+ */
+async function offeredWorkflows(page) {
+  return page.getByRole('menuitem').evaluateAll((items) =>
+    items
+      .map((el) => {
+        const parts = [];
+        const walk = (node) => {
+          if (!node) return;
+          if (node.nodeType === Node.TEXT_NODE) {
+            const text = node.textContent?.replace(/\s+/g, ' ').trim();
+            if (text) parts.push(text);
+            return;
+          }
+          if (node.nodeType === Node.DOCUMENT_FRAGMENT_NODE) {
+            for (const child of node.childNodes) walk(child);
+            return;
+          }
+          if (!(node instanceof Element)) return;
+          if (node instanceof HTMLSlotElement) {
+            const assigned = node.assignedNodes();
+            for (const child of assigned.length ? assigned : node.childNodes) walk(child);
+            return;
+          }
+          // Light-DOM text is reached through the slot. Walking it again would name the item twice.
+          if (node.shadowRoot) {
+            walk(node.shadowRoot);
+            return;
+          }
+          for (const child of node.childNodes) walk(child);
+        };
+        walk(el);
+        return parts.join(' ').trim();
+      })
+      .filter(Boolean),
+  );
+}
 
 /**
  * Calls one of the executor's class-agnostic instance tools (`instance_query`, `_get`, `_create`,
@@ -75,7 +119,7 @@ vertical('V5 build flow: an agent over MCP, evidence and a human approval', (v) 
       DNA.classes.map((c) => c.name),
       perspective,
     );
-    await installFlows(alice.ports, perspective);
+    await expectWorkflows(alice.ports, perspective);
   });
 
   v.step(
@@ -138,7 +182,10 @@ vertical('V5 build flow: an agent over MCP, evidence and a human approval', (v) 
         (owner) => owner === OWNER,
         { timeout: 180_000, interval: 2_000, what: "the agent's ownership in Alice's copy" },
       );
-      await openOnCanvas(alice.page, task.title);
+      // The class and the owner's name pick this Task out from another card with the same title.
+      // The stub writes a TaskBlock from the same line, and its header reads "Task" too. A substring
+      // of the title would open the Question that contains it, whose inspector offers Decide.
+      await openOnCanvas(alice.page, task.title, { type: CLASS, carrying: OWNER });
       await alice.page.getByText(OWNER).first().waitFor({ timeout: 120_000 });
       // Two 180 s polls, a 120 s wait for the owner on the screen, and the canvas's own wait (`SLOW`).
     },
@@ -146,8 +193,25 @@ vertical('V5 build flow: an agent over MCP, evidence and a human approval', (v) 
   );
 
   v.step(`Alice starts ${FLOW.name} on the ${CLASS} from its inspector`, async () => {
+    // Build is offered on a Task. A Question open instead lists Decide, and the menu has no Build.
+    await until(
+      () => alice.page.url(),
+      (url) => new RegExp(`[?&]cardType=${CLASS}(?:&|$)`).test(url),
+      {
+        timeout: 30_000,
+        what: `the inspector on the ${CLASS} (${FLOW.name} runs on ${FLOW.entities.join(', ')})`,
+      },
+    );
     await alice.page.getByRole('button', { name: 'Start a workflow on this' }).first().click({ timeout: 60_000 });
-    await alice.page.getByRole('menuitem', { name: FLOW.name }).click();
+    await until(
+      async () => offeredWorkflows(alice.page),
+      (names) => names.includes(FLOW.name),
+      {
+        timeout: 30_000,
+        what: `${FLOW.name} among the workflows this ${CLASS} offers`,
+      },
+    );
+    await alice.page.getByRole('menuitem', { name: FLOW.name, exact: true }).click();
     await untilItem(
       alice.ports,
       perspective,

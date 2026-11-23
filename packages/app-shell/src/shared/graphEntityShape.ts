@@ -8,7 +8,7 @@
 import { type EntityManifestEntry, nameFromProperties } from '@we/backend-shared';
 import type { EntityShape } from '@we/graph-protocol';
 
-import { WE_PLUMBING_CLASSES } from './shapes/extractionCandidates';
+import { WE_PLUMBING_CLASSES } from './shapes/interpretationCandidates';
 
 /** Translate a backend model manifest entry into the neutral shape the graph reads. */
 export function toEntityShape(entry: EntityManifestEntry): EntityShape {
@@ -80,7 +80,7 @@ export function toEntityShape(entry: EntityManifestEntry): EntityShape {
   /*
     WE's own structural classes — reactions, model runs, placements — marked so the graph's relation
     walk can tell a space's declared structure from the furniture the host hangs on every record.
-    The same list the extraction candidates use, so "not the community's content" means one thing.
+    The same list the interpretation candidates use, so "not the community's content" means one thing.
   */
   return {
     name: entry.name,

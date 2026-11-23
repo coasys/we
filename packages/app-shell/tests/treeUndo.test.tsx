@@ -105,8 +105,8 @@ vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
 vi.mock('../src/frameworks/solid/stores/ShapeStore', () => ({
   useShapeStore: () => ({
     spaceShapes: () => [],
-    extractionCandidates: () => [],
-    extractionCandidatesLoaded: () => true,
+    interpretationCandidates: () => [],
+    interpretationCandidatesLoaded: () => true,
   }),
   BLOCK_ICONS: {},
 }));

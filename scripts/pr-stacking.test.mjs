@@ -120,6 +120,10 @@ describe('the description against the base branch', () => {
     assert.deepEqual(await check('main', '## What'), { stacked: false });
   });
 
+  it('passes a release PR on staging', async () => {
+    assert.deepEqual(await check('staging', '## What'), { stacked: false });
+  });
+
   it('passes a PR whose block names the PR its base belongs to', async () => {
     assert.deepEqual(await check('fix/electron-stop-own-executor', stacked(312)), { stacked: true });
   });

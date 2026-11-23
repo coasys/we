@@ -63,9 +63,11 @@ export interface FeedLine {
   replyTo: { id: string; author: string; text: string } | null;
   /** The line as one block for a renderer, when it has marks — see `lineContent`. */
   content: Record<string, unknown>[] | null;
+  /** Sent from here and not yet read back — drawn at once, dimmed, until a read of the window has it. */
+  sending: boolean;
 }
 
-/** One thing extracted or made, grouped — see the module comment. */
+/** One thing interpretation found or somebody made, grouped — see the module comment. */
 export interface FeedActivity {
   kind: 'activity';
   id: string;
@@ -94,7 +96,7 @@ export interface FeedWindowOptions {
   root: string;
   /**
    * Where what extraction found is kept, when that is not `root` — the space collection, for the
-   * Feed of one call. Then only what was extracted from `root` is drawn: the same groups the space's
+   * Feed of one call. Then only what was interpreted from `root` is drawn: the same groups the space's
    * Feed draws for that call, read by the ids the call's own `extracted` names.
    */
   activityRoot?: string;
@@ -178,6 +180,7 @@ function toLine(row: Row, call: string, callTitle: string): FeedLine {
     callTitle,
     replyTo: (row.replyTo as FeedLine['replyTo']) ?? null,
     content: lineContent(row),
+    sending: false,
   };
 }
 

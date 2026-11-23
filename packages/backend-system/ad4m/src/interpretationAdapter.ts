@@ -576,7 +576,7 @@ async function scopeFilter(perspective: PerspectiveProxy, scope: LinkedScope): P
  * the four arrived together.
  *
  * Checked rather than assumed because the alternative is a `runInterpretation is not a function`
- * stack trace at the moment somebody presses Extract, several layers from anything that explains
+ * stack trace at the moment somebody presses Interpret, several layers from anything that explains
  * it. A capability this host does not have should read like a capability this host does not have.
  */
 export function runtimeSupportsInterpretation(dataset: DatasetHandle): boolean {
@@ -585,7 +585,7 @@ export function runtimeSupportsInterpretation(dataset: DatasetHandle): boolean {
 
 const UNSUPPORTED =
   'This runtime does not support interpretation. It needs an AD4M build with the generic ' +
-  'extraction stack; everything else in the app works normally without it.';
+  'interpretation stack; everything else in the app works normally without it.';
 
 /*
   `isMissingHandler` used to live here. It now lives in `missingMethods.ts` as
@@ -619,7 +619,7 @@ export function runtimeSupportsAutoProcessing(dataset: DatasetHandle): boolean {
  * `batchReady` is `null` for a related reason. It fires on *every* peer's executor, before the
  * election, and carries no `agentDid` — so it is filtered out for an ordinary session and, for an
  * admin one, arrives as an unattributed event that the `mine` rule below would claim as this
- * agent's. A row opened on it says "You are about to extract" on four machines that are about to
+ * agent's. A row opened on it says "You are about to interpret" on four machines that are about to
  * stand down, and nothing ever closes it. `claimed` is the first step that means a pass is running
  * here, and it is where a row should open.
  */
@@ -696,7 +696,8 @@ function passIdOf(event: { batchKey?: string | null; processorId: string }): str
 }
 
 const UNSUPPORTED_WATCH =
-  'This runtime cannot run a standing interpretation watch. Extraction still works when somebody ' + 'presses Extract.';
+  'This runtime cannot run a standing interpretation watch. Interpretation still works when somebody ' +
+  'presses Interpret.';
 
 /** A link as this adapter writes it: the record it hangs off, and the predicate it is stored under. */
 type Linked = { id: string; predicate: string };
@@ -1175,7 +1176,7 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
           The backstop for a node the probe never got to ask.
 
           `checkAvailability` runs when the dataset changes, but a session can reach here first — the
-          probe is one round trip and somebody can press Extract during it — and a node can in
+          probe is one round trip and somebody can press Interpret during it — and a node can in
           principle be swapped underneath a live connection. Catching it here means the answer is
           learned from whichever call gets there first, and the message a person sees is the one
           written for it rather than `Unknown type: perspective.runInterpretation`.
