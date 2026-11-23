@@ -1,4 +1,4 @@
-import type { PerspectiveProxy, SHACLShape } from '@coasys/ad4m';
+import { getRelationsMetadata, type PerspectiveProxy, type SHACLShape } from '@coasys/ad4m';
 import { describe, expect, it, vi } from 'vitest';
 
 // ── Mock the WE entity registry ──────────────────────────────────────────────

@@ -141,7 +141,7 @@ export function buildEntityClasses(shapes: ForeignShape[]): Record<string, Entit
   const aliases: [string, typeof Ad4mModel][] = [];
   for (const { name, shape } of shapes) {
     const local = shape.targetClass ? classNameOf(shape.targetClass) : name;
-    const cls = Ad4mModel.fromSHACL(shape, local, classResolver) as unknown as EntityClass;
+    const cls = Ad4mModel.fromSHACL(shape, local, classResolver);
     // `fromSHACL` records no `polymorphic` on a relation. A reference with no `sh:class` has no
     // class to hydrate into, and the executor refuses to include it unless the read is
     // polymorphic — the same rule `resolvesPolymorphically` applies to a declared manifest.

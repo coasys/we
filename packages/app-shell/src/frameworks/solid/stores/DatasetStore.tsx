@@ -885,7 +885,7 @@ export function DatasetStoreProvider(props: ParentProps) {
         later still publishes, under the same read guard.
       */
       const bound = setTimeout(() => {
-        if (read !== entitiesRead || currentDataset()?.id !== uuid || entitiesReadFor() === uuid) return;
+        if (!readIsLatest() || currentDataset()?.id !== uuid || entitiesReadFor() === uuid) return;
         console.warn(`DatasetStore: foreignSchemas did not answer inside ${FOREIGN_SCHEMAS_WAIT_MS / 1000} s`);
         setEntitiesReadFor(uuid);
         toastService.error('Some of this space’s models did not load', undefined, `models:${uuid}`);
