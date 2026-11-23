@@ -106,6 +106,11 @@ export type NavigateOptions = {
   query?: Record<string, unknown>;
   /** The route a relative path is from, as its depth in segments. The renderer supplies it. */
   base?: { depth: number };
+  /**
+   * The address exactly as written: no remembered query string is put back, and the same path under
+   * a different query is a different place. For going to what a page draws with nothing in its query.
+   */
+  fresh?: boolean;
 } & Record<string, unknown>;
 
 /**
@@ -232,7 +237,7 @@ export function RouteStoreProvider(props: ParentProps) {
   }
 
   function navigate(to: string, options?: NavigateOptions) {
-    const { query, base, ...routerOptions } = options ?? {};
+    const { query, base, fresh, ...routerOptions } = options ?? {};
     // The router's address, not the bar's, for `setParam`'s reason below.
     const here = untrack(currentPath) || window.location.pathname;
     const resolved = resolveNavigation(to, here, templateRootDepth(here), base);
@@ -242,12 +247,15 @@ export function RouteStoreProvider(props: ParentProps) {
     // Skip if already on the exact target path (no-op router push). The router's path, not the
     // address bar's, for `setParam`'s reason below: against a stale bar this refused to go to the
     // page the bar wrongly named, and let through a navigation to the page already on screen.
-    if (here === path) return;
+    // A fresh navigation compares the query too: the same page under another query draws something else.
+    const current = fresh ? `${here}${rememberedSearch.get(here) ?? ''}` : here;
+    if (current === path) return;
 
     // A bare path restores that route's remembered query string, so a
     // kept-alive route's URL params survive leaving and returning. An explicit
-    // query, in `to` or in `query`, always wins.
-    const target = !path.includes('?') && rememberedSearch.has(path) ? `${path}${rememberedSearch.get(path)}` : path;
+    // query, in `to` or in `query`, always wins, and a fresh navigation restores nothing.
+    const target =
+      !fresh && !path.includes('?') && rememberedSearch.has(path) ? `${path}${rememberedSearch.get(path)}` : path;
 
     const nav = navigateFunction();
     if (nav) nav(target, Object.keys(routerOptions).length ? routerOptions : undefined);

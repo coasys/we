@@ -139,8 +139,8 @@ export function createFeedStore(deps: ModuleStoreDeps) {
     */
     spokenHidden: () => settings?.().showCallTranscripts !== true,
     /*
-      To the space's Feed page where its template has one — a Coasys space's root channel — as the
-      space's own navigation goes there; the panel only where no page draws the Feed. A window over a
+      To the space's Feed page where its template has one, as the space's own navigation goes there;
+      the panel only where no page draws the Feed. A window over a
       space that has the Feed as a page was a second copy of the page, opened over whatever the
       reader was doing.
     */

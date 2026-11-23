@@ -1418,15 +1418,17 @@ export function SpaceStoreProvider(props: ParentProps) {
       },
       /*
         A module's part, on the page of this space that draws it: the template as written, and the
-        sections this space's navigation lists — see `pageOfPart`. `routeStore.navigate`, the call the
-        space's own navigation makes, so the page comes back as the reader left it.
+        sections this space's navigation lists — see `pageOfPart`. Fresh: `pageOfPart` answers for the
+        page as it draws with nothing in its query, so the address is that page with none. Restoring
+        the query last used there could land on another view of that page — a channel or a canvas
+        named in the query, which draws something else — or, from that view, not move at all.
       */
       showPart: (part: string) => {
         const base = spacePath();
         if (!base) return false;
         const page = pageOfPart(templateStore.currentTemplate, spaceViews(), part);
         if (page === null) return false;
-        routeStore.navigate(page ? `${base}/${page}` : base);
+        routeStore.navigate(page ? `${base}/${page}` : base, { fresh: true });
         return true;
       },
       datasets: {
