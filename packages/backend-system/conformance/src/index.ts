@@ -135,6 +135,8 @@ export const CONFORMANCE_CASES = [
   'records.round-trip',
   'records.empty-clears',
   'records.not-excludes-absent',
+  'records.clear-stays-cleared',
+  'records.required-not-cleared',
   'schema.module-entity',
   'schema.hints-round-trip',
   'schema.shapes-round-trip',
@@ -359,29 +361,75 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
       });
       test(
         'records.not-excludes-absent',
-        'an inequality skips a value never written or since cleared, and keeps an empty one written at creation',
+        "an inequality skips a value never written, given as '' or null at creation, or since cleared",
         async () => {
           // `{ field: { not: x } }` over a record with no value for the field excludes it, as SQL's
-          // `!=` excludes NULL. Which records have no value is the subtle part, and it is the same on
-          // every backend: one where the field was never written, and one where it was cleared with
-          // `''` — a clear removes the property, so it reads back as its default and no query
-          // matches it. A `''` written at creation, a declared default included, is a value.
+          // `!=` excludes NULL. `''` and `null` mean no value, and it is the same on every backend:
+          // one never written, one given as `''` or `null` at creation (which is not written), and
+          // one cleared later (which removes the property) are all absent, and no query matches
+          // them. Over a field with no declared default, as `Space.url` is — a declared default is
+          // written for a record that has none, so it is a value.
           const Space = model('Space');
           await Space.create(subject.dataset, { name: 'Addressed', description: 'd', url: 'somewhere' });
-          await Space.create(subject.dataset, { name: 'Unaddressed', description: 'd' });
-
-          const Task = model('TaskBlock');
-          const cleared = await Task.create(subject.dataset, { title: 'Cleared', assignee: 'ann' });
-          await Task.update(subject.dataset, cleared.id, { assignee: '' });
-          await Task.create(subject.dataset, { title: 'Empty', assignee: '' });
-          await Task.create(subject.dataset, { title: 'Bob', assignee: 'bob' });
+          await Space.create(subject.dataset, { name: 'Never', description: 'd' });
+          await Space.create(subject.dataset, { name: 'Empty', description: 'd', url: '' });
+          await Space.create(subject.dataset, { name: 'Null', description: 'd', url: null });
+          const cleared = await Space.create(subject.dataset, { name: 'Cleared', description: 'd', url: 'ann' });
+          await Space.update(subject.dataset, cleared.id, { url: '' });
 
           const names = async (entity: string, where: Record<string, unknown>) =>
             (await reader(entity).findAll(subject.dataset, { where })).map((r) => r.name ?? r.title).sort();
           expect(await names('Space', { url: { not: 'elsewhere' } })).toEqual(['Addressed']);
-          expect(await names('TaskBlock', { assignee: { not: 'bob' } })).toEqual(['Empty']);
-          expect(await names('TaskBlock', { assignee: { not: ['bob', 'carol'] } })).toEqual(['Empty']);
-          expect(await names('TaskBlock', { assignee: '' })).toEqual(['Empty']);
+          expect(await names('Space', { url: { not: ['elsewhere', 'nowhere'] } })).toEqual(['Addressed']);
+          expect(await names('Space', { url: '' })).toEqual([]);
+        },
+      );
+
+      test(
+        'records.clear-stays-cleared',
+        'a cleared property is not written back by a save of another field',
+        async () => {
+          // A cleared property reads back as its declared default. A save that took that default for a
+          // change would write it back, and the property would be present again: a save writes what
+          // the caller changed since the record was read, and nothing else.
+          const Task = model('TaskBlock');
+          const task = await Task.create(subject.dataset, { title: 'Clear me', priority: 'high' });
+          await Task.update(subject.dataset, task.id, { priority: '' });
+
+          const [instance] = await reader('TaskBlock').findAll(subject.dataset, { where: { id: task.id } });
+          (instance as unknown as { title: string }).title = 'Renamed';
+          await (instance as unknown as { save(): Promise<void> }).save();
+
+          expect(await reader('TaskBlock').findAll(subject.dataset, { where: { title: 'Renamed' } })).toHaveLength(1);
+          expect(await reader('TaskBlock').findAll(subject.dataset, { where: { priority: 'medium' } })).toHaveLength(0);
+
+          // Changed back on the same instance after that save, it is a change again.
+          (instance as unknown as { title: string }).title = 'Clear me';
+          await (instance as unknown as { save(): Promise<void> }).save();
+          expect(await reader('TaskBlock').findAll(subject.dataset, { where: { title: 'Clear me' } })).toHaveLength(1);
+        },
+      );
+
+      test(
+        'records.required-not-cleared',
+        'a required property cannot be cleared, through update or save',
+        async () => {
+          // The same rule as the one that makes '' and null clear an optional property: a required one
+          // is refused, with nothing written, since the record would no longer be what it was declared.
+          const Task = model('TaskBlock');
+          const task = await Task.create(subject.dataset, { title: 'Keep me' });
+          const refused = 'Property "title" is required and cannot be cleared';
+
+          await expect(Task.update(subject.dataset, task.id, { title: '' })).rejects.toThrow(refused);
+          await expect(Task.update(subject.dataset, task.id, { title: null })).rejects.toThrow(refused);
+
+          const [instance] = await reader('TaskBlock').findAll(subject.dataset, { where: { id: task.id } });
+          for (const empty of ['', null]) {
+            (instance as unknown as { title: string | null }).title = empty;
+            await expect((instance as unknown as { save(): Promise<void> }).save()).rejects.toThrow(refused);
+          }
+
+          expect(await reader('TaskBlock').findAll(subject.dataset, { where: { title: 'Keep me' } })).toHaveLength(1);
         },
       );
     });

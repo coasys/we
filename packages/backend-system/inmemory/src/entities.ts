@@ -62,16 +62,16 @@ interface RelationInfo {
 const manyForeignKey = (entity: string, relation: string) => `__${entity}_${relation}`;
 
 /**
- * One field written to an existing row — where `''` clears it, as it does in production.
+ * One field written to an existing row — where `''` and `null` clear it, as they do in production.
  *
  * Production removes a cleared property rather than storing an empty one, so the record then has no
  * value for it: it still reads back as its declared default, and no query matches it — not
  * `{ field: '' }`, not `{ field: { not: x } }`. This backend used to keep the `''`, so a cleared field
- * went on matching a `not` here and dropped out of the same query in production. Creation is not a
- * clear: a `''` written then, a default included, is a value on both backends.
+ * went on matching a `not` here and dropped out of the same query in production. Creation follows the
+ * same rule: an explicit `''` or `null` is not written, though a declared default still is.
  */
 function writeField(row: Record<string, unknown>, key: string, value: unknown): void {
-  if (value === '') delete row[key];
+  if (value === '' || value === null) delete row[key];
   else row[key] = value;
 }
 
@@ -357,6 +357,18 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
     /** Instances remember where they came from, so `save()` and `delete()` need no argument. */
     const homes = new WeakMap<object, DatasetEntry>();
 
+    /** What each instance held when it was read, so `save()` writes only what the caller changed since. */
+    const loaded = new WeakMap<object, Record<string, unknown>>();
+
+    /** A required property is refused a `''` or `null` before anything is written, as the SDK refuses it. */
+    const checkClearable = (changed: Record<string, unknown>) => {
+      for (const [key, value] of Object.entries(changed)) {
+        if ((value === '' || value === null) && entity.properties[key]?.required) {
+          throw new Error(`Property "${key}" is required and cannot be cleared`);
+        }
+      }
+    };
+
     /** The row as it stands now, for a check to read — copied before the write changes it. */
     const copied = (row: AnyRow | null) => {
       const before = row ? { ...row } : null;
@@ -396,11 +408,13 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         const changed: Record<string, unknown> = {};
         for (const [key, value] of Object.entries(this as unknown as Record<string, unknown>)) {
           if (typeof value === 'function' || key.startsWith('$')) continue;
-          // Only what changed: an unchanged `''` from creation is a value, not a clear.
-          if (row[key] === value || (value === '' && !(key in row))) continue;
+          // Only what the caller changed since the read: a default standing in for a cleared field
+          // is not a change, and must not write the field back.
+          if (row[key] === value || loaded.get(this)?.[key] === value) continue;
           changed[key] = value;
         }
         if (!Object.keys(changed).length) return;
+        checkClearable(changed);
         await checkEntityWrite({
           dataset: dataset,
           entity: name,
@@ -410,6 +424,8 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
           record: copied(row),
         });
         for (const [key, value] of Object.entries(changed)) writeField(row, key, value);
+        // What was just saved is the new baseline, so changing a field back is a change again.
+        loaded.set(this, { ...(this as unknown as Record<string, unknown>) });
         notify(dataset);
       }
 
@@ -453,6 +469,7 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
           }
           instance[key] = value;
         }
+        loaded.set(instance, { ...instance });
         return instance;
       }
 
@@ -538,6 +555,7 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         };
         for (const [key, value] of Object.entries(data)) {
           if (relationNames.has(key)) continue;
+          if (value === '' || value === null) continue;
           row[key] = value;
         }
         tableOf(dataset, name).push(row);
@@ -581,6 +599,7 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         const row = tableOf(dataset, name).find((r) => r.id === id);
         if (!row) return null;
         const changed = Object.fromEntries(Object.entries(data).filter(([key]) => !relationNames.has(key)));
+        checkClearable(changed);
         await checkEntityWrite({ dataset: handle, entity: name, kind: 'edit', id, data: changed, record: copied(row) });
         for (const [key, value] of Object.entries(changed)) writeField(row, key, value);
         row.updatedAt = new Date().toISOString();

@@ -220,31 +220,31 @@ describe("'' means empty, on this backend and in production", () => {
     reference implementation does is the definition, and a change to it has to be a deliberate one.
   */
   it('clears a property written as an empty string', async () => {
-    const space = await Space.create(dataset, { name: 'Test', description: 'Something' });
+    const space = await Space.create(dataset, { name: 'Test', defaultTemplateId: 'Something' });
 
-    await Space.update(dataset, space.id, { description: '' });
+    await Space.update(dataset, space.id, { defaultTemplateId: '' });
 
     const [read] = await Space.findAll(dataset);
-    expect(read.description).toBe('');
+    expect(read.defaultTemplateId).toBe('');
   });
 
   it('clears through an instance save as well as through update', async () => {
     // Two write paths, one contract. `save()` is what the block layer's reconcile uses.
-    await Space.create(dataset, { name: 'Test', description: 'Something' });
+    await Space.create(dataset, { name: 'Test', defaultTemplateId: 'Something' });
 
     const [instance] = await Space.findAll(dataset);
-    instance.description = '';
+    instance.defaultTemplateId = '';
     await instance.save();
 
     const [read] = await Space.findAll(dataset);
-    expect(read.description).toBe('');
+    expect(read.defaultTemplateId).toBe('');
   });
 
   it('leaves a field the update did not name alone', async () => {
     // The other half: clearing one property is not clearing the record.
-    const space = await Space.create(dataset, { name: 'Test', description: 'Something' });
+    const space = await Space.create(dataset, { name: 'Test', defaultTemplateId: 'Something' });
 
-    await Space.update(dataset, space.id, { description: '' });
+    await Space.update(dataset, space.id, { defaultTemplateId: '' });
 
     const [read] = await Space.findAll(dataset);
     expect(read.name).toBe('Test');
