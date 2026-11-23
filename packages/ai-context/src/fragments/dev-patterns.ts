@@ -643,7 +643,7 @@ const space = await Space.create(perspective, { uuid: crypto.randomUUID(), name:
 
 ### Watching the graph from \`@we/backend-ad4m\`
 
-To hear that something changed in a perspective, subscribe on the executor with \`subscribeQuery\`
+To hear that something changed in a perspective, open a live query on the executor with \`perspective.liveSparql\`
 rather than \`perspective.on('link-added' | 'link-removed')\`. A link listener receives every link of a
 peer-sync burst in JS and filters there. The executor re-runs a subscription only for a diff that
 touches one of its predicates, and pushes only when the result changes.
@@ -655,10 +655,12 @@ name, or a Prolog query makes it re-run the subscription on every diff. \`onProp
 
 What the SDK and executor do around a subscription, so a watch can rely on it:
 
-- A callback registered after \`subscribeQuery\` resolves does not receive the initial result — only
-  the changes after it.
-- After a websocket reconnect, the SDK re-subscribes and hands the current result to every
-  callback, so a watch hears a refresh rather than nothing.
+- A live query has one handle: \`first\` is the first result, \`subscribe(fn)\` calls \`fn\` at once with
+  the current snapshot and then on each change, and \`dispose()\` stops it. A snapshot says
+  \`initial\` for the value the handle opened on, so a watch that only wants changes skips that one.
+  Read the first result from the handle rather than reading and watching separately.
+- After a websocket reconnect, the SDK re-opens the query and hands the current result to every
+  subscriber, so a watch hears a refresh rather than nothing.
 - A subscription belongs to the subscriber that opened it and to its socket: identical queries are
   independent, and each ends when it is disposed or its socket closes. Independent is not free — the
   executor evaluates every one of them on each change that matches — so still hold one subscription

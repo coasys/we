@@ -22,16 +22,13 @@
  * the collision above went on silencing the kanban. The tests passed because a mock model is one
  * object.
  *
- * ## Two timing rules
+ * ## One timing rule
  *
  * - **Release waits a grace period.** An effect that re-runs with the same question releases and
  *   re-acquires in one pass, and a panel remounting does so a frame apart; disposing in between sends
  *   the executor a dispose and a subscribe for the same id at once, and whichever it handles second
  *   decides whether the query is live. Held for {@link subscriptionPoolConfig}`.releaseGraceMs`, a
  *   question asked again soon is simply still there.
- * - **A dispose before the answer is repeated after it.** `ModelQueryBuilder.subscribe` only records
- *   what to dispose once its first round trip returns, so a dispose issued before then does nothing
- *   and the subscription outlives everyone who asked for it.
  */
 
 type Rows = readonly unknown[];
@@ -41,19 +38,20 @@ interface Listener {
   onError: (err: unknown) => void;
 }
 
-interface SubscribingBuilder {
-  subscribe: (cb: (results: unknown[]) => void) => Promise<unknown[]>;
+/** What the pool needs of a live query: the shape `LiveQuery<Page<row>>` has. */
+interface LiveRows {
+  first: Promise<unknown>;
+  subscribe: (fn: (snapshot: { status: string; data?: { results: unknown[] } }) => void) => () => void;
   dispose: () => void;
 }
 
 interface Entry {
-  builder: SubscribingBuilder;
+  live: LiveRows;
   listeners: Set<Listener>;
   /** The newest rows, for a listener that joins after they arrived. */
   latest: Rows | null;
   error: unknown;
   failed: boolean;
-  settled: boolean;
   disposed: boolean;
 }
 
@@ -93,7 +91,7 @@ function forget(model: unknown, dataset: unknown, key: string, entry: Entry): vo
 
 function dispose(entry: Entry): void {
   entry.disposed = true;
-  entry.builder.dispose();
+  entry.live.dispose();
 }
 
 /**
@@ -126,12 +124,11 @@ export function acquireSubscription(
     });
   } else {
     const created: Entry = {
-      builder: model.query(dataset, options) as SubscribingBuilder,
+      live: model.query(dataset, options) as LiveRows,
       listeners: new Set([listener]),
       latest: null,
       error: undefined,
       failed: false,
-      settled: false,
       disposed: false,
     };
     entry = created;
@@ -142,31 +139,18 @@ export function acquireSubscription(
       if (!byQuestion) byDataset.set(at, (byQuestion = new Map<string, Entry>()));
       byQuestion.set(key, created);
     }
-    let pushed = false;
-    created.builder
-      .subscribe((results) => {
-        pushed = true;
-        created.latest = results;
-        for (const each of [...created.listeners]) each.onRows(results);
-      })
-      .then((initial) => {
-        created.settled = true;
-        // Issued before there was anything to dispose — see the module comment.
-        if (created.disposed) {
-          created.builder.dispose();
-          return;
-        }
-        // An update that arrived first is newer than the initial answer.
-        if (pushed) return;
-        created.latest = initial;
-        for (const each of [...created.listeners]) each.onRows(initial);
-      })
-      .catch((err: unknown) => {
-        created.settled = true;
-        created.failed = true;
-        created.error = err;
-        for (const each of [...created.listeners]) each.onError(err);
-      });
+    // Called at once when the first rows are in, then on each change — so there is one path for both.
+    created.live.subscribe((snapshot) => {
+      if (snapshot.status !== 'ready' || !snapshot.data) return;
+      created.latest = snapshot.data.results;
+      for (const each of [...created.listeners]) each.onRows(snapshot.data.results);
+    });
+    created.live.first.catch((err: unknown) => {
+      created.failed = true;
+      created.error = err;
+      // A handle disposed before it answered rejects too; nobody is left to hear that.
+      for (const each of [...created.listeners]) each.onError(err);
+    });
   }
 
   const held = entry;

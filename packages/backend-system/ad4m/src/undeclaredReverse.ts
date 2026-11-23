@@ -22,7 +22,14 @@
  * the next change, not at once. The executor reading an undeclared reverse link itself, in the same
  * query, is the real answer, and is what this is waiting for.
  */
-import type { DatasetHandle, EntityClass, QueryOptions, QuerySubscription } from '@we/backend-shared';
+import {
+  type DatasetHandle,
+  type EntityClass,
+  type LivePage as Page,
+  type LiveQuery,
+  mapLiveQuery,
+  type QueryOptions,
+} from '@we/backend-shared';
 import { CORE_MANIFEST, WE_NODE_RELATIONS } from '@we/entities/manifest';
 
 import { toAd4mPredicate } from './containment';
@@ -250,29 +257,20 @@ export async function fillUndeclaredReverse(
  * asks for none of them goes straight through, untouched.
  *
  * A live read's answers are filled one at a time, in the order they arrived, so a slow fill of an
- * older answer can never be delivered after a newer one.
+ * older answer can never be delivered after a newer one (see `mapLiveQuery`).
  */
 export function withUndeclaredReverse(Model: EntityClass, deps: ReverseReadDeps): EntityClass {
   const reads = deps.reads ?? READS;
   return {
-    query(dataset, opts): QuerySubscription {
-      const subscription = Model.query(dataset, opts);
-      if (!asks(opts, reads)) return subscription;
-      let chain: Promise<unknown> = Promise.resolve();
-      const inOrder = (rows: readonly unknown[]) => {
-        const filled = chain.then(() => fillUndeclaredReverse(rows, opts, dataset, deps));
-        chain = filled.catch(() => undefined);
-        return filled;
-      };
-      return {
-        subscribe: (cb) =>
-          subscription
-            .subscribe((rows) => {
-              inOrder(rows).then(cb, () => cb(rows));
-            })
-            .then((rows) => inOrder(rows).catch(() => rows)),
-        dispose: () => subscription.dispose(),
-      };
+    query(dataset, opts): LiveQuery<Page<unknown>> {
+      const live = Model.query(dataset, opts);
+      if (!asks(opts, reads)) return live;
+      // `mapLiveQuery` maps one result at a time in arrival order. A fill that fails gives the rows
+      // as they were.
+      return mapLiveQuery(live, async (page) => ({
+        ...page,
+        results: await fillUndeclaredReverse(page.results, opts, dataset, deps).catch(() => page.results),
+      }));
     },
     async findAll(dataset, opts, ctl) {
       const rows = await Model.findAll(dataset, opts, ctl);

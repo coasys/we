@@ -18,13 +18,15 @@ import type {
   EntityStatic,
   IncludeExtras,
   IncludeOf,
+  LivePage as Page,
+  LiveQuery,
   ParentRef,
-  QuerySubscription,
   RecordInstance,
   TypedEntityQuery,
 } from '@we/backend-shared';
 import {
   compileQuery,
+  createLiveQuery,
   type EntityManifest,
   type EntitySchema,
   executeQueryIR,
@@ -148,7 +150,7 @@ export interface EntityClassLike {
   query<Q extends TypedEntityQuery<RecordInstance>>(
     dataset: unknown,
     query?: Q | AnyQuery,
-  ): QuerySubscription<InMemoryInstance & IncludeExtras<RecordInstance, IncludeOf<Q>>>;
+  ): LiveQuery<Page<InMemoryInstance & IncludeExtras<RecordInstance, IncludeOf<Q>>>>;
 }
 
 /**
@@ -669,28 +671,15 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
       }
 
       /**
-       * A live query: the callback fires once with current results, then on every write to this
-       * dataset. Push semantics, matching the lifecycle port's change handlers.
+       * A live query: it opens on the current results, then reads again on every write to this
+       * dataset and makes a new snapshot when the result differs.
        */
       static query(handle: unknown, q: Record<string, unknown> = {}) {
         const dataset = datasetOf(handle);
-        let stop: (() => void) | undefined;
-        return {
-          // eslint-disable-next-line @typescript-eslint/require-await -- Kept async so a callback that throws reaches the caller as a rejection, as a live query's would.
-          async subscribe(callback: (rows: unknown[]) => void) {
-            const run = () => {
-              const rows = Entity.read(dataset, q);
-              callback(rows);
-              return rows;
-            };
-            stop = watch(dataset, () => void run());
-            return run();
-          },
-          dispose() {
-            stop?.();
-            stop = undefined;
-          },
-        };
+        return createLiveQuery({
+          read: () => ({ results: Entity.read(dataset, q) }),
+          watch: (onChange) => watch(dataset, onChange),
+        });
       }
     }
 

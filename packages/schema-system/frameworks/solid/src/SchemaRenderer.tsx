@@ -252,7 +252,7 @@ function reportRoutingRefusal(stores: RendererStores, message: string): void {
  *
  * ## One entity
  *
- * Exactly the path there has always been: route, then `query().subscribe` or `findAll`. A failure is
+ * Exactly the path there has always been: route, then a live `query(...)` handle or `findAll`. A failure is
  * the caller's `onError`, and a model the dataset lacks or a refused route means nothing runs.
  *
  * ## Several

@@ -29,11 +29,18 @@ function perspective(decide: () => Promise<boolean>) {
       interpretationOverlays: async () => [],
       acceptInterpretation: decide,
       rejectInterpretation: decide,
-      subscribeQuery: async (query: string) => {
+      // A live query as the SDK's: opens on its rows (`initial`), then makes a snapshot per change.
+      liveSparql: (query: string) => {
         queries.push(query);
+        const first = Promise.resolve([]);
         return {
-          onResult(cb: () => void) {
-            resultCb = cb;
+          first,
+          subscribe(fn: (snapshot: { status: string; initial: boolean }) => void) {
+            void first.then(() => {
+              fn({ status: 'ready', initial: true });
+              resultCb = () => fn({ status: 'ready', initial: false });
+            });
+            return () => {};
           },
           dispose() {
             disposed = true;
@@ -176,10 +183,14 @@ describe('two watches on one perspective', () => {
   it('ask again after a watch failed to start, rather than holding the failure', async () => {
     const port = createAd4mInterpretationPort();
     const p = perspective(async () => true);
-    const subscribe = (p.handle as { subscribeQuery: (q: string) => Promise<unknown> }).subscribeQuery;
+    type Handle = { liveSparql: (q: string) => { first: Promise<unknown> } };
+    const open = (p.handle as Handle).liveSparql;
     let calls = 0;
-    (p.handle as { subscribeQuery: (q: string) => Promise<unknown> }).subscribeQuery = (query) =>
-      ++calls === 1 ? Promise.reject(new Error('executor unreachable')) : subscribe(query);
+    (p.handle as Handle).liveSparql = (query) => {
+      const live = open(query);
+      if (++calls === 1) return { ...live, first: Promise.reject(new Error('executor unreachable')) };
+      return live;
+    };
 
     await expect(port.onProposalsChanged!(p.handle, () => {})).rejects.toThrow('executor unreachable');
     let heard = 0;

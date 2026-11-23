@@ -13,7 +13,8 @@
  *
  * `combineEntityRows` is pure: rows in, rows out. The renderer owns asking, subscribing and cancelling.
  */
-import type { DatasetHandle, EntityClass, QueryOptions, QuerySubscription } from './dataSource';
+import type { DatasetHandle, EntityClass, QueryOptions } from './dataSource';
+import { combineLiveQueries, type LiveQuery, type Page } from './liveQuery';
 import { RECORD_TYPE_KEY } from './recordContract';
 
 /**
@@ -112,7 +113,7 @@ export interface UnionPart {
  * that entity's read rather than sent — which is what a native union does with it, and what keeps
  * one kind that cannot answer a count from taking every kind off the list.
  *
- * A live read emits once every entity has answered, then on any change to any of them. A one-shot
+ * A live read opens once every entity has answered, then follows any of them. A one-shot
  * read in which some entities fail answers with the rest, and fails only when all of them do.
  * `offset` is refused: a page of a union needs `offset + limit` rows from every entity, which is a
  * cost to design for rather than to pay silently.
@@ -128,35 +129,15 @@ export function unionByFanOut(parts: readonly UnionPart[]): EntityClass {
   };
 
   return {
-    query(dataset: DatasetHandle, opts: QueryOptions): QuerySubscription {
+    query(dataset: DatasetHandle, opts: QueryOptions): LiveQuery<Page<unknown>> {
       refuseOffset(opts);
-      const subscriptions = parts.map((part) => part.Model.query(dataset, optionsFor(part, opts)));
-      return {
-        subscribe(cb) {
-          const answers: (readonly unknown[])[] = parts.map(() => []);
-          let primed = false;
-          return Promise.all(
-            subscriptions.map((subscription, i) =>
-              subscription
-                .subscribe((rows) => {
-                  answers[i] = rows;
-                  if (primed) cb(combine(answers, opts));
-                })
-                .then((rows) => {
-                  answers[i] = rows;
-                }),
-            ),
-          ).then(() => {
-            primed = true;
-            const rows = combine(answers, opts);
-            cb(rows);
-            return rows;
-          });
-        },
-        dispose() {
-          for (const subscription of subscriptions) subscription.dispose();
-        },
-      };
+      const lives = parts.map((part) => part.Model.query(dataset, optionsFor(part, opts)));
+      return combineLiveQueries(lives, (pages) => ({
+        results: combine(
+          pages.map((page) => page.results),
+          opts,
+        ),
+      }));
     },
 
     async findAll(dataset, opts, ctl) {

@@ -5,7 +5,7 @@
  * executeQueryIR. So the harness proves the full chain live — template `$query` → QueryIR → engine →
  * render — with no process to start and no changes to the shared renderer.
  */
-import { compileQuery, executeQueryIR, type InMemoryDataset, type Row } from '@we/backend-shared';
+import { compileQuery, createLiveQuery, executeQueryIR, type InMemoryDataset, type Row } from '@we/backend-shared';
 
 import { inMemoryQueryAdapter } from './queryAdapter';
 
@@ -55,19 +55,13 @@ export function createInMemoryBackend(config: BackendConfig) {
   function getEntity(name: string) {
     return {
       query(_dataset: unknown, opts: QueryOpts) {
-        let push: ((rows: Row[]) => void) | null = null;
-        const notifier = () => push?.(run(name, opts));
-        return {
-          subscribe(cb: (rows: Row[]) => void) {
-            push = cb;
-            subscribers.add(notifier);
-            queueMicrotask(() => cb(run(name, opts)));
-            return Promise.resolve(run(name, opts));
+        return createLiveQuery({
+          read: () => ({ results: run(name, opts) }),
+          watch: (onChange) => {
+            subscribers.add(onChange);
+            return () => void subscribers.delete(onChange);
           },
-          dispose() {
-            subscribers.delete(notifier);
-          },
-        };
+        });
       },
       findAll(_dataset: unknown, opts: QueryOpts) {
         return Promise.resolve(run(name, opts));

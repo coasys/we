@@ -658,12 +658,14 @@ export function createAd4mWorkflowPort(selfId: () => string | undefined = () => 
         for (const listener of [...listeners]) listener();
       };
       const started = Promise.all([
-        ...WATCHED_PREDICATES.map((predicate) =>
-          perspective.subscribeQuery(`SELECT ?s ?o WHERE { ?s <${predicate}> ?o }`).then((sub) => {
-            sub.onResult(() => notify(predicate));
-            return sub;
-          }),
-        ),
+        ...WATCHED_PREDICATES.map((predicate) => {
+          const live = perspective.liveSparql(`SELECT ?s ?o WHERE { ?s <${predicate}> ?o }`);
+          // The first snapshot is the rows as they are now, not a change.
+          live.subscribe((snapshot) => {
+            if (!snapshot.initial) notify(predicate);
+          });
+          return live.first.then(() => live);
+        }),
         // Every flow on the perspective at once, and only this agent's: the executor delivers a
         // state change to the sockets of the agent whose pass derived it.
         Promise.resolve({ dispose: perspective.onFlowStateChanged(() => notify('flow-state-changed')) }),

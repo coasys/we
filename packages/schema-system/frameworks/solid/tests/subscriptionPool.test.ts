@@ -11,27 +11,45 @@ import { acquireSubscription, subscriptionPoolConfig } from '../src/subscription
 
 const tick = () => new Promise<void>((r) => setTimeout(r, 0));
 
+type Snap = { status: 'loading' | 'ready'; data?: { results: unknown[] }; initial: boolean };
+
+/** A live query by hand: `answer` opens it on the first rows, `push` is a change after that. */
 function model() {
   const builders: {
     subscribe: ReturnType<typeof vi.fn>;
     dispose: ReturnType<typeof vi.fn>;
     push: (rows: unknown[]) => void;
     answer: (rows: unknown[]) => void;
+    fail: (error: Error) => void;
   }[] = [];
   const Model = {
     query: vi.fn(() => {
-      let push: (rows: unknown[]) => void = () => {};
-      let answer: (rows: unknown[]) => void = () => {};
+      const listeners = new Set<(snapshot: Snap) => void>();
+      let current: Snap = { status: 'loading', initial: false };
+      let resolveFirst: (rows: unknown) => void = () => {};
+      let rejectFirst: (error: Error) => void = () => {};
+      const first = new Promise<unknown>((resolve, reject) => {
+        resolveFirst = resolve;
+        rejectFirst = reject;
+      });
+      const emit = (rows: unknown[], initial: boolean) => {
+        current = { status: 'ready', data: { results: rows }, initial };
+        for (const fn of [...listeners]) fn(current);
+      };
       const builder = {
-        subscribe: vi.fn((cb: (rows: unknown[]) => void) => {
-          push = cb;
-          return new Promise<unknown[]>((resolve) => {
-            answer = resolve;
-          });
+        first,
+        subscribe: vi.fn((fn: (snapshot: Snap) => void) => {
+          listeners.add(fn);
+          if (current.status === 'ready') fn(current);
+          return () => void listeners.delete(fn);
         }),
         dispose: vi.fn(),
-        push: (rows: unknown[]) => push(rows),
-        answer: (rows: unknown[]) => answer(rows),
+        push: (rows: unknown[]) => emit(rows, false),
+        answer: (rows: unknown[]) => {
+          emit(rows, true);
+          resolveFirst({ results: rows });
+        },
+        fail: (error: Error) => rejectFirst(error),
       };
       builders.push(builder);
       return builder;
@@ -134,19 +152,23 @@ describe('a shared subscription', () => {
     expect(builders[0].dispose).not.toHaveBeenCalled();
   });
 
-  it('disposes again once answered when let go of before the answer came', async () => {
+  it('disposes a subscription let go of before it answered, and the next asker starts its own', async () => {
     const { Model, builders } = model();
     const release = acquireSubscription(Model, dataset, question, vi.fn(), vi.fn());
     release();
     await tick();
-    const early = builders[0].dispose.mock.calls.length;
+    expect(builders[0].dispose).toHaveBeenCalledOnce();
 
-    builders[0].answer([]);
-    await tick();
-    expect(builders[0].dispose.mock.calls.length).toBe(early + 1);
-
-    // And the next asker starts a subscription of its own rather than joining a dead one.
     acquireSubscription(Model, dataset, question, vi.fn(), vi.fn());
     expect(Model.query).toHaveBeenCalledTimes(2);
+  });
+
+  it('tells every listener when the first open fails', async () => {
+    const { Model, builders } = model();
+    const onError = vi.fn();
+    acquireSubscription(Model, dataset, question, vi.fn(), onError);
+    builders[0].fail(new Error('executor unreachable'));
+    await tick();
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'executor unreachable' }));
   });
 });

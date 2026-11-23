@@ -1,0 +1,142 @@
+import { describe, expect, it, vi } from 'vitest';
+
+import { combineLiveQueries, createLiveQuery, mapLiveQuery } from './liveQuery';
+
+const tick = () => new Promise((r) => setTimeout(r, 0));
+
+function source<T>(initial: T) {
+  let value = initial;
+  const listeners = new Set<() => void>();
+  return {
+    set(next: T) {
+      value = next;
+      for (const l of [...listeners]) l();
+    },
+    read: () => value,
+    watch: (l: () => void) => {
+      listeners.add(l);
+      return () => void listeners.delete(l);
+    },
+  };
+}
+
+describe('createLiveQuery', () => {
+  it('is loading, then opens on the first result with initial set', async () => {
+    const src = source({ n: 1 });
+    const live = createLiveQuery(src);
+    expect(live.getSnapshot().status).toBe('loading');
+    expect(await live.first).toEqual({ n: 1 });
+    expect(live.getSnapshot()).toMatchObject({ status: 'ready', initial: true });
+    live.dispose();
+  });
+
+  it('calls a subscriber at once once ready, then on a change with initial false', async () => {
+    const src = source({ n: 1 });
+    const live = createLiveQuery(src);
+    await live.first;
+    const fn = vi.fn();
+    live.subscribe(fn);
+    expect(fn).toHaveBeenCalledTimes(1);
+    src.set({ n: 2 });
+    await tick();
+    expect(fn).toHaveBeenCalledTimes(2);
+    expect(fn.mock.lastCall![0]).toMatchObject({ data: { n: 2 }, initial: false });
+    live.dispose();
+  });
+
+  it('keeps the same snapshot when the result is equal with keys in another order', async () => {
+    const src = source<Record<string, number>>({ a: 1, b: 2 });
+    const live = createLiveQuery(src);
+    await live.first;
+    const before = live.getSnapshot();
+    src.set({ b: 2, a: 1 });
+    await tick();
+    expect(live.getSnapshot()).toBe(before);
+    live.dispose();
+  });
+
+  it('stops calling after dispose, and rejects first when disposed before it answered', async () => {
+    const src = source(1);
+    const live = createLiveQuery(src);
+    const fn = vi.fn();
+    live.subscribe(fn);
+    live.dispose();
+    await expect(live.first).rejects.toThrow(/disposed/);
+    src.set(2);
+    await tick();
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it('fails when the first read fails', async () => {
+    const live = createLiveQuery({
+      read: () => Promise.reject(new Error('no')),
+      watch: () => () => undefined,
+    });
+    await expect(live.first).rejects.toThrow('no');
+    expect(live.getSnapshot()).toMatchObject({ status: 'error' });
+  });
+});
+
+describe('combineLiveQueries', () => {
+  it('opens when every part has, then follows each', async () => {
+    const a = source(1);
+    const b = source(10);
+    const live = combineLiveQueries([createLiveQuery(a), createLiveQuery(b)], ([x, y]) => x + y);
+    expect(await live.first).toBe(11);
+    expect(live.getSnapshot().initial).toBe(true);
+    b.set(20);
+    await tick();
+    expect(live.getSnapshot()).toMatchObject({ data: 21, initial: false });
+    live.dispose();
+  });
+
+  it('fails when a part fails to open', async () => {
+    const bad = createLiveQuery<number>({
+      read: () => Promise.reject(new Error('down')),
+      watch: () => () => undefined,
+    });
+    const live = combineLiveQueries([createLiveQuery(source(1)), bad], ([x, y]) => x + y);
+    await expect(live.first).rejects.toThrow('down');
+  });
+});
+
+describe('mapLiveQuery', () => {
+  it('maps the first result and each change, and disposing it disposes the source', async () => {
+    let changed!: () => void;
+    let value = 1;
+    const source = createLiveQuery({
+      read: () => value,
+      watch: (cb) => {
+        changed = cb;
+        return () => undefined;
+      },
+    });
+    const mapped = mapLiveQuery(source, async (n) => n * 10);
+    const seen: { data?: number; initial: boolean }[] = [];
+    mapped.subscribe((s) => seen.push({ data: s.data, initial: s.initial }));
+
+    expect(await mapped.first).toBe(10);
+    value = 2;
+    changed();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(seen).toEqual([
+      { data: 10, initial: true },
+      { data: 20, initial: false },
+    ]);
+
+    mapped.dispose();
+    expect(source.getSnapshot().status).toBe('ready');
+    value = 3;
+    changed();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(seen).toHaveLength(2);
+  });
+
+  it('fails when the map throws before the first result', async () => {
+    const source = createLiveQuery({ read: () => 1, watch: () => () => undefined });
+    const mapped = mapLiveQuery(source, () => {
+      throw new Error('no');
+    });
+    await expect(mapped.first).rejects.toThrow('no');
+  });
+});

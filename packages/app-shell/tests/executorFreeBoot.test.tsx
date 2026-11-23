@@ -12,7 +12,7 @@
  */
 import { cleanup, render } from '@solidjs/testing-library';
 import { createInMemoryBackendPorts, type InMemoryAgentOptions, type InMemoryLifecycle } from '@we/backend-inmemory';
-import { type EntityManifest, ModuleSchemasRefused } from '@we/backend-shared';
+import { type EntityManifest, type LivePage, type LiveQuery, ModuleSchemasRefused } from '@we/backend-shared';
 import { createBlocks, registerCoreBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
 import { provideFileSaver } from '@we/design-utils';
@@ -32,6 +32,8 @@ import { notesModule } from '@we/module-notes';
 import { pocketModule } from '@we/module-pocket';
 import { createEffect, createRoot, createSignal } from 'solid-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { heldLive } from './liveRows';
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
 // The platform provider supplies the in-memory backend; the template/theme/route stores (not
@@ -1545,27 +1547,14 @@ describe('dataset lifecycle through the real stores', () => {
     const held = new Promise<void>((resolve) => (release = resolve));
     let toRead = false;
     const Entity = getEntity('Space') as unknown as {
-      query: (
-        handle: unknown,
-        q?: { where?: { uuid?: string; url?: string } },
-      ) => {
-        subscribe: (cb: (rows: unknown[]) => void) => Promise<unknown[]>;
-        dispose: () => void;
-      };
+      query: (handle: unknown, q?: { where?: { uuid?: string; url?: string } }) => LiveQuery<LivePage<unknown>>;
     };
     const query = Entity.query.bind(Entity);
     const spy = vi.spyOn(Entity, 'query').mockImplementation((handle, q) => {
       const which = q?.where?.uuid ?? q?.where?.url;
-      const builder = query(handle, q);
-      if (which !== to) return builder;
-      return {
-        subscribe: async (cb) => {
-          toRead = true;
-          await held;
-          return builder.subscribe(cb);
-        },
-        dispose: () => builder.dispose(),
-      };
+      const live = query(handle, q);
+      if (which !== to) return live;
+      return heldLive(live, held, () => (toRead = true));
     });
     try {
       await stores.datasets.switchDataset(to);
@@ -1622,28 +1611,15 @@ describe('dataset lifecycle through the real stores', () => {
     const heldRead = new Promise<void>((resolve) => (release = resolve));
     let toRead = false;
     const Entity = getEntity('Space') as unknown as {
-      query: (
-        handle: unknown,
-        q?: { where?: { uuid?: string; url?: string } },
-      ) => {
-        subscribe: (cb: (rows: unknown[]) => void) => Promise<unknown[]>;
-        dispose: () => void;
-      };
+      query: (handle: unknown, q?: { where?: { uuid?: string; url?: string } }) => LiveQuery<LivePage<unknown>>;
       update: (...a: unknown[]) => Promise<unknown>;
     };
     const query = Entity.query.bind(Entity);
     const querySpy = vi.spyOn(Entity, 'query').mockImplementation((handle, q) => {
       const which = q?.where?.uuid ?? q?.where?.url;
-      const builder = query(handle, q);
-      if (which !== to) return builder;
-      return {
-        subscribe: async (cb) => {
-          toRead = true;
-          await heldRead;
-          return builder.subscribe(cb);
-        },
-        dispose: () => builder.dispose(),
-      };
+      const live = query(handle, q);
+      if (which !== to) return live;
+      return heldLive(live, heldRead, () => (toRead = true));
     });
     // The save is held at the store write, so it is still out when To's own template arrives.
     let fail!: () => void;
@@ -2654,11 +2630,17 @@ describe('what the stores actually wrote', () => {
     expect(stores.spaces.policy().roles).toEqual(['admin']);
 
     // An admin may change the rules; choosing what is in force already writes nothing.
+    // Versions are ordered by when they were made, so each is made a moment after the last: two in
+    // the same millisecond would leave which is in force to chance.
+    const later = () => new Promise((resolve) => setTimeout(resolve, 5));
     await stores.spaces.setPolicyPreset('open');
+    await later();
     await stores.spaces.setPolicyPreset('community');
     await vi.waitFor(() => expect(stores.spaces.policy().preset).toBe('community'));
+    await later();
     await stores.spaces.setPolicyPreset('open');
     await vi.waitFor(() => expect(stores.spaces.policy().preset).toBe('open'));
+    await later();
     await stores.spaces.setPolicyPreset('community');
     await vi.waitFor(() => expect(stores.spaces.policy().preset).toBe('community'));
     expect(await Policy.count(handle as never)).toBe(3);
@@ -3146,11 +3128,28 @@ describe('entering a space: its collection and its landmarks', () => {
   */
   type Held<T> = { release: () => void; promise: Promise<T> };
   /** Holds every call to `entity.method` until released, passing it on to the real one then. */
-  function hold(entity: string, method: 'findAll' | 'findOne') {
+  function hold(entity: string, method: 'findAll' | 'findOne' | 'query') {
     const target = getEntity(entity) as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>;
     const real = target[method].bind(target);
     const held: Held<unknown>[] = [];
     let open = false;
+    if (method === 'query') {
+      // A live query is returned at once; what is held is its first result and its subscribers.
+      const gates: (() => void)[] = [];
+      const spy = vi.spyOn(target, method).mockImplementation(((...args: unknown[]) => {
+        const live = real(...args) as unknown as LiveQuery<unknown>;
+        if (open) return live;
+        const gate = new Promise<void>((resolve) => gates.push(resolve));
+        return heldLive(live, gate);
+      }) as never);
+      return {
+        spy,
+        release: () => {
+          open = true;
+          for (const g of gates.splice(0)) g();
+        },
+      };
+    }
     const spy = vi.spyOn(target, method).mockImplementation((...args: unknown[]) => {
       if (open) return real(...args);
       let release!: () => void;
@@ -3197,7 +3196,7 @@ describe('entering a space: its collection and its landmarks', () => {
     const [space] = await Space.findAll(ref.handle as never);
     const board = await CollectionBlock.create(ref.handle as never, { kind: 'board', title: 'Board' } as never);
     await writeSpaceLandmark(ref.handle as never, space.id, 'board', board.id);
-    const landmarks = hold('SpaceLandmark', 'findAll');
+    const landmarks = hold('SpaceLandmark', 'query');
 
     await stores.datasets.switchDataset(ref.id);
     await vi.waitFor(() => expect(landmarks.spy).toHaveBeenCalled());
@@ -3240,7 +3239,7 @@ describe('entering a space: its collection and its landmarks', () => {
     const carried = spaceRow.root;
     spaceRow.root = undefined;
     const spaceReads = hold('Space', 'findOne');
-    const landmarks = hold('SpaceLandmark', 'findAll');
+    const landmarks = hold('SpaceLandmark', 'query');
 
     await stores.datasets.switchDataset(ref.id);
     // Both issued while neither has answered.
@@ -5058,13 +5057,7 @@ describe('what a collection extracts', () => {
     // question to the stored-record read the watch's answer then outlives.
     await enterSpace(stores, 'From');
     const Entity = getEntity('Space') as unknown as {
-      query: (
-        handle: unknown,
-        q?: { where?: { uuid?: string; url?: string } },
-      ) => {
-        subscribe: (cb: (rows: unknown[]) => void) => Promise<unknown[]>;
-        dispose: () => void;
-      };
+      query: (handle: unknown, q?: { where?: { uuid?: string; url?: string } }) => LiveQuery<LivePage<unknown>>;
       findAll: (handle: unknown, q?: { where?: { uuid?: string; url?: string } }) => Promise<Space[]>;
     };
     let releaseRecord!: () => void;
@@ -5072,15 +5065,9 @@ describe('what a collection extracts', () => {
     const query = Entity.query.bind(Entity);
     const querySpy = vi.spyOn(Entity, 'query').mockImplementation((handle, q) => {
       const which = q?.where?.uuid ?? q?.where?.url;
-      const builder = query(handle, q);
-      if (which !== a) return builder;
-      return {
-        subscribe: async (cb) => {
-          await heldRecord;
-          return builder.subscribe(cb);
-        },
-        dispose: () => builder.dispose(),
-      };
+      const live = query(handle, q);
+      if (which !== a) return live;
+      return heldLive(live, heldRecord);
     });
     // The stored space read inside the collection's answers, held so the switch lands inside it.
     let releaseSpace!: () => void;
