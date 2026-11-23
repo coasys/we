@@ -19,27 +19,17 @@
  * The stub's Question is "Should we rebuild sync?", which does not contain the task title. The stub
  * also writes a TaskBlock under the task's title (`roleOf` maps both classes to the task line).
  */
-import { createRequire } from 'node:module';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { chromePath } from '@we/e2e/env';
+import { launchBrowser } from '@we/e2e/browser';
 
 import { openOnCanvas } from './canvas.mjs';
 
 /**
- * playwright-core belongs to `@we/e2e`, which launches the browser. This package does not depend on
- * it. Vite serves this file over http, so `import.meta.url` is not a file URL createRequire accepts.
+ * Chrome's first launch on a CI runner can take longer than vitest's 10 s hook default; it timed out
+ * there before any case ran. The cases themselves wait a second at most.
  */
-function thisFile() {
-  const url = import.meta.url;
-  const served = url.indexOf('/@fs/');
-  if (served >= 0) return url.slice(served + '/@fs'.length).split('?')[0];
-  return fileURLToPath(url);
-}
-const require = createRequire(join(dirname(thisFile()), '../../../../packages/e2e/package.json'));
-const { chromium } = require('playwright-core');
+const LAUNCH = 60_000;
 
 const TASK = 'Rebuild the sync script';
 const OWNER = 'Coasys agent';
@@ -183,9 +173,9 @@ describe('openOnCanvas on the canvas the graph draws', () => {
   let page;
 
   beforeAll(async () => {
-    browser = await chromium.launch({ executablePath: chromePath(), headless: true });
+    browser = await launchBrowser();
     page = await browser.newPage();
-  });
+  }, LAUNCH);
 
   afterAll(async () => {
     await browser?.close();
