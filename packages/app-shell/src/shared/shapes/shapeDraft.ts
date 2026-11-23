@@ -112,7 +112,7 @@ export interface ShapeDraft {
    */
   nameMember: string;
   /**
-   * An AI extraction pass may mint instances of this model from what people said.
+   * An AI interpretation pass may mint instances of this model from what people said.
    *
    * Off by default, and that default is the point: a model somebody curates by hand should not have
    * an interpreter writing rows into it, and every model named in a pass puts its whole shape into

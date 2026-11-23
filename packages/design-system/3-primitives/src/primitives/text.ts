@@ -131,7 +131,7 @@ const styles = css`
     asked for. A flex item's automatic minimum size is its content, and the content of a nowrap line
     is the whole line — so the host refused to be narrower than its text, the ellipsis never
     appeared, and the row either ran off its container or took the room out of a sibling that could
-    give it up. The extraction readout did both: its label pushed past the panel while the elapsed
+    give it up. The interpretation readout did both: its label pushed past the panel while the elapsed
     clock beside it folded "1:23" onto two lines. Only a handful of the call sites had patched it
     with a minWidth: '0' of their own.
 

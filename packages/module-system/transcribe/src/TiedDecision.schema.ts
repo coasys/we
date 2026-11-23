@@ -2,7 +2,7 @@
  * "Decide these together?" — the one confirmation every Accept and Discard can raise.
  *
  * Mounted once, as chrome on the host's `overlay` anchor, because the buttons that raise it are
- * everywhere: a card on the workshop canvas, the inspector, a task board, the extraction panel. All
+ * everywhere: a card on the workshop canvas, the inspector, a task board, the interpretation panel. All
  * of them call `acceptProposal` / `rejectProposal`, which hold the decision in `tiedDecision` when it
  * would decide other suggestions too, so the question is asked in one place and in one voice
  * whichever surface the press came from. See `TiedDecision` in the store for why it exists.

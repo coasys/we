@@ -48,6 +48,7 @@ import { join } from 'node:path';
 
 import {
   AD4M_REPO,
+  AD4M_REV,
   describePin,
   lockfileSnapshots,
   PACKAGES,
@@ -323,13 +324,12 @@ console.log(`Pinned ${PACKAGES.join(' and ')} to ${describePin(next)}${commit ? 
 const custodyDir = join(ROOT, 'crates', 'custody');
 const custodyManifest = join(custodyDir, 'Cargo.toml');
 const custodyText = readFileSync(custodyManifest, 'utf8');
-const AD4M_REV = /(git = "https:\/\/github\.com\/coasys\/ad4m", rev = ")[0-9a-f]+(")/g;
 if (!to) {
   console.warn(
     `\nThe ad4m commit of ${describePin(next)} is unknown, so crates/custody/Cargo.toml still names the old one: move its revs by hand.`,
   );
-} else if (custodyText.replace(AD4M_REV, `$1${to}$2`) !== custodyText) {
-  writeFileSync(custodyManifest, custodyText.replace(AD4M_REV, `$1${to}$2`));
+} else if (custodyText.replace(AD4M_REV, `$1${to}$3`) !== custodyText) {
+  writeFileSync(custodyManifest, custodyText.replace(AD4M_REV, `$1${to}$3`));
   console.log(`Moved crates/custody to ad4m ${to.slice(0, 9)}.`);
   try {
     // From the crate's folder, so rustup takes the toolchain its `rust-toolchain.toml` pins.

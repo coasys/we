@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 
 import { createSpace } from '../steps/space.mjs';
 import { CALL_STEP, SLOW, STUB, until, vertical } from './context.mjs';
-import { DNA, installDnaThroughUi, installFlows, spacePerspective } from './dna.mjs';
+import { DNA, installDnaThroughUi, expectWorkflows, spacePerspective } from './dna.mjs';
 import { untilItem } from './flows.mjs';
 import {
   callThatFinds,
@@ -20,7 +20,7 @@ import {
 } from './steps.mjs';
 
 const SPACE = 'Decide together';
-const FLOW = DNA.flows.find((f) => f.name === 'Decide') ?? DNA.flows[0];
+const FLOW = DNA.workflows.find((f) => f.name === 'Decide') ?? DNA.workflows[0];
 const CLASS = FLOW?.entities[0];
 const [FIRST, ...REST] = (FLOW?.states ?? []).map((s) => s.name);
 const GATED = FLOW?.states.find((s) => s.requires?.some((r) => r.kind === 'approvals' && r.count >= 2))?.name;
@@ -41,13 +41,13 @@ vertical('V4 decide flow: two approvals', (v) => {
       DNA.classes.map((c) => c.name),
       perspective,
     );
-    await installFlows(alice.ports, perspective);
+    await expectWorkflows(alice.ports, perspective);
     // Loaded, not reached through the tree: the app reads a space's workflows when the space opens
     // and after its own writes, so flows another client installed show on the next load.
     await openSpacePath(alice.page, shared, '/workflows');
     // The page's own list: each flow is a button named for it and its record count. The space tree lists
     // the flows too, as tree items under Social DNA, so a bare text match can land on a row there.
-    for (const flow of DNA.flows)
+    for (const flow of DNA.workflows)
       await alice.page
         .getByRole('button', { name: new RegExp(`^${flow.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s+\\d+$`) })
         .first()
@@ -72,7 +72,7 @@ vertical('V4 decide flow: two approvals', (v) => {
   );
 
   v.step(`Alice starts ${FLOW.name} on the ${CLASS} from its inspector`, async () => {
-    await openOnCanvas(alice.page, question.title);
+    await openOnCanvas(alice.page, question.title, { type: CLASS });
     await alice.page.getByRole('button', { name: 'Start a workflow on this' }).first().click({ timeout: 60_000 });
     await alice.page.getByRole('menuitem', { name: FLOW.name }).click();
     const item = await untilItem(
@@ -123,7 +123,7 @@ vertical('V4 decide flow: two approvals', (v) => {
     'Bob agrees, and the run moves on with two approvals',
     async () => {
       await openSpacePath(bob.page, shared);
-      await openOnCanvas(bob.page, question.title);
+      await openOnCanvas(bob.page, question.title, { type: CLASS });
       await openInspectorWorkflows(bob.page);
       await bob.page.getByRole('button', { name: 'Agree', exact: true }).first().click({ timeout: 120_000 });
       await untilItem(

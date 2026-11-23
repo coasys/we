@@ -1,6 +1,6 @@
 /**
- * V2 — Call → transcript → extraction. With the social DNA package installed and its classes chosen
- * as what new calls look for, Alice starts a call; what is said lands in the transcript; extraction
+ * V2 — Call → transcript → interpretation. With the social DNA package installed and its classes chosen
+ * as what new calls look for, Alice starts a call; what is said lands in the transcript; interpretation
  * makes records of the package's classes, linked to the call, that show on the canvas and in the
  * Feed; Alice accepts one; she leaves, and the call stops showing as live.
  */
@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { getEntityForDataset } from '@we/backend-ad4m';
 
 import { createSpace } from '../steps/space.mjs';
-import { leaveCall, startCall, stopTranscribing, typeIntoCall, untilHeard, watchCall } from './call.mjs';
+import { leaveCall, startCall, stopTranscribing, typeIntoCall, unmute, untilHeard, watchCall } from './call.mjs';
 import { SLOW, STUB, until, vertical, world } from './context.mjs';
 import { DNA, installDnaThroughUi, linked, spacePerspective } from './dna.mjs';
 import { HEARD, LINES } from './stub-llm.mjs';
@@ -20,12 +20,12 @@ import {
   expectedRecords,
   openSpacePath,
   treeRow,
-  untilExtracted,
+  untilInterpreted,
 } from './steps.mjs';
 
 const SPACE = 'Sync rebuild';
 
-vertical('V2 call: transcript, extraction, accept, leave', (v) => {
+vertical('V2 call: transcript, interpretation, accept, leave', (v) => {
   let alice, shared, perspective, callId;
   const found = new Map();
 
@@ -65,9 +65,11 @@ vertical('V2 call: transcript, extraction, accept, leave', (v) => {
     }
     // The stored lines hold a word of each recorded line — words the space's name and the page's
     // controls do not, so only the transcript can pass this. The speech model's spelling, not the script's.
+    // The microphone is off until this press, so the recording has not started yet.
+    await unmute(alice.page);
     const said = await untilHeard(perspective, callId, HEARD, SLOW);
     // The fake microphone plays its recording in a loop; every line is in, so it stops here, and
-    // extraction reads one pass of the recording rather than a transcript that grows without end.
+    // interpretation reads one pass of the recording rather than a transcript that grows without end.
     await stopTranscribing(alice.page);
     // On the screen: a stored line that holds one of the heard words, exactly as the speech model wrote it.
     const line = said.find((t) => HEARD.some((word) => t.toLowerCase().includes(word)));
@@ -75,11 +77,11 @@ vertical('V2 call: transcript, extraction, accept, leave', (v) => {
     await alice.page.getByText(line.trim()).first().waitFor({ timeout: SLOW });
   });
 
-  v.step("extraction makes records of the package's classes, linked to the call", async () => {
-    await untilExtracted(perspective, callId, found, STUB ? expectedRecords() : null);
+  v.step("interpretation makes records of the package's classes, linked to the call", async () => {
+    await untilInterpreted(perspective, callId, found, STUB ? expectedRecords() : null);
     if (STUB) {
       const asked = (await world()).stub.passes().flatMap((p) => p.input.classes.map((c) => c.name));
-      for (const cls of DNA.classes) assert.ok(asked.includes(cls.name), `extraction asked for ${cls.name}`);
+      for (const cls of DNA.classes) assert.ok(asked.includes(cls.name), `interpretation asked for ${cls.name}`);
     }
     const all = [...found.values()].flat();
     // The executor writes the records; the client that registered the watch links them to the call
@@ -87,22 +89,22 @@ vertical('V2 call: transcript, extraction, accept, leave', (v) => {
     const joined = await until(
       () => Promise.all(all.map((r) => linked(perspective, r.id, callId))),
       (j) => (STUB ? j.every(Boolean) : j.some(Boolean)),
-      { timeout: 60_000, what: 'the extracted records to be linked to the call' },
+      { timeout: 60_000, what: 'the interpreted records to be linked to the call' },
     ).catch(() => Promise.all(all.map((r) => linked(perspective, r.id, callId))));
-    assert.ok(joined.some(Boolean), 'an extracted record is linked to the call');
-    if (STUB) assert.ok(joined.every(Boolean), 'every extracted record is linked to the call');
+    assert.ok(joined.some(Boolean), 'an interpreted record is linked to the call');
+    if (STUB) assert.ok(joined.every(Boolean), 'every interpreted record is linked to the call');
   });
 
   v.step('the found records show on the canvas', async () => {
     const titles = STUB ? expectedRecords().map((r) => r.title) : [[...found.values()].flat()[0].title];
     await alice.page.getByRole('button', { name: 'Canvas', exact: true }).click();
-    // In the canvas's own element: the Extraction panel lists the same titles.
+    // In the canvas's own element: the Interpretation panel lists the same titles.
     const canvas = alice.page.locator('.we-graph');
     for (const title of titles) await canvas.getByText(title).first().waitFor({ timeout: SLOW });
   });
 
   v.step(
-    'an extracted record placed on the canvas stays there, and the canvas still loads when it is opened again',
+    'an interpreted record placed on the canvas stays there, and the canvas still loads when it is opened again',
     async () => {
       const pick = STUB ? expectedRecords()[0] : null;
       const record = STUB ? found.get(pick.cls).find((r) => r.title === pick.title) : [...found.values()].flat()[0];
@@ -151,7 +153,8 @@ vertical('V2 call: transcript, extraction, accept, leave', (v) => {
   v.step('Alice accepts a suggestion, and it is no longer pending', async () => {
     const pick = STUB ? expectedRecords()[0] : null;
     const record = STUB ? found.get(pick.cls).find((r) => r.title === pick.title) : [...found.values()].flat()[0];
-    await acceptInInspector(alice, perspective, record);
+    const type = [...found.entries()].find(([, list]) => list.some((r) => r.id === record.id))?.[0];
+    await acceptInInspector(alice, perspective, { ...record, type });
   });
 
   v.step('Alice leaves, and the call stops showing as live', async () => {

@@ -86,6 +86,7 @@ describe('judging a bundle', () => {
       pages: [],
       themes: ['Moss'],
       recordTypes: ['Species'],
+      workflows: [],
     });
   });
 

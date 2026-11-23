@@ -3,9 +3,11 @@
  *
  * Starting, joining and leaving go through the screen. What is said goes in by tier:
  *
- * - **real** — the fake microphone plays the suite's recording, and the executor's transcription
- *   model writes it: a real speech server, or the stub server's fixed transcript (`models.mjs`).
- *   The microphone plays it in a loop, so once every line has landed the suite stops transcribing.
+ * - **real** — the call joins with the microphone off, so the suite presses Unmute on the call bar
+ *   first. Only then does the page ask for the microphone, and the fake device play the suite's
+ *   recording. The executor's transcription model writes it: a real speech server, or the stub
+ *   server's fixed transcript (`models.mjs`). The microphone plays it in a loop, so once every
+ *   line has landed the suite stops transcribing.
  * - **stub** — typed lines, written from Node as the call's author. The Coasys app places no box to
  *   type into a call (its only composer, the Feed's, writes to the space outside any call), so the
  *   suite makes the write the transcribe module's own composer makes — `modules.transcribe.addMessage`
@@ -32,6 +34,27 @@ export async function startCall(page) {
     { timeout: 60_000, what: 'the call bar to show one in the call' },
   );
   return until(() => callIdOf(page), Boolean, { timeout: 30_000, what: 'the call id in the URL' });
+}
+
+/**
+ * Turns the microphone on from the call bar, as a person does, and waits until this agent is
+ * transcribing.
+ *
+ * A call joins with the microphone off (`setAudioEnabled(false)` before the session opens a
+ * device). The fake microphone plays its file only once the page calls `getUserMedia`, which is
+ * this press. Already on, it is left on: pressing Mute would silence the recording. The real tier
+ * only — the stub tier writes its lines and never opens a microphone.
+ */
+export async function unmute(page) {
+  const off = page.getByRole('button', { name: 'Unmute', exact: true }).first();
+  const on = page.getByRole('button', { name: 'Mute', exact: true }).first();
+  await off.or(on).first().waitFor({ timeout: 30_000 });
+  if (await off.isVisible()) {
+    await off.click();
+    await on.waitFor({ timeout: 30_000 });
+  }
+  // Auto-join sets `enabled` once the call has a microphone, which is what renames this control.
+  await page.getByRole('button', { name: 'Stop transcribing', exact: true }).first().waitFor({ timeout: 60_000 });
 }
 
 /** Leaves the call through the call bar's own button, and waits until the bar has gone. */
@@ -93,11 +116,11 @@ export function untilHeard(perspective, callId, words, timeout) {
 
 /**
  * Stops this agent's microphone feeding the call's transcript, with the call bar's own control, and
- * waits until the control offers to start again. The call, its record and its extraction watch stay:
+ * waits until the control offers to start again. The call, its record and its interpretation watch stay:
  * a record's lifetime is the call's, not the toggle's (transcribe store.ts, `collectionCallId`).
  *
  * The real tier needs this because Chromium's fake microphone plays its recording in a loop: left on,
- * the transcript grows by the recording every few seconds, and so does every extraction prompt.
+ * the transcript grows by the recording every few seconds, and so does every interpretation prompt.
  */
 export async function stopTranscribing(page) {
   await page.getByRole('button', { name: 'Stop transcribing', exact: true }).first().click();
@@ -105,7 +128,7 @@ export async function stopTranscribing(page) {
 }
 
 /**
- * Registers the call's extraction watch, the one the app's `watchConversation` registers (app-shell
+ * Registers the call's interpretation watch, the one the app's `watchConversation` registers (app-shell
  * DatasetStore.tsx): the same id, the call's own targets, filed under the space's collection, with
  * `extracted` and `recognised` back to the call.
  *

@@ -7,7 +7,7 @@ import type { CoreEntityDef } from './defs';
  *
  * What a model writes is real, stored and queryable on its own; what is lost without this is
  * everything about the *asking*: whether it happened, when, who spent the tokens, which model, and
- * whether it failed. An extraction pass that failed and one that found nothing look the same from
+ * whether it failed. An interpretation pass that failed and one that found nothing look the same from
  * the records alone, and so do a reply a model wrote and one a person typed. A run says which.
  *
  * ## One entity for every kind of run
@@ -23,7 +23,7 @@ import type { CoreEntityDef } from './defs';
  * - What a run was about, a call or a template, holds it in its `runs` (`WeNode.runs`), so a
  *   panel open on one record reads its runs with the subject it reads everything else with.
  * - What a run made carries `generatedBy` (`WeNode.generatedBy`), written by whoever wrote the
- *   record, in the same write. For an extraction pass that is the backend, which alone knows which
+ *   record, in the same write. For an interpretation pass that is the backend, which alone knows which
  *   records the pass made rather than matched: the run is opened before the pass and named to it
  *   (`run` on the interpretation port).
  * - A change a run made to a record that already existed, and somebody kept, is an
@@ -66,7 +66,7 @@ export const ModelRun: CoreEntityDef = {
       /**
        * How many records it made. `0` is a real answer and the common one on a short call.
        * Stored rather than counted afterwards, because records are not evidence of the run that made
-       * them: a second extraction pass updates what the first found rather than duplicating it, so
+       * them: a second interpretation pass updates what the first found rather than duplicating it, so
        * counting attributes every record to whichever pass ran last.
        */
       recordCount: { type: 'number', predicate: 'we://model_run_record_count', default: 0 },
