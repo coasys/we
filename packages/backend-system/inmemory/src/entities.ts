@@ -68,7 +68,8 @@ const manyForeignKey = (entity: string, relation: string) => `__${entity}_${rela
  * value for it: it still reads back as its declared default, and no query matches it — not
  * `{ field: '' }`, not `{ field: { not: x } }`. This backend used to keep the `''`, so a cleared field
  * went on matching a `not` here and dropped out of the same query in production. Creation follows the
- * same rule: an explicit `''` or `null` is not written, though a declared default still is.
+ * same rule: an empty value is not written, whether the caller gave it or it is the declared default,
+ * so a record created with `''` and one cleared to `''` are the same record.
  */
 function writeField(row: Record<string, unknown>, key: string, value: unknown): void {
   if (value === '' || value === null) delete row[key];
@@ -711,12 +712,11 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
           timestamp: now,
           createdAt: now,
           updatedAt: now,
-          ...defaults(),
         };
+        for (const [key, value] of Object.entries(defaults())) writeField(row, key, value);
         for (const [key, value] of Object.entries(data)) {
           if (relationNames.has(key)) continue;
-          if (value === '' || value === null) continue;
-          row[key] = value;
+          writeField(row, key, value);
         }
         const instance = Entity.hydrate(dataset, row);
         await writeIn(options?.batchId, dataset, async () => {

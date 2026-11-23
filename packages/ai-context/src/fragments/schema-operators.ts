@@ -252,8 +252,8 @@ values may be expressions (in an expression) or tokens (in a $query):
   { field: { contains: 'text' } }          — case-insensitive substring match (strings only)
   { field: { startsWith: 'text' } }        — anchored prefix match, case-SENSITIVE
   { field: { endsWith: 'text' } }          — anchored suffix match, case-SENSITIVE
-  { field: { exists: true } }              — non-null / non-undefined presence check
-  { field: { exists: false } }             — null or undefined check
+  { field: { exists: true } }              — has a value (filter() and find() only)
+  { field: { exists: false } }             — has no value: never written, or cleared
   { field: { gte: 10, lt: 50 } }           — a range; lt, lte, gt, gte, any of them together
   { relation: { some: {…} } }              — has at least one linked record matching the clause
   { relation: { none: {…} } }              — has no linked record matching it; { none: {} } is "has none at all"
@@ -273,43 +273,44 @@ A bare list is the positive counterpart of "not" with a list, and the way to fet
 { id: ['id1', 'id2', 'id3'] }. Native in a $query. An empty list matches nothing, which is what
 "none of these" should mean.
 
-An ABSENT property is the trap worth knowing, and "not" is where a $query and filter() disagree.
+An ABSENT value matches no comparison, in a $query and in filter() and find() alike.
 
-A record that never had a property written carries no value for it — a property is stored as a
-link, so an unwritten one is simply not there. Three cases, and the middle one differs by where it
-is evaluated:
+A record that never had a field written has no value for it, and neither does one whose field was
+cleared. No comparison matches a missing value, the way none matches NULL in SQL:
 
-  { field: 'x' }             — does NOT match an absent value. Both agree.
-  { field: { not: 'x' } }    — does NOT match an absent value in a $query, on any backend: !=
-                               over an unbound value excludes the row, exactly as SQL's
-                               three-valued logic excludes NULL. Inside filter() it DOES match
-                               (undefined !== 'x'), because filter() is plain client-side
-                               comparison — so the same where-object can answer differently in
-                               the two places.
-  { field: { exists: false } } — means absent, unambiguously — but see the warning below about
-                               where it can be used.
+  { field: 'x' }               — does NOT match a record with no value
+  { field: { not: 'x' } }      — does NOT match it either: "not x" is a claim about a value
+  { field: ['a', 'b'] }        — nor does a list, or "not" with a list
+  { field: { contains: … } }   — nor a text match, even one whose text is empty; nor a range
+  { field: { exists: false } } — the one operator that asks about absence (see below for where)
 
-A declared "default" does not rescue this. The manifest's default is applied when a record is
-CONSTRUCTED, so anything created normally does carry it — but a field added to an entity after
-some records already existed reads as absent on every one of them, and the query layer never
-consults the default when filtering.
+So a task nobody is assigned to is not found by { assignee: { not: 'Ann' } }. To include it, say so:
+{ OR: [{ assignee: { not: 'Ann' } }, { assignee: { exists: false } }] } inside filter(). And a search
+box that filters a list should leave the where empty while nothing is typed, or every row without the
+field drops out of the list before anybody searches:
+{ "$": "filter(local.rows, local.search ? { name: { contains: local.search } } : {})" }
 
-CLEARING is the other way to end up with no value. Writing '' to a property that has one removes
-it: the record then reads back as the field's default — usually '' — but no $query matches it, not
-{ field: '' } and not { field: { not: 'x' } }. A '' written at CREATION, a declared default of ''
-included, is different: it is stored, and both of those match it. So a task nobody was ever
-assigned is found by { assignee: { not: 'Ann' } }, and one whose assignee was removed is not.
+A declared "default" is what a record reads back with, and what a form shows, when it has no value —
+it is not a value a query can match unless one was written. A default other than '' is written when a
+record is created normally, so those records carry it; a field added to an entity after some records
+already existed has no value on any of them.
 
-"exists" IS NOT AVAILABLE IN A $query — only inside filter(), where it is evaluated client-side.
-The backend has no such operator, so a $query using one is refused rather than run.
+CLEARING is writing '' (or null). '' always means the field has no value: written at creation, as a
+declared default of '', or as an edit, it is never stored, and the record behaves as if the field had
+never been written — no { field: '' } matches it, and no { field: { not: 'x' } } does. To find the
+records with nothing in a field, ask { field: { exists: false } } inside filter(). A required field
+cannot be cleared; the write is refused.
+
+"exists" IS NOT AVAILABLE IN A $query — only inside filter() and find(), where it is evaluated
+client-side. The backend has no such operator, so a $query using one is refused rather than run.
 
 That rules out the obvious idiom for "absent counts as the default":
 
   { OR: [ { retired: false }, { retired: { exists: false } } ] }   ← NOT usable in a $query
 
-Until the operator exists, the ways to say it are: give the field a default and write the plain
-comparison; fetch the candidates and filter() client-side, where "exists" works; or, where the field
-is a relation rather than a scalar, ask { relation: { none: {} } }, which IS native.
+The ways to say it are: give the field a default other than '' and write the plain comparison; fetch
+the candidates and filter() client-side, where "exists" works; or, where the field is a relation
+rather than a scalar, ask { relation: { none: {} } }, which IS native.
 
 startsWith/endsWith are case-sensitive where contains is not: they match structured strings against
 a known prefix (an ISO date, an id out of a URI). They are NOT native to the backend either, so a

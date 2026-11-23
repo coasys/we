@@ -36,10 +36,18 @@ import { type EntityWrite, getEntity, registerEntityWriteCheck } from '@we/entit
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { describeEmptyValues, EMPTY_VALUE_CASES, type EmptyValueCase } from './emptyValues';
 import { describeTemplateQueries, TEMPLATE_QUERY_CASES, type TemplateQueryCase } from './templateQueries';
 import { describeWriteCases, WRITE_CASES, type WriteCase } from './writes';
 
-export { TEMPLATE_QUERY_CASES, type TemplateQueryCase, WRITE_CASES, type WriteCase };
+export {
+  EMPTY_VALUE_CASES,
+  type EmptyValueCase,
+  TEMPLATE_QUERY_CASES,
+  type TemplateQueryCase,
+  WRITE_CASES,
+  type WriteCase,
+};
 
 /** One fresh backend, ready for a case to write into. */
 export interface ConformanceSubject {
@@ -165,10 +173,10 @@ export const CONFORMANCE_CASES = [
 ] as const;
 
 /**
- * Every case a harness can name in `knownGaps` — the per-case ones above, grouped and named writes,
- * and the template queries.
+ * Every case a harness can name in `knownGaps` — the per-case ones above, empty values, grouped and
+ * named writes, and the template queries.
  */
-export type ConformanceCase = (typeof CONFORMANCE_CASES)[number] | WriteCase | TemplateQueryCase;
+export type ConformanceCase = (typeof CONFORMANCE_CASES)[number] | EmptyValueCase | WriteCase | TemplateQueryCase;
 
 interface Row {
   id: string;
@@ -1138,6 +1146,7 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
     });
   });
 
+  describeEmptyValues(name, harness, timeout);
   describeWriteCases(name, harness, timeout);
   describeTemplateQueries(name, harness, timeout);
 }
