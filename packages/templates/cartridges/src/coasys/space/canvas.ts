@@ -47,7 +47,7 @@ import { DNA_FOCUS, DNA_PARAM, IN_CANVAS, inspect, PAGE_EXPR, withView } from '.
  * |---|---|
  * | The Feed, a group's page | everything |
  * | Calls | what any call produced |
- * | A call | what was extracted from it |
+ * | A call | what was interpreted from it |
  * | A person | what they made |
  * | A workflow | the records going through it |
  * | Social DNA, a kind of it, one definition, the policy | the vocabulary map: its kind open, the definition open into what it is, the rest dimmed |

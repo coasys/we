@@ -206,7 +206,7 @@ export async function registerModel(
 
 /**
  * Makes a model on an OpenAI-compatible server (`/v1/chat/completions`) the executor's default
- * language model: the one that call extraction runs on. `kind` names the server (default
+ * language model: the one that call interpretation runs on. `kind` names the server (default
  * `OPEN_AI_COMPATIBLE`; `LLAMA_SERVER` turns its thinking off). `nativeTools`,
  * `requestTimeoutSecs` and `maxNumCtx` are sent only when given; left out, the executor's defaults
  * apply. Resolves with the model's id.

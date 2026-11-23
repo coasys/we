@@ -1,7 +1,7 @@
 /**
  * A record's provenance and container, answered for a class that does not declare them.
  *
- * Every record WE defines carries `extractedFrom` and `partOf`: the conversation it was extracted
+ * Every record WE defines carries `extractedFrom` and `partOf`: the conversation it was interpreted
  * from and the collection it is part of, each the reverse of a link a `CollectionBlock` owns
  * (`extracted`, `children`). Those are declared on `WeNode`, so a class WE generated has them. A
  * class another app or a bot installed does not, and the executor reads an `include` by the shape

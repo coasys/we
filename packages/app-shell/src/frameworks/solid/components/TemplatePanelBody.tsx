@@ -43,7 +43,7 @@ export function TemplatePanelBody(props: { panelId?: string; moduleId?: string; 
       By dock rather than by module, where the frame gave one.
 
       A module with two panels has two frames asking this, and matching on the module alone would
-      hand both of them the first supplied entry — the transcript body inside the extraction panel,
+      hand both of them the first supplied entry — the transcript body inside the interpretation panel,
       silently. The frame knows which dock it is, so it says so, and the entry that names that dock
       is the only one that answers.
     */

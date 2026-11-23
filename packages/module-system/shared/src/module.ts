@@ -736,7 +736,7 @@ export interface ModuleStoreDeps {
   /**
    * The first screen after a cold boot — for a module whose part is what a person opened the app to
    * read. While it is reading, the host holds back work that screen does not need (the sidebar's
-   * lists, the extraction panel, presence, settings reads), so the one executor answers this first.
+   * lists, the interpretation panel, presence, settings reads), so the one executor answers this first.
    *
    * Say {@link ModuleFirstScreen.waiting} as the part's first read leaves — not as the part is drawn,
    * since a part with nothing to read must not hold anything — and {@link ModuleFirstScreen.answered}

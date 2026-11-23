@@ -67,7 +67,7 @@ export interface FeedLine {
   sending: boolean;
 }
 
-/** One thing extracted or made, grouped — see the module comment. */
+/** One thing interpretation found or somebody made, grouped — see the module comment. */
 export interface FeedActivity {
   kind: 'activity';
   id: string;
@@ -96,7 +96,7 @@ export interface FeedWindowOptions {
   root: string;
   /**
    * Where what extraction found is kept, when that is not `root` — the space collection, for the
-   * Feed of one call. Then only what was extracted from `root` is drawn: the same groups the space's
+   * Feed of one call. Then only what was interpreted from `root` is drawn: the same groups the space's
    * Feed draws for that call, read by the ids the call's own `extracted` names.
    */
   activityRoot?: string;

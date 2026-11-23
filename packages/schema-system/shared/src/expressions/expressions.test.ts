@@ -118,16 +118,16 @@ describe('evaluation', () => {
       object first, and settling turns a namespace into `undefined` — so a store keying its answers
       by an id it cannot enumerate was reachable one way and invisible the other.
 
-      Invisible is the word. `modules.transcribe.extractionFor[<call>].targets` came back undefined,
-      `count(undefined)` is 0, and the extraction panel said "No models are set up for AI extraction
+      Invisible is the word. `modules.transcribe.interpretationFor[<call>].targets` came back undefined,
+      `count(undefined)` is 0, and the interpretation panel said "No models are set up for AI interpretation
       here" — a sentence about the space, for a fault in the evaluator. Nothing warned, because a
       missing path is undefined by design.
     */
-    const keyed = namespace((key) => ({ targets: [key], canExtract: key !== 'empty' }));
+    const keyed = namespace((key) => ({ targets: [key], canInterpret: key !== 'empty' }));
     const roots = { store: namespace((member) => (member === 'byId' ? markReactive(() => keyed) : undefined)) };
 
     expect(run("store.byId['we://a-call'].targets", roots)).toEqual(['we://a-call']);
-    expect(run("store.byId['we://a-call'].canExtract", roots)).toBe(true);
+    expect(run("store.byId['we://a-call'].canInterpret", roots)).toBe(true);
     // The name is an expression, which is the whole reason an index is needed rather than a dot.
     expect(run('store.byId[item.id].targets', { ...roots, item: { id: 'we://another' } })).toEqual(['we://another']);
     expect(run("count(store.byId['we://a-call'].targets)", roots)).toBe(1);
@@ -185,7 +185,7 @@ describe('evaluation', () => {
   });
 
   it('lists each value once, across every list given', () => {
-    // The key's question: the kinds extraction wrote, and the kinds somebody placed, each once.
+    // The key's question: the kinds interpretation wrote, and the kinds somebody placed, each once.
     const roots = {
       found: [{ __subjectClass: 'TaskBlock' }, { __subjectClass: 'EventBlock' }, { __subjectClass: 'TaskBlock' }],
       placements: [{ nodeType: 'NoteBlock' }, { nodeType: 'EventBlock' }],

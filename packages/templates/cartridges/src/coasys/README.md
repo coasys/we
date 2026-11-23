@@ -57,7 +57,7 @@ which are features of their own rather than a look.
 
 The tree chooses what is in focus; the switch at the end of every bar says where to see it. Page opens
 the chosen thing's page. Canvas shows the space's canvas with that focus applied — a call dims what
-was not extracted from it, a person what they did not make, a workflow what is not going through it —
+was not found in it, a person what they did not make, a workflow what is not going through it —
 or, for anything of Social DNA, the vocabulary map with that lit. The two maps stay apart: the canvas
 is what the space holds, arranged by people; the vocabulary is what it has defined, laid out by itself.
 

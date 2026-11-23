@@ -3,7 +3,7 @@
  * a board is drawn, who holds which role, what a model run did. None of them is something said in a
  * call, so none is offered for extraction — even where a space carries one under a target class WE
  * does not recognise (an older WE wrote it, or another WE-shaped app did), which is how one of these
- * names reaches `foreignExtractionCandidates` at all.
+ * names reaches `foreignInterpretationCandidates` at all.
  *
  * One explicit list, taken from the core manifest rather than worked out by a heuristic: everything
  * in it is a core entity that is not `extractable` (a test holds both). WE's content classes — the
@@ -65,7 +65,7 @@ export const WE_PLUMBING_CLASSES: readonly string[] = [
  * model is registered globally for them), but they are offered — or not — by their own manifest's
  * `extractable`, so they are skipped here without a word.
  */
-export function foreignExtractionCandidates(
+export function foreignInterpretationCandidates(
   foreign: readonly { name: string; interpretationHint?: string }[],
   { taken, adopted }: { taken: Iterable<string>; adopted: Iterable<string> },
 ): { offered: string[]; shadowed: string[] } {

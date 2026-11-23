@@ -69,8 +69,8 @@ export async function check({ evaluate, partStyle, screenshot }) {
   if (launched === 'no button') {
     problems.push('no Interpretation button');
   } else {
-    if (launched.id !== 'transcribe:extraction') {
-      problems.push(`the Interpretation button launched ${launched.id}, not transcribe:extraction`);
+    if (launched.id !== 'transcribe:interpretation') {
+      problems.push(`the Interpretation button launched ${launched.id}, not transcribe:interpretation`);
     }
     if (launched.expanded !== false) {
       problems.push(`the Interpretation button's expanded is ${launched.expanded}, not false`);

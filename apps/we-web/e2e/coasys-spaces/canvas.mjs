@@ -14,7 +14,7 @@ function cssAttr(value) {
 
 /**
  * Opens a record into the inspector by pressing its card on the canvas. Found inside the canvas's own
- * element: the Extraction panel lists the same title, earlier in the page. The canvas names no role
+ * element: the Interpretation panel lists the same title, earlier in the page. The canvas names no role
  * or label, so its class is the one hold there is.
  *
  * The card is the node whose own title text is exactly `title`. A substring match opens a different

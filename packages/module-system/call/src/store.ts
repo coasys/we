@@ -1081,7 +1081,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
    * template binds to it. A plain `let` is invisible to the reactive graph, so every surface reading
    * "which call is this" resolved once — against the frame before the call existed — and never
    * heard about the record that arrived a moment later. It read as the board, the transcript and
-   * the extraction panel all ignoring a call that was plainly running.
+   * the interpretation panel all ignoring a call that was plainly running.
    */
   const [callRecord, setCallRecord] = signal<string | null>(null);
 

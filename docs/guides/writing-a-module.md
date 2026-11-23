@@ -294,7 +294,7 @@ yet, deliberately; see `docs/architecture/capabilities-and-surfaces.md`.
 ### Drawing on somebody else's surface
 
 `view.decorate(() => marks)` is how a module puts something at a _place_ — a peer's cursor, a pin on a
-card, a highlight on a record an extraction pass touched. A mark is `{ id, at, node }`: the node is a
+card, a highlight on a record an interpretation pass touched. A mark is `{ id, at, node }`: the node is a
 `SchemaNode`, so what it looks like stays data, and the host owns positioning and easing, because only
 the host can turn a frame into pixels.
 
