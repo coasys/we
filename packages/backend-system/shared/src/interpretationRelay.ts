@@ -110,7 +110,7 @@ export function createInterpretationRelay(channel: EphemeralChannel, options: Re
     peer overwriting somebody else's row.
 
     Two peers can legitimately run passes that share a `passId`: on a one-shot pass the id is
-    chosen client-side, so two people pressing Extract at the same moment on the same collection
+    chosen client-side, so two people pressing Interpret at the same moment on the same collection
     can pick the same one. Without the prefix the second broadcast would land on the first's row
     and one of the two would silently vanish from every bar in the space.
   */

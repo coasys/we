@@ -217,7 +217,7 @@ const activity: SchemaNode = {
           props: { variant: 'body', flex: '1', minWidth: '0', truncate: true },
           children: [
             {
-              $: "row.origin ? row.summary + ' extracted from ' + row.originTitle : row.summary + ' added'",
+              $: "row.origin ? row.summary + ' found in ' + row.originTitle : row.summary + ' added'",
             },
           ],
         },

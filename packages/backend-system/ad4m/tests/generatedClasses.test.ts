@@ -95,7 +95,7 @@ describe('generated classes carry the manifest prose', () => {
  * The provenance a pass leaves on what it wrote.
  *
  * A second link beside containment, and the reason for both halves is worth pinning. Containment is
- * what makes the call's board gather an extracted task, so a record that stopped being a child would
+ * what makes the call's board gather an interpreted task, so a record that stopped being a child would
  * vanish from the surface it exists to appear on. Provenance is the other fact about the same
  * record — a model proposed it from the conversation — and it is the only way to ask "what did this
  * call produce" in one read: an untyped `include` carries no class constraint, so through `children`

@@ -84,10 +84,10 @@ export interface DockEntry {
    *
    * A module names a method and the titlebar builds `<store>.<method>`. That works because a module
    * store *has* that member; a **template panel's** does not. Its keys are minted per panel
-   * (`close:extraction`) into `hostDockStores`, which is where the shell reads `edge`/`size`/`float`
+   * (`close:interpretation`) into `hostDockStores`, which is where the shell reads `edge`/`size`/`float`
    * from in TypeScript — but the close button is rendered as a schema `$invoke`, and the renderer
    * resolves `shellStore` to the real store surface, where no such member exists. So the button
-   * rendered, took the click, and logged `method "close:extraction" not found on store "shellStore"`:
+   * rendered, took the click, and logged `method "close:interpretation" not found on store "shellStore"`:
    * an authored panel could not be closed at all.
    *
    * A whole handler rather than another key, because the answer needs an argument — one real method

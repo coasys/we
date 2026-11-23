@@ -22,6 +22,7 @@ import {
   type BundleBrand,
   type BundleRecordType,
   type BundleTheme,
+  type BundleWorkflow,
   type SchemaNode,
   type SpaceStarter,
   type TemplateSchema,
@@ -53,6 +54,8 @@ export interface Cartridge {
   /** Its own sign-in screen, around the host's password field. */
   bootScreen?: SchemaNode;
   shapes: FixtureShape[];
+  /** The workflows the app's records move through, installed with its shapes when a space is set up. */
+  workflows?: BundleWorkflow[];
   /** Modules the host must have. A cartridge names them; it cannot ship one. */
   modules: string[];
   /** How the app shows spaces: its own shell for every space, or each space's own. */
@@ -195,6 +198,7 @@ export function toBundle(cartridge: Cartridge, version = '1.0.0'): Bundle {
       ...(shape.description ? { description: shape.description } : {}),
       manifest: shape.manifest as BundleRecordType['manifest'],
     })),
+    ...(cartridge.workflows?.length ? { workflows: cartridge.workflows } : {}),
     display: cartridge.display === 'ours' ? { spaces: 'ours', template: shellId } : { spaces: 'theirs' },
     ...(cartridge.brand ? { brand: cartridge.brand } : {}),
     ...(cartridge.bootScreen ? { bootScreen: cartridge.bootScreen } : {}),

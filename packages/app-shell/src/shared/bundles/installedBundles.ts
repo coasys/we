@@ -7,6 +7,7 @@
  * display policy, so how an app shows spaces is a property of the app in use rather than a setting;
  * and the record types it brings, so a space can be set up for it later.
  */
+import type { WorkflowDefinition } from '@we/backend-shared';
 import type { BundleBrand, BundleRecordType, SchemaNode } from '@we/schema-shared';
 
 import type { BundlePieces } from './bundlePieces';
@@ -32,6 +33,8 @@ export interface InstalledBundle {
   sections: string[];
   /** Kept whole: a space set up later needs the definitions, and the file is gone by then. */
   recordTypes: BundleRecordType[];
+  /** Kept whole for the same reason. Absent on an install from before a bundle could bring them. */
+  workflows?: WorkflowDefinition[];
   display?: { spaces: 'ours' | 'theirs'; template?: string };
   /** What the person agreed to when installing it — what a later version is compared against. */
   granted?: BundleGrant;
@@ -90,6 +93,7 @@ export function installedEntry(
     ...(pieces.themes.length ? { themes: pieces.themes.map((theme) => theme.id) } : {}),
     sections: pieces.sections.map((section) => section.id),
     recordTypes: pieces.recordTypes,
+    ...(pieces.workflows.length ? { workflows: pieces.workflows } : {}),
     ...(pieces.display ? { display: pieces.display } : {}),
     ...(meta.granted ? { granted: meta.granted } : {}),
     ...(meta.digest ? { digest: meta.digest } : {}),

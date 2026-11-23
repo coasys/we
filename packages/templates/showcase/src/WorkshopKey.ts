@@ -859,7 +859,7 @@ function shownToggle(kind: string): SchemaNode {
 /**
  * The kinds on this canvas, each once — not every kind the space has.
  *
- * Two sources make up "on the canvas". What extraction wrote for this call — the `onCall` query in
+ * Two sources make up "on the canvas". What interpretation wrote for this call — the `onCall` query in
  * `keyPanel`, one question over every kind extraction may write, answering with only the records
  * that exist, each tagged with its kind. And whatever has been *placed*, which is how a note, a
  * dropped record or a shape this community defined gets here. `distinct` makes the two one list.
@@ -889,7 +889,7 @@ const kindRows: SchemaNode = {
         condition: { $: `local.onCallLoaded && local.placementsLoaded && !count(${KINDS})` },
         then: {
           /*
-            Faded in late, the way the kit's empty state is. The extraction targets this reads are
+            Faded in late, the way the kit's empty state is. The interpretation targets this reads are
             themselves loaded after the panel mounts, and until they are the query has no kinds to
             ask about — an answer, and an empty one — so without the delay the sentence would blink
             on every open of a call that does have cards.
@@ -1017,7 +1017,7 @@ const suggestionsSection: SchemaNode = {
   children: [
     sectionLabel({
       label: 'Suggestions',
-      help: 'Pending acceptance is a record extraction made that nobody has accepted yet: dashed, faded and badged "suggested", and hidden with the switch. A pending change is an accepted record a later pass wants to change: it keeps its colour, gains an amber edge and is never hidden — open it to accept or reject the change.',
+      help: 'Pending acceptance is a record interpretation made that nobody has accepted yet: dashed, faded and badged "suggested", and hidden with the switch. A pending change is an accepted record a later pass wants to change: it keeps its colour, gains an amber edge and is never hidden — open it to accept or reject the change.',
       aside: suggestionsToggle({ count: `count(local.onCall.filter(r, r.id in ${UNCONFIRMED}))`, labelled: false }),
     }),
     {
@@ -1095,7 +1095,7 @@ export function keyPanel(opts: {
   /** The canvas the key is about — its placements are what the key lists. */
   call: Record<string, unknown>;
   callExpr: string;
-  extracted: string;
+  interpretable: string;
   /**
    * Where the canvas's records live, when not in the canvas itself — a space canvas's are the space
    * collection's children. Defaults to the canvas.
@@ -1116,7 +1116,7 @@ export function keyPanel(opts: {
       The key's own subscriptions: what is placed here, and what extraction wrote here — the two
       halves of the kinds list, see `kindRows`.
 
-      `onCall` is one query over every kind this call extracts, less `LINK_ENTITY`, which is a line
+      `onCall` is one query over every kind this call interprets, less `LINK_ENTITY`, which is a line
       rather than a card. Only its kinds are read, but a kind is only known from a record of it, and
       `limit` applies to the whole answer, so it has to be room for every record rather than one.
     */
@@ -1124,7 +1124,7 @@ export function keyPanel(opts: {
       typeStyles: TYPE_STYLES_QUERY,
       placements: placementsQuery(opts.call),
       onCall: {
-        entity: { $: `(${opts.extracted}).filter(k, k != '${LINK_ENTITY}')` },
+        entity: { $: `(${opts.interpretable}).filter(k, k != '${LINK_ENTITY}')` },
         scope: anchorScope(opts.members ?? opts.call),
         limit: 200,
         when: opts.members ?? opts.call,

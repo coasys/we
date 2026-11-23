@@ -80,7 +80,7 @@ describe('artifacts', () => {
   });
 
   it('slugs a title into a file name', () => {
-    assert.equal(slug('V2: Call → extraction!'), 'v2-call-extraction');
+    assert.equal(slug('V2: Call → interpretation!'), 'v2-call-interpretation');
   });
 
   it('writes a screenshot, an ARIA snapshot and the executor log for a failed step', async () => {

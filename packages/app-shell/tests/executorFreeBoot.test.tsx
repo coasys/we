@@ -256,7 +256,7 @@ vi.mock('../src/frameworks/solid/stores/ThemeStore', () => ({
 
 // ── Harness ───────────────────────────────────────────────────────────────────
 import { completeResponse } from '@we/entities';
-import { withExtractionDefaults } from '@we/entities';
+import { withInterpretationDefaults } from '@we/entities';
 
 import { credential } from '../src/frameworks/solid/credential';
 import { BootController } from '../src/frameworks/solid/providers/BootController';
@@ -315,7 +315,7 @@ function mountShell(): Stores {
             {/* Setting up an account asks it whether there is an AI question, as the real order has it. */}
             <RuntimeStoreProvider>
               <DatasetStoreProvider>
-                {/* SpaceStore reads the extraction candidates off ShapeStore and hands the wizard back
+                {/* SpaceStore reads the interpretation candidates off ShapeStore and hands the wizard back
                 an enroller, so the two mount in the order the real StoreProvider uses. */}
                 <ShapeStoreProvider>
                   {/* SpaceStore hands the record layer the vocabularies this community owns — a task's
@@ -1380,7 +1380,9 @@ describe('dataset lifecycle through the real stores', () => {
       // In the starter's own words, with its own glyph and what it writes counted from its records.
       expect(kit).toMatchObject({ app: 'Coasys', name: "Coasys's starter kit", icon: 'dna' });
       expect(kit.description).toContain('Social DNA');
-      expect(kit.includes).toBe('1 reaction · 3 task states · 5 ways to be involved · a canvas · a board');
+      expect(kit.includes).toBe(
+        '1 reaction · 3 task states · 5 ways to be involved · a canvas · a board · 4 record types · 1 workflow',
+      );
       // A template chooses by id; the records stay in the store.
       expect(kit).not.toHaveProperty('starter');
       expect(rest.map((c) => c.id)).toEqual([NO_STARTER]);
@@ -3093,15 +3095,15 @@ describe('following a space from the rows its live queries push', () => {
     let reads!: FindAllSpy;
     const isSettingsRead = (call: unknown[]) =>
       Array.isArray((call[1] as { where?: { id?: unknown } } | undefined)?.where?.id);
-    const { stores, handle } = await openSpace('Pushed Extraction', () => {
+    const { stores, handle } = await openSpace('Pushed Interpretation', () => {
       asked = vi.spyOn(getEntity('CollectionBlock') as unknown as { query: (...a: unknown[]) => unknown }, 'query');
       reads = spyFindAll('CollectionBlock');
     });
     const root = stores.spaces.root();
     // Ask, and wait for the first answer and the watch behind it.
-    stores.spaces.autoExtractFor(root);
+    stores.spaces.autoInterpretFor(root);
     await vi.waitFor(() => expect(asked.mock.calls.some(isSettingsRead)).toBe(true));
-    const before = stores.spaces.autoExtractFor(root);
+    const before = stores.spaces.autoInterpretFor(root);
     // Only the two fields the settings are made of: a collection's children are the whole space.
     for (const call of [...reads.mock.calls, ...asked.mock.calls].filter(isSettingsRead)) {
       expect((call[1] as { properties?: string[] }).properties).toEqual(['autoExtract', 'extractionTargets']);
@@ -3110,7 +3112,7 @@ describe('following a space from the rows its live queries push', () => {
     const readsBefore = settingsReads();
 
     await CollectionBlock.update(handle, root, { autoExtract: !before } as never);
-    await vi.waitFor(() => expect(stores.spaces.autoExtractFor(root)).toBe(!before));
+    await vi.waitFor(() => expect(stores.spaces.autoInterpretFor(root)).toBe(!before));
     expect(settingsReads()).toBe(readsBefore);
     reads.mockRestore();
     asked.mockRestore();
@@ -3589,9 +3591,9 @@ describe('a card’s presentation, drawn before it is stored', () => {
   }, 10000);
 });
 
-// ── Extraction settings, on the collection ────────────────────────────────────
+// ── Interpretation settings, on the collection ───────────────────────────────
 
-describe('what a collection extracts', () => {
+describe('what a collection interprets', () => {
   /**
    * The interpretation port's standing-watch half, recording what was registered and removed.
    *
@@ -3666,16 +3668,16 @@ describe('what a collection extracts', () => {
     await vi.waitFor(() => expect(port.watched).toContain(watchId(root)));
 
     // Off, for this collection: stored on it, and the watch removed.
-    await stores.spaces.setAutoExtractFor(root, false);
+    await stores.spaces.setAutoInterpretFor(root, false);
     expect((await stored(handle, root)).autoExtract).toBe(false);
     await vi.waitFor(() => expect(port.removed).toContain(watchId(root)));
-    expect(stores.spaces.autoExtractFor(root)).toBe(false);
+    expect(stores.spaces.autoInterpretFor(root)).toBe(false);
     // The space's default — what the next collection starts with — is untouched.
     expect(stores.spaces.autoInterpret()).toBe(true);
 
     // And back on.
     port.watched.length = 0;
-    await stores.spaces.setAutoExtractFor(root, true);
+    await stores.spaces.setAutoInterpretFor(root, true);
     await vi.waitFor(() => expect(port.watched).toContain(watchId(root)));
   }, 15000);
 
@@ -3719,16 +3721,16 @@ describe('what a collection extracts', () => {
 
     // Wanted, and not registered: what the space can extract is still being read.
     await vi.waitFor(() => expect(release).toBeDefined());
-    expect(stores.spaces.autoExtractFor(root)).toBe(true);
+    expect(stores.spaces.autoInterpretFor(root)).toBe(true);
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(mine()).toEqual([]);
-    expect(stores.shapes.extractionCandidatesLoaded()).toBe(false);
+    expect(stores.shapes.interpretationCandidatesLoaded()).toBe(false);
 
     release!();
     await vi.waitFor(() => expect(mine()).toHaveLength(1));
     // The list as decided once everything was read — the space's class is now a candidate, and this
     // collection's own list (copied from the defaults when it was made) chooses from that.
-    expect(stores.shapes.extractionCandidates()).toContain('Sighting');
+    expect(stores.shapes.interpretationCandidates()).toContain('Sighting');
     const decided = kernel()
       .targets(root)
       .filter((t) => t.selected)
@@ -3739,13 +3741,13 @@ describe('what a collection extracts', () => {
     expect(removed).not.toContain(watchId(root));
 
     // Off still stops it.
-    await stores.spaces.setAutoExtractFor(root, false);
+    await stores.spaces.setAutoInterpretFor(root, false);
     await vi.waitFor(() => expect(removed).toContain(watchId(root)));
   }, 15000);
 
   it('shows a call’s picker the core classes while the space’s own are read, and says the list is not whole yet', async () => {
     // The reader side of the wait above. Only the registrars wait for the whole list: the picker,
-    // its chips and the Extract button read the list as it arrives, so the panel never says there is
+    // its chips and the Interpret button read the list as it arrives, so the panel never says there is
     // nothing to extract for the few round trips before the space's own classes come.
     let release: (() => void) | undefined;
     let hold = false;
@@ -3832,15 +3834,15 @@ describe('what a collection extracts', () => {
     await enterSpace(stores, 'Earlier');
     const root = stores.spaces.root();
     await vi.waitFor(() => expect(release).toBeDefined());
-    expect(stores.spaces.autoExtractFor(root)).toBe(true);
-    expect(stores.shapes.extractionCandidatesLoaded()).toBe(false);
+    expect(stores.spaces.autoInterpretFor(root)).toBe(true);
+    expect(stores.shapes.interpretationCandidatesLoaded()).toBe(false);
 
-    await stores.spaces.setAutoExtractFor(root, false);
+    await stores.spaces.setAutoInterpretFor(root, false);
     await vi.waitFor(() => expect(removed).toContain(watchId(root)));
 
     // And the list arriving afterwards registers nothing: it is off.
     release!();
-    await vi.waitFor(() => expect(stores.shapes.extractionCandidatesLoaded()).toBe(true));
+    await vi.waitFor(() => expect(stores.shapes.interpretationCandidatesLoaded()).toBe(true));
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(registered).not.toContain(watchId(root));
   }, 15000);
@@ -3937,7 +3939,7 @@ describe('what a collection extracts', () => {
     pending[0]();
     await first;
     expect(stores.shapes.shapesLoaded()).toBe(false);
-    expect(stores.shapes.extractionCandidatesLoaded()).toBe(false);
+    expect(stores.shapes.interpretationCandidatesLoaded()).toBe(false);
 
     pending[1]();
     await second;
@@ -3957,17 +3959,17 @@ describe('what a collection extracts', () => {
     await stores.spaces.revokeRole('admin', stores.session.me()?.did ?? '');
     await vi.waitFor(() => expect(stores.spaces.canAdministerCurrentSpace()).toBe(false));
 
-    expect(stores.spaces.canSetExtractionFor(root)).toBe(false);
-    expect(stores.spaces.canSetExtractionFor(call.id)).toBe(true);
+    expect(stores.spaces.canSetInterpretationFor(root)).toBe(false);
+    expect(stores.spaces.canSetInterpretationFor(call.id)).toBe(true);
 
     const refused = vi.spyOn(toastService, 'error');
-    await stores.spaces.setAutoExtractFor(root, false);
+    await stores.spaces.setAutoInterpretFor(root, false);
     expect(refused).toHaveBeenCalled();
     // Refused before anything was written.
     expect((await stored(handle, root)).autoExtract).toBe(true);
 
     // A call is its participants' to decide.
-    await stores.spaces.setAutoExtractFor(call.id, false);
+    await stores.spaces.setAutoInterpretFor(call.id, false);
     expect((await stored(handle, call.id)).autoExtract).toBe(false);
     refused.mockRestore();
   }, 15000);
@@ -4007,8 +4009,8 @@ describe('what a collection extracts', () => {
     });
 
     const saving = Promise.all([
-      stores.spaces.setExtractionTarget('Decision', true),
-      stores.spaces.setExtractionTarget('Task', true),
+      stores.spaces.setInterpretationTarget('Decision', true),
+      stores.spaces.setInterpretationTarget('Task', true),
     ]).then(
       () => ({}),
       (error: unknown) => ({ error }),
@@ -4049,22 +4051,30 @@ describe('what a collection extracts', () => {
     // Made the way the host makes a new feed: the space's defaults as they stand, copied in.
     const before = await CollectionBlock.create(
       handle,
-      withExtractionDefaults('CollectionBlock', { kind: 'call', mode: 'feed' }, stores.spaces.currentSpace()) as never,
+      withInterpretationDefaults(
+        'CollectionBlock',
+        { kind: 'call', mode: 'feed' },
+        stores.spaces.currentSpace(),
+      ) as never,
     );
     await vi.waitFor(() => expect(looksFor(k, before.id, 'TaskBlock')).toBe(true));
 
     // The community changes its defaults.
     await stores.spaces.setAutoInterpret(false);
-    await stores.spaces.setExtractionTarget('TaskBlock', false);
+    await stores.spaces.setInterpretationTarget('TaskBlock', false);
     await vi.waitFor(() => expect(stores.spaces.currentSpace()?.autoInterpret).toBe(false));
 
     const after = await CollectionBlock.create(
       handle,
-      withExtractionDefaults('CollectionBlock', { kind: 'call', mode: 'feed' }, stores.spaces.currentSpace()) as never,
+      withInterpretationDefaults(
+        'CollectionBlock',
+        { kind: 'call', mode: 'feed' },
+        stores.spaces.currentSpace(),
+      ) as never,
     );
 
-    await vi.waitFor(() => expect(stores.spaces.autoExtractFor(before.id)).toBe(true));
-    await vi.waitFor(() => expect(stores.spaces.autoExtractFor(after.id)).toBe(false));
+    await vi.waitFor(() => expect(stores.spaces.autoInterpretFor(before.id)).toBe(true));
+    await vi.waitFor(() => expect(stores.spaces.autoInterpretFor(after.id)).toBe(false));
     // The one already made keeps what it started with; the new one starts with the new list.
     await vi.waitFor(() => expect(looksFor(k, after.id, 'TaskBlock')).toBe(false));
     expect(looksFor(k, before.id, 'TaskBlock')).toBe(true);
@@ -4078,7 +4088,7 @@ describe('what a collection extracts', () => {
     const make = () =>
       CollectionBlock.create(
         handle,
-        withExtractionDefaults(
+        withInterpretationDefaults(
           'CollectionBlock',
           { kind: 'call', mode: 'feed' },
           stores.spaces.currentSpace(),
@@ -4095,16 +4105,16 @@ describe('what a collection extracts', () => {
       expect(interpretation.targets(a.id).find((t) => t.entity === 'TaskBlock')?.selected).toBe(false),
     );
     expect(interpretation.targets(b.id).find((t) => t.entity === 'TaskBlock')?.selected).toBe(true);
-    expect(stores.spaces.extractionTargets()).toContain('TaskBlock');
+    expect(stores.spaces.interpretationTargets()).toContain('TaskBlock');
 
     // The switch: call A off. Its watch is refused from then on; call B's is still registered.
     await interpretation.setAuto(a.id, false);
-    await vi.waitFor(() => expect(stores.spaces.autoExtractFor(a.id)).toBe(false));
-    await expect(interpretation.watchCollection(a.id)).rejects.toThrow('automatic extraction is off');
+    await vi.waitFor(() => expect(stores.spaces.autoInterpretFor(a.id)).toBe(false));
+    await expect(interpretation.watchCollection(a.id)).rejects.toThrow('automatic interpretation is off');
     await interpretation.watchCollection(b.id);
     expect(port.watched).toContain(watchId(b.id));
     expect(port.watched).not.toContain(watchId(a.id));
-    expect(stores.spaces.autoExtractFor(b.id)).toBe(true);
+    expect(stores.spaces.autoInterpretFor(b.id)).toBe(true);
   }, 15000);
 
   /*
@@ -4130,7 +4140,7 @@ describe('what a collection extracts', () => {
     // Elsewhere's answers differ on both counts — off for the space, events for the list.
     await enterSpace(stores, 'Elsewhere');
     await stores.spaces.setAutoInterpret(false);
-    await stores.spaces.setExtractionTarget('TaskBlock', false);
+    await stores.spaces.setInterpretationTarget('TaskBlock', false);
     provideModuleHostServices({
       datasetByUri: (uri) => stores.datasets.datasets().find((d) => d.id === uri || d.sharedUri === uri)?.handle,
     });
@@ -4165,14 +4175,14 @@ describe('what a collection extracts', () => {
       is the bug. From then on the live gate answers for Elsewhere: on, where Here's call is off.
       A gate that reads the live answers registers this watch instead of refusing it.
     */
-    await vi.waitFor(() => expect(stores.spaces.autoExtractFor(call.id)).toBe(true));
+    await vi.waitFor(() => expect(stores.spaces.autoInterpretFor(call.id)).toBe(true));
 
-    await expect(kernel().watchCollection(call.id, { dataset: a })).rejects.toThrow('automatic extraction is off');
+    await expect(kernel().watchCollection(call.id, { dataset: a })).rejects.toThrow('automatic interpretation is off');
     expect(port.registrations.some((r) => r.watchId === watchId(call.id))).toBe(false);
   }, 15000);
 
   /*
-    A call whose record cannot be read has said nothing about automatic extraction, which is not the
+    A call whose record cannot be read has said nothing about automatic interpretation, which is not the
     same as saying nothing *yet to override*: the space's default must not start a watch the call's
     own stored switch may turn out to forbid, and nothing re-registers it when the record arrives.
   */
@@ -4190,7 +4200,7 @@ describe('what a collection extracts', () => {
     });
 
     await expect(kernel().watchCollection('call-not-yet-synced', { dataset: a })).rejects.toThrow(
-      'automatic extraction is off',
+      'automatic interpretation is off',
     );
     expect(port.registrations.some((r) => r.watchId === watchId('call-not-yet-synced'))).toBe(false);
   }, 15000);
@@ -4352,7 +4362,7 @@ describe('what a collection extracts', () => {
       datasetByUri: (uri) => stores.datasets.datasets().find((d) => d.id === uri || d.sharedUri === uri)?.handle,
     });
 
-    await expect(kernel().watchCollection(call.id, { dataset: a })).rejects.toThrow('automatic extraction is off');
+    await expect(kernel().watchCollection(call.id, { dataset: a })).rejects.toThrow('automatic interpretation is off');
     expect(port.registrations.some((r) => r.watchId === watchId(call.id))).toBe(false);
   }, 15000);
 
@@ -4464,7 +4474,7 @@ describe('what a collection extracts', () => {
 
     // Elsewhere starts calls on events; the pass that follows must still ask for Here's tasks.
     await enterSpace(stores, 'Elsewhere');
-    await stores.spaces.setExtractionTarget('TaskBlock', false);
+    await stores.spaces.setInterpretationTarget('TaskBlock', false);
     const b = stores.datasets.currentDataset()!.id;
     await stores.spaces.navigateToSpace(a);
     await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(a));
@@ -4552,13 +4562,13 @@ describe('what a collection extracts', () => {
       // Elsewhere answers every one of the exported fields differently.
       await enterSpace(stores, 'Moved to');
       await stores.spaces.setAutoInterpret(false);
-      await stores.spaces.setExtractionTarget('TaskBlock', false);
+      await stores.spaces.setInterpretationTarget('TaskBlock', false);
       const b = stores.datasets.currentDataset()!.id;
       await stores.spaces.navigateToSpace(a);
       await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(a));
 
       // Started in Here; held in the gather while the screen moves to Elsewhere.
-      const exporting = stores.spaces.exportExtractionLog(call.id);
+      const exporting = stores.spaces.exportInterpretationLog(call.id);
       await vi.waitFor(() => expect(proposalsAsked).toBe(true));
       await stores.spaces.navigateToSpace(b);
       await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(b));
@@ -4574,7 +4584,7 @@ describe('what a collection extracts', () => {
     expect(log).toContain('- Looking for, on this call: TaskBlock\n');
     // Candidate order, the way the picker's list reads — the export resolves by the same rule.
     expect(log).toContain('- Space default: EventBlock, TaskBlock');
-    expect(log).toContain('- Extracts automatically as the call happens: yes');
+    expect(log).toContain('- Interprets automatically as the call happens: yes');
   }, 15000);
 
   /*
@@ -4659,7 +4669,7 @@ describe('what a collection extracts', () => {
       await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(a));
 
       holding = true;
-      const exporting = stores.spaces.exportExtractionLog(call.id);
+      const exporting = stores.spaces.exportInterpretationLog(call.id);
       // The settings read is still out — and the picker is already open, inside the click's window.
       await vi.waitFor(() => expect(metaRead).toBe(true));
       expect(pickerCalls).toHaveLength(1);
@@ -4708,10 +4718,10 @@ describe('what a collection extracts', () => {
         return findAll(handle, q as never);
       });
 
-      await stores.spaces.exportExtractionLog(call.id);
+      await stores.spaces.exportInterpretationLog(call.id);
       // The settings read is still out, and the answer is already given.
       expect(metaRead).toBe(true);
-      expect(warned).toHaveBeenCalledWith('No extraction has run on this call yet.');
+      expect(warned).toHaveBeenCalledWith('No interpretation has run on this call yet.');
       release();
     } finally {
       release();
@@ -4739,7 +4749,7 @@ describe('what a collection extracts', () => {
       },
     };
     expect(await stores.shapes.addRecordTypes('test', [{ name: 'Sighting', manifest }])).toEqual([]);
-    await vi.waitFor(() => expect(stores.shapes.extractionCandidates()).toContain('Sighting'));
+    await vi.waitFor(() => expect(stores.shapes.interpretationCandidates()).toContain('Sighting'));
     const call = await CollectionBlock.create(handleA, {
       kind: 'call',
       mode: 'feed',
@@ -4747,7 +4757,7 @@ describe('what a collection extracts', () => {
       extractionTargets: '["Sighting"]',
     } as never);
     await enterSpace(stores, 'Elsewhere');
-    expect(stores.shapes.extractionCandidates()).not.toContain('Sighting');
+    expect(stores.shapes.interpretationCandidates()).not.toContain('Sighting');
     provideModuleHostServices({
       datasetByUri: (uri) => stores.datasets.datasets().find((d) => d.id === uri || d.sharedUri === uri)?.handle,
     });
@@ -4769,7 +4779,7 @@ describe('what a collection extracts', () => {
       await stores.spaces.navigateToSpace(a);
       await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(a));
       await vi.waitFor(() => expect(holdNext).toBe(false));
-      expect(stores.shapes.extractionCandidatesLoaded()).toBe(false);
+      expect(stores.shapes.interpretationCandidatesLoaded()).toBe(false);
 
       await kernel().watchCollection(call.id, { dataset: a });
       expect(port.registrations.find((r) => r.watchId === watchId(call.id))?.classes).toEqual(['Sighting']);
@@ -4784,7 +4794,7 @@ describe('what a collection extracts', () => {
     only the switch registers, and an off-screen ask must not. A call extracting into one is
     resolved by the executor from the class's own shape, so the read must keep it.
   */
-  it('keeps an installed foreign class a call extracts into when its space is off screen', async () => {
+  it('keeps an installed foreign class a call interprets into when its space is off screen', async () => {
     const port = watchPort();
     const withWatch = onPorts!;
     onPorts = (ports) => {
@@ -4861,7 +4871,7 @@ describe('what a collection extracts', () => {
         if (q?.properties) throw new Error('settings unreadable');
         return findAll(handle, q as never);
       });
-      await stores.spaces.exportExtractionLog(call.id);
+      await stores.spaces.exportInterpretationLog(call.id);
     } finally {
       settingsReads?.mockRestore();
       delete (globalThis as { showSaveFilePicker?: unknown }).showSaveFilePicker;
@@ -4898,7 +4908,7 @@ describe('what a collection extracts', () => {
     expect(await stores.shapes.addRecordTypes('test', [{ name: 'Ledger', manifest }])).toEqual([]);
     await vi.waitFor(() => expect(stores.shapes.spaceShapes().map((s) => s.name)).toContain('Ledger'));
     // Not a candidate on screen either — the call's stored list is the thing out of step.
-    expect(stores.shapes.extractionCandidates()).not.toContain('Ledger');
+    expect(stores.shapes.interpretationCandidates()).not.toContain('Ledger');
     const call = await CollectionBlock.create(handleA, {
       kind: 'call',
       mode: 'feed',
@@ -4949,7 +4959,7 @@ describe('what a collection extracts', () => {
     const registering = vi.spyOn(schemas, 'foreignSchemas');
     const reading = vi.spyOn(schemas, 'foreignEntries');
 
-    const { candidates } = await stores.shapes.extractionCandidatesFor(handleA);
+    const { candidates } = await stores.shapes.interpretationCandidatesFor(handleA);
     expect(candidates).toContain('Sighting');
     // The read answered, and nothing was registered for it: the dataset's registry still holds
     // the class its shape compiled to.
@@ -4977,10 +4987,10 @@ describe('what a collection extracts', () => {
     await enterSpace(stores, 'Elsewhere');
 
     const schemas = stores.session.backendPorts()!.schemas;
-    expect((await stores.shapes.extractionCandidatesFor(handleA)).candidates).toContain('Sighting');
+    expect((await stores.shapes.interpretationCandidatesFor(handleA)).candidates).toContain('Sighting');
     const core = vi.spyOn(schemas, 'hasCoreSchema').mockResolvedValue(false);
     try {
-      expect((await stores.shapes.extractionCandidatesFor(handleA)).candidates).not.toContain('Sighting');
+      expect((await stores.shapes.interpretationCandidatesFor(handleA)).candidates).not.toContain('Sighting');
     } finally {
       core.mockRestore();
     }
@@ -5014,7 +5024,7 @@ describe('what a collection extracts', () => {
       { name: 'Heron', manifest },
     ] as never);
     try {
-      const { candidates } = await stores.shapes.extractionCandidatesFor(handleA);
+      const { candidates } = await stores.shapes.interpretationCandidatesFor(handleA);
       expect(candidates).not.toContain('Sighting');
       expect(candidates).toContain('Heron');
     } finally {
@@ -5045,7 +5055,7 @@ describe('what a collection extracts', () => {
       },
     };
     expect(await stores.shapes.addRecordTypes('test', [{ name: 'Sighting', manifest }])).toEqual([]);
-    await vi.waitFor(() => expect(stores.shapes.extractionCandidates()).toContain('Sighting'));
+    await vi.waitFor(() => expect(stores.shapes.interpretationCandidates()).toContain('Sighting'));
     const call = await CollectionBlock.create(handleA, {
       kind: 'call',
       mode: 'feed',
@@ -5097,7 +5107,7 @@ describe('what a collection extracts', () => {
     });
     try {
       await stores.datasets.switchDataset(a);
-      await vi.waitFor(() => expect(stores.shapes.extractionCandidatesLoaded()).toBe(true));
+      await vi.waitFor(() => expect(stores.shapes.interpretationCandidatesLoaded()).toBe(true));
       expect(stores.spaces.currentSpace()?.uuid).not.toBe(a);
       provideModuleHostServices({
         datasetByUri: (uri) => stores.datasets.datasets().find((d) => d.id === uri || d.sharedUri === uri)?.handle,
@@ -5113,8 +5123,8 @@ describe('what a collection extracts', () => {
         .datasets()
         .find((d) => d.id !== a && !stores.datasets.systemDatasetUuids().includes(d.id))!;
       await stores.datasets.switchDataset(from.id);
-      await vi.waitFor(() => expect(stores.shapes.extractionCandidatesLoaded()).toBe(true));
-      expect(stores.shapes.extractionCandidates()).not.toContain('Sighting');
+      await vi.waitFor(() => expect(stores.shapes.interpretationCandidatesLoaded()).toBe(true));
+      expect(stores.shapes.interpretationCandidates()).not.toContain('Sighting');
 
       releaseSpace();
       await starting;

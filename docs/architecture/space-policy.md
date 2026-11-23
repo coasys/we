@@ -99,7 +99,7 @@ joiner never writes one. Two first versions would compete, and an unsynced joine
 one already exists. Admins choose `community` in People.
 
 `community` is not the default yet because some shared work is edited by members who did not make
-it, and `community` keeps editing to a record's author and the space's admins. A call's extraction
+it, and `community` keeps editing to a record's author and the space's admins. A call's interpretation
 switch, a transcript line from another participant's device, a suggested change to somebody else's
 record, and a board's columns are each refused to such a member there. Which of those count as shared
 work any member may edit, as a task card's state and the canvas already do, is the decision before it

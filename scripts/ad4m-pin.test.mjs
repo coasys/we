@@ -10,7 +10,16 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { lockfileSnapshots, PACKAGES, parsePin, PinError, snapshotUrl, withIntegrity } from './ad4m-pin.mjs';
+import {
+  custodyCommit,
+  executorCommit,
+  lockfileSnapshots,
+  PACKAGES,
+  parsePin,
+  PinError,
+  snapshotUrl,
+  withIntegrity,
+} from './ad4m-pin.mjs';
 
 const SHA = 'ee40d1143a72650039e6e847810f6e795320e58c';
 const OTHER = '2343daaeac8d62f1e8ad7e975a77c85c281c2876';
@@ -113,5 +122,90 @@ describe('integrity in the lockfile', () => {
 
   it('leaves a tarball it has no integrity for alone', () => {
     assert.equal(withIntegrity(lockfile, { [sdk]: 'sha512-core' }).includes(`{tarball: ${connect}}`), true);
+  });
+});
+
+describe('the commit the custody crate builds against', () => {
+  const dep = (name, rev) => `${name} = { git = "https://github.com/coasys/ad4m", rev = "${rev}" }`;
+
+  it('is the rev its ad4m dependencies share', () => {
+    assert.equal(custodyCommit([dep('ad4m-identity-client', SHA), dep('ad4m-identity-core', SHA)].join('\n')), SHA);
+  });
+
+  it('is unknown when the revs disagree', () => {
+    assert.equal(
+      custodyCommit([dep('ad4m-identity-client', SHA), dep('ad4m-identity-core', OTHER)].join('\n')),
+      undefined,
+    );
+  });
+
+  it('is unknown with no ad4m dependency', () => {
+    assert.equal(custodyCommit('serde = "1"'), undefined);
+  });
+});
+
+describe('the commit whose executor runs', () => {
+  const version = { kind: 'version', version: '0.13.1-staging.18' };
+  const realFetch = globalThis.fetch;
+  const npm = (respond) => {
+    globalThis.fetch = async () => respond();
+  };
+  const restore = () => {
+    globalThis.fetch = realFetch;
+  };
+
+  it("is a snapshot's commit, without asking npm", async () => {
+    npm(() => assert.fail('asked npm'));
+    try {
+      assert.equal(await executorCommit({ kind: 'snapshot', commit: SHA }, () => OTHER), SHA);
+    } finally {
+      restore();
+    }
+  });
+
+  it("is a version's npm gitHead when npm answers", async () => {
+    npm(() => new Response(JSON.stringify({ gitHead: SHA })));
+    try {
+      assert.equal(await executorCommit(version, () => OTHER), SHA);
+    } finally {
+      restore();
+    }
+  });
+
+  it('is the custody commit when npm is out of reach', async () => {
+    npm(() => {
+      throw new TypeError('fetch failed');
+    });
+    try {
+      assert.equal(await executorCommit(version, () => SHA), SHA);
+    } finally {
+      restore();
+    }
+  });
+
+  it('fails when npm is out of reach and the custody crate names no commit', async () => {
+    npm(() => {
+      throw new TypeError('fetch failed');
+    });
+    try {
+      await assert.rejects(
+        executorCommit(version, () => undefined),
+        TypeError,
+      );
+    } finally {
+      restore();
+    }
+  });
+
+  it('fails, not falls back, when npm does not know the version', async () => {
+    npm(() => new Response('', { status: 404 }));
+    try {
+      await assert.rejects(
+        executorCommit(version, () => SHA),
+        PinError,
+      );
+    } finally {
+      restore();
+    }
   });
 });

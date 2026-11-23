@@ -541,7 +541,7 @@ export function createFeed(deps: FeedDeps) {
     }),
     feedRows: state(
       drawnRows,
-      "The Feed's window: every message in the space and a row per group of things extracted or made, merged by time — newest first while following the live end, oldest first from the start. A message sent from here is in it at once, with `sending` true until a read has it. A row is { kind: 'line', id, at, author, text, marks, source, call, callTitle, replyTo, sending } or { kind: 'activity', id, at, author, origin, originTitle, summary, items, suggested }.",
+      "The Feed's window: every message in the space and a row per group of things interpretation found or somebody made, merged by time — newest first while following the live end, oldest first from the start. A message sent from here is in it at once, with `sending` true until a read has it. A row is { kind: 'line', id, at, author, text, marks, source, call, callTitle, replyTo, sending } or { kind: 'activity', id, at, author, origin, originTitle, summary, items, suggested }.",
     ),
     feedHasMore: state(hasMore, 'Whether there is more of the space beyond the Feed’s window.'),
     feedLoaded: state(loaded, 'Whether the Feed has answered for this space yet.'),

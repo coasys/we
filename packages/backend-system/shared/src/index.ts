@@ -75,7 +75,7 @@ export type { TraceSink } from './trace';
 export {
   blockableEntities,
   CONTAINMENT_PREDICATE,
-  extractableEntities,
+  interpretableEntities,
   getEntity,
   getProperty,
   getRelation,
