@@ -13,6 +13,12 @@ describe('a message line', () => {
     expect(feed).toContain('"$invoke":"modules.feed.startReply"');
     expect(feed).not.toContain('modules.transcribe');
   });
+
+  it('dims a line that was sent and has not been read back', () => {
+    const node = messageLine({ as: 'row', actions: 'modules.feed', surface: 'feed', relative: false });
+    const column = (node.children as { props: Record<string, unknown> }[])[0];
+    expect(column.props.opacity).toEqual({ $: 'row.sending ? 0.6 : 1' });
+  });
 });
 
 describe('how a line arrived', () => {

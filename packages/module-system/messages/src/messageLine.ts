@@ -21,7 +21,7 @@
  *
  * What it reads off a line: `id`, `author`, `text`, `marks` (as `content`), `source`, `createdAt`,
  * `updatedAt` and `replyTo` — the shape `threadLines` gives a transcript's rows, and the Feed's
- * lines carry the same.
+ * lines carry the same — and `sending`, which dims a line sent and not yet read back.
  */
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
@@ -59,6 +59,8 @@ export function messageLine(opts: {
                       nowhere else.
                     */
           gap: '100',
+          // A line sent and not yet read back, dimmed as the Feed dims what is still a suggestion.
+          opacity: { $: `${as}.sending ? 0.6 : 1` },
           /*
                       The row knows whether the pointer is on it, so its pencil can keep out of the
                       way until it is wanted.
