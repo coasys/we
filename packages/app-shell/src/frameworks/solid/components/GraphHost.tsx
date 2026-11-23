@@ -605,7 +605,7 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
      * when the result differs** — so a one-row probe over a type is silent for every change
      * that leaves its single row alone. A space with one task in it already: extract a second, and
      * the probe's answer is the same first row, so nothing fires and the board stays as loaded.
-     * The extraction panel beside it updated, because its `$query` subscribes to its own narrower
+     * The interpretation panel beside it updated, because its `$query` subscribes to its own narrower
      * question and that question's answer really had changed — which is what made this look like a
      * board bug rather than a notification one.
      *

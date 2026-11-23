@@ -1,5 +1,5 @@
 /**
- * The extraction readout, contributed under the call bar.
+ * The interpretation readout, contributed under the call bar.
  *
  * ## Why a bar and not a popup
  *
@@ -62,7 +62,7 @@ export const CARET_SIZE = 'xs';
  *
  * Three outcomes, three colours, and the middle one is the point: `done` is green because something
  * was accomplished, `failed` is red because something broke, and `skipped` stays muted because "the
- * conversation had nothing extractable in it" is an ordinary answer and colouring it would make a
+ * conversation had nothing interpretable in it" is an ordinary answer and colouring it would make a
  * quiet meeting look like a problem.
  */
 const phaseIcon: SchemaNode = {
@@ -483,7 +483,7 @@ const runningList: SchemaNode = {
 };
 
 /*
-  The settled half of this feed is gone, and the "N extractions processed" fold with it.
+  The settled half of this feed is gone, and the "N interpretations processed" fold with it.
 
   It collapsed every finished pass behind a count so the bar stayed the size of what was happening
   now — the right shape while this was the only place a finished pass was reported. It stopped being
@@ -494,13 +494,13 @@ const runningList: SchemaNode = {
   The durable one wins on every count. It survives a reload, it is scoped to the call by containment
   rather than to whatever this session happened to observe, and it carries the outcome, the trigger
   and the stored exchange. What this feed keeps is the half the log cannot give: a pass while it is
-  still running. See `extractionHistory` in Panel.schema.ts.
+  still running. See `interpretationHistory` in Panel.schema.ts.
 */
 
 /**
  * The disclosures a pass carries, and the state that opens them.
  *
- * Split out from the chrome node it used to live in — see {@link extractionActivity} below.
+ * Split out from the chrome node it used to live in — see {@link interpretationActivity} below.
  */
 const activityLocalState = {
   /**
@@ -553,13 +553,13 @@ const activityLocalState = {
  *
  * The original argument for the chrome — that a pass outlives the panel that started it, and that
  * the four people who did *not* start it are the ones most likely to want the readout — is now
- * answered by the module rail: the Extraction launcher declares `busyWhen`, so it spins while any
+ * answered by the module rail: the Interpretation launcher declares `busyWhen`, so it spins while any
  * peer's pass runs, for everybody, without the panel open. The square this module used to add to
- * the call bar for the same purpose doubled as the switch for automatic extraction — a group
+ * the call bar for the same purpose doubled as the switch for automatic interpretation — a group
  * decision, beside a personal one that looked identical — and the bar only exists during a call,
  * which is the one time nobody needs to be told to open the panel.
  */
-export const extractionActivity: SchemaNode = {
+export const interpretationActivity: SchemaNode = {
   type: '$if',
   /*
     The live feed, and so only about the call this agent is in.
@@ -570,7 +570,7 @@ export const extractionActivity: SchemaNode = {
     they were about different conversations.
 
     What a *past* call did is a different question with a different answer: extraction `ModelRun` records,
-    which are written down and hang off the collection. See `extractionHistory`.
+    which are written down and hang off the collection. See `interpretationHistory`.
   */
   props: {
     /*

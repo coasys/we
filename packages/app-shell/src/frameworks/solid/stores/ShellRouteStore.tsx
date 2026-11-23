@@ -101,7 +101,8 @@ export function ShellRouteStoreProvider(props: ParentProps) {
    * against the browser's would put an overlay link under whatever page is behind the overlay.
    */
   function navigate(to: string, options?: NavigateOptions) {
-    const { query, base, ...routerOptions } = options ?? {};
+    // `fresh` is already how this one works: the overlay remembers no query to put back.
+    const { query, base, fresh: _fresh, ...routerOptions } = options ?? {};
     const resolved = resolveNavigation(to, currentPath(), 0, base);
     const written = query && typeof query === 'object' ? queryString(query) : '';
     go(

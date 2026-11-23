@@ -5,7 +5,7 @@
  * The rule being kept is that the drop writes the model's own field and nothing else: a to-one
  * pointer on the child where it owns one, a list on the parent where it holds one, and through the
  * named forward property where the relation is derived (`belongsTo`). No `Relationship` record is
- * touched — an extracted call's structure is the fields the extraction wrote, and rearranging it
+ * touched — an interpreted call's structure is the fields the extraction wrote, and rearranging it
  * must read back the same way.
  */
 import { render } from '@solidjs/testing-library';
@@ -338,7 +338,7 @@ vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
   useSessionStore: () => ({ me: () => ({ did: 'did:key:z6Mk' }) }),
 }));
 vi.mock('../src/frameworks/solid/stores/ShapeStore', () => ({
-  useShapeStore: () => ({ spaceShapes: () => [], extractionCandidates: () => [] }),
+  useShapeStore: () => ({ spaceShapes: () => [], interpretationCandidates: () => [] }),
   BLOCK_ICONS: {},
 }));
 
@@ -729,7 +729,7 @@ describe('a tree drop on a model relation', () => {
   });
 
   it('writes no rank at a sibling the seed pulled in rather than anybody placed', async () => {
-    // The usual case for extracted items: pos1 hangs under t2 by its field and has no placement.
+    // The usual case for interpreted items: pos1 hangs under t2 by its field and has no placement.
     world.rows.delete('row-pos1');
     const error = vi.spyOn(toastService, 'error');
     const store = mount();

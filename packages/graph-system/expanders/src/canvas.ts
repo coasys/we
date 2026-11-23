@@ -137,7 +137,7 @@ export interface CanvasSeedOptions {
    *
    * ## Children nobody placed
    *
-   * Extracted items often never get a `Placement` — the records a call's extraction wrote point at
+   * Extracted items often never get a `Placement` — the records a call's interpretation wrote point at
    * one that was placed, but sit in the space rather than on the canvas. With `children` on (the
    * default), every drawn card is also asked "what points at you", the answers are drawn as unplaced
    * cards — the layout positions them — and the walk repeats down the tree until it stops producing
@@ -645,7 +645,7 @@ export function canvasSeed(): SeedSource {
         ...new Set(
           (options.contains ?? DEFAULT_CONTAINS).filter(
             // Never the entity drawn as lines: a connection is not also a card. The workshop passes the
-            // call's extraction targets here, and a call can extract connections as well as things.
+            // call's interpretation targets here, and a call can extract connections as well as things.
             (entity) =>
               entity !== options.connections &&
               entity !== placementEntity &&
@@ -788,7 +788,7 @@ export function canvasSeed(): SeedSource {
        * Filled as the cards are made rather than from the placements, so it holds exactly what is
        * drawn: the tray as well as the board, and less anything hidden or no longer there. The tray
        * counts because it is on the canvas — a row of cards somebody can see and drag — and it is
-       * where everything a call extracts lands. Counting only placed cards meant a connection the
+       * where everything a call interprets lands. Counting only placed cards meant a connection the
        * extraction drew between two of them was never drawn at all, in either reading of the canvas.
        */
       const onCanvas = new Set<string>();
@@ -800,7 +800,7 @@ export function canvasSeed(): SeedSource {
       /*
         The type of the card actually drawn wins over the one the connection stored. Both ends are
         known to be on the canvas by the time this is asked, so the drawn type is always there — and
-        it is a fact, where the stored one is a claim: a connection an extraction pass wrote carries
+        it is a fact, where the stored one is a claim: a connection an interpretation pass wrote carries
         whatever class name the model spelled, and a misspelt one addressed a node that does not
         exist, so the line was silently dropped.
       */
@@ -1111,7 +1111,7 @@ export function canvasSeed(): SeedSource {
           if (!source || !target || !onCanvas.has(source) || !onCanvas.has(target)) continue;
           /*
             A connection from a card to itself is left off. A canvas has nothing sensible to draw for
-            it, and it is not a claim anybody makes by hand: an extraction pass writes one when dedup
+            it, and it is not a claim anybody makes by hand: an interpretation pass writes one when dedup
             resolves both ends of a "this leads to that" to the same record. Drawn, it was a line
             looping back into its own card.
           */

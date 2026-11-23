@@ -4,7 +4,7 @@
  * The executor knows a model only as a model on an endpoint (a model server it reaches over HTTP),
  * and runs none itself. So the suite names two servers:
  *
- * - **The language model** (extraction). Stub tier: the stub server (`stub-llm.mjs`). Real tier:
+ * - **The language model** (interpretation). Stub tier: the stub server (`stub-llm.mjs`). Real tier:
  *   `COASYS_SPACES_LLM_BASE_URL` and `COASYS_SPACES_LLM_MODEL`.
  * - **The speech-to-text model** (the call's transcript). Real tier only: the stub tier types its
  *   lines into the call (`call.mjs`) and registers no transcription model. In the real tier,

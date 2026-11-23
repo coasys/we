@@ -564,7 +564,7 @@ function endName(end: string, type: string): string {
  * The type of the record at one end: the one stored on the connection, else the one the end reports.
  *
  * Stored first because a writer that recorded it meant it — see `reifiedEdgeFrom`. The fallback is
- * for connections an extraction pass wrote without `sourceType`/`targetType`: the end then arrives
+ * for connections an interpretation pass wrote without `sourceType`/`targetType`: the end then arrives
  * hydrated and classified, carrying `__subjectClass`, which is the key the executor writes and the
  * graph reads (`NODE_TYPE_KEY`). Its value is the entity name: the backend maps the class it read the
  * record as (an IRI on AD4M) back to the name before a template sees it.
@@ -1063,7 +1063,7 @@ const MODEL_MADE =
  * somebody — and on whose node, and when.
  *
  * Straight under the title and the description, and not the last line of People: it is about the
- * record, not about who is on it, and on a card it lives on the extracted mark for the same reason.
+ * record, not about who is on it, and on a card it lives on the interpreted mark for the same reason.
  * Near the top because it is the context the rest of the panel is read in. A line joining two cards
  * has no origin worth a sentence, so it is not asked.
  */
@@ -1119,7 +1119,7 @@ const originLine: SchemaNode = {
                   children: [
                     {
                       $:
-                        `row.extractedFrom || row.id in first(local.inspectedCall).extracted ? \`Extracted from the conversation · run by \${author.name} · \` : ` +
+                        `row.extractedFrom || row.id in first(local.inspectedCall).extracted ? \`Interpreted from the conversation · run by \${author.name} · \` : ` +
                         `generatedRun({ record: row }) ? \`Written by AI · run by \${author.name} · \` : ` +
                         "`Added by ${author.did == me.did ? 'you' : author.name} · `",
                     },
@@ -1357,7 +1357,7 @@ export function inspectorPanel(opts: InspectorPanelOptions = {}): SchemaNode {
 
       A preference rather than view state: somebody who works from Connections and never opens
       Discussion should find it that way tomorrow, and a link they send should not impose their
-      folding on the person who opens it. The extraction panel keeps its sections the same way.
+      folding on the person who opens it. The interpretation panel keeps its sections the same way.
 
       Per panel rather than per record, which is the same decision: it is a way of working, not a
       fact about the card.
@@ -1647,7 +1647,7 @@ export function inspectorPanel(opts: InspectorPanelOptions = {}): SchemaNode {
                   {
                     type: 'Column',
                     /*
-                    The gap the extraction panel sets its sections apart with, and no rules between
+                    The gap the interpretation panel sets its sections apart with, and no rules between
                     them.
 
                     Each section drew a line above itself, which was the separation when a heading
@@ -1733,7 +1733,7 @@ export function inspectorPanel(opts: InspectorPanelOptions = {}): SchemaNode {
                               {
                                 type: 'we-text',
                                 props: { fontSize: '200', color: 'text-muted', flex: '1', minWidth: '0' },
-                                children: ['Extraction proposed this — pending acceptance.'],
+                                children: ['Interpretation proposed this — pending acceptance.'],
                               },
                               answerButton({
                                 tone: 'success',

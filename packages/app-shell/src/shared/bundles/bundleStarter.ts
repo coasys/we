@@ -17,7 +17,7 @@ export interface StarterFacts {
   /** The app in use — its `source` says which bundle it came in, if any. */
   app: Pick<TemplateSchema, 'source'> | undefined;
   /** The bundles the seed builds in. */
-  builtIn: readonly Pick<BundlePieces, 'bundleId' | 'name' | 'brand' | 'starters'>[];
+  builtIn: readonly Pick<BundlePieces, 'bundleId' | 'name' | 'brand' | 'starters' | 'recordTypes' | 'workflows'>[];
   /** The seed's own starters. */
   seed: readonly SpaceStarter[] | undefined;
 }
@@ -37,6 +37,8 @@ export interface StarterChoice {
   starter: SpaceStarter | undefined;
   /** The app it came with, by name — absent for the deployment's own and for none. */
   app?: string;
+  /** The built-in bundle it came with, whose record types and workflows a space made from it gets. */
+  bundleId?: string;
 }
 
 /**
@@ -48,19 +50,22 @@ export function spaceStarterChoices(facts: StarterFacts): StarterChoice[] {
   const bundleId = facts.app?.source?.bundle;
   const bundle = bundleId ? facts.builtIn.find((pieces) => pieces.bundleId === bundleId) : undefined;
   const app = bundle && (bundle.brand?.name ?? bundle.name);
-  const choice = (starter: SpaceStarter, from?: string): StarterChoice => ({
+  const choice = (starter: SpaceStarter, from?: typeof bundle): StarterChoice => ({
     id: starter.id,
     name: starter.name ?? starter.id,
     description: starter.description ?? '',
     icon: starter.icon ?? 'package',
-    includes: starterIncludes(starter),
+    // What the app brings with it is part of what the space starts with, so the line says it too.
+    includes: [starterIncludes(starter), from ? appIncludes(from.recordTypes.length, from.workflows.length) : '']
+      .filter(Boolean)
+      .join(' · '),
     starter,
-    ...(from ? { app: from } : {}),
+    ...(from ? { app: app ?? from.name, bundleId: from.bundleId } : {}),
   });
   // An app's kit takes the deployment's place rather than sitting beside it: the deployment's is an
   // earlier take on the same records, and listed together they differed mostly in their look.
   const kits = bundle?.starters?.length
-    ? bundle.starters.map((starter) => choice(starter, app))
+    ? bundle.starters.map((starter) => choice(starter, bundle))
     : (facts.seed ?? []).map((starter) => choice(starter));
   return [
     ...kits,
@@ -74,6 +79,14 @@ export function spaceStarterChoices(facts: StarterFacts): StarterChoice[] {
       starter: undefined,
     },
   ];
+}
+
+/** The app's record types and workflows, as an includes line counts them. */
+function appIncludes(recordTypes: number, workflows: number): string {
+  const count = (n: number, one: string, many: string) => (n ? `${n} ${n === 1 ? one : many}` : '');
+  return [count(recordTypes, 'record type', 'record types'), count(workflows, 'workflow', 'workflows')]
+    .filter(Boolean)
+    .join(' · ');
 }
 
 /** What a record of each entity is called in an includes line, one and many. */

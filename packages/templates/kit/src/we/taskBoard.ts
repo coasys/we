@@ -276,7 +276,7 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
               condition: { $: pending },
               then: {
                 type: 'we-tooltip',
-                props: { content: 'Extraction proposed this — pending acceptance' },
+                props: { content: 'Interpretation proposed this — pending acceptance' },
                 children: [
                   {
                     type: 'we-badge',
@@ -498,7 +498,7 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
  * A face alone names a person and not why they are there. Each stack has its own hovercard — the
  * assignees' lists who is doing it, the reviewers' who is checking it — rather than one card over
  * both, so what a reader points at is what they are told about. Where the card came from is not here:
- * that is about the card, and is on its extracted mark.
+ * that is about the card, and is on its interpreted mark.
  */
 function cardPeople(as: string, entity: string, edge?: string): SchemaNode {
   const on = ON(as);
@@ -693,7 +693,7 @@ export interface TaskBoardOptions {
   controls?: SchemaNode[];
   /** Shown when there is no work here at all. */
   empty: SchemaNode;
-  /** Whether a card was extracted from a conversation, as an expression over `card` — see {@link TaskCardOptions.extracted}. */
+  /** Whether a card was interpreted from a conversation, as an expression over `card` — see {@link TaskCardOptions.extracted}. */
   extracted?: string;
   /** Each card's fill, as an expression over `card` — see {@link TaskCardOptions.bg}. */
   bg?: SchemaProp;

@@ -2234,7 +2234,7 @@ const coasysCallBar = (live = true): Scenario => {
       shellStore: { collapsedLanes: [] },
       modules: {
         call: { liveCalls: live ? [{ recordId: 'call-1', count: 2 }] : [] },
-        transcribe: { extractionOpen: false },
+        transcribe: { interpretationOpen: false },
       },
       spaceStore: {
         activeModules: ['call', 'transcribe'],

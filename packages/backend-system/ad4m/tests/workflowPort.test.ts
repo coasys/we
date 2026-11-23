@@ -233,6 +233,54 @@ describe('install', () => {
   });
 });
 
+describe('installing beside a flow of the same name written another way', () => {
+  /** As the Coasys spaces hold the flow installed into them by hand, before WE carried it. */
+  const handInstalled = (name = 'Tasks', register = true) => [
+    { source: 'conv://TasksFlow', predicate: 'rdf://type', target: 'ad4m://Flow' },
+    { source: 'conv://TasksFlow', predicate: 'ad4m://flowName', target: `literal:string:${name}` },
+    { source: 'conv://TasksFlow', predicate: 'ad4m://hasState', target: 'conv://Tasks.todo' },
+    { source: 'conv://Tasks.todo', predicate: 'ad4m://stateName', target: 'literal:string:todo' },
+    ...(register
+      ? [
+          { source: 'ad4m://self', predicate: 'ad4m://has_flow', target: `literal:string:${name}` },
+          { source: `literal:string:${name}`, predicate: 'ad4m://flow_uri', target: 'conv://TasksFlow' },
+        ]
+      : []),
+  ];
+
+  it('is refused, naming the flow already there, and writes nothing', async () => {
+    const fake = fakePerspective(handInstalled());
+    await expect(createAd4mWorkflowPort().install(fake.perspective as never, FLOW)).rejects.toThrow(
+      /already has a workflow named "Tasks".*conv:\/\/TasksFlow/,
+    );
+    expect(fake.added).toEqual([]);
+    expect(fake.removed).toEqual([]);
+  });
+
+  it('is refused when only the flow’s own name says it, with no entry in the register', async () => {
+    const fake = fakePerspective(handInstalled('Tasks', false));
+    await expect(createAd4mWorkflowPort().install(fake.perspective as never, FLOW)).rejects.toThrow(/already has/);
+  });
+
+  it('still replaces a register entry that points at a URI holding no flow, which is only stale', async () => {
+    const stale = [
+      { source: 'ad4m://self', predicate: 'ad4m://has_flow', target: 'literal:string:Tasks' },
+      { source: 'literal:string:Tasks', predicate: 'ad4m://flow_uri', target: 'old://TasksFlow' },
+    ];
+    const fake = fakePerspective(stale);
+    await createAd4mWorkflowPort().install(fake.perspective as never, FLOW);
+    expect(fake.all().filter((l) => l.predicate === 'ad4m://flow_uri')).toEqual([
+      { source: expect.stringContaining('Tasks'), predicate: 'ad4m://flow_uri', target: 'we://flow/TasksFlow' },
+    ]);
+  });
+
+  it('leaves a flow of another name alone', async () => {
+    const fake = fakePerspective(handInstalled('Other'));
+    await createAd4mWorkflowPort().install(fake.perspective as never, FLOW);
+    expect(fake.removed).toEqual([]);
+  });
+});
+
 describe('moveRefusal', () => {
   it('reads "not reachable from where you asked to go" as already there', () => {
     // The board showed Done; a rule change had the engine re-judge the run into Doing.
