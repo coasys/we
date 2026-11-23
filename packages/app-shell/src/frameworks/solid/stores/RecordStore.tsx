@@ -78,7 +78,7 @@ import { toEntityShape } from '../../../shared/graphEntityShape';
 import { hostSlot } from '../../../shared/hostSlot';
 import { kindHue } from '../../../shared/kindHue';
 import { notifyCopiedIn } from '../../../shared/registries/moduleHostServices';
-import { WE_PLUMBING_CLASSES } from '../../../shared/shapes/extractionCandidates';
+import { WE_PLUMBING_CLASSES } from '../../../shared/shapes/interpretationCandidates';
 import {
   presentationFields,
   presentationOf,
@@ -196,7 +196,7 @@ async function createPlacement(
 }
 
 /**
- * A connection's dedup key — the format `Relationship.connection`'s hint asks an extraction pass for.
+ * A connection's dedup key — the format `Relationship.connection`'s hint asks an interpretation pass for.
  *
  * Written on every connection a person makes, not only on what a pass writes, because the executor
  * shows a model only the instances whose identity property is set: a connection drawn by hand
@@ -1890,7 +1890,7 @@ export function RecordStoreProvider(props: ParentProps) {
    * and through the static `update` where it has none. That is the common case on AD4M, not an edge
    * one: `fromSHACL` registers an installed SDNA's `max_count: 1` relation as a plain property with no
    * `set`/`add`/`remove`. A set is its own clear, so a move needs nothing more; a clear alone goes
-   * through `update` with an empty value, which WE's `clearOnEmpty` turns into removing the field's
+   * through `update` with an empty value, which the SDK turns into removing the field's
    * links (checked live on an installed to-one).
    *
    * A to-many is the parent's list: off the old holder's, onto the new one's, in one write group so
@@ -1924,7 +1924,7 @@ export function RecordStoreProvider(props: ParentProps) {
       return true;
     }
     if (typeof remove !== 'function' && typeof set !== 'function') {
-      // No accessor to clear with: `''` is WE's spelling of "remove this field's links" (`clearOnEmpty`).
+      // No accessor to clear with: `''` is the SDK's spelling of "remove this field's links".
       await Model.update(handle, cardId, { [relation.name]: '' });
       return true;
     }
@@ -3284,7 +3284,7 @@ export function RecordStoreProvider(props: ParentProps) {
     /*
       The keys that quote what just changed. A connection's key carries its label and both ends'
       titles, so relabelling one or renaming a record it joins leaves a key describing a claim nobody
-      is making any more — and the next extraction pass reads the tree from those keys.
+      is making any more — and the next interpretation pass reads the tree from those keys.
     */
     if (entity === RELATIONSHIP && field === 'label') await rekeyConnection(id);
     else if (field === titleField(entity)) await rekeyConnectionsOf(dataset.handle, id);

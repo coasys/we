@@ -19,7 +19,7 @@ CollectionBlock                    ← one call's transcript
 
 A reply to a line is a child of nothing: it answers the line and is in the line's `thread`. So the
 whole transcript is the call's children plus their threads, read as one page with
-`include: { thread: true }` — the transcript panel, the Feed, the extraction gather and the watch's
+`include: { thread: true }` — the transcript panel, the Feed, the interpretation gather and the watch's
 SPARQL all read it that way. See `docs/architecture/relations.md`.
 
 Created by `@we/module-call`, which owns `CALL_KIND` and `RESPONSE_PREDICATE` in its `protocol.ts`;
@@ -29,7 +29,7 @@ the utterances inside it are written by `@we/module-transcribe`.
 
 - **The record is created when the call starts**, and it _is_ the call's identity: the call id is
   `call:<recordId>`, published on the call's presence activity. That is what lets a space hold
-  several calls at once, and what gives a live call somewhere to keep its extraction targets before
+  several calls at once, and what gives a live call somewhere to keep its interpretation targets before
   anybody has spoken.
 - **Nothing deletes an empty one.** A call somebody opened and closed leaves a record behind, and
   that is deliberate: telling "nobody spoke" from "I cannot see what they said" needs a view of the

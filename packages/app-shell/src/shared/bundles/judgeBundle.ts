@@ -49,6 +49,8 @@ export interface BundleJudgement {
     pages: string[];
     themes: string[];
     recordTypes: string[];
+    /** The workflows its records move through, by name. */
+    workflows: string[];
     /** The name it goes by, when it brings its own brand. */
     brand?: string;
     /** Whether it draws its own sign-in screen. */
@@ -171,6 +173,7 @@ export function judgeBundle(bundle: Bundle, deps: BundleJudgeDeps): BundleJudgem
       pages: (bundle.pages ?? []).map((t) => t.meta?.name ?? t.id),
       themes: bundleThemes(bundle).map((theme) => theme.name),
       recordTypes: recordNames,
+      workflows: (bundle.workflows ?? []).map((workflow) => workflow.name),
       ...(bundle.brand ? { brand: bundle.brand.name } : {}),
       ...(bundle.bootScreen ? { bootScreen: true } : {}),
       ...(bundle.base ? { base: true } : {}),

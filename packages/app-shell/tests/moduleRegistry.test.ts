@@ -611,7 +611,7 @@ describe('panels — the host’s half', () => {
         contributes: {
           panels: [
             { name: 'transcript', title: 'T', node: { type: 'we-text', children: ['first'] } },
-            { name: 'extraction', title: 'E', node: { type: 'we-text', children: ['second'] } },
+            { name: 'interpretation', title: 'E', node: { type: 'we-text', children: ['second'] } },
           ],
         },
       }),
@@ -620,9 +620,9 @@ describe('panels — the host’s half', () => {
     const frames = slotRegistry.all().filter((entry) => entry.id.startsWith('dock:twin'));
     // What each frame shows is registered with the panel host, beside the gated frame — see `PanelHost`.
     const json = frames.map((entry) => JSON.stringify([entry.node, panelContent(entry.id.replace(/^dock:/, ''))]));
-    expect(frames.map((f) => f.id)).toEqual(['dock:twin:transcript', 'dock:twin:extraction']);
+    expect(frames.map((f) => f.id)).toEqual(['dock:twin:transcript', 'dock:twin:interpretation']);
     expect(json[0]).toContain("shellStore.panelSupplied['twin:transcript']");
-    expect(json[1]).toContain('"dock":"extraction"');
+    expect(json[1]).toContain('"dock":"interpretation"');
     for (const entry of json) expect(entry).not.toContain("panelSupplied['twin']");
     // The module's own contents remain on the other side of the gate.
     expect(json[0]).toContain('first');

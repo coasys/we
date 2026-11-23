@@ -39,7 +39,7 @@ code on this side, which is the intended direction. (Shape staleness diffing and
 remediation were the first to go: `registerShapes` compares each shape with the stored one and writes
 only a changed one, so `sdnaEntities.ts` sends one call.)
 
-- Parenting extracted records and re-keying overlay values from predicates to property names
+- Parenting interpreted records and re-keying overlay values from predicates to property names
   (`interpretationAdapter.ts`) — `runInterpretation` writes instances and returns URIs; attaching
   them to a container and naming their fields for a reviewer happens here.
 - The operators and bounds the planner refuses — `exists`, string range bounds, `startsWith` /

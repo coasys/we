@@ -14,13 +14,22 @@ export const coasysStarter: SpaceStarter = {
   // and that it is a start rather than a commitment.
   name: "Coasys's starter kit",
   description:
-    "Social DNA for likes, tasks and who's involved, a canvas and a task board, and calls read for the work that comes out of them. You can change any of it later.",
+    "Social DNA for likes, tasks and who's involved, a canvas and a task board, and calls read for their topics, the positions people take, the questions left open and the work that comes out of them. You can change any of it later.",
   icon: 'dna',
   settings: {
     defaultTemplateId: 'space',
     defaultThemeId: 'glow',
     autoInterpret: true,
-    extractionTargets: ['TaskBlock', 'EventBlock', 'Relationship'],
+    // Tasks stand for action items; the rest is Coasys's conversation DNA (`conversation.ts`).
+    extractionTargets: [
+      'TaskBlock',
+      'EventBlock',
+      'Relationship',
+      'AgendaItem',
+      'DiscussionTopic',
+      'Position',
+      'Question',
+    ],
     taskStates: ['$todo', '$doing', '$done'],
   },
   records: [

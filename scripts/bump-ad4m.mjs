@@ -44,11 +44,12 @@
  */
 import { createHash } from 'node:crypto';
 import { execSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
   AD4M_REPO,
+  AD4M_REV,
   describePin,
   lockfileSnapshots,
   PACKAGES,
@@ -280,7 +281,6 @@ const RUST_CRATES = [
     packages: ['ad4m-identity-client', 'ad4m-identity-core', 'ad4m-hash-chain', 'ad4m-ldk', 'identity-store'],
   },
 ];
-const AD4M_REV = /(git = "https:\/\/github\.com\/coasys\/ad4m", rev = ")[0-9a-f]+(")/g;
 
 const same =
   before &&
@@ -354,7 +354,7 @@ if (!to) {
   for (const crate of RUST_CRATES) {
     const manifest = join(ROOT, 'crates', crate.dir, 'Cargo.toml');
     const text = readFileSync(manifest, 'utf8');
-    const next = text.replace(AD4M_REV, `$1${to}$2`);
+    const next = text.replace(AD4M_REV, `$1${to}$3`);
     if (next === text) continue;
     writeFileSync(manifest, next);
     console.log(`Moved crates/${crate.dir} to ad4m ${to.slice(0, 9)}.`);

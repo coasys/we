@@ -1,6 +1,6 @@
 /**
  * An OpenAI-compatible language model that answers from a script: the stub tier's stand-in for a
- * real model, so extraction runs end to end with exact, repeatable results.
+ * real model, so interpretation runs end to end with exact, repeatable results.
  *
  * ## What the executor sends, and what it reads back (ad4m at WE's pin)
  *
@@ -18,14 +18,14 @@
  * ones are the few-shot examples, about classes called Task and Belief — and answers with that array.
  *
  * Anything else (a title, a summary, a prompt that is not JSON) gets a short plain answer, so a
- * caller that is not extraction still sees a well-formed completion. `stream: true` is answered as
+ * caller that is not interpretation still sees a well-formed completion. `stream: true` is answered as
  * server-sent events for the same reason.
  *
  * ## The script
  *
  * {@link SCRIPT} maps what the suite says in a call to the records a model should find in it, by the
  * class's role rather than its exact name: a space whose classes are the social DNA package's
- * (`Question`, `Tension`, `Decision`, `Task`) gets those, and the Coasys starter's `TaskBlock` gets
+ * (`TeamQuestion`, `Tension`, `Decision`, `Task`) gets those, and the Coasys starter's `TaskBlock` gets
  * the task. Only classes the prompt offers are answered, only fields the prompt lists are filled, and
  * a record whose title the prompt lists as existing is not proposed again — the same discipline a
  * real model is asked for, so the executor's dedup is not what makes the result converge.
@@ -89,7 +89,8 @@ export const SCRIPT = [
  */
 export function roleOf(className) {
   const name = String(className).toLowerCase().split(/[/#:]/).pop();
-  if (name === 'question') return 'question';
+  // The package's question. Coasys's own `Question` is a target too, and the stub writes none of it.
+  if (name === 'teamquestion') return 'question';
   if (name === 'tension') return 'tension';
   if (name === 'decision') return 'decision';
   if (name === 'task' || name === 'taskblock') return 'task';

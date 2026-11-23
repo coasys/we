@@ -138,6 +138,7 @@ describe('deploymentBase', () => {
     pages: [],
     themes: [],
     recordTypes: [],
+    workflows: [],
     starters: [],
     ...over,
   });

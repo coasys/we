@@ -14,6 +14,7 @@ import { coasysApp } from './app.ts';
 import { coasysBase } from './base.ts';
 import { coasysBootScreen } from './boot.ts';
 import { coasysBrand } from './brand.ts';
+import { conversationShapes, conversationTopicWorkflow } from './conversation.ts';
 import { coasysSpace } from './space/shell.ts';
 import { coasysStarter } from './starter.ts';
 import { coasysTheme, glowTheme } from './themes.ts';
@@ -34,7 +35,9 @@ export const coasys: Cartridge = {
   bootScreen: coasysBootScreen,
   // Before a session, on every platform: the first run, where to connect, offline.
   base: coasysBase,
-  shapes: [],
+  // What a call is interpreted into, and how a topic moves: the app's own vocabulary, not WE's.
+  shapes: conversationShapes,
+  workflows: [conversationTopicWorkflow],
   modules: ['call', 'transcribe', 'feed', 'graph'],
   // Every space a member opens in Coasys is drawn as a Coasys space.
   display: 'ours',

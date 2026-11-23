@@ -410,14 +410,14 @@ Four rules, each of which was broken by at least one panel before the fragment e
 
 **A panel explains itself behind a glyph, not in its body.** `help` on either fragment puts an info
 glyph against the name; pointing at it (or focusing it) shows two to four sentences on how the panel
-works. The extraction panel used to say all of that in its body — a lead-in above the chips, a
+works. The interpretation panel used to say all of that in its body — a lead-in above the chips, a
 footnote under the button — and it was read once and then furniture, in a docked panel with no room
 to spare. Prose about _how something works_ goes in `help`; prose about _the current state_ (why a
 control is disabled, what a pass found) stays in the body, because it is news rather than a manual.
 Not every panel wants one: a glyph on every header is noise of its own.
 
 ```ts
-panelShell({ title: 'Extraction', help: 'A model reads the transcript and writes what it finds …', children });
+panelShell({ title: 'Interpretation', help: 'A model reads the transcript and writes what it finds …', children });
 ```
 
 TSX panels cannot call a schema fragment, so they spread `PANEL_TITLE_PROPS` onto a `we-text` —

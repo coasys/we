@@ -1035,7 +1035,7 @@ const callSettingsSection: SchemaNode = {
  * priced like one.
  *
  * A default and only that: each call or channel holds its own answer, copied from this when it is
- * made, and is changed from the Extraction panel by whoever is in it. Said in the copy, because the
+ * made, and is changed from the Interpretation panel by whoever is in it. Said in the copy, because the
  * obvious reading of a switch in settings is that it governs everything now, and a community that
  * flipped it expecting a meeting under way to stop would see nothing happen.
  *
@@ -1056,7 +1056,7 @@ const autoInterpretSection: SchemaNode = {
           type: 'Column',
           props: { gap: '100', flex: '1' },
           children: [
-            { type: 'we-text', props: { variant: 'label' }, children: ['Extract new calls automatically'] },
+            { type: 'we-text', props: { variant: 'label' }, children: ['Interpret new calls automatically'] },
             {
               type: 'we-text',
               props: { variant: 'footnote', color: 'text-faint' },
@@ -1068,7 +1068,7 @@ const autoInterpretSection: SchemaNode = {
                     marked for it — including any the community defined — so the sentence names the
                     act rather than enumerating a list that is no longer fixed.
                   */
-                  $: "space.canAdminister ? 'Where a new call or channel starts. Whatever it is set to look for is written down as the conversation happens, without anyone pressing Extract. Each conversation can then be changed in the Extraction panel. Runs on a member’s node and costs them an AI call each time.' : 'Where a new call or channel starts. Each conversation can be changed in the Extraction panel by whoever is in it. Changing this default needs someone who administers the space.'",
+                  $: "space.canAdminister ? 'Where a new call or channel starts. Whatever it is set to look for is written down as the conversation happens, without anyone pressing Interpret. Each conversation can then be changed in the Interpretation panel. Runs on a member’s node and costs them an AI call each time.' : 'Where a new call or channel starts. Each conversation can be changed in the Interpretation panel by whoever is in it. Changing this default needs someone who administers the space.'",
                 },
               ],
             },
@@ -1093,7 +1093,7 @@ const autoInterpretSection: SchemaNode = {
 /**
  * Whether extraction shows its working to the whole space.
  *
- * Beside auto-extraction because it is the same feature seen from the other side: whoever turned
+ * Beside auto-interpretation because it is the same feature seen from the other side: whoever turned
  * that on is exactly who might want to see what it is doing. It was a switch inside each expanded
  * pass in the call bar, which repeated one setting per row and implied it applied to that pass.
  *
@@ -1105,7 +1105,7 @@ const autoInterpretSection: SchemaNode = {
 /**
  * How deep conversations go here.
  *
- * Beside automatic extraction because it is the same kind of decision: a community answering for
+ * Beside automatic interpretation because it is the same kind of decision: a community answering for
  * everyone about what one of WE's own capabilities does, rather than a module being switched on.
  *
  * The wording is careful about what changes, because the honest answer is "less than you would
@@ -1165,7 +1165,7 @@ const threadModeSection: SchemaNode = {
  * The middle of three layers. The codebase decides what is a *candidate* — an entity earns that by
  * having AI hints, a dedup key and no required field a model cannot satisfy, which is why no image
  * or file block is one. This decides which candidates a new call or channel here starts with, as a
- * copy. Each conversation then holds its own list, changed from the Extraction panel.
+ * copy. Each conversation then holds its own list, changed from the Interpretation panel.
  *
  * That middle layer exists because the alternative is WE asserting what every community's calls are
  * about. Tasks and events as a fixed default is an assumption about meeting culture; a space that
@@ -1178,7 +1178,7 @@ const threadModeSection: SchemaNode = {
  * Administer-only, like the switches above: what a space extracts is written into everyone's copy
  * and spends whichever member's node runs the pass.
  */
-const extractionTargetsSection: SchemaNode = {
+const interpretationTargetsSection: SchemaNode = {
   type: 'Column',
   props: { gap: '300', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
   children: [
@@ -1192,7 +1192,7 @@ const extractionTargetsSection: SchemaNode = {
           props: { variant: 'footnote', color: 'text-faint' },
           children: [
             {
-              $: "space.canAdminister ? 'The models a new call or channel starts out looking for. Each conversation can then add or remove them in the Extraction panel. Every model named costs tokens on every pass, so keep the list to what this community actually talks about.' : 'The models a new call or channel starts out looking for. Changing this default needs someone who administers the space.'",
+              $: "space.canAdminister ? 'The models a new call or channel starts out looking for. Each conversation can then add or remove them in the Interpretation panel. Every model named costs tokens on every pass, so keep the list to what this community actually talks about.' : 'The models a new call or channel starts out looking for. Changing this default needs someone who administers the space.'",
             },
           ],
         },
@@ -1203,20 +1203,20 @@ const extractionTargetsSection: SchemaNode = {
 
       A list of what is enabled cannot be turned into a list of what could be, so a settings page
       that showed only the current targets would give a community no way to add one. The rows come
-      from `shapeStore.extractionCandidates`, which is core vocabulary marked extractable plus this
+      from `shapeStore.interpretationCandidates`, which is core vocabulary marked interpretable plus this
       space's own adopted models.
     */
     {
       type: '$if',
       props: {
-        condition: { $: 'count(shapeStore.extractionCandidates)' },
+        condition: { $: 'count(shapeStore.interpretationCandidates)' },
         then: {
           type: 'Column',
           props: { gap: '100' },
           children: [
             {
               type: '$each',
-              props: { items: { $: 'shapeStore.extractionCandidates' }, as: 'candidate' },
+              props: { items: { $: 'shapeStore.interpretationCandidates' }, as: 'candidate' },
               children: [
                 {
                   type: 'Row',
@@ -1228,12 +1228,12 @@ const extractionTargetsSection: SchemaNode = {
                       props: {
                         size: 'sm',
                         label: { $: 'candidate' },
-                        checked: { $: 'candidate in spaceStore.extractionTargets' },
+                        checked: { $: 'candidate in spaceStore.interpretationTargets' },
                         disabled: { $: '!space.canAdminister' },
                         // Bare `event.detail` — an operator around it would resolve at render time,
                         // before the event exists.
                         onChange: {
-                          $invoke: 'spaceStore.setExtractionTarget',
+                          $invoke: 'spaceStore.setInterpretationTarget',
                           args: [{ $: 'candidate' }, { $: 'event.detail' }, { $: 'space.uuid' }],
                         },
                       },
@@ -1252,7 +1252,7 @@ const extractionTargetsSection: SchemaNode = {
             {
               type: '$if',
               props: {
-                condition: { $: "'Relationship' in spaceStore.extractionTargets" },
+                condition: { $: "'Relationship' in spaceStore.interpretationTargets" },
                 then: {
                   type: 'we-text',
                   props: { variant: 'footnote', color: 'text-faint' },
@@ -1274,7 +1274,7 @@ const extractionTargetsSection: SchemaNode = {
         else: {
           type: 'we-text',
           props: { variant: 'footnote', color: 'text-faint' },
-          children: ['Nothing in this space can be extracted yet. Models declare it, in Vocabulary.'],
+          children: ['Nothing in this space can be interpreted yet. Models declare it, in Vocabulary.'],
         },
       },
     },
@@ -1644,7 +1644,7 @@ export function spaceSettingsBody(uuid: SchemaProp, chrome: SchemaNode[], fill?:
                           moduleSettingsSection,
                           callSettingsSection,
                           autoInterpretSection,
-                          extractionTargetsSection,
+                          interpretationTargetsSection,
                           threadModeSection,
                         ],
                         fill,

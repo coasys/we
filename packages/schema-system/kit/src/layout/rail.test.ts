@@ -1,7 +1,7 @@
 /**
  * A rail button says when something is happening behind it.
  *
- * The signal that "somebody's extraction pass is running" used to be a square in the call bar,
+ * The signal that "somebody's interpretation pass is running" used to be a square in the call bar,
  * which only exists during a call and doubled as the switch that stops the pass. The rail is where
  * the panel is opened from and outlives the call, so the glance moved here — and it is asserted on
  * the expansion because the failure mode is silent: a button with no busy state simply never spins.
@@ -27,7 +27,7 @@ describe('a rail button', () => {
     // A rail button is a square with one glyph in it. A second object beside the icon makes the
     // column's width a lie, exactly as a label would.
     const busy = { $: 'mod.busy' };
-    const button = railButton({ icon: 'sparkle', tooltip: 'Extraction', busy }) as Node;
+    const button = railButton({ icon: 'sparkle', tooltip: 'Interpretation', busy }) as Node;
     const swap = glyph(button);
 
     expect(swap.type).toBe('$if');

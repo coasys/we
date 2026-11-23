@@ -2,7 +2,7 @@
  * A marker changing is not the graph becoming a different graph.
  *
  * The workshop's canvas hands its suggestion markers straight from the transcriber, so `pending` and
- * `changed` move every time an extraction pass stages a record or somebody keeps one. Those are seed
+ * `changed` move every time an interpretation pass stages a record or somebody keeps one. Those are seed
  * *options*, and the reload effect compared the whole seed by value — so with auto-extract on a call
  * the graph reloaded every couple of minutes: the store cleared, every query re-run, and the old
  * graph left on screen at 40% under a "Loading graph…" spinner, for a change that amounted to two

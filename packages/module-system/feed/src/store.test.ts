@@ -53,6 +53,8 @@ function harness(
   spaceRoot: () => string = () => 'root-1',
   /** The kinds of record extraction writes in this space. */
   targets: string[] = [],
+  /** The host's `showPart` — absent, as on a host that has none. */
+  showPart?: (part: string) => boolean,
 ) {
   const held = typeof reads === 'function' ? null : reads;
   const find =
@@ -67,6 +69,16 @@ function harness(
   const answer: ((rows: Record<string, unknown>[]) => void)[] = [];
   const notices: { message: string; options?: unknown }[] = [];
   const created: Created[] = [];
+  /** While set, a write waits for it — and fails when it rejects: the executor's round trips, as the test paces them. */
+  let creating: Promise<void> | null = null;
+  const holdCreates = () => {
+    let settle: { release: () => void; fail: (error: Error) => void } | undefined;
+    creating = new Promise<void>((resolve, reject) => {
+      settle = { release: resolve, fail: reject };
+    });
+    creating.catch(() => {});
+    return settle!;
+  };
   const updated: { entity: string; id: string; fields: Record<string, unknown> }[] = [];
   const subscriptions: string[] = [];
   const subscribed: { entity: string; query: Record<string, unknown> }[] = [];
@@ -97,7 +109,9 @@ function harness(
     },
     create: async (entity: string, fields: Record<string, unknown>, options: unknown) => {
       created.push({ entity, fields, options });
-      return `new-${created.length}`;
+      const id = `new-${created.length}`;
+      await creating;
+      return id;
     },
     update: async (entity: string, id: string, fields: Record<string, unknown>) => {
       updated.push({ entity, id, fields });
@@ -128,6 +142,7 @@ function harness(
     notify: (_tone: string, message: string, options?: unknown) => void notices.push({ message, options }),
     kernels: { records, interpretation },
     firstScreen,
+    ...(showPart && { showPart }),
   } as never) as Record<string, (...args: unknown[]) => unknown>;
   return {
     store,
@@ -135,6 +150,7 @@ function harness(
     answer,
     notices,
     created,
+    holdCreates,
     updated,
     subscriptions,
     subscribed,
@@ -179,6 +195,47 @@ describe('messages written from the Feed', () => {
       options: { parent: { id: 'line-1', relation: 'responses' } },
     });
     expect(h.store.replyingTo()).toBeNull();
+  });
+
+  it('draws a reply under the line it answers at once, and puts the reply down as it is drawn', async () => {
+    const h = harness();
+    h.store.startReply({ id: 'line-1', text: 'who has the venue?', author: 'did:ann' });
+    const writing = h.holdCreates();
+    const sending = h.store.reply('line-1', 'I do');
+    expect(h.store.feedRows()).toMatchObject([
+      {
+        kind: 'line',
+        text: 'I do',
+        sending: true,
+        author: 'did:me',
+        replyTo: { id: 'line-1', author: 'did:ann', text: 'who has the venue?' },
+      },
+    ]);
+    // Down already, so a second message typed now is not sent as a reply too.
+    expect(h.store.replyingTo()).toBeNull();
+    writing.release();
+    await sending;
+  });
+
+  it('draws a reply started in a call’s Feed in that Feed', async () => {
+    const h = harness();
+    h.store.watchCallFeed('call-9');
+    h.store.startReply({ id: 'line-1', text: 'who?', author: 'did:ann', surface: 'callFeed' });
+    h.holdCreates();
+    void h.store.reply('line-1', 'I do');
+    expect(h.store.callFeedRows()).toMatchObject([{ text: 'I do', sending: true, replyTo: { id: 'line-1' } }]);
+    expect(h.store.feedRows()).toEqual([]);
+  });
+
+  it('draws a message sent to a call at once, and takes it down when the write fails', async () => {
+    const h = harness();
+    h.store.watchCallFeed('call-9');
+    const writing = h.holdCreates();
+    const sending = h.store.sendToCallFeed('hello call');
+    expect(h.store.callFeedRows()).toMatchObject([{ text: 'hello call', sending: true, author: 'did:me' }]);
+    writing.fail(new Error('executor unreachable'));
+    await expect(sending).rejects.toThrow('executor unreachable');
+    expect(h.store.callFeedRows()).toEqual([]);
   });
 
   it('keeps a reply started while an earlier one was still sending', async () => {
@@ -609,5 +666,58 @@ describe('the Feed of one call', () => {
     const newest = h.subscribed.filter((s) => s.entity === 'TextBlock' && s.query.limit === 1);
     expect(newest.map((s) => s.query.within)).toEqual(['call-9']);
     vi.useRealTimers();
+  });
+});
+
+describe('a bot’s notice', () => {
+  /** A bot's new line in the space, raised as a notice, and the notice's Open. */
+  async function noticeOpen(showPart?: (part: string) => boolean) {
+    vi.useFakeTimers();
+    const h = harness(
+      [],
+      {},
+      async () => [],
+      () => 'root-1',
+      [],
+      showPart,
+    );
+    await vi.runAllTimersAsync();
+    const watch = h.subscribed.findIndex((s) => s.entity === 'TextBlock' && s.query.limit === 20);
+    h.answer[watch]([]);
+    h.answer[watch]([{ id: 'bot-1', author: 'did:bot', text: 'the answer', partOf: '' }]);
+    await vi.advanceTimersByTimeAsync(BOT_BURST_MS);
+    const open = (h.notices[0]?.options as { action?: { label: string; run: () => void } } | undefined)?.action;
+    vi.useRealTimers();
+    return { h, open };
+  }
+
+  it('opens the space’s Feed page where the template has one, not a window over it', async () => {
+    /*
+      In a Coasys space the Feed is the root channel's page. Open raised the Feed panel as a window
+      over the call instead of going to that page, which is where the space's own tree goes.
+    */
+    const asked: string[] = [];
+    const { h, open } = await noticeOpen((part) => {
+      asked.push(part);
+      return true;
+    });
+    expect(open?.label).toBe('Open');
+    open?.run();
+    expect(asked).toEqual(['feed.feedView']);
+    expect(h.store.feedOpen()).toBe(false);
+    // At its newest line, as the panel was.
+    expect(h.store.feedFromStart()).toBe(false);
+  });
+
+  it('opens the Feed panel where no page of the space draws the Feed', async () => {
+    const { h, open } = await noticeOpen(() => false);
+    open?.run();
+    expect(h.store.feedOpen()).toBe(true);
+  });
+
+  it('opens the Feed panel on a host that cannot say where the Feed is drawn', async () => {
+    const { h, open } = await noticeOpen();
+    open?.run();
+    expect(h.store.feedOpen()).toBe(true);
   });
 });

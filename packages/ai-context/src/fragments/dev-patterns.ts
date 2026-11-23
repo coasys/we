@@ -193,7 +193,7 @@ env vars and CI homes: \`docs/testing/e2e.md\`.
 
 Every live test runs a fresh **multi-user** executor from the same chooser, as a hosted node does, and
 signs up an account on it. The spaces suite is the coasys-spaces product suite (space, call and
-extraction, social DNA, two workflows, an agent over MCP, the canvas, the page and a theme) — a stub
+interpretation, social DNA, two workflows, an agent over MCP, the canvas, the page and a theme) — a stub
 LLM by default, \`--tier real\` for a real model. Its Feed checks are \`it.todo\`, pending a product bug
 (the Feed does not read a class a bundle declares); its env vars and backlog are in
 \`apps/we-web/e2e/coasys-spaces/README.md\`. A failing journey step leaves a screenshot, the page's
