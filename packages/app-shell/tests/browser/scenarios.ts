@@ -1114,6 +1114,7 @@ const lineComposerScenario = (): Scenario => ({
       lineComposer({
         placeholder: 'Type a message…',
         sendLabel: 'Send it',
+        sending: { $: 'local.sending' },
         onSubmit: [
           { $setLocal: 'sent', value: { $: 'event.text' } },
           { $setLocal: 'sends', value: { $: 'local.sends + 1' } },

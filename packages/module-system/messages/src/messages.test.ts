@@ -19,6 +19,25 @@ describe('a message line', () => {
     const column = (node.children as { props: Record<string, unknown> }[])[0];
     expect(column.props.opacity).toEqual({ $: 'row.sending ? 0.6 : 1' });
   });
+
+  it('offers Reply and Edit only once the line has an id', () => {
+    type Node = { type?: string; props?: Record<string, unknown>; children?: unknown[] };
+    // The `$if` condition guarding the tooltip that carries `content`, found anywhere in the tree.
+    const guardOf = (node: unknown, content: string): string | undefined => {
+      if (Array.isArray(node)) return node.map((n) => guardOf(n, content)).find((g) => g !== undefined);
+      if (node === null || typeof node !== 'object') return undefined;
+      const n = node as Node;
+      const then = n.props?.then as Node | undefined;
+      if (n.type === '$if' && then?.type === 'we-tooltip' && then.props?.content === content) {
+        return (n.props?.condition as { $: string }).$;
+      }
+      return guardOf(n.children, content) ?? guardOf(then, content);
+    };
+    const node = messageLine({ as: 'row', actions: 'modules.feed', surface: 'feed', relative: false });
+    // A sending line has `id: ''`, which fails these; a line with an id passes them.
+    expect(guardOf(node, 'Reply')).toBe("row.id != ''");
+    expect(guardOf(node, 'Edit text')).toBe("!local.mending && row.id != ''");
+  });
 });
 
 describe('how a line arrived', () => {

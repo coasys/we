@@ -299,9 +299,10 @@ const composer = (scope: FeedScope): SchemaNode => ({
       placeholder: `Write to ${scope.of}…`,
       sendLabel: `Send to ${scope.of}`,
       /*
-        Sent as it is typed: the composer empties itself on submit, so nothing here can be sent
-        twice, and a failed write is reported by the store (the line comes down) rather than held
-        in the box.
+        Each submit writes at once, drawn before the write resolves, and the composer empties
+        itself on submit, so one submit does not send the same text twice. There is no in-flight
+        guard; a failed write is reported by the store (the line comes down) rather than held in
+        the box.
       */
       onSubmit: {
         $if: {
