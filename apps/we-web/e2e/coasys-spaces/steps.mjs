@@ -10,6 +10,7 @@ import { until } from '@we/e2e/waits';
 
 import { dismissNamePrompt } from '../steps/space.mjs';
 import { leaveCall, startCall, stopTranscribing, typeIntoCall, unmute, untilHeard, watchCall } from './call.mjs';
+import { openOnCanvas } from './canvas.mjs';
 import { SLOW, STUB, world } from './context.mjs';
 import { DNA, records, spacePerspective, valueOf } from './dna.mjs';
 import { HEARD, LINES, roleOf, SCRIPT } from './stub-llm.mjs';
@@ -142,7 +143,9 @@ export async function acceptInInspector(who, perspective, record) {
   const { page, ports } = who;
   const staged = async () => (await ports.interpretation.proposals(perspective)).map((p) => p.id);
   assert.ok((await staged()).includes(record.id), `"${record.title}" is pending before it is accepted`);
-  await openOnCanvas(page, record.title);
+  // The class, when the caller knows it. Two cards can share a title — the stub writes a Task and a
+  // TaskBlock from the same line — and `.first()` would open whichever the canvas listed first.
+  await openOnCanvas(page, record.title, record.type ? { type: record.type } : {});
   const pending = page.getByText('Interpretation proposed this — pending acceptance.');
   await pending.waitFor({ timeout: 60_000 });
   // The inspector's own "Accept": the Interpretation panel, earlier in the page, has one per suggestion.
@@ -300,16 +303,4 @@ export function recordOf(found, className) {
   return list.find((r) => r.title === title);
 }
 
-/**
- * Opens a record into the inspector by pressing its card on the canvas. Found inside the canvas's own
- * element: the Interpretation panel lists the same title, earlier in the page. The canvas names no role
- * or label, so its class is the one hold there is.
- */
-export async function openOnCanvas(page, title) {
-  await page.getByRole('button', { name: 'Canvas', exact: true }).click();
-  const card = page.locator('.we-graph').getByText(title).first();
-  await card.waitFor({ timeout: SLOW });
-  // Forced: the canvas's surface lies over its cards and finds the card under the pointer itself, so
-  // the press lands on the surface at the card's place — as a person's does.
-  await card.click({ force: true });
-}
+export { openOnCanvas };

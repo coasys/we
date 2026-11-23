@@ -101,8 +101,8 @@ const { TopicModel, PositionModel, PostModel, AuthorModel, AgendaModel, MeetingM
     update: async (_p: unknown, id: string, patch: Record<string, unknown>) => {
       const row = table.get(id);
       if (!row) return null;
-      // WE's contract (`clearOnEmpty` on AD4M, verified live on an installed to-one): '' clears the field;
-      // null and undefined are skipped.
+      // The SDK's contract (verified live on an installed to-one): '' clears the field;
+      // null and undefined are skipped here.
       for (const [field, value] of Object.entries(patch)) {
         if (value === '') delete row[field];
         else if (value != null) row[field] = value;

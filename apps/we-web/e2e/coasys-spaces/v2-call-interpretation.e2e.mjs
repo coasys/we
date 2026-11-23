@@ -153,7 +153,8 @@ vertical('V2 call: transcript, interpretation, accept, leave', (v) => {
   v.step('Alice accepts a suggestion, and it is no longer pending', async () => {
     const pick = STUB ? expectedRecords()[0] : null;
     const record = STUB ? found.get(pick.cls).find((r) => r.title === pick.title) : [...found.values()].flat()[0];
-    await acceptInInspector(alice, perspective, record);
+    const type = [...found.entries()].find(([, list]) => list.some((r) => r.id === record.id))?.[0];
+    await acceptInInspector(alice, perspective, { ...record, type });
   });
 
   v.step('Alice leaves, and the call stops showing as live', async () => {

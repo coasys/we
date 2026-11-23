@@ -63,6 +63,8 @@ export interface FeedLine {
   replyTo: { id: string; author: string; text: string } | null;
   /** The line as one block for a renderer, when it has marks — see `lineContent`. */
   content: Record<string, unknown>[] | null;
+  /** Sent from here and not yet read back — drawn at once, dimmed, until a read of the window has it. */
+  sending: boolean;
 }
 
 /** One thing interpretation found or somebody made, grouped — see the module comment. */
@@ -178,6 +180,7 @@ function toLine(row: Row, call: string, callTitle: string): FeedLine {
     callTitle,
     replyTo: (row.replyTo as FeedLine['replyTo']) ?? null,
     content: lineContent(row),
+    sending: false,
   };
 }
 

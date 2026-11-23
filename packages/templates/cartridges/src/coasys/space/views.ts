@@ -203,6 +203,7 @@ const subChannelChat: SchemaNode = {
         lineComposer({
           placeholder: 'Write a message…',
           sendLabel: 'Send',
+          sending: { $: 'local.sending' },
           onSubmit: sendLine,
           focusLocal: 'focusLine',
         }),

@@ -72,7 +72,7 @@ vertical('V4 decide flow: two approvals', (v) => {
   );
 
   v.step(`Alice starts ${FLOW.name} on the ${CLASS} from its inspector`, async () => {
-    await openOnCanvas(alice.page, question.title);
+    await openOnCanvas(alice.page, question.title, { type: CLASS });
     await alice.page.getByRole('button', { name: 'Start a workflow on this' }).first().click({ timeout: 60_000 });
     await alice.page.getByRole('menuitem', { name: FLOW.name }).click();
     const item = await untilItem(
@@ -123,7 +123,7 @@ vertical('V4 decide flow: two approvals', (v) => {
     'Bob agrees, and the run moves on with two approvals',
     async () => {
       await openSpacePath(bob.page, shared);
-      await openOnCanvas(bob.page, question.title);
+      await openOnCanvas(bob.page, question.title, { type: CLASS });
       await openInspectorWorkflows(bob.page);
       await bob.page.getByRole('button', { name: 'Agree', exact: true }).first().click({ timeout: 120_000 });
       await untilItem(

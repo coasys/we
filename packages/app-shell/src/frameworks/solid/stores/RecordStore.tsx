@@ -1890,7 +1890,7 @@ export function RecordStoreProvider(props: ParentProps) {
    * and through the static `update` where it has none. That is the common case on AD4M, not an edge
    * one: `fromSHACL` registers an installed SDNA's `max_count: 1` relation as a plain property with no
    * `set`/`add`/`remove`. A set is its own clear, so a move needs nothing more; a clear alone goes
-   * through `update` with an empty value, which WE's `clearOnEmpty` turns into removing the field's
+   * through `update` with an empty value, which the SDK turns into removing the field's
    * links (checked live on an installed to-one).
    *
    * A to-many is the parent's list: off the old holder's, onto the new one's, in one write group so
@@ -1924,7 +1924,7 @@ export function RecordStoreProvider(props: ParentProps) {
       return true;
     }
     if (typeof remove !== 'function' && typeof set !== 'function') {
-      // No accessor to clear with: `''` is WE's spelling of "remove this field's links" (`clearOnEmpty`).
+      // No accessor to clear with: `''` is the SDK's spelling of "remove this field's links".
       await Model.update(handle, cardId, { [relation.name]: '' });
       return true;
     }

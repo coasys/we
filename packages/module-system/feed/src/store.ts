@@ -14,7 +14,7 @@ import { sourceAfterEdit, TYPED } from '@we/messages';
 import type { ModuleStoreDeps, RecordsKernel } from '@we/module-shared';
 
 import { watchBotMessages } from './botWatch';
-import { createFeed } from './feedStore';
+import { createFeed, type FeedHolder } from './feedStore';
 
 /**
  * Where a reply was started: the space's Feed, or the Feed of one call. Both lists are this store's,
@@ -40,13 +40,17 @@ export function createFeedStore(deps: ModuleStoreDeps) {
     typeof records?.update === 'function' ? (...args) => records.update(...args) : undefined;
 
   /** One typed line, into whatever holds it: the space, or — as a reply — the line it answers. */
-  async function writeMessage(holder: { id: string; relation: string; entity?: string }, text: string, marks?: string) {
+  async function writeMessage(holder: FeedHolder, text: string, marks?: string) {
     const words = String(text ?? '').trim();
     if (!words || !createEntity) return null;
     return createEntity('TextBlock', { text: words, source: TYPED, ...(marks ? { marks } : {}) }, { parent: holder });
   }
 
-  const { followingLive, ...feed } = createFeed({
+  const {
+    followingLive,
+    post: postToFeed,
+    ...feed
+  } = createFeed({
     signal,
     effect,
     state,
@@ -54,6 +58,7 @@ export function createFeedStore(deps: ModuleStoreDeps) {
     onDispose,
     dataset,
     spaceRoot: deps.spaceRoot,
+    selfId: deps.selfId,
     records,
     interpretation,
     firstScreen: deps.firstScreen,
@@ -62,8 +67,7 @@ export function createFeedStore(deps: ModuleStoreDeps) {
       window before it is cut, and flipping the switch reads the window again.
     */
     showSpoken: () => settings?.().showCallTranscripts === true,
-    write: (collection, text, marks) =>
-      writeMessage({ id: collection, relation: 'children', entity: 'CollectionBlock' }, text, marks),
+    write: writeMessage,
   });
 
   /*
@@ -82,7 +86,11 @@ export function createFeedStore(deps: ModuleStoreDeps) {
     const calls = shownCalls();
     return calls[calls.length - 1] ?? '';
   };
-  const { followingLive: followingCall, ...call } = createFeed({
+  const {
+    followingLive: followingCall,
+    post: postToCall,
+    ...call
+  } = createFeed({
     signal,
     effect,
     state: unmarked,
@@ -90,6 +98,7 @@ export function createFeedStore(deps: ModuleStoreDeps) {
     onDispose,
     dataset,
     spaceRoot: callRoot,
+    selfId: deps.selfId,
     // What extraction found is kept in the space, and only what came from this call is drawn.
     activityRoot: () => deps.spaceRoot?.() ?? '',
     rootTitle: CALL_TITLE,
@@ -103,8 +112,7 @@ export function createFeedStore(deps: ModuleStoreDeps) {
     mayHoldFirstScreen: () => deps.firstScreen?.held?.() === true,
     // Every line in the call: the space's transcripts switch is about the space's Feed, not a call's.
     showSpoken: () => true,
-    write: (collection, text, marks) =>
-      writeMessage({ id: collection, relation: 'children', entity: 'CollectionBlock' }, text, marks),
+    write: writeMessage,
   });
   /*
     Whether a reader at the newest line of the call on screen sees these lines arrive: each said in
@@ -217,10 +225,15 @@ export function createFeedStore(deps: ModuleStoreDeps) {
         console.warn('[feed] a reply has no line to answer, so it was not sent');
         return;
       }
-      const answering = reply;
-      await writeMessage({ id: parentId, relation: 'responses' }, text, marks);
-      // A reply started while this one was sending stays up.
+      const answering = reply?.id === parentId ? reply : null;
+      // Put down as the line is drawn, so the next message is not sent as a reply as well.
       if (reply === answering) setReply(null);
+      const post = answering?.surface === 'callFeed' ? postToCall : postToFeed;
+      await post({ id: parentId, relation: 'responses' }, text, marks, {
+        id: parentId,
+        author: answering?.author ?? '',
+        text: answering?.text ?? '',
+      });
     }, 'Answers one line with a typed line of its own, linked from it as a reply.'),
     /*
       Correct the words on a line. Anybody may, as in a transcript, and it is not hidden: a heard line
