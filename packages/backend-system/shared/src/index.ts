@@ -75,7 +75,7 @@ export type { TraceSink } from './trace';
 export {
   blockableEntities,
   CONTAINMENT_PREDICATE,
-  extractableEntities,
+  interpretableEntities,
   getEntity,
   getProperty,
   getRelation,
@@ -155,6 +155,7 @@ export { NAME_CANDIDATES, nameFromProperties, namePropertyOf } from './recordNam
 export type { NameableProperty } from './recordName';
 export { ANONYMOUS_AGENT_NAME, displayName, isProfileEmpty } from './profileTypes';
 export type { AgentProfileSummary, PublishProfileFields } from './profileTypes';
+export { ModuleSchemasRefused } from './backendPorts';
 export type {
   BackendPorts,
   BackendPortsContext,
@@ -166,22 +167,38 @@ export type {
   UploadFile,
 } from './backendPorts';
 export type {
-  AiApiProtocol,
-  AiLocalModelSource,
+  AiCapability,
+  AiDetectedEndpoint,
+  AiDiscoveredModel,
+  AiEndpoint,
+  AiEndpointDraft,
+  AiEndpointHealth,
+  AiEndpointKind,
   AiModel,
-  AiModelDiscoveryQuery,
   AiModelDraft,
   AiModelKind,
-  AiModelSource,
-  AiModelSourceDraft,
   AiModelStatus,
+  AiModelStatusEvent,
+  AiRecommendedModel,
+  AiServerInstallLink,
   AiTask,
+  LocalAiGpu,
+  LocalAiHardware,
+  LocalAiPlan,
+  LocalAiPlannedModel,
+  LocalAiPlannedRuntime,
+  LocalAiPort,
+  LocalAiProgress,
+  LocalAiRuntimeStatus,
+  LocalAiStatus,
   ModelAdminPort,
-  TokenizerSource,
 } from './modelAdmin';
 export type {
   AuthorizedApp,
   ConsentRequest,
+  ExecutorConfig,
+  ExecutorConfigEntry,
+  ExecutorConfigWrite,
   InstalledLanguage,
   PeerRecords,
   RuntimeAdminPort,
@@ -216,7 +233,19 @@ export type {
   LanguageModelPort,
   LanguageModelStatus,
 } from './languageModel';
-export type { AgentPort, AgentRunReply, AgentRunRequest, AgentTurn } from './agents';
+export type {
+  AgentConversationMessage,
+  AgentConversationRef,
+  AgentConversationsPort,
+  AgentConversationScope,
+  AgentConversationSummary,
+  AgentPort,
+  AgentReplyStatus,
+  AgentRunReply,
+  AgentRunRequest,
+  AgentStep,
+  AgentTurn,
+} from './agents';
 export { AgentUnavailableError } from './agents';
 export {
   allowedMoves,
@@ -293,13 +322,7 @@ export type {
   KeyLogStoreBehind,
   KeyLogView,
 } from './identity';
-export type {
-  TranscriptionModelOffer,
-  TranscriptionRecord,
-  TranscriptionPort,
-  TranscriptionStream,
-  TranscriptionTuning,
-} from './transcription';
+export type { TranscriptionRecord, TranscriptionPort, TranscriptionSetup, TranscriptionStream } from './transcription';
 export type {
   InterpretationPort,
   InterpretationProposal,

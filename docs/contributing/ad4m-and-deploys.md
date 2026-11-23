@@ -237,10 +237,13 @@ writes to an agent it did not create: against an executor already running it onl
 profile, and its last case checks that the profile is as it found it.
 
 They share one executor in a temporary directory, on free ports, with MCP on and no network, removed
-afterwards. Which binary is chosen as for the app (see
+afterwards. It runs multi-user, as a hosted node does, and the tests run as an account signed up on
+it (`startExecutor` and `signUp` in `@we/e2e`; [End-to-end tests](../testing/e2e.md) has the rest of
+WE's live tests). Which binary is chosen as for the app (see
 [The executor you run locally](#the-executor-you-run-locally)): the pinned one by default, which
 `pnpm ad4m:executor` downloads. `AD4M_LIVE_URL` with `AD4M_LIVE_TOKEN` uses one already running
-instead, its agent unlocked, with `AD4M_LIVE_MCP_URL` naming its MCP endpoint for the waker test.
+instead, its agent unlocked, with `AD4M_LIVE_MCP_URL` naming its MCP endpoint for the waker test
+and `AD4M_LIVE_OPERATOR_TOKEN` the operator's credential for the calls an account may not make.
 
 It also runs in CI, as the `AD4M live` workflow (`.github/workflows/ad4m-live.yaml`): on a PR that
 touches the backend packages, the entities or the pin, on `dev` after such a merge, and on the bump
@@ -288,6 +291,9 @@ node scripts/ad4m-executor.mjs --path    # print which binary would run
 The pinned one is the executor ad4m's CI built for that commit (the same files as above), kept in
 a cache outside the repositories, one directory per commit:
 `~/.cache/we/ad4m-executor/<commit>/ad4m-executor` (under `$XDG_CACHE_HOME` when that is set).
+A version pin's commit is its npm `gitHead`. With npm out of reach, the resolver runs the commit
+that `crates/custody/Cargo.toml` names, which `pnpm bump:ad4m` writes with every pin, so a cached
+executor still starts offline. An unknown version still fails.
 Keyed by commit, a file there is that commit's executor, so nothing has to be checked: switching to
 a branch that pins another commit finds it, or downloads it once, and every WE checkout on the
 machine shares the cache. The five most recently used commits are kept. `pnpm dev:electron` runs the

@@ -187,6 +187,23 @@ interface MemberSpec {
    * refuses it regardless is not two safeguards, it is one of them being wrong.
    */
   arity?: number;
+  /**
+   * The first argument is a chat-open request (`chatStore.openChat`), rewritten before the store
+   * sees it.
+   *
+   * A `draft` it carries becomes `prefill` — words in the composer, at every tier: a question a
+   * template supplies is something a person reads and presses Send on, never something that sends
+   * itself. And below `space-admin`, the `perspectiveUuid` it names is replaced by the space on
+   * screen — the same pin `arity` puts on a trailing `spaceUuid`, for the same sentence: a space
+   * template may ask about the space it is in, and may not choose another's chat or the global one.
+   */
+  chatRequest?: true;
+  /**
+   * One argument is a trailing `options` object the host partly owns: keys in `drop` are struck
+   * from what the template passed, keys in `set` are stamped over it — the wrapper writes them
+   * last, so neither can be said from a template's side. `at` is the argument's position.
+   */
+  options?: { at: number; drop?: readonly string[]; set?: Record<string, unknown> };
 }
 
 type Classification = MemberSpec | typeof WIRING;
@@ -228,6 +245,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     devFeatures: state('session'),
     devTools: state('session'),
     setDevTools: action('session'),
+    testPeople: state('session'),
+    setTestPeople: action('session'),
     credentialEntered: state('session'),
     credentialConfirmed: state('session'),
     // Signs in with the host field's password. No argument, so nothing a template collected can be
@@ -242,6 +261,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     createAgent: WIRING,
     clearPasswordError: ambient('session'),
     finishSetup: action('session'),
+    // Decided by the runtime store from what the node has; a template leaves the step, never enters it.
+    holdForAiSetup: WIRING,
     logout: action('session'),
     retryBoot: action('session'),
 
@@ -300,15 +321,29 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     aiModels: state('runtime-admin'),
     aiTasks: state('runtime-admin'),
     aiForm: state('runtime-admin'),
-    aiPresetOptions: state('runtime-admin'),
     aiFormComplete: state('runtime-admin'),
-    aiMaxContextError: state('runtime-admin'),
-    aiApiKeyError: state('runtime-admin'),
-    aiDiscoverNeedsKey: state('runtime-admin'),
     aiFormDirty: state('runtime-admin'),
-    aiServiceOptions: state('runtime-admin'),
+    aiEndpointOptions: state('runtime-admin'),
     canDiscoverAiModels: state('runtime-admin'),
     aiDiscoveredModelOptions: state('runtime-admin'),
+    aiDiscoveredModelHint: state('runtime-admin'),
+    aiRecommendedModel: state('runtime-admin'),
+    aiCanPull: state('runtime-admin'),
+    aiPullText: state('runtime-admin'),
+    canManageAiEndpoints: state('runtime-admin'),
+    aiEndpoints: state('runtime-admin'),
+    aiDetectedEndpoints: state('runtime-admin'),
+    aiInstallLinks: state('runtime-admin'),
+    aiEndpointForm: state('runtime-admin'),
+    aiEndpointFormComplete: state('runtime-admin'),
+    aiEndpointFormDirty: state('runtime-admin'),
+    aiMaxContextError: state('runtime-admin'),
+    aiApiKeyError: state('runtime-admin'),
+    aiServiceOptions: state('runtime-admin'),
+    canUseLocalAi: state('runtime-admin'),
+    canConfigureLocalAi: state('runtime-admin'),
+    localAi: state('runtime-admin'),
+    aiSetupOptions: state('runtime-admin'),
     languages: state('runtime-admin'),
     trustedAgents: state('runtime-admin'),
     authorizedApps: state('runtime-admin'),
@@ -324,6 +359,10 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     mcpEnabled: state('runtime-admin'),
     mcpPort: state('runtime-admin'),
     executorRestartPending: state('runtime-admin'),
+    executorConfigFile: state('runtime-admin'),
+    executorConfigRows: state('runtime-admin'),
+    executorLogTail: state('runtime-admin'),
+    canRestartExecutor: state('runtime-admin'),
     pendingConsent: state('runtime-admin'),
     consentSecret: state('runtime-admin'),
     loadAiModels: ambient('runtime-admin'),
@@ -331,13 +370,31 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     newAiModel: ambient('runtime-admin'),
     editAiModel: ambient('runtime-admin'),
     setAiFormField: ambient('runtime-admin'),
-    setAiService: ambient('runtime-admin'),
     discoverAiModels: action('runtime-admin'),
+    pullAiModel: action('runtime-admin'),
     closeAiForm: ambient('runtime-admin'),
     saveAiModel: action('runtime-admin'),
     removeAiModel: destructive('runtime-admin'),
     setDefaultAiModel: action('runtime-admin'),
     removeAiTask: destructive('runtime-admin'),
+    detectAiEndpoints: action('runtime-admin'),
+    addDetectedEndpoint: action('runtime-admin'),
+    newAiEndpoint: ambient('runtime-admin'),
+    editAiEndpoint: ambient('runtime-admin'),
+    setAiEndpointField: ambient('runtime-admin'),
+    setAiService: ambient('runtime-admin'),
+    closeAiEndpointForm: ambient('runtime-admin'),
+    saveAiEndpoint: action('runtime-admin'),
+    removeAiEndpoint: destructive('runtime-admin'),
+    loadLocalAi: ambient('runtime-admin'),
+    installLocalAi: action('runtime-admin'),
+    startLocalAi: action('runtime-admin'),
+    stopLocalAi: action('runtime-admin'),
+    removeLocalAi: destructive('runtime-admin'),
+    // Called by setting up an account, once its profile is published: host code only.
+    openAiStep: WIRING,
+    skipAiSetup: action('runtime-admin'),
+    finishAiSetup: action('runtime-admin'),
     loadLanguages: ambient('runtime-admin'),
     installLanguage: action('runtime-admin'),
     removeLanguage: destructive('runtime-admin'),
@@ -360,6 +417,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     importDatabase: destructive('runtime-admin'),
     setMcpPort: action('runtime-admin'),
     restartExecutor: destructive('runtime-admin'),
+    setExecutorConfigValue: action('runtime-admin'),
+    loadExecutorLogTail: ambient('runtime-admin'),
     approveConsent: destructive('runtime-admin'),
     denyConsent: action('runtime-admin'),
     dismissConsentSecret: ambient('runtime-admin'),
@@ -372,6 +431,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     currentDatasetUri: state('content'),
     currentDatasetCid: state('content'),
     currentDatasetEntities: state('content'),
+    currentDatasetEntitiesLoaded: state('content'),
     isWeSpace: state('navigation'),
     joinedSpaceCids: state('navigation'),
     datasetsLoaded: state('navigation'),
@@ -384,7 +444,6 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     switchDataset: ambient('navigation'),
     reorderDatasets: action('agent'),
     removeDataset: destructive('space-admin'),
-    cleanupSpaceSdna: action('space-admin'),
 
     /*
       Agent settings and the datasets that hold them.
@@ -414,6 +473,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       panels, which render at the chrome tier, have it.
     */
     personalDataset: state('agent'),
+    // The personal space's schema install, for the agent-data kernel to wait on. Not for templates.
+    whenPersonalDataset: WIRING,
     testDataset: WIRING,
     /*
       The global discovery space and the marketplace — shared neighbourhoods holding nothing of this
@@ -435,15 +496,9 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     updateAgentSettings: WIRING,
     clearCurrentDataset: WIRING,
     trackDataset: WIRING,
-    provideAutoInterpretGate: WIRING,
-    watchConversation: WIRING,
-    unwatchConversation: WIRING,
-    provideExtractionCandidates: WIRING,
-    provideCollectionExtraction: WIRING,
     onDatasetRemoved: WIRING,
     readDatasets: WIRING,
     initSystemDatasets: WIRING,
-    prepareDataset: WIRING,
     loadDatasets: WIRING,
     subscribeToChanges: WIRING,
     getDatasetOrder: WIRING,
@@ -493,6 +548,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // Where a space's things are and which record plays which part — read by any template that
     // shows the space at all, so `content` for the reason the space's vocabulary is.
     root: state('content'),
+    rootLoaded: state('content'),
+    firstScreenOpen: state('content'),
     landmarks: state('content'),
     landmarksLoaded: state('content'),
     taskWorkflowEnabled: state('content'),
@@ -520,7 +577,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     mutedAgents: state('content'),
     setAgentMuted: action('content'),
     exportCallTranscript: action('content'),
-    exportExtractionLog: action('content'),
+    exportInterpretationLog: action('content'),
     // A board is a collection like a call, and arranging one is content work rather than
     // administration: any member may make one and drag cards on it.
     createBoard: action('content'),
@@ -645,7 +702,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       Reading it is `space-settings`, writing it is still admin-gated below.
 
       Not `space-admin` like `enabledModules` beside it, and the difference is the audience: a card
-      showing "extracting automatically" is for every member, not only whoever may change it. The
+      showing "interpreting automatically" is for every member, not only whoever may change it. The
       results are written into everyone's copy of the space, so whether it is on is not an
       administrator's secret — it is a fact about the space, like its name.
 
@@ -661,10 +718,10 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       written on that collection by whoever is in it: stopping a standing pass mid-meeting is about
       that meeting, and gating it on administering the space makes the honest response "leave the
       call". The space's own collection is the exception, and the store refuses that one to anybody
-      who does not administer the space — `canSetExtractionFor` says so up front.
+      who does not administer the space — `canSetInterpretationFor` says so up front.
     */
-    autoExtractFor: ambient('content'),
-    canSetExtractionFor: ambient('content'),
+    autoInterpretFor: ambient('content'),
+    canSetInterpretationFor: ambient('content'),
     /*
       A capability's settings, at each of the three levels a screen can edit.
 
@@ -675,8 +732,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     spaceModuleSettings: state('space-settings'),
     myModuleSettings: state('space-settings'),
     agentModuleSettings: state('space-settings'),
-    extractionTargets: state('space-settings'),
-    setExtractionTarget: action('space-settings'),
+    interpretationTargets: state('space-settings'),
+    setInterpretationTarget: action('space-settings'),
     templateOverrideOptions: state('space-admin'),
     themeOverrideOptions: state('space-admin'),
     /*
@@ -700,7 +757,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     setModuleEnabled: hereOnly('space-settings', 2),
     setAutoInterpret: hereOnly('space-settings', 1),
     setThreadMode: hereOnly('space-settings', 1),
-    setAutoExtractFor: action('content'),
+    setAutoInterpretFor: action('content'),
     /*
       Writing one. `hereOnly` on the community setter for the reason every other community write has
       it: the space id is the last parameter, so a template that could pass one could reconfigure a
@@ -763,13 +820,16 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       'content' rather than 'space-settings', unlike everything else on this store.
 
       Capability groups name what a template is being trusted with, and this is read to *render*: a
-      feed showing what an extraction pass found on a call needs the list of models it could have
+      feed showing what an interpretation pass found on a call needs the list of models it could have
       found, the same way it needs `recordStore.displays` to draw one. Grouping it with the model
       wizard would make an ordinary card list ask for the capability that edits a space's vocabulary.
     */
-    extractionCandidates: state('content'),
-    provideExtractionEnroller: WIRING,
-    extractionNeedsIdentity: state('space-settings'),
+    interpretationCandidates: state('content'),
+    interpretationCandidatesLoaded: state('content'),
+    // Answers for a dataset that is not on screen — host plumbing, not a template's to aim.
+    interpretationCandidatesFor: WIRING,
+    provideInterpretationEnroller: WIRING,
+    interpretationNeedsIdentity: state('space-settings'),
     relationshipTargets: state('space-settings'),
     identityOptions: state('space-settings'),
     nameOptions: state('space-settings'),
@@ -781,7 +841,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     setShapeField: ambient('space-settings'),
     setIdentityMember: ambient('space-settings'),
     setNameMember: ambient('space-settings'),
-    setExtractable: ambient('space-settings'),
+    setInterpretable: ambient('space-settings'),
     addProperty: ambient('space-settings'),
     addRelationship: ambient('space-settings'),
     removeMember: ambient('space-settings'),
@@ -821,6 +881,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // in the tier every template can reach, beside `spaceStore.createPost`.
     creatableEntities: state('content'),
     kinds: state('content'),
+    plumbingClasses: state('content'),
     displays: state('content'),
     // SpaceStore fills this on the way past, with the lists a community owns — see `vocabulary` on
     // a property declaration. Wiring between two stores, never something a template names.
@@ -1178,6 +1239,18 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       and a template able to call it could make every module's panel claim room it is not using.
     */
     provideModuleGate: WIRING,
+    /*
+      Which space a space-bound chat belongs to, injected by `SpaceStore` — the same hand-off as
+      `provideModuleGate` above, and wiring for the same reason: a template able to call it could
+      show a space's chat anywhere, or nowhere.
+    */
+    provideSpaceGate: WIRING,
+    /*
+      Who the kept panel instances belong to, injected by `SessionStore` — the same hand-off as
+      `provideSpaceGate` above, and wiring for the same reason: a template able to call it could
+      read another agent's records as its own.
+    */
+    provideAgentDid: WIRING,
     provideTemplateSaver: WIRING,
     pendingDestructive: state('host-layout'),
     confirmDestructive: action('host-layout'),
@@ -1335,8 +1408,19 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     */
     closeTemplatePanel: ambient('view-state'),
     openTemplatePanel: ambient('view-state'),
-    // Opening a panel again for another record is the same act as opening it once.
-    openPanel: ambient('view-state'),
+    /*
+      Opening a panel again for another record is the same act as opening it once.
+
+      What it may not do, however it asks: pick where the instance is kept (`scope` is the host's —
+      a template's panels are remembered under its own interface, never `app`) or pull the app's
+      panels out in front unasked (`viaTemplate` marks the call so `openPanel` reveals only while a
+      person is acting — otherwise Settings stays up in front of it). Both are written over the
+      options object here, so they cannot be said from a template's side.
+    */
+    openPanel: {
+      ...ambient('view-state'),
+      options: { at: 2, drop: ['scope'], set: { viaTemplate: true } },
+    },
     closePanel: ambient('view-state'),
     panelInstances: state('view-state'),
   },
@@ -1471,6 +1555,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     open: state('content'),
     draft: state('view-state'),
     recordWorkflows: state('content'),
+    active: state('content'),
     refreshWorkflows: ambient('content'),
     openWorkflow: ambient('view-state'),
     closeWorkflow: ambient('view-state'),
@@ -1594,6 +1679,35 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     pushSnapshot: WIRING,
     // The editor's own save path. A template rendering itself has no edit to commit.
     commitEdit: WIRING,
+  },
+
+  /*
+    Which chat is up is `view-state`, as every panel is. `openChat` is an `action`, though, not
+    ambient: its `draft` sends a turn the moment the chat opens, and a turn writes wherever the
+    session's capabilities reach. A template that could run that unasked — on mount, on paint —
+    would have an AI acting with nobody involved, which is what the gesture rule exists for. The
+    space tier holds it because the ask lives in the space's own template ("Find or ask").
+  */
+  chatStore: {
+    sheet: state('view-state'),
+    isNarrow: state('view-state'),
+    /*
+      The rewrite `chatRequest` names: a template's `draft` fills the composer rather than sending
+      — only a person's Send sends a question — and its `perspectiveUuid` is the space on screen
+      unless the bag may name spaces. See {@link MemberSpec.chatRequest}.
+    */
+    openChat: { ...action('view-state'), chatRequest: true },
+    /*
+      The host's half of the nonce flow — the chat body spends the pending question an open was
+      issued for, and remembers which conversation a window had open. A template that could call
+      either could spend a pending question itself or lie about which conversation was open.
+    */
+    takePending: WIRING,
+    rememberConversation: WIRING,
+    rememberedConversation: WIRING,
+    // Who is signed in is the session's to say — see the store's `provideAgentDid`.
+    provideAgentDid: WIRING,
+    closeSheet: ambient('view-state'),
   },
 
   /**
@@ -1819,6 +1933,45 @@ export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, o
         const bound = method;
         const arity = spec.arity;
         method = (...args: unknown[]) => bound(...args.slice(0, arity));
+      }
+
+      /*
+        A chat-open request from a template: its question fills the composer rather than sending —
+        `prefill` is what the store passes on — and its space is the one on screen, unless the bag
+        may name spaces. Below `space-admin` an absent dataset leaves `perspectiveUuid` present and
+        undefined, which `openChat` reads as "not known yet" and opens nothing — never the global
+        chat. See {@link MemberSpec.chatRequest}.
+      */
+      if (spec.chatRequest) {
+        const bound = method;
+        const datasetStore = (stores as Record<string, unknown>).datasetStore as
+          { currentDataset?: () => { id?: string } | null | undefined } | undefined;
+        method = (...args: unknown[]) => {
+          const { draft, ...rest } = (args[0] ?? {}) as Record<string, unknown>;
+          const request: Record<string, unknown> = { ...rest };
+          if (typeof draft === 'string' && draft) request.prefill = draft;
+          if (!mayNameASpace) request.perspectiveUuid = datasetStore?.currentDataset?.()?.id;
+          return bound(request);
+        };
+      }
+
+      /*
+        Options keys the host owns, struck or stamped before the store sees them — `openPanel`'s
+        `scope` and `viaTemplate` today. Written here rather than inside the store so the surface
+        manifest keeps saying what a template may not say. See {@link MemberSpec.options}.
+      */
+      if (spec.options) {
+        const bound = method;
+        const { at, drop = [], set = {} } = spec.options;
+        method = (...args: unknown[]) => {
+          const given = args[at];
+          const options = given && typeof given === 'object' ? { ...(given as Record<string, unknown>) } : {};
+          for (const key of drop) delete options[key];
+          Object.assign(options, set);
+          const next = args.slice();
+          next[at] = options;
+          return bound(...next);
+        };
       }
 
       if (spec.destructive && options.onDestructive) {

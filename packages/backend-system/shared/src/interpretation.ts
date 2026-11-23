@@ -133,7 +133,7 @@ export interface InterpretationResult {
   /**
    * How many turns the pass actually read.
    *
-   * Reported because without it "nothing was extracted" and "there was nothing to extract from" are
+   * Reported because without it "nothing was interpreted" and "there was nothing to extract from" are
    * the same empty result, and they need opposite responses from a user: one means the conversation
    * had no commitments in it, the other means the transcript never arrived. Every layer between the
    * transcript and the model can drop turns silently — a wrong containment predicate, an unreadable
@@ -254,7 +254,7 @@ export interface InterpretationPort {
    * whose methods exist whether or not the node it dials implements them, so a synchronous probe
    * can only ever report "my own code has this function" — which is true on every node, including
    * one that will refuse the call. That is not a hypothetical: it shipped, and a WE deployment
-   * offered Extract against a node whose executor predated the feature, failing with a raw RPC
+   * offered Interpret against a node whose executor predated the feature, failing with a raw RPC
    * error where the whole point of `available()` was to prevent exactly that.
    *
    * Asynchronous because the only honest answer involves a round trip. Implementations should make
@@ -361,7 +361,7 @@ export interface InterpretationPort {
    *
    * Covers both surfaces: a pass started by {@link interpret} and a pass a standing {@link watch}
    * ran on its own. That is the point of it being one subscription rather than a callback on each
-   * — a UI showing "what is being extracted right now" should not care which of the two started
+   * — a UI showing "what is being interpreted right now" should not care which of the two started
    * the work, and a user watching a call cannot tell anyway.
    *
    * Returns an unsubscribe. Optional, and feature-detected separately from everything else here: a

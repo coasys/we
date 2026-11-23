@@ -8,11 +8,11 @@
  * inspection.
  */
 import { markAction, markState, storeSurface } from '@we/module-shared';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { DEFAULT_ICE_SERVERS } from './mesh';
 import { parseCallMessage } from './protocol';
-import { createCallStore, STAGE_GAP_PX, STAGE_PADDING_PX } from './store';
+import { createCallStore, STAGE_CONTROLS_PX, STAGE_GAP_PX, STAGE_PADDING_PX } from './store';
 
 /**
  * The reactivity a host lends a module, reduced to the smallest thing that satisfies it.
@@ -119,16 +119,22 @@ function fakeMicStream() {
 }
 
 describe('what the call still decides about its own video', () => {
-  it('separates whether the video shows from how much of the screen it has', () => {
-    // One button used to cycle visibility, placement and size together, so it could not have a clear
-    // icon and any given state took up to three clicks through states nobody wanted.
+  it('hides only the tiles, and never the panel that holds the controls', () => {
+    // The "Video" line used to toggle the whole stage — which took mute and Leave with it while the
+    // call kept running. The pictures are what is put away; the panel and its controls stay.
     const store = makeStore();
-    expect(store.stageOpen()).toBe(false);
+    store.openStage();
+    expect(store.stageOpen()).toBe(true);
+    expect(store.tilesHidden()).toBe(false);
 
     store.toggleStage();
+    expect(store.tilesHidden()).toBe(true);
+    // The stage, and so the bar inside it, never went anywhere.
     expect(store.stageOpen()).toBe(true);
+
     store.toggleStage();
-    expect(store.stageOpen()).toBe(false);
+    expect(store.tilesHidden()).toBe(false);
+    expect(store.stageOpen()).toBe(true);
   });
 
   it('asks for no room until it is opened', () => {
@@ -150,6 +156,47 @@ describe('what the call still decides about its own video', () => {
     expect(store.stageOpen()).toBe(true);
     store.closeStage();
     expect(store.stageOpen()).toBe(false);
+  });
+
+  it('opens and closes its settings through the store, so the menu can reach them too', () => {
+    /*
+      The gear folds into the More menu below `base` — and a menu line cannot write a `$localState`
+      declared in a sibling subtree, which is what `local.open` was. The flag lives here now, with
+      the same lifecycle as the rest of the bar's plumbing: `toggleCallSettings` flips it,
+      `closeCallSettings` lowers it, and a call that ends takes it down with it.
+    */
+    const store = makeStore();
+    expect(store.settingsOpen()).toBe(false);
+
+    store.toggleCallSettings();
+    expect(store.settingsOpen()).toBe(true);
+    store.toggleCallSettings();
+    expect(store.settingsOpen()).toBe(false);
+
+    store.toggleCallSettings();
+    store.closeCallSettings();
+    expect(store.settingsOpen()).toBe(false);
+  });
+
+  it('re-asks the host for the stage on every way back to it, even while already open', () => {
+    /*
+      `stageReveal` is the panel declaration's `reveal` key: a counter the host watches, because
+      "still open" is no change at all and cannot carry "bring it forward". Closing the panel's own
+      flag is the one way that does not ask — it is how you leave the stage, not how you reach it.
+    */
+    const store = makeStore();
+    const before = store.stageReveal() as number;
+
+    store.openStage();
+    expect(store.stageReveal()).toBeGreaterThan(before);
+
+    // Asked for again while open — a folded or out-of-sight stage is the case this exists for.
+    const opened = store.stageReveal() as number;
+    store.openStage();
+    expect(store.stageReveal()).toBeGreaterThan(opened);
+
+    store.closeStage();
+    expect(store.stageReveal() as number).toBe(store.stageReveal() as number);
   });
 
   it('always overlays, and leaves everything else about the panel to the host', () => {
@@ -243,10 +290,11 @@ describe('what a template may reach', () => {
     for (const name of [
       'stageBid',
       'stageOpen',
+      'stageReveal',
+      'tilesHidden',
       'openStage',
       'closeStage',
       'toggleStage',
-      'chromeReserve',
       'setStageBox',
       'stageTemplate',
       'stageRows',
@@ -256,6 +304,9 @@ describe('what a template may reach', () => {
       'stageOverflow',
       'tileFaces',
       'localAudio',
+      'settingsOpen',
+      'toggleCallSettings',
+      'closeCallSettings',
     ]) {
       expect(surface[name], name).toBeUndefined();
     }
@@ -297,7 +348,20 @@ describe('tile packing', () => {
 
     expect(aspect.ratio).toBeCloseTo(16 / 9);
     expect(aspect.insetX).toBe(STAGE_PADDING_PX * 2);
-    expect(aspect.insetY).toBe(STAGE_PADDING_PX * 2);
+    // The controls ride inside the panel now, under the tiles — "fit to content" has to cover them
+    // too, or the answer the host lands on squeezes the pictures by the bar's height.
+    expect(aspect.insetY).toBe(STAGE_PADDING_PX * 2 + STAGE_CONTROLS_PX);
+  });
+
+  it('reserves the status line and its gap in the height it asks for', () => {
+    /*
+      The controls column is two things, not one: the bar's 56px, and the `call-status` slot above
+      it, which opens a *second* `gap: '300'` the moment anything is contributed — the wheel
+      indicator, a problem line. A reserve that counted only the bar came out ~50px short exactly
+      then, and "fit to content" clipped the controls it was sizing for. The ~2px is the honest
+      remainder: text metrics the layout rounds up.
+    */
+    expect(STAGE_CONTROLS_PX).toBe(STAGE_GAP_PX + 56 + STAGE_GAP_PX + 36 + 2);
   });
 
   it('fits to the arrangement it is in, rather than solving a new one', () => {
@@ -309,7 +373,7 @@ describe('tile packing', () => {
 
     expect(aspect.ratio).toBeCloseTo((3 * 16) / (2 * 9));
     expect(aspect.insetX).toBe(STAGE_PADDING_PX * 2 + 2 * STAGE_GAP_PX);
-    expect(aspect.insetY).toBe(STAGE_PADDING_PX * 2 + 1 * STAGE_GAP_PX);
+    expect(aspect.insetY).toBe(STAGE_PADDING_PX * 2 + 1 * STAGE_GAP_PX + STAGE_CONTROLS_PX);
   });
 });
 
@@ -352,6 +416,10 @@ describe('transport and device lifetime', () => {
        * presence from one that did not.
        */
       reactive?: boolean;
+      /** What the machine answers when asked for devices; by default, a microphone every time. */
+      getUserMedia?: (constraints: MediaStreamConstraints) => Promise<MediaStream>;
+      /** What the machine answers when asked for a screen; by default, a refusal. */
+      getDisplayMedia?: () => Promise<MediaStream>;
     } = {},
   ) {
     const tracked = options.reactive ? trackingReactivity() : null;
@@ -503,10 +571,12 @@ describe('transport and device lifetime', () => {
           },
         },
         media: {
-          getUserMedia: async () => mic,
-          getDisplayMedia: async () => {
-            throw new Error('no screen here');
-          },
+          getUserMedia: options.getUserMedia ?? (async () => mic),
+          getDisplayMedia:
+            options.getDisplayMedia ??
+            (async () => {
+              throw new Error('no screen here');
+            }),
           publish: (stream: MediaStream | null) => void publishedMedia.push(stream),
           input: () => publishedMedia.at(-1) ?? null,
           // A machine with nothing to choose between, which is one of the ordinary states the
@@ -670,13 +740,149 @@ describe('transport and device lifetime', () => {
 
     await store.startCall();
     await Promise.resolve();
-    expect(published).toEqual([mic]);
+    // Joined with the microphone off: nothing to hear, so nothing is published — a listener handed
+    // the empty stream would build an audio graph from nothing.
+    expect(published).toEqual([]);
 
-    store.toggleAudio();
-    expect(published).toEqual([mic]);
+    // The camera alone still gives a listener nothing to hear.
+    await store.toggleVideo();
+    expect(published).toEqual([]);
+
+    await store.toggleAudio();
+    const opened = published.at(-1) as MediaStream;
+    expect(opened.getAudioTracks()).toEqual(mic.getAudioTracks());
+
+    // Muting again keeps the same capture, so nothing new is published.
+    await store.toggleAudio();
+    expect(published.at(-1)).toBe(opened);
 
     store.leave();
-    expect(published).toEqual([mic, null]);
+    expect(published.at(-1)).toBeNull();
+  });
+
+  /*
+    A phone whose app had no microphone permission joined with neither camera nor microphone, and
+    unmuting never brought audio back. The controller now keeps whichever device is granted and asks
+    again on unmute; what the store owes on top is saying so, because a missing microphone — unlike
+    a missing camera — is invisible to the person it belongs to.
+  */
+  describe('a microphone that is refused while the camera is granted', () => {
+    const cameraOnly = () => {
+      let allowAudio = false;
+      const camera = { kind: 'video', enabled: true, readyState: 'live', stop() {}, addEventListener() {} };
+      const microphone = { kind: 'audio', enabled: true, readyState: 'live', stop() {}, addEventListener() {} };
+      const harness = callable({
+        getUserMedia: async (constraints) => {
+          if (constraints.audio && !allowAudio) throw new Error('NotAllowedError');
+          return new MediaStream([(constraints.audio ? microphone : camera) as unknown as MediaStreamTrack]);
+        },
+      });
+      return { ...harness, grant: () => (allowAudio = true) };
+    };
+
+    it('joins with both off, asking for neither, so nothing is refused yet', async () => {
+      const { store } = cameraOnly();
+
+      await store.startCall();
+      await Promise.resolve();
+
+      expect(store.media()).toMatchObject({ audioEnabled: false, videoEnabled: false });
+      expect(store.problem()).toBeNull();
+    });
+
+    it('says so again when unmuting is refused', async () => {
+      const { store } = cameraOnly();
+      await store.startCall();
+      await Promise.resolve();
+      store.dismissProblem();
+
+      await store.toggleAudio();
+
+      expect(store.media().audioEnabled).toBe(false);
+      expect(store.problem()).toMatch(/microphone/);
+    });
+
+    it('unmutes, and clears the message, once the permission has been granted', async () => {
+      const { store, grant, published } = cameraOnly();
+      await store.startCall();
+      await Promise.resolve();
+
+      grant();
+      await store.toggleAudio();
+
+      expect(store.media().audioEnabled).toBe(true);
+      expect(store.problem()).toBeNull();
+      // The stream with the microphone in it is what the transcriber is handed.
+      expect((published.at(-1) as MediaStream | null)?.getAudioTracks()).toHaveLength(1);
+    });
+
+    it('does not report an unmute of a call already left against the next call', async () => {
+      // The unmute in the first call waits on its permission prompt; the person leaves, joins a
+      // second call with a working microphone and mutes it. The first prompt then refuses.
+      let refuseFirstUnmute: (() => void) | undefined;
+      let microphoneIs: 'refused' | 'prompting' | 'granted' = 'refused';
+      const microphone = { kind: 'audio', enabled: true, readyState: 'live', stop() {}, addEventListener() {} };
+      const camera = { kind: 'video', enabled: true, readyState: 'live', stop() {}, addEventListener() {} };
+      const { store } = callable({
+        getUserMedia: async (constraints) => {
+          if (constraints.audio && microphoneIs === 'refused') throw new Error('NotAllowedError');
+          if (constraints.audio && microphoneIs === 'prompting') {
+            await new Promise<void>((resolve) => (refuseFirstUnmute = resolve));
+            throw new Error('NotAllowedError');
+          }
+          return new MediaStream([(constraints.audio ? microphone : camera) as unknown as MediaStreamTrack]);
+        },
+      });
+      await store.startCall();
+      await Promise.resolve();
+      microphoneIs = 'prompting';
+      const firstUnmute = store.toggleAudio();
+      await vi.waitFor(() => expect(refuseFirstUnmute).toBeDefined());
+
+      microphoneIs = 'granted';
+      store.leave();
+      await store.startCall();
+      await Promise.resolve();
+      // On, then muted again.
+      await store.toggleAudio();
+      await store.toggleAudio();
+      expect(store.media().audioEnabled).toBe(false);
+      expect(store.problem()).toBeNull();
+
+      refuseFirstUnmute?.();
+      await firstUnmute;
+
+      expect(store.problem()).toBeNull();
+    });
+
+    it('does not report a camera refused after its call was left', async () => {
+      // The camera-on waits on its permission prompt; the person leaves; the prompt then refuses.
+      let refuseCamera: (() => void) | undefined;
+      let cameraIs: 'refused' | 'prompting' = 'refused';
+      const microphone = { kind: 'audio', enabled: true, readyState: 'live', stop() {}, addEventListener() {} };
+      const { store } = callable({
+        getUserMedia: async (constraints) => {
+          if (constraints.video && cameraIs === 'refused') throw new Error('NotAllowedError');
+          if (constraints.video) {
+            await new Promise<void>((resolve) => (refuseCamera = resolve));
+            throw new Error('NotAllowedError');
+          }
+          return new MediaStream([microphone as unknown as MediaStreamTrack]);
+        },
+      });
+      await store.startCall();
+      await Promise.resolve();
+      cameraIs = 'prompting';
+      const cameraOn = store.toggleVideo();
+      await vi.waitFor(() => expect(refuseCamera).toBeDefined());
+
+      store.leave();
+      expect(store.problem()).toBeNull();
+      refuseCamera?.();
+      await cameraOn;
+
+      expect(store.problem()).toBeNull();
+    });
   });
 
   it('refuses to join on a host that lends no peer connections, and writes nothing', async () => {
@@ -823,6 +1029,28 @@ describe('transport and device lifetime', () => {
 
     expect(store.callId()).toBeNull();
     expect(scopeDisposals()).toBe(1);
+  });
+
+  it('starts the next call without the last call’s synthetic participants', async () => {
+    /*
+      The count used to persist — storage first, then a signal that outlived its call — so peers
+      summoned to look at one stage walked into the next call, in whatever space that call was in.
+      A fake participant is off unless asked, in an existing space and in a new one, which means the
+      count belongs to the call it was asked in and dies with it.
+    */
+    const { store } = callable();
+
+    await store.startCall();
+    await Promise.resolve();
+    // `addFakePeer` is absent rather than inert in a production build — see the conditional spread
+    // in the store — so the type is right to doubt it, and a test build has developer features.
+    store.addFakePeer!();
+    store.addFakePeer!();
+    expect(store.fakePeerCount!()).toBe(2);
+
+    store.leave();
+    await Promise.resolve();
+    expect(store.fakePeerCount!(), 'the count outlived its call').toBe(0);
   });
   describe('where a call looks for NAT traversal', () => {
     /**
@@ -1044,10 +1272,12 @@ describe('transport and device lifetime', () => {
         participants: [] as { participantId: string; agentDid: string; stream: MediaStream; hasVideo?: boolean }[],
         joinedWith: null as MediaStream | null,
         destroyed: false,
-        join: async (stream: MediaStream) => void (session.joinedWith = stream),
+        join: async (stream: MediaStream): Promise<void> => void (session.joinedWith = stream),
         leave: async () => {},
         destroy: async () => void (session.destroyed = true),
-        replaceTrack: async () => {},
+        /** Every track handed over after the join, as `[kind, track]`. */
+        sent: [] as [string, MediaStreamTrack | null][],
+        replaceTrack: async (kind: string, track: MediaStreamTrack | null) => void session.sent.push([kind, track]),
         setQualityPreference: async () => {},
         getState: () => 'active',
         on: (event: string, cb: (...args: unknown[]) => void) => {
@@ -1105,6 +1335,120 @@ describe('transport and device lifetime', () => {
       await Promise.resolve();
       expect(stateOf()?.retrying).toBe(false);
       expect(stateOf()?.transport, 'read from the session once the pair connects').toBe('relay');
+    });
+
+    /*
+      Calls start with both devices off, so the session joins with an empty stream. A device turned
+      on before the join finished changed nothing the session could see: track changes wait for the
+      join, and the join had taken the stream as it stood. The other side saw no video.
+    */
+    describe('a device turned on while the session joins', () => {
+      const track = (kind: string) =>
+        ({ kind, enabled: true, readyState: 'live', stop() {}, addEventListener() {} }) as unknown as MediaStreamTrack;
+      const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+      /** A session built once `built` resolves, whose join waits for `finishJoin`. */
+      function joining(
+        options: {
+          built?: Promise<void>;
+          getUserMedia?: (constraints: MediaStreamConstraints) => Promise<MediaStream>;
+          getDisplayMedia?: () => Promise<MediaStream>;
+        } = {},
+      ) {
+        const fake = fakeSession();
+        let finish = () => {};
+        fake.session.join = (stream: MediaStream) => {
+          fake.session.joinedWith = stream;
+          return new Promise<void>((resolve) => (finish = resolve));
+        };
+        const camera = track('video');
+        const microphone = track('audio');
+        const harness = callable({
+          backend: async () => {
+            await options.built;
+            return fake.session;
+          },
+          getUserMedia: options.getUserMedia ?? (async (asked) => new MediaStream([asked.audio ? microphone : camera])),
+          ...(options.getDisplayMedia ? { getDisplayMedia: options.getDisplayMedia } : {}),
+        });
+        return { ...harness, fake, camera, microphone, finishJoin: () => finish() };
+      }
+
+      it('sends a camera turned on during the join', async () => {
+        const { store, fake, camera, finishJoin } = joining();
+
+        const starting = store.startCall();
+        await settle();
+        expect(fake.session.joinedWith?.getTracks(), 'joined with nothing on').toEqual([]);
+        await store.toggleVideo();
+        finishJoin();
+        await starting;
+        await settle();
+
+        expect(fake.session.sent).toEqual([['video', camera]]);
+      });
+
+      it('sends a microphone that lands as the join ends', async () => {
+        // Read when the session counts as joined, not when `join` returns: between the two, a
+        // microphone that lands is dropped by `onTrackChanged` and missed by an earlier reading.
+        let grant = () => {};
+        const { store, fake, microphone, finishJoin } = joining({
+          getUserMedia: () => new Promise((resolve) => (grant = () => resolve(new MediaStream([microphone])))),
+        });
+
+        const starting = store.startCall();
+        await settle();
+        const unmuting = store.toggleAudio();
+        await settle();
+        finishJoin();
+        grant();
+        await Promise.all([starting, unmuting]);
+        await settle();
+
+        expect(fake.session.sent).toEqual([['audio', microphone]]);
+      });
+
+      it('sends the microphone, not the screen, when unmuted while sharing during the join', async () => {
+        // While sharing, the display stream is the screen: it holds no microphone.
+        const screen = track('video');
+        const { store, fake, microphone, finishJoin } = joining({
+          getDisplayMedia: async () => new MediaStream([screen]),
+        });
+
+        const starting = store.startCall();
+        await settle();
+        await store.toggleScreenShare();
+        await store.toggleAudio();
+        finishJoin();
+        await starting;
+        await settle();
+
+        expect(fake.session.sent).toEqual(
+          expect.arrayContaining([
+            ['audio', microphone],
+            ['video', screen],
+          ]),
+        );
+      });
+
+      it('keeps a camera pressed while the session was still being built', async () => {
+        let build = () => {};
+        const { store, fake, camera, finishJoin } = joining({
+          built: new Promise<void>((resolve) => (build = resolve)),
+        });
+
+        const starting = store.startCall();
+        await settle();
+        await store.toggleVideo();
+        build();
+        await settle();
+        finishJoin();
+        await starting;
+        await settle();
+
+        expect(store.media().videoEnabled, 'the press is not turned off again').toBe(true);
+        expect(fake.session.joinedWith?.getVideoTracks()).toEqual([camera]);
+      });
     });
 
     it('reconnects a peer through the session', async () => {
@@ -1223,6 +1567,9 @@ describe('transport and device lifetime', () => {
         const { store, session, fire, published, cleared } = await inCallWith('did:someone');
         const id = store.callId();
         expect(id).toBeTruthy();
+        // A microphone on, so there is something to release.
+        await store.toggleAudio();
+        expect(published.at(-1)).not.toBeNull();
 
         fire('replaced', { participantId: 'session-this-tab' });
         await settle();
@@ -1257,6 +1604,69 @@ describe('transport and device lifetime', () => {
         const id = store.callId() as string;
         fire('replaced', { participantId: 'session-this-tab' });
         await settle();
+
+        await store.joinCall(id);
+        await settle();
+
+        expect(store.callId()).toBe(id);
+        expect(sessions).toHaveLength(2);
+        expect(store.problem(), 'joining again clears the notice').toBeNull();
+      });
+    });
+
+    /*
+      The session ends an SFU call itself when the backend's rebuilds give up (`gave-up`), or the
+      call server refuses the session as another agent's (`refused`). Without a listener the call
+      stayed "joined" over a session the SDK had already stopped — a dead call. It is let go like a
+      leave: devices released, the reason said, and joining again the person's choice.
+    */
+    describe('when the session ends the call itself', () => {
+      const settle = async () => {
+        for (let i = 0; i < 6; i++) await Promise.resolve();
+      };
+
+      it('lets go of the call and says the connection gave up', async () => {
+        const { store, session, fire, published, cleared } = await inCallWith('did:someone');
+        const id = store.callId();
+        expect(id).toBeTruthy();
+        await store.toggleAudio();
+        expect(published.at(-1)).not.toBeNull();
+
+        // A give-up tells each participant it left first, then ends the call.
+        fire('participant-left', { participantId: 'did:someone', did: 'did:someone' });
+        fire('error', new Error('rebuild attempts exhausted'));
+        fire('call-ended', { reason: 'gave-up', error: new Error('rebuild attempts exhausted') });
+        await settle();
+
+        expect(store.callId()).toBeNull();
+        expect(store.tiles()).toEqual([]);
+        expect(store.problem()).toMatch(/lost its connection/);
+        expect(session.destroyed, 'the session is let go like on a leave').toBe(true);
+        expect(published.at(-1), 'the camera and the microphone are released').toBeNull();
+        expect(cleared).toEqual([['call', id]]);
+      });
+
+      it('says the call server refused this session, as a terminal end', async () => {
+        const { store, session, fire } = await inCallWith('did:someone');
+
+        fire('call-ended', { reason: 'refused', error: new Error('session belongs to another agent') });
+        await settle();
+
+        expect(store.callId()).toBeNull();
+        expect(store.tiles()).toEqual([]);
+        expect(store.problem()).toMatch(/refused this session/);
+        expect(session.destroyed).toBe(true);
+      });
+
+      it('does not rejoin by itself, and joins again when the person asks', async () => {
+        const { store, fire, sessions } = await inCallWith('did:someone');
+        const id = store.callId() as string;
+
+        fire('call-ended', { reason: 'gave-up', error: new Error('rebuild attempts exhausted') });
+        await settle();
+
+        expect(store.callId()).toBeNull();
+        expect(sessions, 'no session is built to rejoin').toHaveLength(1);
 
         await store.joinCall(id);
         await settle();
@@ -1419,7 +1829,7 @@ describe('transport and device lifetime', () => {
     */
     describe('the topology a call runs on', () => {
       const settle = async () => {
-        for (let i = 0; i < 6; i++) await Promise.resolve();
+        for (let i = 0; i < 10; i++) await Promise.resolve();
       };
       const lastTopology = (activities: Record<string, unknown>[]) => activities.at(-1)?.topology;
 
@@ -1823,7 +2233,7 @@ describe('a call and the space it happens in', () => {
  * launcher names a method as a string and the host calls whatever it finds.
  */
 describe('going to the call', () => {
-  function railable() {
+  function railable(peers: unknown[] = []) {
     const signal = <T>(initial: T): [() => T, (next: T) => void] => {
       let value = initial;
       return [() => value, (next: T) => (value = next)];
@@ -1857,7 +2267,7 @@ describe('going to the call', () => {
       kernels: {
         ephemeral: () => scope,
         presence: {
-          peers: () => [],
+          peers: () => peers,
           setActivity: (activity: Record<string, unknown>) => activities.push(activity),
           clearActivity: () => {},
         },
@@ -2028,6 +2438,61 @@ describe('going to the call', () => {
     expect(store.active()).toBe(true);
   });
 
+  it('re-asks for the stage every time, so a call already open but out of sight comes forward', async () => {
+    /*
+      "Go to the call" while the stage is folded, stowed or behind another tab used to be a no-op:
+      the flag it set was already true. The `reveal` key is how the re-ask reaches the host — a
+      counter, since the ask is an event rather than a state.
+    */
+    const { store } = railable();
+
+    store.goToCall();
+    await Promise.resolve();
+    const afterFirst = store.stageReveal() as number;
+
+    // Open-but-out-of-sight: the flag stays true while the ask is repeated.
+    store.goToCall();
+    expect(store.stageOpen()).toBe(true);
+    expect(store.stageReveal() as number).toBeGreaterThan(afterFirst);
+  });
+
+  it('leaves the tiles showing for the next call', async () => {
+    // A "Video" pressed in one call must not follow into the next: the pictures come back with the
+    // stage on `join`, and the flag dies with the call it was set in — like the fake peers.
+    const { store } = railable();
+
+    store.goToCall();
+    await Promise.resolve();
+    store.toggleStage();
+    expect(store.tilesHidden()).toBe(true);
+
+    await store.leave();
+    expect(store.tilesHidden()).toBe(false);
+  });
+
+  it('joins the call already running here rather than starting a second beside it', async () => {
+    /*
+      The "second call" bug, at the store: a button wired to `startCall` makes another call even
+      while presence shows one running. `goToCall` takes the live one instead — which is why the
+      header's Call button is allowed to be a Join, and why a second meeting never appears.
+    */
+    const { store, recordsCreated } = railable([
+      {
+        agentId: 'did:test:them',
+        liveness: 'live',
+        activities: [{ type: 'call', id: 'call-theirs', record: 'rec-theirs' }],
+      },
+    ]);
+
+    store.goToCall();
+    await Promise.resolve();
+
+    expect(store.active()).toBe(true);
+    expect(store.callId()).toBe('call-theirs');
+    // And nothing minted: joining a call writes no record of its own.
+    expect(recordsCreated()).toBe(0);
+  });
+
   it('takes you back to a call happening in another space, rather than starting a second one', async () => {
     /*
       The worst of the three old readings. Navigating out of a call's space and pressing the rail
@@ -2149,7 +2614,7 @@ describe('the spotlight', () => {
 
     expect(aspect.ratio).toBeCloseTo(16 / 9);
     expect(aspect.insetX).toBe(STAGE_PADDING_PX * 2 + wide.width * 0.25 + STAGE_GAP_PX);
-    expect(aspect.insetY).toBe(STAGE_PADDING_PX * 2);
+    expect(aspect.insetY).toBe(STAGE_PADDING_PX * 2 + STAGE_CONTROLS_PX);
   });
 
   it('gives the whole stage to solo, on the axis the strip was on', () => {
@@ -2192,7 +2657,7 @@ describe('the spotlight', () => {
  * `let`, though — a closure over it returns the right value whenever it is *called*, and tells the
  * reactive graph nothing. So anything binding to `callRecordId` was evaluated once, against the
  * frame before the call existed, and never re-evaluated: a board, a transcript feed and an
- * extraction readout sat empty beside a call that was plainly running.
+ * interpretation readout sat empty beside a call that was plainly running.
  *
  * Pinned against a **tracking** primitive rather than the closure the harness above injects,
  * because a plain `let` passes every assertion a non-tracking signal can make — which is the whole

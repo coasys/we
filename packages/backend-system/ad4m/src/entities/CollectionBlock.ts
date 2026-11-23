@@ -139,8 +139,8 @@ export class CollectionBlock extends WeNode {
   sourceName: string = '';
 
   /**
-   * Whether this collection is extracted as it grows — a call as it happens, a channel as
-   * messages arrive — rather than only when somebody presses Extract.
+   * Whether this collection is interpreted as it grows — a call as it happens, a channel as
+   * messages arrive — rather than only when somebody presses Interpret.
    *
    * Copied from the space's default (`Space.autoInterpret`) when the collection is made, and the
    * collection's own from then on. A copy rather than a live fallback, so that a community
@@ -267,7 +267,7 @@ export class CollectionBlock extends WeNode {
   board?: CollectionBlock;
 
   /**
-   * What a model wrote from reading this collection — the provenance of an extracted record.
+   * What a model wrote from reading this collection — the provenance of an interpreted record.
    *
    * ## Why this is not a subset of `children` doing double duty
    *

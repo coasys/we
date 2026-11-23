@@ -14,6 +14,7 @@ import { FILE_STORAGE_LANGUAGE, getEntityPredicates } from '@we/entities';
 import { describe, expect, it } from 'vitest';
 
 import { AD4M_CONTAINMENT_PREDICATE } from '../src/containment';
+import { WeNode } from '../src/entities';
 import { buildEntityFromEntry, compileManifest, CORE_VOCABULARY, manifestToEntries } from '../src/manifestCompiler';
 import { buildEntityManifest } from '../src/perspectiveHelpers';
 import { ROOT_MODELS, SPACE_MODELS } from '../src/sdnaEntities';
@@ -181,6 +182,29 @@ describe('compileManifest — module-declared entities', () => {
     expect(byName.attachments).toBe('we://module/notes/attachments');
   });
 
+  it('names the forward a reverse relation inverts, beside marking it reverse', () => {
+    // A `reverseOf` read has no setter of its own; the entry is where a caller moving the link learns
+    // which property the other end writes it through.
+    const entries = manifestToEntries(
+      {
+        version: '1',
+        entities: {
+          Book: {
+            properties: {},
+            relations: { chapters: { target: 'Chapter', cardinality: 'many' as const } },
+          },
+          Chapter: {
+            properties: {},
+            relations: { book: { target: 'Book', cardinality: 'one' as const, reverseOf: 'chapters' } },
+          },
+        },
+      },
+      { moduleId: 'notes' },
+    );
+    const book = entries.find((e) => e.name === 'Chapter')!.properties.find((p) => p.name === 'book');
+    expect(book).toMatchObject({ reverse: true, reverseOf: 'chapters', relatedEntity: 'Book' });
+  });
+
   it('stores a containment relation as the one containment predicate, whatever it would have minted', () => {
     // Containment is how anything reading the graph finds a record's context, so it cannot live in
     // a module's own subtree the way its other relations do.
@@ -314,5 +338,194 @@ describe('a manifest extending the core vocabulary', () => {
     for (const name of ['partOf', 'respondsTo', 'inThread', 'extractedFrom', 'responses', 'thread', 'signals']) {
       expect(compiled[name], name).toBe(handWritten[name]);
     }
+  });
+});
+
+describe('extends — the parent as a shape the child names', () => {
+  const shapeOf = (cls: unknown) => (cls as Shaped).generateSHACL().shape!;
+
+  const manifest: EntityManifest = {
+    version: '1',
+    entities: {
+      // Declared after its child on purpose: build order must come from `extends`, not order.
+      Sighting: {
+        extends: 'BirdBase',
+        properties: { species: { type: 'string' } },
+        relations: {},
+      },
+      BirdBase: {
+        abstract: true,
+        properties: { wingspan: { type: 'number' } },
+        relations: { sightings: { target: '', cardinality: 'many' } },
+      },
+    },
+  };
+
+  it('marks an abstract entity’s shape abstract', () => {
+    const classes = compileManifest(manifest, { moduleId: 'birds' });
+    expect(shapeOf(classes.BirdBase).isAbstract).toBe(true);
+    expect(shapeOf(classes.Sighting).isAbstract).not.toBe(true);
+  });
+
+  it('declares the abstract parent through `implements` — proved by what fails without it', () => {
+    /*
+      `implements` asserts structure rather than writing a link, so its presence shows only in
+      `checkImplements` refusing a child that lacks a name of the parent's. Flattening is what
+      makes the positive case pass; the negative build below is what proves `implements` was
+      declared at all — without it nothing checks, and nothing throws.
+    */
+    const classes = compileManifest(manifest, { moduleId: 'birds' });
+    const [sighting] = manifestToEntries(manifest, { moduleId: 'birds' });
+    const broken = {
+      ...sighting,
+      properties: sighting.properties.filter((p) => p.name !== 'wingspan'),
+    };
+    expect(() => buildEntityFromEntry(broken, { classResolver: () => classes.BirdBase })).toThrow(
+      /implements BirdBase.*`wingspan`/,
+    );
+  });
+
+  it('keeps the parent’s members flattened onto the child', () => {
+    const classes = compileManifest(manifest, { moduleId: 'birds' });
+    const names = shapeOf(classes.Sighting).properties.map((p) => p.name);
+    expect(names).toContain('species');
+    expect(names).toContain('wingspan');
+    expect(names).toContain('sightings');
+  });
+
+  it('names an abstract parent by sh://node, and a second generateSHACL writes that link once', () => {
+    // `implements` still checks the child's names. It writes no link, so the parent's shape URI
+    // is added on the compiled shape itself. Sighting is declared before BirdBase; the link does
+    // not depend on that order. Calling generateSHACL again must not add a second link.
+    const classes = compileManifest(manifest, { moduleId: 'birds' });
+    const child = shapeOf(classes.Sighting);
+    const parent = shapeOf(classes.BirdBase);
+    expect(child.parentShapes).toContain(parent.nodeShapeUri);
+    const targets = () =>
+      shapeOf(classes.Sighting)
+        .toLinks()
+        .filter((l) => l.predicate === 'sh://node')
+        .map((l) => l.target);
+    expect(targets()).toContain(parent.nodeShapeUri);
+    expect(targets().filter((target) => target === parent.nodeShapeUri)).toHaveLength(1);
+  });
+
+  /** Parent `sh:class` and target class name for one relation, and the child's parent link, twice. */
+  function keepsTypedParentRelation(
+    classes: Record<string, unknown>,
+    parentName: string,
+    relationName: string,
+    targetName: string,
+    childName: string,
+  ) {
+    const read = () => {
+      const parent = shapeOf(classes[parentName]);
+      const target = shapeOf(classes[targetName]);
+      const child = shapeOf(classes[childName]);
+      const relation = parent.properties.find((property) => property.name === relationName);
+      return { parent, target, child, relation };
+    };
+    const first = read();
+    expect(first.relation?.class).toBe(first.target.nodeShapeUri);
+    expect(first.relation?.targetClassName).toBe(targetName);
+    expect(first.child.parentShapes).toContain(first.parent.nodeShapeUri);
+    const second = read();
+    expect(second.relation?.class).toBe(second.target.nodeShapeUri);
+    expect(second.relation?.targetClassName).toBe(targetName);
+    expect(second.child.parentShapes.filter((uri) => uri === second.parent.nodeShapeUri)).toHaveLength(1);
+  }
+
+  it('keeps a typed relation from an abstract parent to the child that extends it', () => {
+    // Sighting is not in the class map while it is being built. Generating BirdBase then, to learn
+    // its URI, resolves `sightings` to nothing, and the SDK keeps that shape.
+    const classes = compileManifest(
+      {
+        version: '1',
+        entities: {
+          Sighting: {
+            extends: 'BirdBase',
+            properties: { species: { type: 'string' } },
+            relations: {},
+          },
+          BirdBase: {
+            abstract: true,
+            properties: { wingspan: { type: 'number' } },
+            relations: { sightings: { target: 'Sighting', cardinality: 'many' } },
+          },
+        },
+      },
+      { moduleId: 'birds' },
+    );
+    keepsTypedParentRelation(classes, 'BirdBase', 'sightings', 'Sighting', 'Sighting');
+  });
+
+  it('keeps a typed relation from an abstract parent to a class compiled later', () => {
+    // Build order is BirdBase, then Sighting, then FieldNote. Generating BirdBase while Sighting
+    // is still being built asks for FieldNote before that class exists.
+    const classes = compileManifest(
+      {
+        version: '1',
+        entities: {
+          Sighting: {
+            extends: 'BirdBase',
+            properties: { species: { type: 'string' } },
+            relations: {},
+          },
+          BirdBase: {
+            abstract: true,
+            properties: { wingspan: { type: 'number' } },
+            relations: { notes: { target: 'FieldNote', cardinality: 'many' } },
+          },
+          FieldNote: {
+            properties: { text: { type: 'string' } },
+            relations: {},
+          },
+        },
+      },
+      { moduleId: 'birds' },
+    );
+    keepsTypedParentRelation(classes, 'BirdBase', 'notes', 'FieldNote', 'Sighting');
+  });
+
+  it('extends a concrete parent in the TypeScript sense, so the shape names it by sh://node', () => {
+    const classes = compileManifest(
+      {
+        version: '1',
+        entities: {
+          Base: { properties: { shared: { type: 'string' } }, relations: {} },
+          Kid: { extends: 'Base', properties: { own: { type: 'string' } }, relations: {} },
+        },
+      },
+      { moduleId: 'kids' },
+    );
+    const kid = shapeOf(classes.Kid);
+    const base = shapeOf(classes.Base);
+    expect(kid.parentShapes).toContain(base.nodeShapeUri);
+    expect(
+      kid
+        .toLinks()
+        .filter((l) => l.predicate === 'sh://node')
+        .map((l) => l.target),
+    ).toContain(base.nodeShapeUri);
+    // Flattening still stands — the link names the parent on top of carrying its members.
+    expect(kid.properties.map((p) => p.name)).toEqual(expect.arrayContaining(['shared', 'own']));
+  });
+
+  it('binds a core parent the manifest does not declare through the resolver, as the generated classes do', () => {
+    // `WeNode` is the case every space shape hits: abstract in the manifest, but its hand-written
+    // class is deliberately not AD4M-abstract — so the child extends it in the TypeScript sense,
+    // which is exactly what every generated class's `extends WeNode` already is.
+    const classes = compileManifest(
+      {
+        version: '1',
+        entities: {
+          Sighting: { extends: 'WeNode', properties: { species: { type: 'string' } }, relations: {} },
+        },
+      },
+      { moduleId: 'shape/abc', resolveExternal: (name) => (name === 'WeNode' ? WeNode : undefined) },
+    );
+    const sighting = shapeOf(classes.Sighting);
+    const weNode = shapeOf(WeNode);
+    expect(sighting.parentShapes).toContain(weNode.nodeShapeUri);
   });
 });

@@ -8,15 +8,16 @@
  * `@we/messages`, which both draw a line with; neither knows the other is installed.
  *
  * Placed two ways: as a panel beside whatever is on screen, and as a view a template makes a page of
- * (`feed.feedView`) — a space whose main screen is its Feed.
+ * (`feed.feedView`) — a space whose main screen is its Feed. And scoped to one call (`feed.callFeed`):
+ * the same stream of that call alone, for a call's page.
  */
 import { defineModule, type ModuleHost, type ModuleStoreDeps } from '@we/module-shared';
 
-import { feedPanel, feedView } from './Feed.schema';
+import { callFeedView, feedPanel, feedView } from './Feed.schema';
 import { createFeedStore } from './store';
 
 export { type FeedFind, readFeedWindow } from './feed';
-export { feedPanel, feedView } from './Feed.schema';
+export { callFeedView, feedPanel, feedView } from './Feed.schema';
 export { createFeedStore } from './store';
 
 export const feedModule = defineModule({
@@ -42,6 +43,19 @@ export const feedModule = defineModule({
         description: 'Everything said and written in the space, with a box to write into it, as a page.',
         // Kept live while it is drawn, as the panel is while it is open.
         whileShown: { show: 'watchFeed', hide: 'unwatchFeed' },
+      },
+      callFeed: {
+        node: callFeedView,
+        /*
+          The call it is the Feed of: the address's `call` parameter by default, and whatever a placement
+          points it at — a call's own page points it at its `id`. The host hands that call to
+          `whileShown`, so only that call is read.
+        */
+        subject: 'routeStore.params.call',
+        label: 'Call feed',
+        description:
+          'Everything said and written in one call — its spoken lines, typed messages and bots — with a box to write into it.',
+        whileShown: { show: 'watchCallFeed', hide: 'unwatchCallFeed' },
       },
     },
 
@@ -88,6 +102,21 @@ export const feedModule = defineModule({
         type: 'boolean',
         default: true,
         levels: ['agent'],
+      },
+      /*
+        Whether the Feed draws every line a call spoke. Off until this reader asks — calls write a
+        line a few seconds at a time into the same stream written messages land in, and in a space
+        that calls often the typed ones sink. Per space: a standup somebody skims and an all-hands
+        they want verbatim are different answers, and the transcript is where a call's words are
+        read anyway.
+      */
+      {
+        key: 'showCallTranscripts',
+        label: 'Show call transcripts',
+        description: 'Draw the lines calls spoke in this space’s Feed, among the written ones.',
+        type: 'boolean',
+        default: false,
+        levels: ['agent-in-space'],
       },
     ],
   },

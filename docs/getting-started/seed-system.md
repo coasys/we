@@ -252,7 +252,7 @@ What it writes:
   - **A field value that is exactly `"$name"`** refers to an earlier record, `$root` or `$space`.
     A list of them is a to-many relation.
 - **`landmarks`:** how templates find what the starter made, e.g. `"canvas": "$canvas"`.
-- **`input`:** whether messages typed straight into the space are extracted.
+- **`input`:** whether messages typed straight into the space are interpreted.
 - **`policy`:** the rules a new space starts from, `"community"` or `"open"`. Without it, nothing is
   written and the space is open. See
   [the policy doc](../architecture/space-policy.md).
@@ -357,6 +357,10 @@ inside but not the binary somebody installed.
   runtime: `io.coasys.app` builds `io.coasys.app.electron` and
   `io.coasys.app.tauri`, so the two hosts install side by side. Defaults to
   `io.weco.we`.
+- `tauriId` — the identifier of the Tauri app, when it is not `<appId>.tauri`.
+  `seeds/coasys.seed.json` sets `org.coasys.app`: the Coasys desktop app. At its
+  first start, an app with a `tauriId` moves the webview's data folder from
+  `<appId>.tauri` to the new identifier (Linux), so local settings stay.
 - `icon` — an SVG, relative to the repository root, drawn as it is with a margin
   (`@we/brand` makes every size). Defaults to WE's mark on its themed tile.
 

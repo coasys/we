@@ -49,9 +49,9 @@ describe('the model mark', () => {
     expect(run(wide, { card: {} })).toBe(false);
   });
 
-  it('says it was extracted where the record came out of a conversation, and written by AI otherwise', () => {
+  it('says it was interpreted where the record came out of a conversation, and written by AI otherwise', () => {
     expect(run(words('card'), { card: { extractedFrom: 'call-1' }, author, me })).toBe(
-      'Extracted from the conversation · run by you',
+      'Interpreted from the conversation · run by you',
     );
     expect(run(words('card'), { card: {}, author: { did: 'did:sam', name: 'Sam' }, me })).toBe(
       'Written by AI · run by Sam',

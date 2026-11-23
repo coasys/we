@@ -83,7 +83,7 @@ export interface FoldingSectionLabelOptions {
  * ## Why this is shared rather than written per panel
  *
  * It was written four times in one panel, and then differently in six other places: the rail, the
- * graph's key, the extraction log's panes, a reply thread, a reactions list. Between them they
+ * graph's key, the interpretation log's panes, a reply thread, a reactions list. Between them they
  * disagreed about the letter-spacing (five values), about how to spell the caps (`textTransform`
  * versus `we-text`'s own shorthand), and about which way the caret points. None of that is a
  * decision anybody made twice; it is the same decision made once and then copied imperfectly.

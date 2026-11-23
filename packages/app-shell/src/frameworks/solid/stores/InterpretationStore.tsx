@@ -19,12 +19,13 @@
  * ## Presentation lives here
  *
  * `label` and `elapsed` are strings, computed in the store. A schema has no arithmetic and no date
- * formatting, so "0:42" and "Extracted 3 tasks" are unreachable from a template — the same reason
+ * formatting, so "0:42" and "Found 3 tasks" are unreachable from a template — the same reason
  * `runtimeStore.aiModels` carries `statusText` and `themeStore` builds its own view models.
  */
 import { watchPassRecord } from '@shared/interpretation/activityView';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { holdSubscription } from '@shared/utils';
+import { firstScreen } from '@solid/firstScreen';
 import { useDatasetStore } from '@solid/stores/DatasetStore';
 import { useProfileStore } from '@solid/stores/ProfileStore';
 import { useSessionStore } from '@solid/stores/SessionStore';
@@ -62,7 +63,7 @@ export interface InterpretationActivityView {
   phase: InterpretationPhase;
   /** True while the pass is still in flight. What a spinner and the "N running" count read. */
   running: boolean;
-  /** A whole clause: "Anna is extracting", "Waiting on the model", "Extracted 3 records". */
+  /** A whole clause: "Anna is interpreting", "Waiting on the model", "Found 3 records". */
   label: string;
   /** `m:ss` since the pass was first seen. Empty once it has settled — a finished pass reports
    *  what it did, and how long it took stops being the question. */
@@ -79,7 +80,7 @@ export interface InterpretationActivityView {
   /** Why, for a pass that skipped or failed. Empty otherwise. */
   detail: string;
   /** The raw prompt and response — on this agent's own rows only. A peer's exchange is not sent
-   *  live; it arrives with the extraction `ModelRun` once the pass settles. */
+   *  live; it arrives with the interpretation `ModelRun` once the pass settles. */
   prompt: string;
   response: string;
   /** Whether there is anything behind the disclosure triangle — so a UI can disable it with an
@@ -173,7 +174,7 @@ function labelFor(phase: InterpretationPhase, name: string, mine: boolean, count
   const who = mine ? 'You are' : `${name} is`;
   switch (phase) {
     case 'queued':
-      return `${who} about to extract`;
+      return `${who} about to interpret`;
     case 'gathering':
       return `${who} reading the conversation`;
     // Named as the wait it is, rather than as a step. This is nearly the whole duration, and
@@ -187,11 +188,11 @@ function labelFor(phase: InterpretationPhase, name: string, mine: boolean, count
     case 'done':
       // "Nothing to add" rather than "0 records": a pass over a conversation with no commitments in
       // it succeeded, and a zero reads as a failure.
-      return count ? `Extracted ${count} ${count === 1 ? 'record' : 'records'}` : 'Nothing to add';
+      return count ? `Found ${count} ${count === 1 ? 'record' : 'records'}` : 'Nothing to add';
     case 'skipped':
-      return 'Nothing to extract';
+      return 'Nothing to interpret';
     case 'failed':
-      return 'Extraction failed';
+      return 'Interpretation failed';
   }
 }
 
@@ -225,6 +226,8 @@ export function InterpretationStoreProvider(props: ParentProps) {
   const [proposalsRevision, setProposalsRevision] = createSignal(0);
 
   let relay: InterpretationRelay | null = null;
+  /** The space and connection the revision was last bumped for — see the effect below. */
+  let revisedFor: { handle: unknown; ports: unknown } | null = null;
 
   /*
     One relay and one subscription per space, torn down and rebuilt when the space changes.
@@ -246,9 +249,19 @@ export function InterpretationStoreProvider(props: ParentProps) {
     setCapable(true);
     // The suggestions on screen are a different set in a different space, so say so: a surface that
     // asked about the space on screen asks again rather than marking this one's cards from the last.
-    setProposalsRevision((n) => n + 1);
+    // Only for a new space or connection: this effect also re-runs when the first screen opens, and
+    // a bump then made the Feed read its whole window again for suggestions that had not moved.
+    if (revisedFor?.handle !== handle || revisedFor?.ports !== ports) {
+      revisedFor = { handle, ports };
+      setProposalsRevision((n) => n + 1);
+    }
 
-    if (!handle || !ports?.interpretation) return;
+    /*
+      Not before the first screen is up (`shared/firstScreen.ts`): the availability probe and the
+      staged-suggestion watch are the largest reads at boot, and nothing on the first page uses them.
+      Started later, this effect builds for the space on screen then, the same as after a switch.
+    */
+    if (!handle || !ports?.interpretation || !firstScreen.open()) return;
 
     /*
       Ask the executor what it can do, before anything offers it.
@@ -483,7 +496,7 @@ export function InterpretationStoreProvider(props: ParentProps) {
         space's default, which is what a surface asking "does this space do this at all" wants.
       */
       autoInterpretEnabled: (collectionId?: string) =>
-        collectionId ? spaceStore.autoExtractFor(collectionId) : spaceStore.autoInterpret(),
+        collectionId ? spaceStore.autoInterpretFor(collectionId) : spaceStore.autoInterpret(),
     }),
   );
 

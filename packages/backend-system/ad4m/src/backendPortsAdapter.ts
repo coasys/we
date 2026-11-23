@@ -28,10 +28,14 @@ import {
 
 import { createAd4mDataBindings } from './ad4mAdapter';
 import { createAd4mEphemeralPort } from './ad4mEphemeralAdapter';
-import { createFileExpression, getProfile, publishProfileToPublicPerspective } from './agentHelpers';
+import {
+  createFileExpression,
+  ensureFileStorageLanguage,
+  getProfile,
+  publishProfileToPublicPerspective,
+} from './agentHelpers';
 import { createAd4mAgentPort } from './agentPort';
 import { createAd4mCallPort } from './callPort';
-import { installClearOnEmpty } from './clearOnEmpty';
 import { installContainmentPredicate } from './containment';
 import { Space } from './entities';
 import { type Ad4mCustodyHost, createAd4mIdentityPort } from './identityPort';
@@ -49,7 +53,6 @@ import { registerDeclaredRelations } from './relationPredicates';
 import { installRelationWrites } from './relationWrites';
 import { type Ad4mRuntimeOptions, createAd4mRuntimeAdmin } from './runtimeAdminAdapter';
 import {
-  deduplicateSpaceSdna,
   ensureEntityRegistered,
   installModuleSdna,
   installRootSdna,
@@ -58,8 +61,6 @@ import {
   refreshSpaceSdna,
   ROOT_MODELS,
   SPACE_MODELS,
-  warmSchemaReads,
-  warmStoredShapes,
 } from './sdnaEntities';
 import { createAd4mTranscriptionPort } from './transcriptionAdapter';
 import { createAd4mWorkflowPort } from './workflowPort';
@@ -77,13 +78,15 @@ export function createAd4mSchemaPort(backendClient: unknown): SchemaPort {
     installModules: (dataset, moduleSchemas) => installModuleSdna(proxy(dataset), moduleSchemas),
     refreshSpace: (dataset) => refreshSpaceSdna(proxy(dataset)),
     ensure: (dataset, schema) => ensureEntityRegistered(proxy(dataset), schema as never),
-    hasCoreSchema: (dataset) => {
-      // A switch reads the stored shapes next if this answers yes — start that read alongside.
-      warmStoredShapes(proxy(dataset));
-      return isEntityRegistered(proxy(dataset), Space);
+    hasCoreSchema: (dataset) => isEntityRegistered(proxy(dataset), Space),
+    hasAnySchema: async (dataset) => (await proxy(dataset).shapes()).length > 0,
+
+    async foreignEntries(dataset): Promise<EntityManifestEntry[]> {
+      // The read half of `foreignSchemas` — registering is the switch's to do, because it
+      // *replaces* the dataset's synthesised-class registry, adopted shapes' compiled classes
+      // included. A candidacy ask only reads.
+      return buildEntityManifest(await getForeignShacl(proxy(dataset)));
     },
-    prepare: (dataset) => warmSchemaReads(proxy(dataset)),
-    hasAnySchema: async (dataset) => (await proxy(dataset).getShaclNames()).length > 0,
 
     async foreignSchemas(dataset): Promise<EntityManifestEntry[]> {
       const shapes = await getForeignShacl(proxy(dataset));
@@ -135,8 +138,6 @@ export function createAd4mSchemaPort(backendClient: unknown): SchemaPort {
     interpretationHints: (dataset, entity) => readInterpretationHints(proxy(dataset), entity),
     setInterpretationHints: (dataset, entity, hints) => writeInterpretationHints(proxy(dataset), entity, hints),
     resetInterpretationHints: (dataset, entity) => resetInterpretationHints(proxy(dataset), entity),
-
-    dedupe: (dataset) => deduplicateSpaceSdna(proxy(dataset)),
   };
   // A space's own models are kept as their SHACL, installed the way this port installs any entity.
   port.shapes = createAd4mShapeStore({
@@ -168,6 +169,11 @@ export interface Ad4mConnectionOptions {
    * executor. The identity port signs changes through it; without it, the identity is read-only.
    */
   custody?: Ad4mCustodyHost;
+  /**
+   * The connector's connection already found the agent unlocked — see `Ad4mAgentSessionOptions`.
+   * Only a connector that waited for that answer may set it.
+   */
+  unlockedAtConnect?: boolean;
 }
 
 export function createAd4mBackendPorts(
@@ -178,11 +184,7 @@ export function createAd4mBackendPorts(
   // infrastructure (`Ad4mLifecycleOptions`).
   options: Ad4mRuntimeOptions & Ad4mLifecycleOptions & Ad4mConnectionOptions = {},
 ): BackendPorts {
-  // `''` clears a property, which is what four separate call sites in WE already assumed and none
-  // of them got. Installed before any model is registered so every class inherits it — generated,
-  // manifest-compiled or built from foreign SHACL. See `clearOnEmpty.ts` for what it repairs.
-  installClearOnEmpty(Ad4mModel);
-  // And the relation writes, for the same reason and in the same place: the contract can say
+  // The relation writes, installed before any model is registered so every class inherits them: the contract can say
   // "this relation's membership is now that list", and every model class — generated, compiled
   // or built from foreign SHACL — inherits the ability to carry it out. See `relationWrites.ts`.
   installRelationWrites(Ad4mModel);
@@ -209,7 +211,11 @@ export function createAd4mBackendPorts(
   // File storage the same way: format:'file' properties resolve their bytes through this backend's
   // file-storage language, and the address shape is this backend's own.
   registerFileStore({
-    store: (dataset, file) => (dataset as PerspectiveProxy).createExpression(file, FILE_STORAGE_LANGUAGE),
+    store: async (dataset, file) => {
+      // The boot installs the language only after the first screen — see `createFileExpression`.
+      await ensureFileStorageLanguage(backendClient);
+      return (dataset as PerspectiveProxy).createExpression(file, FILE_STORAGE_LANGUAGE);
+    },
     fetch: async (dataset, address) => {
       const expr = await (dataset as PerspectiveProxy).getExpression(address);
       if (!expr?.data) return null;
@@ -226,7 +232,10 @@ export function createAd4mBackendPorts(
   const ephemeral = createAd4mEphemeralPort(ctx.selfId);
 
   return {
-    agentSession: createAd4mAgentSession(backendClient),
+    agentSession: createAd4mAgentSession(backendClient, {
+      unlockedAtConnect: options.unlockedAtConnect,
+      afterFirstScreen: ctx.afterFirstScreen,
+    }),
     lifecycle: createAd4mDatasetLifecycle(backendClient, options),
     schemas: createAd4mSchemaPort(backendClient),
     profiles: createAd4mProfileDirectory(backendClient),
@@ -234,7 +243,7 @@ export function createAd4mBackendPorts(
     models: createAd4mModelAdmin(backendClient, options),
     transcription: createAd4mTranscriptionPort(backendClient, options),
     languageModel: createAd4mLanguageModelPort(backendClient, options.connection),
-    agents: createAd4mAgentPort(),
+    agents: createAd4mAgentPort(backendClient as Ad4mClient),
     // Takes no client: interpretation is entirely a per-dataset operation, and every call already
     // carries the dataset handle it needs.
     interpretation: createAd4mInterpretationPort(ctx.selfId),

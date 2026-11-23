@@ -9,12 +9,8 @@
  *
  * ## One panel, two behaviours, and the question that separates them
  *
- * A panel either **covers** the app or **displaces** it, and that used to be decided by which of six
- * placements a module named — four edges that always spanned their whole edge and insetted, plus a
- * float and a full screen that always overlaid. Position and displacement were one enum, so a small
- * call among three people still cost a full-height column of the window to put beside the content.
- *
- * They are separate questions now. **Where** is a position the user drags, optionally snapping to one
+ * A panel either **covers** the app or **displaces** it. Position and displacement are separate
+ * questions: **Where** is a position the user drags, optionally snapping to one
  * of eight targets. **Whether it displaces** is a toggle. The two meet in one rule:
  *
  * > **A panel that displaces spans its lane; a panel that floats does not.**
@@ -22,8 +18,7 @@
  * Which is not a restriction but an honesty: a rectangular layout cannot flow around a floating box,
  * so insetting the content for a panel snapped to a *corner* would carve out a full column and leave
  * most of it empty. So displacing is offered on the four edge-centre snaps only, and turning it on
- * makes the panel span its lane across that edge — becoming exactly the dock this file used to
- * describe, whenever it is the only panel in that lane.
+ * makes the panel span its lane across that edge.
  *
  * ## An edge is two axes, not two arrangements
  *
@@ -40,16 +35,12 @@
  *  └────┴────┴──────────┘    └─────────┴──────────┘     └────┴─────┴──────────┘
  * ```
  *
- * The first two are what this file used to be able to draw, and it drew each of them from a different
- * field: a displacing panel read `order` as *how far inboard* and stacked; a floating one read the
- * same number as *where along the edge* and divided. So which arrangement you got was decided by the
- * `displace` flag — a question about whether a panel takes room, answering a question about where it
- * sits — and the third picture was unreachable from either side. `band` is the coordinate that was
- * missing; `order` now means one thing wherever it appears.
+ * `band` says how far inboard and `order` where along the edge, whether the panel displaces or not —
+ * whether a panel takes room never decides where it sits.
  *
  * Floating panels have one lane per edge and no `band` at all: nothing takes room from them, so there
- * is nothing to be inboard of. {@link edgeGroups} is where the whole rule lives, and every function
- * here that used to ask "does this panel displace" to decide an arrangement asks that instead.
+ * is nothing to be inboard of. {@link edgeGroups} is where the whole rule lives; a function here
+ * asks it, never "does this panel displace", to decide an arrangement.
  *
  * See `registries/dockRegistry.ts` for why a module does not position itself.
  */
@@ -60,13 +51,9 @@ import type { DockEdge, DockSize } from '@we/module-shared';
 export const SIDEBAR_PX = 80;
 
 /**
- * What a docked panel must leave for chrome that lives at the same edge. Nothing, now.
+ * What a docked panel must leave for chrome that lives at the same edge: nothing.
  *
- * It used to be the module rail's width, so panels opened *beside* the rail. That put the panel in
- * the middle of the screen edge, with the rail outside it and the editor's own rails on top of it —
- * three things claiming one edge and only one of them able to have it.
- *
- * The rail moves instead. Floating chrome positions itself against the *content* region rather than
+ * Chrome at the same edge moves instead. Floating chrome positions itself against the *content* region rather than
  * the window, reading `--we-chrome-right` and friends, so opening a dock slides the rail and the
  * editor inwards and the panel takes the edge it was always trying to occupy. Kept as a named zero
  * because the concept is still real — a backend or platform that pins something to an edge would set
@@ -280,9 +267,7 @@ export const EDGES = ['left', 'right', 'top', 'bottom'] as const satisfies reado
  * arithmetic — the same arrangement `SIDEBAR_PX` has with `SHELL_SIDEBAR_WIDTH`, and pinned to it by
  * `chromeLayering.test.ts`.
  *
- * Panels used to share the one `sticky` layer outright, so which of two overlapping ones was on top
- * was settled by document order — the registry's, which no click could change. Maximise a panel and
- * anything registered after it went on painting over it. `layerOrder` hands each panel its own step
+ * `layerOrder` hands each panel its own step
  * above this base, and the app's chrome (`zIndex.chrome`) stays above all of them: fifty steps of
  * headroom, which is more panels than a screen can hold.
  */
@@ -293,8 +278,7 @@ export const PANEL_LAYER_BASE = 200;
  *
  * `activation` is a monotonic counter per panel, written by whatever counts as touching one — a
  * pointer landing on it, a drag beginning, maximising. A panel nobody has touched sorts first, in
- * the order given, which is the registry's — exactly the order everything used to be in, so a
- * screen where nothing has been clicked yet stacks as it always did.
+ * the order given, which is the registry's.
  *
  * One ordering for every panel rather than a band per kind. Maximising is an activation, so a
  * maximised panel comes to the front; a float clicked afterwards comes forward over it, which is
@@ -662,10 +646,6 @@ export interface FloatPlacement {
   /**
    * Where this panel sits among the ones it shares a **lane** with — its position *along* the edge.
    *
-   * An arrangement is an ordered list, and without a number for that the order was the registry's:
-   * whichever module registered first sat outermost, for ever. Dragging a panel out and back put it
-   * exactly where it had been, because nothing about the drop said *where* it was going.
-   *
    * Absent until somebody reorders that lane, when every panel in it is numbered at once — sequential
    * integers rather than fractions, so the list cannot drift into needing a renumber later.
    *
@@ -677,17 +657,10 @@ export interface FloatPlacement {
   /**
    * Which **lane** this panel is in, counting inward from its edge — 0 is against the edge.
    *
-   * The second of the two coordinates an edge needs, and the one that was missing. Where a panel sits
-   * on an edge is two questions — *how far inboard* and *where along it* — and until this existed
-   * `order` answered whichever of them the `displace` flag selected. So a displacing panel could only
-   * ever stack inward and a floating one could only ever divide the edge: the arrangement was decided
-   * by a flag about something else entirely, and "two panels one above the other, both pushing the
-   * content aside" was unreachable however either was written.
-   *
-   * They are separate now, and both mean one thing wherever they appear: `band` is which lane,
-   * `order` is where in it. The old two arrangements fall out as the two degenerate cases — a strip is
-   * lanes of one panel each, a column is one lane of many — and the case between them is the one this
-   * makes expressible.
+   * The second of the two coordinates an edge needs. Where a panel sits on an edge is two questions —
+   * *how far inboard* and *where along it* — and each means one thing wherever it appears: `band` is
+   * which lane, `order` is where in it. A strip is lanes of one panel each, a column is one lane of
+   * many, and anything between them is expressible.
    *
    * **Absent means a lane of this panel's own**, placed after every explicit lane. That is what
    * preserves the behaviour of everything that predates lanes: two module panels opening on one edge
@@ -760,15 +733,11 @@ export interface FloatPlacement {
    * bottom one.
    *
    * Separate from `w`/`h`, which are the floating card, because the two are different sizes of the
-   * same panel and sharing one field silently destroyed the other. Resizing a docked panel wrote the
-   * thickness over the card's width, so dragging it back out produced a full-height column instead of
-   * the card it had been — and a panel sized carefully as a float lost that size the moment it was
-   * docked and dragged.
+   * same panel: sharing one field would let a docked resize overwrite the card's size.
    *
-   * One field per axis, for the same reason and one level down. There was a single `thickness`, and a
-   * width solved for a left edge became a *height* the moment the panel was snapped to the bottom:
-   * the number survived the move and changed meaning under it. Nothing converts between them, because
-   * there is no conversion — how wide a panel wants to be says nothing about how tall.
+   * One field per axis, for the same reason: a width solved for a side edge is not a height for a
+   * bottom one. Nothing converts between them, because there is no conversion — how wide a panel
+   * wants to be says nothing about how tall.
    *
    * Absent until the panel has displaced something on that axis, where it falls back to the card's
    * own dimension. That fallback is the behaviour to preserve: a panel dragged to an edge should keep
@@ -1060,9 +1029,8 @@ export interface DockGeometry {
    * Just joined or left a seat, so this panel lands rather than travels. True for one frame.
    *
    * A drop into a stack changes two things at once: the panel that was showing goes hidden, and the
-   * newcomer's box becomes the seat's. The first is instant and the second was eased, so the stack
-   * emptied and the arriving panel flew in from wherever it had been dragged, across the gap the
-   * stack had left. Tearing a tab out looked the same in reverse.
+   * newcomer's box becomes the seat's. The first is instant, so the second must be too, or the
+   * arriving panel flies in across the gap the stack left. Tearing a tab out is the same in reverse.
    *
    * Per panel rather than a flag on the store, because it is the only correct scope: every *other*
    * panel should still ease into whatever room the change left it.
@@ -1132,11 +1100,8 @@ export const NO_INSET: ContentInset = { left: 0, right: 0, top: 0, bottom: 0 };
  * The region a panel may occupy: the window, less the chrome that is always there, less whatever is
  * *already spoken for*.
  *
- * That second subtraction is the one that was missing. The region was the window minus the sidebar
- * and nothing else, so every position here — snap targets, free-drag clamps, and the maximised box —
- * was computed against space another panel was already holding. Snapping a video to the right landed
- * it on top of a docked notes panel; maximising it covered the editor's own rails, which are the
- * controls being used to edit the thing it was covering.
+ * Without that second subtraction every position here — snap targets, free-drag clamps, and the
+ * maximised box — would be computed against space another panel already holds.
  *
  * `occupied` is per edge and comes from the caller, because only the shell can see the whole set:
  * every *other* displacing panel, plus the editor's rails, which take room the same way and are not
@@ -1444,10 +1409,8 @@ export const EDGE_REACH_PX = 160;
  *
  * ## One target family at a time
  *
- * A drag used to show everything at once: eight snap markers, a line for every lane boundary on
- * every edge, a seam for every seat, and now a wash over every seat and every outlet. The
- * arbitration picked correctly, but nobody could read it. Every application that solves this
- * offers targets *where the pointer is* — VS Code lights one region, Photoshop draws one line — so
+ * Every target at once — snap markers, every lane boundary, every seam, every seat and outlet — is
+ * unreadable. Targets are offered *where the pointer is* — VS Code lights one region, Photoshop draws one line — so
  * an edge's targets appear while the dragged panel overlaps this band and not otherwise. The snap
  * markers stay, being small and the map of where the bands are.
  *
@@ -1488,12 +1451,7 @@ function overlap(a: Rect, b: Rect): number {
 /**
  * The snap a dragged panel would take: the target it is actually covering, and no other.
  *
- * This used to divide the region into thirds and answer "which band is the panel's centre in", which
- * meant a panel anywhere near an edge snapped whether or not it had reached the marker — so dropping
- * a video *near* a corner but deliberately not in it was impossible, and the eight outlines were
- * decoration rather than the rule.
- *
- * Now the drawn box is the rule: a target lights up when the panel overlaps it, and the winner is
+ * The drawn box is the rule: a target lights up when the panel overlaps it, and the winner is
  * whichever it overlaps most. Everywhere else is free positioning, which is most of the screen.
  */
 export function snapCandidate(
@@ -1604,17 +1562,12 @@ export function fitPlacement(
   /*
     Chrome measured by the caller where it could be, assumed here where it could not.
 
-    This used to be `TITLE_BAR_PX` alone, and it was wrong by eleven pixels — the titlebar's own
-    padding and border, and the frame's border — which sounds like a rounding error and is not. The
-    fit shortens the panel, so understating the chrome leaves the content that much short of what it
-    asked for; the tiles inside then become height-limited and give the difference back **on the
-    other axis, multiplied by the ratio**. Three 16:9 tiles across is a ratio of 5.33, so eleven
-    pixels of missing height came back as fifty-four pixels of empty panel down each side, while the
-    same error stacked vertically came back as four and looked perfect.
+    Small errors here are not rounding errors. The fit shortens the panel, so understating the
+    chrome leaves the content short of what it asked for; the tiles inside then become
+    height-limited and give the difference back **on the other axis, multiplied by the ratio**.
 
-    So it is measured now. The constants remain as the fallback for a caller with no element to
-    measure, and are correct as of writing — but they are a copy of something the frame decides, and
-    the eleven pixels are what a hand-maintained copy is worth over time.
+    So it is measured. The constants are the fallback for a caller with no element to measure — a
+    hand-maintained copy of something the frame decides.
   */
   const chromeX = (options.chrome?.x ?? PANEL_CHROME.x) + (aspect.insetX ?? 0);
   const chromeY = (options.chrome?.y ?? PANEL_CHROME.y) + (aspect.insetY ?? 0);
@@ -2097,9 +2050,7 @@ export function columnMembers<T extends { placement: FloatPlacement }>(
  * Flexbox, computed. Spare room after the bases goes out by grow ratio; a shortfall shrinks the bases
  * proportionally and floors each at `floor`.
  *
- * A lane pushing the content aside is drawn by real flex now (`EdgeLanes`) — panels drawn once and
- * moved (`PanelHost`) made reparenting a frame cheap, where it used to remount a call's video. This
- * still answers the same division for what is measured from the boxes rather than drawn in them: the
+ * A lane pushing the content aside is drawn by real flex (`EdgeLanes`). This answers the same division for what is measured from the boxes rather than drawn in them: the
  * drop targets, the grips between seats, a drag's origin.
  */
 function divide(bases: number[], grows: number[], available: number, floors: number[]): number[] {
@@ -2447,26 +2398,14 @@ export function resolveDock(
     /*
       Full screen means the whole window, less any panel that has *taken room* from it.
 
-      It used to stop short of the sidebar, the module rail and the call bar's band, on the reasoning
-      that "full screen cannot mean the whole screen while the app keeps permanent chrome over it".
-      The reasoning was right about what must not be covered and wrong about what to do with it. What
-      must not be covered is the panel's own titlebar — grip, position menu, un-maximise — because
-      that is the way out. Reserving a *band* along each edge for it protected far more than the
-      titlebar and, worse, protected the wrong shape: the rail is a short column at top-right and the
-      call bar a centred pill, so most of each reserved strip was empty and showed whatever the
-      template had behind it. A panel that covers everything except a frame of unrelated content is
-      not what anybody presses that button for.
-
-      Two things make covering everything safe now. The call bar sits at the *bottom*, where a
+      What must not be covered is the panel's own titlebar — grip, position menu, un-maximise —
+      because that is the way out. Two things make covering everything else safe. The call bar sits at the *bottom*, where a
       panel has no controls; and the module rail already drops below a maximised panel's titlebar on
       its own, through `--we-panel-chrome-top` — the band this file computes in `railBand`. So both
       pieces of chrome stay reachable, painted over the panel rather than beside it, and neither
       lands on anything the panel is recovered with.
 
-      `occupied` is ignored too. It used to be subtracted, on the reasoning that a displacing panel is
-      something the user opened and covering it loses something. What it actually produced was a
-      full-screen video with a notes sidebar still standing beside it — "full screen" that was not,
-      depending on which panels happened to displace. Full screen is the whole window, always; the
+      `occupied` is ignored too: full screen is the whole window, always; the
       other panels are hidden while it lasts (see `dockGeometry` in the shell store), not lost, and
       come back exactly where they were when it ends.
     */
@@ -2569,7 +2508,12 @@ export function resolveDock(
     : // A collapsed card alone is its titlebar tall — the same fold a lane gives it, with no lane.
       placement.collapsed
       ? COLLAPSED_PX
-      : clamp(placement.h, minH, Math.max(minH, region.height - chrome.top - DOCK_GAP_PX * 2));
+      : /*
+        The free band, not the region: bottom chrome (the corner bar, a call in progress) is where
+        the card may not draw, so a height restored taller than that still runs past it — and the
+        y clamp below cannot help, having no room left to move the box into.
+      */
+        clamp(placement.h, minH, Math.max(minH, free.height - free.top - DOCK_GAP_PX * 2));
   const origin = seat
     ? { x: seat.x, y: seat.y }
     : placement.snap
@@ -2581,10 +2525,8 @@ export function resolveDock(
     placement restored from a larger screen must not leave a panel with its controls off-screen.
 
     The clamps are the chrome bounds rather than a gap, so the bands the app's floating controls
-    occupy are closed to dragging as well as to snapping. The top was only closed to snapping, which
-    made the rule look arbitrary: the panel refused to *snap* under the call bar and then let you
-    drop it there by hand, where its own grip and menu were the parts that ended up underneath. The
-    right edge was closed to neither, which is how a panel dragged there ended up beneath the rail.
+    occupy are closed to dragging as well as to snapping — one rule for both, so a panel cannot be
+    dropped by hand where its own grip and menu would end up underneath.
   */
   const x = clamp(origin.x, free.left + DOCK_GAP_PX, Math.max(free.left, free.left + free.width - w));
   const y = clamp(origin.y, free.top, Math.max(free.top, free.height - h));
@@ -2724,17 +2666,13 @@ export function laneable(requests: DockRequest[], viewport: Viewport): { placeme
  * ones inboard — otherwise each dodges the other and they leave a gap between them.
  *
  * That exemption belongs to panels *in* that queue. A floating panel is not holding the edge, it is
- * keeping off it, so it clears every displacing lane there whatever order they registered in. Asking
- * the wrong question had an oddly specific symptom: a video snapped to the right stayed behind a
- * notes panel that opened on the same edge, while its landing markers moved correctly — because a
- * panel mid-drag has no snap, so the exemption could not fire until the moment it was dropped.
+ * keeping off it, so it clears every displacing lane there whatever order they registered in.
  *
  * ## Why the whole ordering question moved to `edgeGroups`
  *
- * This used to carry its own comparison — `order`, then registry position — and a long note about
- * why it had to be a *total* order: two panels that each believe the other is behind them both shift
- * by the other's thickness, which overlaps them in the middle and leaves a gap at the edge. Lanes
- * make that structural rather than arithmetical. `edgeGroups` returns them in one fixed sequence, and
+ * The order must be *total*: two panels that each believe the other is behind them both shift by
+ * the other's thickness, which overlaps them in the middle and leaves a gap at the edge. Lanes make
+ * that structural rather than arithmetical. `edgeGroups` returns them in one fixed sequence, and
  * "outboard of me" is a position in a list, which cannot be ambiguous the way a pairwise comparison
  * could. The rule it encodes is the same one, said once: somebody's arrangement first, then
  * everything else in the order it registered.
@@ -2744,9 +2682,8 @@ export function laneable(requests: DockRequest[], viewport: Viewport): { placeme
  */
 export function occupiedFor(requests: DockRequest[], index: number, viewport: Viewport): ContentInset {
   /*
-    Panels only. It used to start from a `chrome` inset the shell passed in, for the editor's rails
-    — which displaced content and were not docks. They are docks now, and the chrome that is left
-    does not displace anything: it moves out of a panel's way instead, or clears the panel itself.
+    Panels only. The editor's rails are docks, and the chrome that is not a dock does not displace
+    anything: it moves out of a panel's way instead, or clears the panel itself.
     See `DEFAULT_FLOAT_CHROME`.
   */
   const occupied: ContentInset = { ...NO_INSET };
@@ -2951,8 +2888,7 @@ export function displacingLanes(requests: DockRequest[], viewport: Viewport): Di
         `Math.min` outside the clamp rather than as its upper bound, because the two limits mean
         opposite things and the floor must not win. `MIN_DOCK_PX` is "a panel this thin is not worth
         having"; the remaining room is "there is no more screen". Passed as the clamp's maximum, a
-        lane with 40px left would be handed 200 and overshoot by 160 — which is the bug above, one
-        lane later.
+        lane with 40px left would be handed 200 and overshoot by 160.
       */
       const members = group.members.map((member) => member.placement);
       const wanted = laneThickness(members, edge);
@@ -2985,24 +2921,20 @@ export function displacingLanes(requests: DockRequest[], viewport: Viewport): Di
  *
  * ## Why panels are not considered
  *
- * They were, and it was dead code that could only fire when it was wrong. By the time this is asked,
- * no panel can be under the rail:
+ * By the time this is asked, no panel can be under the rail:
  *
  * - one displacing left or right has already slid it sideways, through `--we-chrome-right`;
  * - one displacing top or bottom has already pushed it down, through `--we-chrome-top`;
  * - a floating or snapped one is clamped out of its column by `DEFAULT_FLOAT_CHROME`;
  * - a maximised one covers the whole window, and the rail hides rather than dodging it.
  *
- * That last bullet was briefly a term in this function — the rail dropped below a maximised panel's
- * titlebar so it stayed reachable over the top of it. Hiding is the better answer and made the term
- * dead: full screen means the app's own furniture is gone, and the way back out is the panel's
+ * Full screen means the app's own furniture is gone, and the way back out is the panel's
  * titlebar and the Escape key. See `shellStore.panelMaximised`.
  *
  * So a panel could only ever be found here through a *disagreement* between two ways of measuring
  * one edge — a resolved box rounding where an inset does not, say — and what it reported then was
  * not a real overlap but the depth of whatever it had mismeasured, which for anything but a top-edge
- * panel is hundreds of pixels. That is how a rail asked to clear a bar 74px tall ended up parked
- * halfway down the screen.
+ * panel is hundreds of pixels.
  */
 export function railBand(viewport: Viewport, inset: ContentInset, topChrome: TopChrome = NO_TOP_CHROME): number {
   if (topChrome.height <= 0 || topChrome.width <= 0) return 0;

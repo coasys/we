@@ -102,7 +102,10 @@ export class TaskState extends WeNode {
    * `cancelled` over-counts outstanding work rather than hiding finished work. Visibly misfiled
    * rather than silently gone, which is the rule the unplaced column follows too.
    */
-  @Property({ through: 'we://semantic' })
+  @Property({
+    through: 'we://semantic',
+    options: [{ value: 'open' }, { value: 'active' }, { value: 'blocked' }, { value: 'done' }, { value: 'cancelled' }],
+  })
   semantic: TaskStateSemantic = 'open';
 
   /** Withdrawn from use without stranding the work in it — see `SignalType.retired`. */

@@ -12,18 +12,26 @@
  */
 import { markAction, markState, storeSurface } from '@we/module-shared';
 import { SECTION_LABEL_PROPS } from '@we/schema-kit';
-import { evaluateExpression, markReactive, namespace, parseCached, type SchemaNode } from '@we/schema-shared';
+import {
+  evaluateExpression,
+  getFunction,
+  markReactive,
+  namespace,
+  parseCached,
+  type SchemaNode,
+} from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
-import { extractionActivity } from './ExtractionStatus.schema';
+import { CALL_CONTROLS_ANCHOR, callControl } from './CallControl.schema';
 import { transcribeModule } from './index';
+import { interpretationActivity } from './InterpretationStatus.schema';
 import {
   captureMeter,
   captureStatus,
   coverage,
-  EXTRACTION_SUBJECT_EXPR,
-  extractionPanel,
-  extractionTargets,
+  INTERPRETATION_SUBJECT_EXPR,
+  interpretationPanel,
+  interpretationTargets,
   panel,
   pendingUtterance,
   SUBJECT_EXPR,
@@ -80,14 +88,15 @@ describe('the module declaration', () => {
   it('owns whether each panel is open, and names how to open and close it', () => {
     /*
       The exception the contract describes rather than the default it offers. The store opens the
-      transcript on a record press and the extraction panel when a pass starts, and reads `open` to
-      keep polling for a model — none of which a host-held flag would let it do. Owning the flag
-      means owning `show` and `close` too, or the rail and the titlebar have nothing to call.
+      transcript on a record press and the interpretation panel when auto-extraction is switched on, and
+      reads `open` to keep polling for a model — none of which a host-held flag would let it do.
+      Owning the flag means owning `show` and `close` too, or the rail and the titlebar have nothing
+      to call.
     */
     const panels = transcribeModule.contributes?.panels ?? [];
     const surface = storeSurface(bareStore());
 
-    expect(panels.map((p) => p.name)).toEqual(['transcript', 'extraction']);
+    expect(panels.map((p) => p.name)).toEqual(['transcript', 'interpretation']);
     for (const p of panels) {
       expect(p.icon).toBeTruthy();
       expect(surface[p.open ?? '']?.kind).toBe('state');
@@ -98,6 +107,21 @@ describe('the module declaration', () => {
     expect(surface[panels[1].busyWhen ?? '']?.kind).toBe('state');
     // And no launchers of its own: a panel's rail button is derived from the panel.
     expect(transcribeModule.contributes?.launchers).toBeUndefined();
+  });
+
+  it('puts one control in the call bar, the record button, and no second way into the call’s messages', () => {
+    /*
+      A call's messages are the Feed's, scoped to the call — read and written on the call's page and
+      in the Feed itself. A button of its own in the call bar would be a second, different surface
+      for the same lines.
+    */
+    const inBar = (transcribeModule.contributes?.slots ?? []).filter((s) => s.anchor === CALL_CONTROLS_ANCHOR);
+    expect(inBar.map((s) => s.node)).toEqual([callControl]);
+    expect(Object.keys(transcribeModule.contributes?.parts ?? {})).not.toContain('callMessages');
+    const surface = storeSurface(bareStore());
+    for (const gone of ['messagesOpen', 'openMessages', 'closeMessages', 'toggleMessages', 'unreadMessages']) {
+      expect(surface[gone], gone).toBeUndefined();
+    }
   });
 
   it('marks every member its own fragments name, so a placed part can still read it', () => {
@@ -257,12 +281,69 @@ describe('a transcript with nothing in it', () => {
    */
   it('subscribes to a call only while it is live, and to anything else always', () => {
     expect(linesJson).toContain(
-      `"subscribe":{"$":"modules.transcribe.callOnScreenLive || (local.subjectKindLoaded && first(local.subjectKind).kind != 'call')"}`,
+      `"subscribe":{"$":"modules.transcribe.callOnScreenLive || (local.subjectKindLoaded && (first(local.subjectKind).kind != 'call' || first(local.subjectKind).id in modules.transcribe.liveCallRecords))"}`,
     );
     // The kind is read through the subject token, so a placement's substitution reaches it.
     expect(linesJson).toContain(
       '"subjectKind":{"entity":"CollectionBlock","where":{"id":{"$":"modules.transcribe.collectionId"}}',
     );
+  });
+
+  /**
+   * The subscribe flag, evaluated for the situations a reader is in.
+   *
+   * The call page names its call with `?id=` and places these lines with that as the subject, so
+   * `callOnScreenLive` — which reads `?call=` — is false there. The flag must still follow a call
+   * somebody is in, and must still leave a finished call alone.
+   */
+  describe('whether the transcript is followed', () => {
+    const subscribe = (transcriptLines.$queries as unknown as Record<string, { subscribe: { $: string } }>).utterances
+      .subscribe.$;
+
+    const follows = (over: {
+      subject: { id: string; kind: string } | null;
+      liveRecords?: string[];
+      callOnScreenLive?: boolean;
+    }) => {
+      const roots: Record<string, unknown> = {
+        modules: namespace((id) =>
+          id === 'transcribe'
+            ? namespace((member) =>
+                member === 'callOnScreenLive'
+                  ? markReactive(() => over.callOnScreenLive === true)
+                  : member === 'liveCallRecords'
+                    ? markReactive(() => over.liveRecords ?? [])
+                    : undefined,
+              )
+            : undefined,
+        ),
+        local: {
+          subjectKindLoaded: over.subject !== null,
+          subjectKind: over.subject ? [over.subject] : [],
+        },
+      };
+      return evaluateExpression(parseCached(subscribe), {
+        root: (name) => (name in roots ? { bound: true, value: roots[name] } : { bound: false, value: undefined }),
+        call: (name, args) => getFunction(name)?.impl(args, { context: {}, stores: {} }),
+      });
+    };
+
+    it('follows a call somebody is in, named by `?id=` rather than `?call=`', () => {
+      expect(follows({ subject: { id: 'call-1', kind: 'call' }, liveRecords: ['call-1'] })).toBe(true);
+    });
+
+    it('does not follow a call nobody is in', () => {
+      expect(follows({ subject: { id: 'call-1', kind: 'call' }, liveRecords: ['call-2'] })).toBe(false);
+    });
+
+    it('always follows a subject that is not a call', () => {
+      expect(follows({ subject: { id: 'chan-1', kind: 'channel' } })).toBe(true);
+    });
+
+    it('does not follow before the kind is known, unless the address names a live call', () => {
+      expect(follows({ subject: null, liveRecords: ['call-1'] })).toBe(false);
+      expect(follows({ subject: null, callOnScreenLive: true })).toBe(true);
+    });
   });
 
   /**
@@ -644,7 +725,7 @@ describe('which call is live', () => {
       Five surfaces gated on it and four of them had spelled it out for themselves, so the fix had
       to land in five places or in none. They read the shared expression now.
     */
-    for (const json of [panelJson, JSON.stringify(pendingUtterance), JSON.stringify(extractionActivity)]) {
+    for (const json of [panelJson, JSON.stringify(pendingUtterance), JSON.stringify(interpretationActivity)]) {
       expect(json).not.toContain("!routeStore.params.call'");
     }
     expect(panelJson).toContain(VIEWING_LIVE_EXPR);
@@ -925,34 +1006,34 @@ describe('the recording indicator', () => {
   });
 });
 
-describe('the extraction panel', () => {
-  const json = JSON.stringify(extractionPanel);
+describe('the interpretation panel', () => {
+  const json = JSON.stringify(interpretationPanel);
 
   it('asks about the call on screen, in every one of the three answers', () => {
     /*
       The gap that made the workshop's own copy wrong in two directions at once. It asked these about
       the *live* call and drew the results of the addressed one, so the chips said what one call was
-      looking for above a list of what a different call had found — and the Extract button was hidden
+      looking for above a list of what a different call had found — and the Interpret button was hidden
       by a guard about the wrong record even though the action behind it takes an id.
 
       Keyed rather than three accessors, because an expression cannot pass an argument to a store
       member. Same shape as `recordStore.displays[row.type]`.
     */
-    for (const field of ['targets', 'canExtract']) {
-      expect(json).toContain(`modules.transcribe.extractionFor[${EXTRACTION_SUBJECT_EXPR}].${field}`);
+    for (const field of ['targets', 'canInterpret']) {
+      expect(json).toContain(`modules.transcribe.interpretationFor[${INTERPRETATION_SUBJECT_EXPR}].${field}`);
     }
 
     // The chips are a `$part`, so the third answer is asked in the fragment rather than here.
-    const chips = JSON.stringify(extractionTargets);
-    expect(chips).toContain(`modules.transcribe.extractionFor[${EXTRACTION_SUBJECT_EXPR}].canChoose`);
-    expect(chips).toContain(`modules.transcribe.extractionFor[${EXTRACTION_SUBJECT_EXPR}].targets`);
+    const chips = JSON.stringify(interpretationTargets);
+    expect(chips).toContain(`modules.transcribe.interpretationFor[${INTERPRETATION_SUBJECT_EXPR}].canChoose`);
+    expect(chips).toContain(`modules.transcribe.interpretationFor[${INTERPRETATION_SUBJECT_EXPR}].targets`);
   });
 
   it('changes the list of the call it is showing, not the one this agent is in', () => {
-    const chips = JSON.stringify(extractionTargets);
+    const chips = JSON.stringify(interpretationTargets);
 
-    expect(chips).toContain('"$invoke":"modules.transcribe.toggleExtractionTarget"');
-    expect(chips).toContain(`{"$":"target.entity"},{"$":"${EXTRACTION_SUBJECT_EXPR}"}`);
+    expect(chips).toContain('"$invoke":"modules.transcribe.toggleInterpretationTarget"');
+    expect(chips).toContain(`{"$":"target.entity"},{"$":"${INTERPRETATION_SUBJECT_EXPR}"}`);
   });
 
   it('falls back to the call’s own record rather than the transcript’s', () => {
@@ -962,24 +1043,24 @@ describe('the extraction panel', () => {
       earlier than that, because choosing what a meeting will look for — before the meeting — is
       exactly when somebody wants to.
     */
-    expect(EXTRACTION_SUBJECT_EXPR).toContain('routeStore.params.call');
-    expect(EXTRACTION_SUBJECT_EXPR).toContain('modules.transcribe.callId');
-    expect(EXTRACTION_SUBJECT_EXPR).not.toContain('collectionId');
+    expect(INTERPRETATION_SUBJECT_EXPR).toContain('routeStore.params.call');
+    expect(INTERPRETATION_SUBJECT_EXPR).toContain('modules.transcribe.callId');
+    expect(INTERPRETATION_SUBJECT_EXPR).not.toContain('collectionId');
     // And outside any call, the space's own collection — the messages typed there — so the panel is
     // always about something and never asks somebody to join a call first.
-    expect(EXTRACTION_SUBJECT_EXPR.endsWith('spaceStore.root)')).toBe(true);
+    expect(INTERPRETATION_SUBJECT_EXPR.endsWith('spaceStore.root)')).toBe(true);
   });
 
   it('runs a pass over that call rather than over the one this agent is in', () => {
-    expect(json).toContain('modules.transcribe.extractCollection');
-    expect(json).not.toContain('"$invoke":"modules.transcribe.extract"');
+    expect(json).toContain('modules.transcribe.interpretCollection');
+    expect(json).not.toContain('"$invoke":"modules.transcribe.interpret"');
   });
 
   it('offers the switch on any call, not only the one this agent is in', () => {
     // The answer is stored on the call, so a call opened from a link can be decided too — it is what
     // applies when the call is next live. Only the read-back gate on everything else stays.
-    const header = JSON.stringify((extractionPanel.children as SchemaNode[])[0]);
-    expect(header).toContain('"$invoke":"modules.transcribe.toggleAutoExtract"');
+    const header = JSON.stringify((interpretationPanel.children as SchemaNode[])[0]);
+    expect(header).toContain('"$invoke":"modules.transcribe.toggleAutoInterpret"');
     expect(header).not.toContain(VIEWING_LIVE_EXPR);
   });
 
@@ -992,7 +1073,7 @@ describe('the extraction panel', () => {
     */
     expect(json).not.toContain('"spaceStore.setAutoInterpret"');
     expect(json).toContain(
-      `"onChange":{"$invoke":"modules.transcribe.toggleAutoExtract","args":[{"$":"${EXTRACTION_SUBJECT_EXPR}"}]}`,
+      `"onChange":{"$invoke":"modules.transcribe.toggleAutoInterpret","args":[{"$":"${INTERPRETATION_SUBJECT_EXPR}"}]}`,
     );
     expect(json).toContain('!spaceStore.canAdministerCurrentSpace');
     expect(json).toContain('Set by whoever administers this space');
@@ -1001,22 +1082,22 @@ describe('the extraction panel', () => {
   it('says what the header switch does, and for whom', () => {
     /*
       A `we-switch`'s `label` is only an aria-label, so on its own it is an unlabelled toggle beside
-      a button reading "Extract now". The words beside it say what it does and to what, and the
+      a button reading "Interpret now". The words beside it say what it does and to what, and the
       tooltip says it is everybody's, since the record button one panel over looks similar and is
       only this agent's microphone.
     */
     expect(json).toContain('"we-switch"');
-    expect(json).toContain('Auto-extract this call');
-    expect(json).toContain('Auto-extract outside calls');
+    expect(json).toContain('Auto-interpret this call');
+    expect(json).toContain('Auto-interpret outside calls');
     expect(json).toContain('for everyone in it');
-    expect(json).toContain('Extract now');
+    expect(json).toContain('Interpret now');
     // The collection's own answer, read for the collection on screen.
-    expect(json).toContain(`modules.transcribe.extractionFor[${EXTRACTION_SUBJECT_EXPR}].auto`);
+    expect(json).toContain(`modules.transcribe.interpretationFor[${INTERPRETATION_SUBJECT_EXPR}].auto`);
   });
 
   it('says the node has no model, rather than that nothing has been said', () => {
     /*
-      `extractable` is `interpretation.available()` — a fact about the node, saying nothing about
+      `interpretable` is `interpretation.available()` — a fact about the node, saying nothing about
       whether a call exists. The copy answered the other question ("Nothing to read yet. What a call
       produces appears here as it is found."), so somebody on a node with no model waited for a
       conversation that was never going to help.
@@ -1028,7 +1109,7 @@ describe('the extraction panel', () => {
   it('shows what the passes wrote, rather than counting them and pointing elsewhere', () => {
     // It ended at "N records written. Open the graph to see them." — a count and an errand, while
     // the records were a query away from the surface already being looked at.
-    expect(json).toContain('"anchorId":{"$":"' + EXTRACTION_SUBJECT_EXPR + '"}');
+    expect(json).toContain('"anchorId":{"$":"' + INTERPRETATION_SUBJECT_EXPR + '"}');
     expect(json).toContain('recordStore.displays[item.__subjectClass].title');
   });
 
@@ -1162,7 +1243,7 @@ describe('the extraction panel', () => {
     */
     expect(json).not.toContain('records written.');
     expect(json).toContain('Reading the transcript…');
-    expect(json).toContain("modules.transcribe.extractStatus == 'error'");
+    expect(json).toContain("modules.transcribe.interpretStatus == 'error'");
   });
 
   it('draws a closed vocabulary as plain text, like every other detail on the card', () => {
@@ -1239,17 +1320,17 @@ describe('the extraction panel', () => {
     expect(json).toContain('{"variant":"label","fontWeight":"600"}');
   });
 
-  it('gives the actual reason Extract now cannot be pressed', () => {
+  it('gives the actual reason Interpret now cannot be pressed', () => {
     /*
-      `canExtract` folds three reasons into one boolean — no models in the space, nothing ticked on
+      `canInterpret` folds three reasons into one boolean — no models in the space, nothing ticked on
       this call, nothing said yet — so a tooltip reading it alone can only guess, and it guessed the
       last one. Somebody who had just unticked the final chip was told the call was silent, which is
       wrong and unfixable by anything they would then try.
     */
-    const targets = `modules.transcribe.extractionFor[${EXTRACTION_SUBJECT_EXPR}].targets`;
-    const order = ['No models are set up here', 'Nothing is selected to extract', 'Nothing has been said yet'];
+    const targets = `modules.transcribe.interpretationFor[${INTERPRETATION_SUBJECT_EXPR}].targets`;
+    const order = ['No models are set up here', 'Nothing is selected to interpret', 'Nothing has been said yet'];
 
-    expect(json).toContain(`!${targets}.exists(t, t.selected) ? 'Nothing is selected to extract'`);
+    expect(json).toContain(`!${targets}.exists(t, t.selected) ? 'Nothing is selected to interpret'`);
     expect(json).toContain("!count(local.spoken) ? 'Nothing has been said yet'");
     // Tested in the order they rule each other out: a space with no models has nothing to tick, and
     // a call with nothing ticked cannot be fixed by waiting for somebody to speak.
@@ -1260,7 +1341,7 @@ describe('the extraction panel', () => {
 
   it('asks the record whether anybody has spoken, rather than trusting adoption', () => {
     /*
-      `canExtract` reads `hasTranscript`, which infers words from *adoption* — and that inference
+      `canInterpret` reads `hasTranscript`, which infers words from *adoption* — and that inference
       stopped being true the moment continuing a call adopted its record straight away. Continue a
       conversation nobody spoke in and Extract went live over nothing.
 
@@ -1269,14 +1350,14 @@ describe('the extraction panel', () => {
     */
     expect(json).toContain('"spoken":{"entity":"TextBlock"');
     // Scoped to the call on screen, through the relation its utterances hang off.
-    expect(json).toContain(`"via":"children","anchorId":{"$":"${EXTRACTION_SUBJECT_EXPR}"}`);
+    expect(json).toContain(`"via":"children","anchorId":{"$":"${INTERPRETATION_SUBJECT_EXPR}"}`);
     expect(json).toContain('!count(local.spoken) || !');
     // `when`, for the reason every scoped query here carries it: an unresolved anchor is pruned
     // rather than sent, and pruning widens to every TextBlock in the space.
-    expect(json).toContain(`"limit":1,"when":{"$":"${EXTRACTION_SUBJECT_EXPR}"}`);
+    expect(json).toContain(`"limit":1,"when":{"$":"${INTERPRETATION_SUBJECT_EXPR}"}`);
   });
 
-  it('offers a way to lengthen the list of things it can extract', () => {
+  it('offers a way to lengthen the list of things it can interpret', () => {
     /*
       What a call can extract is whatever this space has models for, and the panel could only ever
       say so: the chips were a closed list with no visible route to a longer one, and the only
@@ -1288,24 +1369,24 @@ describe('the extraction panel', () => {
       decision about the community, with its own screen, and a panel about one call is the wrong
       place to make it.
     */
-    const chips = JSON.stringify(extractionTargets);
+    const chips = JSON.stringify(interpretationTargets);
     const add = '{"$invoke":"shellStore.openSpaceSettings","args":["vocabulary"]}';
 
     // In the section's heading, about the list rather than one more thing in it — and not among the chips.
     expect(chips).not.toContain(add);
-    const label = json.indexOf('"Things to extract"');
+    const label = json.indexOf('"Things to interpret"');
     expect(json.indexOf(add, label)).toBeGreaterThan(label);
-    expect(json.indexOf(add, label)).toBeLessThan(json.indexOf('transcribe.extractionTargets'));
+    expect(json.indexOf(add, label)).toBeLessThan(json.indexOf('transcribe.interpretationTargets'));
   });
 
-  it('keeps Extract now at one weight, whatever the automatic pass is doing', () => {
+  it('keeps Interpret now at one weight, whatever the automatic pass is doing', () => {
     /*
       It dropped to `ghost` while automatic extraction was on, on the reasoning that a press is then
       the backfill rather than the usual way a pass starts. But this is the only control in the panel
       that does anything on a press, and a button that fades because a setting elsewhere is on reads
       as unavailable rather than as unnecessary.
     */
-    expect(json).not.toContain("modules.transcribe.autoExtract ? 'ghost' : 'soft'");
+    expect(json).not.toContain("modules.transcribe.autoInterpret ? 'ghost' : 'soft'");
   });
 
   it('names the chips, then puts the press that acts on them underneath', () => {
@@ -1315,14 +1396,14 @@ describe('the extraction panel', () => {
       the confusion that had Extract looking like a fourth chip when it lived in the row itself.
 
       Then they were a row above the box, together. That pairing was the next thing to go: they look
-      alike and answer different questions. Extract now is the one that acts on the list, so it sits
+      alike and answer different questions. Interpret now is the one that acts on the list, so it sits
       at the end of it; the standing decision went to the header.
     */
-    const label = json.indexOf('"Things to extract"');
-    const chips = json.indexOf('transcribe.extractionTargets');
-    // The action, not the words: "Extract now" also appears in the panel's help text, which is in
+    const label = json.indexOf('"Things to interpret"');
+    const chips = json.indexOf('transcribe.interpretationTargets');
+    // The action, not the words: "Interpret now" also appears in the panel's help text, which is in
     // the header and so earlier in the string whatever the layout does.
-    const press = json.indexOf('modules.transcribe.extractCollection');
+    const press = json.indexOf('modules.transcribe.interpretCollection');
 
     expect(label).toBeLessThan(chips);
     expect(chips).toBeLessThan(press);
@@ -1331,17 +1412,17 @@ describe('the extraction panel', () => {
   it('puts the standing decision in its header, where the transcript keeps its own', () => {
     /*
       Transcribe and Continue sit at the top right of the panel one over, and both are modes — a
-      state a press changes and which then persists. "Auto extract" is that shape; "Extract now" is
+      state a press changes and which then persists. "Auto-interpret" is that shape; "Interpret now" is
       an action, and it lives with the list it acts on.
 
       Asserted against the header row rather than by string order, since "before the body" is also
       true of anything that merely happens to be written first.
     */
-    const header = JSON.stringify((extractionPanel.children as SchemaNode[])[0]);
-    expect(header).toContain('modules.transcribe.toggleAutoExtract');
+    const header = JSON.stringify((interpretationPanel.children as SchemaNode[])[0]);
+    expect(header).toContain('modules.transcribe.toggleAutoInterpret');
     // Again the action rather than the label, since the header also carries the help text and that
     // names both buttons by name.
-    expect(header).not.toContain('modules.transcribe.extractCollection');
+    expect(header).not.toContain('modules.transcribe.interpretCollection');
   });
 
   it('needs no paging control, because it no longer asks an unbounded question', () => {
@@ -1354,19 +1435,19 @@ describe('the extraction panel', () => {
       wanted — through `children` an unbounded read means the whole transcript — and the provenance
       link asks for exactly the records a pass wrote, which is small by construction.
     */
-    expect(findNode(extractionPanel, (n) => declares(n.$localState, 'shown'))).toBeUndefined();
+    expect(findNode(interpretationPanel, (n) => declares(n.$localState, 'shown'))).toBeUndefined();
     expect(json).not.toContain('local.found');
   });
 
   it('declares the spoken query where the button reading it sits', () => {
     /*
-      Extract now is disabled until somebody has spoken, and a `$queries` entry is only readable
+      Interpret now is disabled until somebody has spoken, and a `$queries` entry is only readable
       inside the node declaring it — so the two have to stay together. They came apart once, when
       the button was in the header and the query had to be hoisted to the panel root to reach it;
       both are back in the well now, which is also the node already gated on this node having a
       model at all.
     */
-    const owner = findNode(extractionPanel, (n) => declares(n.$queries, 'spoken'));
+    const owner = findNode(interpretationPanel, (n) => declares(n.$queries, 'spoken'));
     expect(owner).toBeDefined();
     expect(JSON.stringify(owner)).toContain('!count(local.spoken)');
   });
@@ -1383,10 +1464,10 @@ describe('the extraction panel', () => {
     const heading = (label: string) =>
       JSON.stringify({ ...SECTION_LABEL_PROPS, flex: '1' }) + `,"children":["${label}"]`;
 
-    for (const label of ['Things to extract', 'Logs', 'Pending acceptance', 'Pending changes', 'Accepted']) {
+    for (const label of ['Things to interpret', 'Logs', 'Pending acceptance', 'Pending changes', 'Accepted']) {
       expect(json).toContain(heading(label));
     }
-    expect(json).not.toContain('Things to extract:');
+    expect(json).not.toContain('Things to interpret:');
   });
 
   it('hides a section rather than heading an empty one', () => {
@@ -1448,10 +1529,10 @@ describe('the extraction panel', () => {
       test that navigates by a background colour is a test that fails when somebody changes a
       background colour, which says nothing about whether the section is gated.
     */
-    const chips = json.indexOf('"id":"transcribe.extractionTargets"');
+    const chips = json.indexOf('"id":"transcribe.interpretationTargets"');
     expect(chips, 'the chips are not drawn at all').toBeGreaterThan(-1);
     expect(
-      json.lastIndexOf(`"condition":{"$":"${EXTRACTION_SUBJECT_EXPR}"}`, chips),
+      json.lastIndexOf(`"condition":{"$":"${INTERPRETATION_SUBJECT_EXPR}"}`, chips),
       'the chips are not behind the same "are we in a call" gate as everything else here',
     ).toBeGreaterThan(-1);
   });
@@ -1465,7 +1546,7 @@ describe('the extraction panel', () => {
     */
     // Only where there is no collection at all: the panel otherwise falls back to the messages
     // outside calls, so "join a call" is never the thing it has to say.
-    expect(json).toContain('This space has nothing to extract from.');
+    expect(json).toContain('This space has nothing to interpret.');
     expect(json).not.toContain('Join a call to start extracting');
     expect(json).not.toContain('Start a call.');
     // `emptyState`'s own shape: the larger padding, no `variant` on the sentence, and the delay.
@@ -1487,7 +1568,7 @@ describe('the extraction panel', () => {
 
     expect(scroller).toBeGreaterThan(-1);
     expect(json.indexOf('"we-scroll-area"', scroller + 1)).toBe(-1);
-    expect(scroller).toBeLessThan(json.indexOf('transcribe.extractionTargets'));
+    expect(scroller).toBeLessThan(json.indexOf('transcribe.interpretationTargets'));
   });
 
   it('folds either list away, and remembers which', () => {
@@ -1507,8 +1588,8 @@ describe('the extraction panel', () => {
 
   it('leaves the panel’s own openness to the host', () => {
     // The dock's `edge` returns null while closed and the host gates on the space, so the
-    // `$if datasetStore.currentDataset && extractionOpen` this carried was a second copy of both.
-    expect(json).not.toContain('modules.transcribe.extractionOpen');
+    // `$if datasetStore.currentDataset && interpretationOpen` this carried was a second copy of both.
+    expect(json).not.toContain('modules.transcribe.interpretationOpen');
     expect(json).not.toContain('datasetStore.currentDataset');
   });
 });
@@ -1517,7 +1598,7 @@ describe('the extraction panel', () => {
  * The expressions the panel is built from, actually evaluated.
  *
  * Every other assertion in this file reads the serialised schema — does the token appear — and that
- * is the right test for an arrangement. It is the wrong test for a *shape*: `extractionFor` was a
+ * is the right test for an arrangement. It is the wrong test for a *shape*: `interpretationFor` was a
  * `Proxy` first, every string assertion passed, and the panel rendered "No models are set up for AI
  * extraction here" against a space that had several. The expression resolved to `undefined`, and a
  * missing path is undefined by design, so nothing anywhere said a word.
@@ -1528,19 +1609,19 @@ describe('the extraction panel', () => {
 describe('the panel’s reads reach the store', () => {
   const CALL = 'we://a-call-from-last-month';
 
-  /** The extraction half of a transcribe store, in the shape the module publishes it. */
+  /** The interpretation half of a transcribe store, in the shape the module publishes it. */
   const storeBag = (targets: string[]) => ({
     modules: namespace((id) =>
       id === 'transcribe'
         ? namespace((member) =>
             member === 'callId'
               ? markReactive(() => 'we://the-live-call')
-              : member === 'extractionFor'
+              : member === 'interpretationFor'
                 ? markReactive(() =>
                     namespace((collection: string) => ({
                       targets: targets.map((entity) => ({ entity, label: entity, selected: true })),
                       canChoose: true,
-                      canExtract: collection === CALL,
+                      canInterpret: collection === CALL,
                     })),
                   )
                 : undefined,
@@ -1561,7 +1642,7 @@ describe('the panel’s reads reach the store', () => {
     });
 
   it('resolves the subject to the call in the address', () => {
-    expect(run(EXTRACTION_SUBJECT_EXPR, storeBag(['TaskBlock']))).toBe(CALL);
+    expect(run(INTERPRETATION_SUBJECT_EXPR, storeBag(['TaskBlock']))).toBe(CALL);
   });
 
   /**
@@ -1578,7 +1659,7 @@ describe('the panel’s reads reach the store', () => {
         .map((v) => find(v, type))
         .find(Boolean);
     };
-    const header = (extractionPanel.children as SchemaNode[])[0];
+    const header = (interpretationPanel.children as SchemaNode[])[0];
     const toggle = find(header, 'we-switch')!.props as { disabled: { $: string } };
     // The tooltip round the switch, not the first one in the header (the help's).
     const tooltips: Record<string, unknown>[] = [];
@@ -1598,9 +1679,9 @@ describe('the panel’s reads reach the store', () => {
           ? namespace((member) =>
               member === 'callId'
                 ? markReactive(() => '')
-                : member === 'extractionFor'
+                : member === 'interpretationFor'
                   ? markReactive(() =>
-                      namespace(() => ({ targets: [], canChoose: true, canExtract: false, auto: true })),
+                      namespace(() => ({ targets: [], canChoose: true, canInterpret: false, auto: true })),
                     )
                   : undefined,
             )
@@ -1616,7 +1697,7 @@ describe('the panel’s reads reach the store', () => {
       ),
     });
 
-    expect(run(EXTRACTION_SUBJECT_EXPR, outsideCalls(false))).toBe('the-space-collection');
+    expect(run(INTERPRETATION_SUBJECT_EXPR, outsideCalls(false))).toBe('the-space-collection');
     expect(run(toggle.disabled.$, outsideCalls(false))).toBe(true);
     expect(run(tooltip.content.$, outsideCalls(false))).toBe('Set by whoever administers this space');
     expect(run(toggle.disabled.$, outsideCalls(true))).toBe(false);
@@ -1624,7 +1705,7 @@ describe('the panel’s reads reach the store', () => {
 
   it('finds that call’s targets, which is what the chips count', () => {
     const roots = storeBag(['TaskBlock', 'EventBlock']);
-    const targets = `modules.transcribe.extractionFor[${EXTRACTION_SUBJECT_EXPR}].targets`;
+    const targets = `modules.transcribe.interpretationFor[${INTERPRETATION_SUBJECT_EXPR}].targets`;
 
     expect(run(`count(${targets})`, roots)).toBe(2);
     expect(run(`${targets}.map(t, t.entity)`, roots)).toEqual(['TaskBlock', 'EventBlock']);
@@ -1632,8 +1713,8 @@ describe('the panel’s reads reach the store', () => {
 
   it('finds that call’s answer, not the live call’s', () => {
     const roots = storeBag(['TaskBlock']);
-    const forSubject = `modules.transcribe.extractionFor[${EXTRACTION_SUBJECT_EXPR}].canExtract`;
-    const forLive = 'modules.transcribe.extractionFor[modules.transcribe.callId].canExtract';
+    const forSubject = `modules.transcribe.interpretationFor[${INTERPRETATION_SUBJECT_EXPR}].canInterpret`;
+    const forLive = 'modules.transcribe.interpretationFor[modules.transcribe.callId].canInterpret';
 
     expect(run(forSubject, roots)).toBe(true);
     expect(run(forLive, roots)).toBe(false);
@@ -1824,7 +1905,7 @@ function findNode(
 }
 
 describe('the history of what was read', () => {
-  const json = JSON.stringify(extractionPanel);
+  const json = JSON.stringify(interpretationPanel);
 
   it('reads passes written down against the call on screen', () => {
     /*
@@ -1836,7 +1917,7 @@ describe('the history of what was read', () => {
     expect(json).toContain('"entity":"ModelRun"');
     expect(json).toContain('"via":"runs"');
     expect(json).toContain('"kind":"extraction"');
-    expect(json).toContain(`"anchorId":{"$":"${EXTRACTION_SUBJECT_EXPR}"}`);
+    expect(json).toContain(`"anchorId":{"$":"${INTERPRETATION_SUBJECT_EXPR}"}`);
   });
 
   it('draws the outcome rather than a tick on everything', () => {
@@ -1850,7 +1931,7 @@ describe('the history of what was read', () => {
   it('says what a pass found in the words the chips use', () => {
     /*
       "Things", not "records" — a record is what the graph stores, and the list above these rows is
-      already headed "Things to extract". "No records" also read as a failure to write rather than
+      already headed "Things to interpret". "No records" also read as a failure to write rather than
       as a pass that looked and found nothing, which is an ordinary outcome and the one this line
       reports most often.
     */
@@ -1908,7 +1989,7 @@ describe('the history of what was read', () => {
       extraction `ModelRun` listed under "Logs" in the same panel, the settled half of this feed was the
       same rows again a few hundred pixels higher with no heading to tell them apart.
     */
-    expect(JSON.stringify(extractionActivity)).toContain(
+    expect(JSON.stringify(interpretationActivity)).toContain(
       'interpretationStore.runningCount && (!routeStore.params.call || routeStore.params.call == modules.transcribe.callId)',
     );
   });
@@ -1919,7 +2000,7 @@ describe('the history of what was read', () => {
       its whole line: it ran off the panel, and the row took the room out of the elapsed clock
       instead, folding "1:23" onto two lines.
     */
-    const activity = JSON.stringify(extractionActivity);
+    const activity = JSON.stringify(interpretationActivity);
     expect(activity).toContain('{"type":"we-text","props":{"fontSize":"200","flex":"1","minWidth":"0"}');
     expect(activity).toContain('"flexShrink":"0","whiteSpace":"nowrap"');
   });
@@ -1933,7 +2014,7 @@ describe('the history of what was read', () => {
       the log carried the pressed ones, so between them they showed each pass once; making both
       complete made them duplicates.
     */
-    const activity = JSON.stringify(extractionActivity);
+    const activity = JSON.stringify(interpretationActivity);
     expect(activity).not.toContain('interpretationStore.settledPasses');
     expect(activity).not.toContain('extractions processed');
     // The log keeps its own count, which is the one that survives a reload. On the heading's badge
@@ -1983,7 +2064,7 @@ describe('the history of what was read', () => {
       }
       Object.values(n).forEach(walk);
     };
-    walk(extractionPanel);
+    walk(interpretationPanel);
 
     expect(Object.keys(found).sort()).toEqual([...fields].sort());
 
@@ -2008,7 +2089,7 @@ describe('the history of what was read', () => {
       tree, because what is being asserted is the order of four siblings in one array and every one
       of them is identified by a string that appears exactly once.
     */
-    const chips = json.indexOf('"Things to extract"');
+    const chips = json.indexOf('"Things to interpret"');
     const logs = json.indexOf('"Logs"');
     const awaiting = json.indexOf('"Pending acceptance"');
     const changes = json.indexOf('"Pending changes"');
@@ -2022,28 +2103,28 @@ describe('the history of what was read', () => {
   });
 });
 
-describe('the things to extract fold like every other section', () => {
+describe('the things to interpret fold like every other section', () => {
   /*
     It was the one section in this panel with a heading that did not fold and no count — which is
     also the section a reader most often wants out of the way, since it is settings rather than
     findings.
   */
   it('folds, and counts what is ticked rather than what exists', () => {
-    const json = JSON.stringify(extractionPanel);
+    const json = JSON.stringify(interpretationPanel);
     expect(json).toContain('"$toggleLocal":"targetsOpen"');
     expect(json, 'the count is of every model, not the ticked ones').toContain('.filter(t, t.selected))');
     expect(json).toContain('"persist":"transcribe.targetsOpen"');
   });
 
   it('gives running a pass the same weight as keeping them running', () => {
-    // `secondary` read as the lesser of the two beside an "Auto extract: on" switch, when it is the
+    // `secondary` read as the lesser of the two beside an "Auto-interpret: on" switch, when it is the
     // one that does something this instant.
-    expect(JSON.stringify(extractionPanel)).toContain('"variant":"solid"');
+    expect(JSON.stringify(interpretationPanel)).toContain('"variant":"solid"');
   });
 });
 
 describe('a pass that is running is part of the log', () => {
-  const json = JSON.stringify(extractionPanel);
+  const json = JSON.stringify(interpretationPanel);
   /** Where the Logs heading is, which is where its section begins. */
   const logs = json.indexOf('"Logs"');
   /** Where the stored passes are drawn — the `$each` over the query, inside the same fold. */
@@ -2051,7 +2132,7 @@ describe('a pass that is running is part of the log', () => {
 
   /*
     It used to sit between the chips and this section, where it read as the output of "Things to
-    extract" rather than as the newest entry of the log it becomes one of a second later. It was
+    interpret" rather than as the newest entry of the log it becomes one of a second later. It was
     also the one region in a panel that folds section by section with no heading over it, so a
     readout somebody found distracting had nowhere to go.
   */
@@ -2091,14 +2172,14 @@ describe('a pass that is running is part of the log', () => {
     // From the heading rather than from the top: the panel has a spinner of its own further up —
     // searching the whole document finds that one and says nothing about this section.
     const spinner = json.indexOf('"we-animated-icon"', logs);
-    const exportButton = json.indexOf('"Export the extraction log"', logs);
+    const exportButton = json.indexOf('"Export the interpretation log"', logs);
     expect(spinner, 'the Logs heading has a spinner').toBeGreaterThan(-1);
     expect(spinner, 'the spinner comes before the export button, not after it').toBeLessThan(exportButton);
     expect(spinner, 'the heading spins before the rows are reached — it is in the header').toBeLessThan(storedRows);
   });
 });
 
-describe('the extraction chips say what they are', () => {
+describe('the interpretation chips say what they are', () => {
   /*
     They read as a row of small buttons: the same radius as every other control in the panel, with
     the state carried by weight alone. Weight is a comparison — it means something once the row
@@ -2106,7 +2187,7 @@ describe('the extraction chips say what they are', () => {
     read against.
   */
   it('are pills, and tick the ones that are on', () => {
-    const chips = JSON.stringify(extractionTargets);
+    const chips = JSON.stringify(interpretationTargets);
     expect(chips).toContain('"r":"pill"');
     const tick = chips.indexOf('"name":"check"');
     expect(tick, 'a selected chip says nothing about itself').toBeGreaterThan(-1);
@@ -2119,7 +2200,7 @@ describe('the extraction chips say what they are', () => {
   it('sit in no well', () => {
     // A row of pills is already a group; the box drew a second boundary round it and took the room
     // the chips wrap in. It is also where a colour with no role to name it was being reached for.
-    expect(JSON.stringify(extractionPanel)).not.toContain('surface-sunken');
+    expect(JSON.stringify(interpretationPanel)).not.toContain('surface-sunken');
   });
 });
 
@@ -2144,7 +2225,7 @@ describe('the composer', () => {
 
   it('appears only with a call on screen, and writes into that call — never the space', () => {
     /*
-      The extraction subject falls back to the space collection outside any call, so the extraction
+      The interpretation subject falls back to the space collection outside any call, so the interpretation
       panel can show loose messages. The composer used to share it, which put a box under "start or
       join a call" that wrote whatever was typed into the space. Messages typed outside a call are
       the Feed's.
@@ -2240,7 +2321,7 @@ describe("the transcript's reply", () => {
   are linked as `recognised` now, and drawn in their own section, saying where they were first found.
 */
 describe('records a conversation recognised', () => {
-  const panelJson = JSON.stringify(extractionPanel);
+  const panelJson = JSON.stringify(interpretationPanel);
 
   it('reads them beside what it made, and lists them apart from Accepted', () => {
     expect(panelJson).toContain('"recognised":{"order":{"createdAt":"desc"}}');
@@ -2253,5 +2334,31 @@ describe('records a conversation recognised', () => {
 
   it('names the conversation that made each one, by asking which one extracted it', () => {
     expect(panelJson).toContain('"where":{"extracted":{"some":{"id":{"$":"item.id"}}}}');
+  });
+});
+
+describe('the way to AI settings', () => {
+  const opensAiSettings = '{"$invoke":"shellStore.openShellView","args":["settings","/ai"]}';
+  const statusJson = JSON.stringify(captureStatus);
+
+  it('is offered only to a connection that can change the models', () => {
+    // A guest granted AI READ alone can list models and add none; the button sent them to a page
+    // with nothing on it they could do.
+    const offers = statusJson.split(opensAiSettings).length - 1;
+    expect(offers).toBeGreaterThan(0);
+    expect(statusJson).not.toContain('runtimeStore.canManageAi');
+    expect(statusJson.split('{"$":"runtimeStore.canConfigureAi"}').length - 1).toBe(offers);
+  });
+
+  it('is offered beside a model that cannot run, which waiting may never fix', () => {
+    // A model the server does not have stays unready however long the panel waits.
+    const unready = findNode(
+      captureStatus,
+      (node) =>
+        node.type === '$if' &&
+        JSON.stringify((node.props as { condition?: unknown } | undefined)?.condition) ===
+          '{"$":"modules.transcribe.modelUnready"}',
+    );
+    expect(JSON.stringify(unready)).toContain(opensAiSettings);
   });
 });

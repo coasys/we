@@ -24,28 +24,29 @@
  * you can see is on and one you cannot — a count left set and forgotten is otherwise two phantom
  * participants in a real call a week later, with nothing on screen to explain them.
  *
- * `localStorage` is still where the count lives, so it survives the reloads you do while iterating.
- * The buttons write it; nobody has to type it.
+ * The count is a session's, not a machine's — kept in memory, the way `devCursors` settled it. A
+ * persisted count is a trap even here, where the control and the marks DO share a surface: it
+ * outlives the call it was asked in and walks into the next one, in whichever space that call
+ * happens to be — a synthetic participant joining a real call because somebody was looking at a
+ * layout last Tuesday. The store drops it when the call ends, and nothing anywhere else remembers
+ * it, so a reload is the way out of a count set and forgotten.
  *
  * ## Why it cannot reach production
  *
  * Two gates. `DEV_FEATURES` (`@we/module-shared`) is `false` in a production build, a constant the
- * build writes, so the code folds away there. The `localStorage` count key, which nobody sets by
- * accident and which no build carries, keeps it out of a developer's own session until they ask.
- * Together: it is not in a shipped app, and it is not in a developer's either until they ask.
+ * build writes, so the code folds away there. The count being nobody's but the asking session's —
+ * in memory, zeroed when the call ends — keeps it out of every call until asked. Together: it is
+ * not in a shipped app, and it is not in a developer's either until they ask.
  *
  * ## Turning it off in a build that has it
  *
- * A third gate, and the only one that can be thrown deliberately: `devToolsEnabled` reads the shared
- * `we.devTools` switch (Settings → Developer), so a developer checking what a *user* sees loses
- * these controls along with every other developer affordance rather than having to remember this
- * one separately. Live in both directions — the count is re-read per solve and the controls are
- * gated in the schema on `sessionStore.devTools`, so nothing here needs a reload.
+ * A third gate, and the only one that can be thrown deliberately: `testPeopleEnabled` reads the
+ * shared Test people switch (Settings → Developer). It is off until a developer turns it on, and off
+ * whenever the developer tools are. Live in both directions — the count is re-read per solve and
+ * the controls are gated in the schema on `sessionStore.testPeople`, so nothing here needs a reload.
  */
 
-import { DEV_FEATURES, devToolsEnabled } from '@we/module-shared';
-
-const STORAGE_KEY = 'we.call.fakePeers';
+import { DEV_FEATURES, testPeopleEnabled } from '@we/module-shared';
 
 /** More than this is a stray keypress rather than a test. */
 const MAX = 24;
@@ -77,7 +78,7 @@ export const devPeersAvailable = DEV_FEATURES;
  * otherwise be looking at a stage with two synthetic participants still on it.
  */
 function visible(): boolean {
-  return devToolsEnabled(DEV_FEATURES);
+  return testPeopleEnabled(DEV_FEATURES);
 }
 
 /** Identity and media for one synthetic participant. The store turns these into tiles. */
@@ -91,20 +92,18 @@ export interface DevPeer {
 const streams = new Map<number, MediaStream>();
 const timers: ReturnType<typeof setInterval>[] = [];
 
+/** The count for this page, in memory — see the note above on why it does not persist. */
+let count = 0;
+
 /** How many to add, or 0 — which is every production build, and every dev session but the ones asking. */
 export function readDevPeerCount(): number {
-  if (!visible() || typeof localStorage === 'undefined') return 0;
-  const raw = Number(localStorage.getItem(STORAGE_KEY));
-  return clampCount(raw);
+  return visible() ? count : 0;
 }
 
-/** Remember the count across the reloads a developer does while iterating. */
-export function writeDevPeerCount(count: number): number {
-  const next = clampCount(count);
-  if (!devPeersAvailable || typeof localStorage === 'undefined') return next;
-  if (next === 0) localStorage.removeItem(STORAGE_KEY);
-  else localStorage.setItem(STORAGE_KEY, String(next));
-  return next;
+/** Set the count, clamped. Returns what it became. */
+export function writeDevPeerCount(next: number): number {
+  count = clampCount(next);
+  return count;
 }
 
 function clampCount(raw: number): number {
@@ -161,7 +160,9 @@ function peerStream(index: number): MediaStream | null {
 
 /** The synthetic participants to append, stable across rebuilds so their video never remounts. */
 export function devPeers(count: number): DevPeer[] {
-  if (count <= 0) {
+  // The switch is re-asked here rather than trusted to the count: one thrown mid-call used to hide
+  // the controls and leave the peers themselves on stage, with no way left to remove them.
+  if (!visible() || count <= 0) {
     // Turned off mid-session; stop painting rather than wait for the call to end.
     if (streams.size > 0) stopDevPeers();
     return [];

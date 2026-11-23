@@ -188,7 +188,7 @@ export function pointForAnchor(
 /**
  * `CSS.escape`, with a fallback for a host that lacks it.
  *
- * **Called on `CSS`, not extracted from it.** `CSS.escape` is a static method that checks its
+ * **Called on `CSS`, not found in it.** `CSS.escape` is a static method that checks its
  * receiver, so `const escape = CSS.escape; escape(value)` throws `'escape' called on an object that is
  * not a valid instance of CSS` — under jsdom certainly, and by specification anywhere. The thrown
  * version of this sat inside a pointer handler, which is the worst place for it.

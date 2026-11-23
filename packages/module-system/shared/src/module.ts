@@ -183,6 +183,13 @@ export interface PanelContribution {
   show?: string;
   /** A store key naming the action that closes it. Only with `open`. */
   close?: string;
+  /**
+   * A store key the host watches: a change while the panel is open asks for it to come forward —
+   * unhidden, unstowed, raised. An `open` flag cannot carry the ask: "still open" is no change.
+   * The call bumps a counter on every way back to the stage, which is why the value is
+   * `{@link ModuleStore.state}` rather than `action` — the ask is observed, not called.
+   */
+  reveal?: string;
   /** Ties break on module id, exactly as {@link SlotContribution.order} does. */
   order?: number;
 }
@@ -286,6 +293,11 @@ export interface ModulePart {
    * its subscriptions already live and die with it. This is for a part fed by its module's store —
    * the Feed's window, read whole and refreshed — which otherwise could not tell a page showing it
    * from nobody looking. Called once per drawing, so a part shown twice is shown until both are gone.
+   *
+   * A part with a `subject` is told which: both are called with the value its subject has where it is
+   * placed — the call a call's page is about, not only the one the module would pick — and when that
+   * value changes under a drawing, `hide` is called with the old one and `show` with the new. A part
+   * with no subject gets no argument.
    */
   whileShown?: { show: string; hide: string };
 }
@@ -635,6 +647,21 @@ export interface ModuleDataset {
   avatar?: string;
 }
 
+/** See {@link ModuleStoreDeps.firstScreen}. */
+export interface ModuleFirstScreen {
+  /** This module's part is on the first screen, reading what it shows. */
+  waiting: () => void;
+  /** That first read has landed, or failed. */
+  answered: () => void;
+  /**
+   * Whether the first screen is still being waited for — false once it is up, and on a host that
+   * holds nothing. For a part that is on the first screen only sometimes (a call's Feed, which a cold
+   * boot can open straight onto): it says {@link waiting} only while this is true, so a part placed
+   * later never holds anything. Absent on an older host: treat as false.
+   */
+  held?: () => boolean;
+}
+
 /**
  * What a host lends a module's store.
  *
@@ -692,6 +719,16 @@ export interface ModuleStoreDeps {
    */
   showCallOnScreen?: (recordId: string, datasetUri: string | null) => void;
   /**
+   * Go to the page of the space on screen that draws one of this module's parts (`<moduleId>.<name>`),
+   * as the space's own navigation goes there. Answers whether there was one: `false`, going nowhere,
+   * where the space's template draws the part on no page — and absent on a host that cannot say.
+   *
+   * For a module asked to show what it also offers as a panel. A template that gave the part a page
+   * has said where it lives, and a window over that page would be a second copy of it; where no page
+   * draws it, the panel is how the module shows it.
+   */
+  showPart?: (part: string) => boolean;
+  /**
    * This module's own settings, resolved for where the agent is right now and defaulted where nobody
    * spoke. Reactive. Secret-typed settings are absent here — read them through the `secrets` kernel.
    */
@@ -706,6 +743,19 @@ export interface ModuleStoreDeps {
   identities?: ModuleIdentityAccess;
   /** Naming and reaching spaces. */
   datasets?: ModuleDatasetAccess;
+  /**
+   * The first screen after a cold boot — for a module whose part is what a person opened the app to
+   * read. While it is reading, the host holds back work that screen does not need (the sidebar's
+   * lists, the interpretation panel, presence, settings reads), so the one executor answers this first.
+   *
+   * Say {@link ModuleFirstScreen.waiting} as the part's first read leaves — not as the part is drawn,
+   * since a part with nothing to read must not hold anything — and {@link ModuleFirstScreen.answered}
+   * when that read lands or fails, or as soon as nothing waits on it any more (the part taken down, the
+   * store disposed): both, or neither. A module that says `waiting` and never `answered` holds the rest
+   * of the app until the host's ceiling. Absent
+   * on a host with nothing to hold; both calls after the first screen are no-ops.
+   */
+  firstScreen?: ModuleFirstScreen;
 
   /** The kernels this module declared, and no others. See `kernels.ts`. */
   kernels: Partial<ModuleKernels>;

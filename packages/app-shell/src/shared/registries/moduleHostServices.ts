@@ -50,8 +50,10 @@ import type {
   RecordQuery,
   ViewKernel,
 } from '@we/module-shared';
+import { coalesceByKey } from '@we/module-shared';
 
 import { clockRegistry } from '../clocks';
+import type { FirstScreen } from '../firstScreen';
 import { addLiveMarks, addLivePointerListener } from '../liveView';
 
 /** What a store publishes here once it is live. All optional: a host need not provide any of it. */
@@ -80,6 +82,11 @@ export interface ModuleHostServices {
    * Forwarded to a module as `showCallOnScreen`; see there for when it writes.
    */
   showCallOnScreen?: (recordId: string, datasetUri: string | null) => void;
+  /**
+   * Go to the page of the space on screen that draws a module's part, answering whether there was
+   * one — bound by the store that holds the address. Forwarded as `showPart`; see there.
+   */
+  showPart?: (part: string) => boolean;
   selfId?: () => string | null;
   ephemeral?: EphemeralPort;
   presence?: {
@@ -114,8 +121,10 @@ export interface ModuleHostServices {
   /** The suggestions staged on one collection's contents. Absent means a host that cannot narrow. */
   proposalsForCollection?: (dataset: DatasetHandle, collectionId: string) => Promise<InterpretationProposal[]>;
   /** What one call extracts and what else it could. Absent reads as an empty list. */
-  extractionTargets?: (collectionId: string) => { entity: string; selected: boolean }[];
-  setExtractionTarget?: (collectionId: string, entity: string, on: boolean) => Promise<void>;
+  interpretationTargets?: (collectionId: string) => { entity: string; selected: boolean }[];
+  /** Whether `extractionTargets` is the whole answer yet. Absent reads as true. */
+  interpretationTargetsLoaded?: () => boolean;
+  setInterpretationTarget?: (collectionId: string, entity: string, on: boolean) => Promise<void>;
   /** `dataset` absent means the space on screen. */
   watchCollection?: (collectionId: string, dataset?: DatasetHandle) => Promise<void>;
   unwatchCollection?: (collectionId: string, dataset?: DatasetHandle) => Promise<void>;
@@ -130,7 +139,7 @@ export interface ModuleHostServices {
   interpretationActivity?: () => InterpretationActivitySummary[];
   /** Whether the backend can interpret, as the store learned it from the backend itself. Reactive. */
   interpretationAvailable?: () => boolean;
-  /** Whether a call is extracted as it happens — its participants' answer, else the space's. */
+  /** Whether a call is interpreted as it happens — its participants' answer, else the space's. */
   autoInterpretEnabled?: (collectionId?: string) => boolean;
   setAutoInterpret?: (collectionId: string, on: boolean) => Promise<void>;
   interpretationProposalsRevision?: () => number;
@@ -354,11 +363,16 @@ export const HOST_KERNELS: readonly KernelName[] = [
 export function createModuleStoreDeps(framework: {
   signal: <T>(initial: T) => [() => T, (next: T) => void];
   effect: (fn: () => void) => void;
+  /** The host's first-screen gate — see `shared/firstScreen.ts`. Absent: nothing is held. */
+  firstScreen?: FirstScreen;
 }): ModuleStoreDeps {
   // A signal for the published stream, so a consumer reading `input()` inside a derived value re-runs
   // when the publisher changes it.
   const [mediaInput, setMediaInput] = framework.signal<MediaStream | null>(null);
   mediaListeners.add(setMediaInput);
+  // One settled pass per collection at a time, and one more for everything asked meanwhile. See
+  // `passSettled` below.
+  const settling = coalesceByKey();
 
   const kernels: Partial<ModuleKernels> = {
     records: {
@@ -518,9 +532,12 @@ export function createModuleStoreDeps(framework: {
         if (!call) return Promise.reject(new Error('call: this host cannot run a call'));
         return call.session(callId, request);
       },
-      config: () => {
+      // A call's policy is read when a call starts, or a settings page opens — never for the first
+      // screen, so at cold boot it waits until that screen is up. See `shared/firstScreen.ts`.
+      config: async () => {
+        await framework.firstScreen?.whenOpen();
         const call = services.call;
-        if (!call) return Promise.reject(new Error('call: this host cannot read a call policy'));
+        if (!call) throw new Error('call: this host cannot read a call policy');
         return call.config();
       },
       setConfig: (config) => {
@@ -536,16 +553,16 @@ export function createModuleStoreDeps(framework: {
     transcription: {
       available: () => services.transcription !== undefined && (services.transcription.available?.() ?? true),
       models: async () => (await services.transcription?.models()) ?? [],
-      open: async (modelId, onText, tuning) => {
+      open: async (modelId, onText) => {
         const port = services.transcription;
         if (!port) throw new Error('transcription: this backend cannot transcribe');
-        return port.open(modelId, onText, tuning);
+        return port.open(modelId, onText);
       },
-      offeredModel: () => services.transcription?.offeredModel?.() ?? null,
-      installOfferedModel: async () => {
+      setup: async () => (await services.transcription?.setup?.()) ?? null,
+      connectFound: async () => {
         const port = services.transcription;
-        if (!port?.installOfferedModel) throw new Error('transcription: this backend cannot install a model');
-        return port.installOfferedModel();
+        if (!port?.connectFound) throw new Error('transcription: this backend cannot set transcription up');
+        return port.connectFound();
       },
     },
 
@@ -571,13 +588,14 @@ export function createModuleStoreDeps(framework: {
       autoEnabled: (collectionId) => services.autoInterpretEnabled?.(collectionId) ?? false,
       setAuto: async (collectionId, on) => {
         const set = services.setAutoInterpret;
-        if (!set) throw new Error('interpretation: this host cannot record a call’s extraction settings');
+        if (!set) throw new Error('interpretation: this host cannot record a call’s interpretation settings');
         await set(collectionId, on);
       },
-      targets: (collectionId) => services.extractionTargets?.(collectionId) ?? [],
+      targets: (collectionId) => services.interpretationTargets?.(collectionId) ?? [],
+      targetsLoaded: () => services.interpretationTargetsLoaded?.() ?? true,
       setTarget: async (collectionId, entity, on) => {
-        const set = services.setExtractionTarget;
-        if (!set) throw new Error('interpretation: this host cannot record a call’s extraction targets');
+        const set = services.setInterpretationTarget;
+        if (!set) throw new Error('interpretation: this host cannot record a call’s interpretation targets');
         await set(collectionId, entity, on);
       },
       runOnCollection: async (collectionId) => {
@@ -604,18 +622,25 @@ export function createModuleStoreDeps(framework: {
       // What follows a pass, in order: attach what it left unattached, then whatever host policy
       // follows from the collection's new contents. Each half best-effort on its own — a board that
       // could not be made is not a failed extraction.
-      passSettled: async (collectionId) => {
-        try {
-          await services.reconcileCollection?.(collectionId);
-        } catch (error) {
-          console.warn('moduleHostServices: could not reconcile a settled pass', error);
-        }
-        try {
-          await services.ensureBoardFor?.(collectionId);
-        } catch (error) {
-          console.warn('moduleHostServices: could not act on a settled pass', error);
-        }
-      },
+      //
+      // Coalesced per collection: a pass settling, a collection being adopted and an extraction
+      // finishing all ask at once when a call opens, and each reconcile is a link query, a
+      // `has_child` check and full reads of every extracted type. A call made while one runs is
+      // answered by one more run after it, never by the run already going, which may have read the
+      // collection from before the change the caller is reporting.
+      passSettled: (collectionId) =>
+        settling(collectionId, async () => {
+          try {
+            await services.reconcileCollection?.(collectionId);
+          } catch (error) {
+            console.warn('moduleHostServices: could not reconcile a settled pass', error);
+          }
+          try {
+            await services.ensureBoardFor?.(collectionId);
+          } catch (error) {
+            console.warn('moduleHostServices: could not act on a settled pass', error);
+          }
+        }),
       activity: () => services.interpretationActivity?.() ?? [],
       proposalsRevision: () => services.interpretationProposalsRevision?.() ?? 0,
       proposals: async (target, collection) => {
@@ -673,6 +698,7 @@ export function createModuleStoreDeps(framework: {
     spaceRoot: tracked(() => services.spaceRoot?.() ?? ''),
     callOnScreen: tracked(() => services.callOnScreen?.() ?? null),
     showCallOnScreen: (recordId, datasetUri) => services.showCallOnScreen?.(recordId, datasetUri),
+    showPart: (part) => services.showPart?.(part) ?? false,
     datasetRefKey: tracked(() => services.datasetRefKey?.() ?? ''),
     selfId: tracked(() => services.selfId?.() ?? null),
     notify: (tone, message, options) => services.notify?.(tone, message, options),
@@ -682,6 +708,13 @@ export function createModuleStoreDeps(framework: {
       openRef: (ref) => services.datasets?.openRef(ref),
       onRemoved: (cb) => services.datasets?.onRemoved?.(cb) ?? (() => {}),
     },
+    firstScreen: framework.firstScreen
+      ? {
+          waiting: () => framework.firstScreen?.waiting(),
+          answered: () => framework.firstScreen?.answered(),
+          held: () => framework.firstScreen?.open() === false,
+        }
+      : undefined,
     identities: {
       get: (agentId) => services.identities?.get(agentId),
       fetch: (agentId) => services.identities?.fetch(agentId),

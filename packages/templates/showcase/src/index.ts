@@ -43,4 +43,4 @@ export { KIND, MODE } from './shared.ts';
   claim about pixels, which only a real browser can answer — so the harness mounts the app's own node
   rather than a restatement of it. See `tests/browser/cases/treeStrip.mjs`.
 */
-export { TREE_LOCALS, TREE_QUERIES, treeStrip } from './WorkshopTree.ts';
+export { TREE_LOCALS, TREE_QUERIES, treeStrip } from '@we/template-kit';

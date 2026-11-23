@@ -30,7 +30,7 @@ import type { SchemaProp } from '@we/schema-shared';
 import { CHANGED, UNCONFIRMED } from './suggestions.ts';
 
 /** The kinds of record extraction can make — what an unplaced card on a canvas can be. */
-export const EXTRACTABLE = 'shapeStore.extractionCandidates';
+export const INTERPRETABLE = 'shapeStore.interpretationCandidates';
 
 export interface CanvasSeedOptions {
   /** The canvas record — its placements are its own. */
@@ -44,7 +44,7 @@ export function canvasSeedOptions({ canvas, members }: CanvasSeedOptions): Recor
   return {
     canvas,
     members,
-    contains: { $: EXTRACTABLE },
+    contains: { $: INTERPRETABLE },
     // Where each card came from, for a badge or a lens by conversation.
     origin: 'extractedFrom',
     // Which run made each card, for its "by AI" mark — see `generatedRun` in `@we/entities`.
@@ -128,6 +128,46 @@ export function focusDimWhere(on: string, when: string): SchemaProp {
  */
 export function focusDim(on: string, key: string, value: string): SchemaProp {
   return focusDimWhere(on, `{ '${key}': { not: (${value}) } }`);
+}
+
+/** One scope a lens can be in: when it holds, and which cards are outside it. */
+export interface LensScope {
+  /** An expression: whether this scope is the one on screen. */
+  on: string;
+  /**
+   * Expressions for match clauses naming the cards outside the scope, any of which puts a card
+   * outside. Several where one clause cannot say it — the clauses have no `OR`.
+   */
+  rest: string[];
+}
+
+/**
+ * A scope lens over a canvas: what is in scope stays, and what is outside it is dimmed, hidden, or
+ * left as it is.
+ *
+ * `mode` is an expression answering `'dim'`, `'hide'`, or anything else for leaving the rest as it
+ * is, so the caller decides where the choice lives — the address, a preference on the device. At
+ * most one scope should hold at a time; where several do, the first decides what is hidden.
+ *
+ * Answers the two halves a canvas takes: `dimmed`, entries for a `nodeStyle` list (after
+ * `SUGGESTION_STYLES`, as `focusDim` is), and `hideWhere`, for the canvas seed. Both are written from
+ * the same clauses, so a lens that dims and one that hides cannot disagree about which cards are the
+ * rest. Hiding dims too: the canvas reads again without the hidden cards, and with the fade switched
+ * off at the press they would flash back to full strength in between.
+ */
+export function scopeLens({ scopes, mode }: { scopes: LensScope[]; mode: string }): {
+  dimmed: SchemaProp[];
+  hideWhere: SchemaProp;
+} {
+  const fading = `((${mode}) == 'dim' || (${mode}) == 'hide')`;
+  const hidden = scopes.reduceRight(
+    (otherwise, scope) => `(${scope.on}) ? [${scope.rest.join(', ')}] : ${otherwise}`,
+    'null',
+  );
+  return {
+    dimmed: scopes.flatMap((scope) => scope.rest.map((rest) => focusDimWhere(`(${scope.on}) && ${fading}`, rest))),
+    hideWhere: { $: `(${mode}) == 'hide' ? (${hidden}) : null` },
+  };
 }
 
 export interface CanvasEditingOptions {

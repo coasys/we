@@ -12,13 +12,26 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const DID = 'did:key:z6MkTest';
 
+const setup = { bootState: 'ready', created: 0, finished: 0, asking: false };
+
 const sessionStub = {
   me: () => ({ did: DID }),
   backendPorts: () => ({ profiles: profilePort }),
   // Read by `needsName`, which gates the name prompt on the app being up.
-  bootState: () => 'ready',
+  bootState: () => setup.bootState,
+  // A first run: the agent is made and the session loaded, so setup lands on `finishing`.
+  createAgent: async () => {
+    setup.created += 1;
+    setup.bootState = 'finishing';
+  },
+  finishSetup: () => {
+    setup.finished += 1;
+    setup.bootState = 'ready';
+  },
 };
 const accountsStub = { syncDisplay: async () => {} };
+// Whether the node has an AI question for a new account: the runtime store's to decide.
+const runtimeStub = { openAiStep: async () => setup.asking };
 
 let profilePort: {
   get: (did: string) => Promise<unknown>;
@@ -28,7 +41,9 @@ let profilePort: {
 
 vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({ useSessionStore: () => sessionStub }));
 vi.mock('../src/frameworks/solid/stores/AccountStore', () => ({ useAccountStore: () => accountsStub }));
+vi.mock('../src/frameworks/solid/stores/RuntimeStore', () => ({ useRuntimeStore: () => runtimeStub }));
 
+import { credential } from '../src/frameworks/solid/credential';
 import { type ProfileStore, ProfileStoreProvider, useProfileStore } from '../src/frameworks/solid/stores/ProfileStore';
 
 function mount(): ProfileStore {
@@ -49,6 +64,8 @@ const emptyProfile = { did: DID, firstName: '', lastName: '', handle: '', bio: '
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  Object.assign(setup, { bootState: 'ready', created: 0, finished: 0, asking: false });
+  credential.clear();
   profilePort = {
     get: async () => emptyProfile,
     publish: async () => {},
@@ -192,5 +209,40 @@ describe('the name prompt', () => {
 
     expect(published).toEqual([]);
     expect(store.needsName()).toBe(true);
+  });
+});
+
+describe('finishing a first run', () => {
+  function typePassword() {
+    credential.set('a-test-password');
+    credential.setConfirmation('a-test-password');
+  }
+
+  it('goes to the app once the profile is published, where there is no AI question', async () => {
+    typePassword();
+    const store = mount();
+    await store.completeAccountSetup('Test Person');
+    expect(setup.created).toBe(1);
+    expect(setup.finished).toBe(1);
+    expect(setup.bootState).toBe('ready');
+  });
+
+  it('stays on the sign-in screen for the AI step, which finishes setting up itself', async () => {
+    typePassword();
+    setup.asking = true;
+    const store = mount();
+    await store.completeAccountSetup('Test Person');
+    expect(setup.finished).toBe(0);
+    expect(setup.bootState).toBe('finishing');
+  });
+
+  it('goes to the app when the AI question cannot be decided', async () => {
+    typePassword();
+    const decide = vi.spyOn(runtimeStub, 'openAiStep').mockRejectedValue(new Error('the node did not answer'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const store = mount();
+    await store.completeAccountSetup('Test Person');
+    expect(decide).toHaveBeenCalled();
+    expect(setup.finished).toBe(1);
   });
 });

@@ -22,7 +22,16 @@ import { isHostPart } from '@shared/registries/hostParts';
 import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import { Row } from '@we/components/solid';
 import { PART_ATTR, PART_NODE_ATTR } from '@we/schema-shared';
-import { createEffect, createMemo, createSignal, type JSX, onCleanup, Show, untrack } from 'solid-js';
+import {
+  createEffect,
+  createMemo,
+  createRenderEffect,
+  createSignal,
+  type JSX,
+  onCleanup,
+  Show,
+  untrack,
+} from 'solid-js';
 
 import { useDatasetStore } from '../stores/DatasetStore';
 import { useEditorStore } from '../stores/EditorStore';
@@ -31,7 +40,13 @@ import { useSpaceStore } from '../stores/SpaceStore';
 
 const humanise = (name: string) => name.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^./, (c) => c.toUpperCase());
 
-export function PartFrame(props: { part: string; at?: string; children?: JSX.Element }) {
+export function PartFrame(props: {
+  part: string;
+  at?: string;
+  /** What the part is about where it is placed — resolved, for its `whileShown`. See `resolveParts`. */
+  subject?: unknown;
+  children?: JSX.Element;
+}) {
   const spaceStore = useSpaceStore();
   const datasetStore = useDatasetStore();
   const editorStore = useEditorStore();
@@ -56,7 +71,12 @@ export function PartFrame(props: { part: string; at?: string; children?: JSX.Ele
     <Show
       when={missing()}
       fallback={
-        <PresentPart part={props.part} at={props.at} editing={editorStore.contentMode() === 'visual'}>
+        <PresentPart
+          part={props.part}
+          at={props.at}
+          subject={props.subject}
+          editing={editorStore.contentMode() === 'visual'}
+        >
           {props.children}
         </PresentPart>
       }
@@ -90,7 +110,13 @@ function hasBox(el: Element): boolean {
  * template is edited, an empty part draws a slim stand-in naming itself, which is selectable through
  * the frame like the part. Only then: outside editing it draws nothing, as its module meant.
  */
-export function PresentPart(props: { part: string; at?: string; editing: boolean; children?: JSX.Element }) {
+export function PresentPart(props: {
+  part: string;
+  at?: string;
+  subject?: unknown;
+  editing: boolean;
+  children?: JSX.Element;
+}) {
   let frame: HTMLDivElement | undefined;
   const [empty, setEmpty] = createSignal(false);
   const label = () => moduleRegistry.parts()[props.part]?.label ?? humanise(props.part.split('.')[1] ?? props.part);
@@ -98,20 +124,32 @@ export function PresentPart(props: { part: string; at?: string; editing: boolean
   /*
     A part fed by its module's store says it is on screen — see `ModulePart.whileShown`. Once as it is
     drawn and once as it is taken down, so a part drawn twice keeps its module working until both go.
-    Settled at mount and not followed: the show and hide calls must pair up, one each per frame.
+    Which part, and whether it has one, is settled at mount: the show and hide calls must pair up.
+
+    What it is about is followed. A part with a subject is told it with each call (`resolveParts` puts
+    the placement's subject on the frame), and a drawing whose subject changes — a call's page moving
+    to another call — is taken down for the old one and shown for the new, so each `show` still has
+    its `hide`. A part with none is called with nothing, once each way, as it always was.
   */
-  untrack(() => {
-    const whileShown = moduleRegistry.parts()[props.part]?.whileShown;
-    if (!whileShown) return;
-    const store = moduleRegistry.get(props.part.split('.')[0] ?? '')?.store;
-    const call = (key: string) => {
-      const member = store?.[key];
-      if (typeof member === 'function') (member as () => void)();
-      else console.warn(`part ${props.part}: whileShown names "${key}", which its store does not have`);
-    };
-    call(whileShown.show);
-    onCleanup(() => call(whileShown.hide));
-  });
+  const whileShown = untrack(() => moduleRegistry.parts()[props.part]?.whileShown);
+  if (whileShown) {
+    const store = untrack(() => moduleRegistry.get(props.part.split('.')[0] ?? '')?.store);
+    const call = (key: string, subject: unknown) =>
+      untrack(() => {
+        const member = store?.[key];
+        if (typeof member !== 'function') {
+          console.warn(`part ${props.part}: whileShown names "${key}", which its store does not have`);
+          return;
+        }
+        if (subject === undefined) (member as () => void)();
+        else (member as (subject: unknown) => void)(subject);
+      });
+    createRenderEffect(() => {
+      const subject = props.subject;
+      call(whileShown.show, subject);
+      onCleanup(() => call(whileShown.hide, subject));
+    });
+  }
 
   createEffect(() => {
     if (!props.editing || !frame) {

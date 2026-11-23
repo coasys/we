@@ -1,8 +1,10 @@
+import { agentDataKernel, documentAccess } from '@shared/agentData';
 import { boardOptimism } from '@shared/boardOptimism';
 import { datasetAddressedBy } from '@shared/datasetIdentity';
 import { collectionFacts } from '@shared/destructiveFacts';
 import { involvementOptimism } from '@shared/involvementOptimism';
 import { linkNewMentions, type MentionWriter, prepareMentionUpdate } from '@shared/lineMentions';
+import { findEntityRows, moduleQueryAsOrm, subscribeEntityRows } from '@shared/recordsRead';
 import { appFrame, declareAppEdges, declareAppFrame } from '@shared/registries/appFrame';
 import { HOST_PART_SLOTS } from '@shared/registries/hostParts';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
@@ -18,7 +20,7 @@ import { workflowStateOf } from '@shared/taskWorkflow';
 import { taskWorkflowLive } from '@shared/taskWorkflowLive';
 import { landsOnRoot } from '@shared/templateLanding';
 import { copyText } from '@shared/utils';
-import { withExtractionDefaults } from '@we/entities';
+import { withInterpretationDefaults } from '@we/entities';
 import { completeResponse, respondsThrough } from '@we/entities';
 
 import { signalOptimism } from '../../../shared/signalOptimism';
@@ -42,11 +44,12 @@ interface RecordModel {
 /** An entity's registered class by name; the registry answers untyped, but every class implements these. */
 const recordModel = (entity: string) => getEntity(entity) as unknown as RecordModel;
 
-import { componentRegistry as registry } from '@solid/registries/componentRegistry';
+import { chromeComponentRegistry, componentRegistry as registry } from '@solid/registries/componentRegistry';
 import {
   useAccountStore,
   useAppStore,
   useBundleStore,
+  useChatStore,
   useClockStore,
   useDatasetStore,
   useDeviceStore,
@@ -68,14 +71,12 @@ import {
 } from '@solid/stores';
 import type { Stores } from '@solid/types';
 import { Route, Router } from '@solidjs/router';
-import { datasetKey, formatRef, manifestEntries, type RecordInstance } from '@we/backend-shared';
-import { type ContentInput, copyableContent, createBlocks, deleteBlocks, reconcileBlocks } from '@we/block-shared';
+import { manifestEntries, type RecordInstance } from '@we/backend-shared';
 import { BlockDisplayOverrides, BlockHostProvider, colorFor } from '@we/block-solid';
 import { toastService } from '@we/components/solid';
 import type { DatasetProxy } from '@we/entities';
-import { CollectionBlock, getEntity, Space } from '@we/entities';
+import { getEntity, Space } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
-import type { DocumentAccess } from '@we/module-shared';
 import { holdTopLayer, installTopLayerGuard } from '@we/primitives/top-layer';
 import type { TemplateSchema } from '@we/schema-shared';
 import {
@@ -120,6 +121,7 @@ export default function TemplateProvider() {
   const editTarget = useEditTarget();
   const routeStore = useRouteStore();
   const shellStore = useShellStore();
+  const chatStore = useChatStore();
   const presenceStore = usePresenceStore();
   const interpretationStore = useInterpretationStore();
   const clockStore = useClockStore();
@@ -161,17 +163,6 @@ export default function TemplateProvider() {
     error: (...args: unknown[]) => console.error(...args),
     info: (...args: unknown[]) => console.info(...args),
   };
-
-  /**
-   * Where a module's agent-scoped records live, named once.
-   *
-   * A literal in three call sites would be three chances to write a space's path by mistake, and the
-   * consequence of getting it wrong is one person's private collection synced to a community.
-   *
-   * The personal space rather than the root: what a module keeps for somebody is theirs, and the
-   * root is the app's configuration. See `systemDatasets.ts`.
-   */
-  const PERSONAL_DATASET = 'datasetStore.personalDataset';
 
   // Record mutations — one instance of an entity, written through the entity's registered class
   // with the dataset injected. Pass `{ dataset: 'store.path' }` in options to target a
@@ -230,26 +221,15 @@ export default function TemplateProvider() {
   }
 
   /**
-   * A module's `within` as the ORM's `parent`: the container, by containment, which is one predicate
-   * on every backend. See `RecordQuery.within`.
-   */
-  function withinAsParent(query: unknown): Record<string, unknown> {
-    const { within, ...rest } = (query ?? {}) as { within?: unknown } & Record<string, unknown>;
-    return typeof within === 'string' && within
-      ? { ...rest, parent: { id: within, relation: 'children', entity: 'CollectionBlock' } }
-      : rest;
-  }
-
-  /**
-   * A new feed starts with its space's extraction defaults — written onto it, not inherited.
+   * A new feed starts with its space's interpretation defaults — written onto it, not inherited.
    *
-   * Every collection that conversations happen in holds its own answer to "is this extracted as it
-   * grows, and for what", copied from the space when it is made; see `collectionExtraction` in `@we/entities`
+   * Every collection that conversations happen in holds its own answer to "is this interpreted as it
+   * grows, and for what", copied from the space when it is made; see `collectionInterpretation` in `@we/entities`
    * for why a copy. Done here because this is where both of the ways a new one arrives meet: a
    * template's `record.create` (a channel) and a module's write (a call). Anything the caller
    * already said wins, and a dataset with no space gets nothing, which leaves the collection unset.
    *
-   * Feeds only. A document is one author's artifact and is not extracted as it grows; stamping
+   * Feeds only. A document is one author's artifact and is not interpreted as it grows; stamping
    * every post would be two links on each for an answer nobody asks.
    */
   async function withCollectionDefaults(
@@ -263,7 +243,7 @@ export default function TemplateProvider() {
       perspective === datasetStore.currentDataset()?.handle
         ? spaceStore.currentSpace()
         : await Space.findOne(perspective).catch(() => null);
-    return withExtractionDefaults(entity, fields, space);
+    return withInterpretationDefaults(entity, fields, space);
   }
 
   /**
@@ -286,47 +266,6 @@ export default function TemplateProvider() {
     const created = await recordModel(entity).create(perspective, stamped, Object.keys(rest).length ? rest : undefined);
     threadResponse(perspective, created, rest);
     return created;
-  }
-
-  /**
-   * Composed documents in one dataset — what the records kernel and the agent-data kernel lend as
-   * `documents`, each pinned to its own dataset.
-   *
-   * The same writes the composer's own save makes (`SpaceStore.createPost` / `updatePost`), against
-   * whichever dataset the accessor names, which is the one thing those two cannot do: they are
-   * pinned to the space on screen, and a note lives in the personal space.
-   */
-  function documentAccess(
-    target: () => { id: string; sharedUri?: string | null; handle: DatasetProxy } | null,
-  ): DocumentAccess {
-    const collection = async (handle: DatasetProxy, id: string) => CollectionBlock.findOne(handle, { where: { id } });
-    return {
-      create: async (document, options) => {
-        const ds = target();
-        if (!ds) return null;
-        const root = await createBlocks(ds.handle, document as ContentInput, { kind: options?.kind ?? 'post' });
-        if (!root?.id) return null;
-        const key = datasetKey({ cid: ds.sharedUri, uuid: ds.id });
-        return { id: root.id, ref: formatRef({ datasetKey: key, entity: 'CollectionBlock', id: root.id }) };
-      },
-      update: async (id, document) => {
-        const ds = target();
-        const existing = ds && (await collection(ds.handle, id));
-        if (!ds || !existing) return;
-        await reconcileBlocks(ds.handle, existing, document as ContentInput);
-      },
-      remove: async (id) => {
-        const ds = target();
-        if (ds) await deleteBlocks(ds.handle, id);
-      },
-      read: async (id) => {
-        const ds = target();
-        const existing = ds && (await collection(ds.handle, id));
-        // Payloads rather than addresses, and no keys: a fresh composition, ready to be written into a
-        // dataset whose file storage and records have never seen it. See `copyableContent`.
-        return ds && existing ? copyableContent(ds.handle, existing.editorState) : null;
-      },
-    };
   }
 
   /** The same, for `record.update` — `recordActions` resolves a store *path*, and a module has a handle. */
@@ -382,40 +321,17 @@ export default function TemplateProvider() {
         This agent's own records, in their personal space — the write half of
         `entities: { scope: 'agent' }`.
 
-        Everything goes through `recordActions` with the personal dataset named, so there is one
-        place that knows how a dataset path is resolved and an agent-scoped module cannot reach a
-        space by accident: the path is fixed here rather than passed in.
+        Every write names the personal space's handle, never a store path, so an agent-scoped module
+        cannot reach a space by accident. See `agentDataKernel`.
       */
-      agentData: {
-        ready: () => !!datasetStore.personalDataset(),
-        refKey: () => {
-          const personal = datasetStore.personalDataset();
-          return personal ? datasetKey({ uuid: personal.id }) : '';
-        },
-        create: async (entity, fields, options) => {
-          if (!datasetStore.personalDataset()) return null;
-          const created = (await recordActions.create(entity, fields, {
-            ...options,
-            dataset: PERSONAL_DATASET,
-          })) as { id?: string } | undefined;
-          return created?.id ?? null;
-        },
-        find: async (entity, query) => {
-          if (!datasetStore.personalDataset()) return [];
-          const [Model, p] = resolve(entity, { dataset: PERSONAL_DATASET });
-          const rows = (await Model.findAll(p, query)) as unknown as Record<string, unknown>[];
-          return rows ?? [];
-        },
-        update: async (entity, id, fields) => {
-          if (!datasetStore.personalDataset()) return;
-          await recordActions.update(entity, id, fields, { dataset: PERSONAL_DATASET });
-        },
-        remove: async (entity, id) => {
-          if (!datasetStore.personalDataset()) return;
-          await recordActions.delete(entity, id, { dataset: PERSONAL_DATASET });
-        },
-        documents: documentAccess(() => datasetStore.personalDataset()),
-      },
+      agentData: agentDataKernel(datasetStore, {
+        create: (handle, entity, fields, options) =>
+          createInDataset(entity, fields, handle, options) as Promise<{ id?: string } | undefined>,
+        find: async (handle, entity, query) =>
+          (await recordModel(entity).findAll(handle, query)) as unknown as Record<string, unknown>[],
+        update: (handle, entity, id, fields) => updateInDataset(entity, id, fields, handle),
+        remove: (handle, entity, id) => recordModel(entity).delete(handle, id),
+      }),
 
       // Add-one on a to-many relation. An instance bound to an existing base expression is enough —
       // `addRelationValue` writes a single link and never reads the current set, which is what makes
@@ -484,28 +400,12 @@ export default function TemplateProvider() {
       findEntities: async (entity, query, options) => {
         const p = moduleTarget(options?.dataset);
         if (!p) return [];
-        const Model = getEntity(entity) as unknown as {
-          findAll: (perspective: unknown, opts: unknown) => Promise<Record<string, unknown>[]>;
-        };
-        return (await Model.findAll(p, withinAsParent(query))) ?? [];
+        return findEntityRows(entity, p, moduleQueryAsOrm(query));
       },
       subscribeEntities: (entity, query, cb, options) => {
         const p = moduleTarget(options?.dataset);
         if (!p) return () => {};
-        const Model = getEntity(entity) as unknown as {
-          query: (
-            perspective: unknown,
-            opts: unknown,
-          ) => { subscribe: (cb: (rows: Record<string, unknown>[]) => void) => Promise<unknown>; dispose: () => void };
-        };
-        const subscription = Model.query(p, withinAsParent(query));
-        void subscription.subscribe(cb).then(
-          (rows) => cb(rows as Record<string, unknown>[]),
-          (error: unknown) => {
-            console.warn(`module host: subscription to ${entity} failed`, error);
-          },
-        );
-        return () => subscription.dispose();
+        return subscribeEntityRows(entity, p, moduleQueryAsOrm(query), cb);
       },
     }),
   );
@@ -525,6 +425,7 @@ export default function TemplateProvider() {
     templateStore,
     routeStore,
     shellStore,
+    chatStore,
     presenceStore,
     interpretationStore,
     clockStore,
@@ -965,7 +866,7 @@ export default function TemplateProvider() {
     onCleanup(
       registerRecordGhost({
         stores: chromeBag,
-        registry,
+        registry: chromeComponentRegistry,
         agent: (did) => {
           const profile = profileStore.profiles().find((p) => p.did === did);
           return profile ? { name: profile.name ?? '', avatar: profile.avatar ?? '' } : undefined;
@@ -1029,8 +930,8 @@ export default function TemplateProvider() {
         `$part` expanded here as well as `$slot`, which the registry does on its way out.
 
         A module composing its own chrome out of its own published parts is an ordinary thing to
-        write — the transcript panel builds its feed from `transcriptLines`, and the extraction panel
-        its chips from `extractionTargets` — and until now the only thing that expanded a part was a
+        write — the transcript panel builds its feed from `transcriptLines`, and the interpretation panel
+        its chips from `interpretationTargets` — and until now the only thing that expanded a part was a
         *template* placing one. So the workshop, which supplies both panel bodies and renders them
         through `TemplatePanelBody`, worked; the default template rendered the module's own panels
         through this path and drew "Unknown component $part" in a red box where each fragment should
@@ -1711,9 +1612,9 @@ export default function TemplateProvider() {
                 )
               }
             >
-              <RenderSchema node={appSchema} stores={chromeBag} registry={registry} />
+              <RenderSchema node={appSchema} stores={chromeBag} registry={chromeComponentRegistry} />
             </div>
-            <RenderSchema node={shellSchema} stores={chromeBag} registry={registry} />
+            <RenderSchema node={shellSchema} stores={chromeBag} registry={chromeComponentRegistry} />
             {/* The lanes pushing the content aside at the window's edges. */}
             <EdgeLanes />
             {/* Every panel, drawn once here, inside these providers, and moved to its place. */}
@@ -1762,7 +1663,7 @@ export default function TemplateProvider() {
           {/* The host's safety prompts — see `promptSchema`. Last, so a prompt mounting in the same
            frame as anything above it still enters the top layer after it. */}
           <div ref={promptLayer} data-we-host-prompts style={{ display: 'contents' }}>
-            <RenderSchema node={promptSchema} stores={chromeBag} registry={registry} />
+            <RenderSchema node={promptSchema} stores={chromeBag} registry={chromeComponentRegistry} />
           </div>
         </VisualEditorProvider>
       </BlockDisplayOverrides>

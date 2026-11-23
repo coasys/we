@@ -75,14 +75,34 @@ export { FLOWS_LOCALS, workflowsPage, workflowsSection } from './we/workflows.ts
 export {
   canvasEditing,
   canvasSeedOptions,
-  EXTRACTABLE,
+  INTERPRETABLE,
   FOCUS_DIM,
   focusDim,
   focusDimWhere,
   PLACED_CARD_STYLE,
+  scopeLens,
   SUGGESTION_STYLES,
 } from './we/canvas.ts';
-export type { CanvasEditingOptions, CanvasSeedOptions } from './we/canvas.ts';
+export type { CanvasEditingOptions, CanvasSeedOptions, LensScope } from './we/canvas.ts';
+export {
+  BY_SIGNAL,
+  CANVAS_CARD,
+  SIGNAL_IN_FORCE,
+  TREE_BEHAVIOURS,
+  TREE_CARD_STYLE,
+  TREE_EDGE_RULES,
+  TREE_LOCALS,
+  TREE_ON,
+  TREE_QUERIES,
+  TREE_REFRAME,
+  TREE_RELATIONS,
+  TREE_VOICE_SUMMARY,
+  TREE_WEIGH,
+  TREE_WEIGHTS,
+  treeArrange,
+  treeLayout,
+  treeStrip,
+} from './we/canvasTree.ts';
 export { fieldEditor, inspectorPanel, kindIcon, kindLabel, openRecord, vocabularyEditLink } from './we/inspector.ts';
 export type { InspectorPanelOptions } from './we/inspector.ts';
 export {
@@ -94,7 +114,13 @@ export {
   themeChoice,
 } from './we/designChoices.ts';
 export type { Choice } from './we/designChoices.ts';
-export { SOCIAL_DNA_LABELS, VOCABULARY_BUCKETS, vocabularyMap } from './we/vocabularyMap.ts';
+export {
+  OTHER_APP_CLASS_NAMES,
+  SOCIAL_DNA_LABELS,
+  VOCABULARY_BUCKETS,
+  VOCABULARY_OPENS,
+  vocabularyMap,
+} from './we/vocabularyMap.ts';
 export type { VocabularyMapOptions } from './we/vocabularyMap.ts';
 export { askWhatGoesHere, BACK_TO_CHOOSER, CARD_LOCALS, newNoteModal, newThingChooser } from './we/canvasCards.ts';
 export {

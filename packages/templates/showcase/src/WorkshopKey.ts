@@ -56,6 +56,7 @@ import {
   panelHeader,
   panelScroll,
   sectionLabel,
+  SIGNAL_IN_FORCE,
   stateFill,
   stateIcon,
   SUGGESTIONS_HIDDEN,
@@ -324,6 +325,42 @@ export const HEAT_HIGH_FILL = `(${heatHighChosen} ? ${heatHighChosen} : '${HEAT_
  * either way, so an unanswered card never reads as the lowest answer.
  */
 export const HEAT_NONE_FILL = `(${heatNoneChosen} ? ${heatNoneChosen} : ${CARD_FILL})`;
+
+/**
+ * The heat map: every card shaded by what the tree is ordered by, while the key's order lens is on.
+ *
+ * The same number the order reads — a reaction's score, or when the card was made — normalised across
+ * the cards on the canvas and blended between the key's two colours, so a card's shade says where in
+ * the range it sits, which its place in a row cannot: three cards in a row say which is first, not
+ * whether the middle one is nearer the top or the bottom.
+ *
+ * A rating or a slider is scaled against its own range rather than the canvas's: the ends of a five-star
+ * scale mean something absolutely, and one card at two stars among worse ones must not look like the
+ * best there is. A card with no score is left out of the scale and drawn in the key's colour for "no
+ * answers yet" — the rule before the scale, which the graph falls through to where a metric has nothing
+ * to say about a card. That is exactly the claim "nobody has answered" should make.
+ *
+ * Applies on the freeform canvas as well as the tree: the order is in the address either way, and a
+ * heat map across cards somebody placed by hand is as useful as one along a row. Nothing while the
+ * order is as arranged, where a card's place is its order already.
+ *
+ * Here rather than in the shared tree module because both halves of the rule are this key's: the lens
+ * that turns it on is `colour=order` in the address, and the fills it blends between are the `@heat*`
+ * rows this panel writes and reads. The tree's own machinery — the mode, the order, the reaction in
+ * force — is the kit's `canvasTree`.
+ */
+const HEAT_TYPE = `find(local.treeSignalTypes, { id: ${SIGNAL_IN_FORCE} })`;
+const HEAT_FIELD =
+  `(local.order == 'signal' ? ((${HEAT_TYPE}.mode == 'rating' || ${HEAT_TYPE}.mode == 'slider')` +
+  ` ? { from: 'weight', min: ${HEAT_TYPE}.rangeMin, max: ${HEAT_TYPE}.rangeMax } : { from: 'weight' })` +
+  ` : { from: 'createdAt' })`;
+
+export const TREE_HEAT_RULES: SchemaProp = {
+  $:
+    `${BY_ORDER} && local.order != 'manual' && (local.order != 'signal' || ${SIGNAL_IN_FORCE})` +
+    ` ? [{ style: { color: ${HEAT_NONE_FILL} } }, { style: { color: { metric: 'field', options: ${HEAT_FIELD},` +
+    ` scale: { from: ${HEAT_LOW_FILL}, to: ${HEAT_HIGH_FILL} } } } }] : []`,
+};
 
 /*
  * `stateFill` and `stateIcon` were here, each a chain over `semantic` written out by hand — and each
@@ -822,7 +859,7 @@ function shownToggle(kind: string): SchemaNode {
 /**
  * The kinds on this canvas, each once — not every kind the space has.
  *
- * Two sources make up "on the canvas". What extraction wrote for this call — the `onCall` query in
+ * Two sources make up "on the canvas". What interpretation wrote for this call — the `onCall` query in
  * `keyPanel`, one question over every kind extraction may write, answering with only the records
  * that exist, each tagged with its kind. And whatever has been *placed*, which is how a note, a
  * dropped record or a shape this community defined gets here. `distinct` makes the two one list.
@@ -852,7 +889,7 @@ const kindRows: SchemaNode = {
         condition: { $: `local.onCallLoaded && local.placementsLoaded && !count(${KINDS})` },
         then: {
           /*
-            Faded in late, the way the kit's empty state is. The extraction targets this reads are
+            Faded in late, the way the kit's empty state is. The interpretation targets this reads are
             themselves loaded after the panel mounts, and until they are the query has no kinds to
             ask about — an answer, and an empty one — so without the delay the sentence would blink
             on every open of a call that does have cards.
@@ -980,7 +1017,7 @@ const suggestionsSection: SchemaNode = {
   children: [
     sectionLabel({
       label: 'Suggestions',
-      help: 'Pending acceptance is a record extraction made that nobody has accepted yet: dashed, faded and badged "suggested", and hidden with the switch. A pending change is an accepted record a later pass wants to change: it keeps its colour, gains an amber edge and is never hidden — open it to accept or reject the change.',
+      help: 'Pending acceptance is a record interpretation made that nobody has accepted yet: dashed, faded and badged "suggested", and hidden with the switch. A pending change is an accepted record a later pass wants to change: it keeps its colour, gains an amber edge and is never hidden — open it to accept or reject the change.',
       aside: suggestionsToggle({ count: `count(local.onCall.filter(r, r.id in ${UNCONFIRMED}))`, labelled: false }),
     }),
     {
@@ -1058,7 +1095,7 @@ export function keyPanel(opts: {
   /** The canvas the key is about — its placements are what the key lists. */
   call: Record<string, unknown>;
   callExpr: string;
-  extracted: string;
+  interpretable: string;
   /**
    * Where the canvas's records live, when not in the canvas itself — a space canvas's are the space
    * collection's children. Defaults to the canvas.
@@ -1079,7 +1116,7 @@ export function keyPanel(opts: {
       The key's own subscriptions: what is placed here, and what extraction wrote here — the two
       halves of the kinds list, see `kindRows`.
 
-      `onCall` is one query over every kind this call extracts, less `LINK_ENTITY`, which is a line
+      `onCall` is one query over every kind this call interprets, less `LINK_ENTITY`, which is a line
       rather than a card. Only its kinds are read, but a kind is only known from a record of it, and
       `limit` applies to the whole answer, so it has to be room for every record rather than one.
     */
@@ -1087,7 +1124,7 @@ export function keyPanel(opts: {
       typeStyles: TYPE_STYLES_QUERY,
       placements: placementsQuery(opts.call),
       onCall: {
-        entity: { $: `(${opts.extracted}).filter(k, k != '${LINK_ENTITY}')` },
+        entity: { $: `(${opts.interpretable}).filter(k, k != '${LINK_ENTITY}')` },
         scope: anchorScope(opts.members ?? opts.call),
         limit: 200,
         when: opts.members ?? opts.call,

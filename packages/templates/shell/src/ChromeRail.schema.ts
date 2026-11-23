@@ -181,7 +181,7 @@ const spaceSection: SchemaNode = {
               // another tab, folded, or collapsed to its edge, pressing brings it forward instead,
               // and the button should not promise the opposite. See `launchModule`.
               active: { $: 'mod.active && !mod.concealed' },
-              // A spinner while the module has work running behind the panel — an extraction pass
+              // A spinner while the module has work running behind the panel — an interpretation pass
               // somebody else started. This replaced a square in the call bar, which only existed
               // during a call; the rail is where the panel is opened from and outlives the call.
               busy: { $: 'mod.busy' },

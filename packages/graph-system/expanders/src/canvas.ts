@@ -39,11 +39,12 @@
  * placements, the canvas's colours and its routes are one read over all three; the tray is a second,
  * beside it; the connections between the cards are the only round that has to wait.
  */
-import type { GraphEdge, GraphNode, GraphValue, SeedSource } from '@we/graph-protocol';
-import { entityAddress, NODE_TYPE_KEY, parseAddress } from '@we/graph-protocol';
+import type { GraphEdge, GraphNode, GraphValue, MatchClause, SeedSource } from '@we/graph-protocol';
+import { entityAddress, heldByChild, matches, NODE_TYPE_KEY, parseAddress, treeEnds } from '@we/graph-protocol';
 
 import { rowToNode } from './nodes';
 import { placementsFor, resolvePlacement } from './placements';
+import { type FollowedRelation, followedRelations, idsAt, readRelations, type RelationLink } from './relations';
 import { type Pretend, pretendVotes, readVotes, voicesOf, type Vote, weighVotes } from './weighing';
 
 export interface CanvasSeedOptions {
@@ -70,7 +71,8 @@ export interface CanvasSeedOptions {
    *
    * For whatever draws or groups by source: a badge in the colour of the call a card came from, a
    * lens picking out one call's finds, a list of unplaced cards grouped by call. Read in the same query
-   * as the card, and only for types that declare the relation.
+   * as the card, and for every type: a record whose class does not declare the relation still says
+   * where it came from, since the link is owned by the source.
    */
   origin?: string;
   /**
@@ -80,11 +82,20 @@ export interface CanvasSeedOptions {
    */
   madeBy?: string;
   /**
-   * Keep only the records whose `origin` is this — every other card left off, with its lines, as
-   * `hidden` leaves them. A reader asking "what came out of Monday's call" and putting the rest
-   * away. Needs `origin`; a record with no origin is not from anywhere, so it goes too.
+   * Cards to leave off, with their lines, as `hidden` leaves them: every card this clause matches,
+   * read as a style rule's `when` reads a card. A reader asking "what came out of Monday's call" and
+   * putting the rest away passes `{ 'data.origin': { not: <call> } }`, and a record with no origin is
+   * not from anywhere, so it goes too.
+   *
+   * A clause rather than one field, because the question a lens asks changes with what it is scoped
+   * to: a call's finds by `origin`, a person's by `author`, a workflow's by `recordId`. Dimming the
+   * rest is the same clause in a style rule, so a lens that dims and one that hides cannot disagree
+   * about which cards are the rest.
+   *
+   * A list is any of them, as a list of dimming rules is: the clauses have no `OR`, and "made by hand
+   * or found in the feed" is two. An empty clause hides nothing rather than everything.
    */
-  onlyFrom?: string;
+  hideWhere?: MatchClause | MatchClause[] | null;
   /** Entity holding coordinates. */
   placementEntity?: string;
   /**
@@ -103,6 +114,47 @@ export interface CanvasSeedOptions {
    * and pulling the far end in to fix that would put things on the canvas that nobody put there.
    */
   connections?: string;
+  /**
+   * Follow the classes' own declared relations beside `connections` — for a canvas read as a tree.
+   *
+   * A `Relationship` is a connection somebody drew; a relation a class declares is one the data
+   * already holds — a reply's `replyTo`, a note's `partOf`. With this set, every drawn card's
+   * typed relations are read and emitted as edges typed `relation`, each carrying `data.relation`
+   * naming `Class.property`, so a layout or a picker can take them on their own or beside `relates`.
+   *
+   * ## Which end is the parent
+   *
+   * A tree edge means "the parent is above the child". One held link is one edge, read from the
+   * relation that *writes* it — the forward declaration:
+   *
+   * - a forward to-one: the record holding the field is the child, and the value its parent — a
+   *   reply's `replyTo` names the message it hangs under;
+   * - a forward to-many: the holder is the parent, and each value a child.
+   *
+   * A reverse relation (`belongsTo`, `reverseOf`) reads the same link from the other end, so it adds
+   * no edge — and one whose forward nothing in the space declares draws nothing. The rule itself is
+   * `heldByChild` in `@we/graph-protocol`, which the drag reads too.
+   *
+   * ## Children nobody placed
+   *
+   * Extracted items often never get a `Placement` — the records a call's interpretation wrote point at
+   * one that was placed, but sit in the space rather than on the canvas. With `children` on (the
+   * default), every drawn card is also asked "what points at you", the answers are drawn as unplaced
+   * cards — the layout positions them — and the walk repeats down the tree until it stops producing
+   * new cards or `max` nodes is hit. Cycle-safe by the same set the canvas dedups with.
+   *
+   * Untyped relations are left alone: one without a declared target could point at anything, and
+   * walking `children`-of-anything or `respondsTo` under every card is the tangle the entity
+   * expander's forward pass already refuses.
+   */
+  relations?:
+    | boolean
+    | {
+        /** Pull in unplaced children — records that point at a drawn card — recursively. Default true. */
+        children?: boolean;
+        /** The most nodes the graph may hold once the pull is done, placements included. Default 500. */
+        max?: number;
+      };
   /**
    * Entity holding this canvas's per-type colours, if any — WE passes `TypeStyle`.
    *
@@ -395,7 +447,7 @@ export function canvasSeed(): SeedSource {
       hidden type is never asked for, so putting a kind away really does change which records the
       canvas is made of.
     */
-    refreshOptions: ['pending', 'changed', 'hidden', 'weigh', 'onlyFrom'],
+    refreshOptions: ['pending', 'changed', 'hidden', 'weigh', 'hideWhere'],
     /*
       Applied to answers already on the cards — see `derive` below. A reader re-weighing voices with a
       slider changes these many times a second, and none of it needs a read.
@@ -528,6 +580,48 @@ export function canvasSeed(): SeedSource {
       const orNothing = (fields: Record<string, unknown>) => (Object.keys(fields).length ? fields : undefined);
 
       /*
+        The declared relations being followed — see `relations` in the options.
+
+        Typed only: a relation that does not name its target could point at anything, and following
+        `children`-of-anything or `respondsTo` under every card is the tangle the entity expander's
+        forward pass already declines to walk. The placement's own `node` is a relation in this
+        sense too, and likewise left out — it is the canvas's furniture rather than its content.
+      */
+      const followRelations = Boolean(options.relations);
+      const pullChildren =
+        followRelations &&
+        (options.relations === true ||
+          (typeof options.relations === 'object' && options.relations?.children !== false));
+      const maxNodes =
+        (typeof options.relations === 'object' && options.relations !== null && Number(options.relations.max)) || 500;
+      /*
+        Only what the space's own DNA declares — the shared rule, `followedRelations`: typed, and never
+        to or from a class the host marks `bookkeeping` (WE's `signals`, `runs`, `generatedBy` would
+        hang reactions, model runs and the transcripts they wrote under every card). The canvas's own
+        placements and its drawn connections are read by other means, so they are left out too.
+      */
+      const followed = followRelations
+        ? followedRelations(shapes, {
+            skipClasses: [placementEntity, ...(options.connections ? [options.connections] : [])],
+          })
+        : [];
+      /** The relations each class holds — what a card of it is read with, and its edges read off. */
+      const heldBy = new Map<string, FollowedRelation[]>();
+      for (const relation of followed) heldBy.set(relation.holder, [...(heldBy.get(relation.holder) ?? []), relation]);
+      /*
+        Relations are hydrated where they are followed, so a card arrives knowing where it points.
+        Without it a list comes back empty and the edges silently do not form.
+
+        Two spellings of the same set: a union map, for the reads over several kinds — a union
+        filters each include key down to the relations that kind declares, and a kind asked for one
+        it does not have would refuse the whole read rather than answer without it — and a
+        per-entity map, for the reads that name a single kind, where no such filtering stands
+        between the request and the backend.
+      */
+      const relationInclude = Object.fromEntries(followed.map((relation) => [relation.name, true]));
+      const includeFor = (entity: string) =>
+        orNothing(Object.fromEntries((heldBy.get(entity) ?? []).map((relation) => [relation.name, true])));
+      /*
         Round one: everything this canvas says about itself, and everything it owns. Two reads, together.
 
         Every read here is a round trip to a peer-to-peer data layer, and each one is also a standing
@@ -551,7 +645,7 @@ export function canvasSeed(): SeedSource {
         ...new Set(
           (options.contains ?? DEFAULT_CONTAINS).filter(
             // Never the entity drawn as lines: a connection is not also a card. The workshop passes the
-            // call's extraction targets here, and a call can extract connections as well as things.
+            // call's interpretation targets here, and a call can extract connections as well as things.
             (entity) =>
               entity !== options.connections &&
               entity !== placementEntity &&
@@ -561,15 +655,30 @@ export function canvasSeed(): SeedSource {
         ),
       ];
       const origin = options.origin ? { [options.origin]: true } : undefined;
+      const madeBy = options.madeBy ? { [options.madeBy]: true } : undefined;
+      /*
+        A child the pull draws is read the way every card is — counts, reactions, where it came
+        from and what made it, and the relation fields its edges are read back off. Reading less
+        meant a pulled card arrived with none of the facts a card answers with (a `pending` mark
+        nobody could see, an `origin` the "this call" filter needed and never got).
+      */
+      const pullInclude = (entity: string) =>
+        orNothing({ ...cardFields(), ...includeFor(entity), ...origin, ...madeBy });
       const [furnished, owned] = await Promise.all([
         furniture.length
-          ? read(furniture, undefined, { node: { include: cardFields() } }, scope, limit * furniture.length)
+          ? read(
+              furniture,
+              undefined,
+              { node: { include: { ...cardFields(), ...relationInclude, ...origin, ...madeBy } } },
+              scope,
+              limit * furniture.length,
+            )
           : [],
         trayTypes.length
           ? read(
               trayTypes,
               undefined,
-              orNothing({ ...cardFields(), ...origin }),
+              orNothing({ ...cardFields(), ...relationInclude, ...origin, ...madeBy }),
               membersScope,
               limit * trayTypes.length,
             )
@@ -679,17 +788,19 @@ export function canvasSeed(): SeedSource {
        * Filled as the cards are made rather than from the placements, so it holds exactly what is
        * drawn: the tray as well as the board, and less anything hidden or no longer there. The tray
        * counts because it is on the canvas — a row of cards somebody can see and drag — and it is
-       * where everything a call extracts lands. Counting only placed cards meant a connection the
+       * where everything a call interprets lands. Counting only placed cards meant a connection the
        * extraction drew between two of them was never drawn at all, in either reading of the canvas.
        */
       const onCanvas = new Set<string>();
       /** Record id → its entity name, so a connection's endpoints can be addressed. */
       const typeOf = new Map<string, string>();
+      /** Record id → the row it was drawn from, so a card's declared relations can be read for edges. */
+      const cardRows = new Map<string, { entity: string; row: Record<string, unknown> }>();
 
       /*
         The type of the card actually drawn wins over the one the connection stored. Both ends are
         known to be on the canvas by the time this is asked, so the drawn type is always there — and
-        it is a fact, where the stored one is a claim: a connection an extraction pass wrote carries
+        it is a fact, where the stored one is a claim: a connection an interpretation pass wrote carries
         whatever class name the model spelled, and a misspelt one addressed a node that does not
         exist, so the line was silently dropped.
       */
@@ -717,6 +828,48 @@ export function canvasSeed(): SeedSource {
       };
       /** Where a row came from. */
       const originOf = (row: Record<string, unknown>): string | undefined => idAt(row, options.origin);
+      /** A card the reader put away — see `hideWhere`. Judged on the card as drawn, as a style rule is. */
+      const hideClauses = (
+        Array.isArray(options.hideWhere) ? options.hideWhere : options.hideWhere ? [options.hideWhere] : []
+      ).filter((clause) => clause && typeof clause === 'object' && Object.keys(clause).length);
+      const leftOff = (card: GraphNode): boolean => hideClauses.some((clause) => matches(card, clause));
+
+      /*
+        What a card carries beside its own fields — the same for one somebody placed, one waiting
+        in the tray, and one the relation pull drew. A pulled card was once pushed as bare
+        `rowToNode` output: no pending mark (so a drop could write a suggestion's field), no
+        counts, no weight, no colour, no origin, no made-by — every fact a card answers with,
+        missing. `at` is the one thing a pull cannot supply: a card nobody placed has no position.
+      */
+      const cardData = (
+        entity: string,
+        row: Record<string, unknown>,
+        node: GraphNode,
+        at?: Placed,
+      ): Record<string, GraphValue> => {
+        const typeColor = typeColors.get(entity);
+        return {
+          ...node.data,
+          // Before the canvas's own fields: a count is the record's, and nothing a placement
+          // carries is named like one, so the order is only a statement of which layer owns what.
+          ...countsOf(row),
+          // Beside the counts, and for the same reason they are before the canvas's own fields: a
+          // weight is a fact about the record rather than about this canvas's arrangement of it.
+          // What each person answered, weighed by `derive` — see `answersOn`.
+          ...(options.weigh?.signalTypeId ? answersOn(row.signals, options.weigh.signalTypeId) : {}),
+          // Type colour first, so a card's own colour lands in front of it — and both are dropped
+          // when unset, which is what lets a style rule defer to the one above it.
+          ...(typeColor ? { canvasTypeColor: typeColor } : {}),
+          // Only when true, so a style rule matching `{ pending: true }` and one matching nothing
+          // are the two states — an explicit `false` on every other card would make "not pending"
+          // a value a rule could accidentally match on.
+          ...(typeof row.id === 'string' && pending.has(row.id) ? { pending: true } : {}),
+          ...(typeof row.id === 'string' && changed.has(row.id) ? { changed: true } : {}),
+          ...(originOf(row) ? { origin: originOf(row)! } : {}),
+          ...(idAt(row, options.madeBy) ? { madeBy: idAt(row, options.madeBy)! } : {}),
+          ...(at ? { ...at.style, x: at.x, y: at.y } : {}),
+        };
+      };
 
       /*
         Rows a row-to-node could make nothing of, counted rather than passed over in silence.
@@ -750,9 +903,10 @@ export function canvasSeed(): SeedSource {
         if (seen.has(node.id)) continue;
         seen.add(node.id);
         if (typeof row.id === 'string' && hidden.has(row.id)) continue;
-        // Seen first, so a record answering both reads is still left off by the first.
-        if (options.onlyFrom && originOf(row) !== options.onlyFrom) continue;
         const at = typeof row.id === 'string' ? positions.get(row.id) : undefined;
+        const data = cardData(entity, row, node, at);
+        // Seen first, so a record answering both reads is still left off by the first.
+        if (leftOff({ ...node, data })) continue;
         /*
           Coordinates land in `data`, where the `manual` layout reads them.
 
@@ -760,32 +914,165 @@ export function canvasSeed(): SeedSource {
           has: it is handed nodes and returns positions, and a seed that needed its own channel to
           the layout would be a seed only one layout could use.
         */
-        // Type colour first, so a card's own colour lands in front of it — and both are dropped
-        // when unset, which is what lets a style rule defer to the one above it.
-        const typeColor = typeColors.get(entity);
-        const data = {
-          ...node.data,
-          // Before the canvas's own fields: a count is the record's, and nothing a placement
-          // carries is named like one, so the order is only a statement of which layer owns what.
-          ...countsOf(row),
-          // Beside the counts, and for the same reason they are before the canvas's own fields: a
-          // weight is a fact about the record rather than about this canvas's arrangement of it.
-          // What each person answered, weighed by `derive` — see `answersOn`.
-          ...(options.weigh?.signalTypeId ? answersOn(row.signals, options.weigh.signalTypeId) : {}),
-          ...(typeColor ? { canvasTypeColor: typeColor } : {}),
-          // Only when true, so a style rule matching `{ pending: true }` and one matching nothing
-          // are the two states — an explicit `false` on every other card would make "not pending"
-          // a value a rule could accidentally match on.
-          ...(typeof row.id === 'string' && pending.has(row.id) ? { pending: true } : {}),
-          ...(typeof row.id === 'string' && changed.has(row.id) ? { changed: true } : {}),
-          ...(originOf(row) ? { origin: originOf(row)! } : {}),
-          ...(idAt(row, options.madeBy) ? { madeBy: idAt(row, options.madeBy)! } : {}),
-          ...(at ? { ...at.style, x: at.x, y: at.y } : {}),
-        };
         nodes.push({ ...node, data });
         if (typeof row.id === 'string') {
           onCanvas.add(row.id);
           typeOf.set(row.id, entity);
+          cardRows.set(row.id, { entity, row });
+        }
+      }
+
+      /*
+        The model relations — the structure the classes already declare, beside the connections
+        somebody drew. One held link is one edge, keyed by the link itself, so a link read twice — off
+        a placed card's row and again by the pull that found its child — is still drawn once. The
+        parent end is the direction rule's, `heldByChild`: see `relations` in the options.
+      */
+      const relationEdges = new Map<string, GraphEdge>();
+      const addRelationEdge = (link: RelationLink) => {
+        const { relation, holder, value } = link;
+        const { parent: parentId, child: childId } = treeEnds(relation, holder, value);
+        if (parentId === childId || !onCanvas.has(parentId) || !onCanvas.has(childId)) return;
+        const id = `relation|${relation.holder}.${relation.name}|${holder}|${value}`;
+        if (relationEdges.has(id)) return;
+        const source = addressOf(undefined, parentId);
+        const target = addressOf(undefined, childId);
+        if (!source || !target) return;
+        relationEdges.set(id, {
+          id,
+          source,
+          target,
+          type: 'relation',
+          label: relation.name,
+          // The raw ids travel in the data: a drop is handed the edge a card hangs by and needs the
+          // records and the field, not another decode of the addresses.
+          data: {
+            relation: `${relation.holder}.${relation.name}`,
+            holder,
+            holderType: relation.holder,
+            target: value,
+          },
+        });
+      };
+
+      /*
+        Children nobody placed — the pull half of `relations`.
+
+        Round-wise, the way the entity expander walks a level: every card the last round produced
+        becomes a parent to check, in the two directions a child can arrive by — what points at it
+        through a forward to-one on the *child's* class (`Reply.replyTo`), and what it lists through a
+        forward to-many of its own (`Meeting.items`). Both go through the shared relation reader,
+        which asks once per relation for every parent of a type at a time: the to-one as an inbound
+        read over the whole list of parents, the to-many as a forward `include` on the parents'
+        own rows. A reverse (`belongsTo`) is never read; the forward that writes the link is. New
+        answers are drawn as unplaced cards — the layout positions them — and become the next
+        round's parents, until a round produces nothing new or `max` is hit. `onCanvas` doubles as
+        the visited set, so a loop in the data terminates rather than walking forever.
+      */
+      if (pullChildren && onCanvas.size) {
+        let frontier = [...onCanvas].map((id) => ({ id, type: typeOf.get(id)! }));
+        // Found but not yet drawn — the walk's backlog, and all the cap is counting against.
+        interface Found {
+          entity: string;
+          row: Record<string, unknown>;
+        }
+        const pending = new Map<string, Found>();
+        while (frontier.length && nodes.length + pending.size < maxNodes) {
+          const next: { id: string; type: string }[] = [];
+          const found: Found[] = [];
+          const level: RelationLink[] = [];
+          const parentsByType = new Map<string, string[]>();
+          for (const { id, type } of frontier) {
+            const list = parentsByType.get(type) ?? [];
+            list.push(id);
+            parentsByType.set(type, list);
+          }
+          /*
+            One level, through the shared relation reader: per type of parent, the children the
+            parents list (read forward, with `include`) and the children that point at them (read
+            backward, one inbound read per relation for every parent at once). A kind the reader put
+            away is not asked for — the same rule the tray read keeps.
+          */
+          await Promise.all(
+            [...parentsByType.entries()].map(([type, ids]) =>
+              readRelations({
+                context,
+                dataset,
+                type,
+                ids,
+                forward: followed.filter(
+                  (relation) => relation.holder === type && !heldByChild(relation) && !hiddenTypes.has(relation.target),
+                ),
+                backward: followed.filter(
+                  (relation) => relation.target === type && heldByChild(relation) && !hiddenTypes.has(relation.holder),
+                ),
+                include: pullInclude,
+                limit: maxNodes,
+                signal,
+              }).then(({ rows, links }) => {
+                found.push(...rows);
+                level.push(...links);
+              }),
+            ),
+          );
+          for (const { entity, row } of found) {
+            const id = typeof row.id === 'string' ? row.id : undefined;
+            if (!id || onCanvas.has(id) || hidden.has(id) || pending.has(id)) continue;
+            pending.set(id, { entity, row });
+          }
+          /*
+            Drawn in id order rather than the order the reads happened to resolve in: the cap
+            decides who survives, and a choice that varies with promise timing is a different
+            canvas every load. Sorted is arbitrary but stable — the same walk finds the same
+            five hundred.
+          */
+          for (const [id, { entity, row }] of [...pending.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+            if (nodes.length >= maxNodes) break;
+            pending.delete(id);
+            const node = rowToNode(
+              row,
+              entity,
+              dataset,
+              shapes.find((s) => s.name === entity),
+              'canvas',
+            );
+            if (!node || seen.has(node.id)) {
+              dropped++;
+              continue;
+            }
+            seen.add(node.id);
+            const data = cardData(entity, row, node);
+            if (leftOff({ ...node, data })) continue;
+            nodes.push({ ...node, data });
+            onCanvas.add(id);
+            typeOf.set(id, entity);
+            cardRows.set(id, { entity, row });
+            next.push({ id, type: entity });
+          }
+          // The links the level answered with — read from the asking, which is also the only place a
+          // list's link can be read back reliably: the child's row does not spell the parent's field.
+          for (const link of level) addRelationEdge(link);
+          frontier = next;
+        }
+        if (nodes.length + pending.size >= maxNodes) {
+          context.warn(
+            `canvas: stopped at ${maxNodes} cards while pulling in what points at them — ` +
+              `raise the seed's \`relations.max\` to see the rest.`,
+          );
+        }
+      }
+
+      /*
+        The relation edges themselves, read off the rows — after the pull, so a drawn card's fields
+        and a pulled child's both speak. A relation's values on a row answer the same question the
+        pull asked the backend (`scope` for a to-many reads the key the row does not spell out), so
+        a to-many on this backend's own shape of a card answers here too when the read hydrated it.
+      */
+      if (followRelations) {
+        for (const [holderId, { entity, row }] of cardRows) {
+          for (const relation of heldBy.get(entity) ?? []) {
+            for (const value of idsAt(row, relation.name)) addRelationEdge({ relation, holder: holderId, value });
+          }
         }
       }
 
@@ -801,6 +1088,7 @@ export function canvasSeed(): SeedSource {
         the half a backend can do, and the target check is a set lookup against what was just loaded.
       */
       const edges: GraphEdge[] = [];
+      edges.push(...relationEdges.values());
       // Round three: the connections, which genuinely could not be asked for until the ends were known.
       const connections = options.connections;
       if (connections && declared(connections) && onCanvas.size) {
@@ -823,7 +1111,7 @@ export function canvasSeed(): SeedSource {
           if (!source || !target || !onCanvas.has(source) || !onCanvas.has(target)) continue;
           /*
             A connection from a card to itself is left off. A canvas has nothing sensible to draw for
-            it, and it is not a claim anybody makes by hand: an extraction pass writes one when dedup
+            it, and it is not a claim anybody makes by hand: an interpretation pass writes one when dedup
             resolves both ends of a "this leads to that" to the same record. Drawn, it was a line
             looping back into its own card.
           */

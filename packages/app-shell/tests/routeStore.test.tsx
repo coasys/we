@@ -92,6 +92,44 @@ describe('routeStore params', () => {
   });
 
   /*
+    Going to what a page draws with nothing in its query. Restored, the remembered query showed
+    another view of the page: a space remembering `?channel=` opened that channel, not the Feed a
+    bot notice's Open was for.
+  */
+  it('a fresh navigate restores no remembered search', () => {
+    const store = mountStore();
+    const nav = vi.fn();
+    store.setNavigateFunction(nav as never);
+
+    store.setParam('sort', 'likes');
+    window.history.replaceState(null, '', '/about');
+    store.setCurrentPath('/about');
+
+    store.navigate('/cards', { fresh: true });
+    expect(nav).toHaveBeenLastCalledWith('/cards', undefined);
+  });
+
+  it('a fresh navigate leaves the same page under another query', () => {
+    const store = mountStore();
+    const nav = vi.fn();
+    store.setNavigateFunction(nav as never);
+    store.setCurrentPath('/cards', '?sort=likes');
+
+    // Without fresh this is the page already on screen, and nothing moves.
+    store.navigate('/cards');
+    expect(nav).not.toHaveBeenCalled();
+
+    store.navigate('/cards', { fresh: true });
+    expect(nav).toHaveBeenLastCalledWith('/cards', undefined);
+
+    // Already there with no query: nothing to do.
+    nav.mockClear();
+    store.setCurrentPath('/cards', '');
+    store.navigate('/cards', { fresh: true });
+    expect(nav).not.toHaveBeenCalled();
+  });
+
+  /*
     A record id is a URI. Pasted into a path it is several segments and the route never matches;
     pasted into a query by hand, one holding `&`, `+` or `#` reads back as something else. Handed to
     navigate as a query value, it reads back exactly, and stays readable in the address.
@@ -109,6 +147,14 @@ describe('routeStore params', () => {
     store.navigate('./board', { query: { id: awkward } });
     const [written] = nav.mock.lastCall!;
     expect(new URL(written, 'http://x/').searchParams.get('id')).toBe(awkward);
+
+    // An interpreted record's id carries its source already encoded. Pasted after a `?` by hand it
+    // read back decoded — another id — so nothing compared against it ever matched.
+    const interpreted = 'we://interpreted/ad4m%3A%2F%2Fobj%2Fefz/actionitem/480f';
+    store.navigate('/space/s1/workflows', { query: { card: interpreted } });
+    const url = new URL(nav.mock.lastCall![0] as string, 'http://x/');
+    store.setCurrentPath(url.pathname, url.search);
+    expect(store.params().card).toBe(interpreted);
   });
 
   it('navigate adds to a query already in the path, leaves out empty values and passes the rest on', () => {
