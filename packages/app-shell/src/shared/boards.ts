@@ -347,7 +347,7 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
         renderer's own query path hydrates the same relation happily. The difference: a nested
         include below a polymorphic include lost the declared default (the SDK did not write it into
         the shape, and the executor did not apply it past the first depth). That is fixed upstream and
-        `shapeIsStale` rewrites older shapes, but it is still not needed: an un-included to-many comes back as the ids, which is all this wants. Reading
+        `registerShapes` brings older shapes up to date, but it is still not needed: an un-included to-many comes back as the ids, which is all this wants. Reading
         the ids is also cheaper than hydrating every block in a call to find out whether any is a
         task.
       */
@@ -380,7 +380,7 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
    * `slug` is the whole difference, and it is two different promises:
    *
    * - **With one**, the column *is* that state on this board. Work in that state arrives on its own,
-   *   including work an extraction pass wrote while nobody was looking, and dropping a card there
+   *   including work an interpretation pass wrote while nobody was looking, and dropping a card there
    *   says the card is in that state — everywhere, on every board.
    * - **Without one**, it is a local lane. Nothing arrives by itself, which is the price of claiming
    *   no shared meaning, and a card put there is positioned rather than reclassified.

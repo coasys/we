@@ -578,7 +578,7 @@ describe('the workshop template’s call selection', () => {
 
   it('draws a card nobody has agreed to yet as unsettled, and offers the decision on it', () => {
     /*
-      An extraction pass can stage a whole record, and a staged record is in the graph: it answers
+      An interpretation pass can stage a whole record, and a staged record is in the graph: it answers
       the canvas's query exactly as an accepted one does, so the card was indistinguishable from one
       somebody had said yes to. The proposal list is the only thing that knows the difference.
     */
@@ -653,23 +653,23 @@ describe('the workshop template’s call selection', () => {
     );
   });
 
-  it('draws the canvas off the call’s own list of what is being extracted', () => {
+  it('draws the canvas off the call’s own list of what is being interpreted', () => {
     /*
       What a space extracts is a community decision, changeable mid-call from the chips the
-      extraction panel draws. Anything downstream that named the kinds itself was therefore a bug
+      interpretation panel draws. Anything downstream that named the kinds itself was therefore a bug
       waiting on one click: `['TaskBlock', 'EventBlock']` was written into the canvas's `contains`,
       so turning a third model on produced records in the collection and nothing on the canvas, with
       no sign of why.
 
       Read per call rather than for the live one. Those differ the moment somebody narrows a call,
       and the canvas is about whichever call the address names — which is exactly the mismatch that
-      made this template's own extraction panel wrong before the module's absorbed it.
+      made this template's own interpretation panel wrong before the module's absorbed it.
     */
     const json = JSON.stringify(workshop);
 
     // Every kind the space could extract, whether or not a call has it ticked now — the canvas is the
     // space's, and over the space collection rather than inside the canvas record.
-    expect(json).toContain('"contains":{"$":"shapeStore.extractionCandidates"}');
+    expect(json).toContain('"contains":{"$":"shapeStore.interpretationCandidates"}');
     expect(json).toContain('"members":{"id":{"$":"spaceStore.root"},"via":"children"}');
     expect(json).not.toContain('"TaskBlock","EventBlock"');
   });
@@ -874,15 +874,15 @@ describe('the workshop template’s call selection', () => {
 
   it('accounts for both of the module’s panels, so neither is drawn twice', () => {
     /*
-      The transcript entry named the module and the extraction entry named nothing, so the module's
-      own extraction surface had no counterpart here — it opened *beside* this template's version the
+      The transcript entry named the module and the interpretation entry named nothing, so the module's
+      own interpretation surface had no counterpart here — it opened *beside* this template's version the
       moment a pass ran. Two entries naming two docks line up one-to-one with what the module
       contributes, which is what makes placing them mean something.
     */
     const panels = workshop.meta?.panels ?? [];
     const placed = panels.filter((panel) => panel.module === 'transcribe');
 
-    expect(placed.map((panel) => panel.dock).sort()).toEqual(['extraction', 'transcript']);
+    expect(placed.map((panel) => panel.dock).sort()).toEqual(['interpretation', 'transcript']);
   });
 
   it('offers a delete on every card, not only on the unsettled ones', () => {
@@ -904,7 +904,7 @@ describe('the workshop template’s call selection', () => {
   it('does not offer delete beside discard on a card still awaiting a decision', () => {
     /*
       They look like the same button and are not. Discarding resolves the suggestion; deleting only
-      removes the record, leaving the staged overlay behind it — so the extraction panel would go on
+      removes the record, leaving the staged overlay behind it — so the interpretation panel would go on
       offering a decision about something that no longer exists.
 
       `{ exists: false }` rather than `{ not: true }`: the seed writes the flag only on the cards it
@@ -1004,7 +1004,7 @@ describe('the workshop’s left-hand lane', () => {
   const left = (workshop.meta?.panels ?? []).filter((panel) => panel.snap === 'left');
 
   it('is one sidebar cut in two — both displacing, sharing a band', () => {
-    expect(left.map((panel) => panel.id)).toEqual(['transcript', 'extraction']);
+    expect(left.map((panel) => panel.id)).toEqual(['transcript', 'interpretation']);
     expect(left.every((panel) => panel.displace && panel.band === 0)).toBe(true);
     expect(left.map((panel) => panel.order)).toEqual([0, 1]);
   });
@@ -1370,12 +1370,12 @@ describe('the workshop’s key', () => {
       `Relationship` is one of the models a call can extract, and the kinds come from that list — so
       it was offered a colour in the Kinds section, where picking one changed nothing at all: the
       canvas seed takes relationships as `connections` and draws them as lines, and a line has no
-      fill. Its colour is the Connections row now: the query for what extraction wrote does not ask
+      fill. Its colour is the Connections row now: the query for what interpretation wrote does not ask
       for it, and the kinds list skips it again for a placement that names it.
     */
     const key = panel('key');
 
-    expect(key).toContain(`(shapeStore.extractionCandidates).filter(k, k != '${LINK_ENTITY}')"`);
+    expect(key).toContain(`(shapeStore.interpretationCandidates).filter(k, k != '${LINK_ENTITY}')"`);
     expect(key).toContain(`local.placements.map(p, p.nodeType)).filter(k, k != '${LINK_ENTITY}')`);
   });
 
@@ -1653,7 +1653,7 @@ describe('the workshop’s canvas', () => {
 
     expect(key).not.toContain('"found":{"entity":{"$":"kind"}');
     expect(key).not.toContain('placement.nodeType != prev.nodeType');
-    expect(key).toContain('"onCall":{"entity":{"$":"(shapeStore.extractionCandidates)');
+    expect(key).toContain('"onCall":{"entity":{"$":"(shapeStore.interpretationCandidates)');
     expect(key).toContain('distinct(local.onCall.map(r, r.__subjectClass), local.placements.map(p, p.nodeType))');
     expect(key).toContain("'CollectionBlock' ? 'Note'");
   });
@@ -1689,7 +1689,7 @@ describe('the workshop’s people', () => {
     expect(kanban).toContain('card.extractedFrom');
     // Pressing a card opens it in the inspector through the same parameters the canvas writes.
     expect(kanban).toContain('"$invoke":"routeStore.setParam","args":["card",{"$":"card.id"}]');
-    expect(kanban).toContain('Extracted from the conversation');
+    expect(kanban).toContain('Interpreted from the conversation');
   });
 
   it('keeps a card selected while its own menus are open, and lets go on a press anywhere else', () => {
@@ -1905,9 +1905,9 @@ describe('the workshop inspector’s people', () => {
 
   it('says where the record came from, which a card’s face no longer does', () => {
     expect(inspector).toContain('row.id in first(local.inspectedCall).extracted');
-    expect(inspector).toContain('Extracted from the conversation');
+    expect(inspector).toContain('Interpreted from the conversation');
     // Under the title and description, ahead of People, rather than at the foot of the panel.
-    expect(inspector.indexOf('Extracted from the conversation')).toBeLessThan(inspector.indexOf('involvementMenu('));
+    expect(inspector.indexOf('Interpreted from the conversation')).toBeLessThan(inspector.indexOf('involvementMenu('));
   });
 
   it('wraps where the record came from at words, with the glyph on its first line', () => {
@@ -1951,7 +1951,7 @@ describe('the workshop inspector’s people', () => {
     /*
       The panel's sections were the one set that could not be folded, on a panel narrow enough that
       five of them is a lot of scrolling — and the pattern for folding one was written four times in
-      the extraction panel and nowhere else.
+      the interpretation panel and nowhere else.
 
       Persisted, not in the URL: how somebody likes the inspector folded is a preference, and a link
       they send should not impose it on whoever opens it.
@@ -2336,19 +2336,54 @@ describe('the workshop’s space-wide views', () => {
   const route = (path: string) => JSON.stringify((workshop.routes ?? []).find((entry) => entry.path === path));
   const SCOPE = 'routeStore.params.scope';
   const RECORD = `(${SCOPE} == 'call' ? (${CALL_EXPR}) : ${SCOPE} == 'space' ? spaceStore.root : ${SCOPE} ? ${SCOPE} : '')`;
-  const DIM = `(${RECORD}) && routeStore.params.from == 'dim'`;
-  const HIDE = `(${RECORD}) && routeStore.params.from == 'hide'`;
+  /** The canvas's graph, and an expression on it read against plain objects, as the renderer reads it. */
+  const canvasGraph = (): Record<string, unknown> => {
+    let found: Record<string, unknown> | undefined;
+    const walk = (value: unknown): void => {
+      if (found || !value || typeof value !== 'object') return;
+      if ((value as { type?: unknown }).type === 'GraphView')
+        found = (value as { props: Record<string, unknown> }).props;
+      else Object.values(value).forEach(walk);
+    };
+    walk((workshop.routes ?? []).find((entry) => entry.path === '/canvas'));
+    return found!;
+  };
+  const evaluate = (source: string, roots: Record<string, unknown>): unknown =>
+    evaluateExpression(parseExpression(source), {
+      root: (name: string) => (name in roots ? { bound: true, value: roots[name] } : { bound: false }),
+      call: (name: string, args: unknown[]) =>
+        listFunctions()
+          .find((f) => f.name === name)
+          ?.impl(args, {} as never),
+    } as never);
 
   it('narrows nothing until somebody picks a scope', () => {
     const canvas = route('/canvas');
     // Hiding leaves off what the conversation in scope did not produce; with no scope it asks for
     // nobody's cards.
-    expect(canvas).toContain(`"onlyFrom":{"$":"(${HIDE}) ? (${RECORD}) : ''"}`);
-    // Dimming fades everything else — a card with no origin is in no scope. Under "hide" too, so the
-    // cards stay faded while the canvas reloads without them rather than flashing back.
-    expect(canvas).toContain(
-      `((${DIM}) || (${HIDE})) ? [{ when: { 'data.origin': { not: (${RECORD}) } }, style: { opacity: 0.1 } }] : []`,
-    );
+    const props = canvasGraph();
+    const hideWhere = (props.seeds as { options: { hideWhere: { $: string } } }).options.hideWhere.$;
+    const dims = (props.nodeStyle as unknown[]).filter((rule) =>
+      JSON.stringify(rule).includes("'data.origin': { not:"),
+    ) as { $: string }[];
+    const read = (params: Record<string, string>) => {
+      const scope = { routeStore: { params }, spaceStore: { root: 'space-root' }, local: {}, modules: {} };
+      return { hide: evaluate(hideWhere, scope), dim: dims.flatMap((rule) => evaluate(rule.$, scope) as unknown[]) };
+    };
+    const rest = { 'data.origin': { not: 'space-root' } };
+    // No scope picked: nothing hidden, nothing faded, whatever the treatment says.
+    expect(read({ from: 'hide' })).toEqual({ hide: null, dim: [] });
+    // Hiding leaves off what the conversation in scope did not produce — a card with no origin is in
+    // no scope. Faded under "hide" too, so the cards stay faded while the canvas reloads without them.
+    expect(read({ scope: 'space', from: 'hide' })).toEqual({
+      hide: [rest],
+      dim: [{ when: rest, style: { opacity: 0.1 } }],
+    });
+    expect(read({ scope: 'space', from: 'dim' })).toEqual({
+      hide: null,
+      dim: [{ when: rest, style: { opacity: 0.1 } }],
+    });
+    expect(read({ scope: 'space' })).toEqual({ hide: null, dim: [] });
     expect(canvas).toContain('"origin":"extractedFrom"');
   });
 

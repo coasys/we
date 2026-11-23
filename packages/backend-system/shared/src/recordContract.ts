@@ -54,6 +54,11 @@ export interface RecordInstance {
  * failure mode if one does not is quiet — records arrive with no type and every consumer falls back
  * to whatever it does for an unknown row, which looks the same as a relation that hydrated nothing.
  *
+ * The **key** is the production backend's; the **value** is the contract's: an entity name, as a
+ * template compares it with `'TaskBlock'`. A backend that names a class some other way — by a full
+ * class IRI, say, so that two apps can each have a class of one name — maps the value back to the
+ * entity name at its own edge, on every row path to the renderer.
+ *
  * Named here rather than in an adapter so that the shared layers reading it — the graph
  * engine, anything picking a display per row — are not reaching into a `__`-prefixed literal they
  * would have to know an adapter's internals to justify.

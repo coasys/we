@@ -147,7 +147,7 @@ export const TABLES: Record<string, Row[]> = {
     },
     {
       id: 'be-2',
-      title: 'Hints beat per-class extraction code',
+      title: 'Hints beat per-class interpretation code',
       confidence: 'high',
       author: 'ag-nico',
       topic: 'to-interp',

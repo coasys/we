@@ -73,6 +73,10 @@ async function alreadyResolvedIsFalse(decide: () => Promise<boolean>): Promise<b
  */
 const DEFAULT_BASE_PREFIX = 'we://interpreted/';
 
+/** Where a standing watch keeps its filing: beside its processor config, never on it. */
+const FILING_PREDICATE = 'we://extraction_filing';
+const filingNode = (watchId: string) => `ad4m://autoprocessor/${watchId}/filing`;
+
 /** Where a turn's words live, and what marks a child as one rather than any other block. */
 const TEXT_PREDICATE = 'we://text';
 const TEXT_BLOCK_FLAG = { predicate: 'we://flag', value: 'we://text_block' } as const;
@@ -170,27 +174,49 @@ const WATCH_DEFAULTS = {
 } as const;
 
 /**
- * Check that every requested class is a shape this perspective actually has.
+ * Check that every requested class is a shape this perspective actually has, and answer the classes
+ * by target class: that is how `runInterpretation` and `addAutoProcessor` are both given them.
  *
- * The executor matches on the **shape name** (`get_shape("TaskBlock")`), not on the `targetClass`
- * URI — a distinction worth stating because the two are one call apart and only one of them works.
- * Passing `we://TaskBlock` gets logged server-side as "skipping class" and, if it was the only one
- * requested, comes back as "perspective has no subject classes to extract into", which reads like a
- * broken space rather than a wrong argument. So names go through untouched and this only validates.
+ * By target class, because a name can be two classes'. WE's `Topic` is `we://Topic`, and a space that
+ * began in Flux also holds `flux://Topic`. The executor reads a bare name as the class of that name
+ * with the least IRI, so a pass asked for `Topic` by name could extract into Flux's class. Each entity
+ * name becomes the target class of the model WE registered under it, and `shapes()` is asked for
+ * exactly those. A class the space already had — registered by another app, or by hand — has no WE
+ * model, so `shapes()` is asked for it by name, and the least IRI of that name answers, as the
+ * executor resolves it.
  *
  * Validating at all, rather than letting the executor skip, is the same argument: a caller that
  * asked for TaskBlock and silently got nothing back cannot tell that from "nobody mentioned a task",
- * and would have no reason to go looking at its class list.
+ * and would have no reason to go looking at its class list. The executor logs a class it cannot
+ * resolve as "skipping class" and, if it was the only one requested, answers "perspective has no
+ * subject classes to extract into", which reads like a broken space rather than a wrong argument.
  */
-async function assertShapesInstalled(perspective: PerspectiveProxy, names: string[]): Promise<void> {
-  const installed = new Set(await perspective.getShaclNames());
-  const missing = names.filter((name) => !installed.has(name));
+async function assertShapesInstalled(perspective: PerspectiveProxy, names: string[]): Promise<string[]> {
+  const modelIris = names.map((name) => targetClassOfName(perspective, name));
+  const keys = names.map((name, i) => modelIris[i] ?? name);
+  const shapes = keys.length ? await perspective.shapes(keys) : [];
+  const installed = new Set(shapes.map((s) => s.shape.targetClass));
+  const byName = new Map<string, string>();
+  for (const {
+    name,
+    shape: { targetClass },
+  } of shapes) {
+    const held = byName.get(name);
+    if (targetClass && (held === undefined || targetClass < held)) byName.set(name, targetClass);
+  }
+  const iris = names.map((name, i) => {
+    const iri = modelIris[i];
+    return iri ? (installed.has(iri) ? iri : undefined) : byName.get(name);
+  });
+  const missing = names.filter((_, i) => !iris[i]);
   if (missing.length) {
+    const held = (await perspective.shapes()).map((s) => s.name);
     throw new Error(
       `interpretation: no schema named ${missing.map((n) => `"${n}"`).join(', ')} in this dataset — ` +
-        `it has ${[...installed].join(', ') || 'no shapes installed'}`,
+        `it has ${held.join(', ') || 'no shapes installed'}`,
     );
   }
+  return iris as string[];
 }
 
 /**
@@ -274,8 +300,8 @@ async function predicateNames(perspective: PerspectiveProxy): Promise<NameTables
 
 /**
  * The properties of every shape this perspective holds beyond the compiled-in registry. Every read
- * of `proposals()` and every per-field decision asks, and reading the shapes one at a time cost a
- * round trip per shape and per property — see `readShapeProperties` for what it costs instead.
+ * of `proposals()` and every per-field decision asks; `readShapeProperties` answers it in one
+ * `shapes()` call.
  *
  * A shape with a native model's name is skipped whatever its target class: the compiled-in shape
  * answers for that name, as it always has here.
@@ -550,7 +576,7 @@ async function scopeFilter(perspective: PerspectiveProxy, scope: LinkedScope): P
  * the four arrived together.
  *
  * Checked rather than assumed because the alternative is a `runInterpretation is not a function`
- * stack trace at the moment somebody presses Extract, several layers from anything that explains
+ * stack trace at the moment somebody presses Interpret, several layers from anything that explains
  * it. A capability this host does not have should read like a capability this host does not have.
  */
 export function runtimeSupportsInterpretation(dataset: DatasetHandle): boolean {
@@ -559,7 +585,7 @@ export function runtimeSupportsInterpretation(dataset: DatasetHandle): boolean {
 
 const UNSUPPORTED =
   'This runtime does not support interpretation. It needs an AD4M build with the generic ' +
-  'extraction stack; everything else in the app works normally without it.';
+  'interpretation stack; everything else in the app works normally without it.';
 
 /*
   `isMissingHandler` used to live here. It now lives in `missingMethods.ts` as
@@ -593,7 +619,7 @@ export function runtimeSupportsAutoProcessing(dataset: DatasetHandle): boolean {
  * `batchReady` is `null` for a related reason. It fires on *every* peer's executor, before the
  * election, and carries no `agentDid` — so it is filtered out for an ordinary session and, for an
  * admin one, arrives as an unattributed event that the `mine` rule below would claim as this
- * agent's. A row opened on it says "You are about to extract" on four machines that are about to
+ * agent's. A row opened on it says "You are about to interpret" on four machines that are about to
  * stand down, and nothing ever closes it. `claimed` is the first step that means a pass is running
  * here, and it is where a row should open.
  */
@@ -670,7 +696,8 @@ function passIdOf(event: { batchKey?: string | null; processorId: string }): str
 }
 
 const UNSUPPORTED_WATCH =
-  'This runtime cannot run a standing interpretation watch. Extraction still works when somebody ' + 'presses Extract.';
+  'This runtime cannot run a standing interpretation watch. Interpretation still works when somebody ' +
+  'presses Interpret.';
 
 /** A link as this adapter writes it: the record it hangs off, and the predicate it is stored under. */
 type Linked = { id: string; predicate: string };
@@ -728,21 +755,36 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
     What each watch is hanging its results on, so the listener below can finish the job the engine
     does not do.
 
-    In memory, and therefore lost on reload — which is exactly what the reconciliation sweep exists
-    to cover. Persisting it would only move the problem: a pass can complete on a peer's node while
-    this client has never run at all, so *some* path has to repair unparented records after the
-    fact, and once that path exists this map is only an optimisation on the common case.
+    The executor debounces a pass, so the last pass of a call often settles after the call ended,
+    unwatched, or the page reloaded. So `watch` also writes the filing to the graph as a Local link
+    (`filingNode`), and the listener reads it back when this map has no entry. A pass that completes
+    while no client of this agent runs at all is still left to the reconciliation sweep.
   */
-  const watchParents = new Map<
-    string,
-    {
-      id: string;
-      predicate: string;
-      provenance?: Linked;
-      recognised?: Linked;
-      prefix: string;
+  type WatchFiling = {
+    id: string;
+    predicate: string;
+    provenance?: Linked;
+    recognised?: Linked;
+    prefix: string;
+  };
+  const watchParents = new Map<string, WatchFiling>();
+
+  /** The filing `watch` left in the graph for `watchId`, when this session's map has none. */
+  async function filingFor(perspective: PerspectiveProxy, watchId: string): Promise<WatchFiling | undefined> {
+    try {
+      const stored = await perspective.getSingleTarget(
+        new LinkQuery({ source: filingNode(watchId), predicate: FILING_PREDICATE }),
+      );
+      if (!stored) return undefined;
+      const filing = JSON.parse(String(Literal.fromUrl(stored).get())) as WatchFiling;
+      if (typeof filing?.id !== 'string' || typeof filing.predicate !== 'string') return undefined;
+      watchParents.set(watchId, filing);
+      return filing;
+    } catch (error) {
+      console.warn('[interpretation] could not read a watch filing', watchId, error);
+      return undefined;
     }
-  >();
+  }
 
   /**
    * The last registration step queued for each perspective and watch id.
@@ -1000,9 +1042,10 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
           }
 
           if (event.step !== 'processed') return;
-          const parent = watchParents.get(event.processorId);
           const me = selfId?.();
-          if (!parent || !me || event.agentDid !== me) return;
+          if (!me || event.agentDid !== me) return;
+          const parent = watchParents.get(event.processorId) ?? (await filingFor(perspective, event.processorId));
+          if (!parent) return;
 
           for (const base of event.bases ?? []) {
             try {
@@ -1092,7 +1135,8 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
       // an empty transcript is a normal thing for a call with no speech in it.
       if (!turns.length) return { turns: 0, ids: [], proposed: [] };
 
-      await assertShapesInstalled(perspective, request.classes);
+      // By target class, never by name: see `assertShapesInstalled`.
+      const classes = await assertShapesInstalled(perspective, request.classes);
 
       // Confine what this pass mints to the node it belongs to, so two calls on one post do not
       // share a URI space and a later reader can tell where an instance came from.
@@ -1132,14 +1176,14 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
           The backstop for a node the probe never got to ask.
 
           `checkAvailability` runs when the dataset changes, but a session can reach here first — the
-          probe is one round trip and somebody can press Extract during it — and a node can in
+          probe is one round trip and somebody can press Interpret during it — and a node can in
           principle be swapped underneath a live connection. Catching it here means the answer is
           learned from whichever call gets there first, and the message a person sees is the one
           written for it rather than `Unknown type: perspective.runInterpretation`.
         */
         let ids: string[];
         try {
-          ids = await runObserved(perspective, withTime(turns), basePrefix, request.classes, passId);
+          ids = await runObserved(perspective, withTime(turns), basePrefix, classes, passId);
         } catch (error) {
           if (!recordMissingMethod(error)) throw error;
           executorSupports = false;
@@ -1334,19 +1378,33 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
       // Same validation the one-shot path does, and for the same reason: a class the perspective
       // does not have is skipped server-side, so a watch registered against one runs forever and
       // finds nothing.
-      await assertShapesInstalled(perspective, request.classes);
+      const interpretationClasses = await assertShapesInstalled(perspective, request.classes);
 
-      watchParents.set(request.watchId, {
+      const filing: WatchFiling = {
         ...request.parent,
         provenance: request.provenance,
         recognised: request.recognised,
         prefix: prefixFor(conversationOf(request)!),
-      });
+      };
+      watchParents.set(request.watchId, filing);
       attachListener(perspective);
+      // Local: only this agent's own listener files its passes, so peers need no copy. Best-effort:
+      // without it the map still files every pass that settles in this session.
+      try {
+        await perspective.setSingleTarget(
+          new Link({
+            source: filingNode(request.watchId),
+            predicate: FILING_PREDICATE,
+            target: Literal.from(JSON.stringify(filing)).toUrl(),
+          }),
+          'local',
+        );
+      } catch (error) {
+        console.warn('[interpretation] could not store a watch filing', request.watchId, error);
+      }
 
       // Read the conversation's own lines, through the containment predicate the caller resolved.
       const sourceScopeQuery = transcriptScopeQuery(conversationOf(request)!, request.parent.predicate);
-      const interpretationClasses = await targetClasses(perspective, request.classes);
       /*
         Both at debug, and the query included deliberately.
 
@@ -1520,7 +1578,8 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
       // up, and a call ending on a host that never registered anything is not a failure worth
       // throwing into a teardown path.
       if (!runtimeSupportsAutoProcessing(dataset)) return;
-      watchParents.delete(watchId);
+      // The filing stays, in `watchParents` and in the graph: a pass of this watch can still settle
+      // after it. A new `watch` with this id overwrites it.
       const perspective = proxy(dataset);
       await oneAtATime(perspective, watchId, () => deleteProcessorConfig(perspective, watchId));
     },
@@ -1707,16 +1766,12 @@ async function deleteProcessorConfig(perspective: PerspectiveProxy, watchId: str
 }
 
 /**
- * Entity names → SHACL target-class URIs.
+ * An entity name's SHACL target class, or `undefined` when no model is registered under it.
  *
- * `runInterpretation` matches on the shape *name*; `addAutoProcessor` takes target-class URIs. Two
- * entry points to one engine that disagree about how a class is named, which is exactly the shape
- * of the mistake that cost a day on the one-shot path — passing the wrong one is logged server-side
- * as "skipping class" and surfaces, if it was the only one, as "perspective has no subject classes
- * to extract into". A wrong argument reading as a broken space.
- *
- * So the conversion is explicit and it throws rather than dropping: a name with no registered model
- * behind it would otherwise silently narrow what a watch extracts.
+ * Both `runInterpretation` and `addAutoProcessor` are given target classes. They used to disagree:
+ * the one-shot path matched on the shape *name*, and passing it a target class was logged
+ * server-side as "skipping class". The executor now reads either, and a name there means the class
+ * of that name with the least IRI, which can be another app's. So WE sends the target class to both.
  *
  * **Resolved against the perspective, not the global registry.** A community's own shape is compiled
  * and registered *for its dataset only* (`mergeDynamicEntities`), so `getEntity` — which reads the
@@ -1724,22 +1779,9 @@ async function deleteProcessorConfig(perspective: PerspectiveProxy, watchId: str
  * with it. That was invisible while the target list was a constant naming two core classes; it is
  * the ordinary case the moment a space can add to it.
  */
-async function targetClasses(perspective: PerspectiveProxy, names: readonly string[]): Promise<string[]> {
-  return Promise.all(
-    names.map(async (name) => {
-      const model = getEntityForDataset(name, perspective);
-      /*
-        A class the space already had — registered by another app, or by hand — has no WE model
-        unless the foreign-schema read happened to register one for this dataset, so its target
-        class is read from its SHACL, the same place the executor resolves it from.
-      */
-      const targetClass = model
-        ? getEntityTargetClass(model as never)
-        : await perspective.getShaclTargetClass(name).catch(() => undefined);
-      if (!targetClass) throw new Error(`interpretation: no target class for "${name}" — is the model registered?`);
-      return targetClass;
-    }),
-  );
+function targetClassOfName(perspective: PerspectiveProxy, name: string): string | undefined {
+  const model = getEntityForDataset(name, perspective);
+  return model ? getEntityTargetClass(model as never) : undefined;
 }
 
 /**

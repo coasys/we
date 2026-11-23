@@ -36,7 +36,6 @@ import {
 } from './agentHelpers';
 import { createAd4mAgentPort } from './agentPort';
 import { createAd4mCallPort } from './callPort';
-import { installClearOnEmpty } from './clearOnEmpty';
 import { installContainmentPredicate } from './containment';
 import { Space } from './entities';
 import { type Ad4mCustodyHost, createAd4mIdentityPort } from './identityPort';
@@ -54,7 +53,6 @@ import { registerDeclaredRelations } from './relationPredicates';
 import { installRelationWrites } from './relationWrites';
 import { type Ad4mRuntimeOptions, createAd4mRuntimeAdmin } from './runtimeAdminAdapter';
 import {
-  deduplicateSpaceSdna,
   ensureEntityRegistered,
   installModuleSdna,
   installRootSdna,
@@ -63,8 +61,6 @@ import {
   refreshSpaceSdna,
   ROOT_MODELS,
   SPACE_MODELS,
-  warmSchemaReads,
-  warmStoredShapes,
 } from './sdnaEntities';
 import { createAd4mTranscriptionPort } from './transcriptionAdapter';
 import { createAd4mWorkflowPort } from './workflowPort';
@@ -82,13 +78,8 @@ export function createAd4mSchemaPort(backendClient: unknown): SchemaPort {
     installModules: (dataset, moduleSchemas) => installModuleSdna(proxy(dataset), moduleSchemas),
     refreshSpace: (dataset) => refreshSpaceSdna(proxy(dataset)),
     ensure: (dataset, schema) => ensureEntityRegistered(proxy(dataset), schema as never),
-    hasCoreSchema: (dataset) => {
-      // A switch reads the stored shapes next if this answers yes — start that read alongside.
-      warmStoredShapes(proxy(dataset));
-      return isEntityRegistered(proxy(dataset), Space);
-    },
-    prepare: (dataset) => warmSchemaReads(proxy(dataset)),
-    hasAnySchema: async (dataset) => (await proxy(dataset).getShaclNames()).length > 0,
+    hasCoreSchema: (dataset) => isEntityRegistered(proxy(dataset), Space),
+    hasAnySchema: async (dataset) => (await proxy(dataset).shapes()).length > 0,
 
     async foreignEntries(dataset): Promise<EntityManifestEntry[]> {
       // The read half of `foreignSchemas` — registering is the switch's to do, because it
@@ -147,8 +138,6 @@ export function createAd4mSchemaPort(backendClient: unknown): SchemaPort {
     interpretationHints: (dataset, entity) => readInterpretationHints(proxy(dataset), entity),
     setInterpretationHints: (dataset, entity, hints) => writeInterpretationHints(proxy(dataset), entity, hints),
     resetInterpretationHints: (dataset, entity) => resetInterpretationHints(proxy(dataset), entity),
-
-    dedupe: (dataset) => deduplicateSpaceSdna(proxy(dataset)),
   };
   // A space's own models are kept as their SHACL, installed the way this port installs any entity.
   port.shapes = createAd4mShapeStore({
@@ -195,11 +184,7 @@ export function createAd4mBackendPorts(
   // infrastructure (`Ad4mLifecycleOptions`).
   options: Ad4mRuntimeOptions & Ad4mLifecycleOptions & Ad4mConnectionOptions = {},
 ): BackendPorts {
-  // `''` clears a property, which is what four separate call sites in WE already assumed and none
-  // of them got. Installed before any model is registered so every class inherits it — generated,
-  // manifest-compiled or built from foreign SHACL. See `clearOnEmpty.ts` for what it repairs.
-  installClearOnEmpty(Ad4mModel);
-  // And the relation writes, for the same reason and in the same place: the contract can say
+  // The relation writes, installed before any model is registered so every class inherits them: the contract can say
   // "this relation's membership is now that list", and every model class — generated, compiled
   // or built from foreign SHACL — inherits the ability to carry it out. See `relationWrites.ts`.
   installRelationWrites(Ad4mModel);

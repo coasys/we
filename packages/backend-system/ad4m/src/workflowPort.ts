@@ -364,6 +364,44 @@ async function heldDefinition(perspective: PerspectiveProxy, name: string, flowU
   ];
 }
 
+/** The flow's name, on its own node: how the engine knows a flow by name without the register. */
+const FLOW_NAME = 'ad4m://flowName';
+
+/** Two link targets as `keyOf` compares them: literals decoded. */
+const sameTarget = (a: string, b: string) => keyOf({ source: '', target: a }) === keyOf({ source: '', target: b });
+
+/**
+ * A flow of this name the dataset holds at another URI, written some other way (by hand, or by an
+ * app with another namespace): the URI, or undefined.
+ *
+ * Installing beside it would leave two definitions of one name. WE follows the name register and
+ * would read the new one, but the engine finds flows by type, so it keeps both, refuses the bare
+ * name as ambiguous, and leaves the other's runs on the other. So such a flow is refused rather than
+ * replaced: adopting it would rewrite a live flow and move its runs, which is a migration. A register
+ * entry pointing at a URI that holds no flow is only stale, and is replaced as before.
+ */
+async function heldElsewhere(
+  perspective: PerspectiveProxy,
+  name: string,
+  flowUri: string,
+): Promise<string | undefined> {
+  const [, mapping] = registrationLinks(name, flowUri);
+  const [mappings, named] = await Promise.all([
+    perspective.get(new LinkQuery({ source: mapping.source, predicate: mapping.predicate })),
+    perspective.get(new LinkQuery({ predicate: FLOW_NAME })),
+  ]);
+  const candidates = new Set([
+    ...mappings.map((l) => l.data.target),
+    ...named.filter((l) => sameTarget(l.data.target, Literal.from(name).toUrl())).map((l) => l.data.source),
+  ]);
+  candidates.delete(flowUri);
+  for (const uri of candidates) {
+    const types = await perspective.get(new LinkQuery({ source: uri, predicate: 'rdf://type' }));
+    if (types.some((l) => l.data.target === 'ad4m://Flow')) return uri;
+  }
+  return undefined;
+}
+
 // ─── Reading runs ─────────────────────────────────────────────────────────────
 
 /** A DID as a link target: raw, or as the string literal the SDK's setters write. */
@@ -386,12 +424,6 @@ const millisOf = (value: unknown): number | undefined => {
   return undefined;
 };
 
-/** A class the engine registers on first use reads as absent until then, rather than as an error. */
-const unregistered = (error: unknown) =>
-  /no shacl shape stored|shape not found|class not registered|not registered/i.test(
-    error instanceof Error ? error.message : String(error),
-  );
-
 const runOf = (instance: FlowInstance): Run => {
   const startedAt = instance.startedAtMillis ?? millisOf((instance.record as { createdAt?: unknown }).createdAt);
   return {
@@ -402,14 +434,14 @@ const runOf = (instance: FlowInstance): Run => {
   };
 };
 
+/**
+ * Every run of a flow, or of one record in it. `FlowInstance` and `FlowTransitionProposal` are the
+ * executor's classes: it stores each before its first instance, and a query of one it has not stored
+ * yet answers with no instances. WE never registers them.
+ */
 async function readRuns(perspective: PerspectiveProxy, flowName: string, subject?: string): Promise<Run[]> {
-  try {
-    const instances = await FlowInstance.findAll(perspective, subject ? { flowName, subject } : { flowName });
-    return instances.map(runOf);
-  } catch (error) {
-    if (unregistered(error)) return [];
-    throw error;
-  }
+  const instances = await FlowInstance.findAll(perspective, subject ? { flowName, subject } : { flowName });
+  return instances.map(runOf);
 }
 
 /** The most runs one `flowFired` call may ask about; the executor answers 400 above it. */
@@ -436,12 +468,7 @@ export async function readFired(
 export async function readProposals(perspective: PerspectiveProxy, runs: readonly Run[]): Promise<EngineProposal[]> {
   if (!runs.length) return [];
   const runIds = new Set(runs.map((run) => run.id));
-  let rows: FlowTransitionProposal[] = [];
-  try {
-    rows = await FlowTransitionProposal.findAll(perspective);
-  } catch (error) {
-    if (!unregistered(error)) throw error;
-  }
+  const rows = await FlowTransitionProposal.findAll(perspective);
   const mine = rows.filter((row) => runIds.has(row.flowInstance));
   if (!mine.length) return [];
 
@@ -732,6 +759,11 @@ export function createAd4mWorkflowPort(selfId: () => string | undefined = () => 
       if (problems.length) throw new Error(`workflows: ${problems.join(' ')}`);
       const perspective = proxy(dataset);
       const flow = toShaclFlow(definition);
+      const other = await heldElsewhere(perspective, flow.name, flow.flowUri);
+      if (other)
+        throw new Error(
+          `workflows: this space already has a workflow named "${flow.name}", written another way (${other}). Remove it before installing this one, or the space will hold two.`,
+        );
       const desired = [...flow.toLinks(), ...registrationLinks(flow.name, flow.flowUri)];
       const desiredKeys = new Set(desired.map(keyOf));
       const held = await heldDefinition(perspective, flow.name, flow.flowUri, desired);

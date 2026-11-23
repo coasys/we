@@ -75,14 +75,15 @@ export { FLOWS_LOCALS, workflowsPage, workflowsSection } from './we/workflows.ts
 export {
   canvasEditing,
   canvasSeedOptions,
-  EXTRACTABLE,
+  INTERPRETABLE,
   FOCUS_DIM,
   focusDim,
   focusDimWhere,
   PLACED_CARD_STYLE,
+  scopeLens,
   SUGGESTION_STYLES,
 } from './we/canvas.ts';
-export type { CanvasEditingOptions, CanvasSeedOptions } from './we/canvas.ts';
+export type { CanvasEditingOptions, CanvasSeedOptions, LensScope } from './we/canvas.ts';
 export {
   BY_SIGNAL,
   CANVAS_CARD,

@@ -32,7 +32,7 @@ export interface HelpTipOptions {
  *
  * ## Why this exists
  *
- * The extraction panel explained itself in its own body: a lead-in above the chips, a footnote
+ * The interpretation panel explained itself in its own body: a lead-in above the chips, a footnote
  * under the button, and a sub-heading naming a box inside a panel already named the same thing.
  * Every sentence was true and every one was read once — after which it was furniture, taking room
  * from the controls it was about, in a docked panel that has none to spare. A newcomer needs the

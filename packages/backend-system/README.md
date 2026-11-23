@@ -15,7 +15,7 @@ imports one.
   answer is refused by feature name; without a contract to plan against it answers nothing, silently.
 - **Entities are declarations because the product needs them to be.** A community defines a model
   in the morning; a wizard and a language model both produce declarations; forms, cards, pickers and
-  extraction prompts derive from them. That needs a declaration format that is not class syntax —
+  interpretation prompts derive from them. That needs a declaration format that is not class syntax —
   `EntityManifest` — whatever the adapter compiles it to.
 - **Optional ports degrade by construction.** Transcription, the language model, model admin,
   runtime admin and interpretation are optional and feature-detected. A node without one omits the

@@ -6,7 +6,9 @@
   "name": "Software team",
   "description": "How a software team talks: the questions it asks, the tensions it names, what it decides, and the work it takes on.",
   "icon": "code",
-  "author": { "name": "WE" },
+  "author": {
+    "name": "WE"
+  },
   "theme": {
     "id": "software-team",
     "name": "Software team",
@@ -14,15 +16,18 @@
   },
   "recordTypes": [
     {
-      "name": "Question",
+      "name": "TeamQuestion",
       "icon": "question",
       "description": "Something the team asked and has to answer.",
       "manifest": {
         "version": "1",
         "entities": {
-          "Question": {
+          "TeamQuestion": {
             "extends": "WeNode",
-            "flag": { "predicate": "we://flag", "value": "we://shape/software-team/question" },
+            "flag": {
+              "predicate": "we://flag",
+              "value": "we://shape/software-team/question"
+            },
             "extractable": true,
             "relations": {},
             "interpretationHint": "A question somebody puts to the team that needs an answer or a decision: \"should we…?\", \"do we…?\", \"what if we…?\". Not a rhetorical question, and not a question about the conversation itself.",
@@ -47,7 +52,10 @@
                 "interpretationHint": "Exactly \"open\" or \"answered\". \"answered\" only when the conversation settles it."
               }
             },
-            "display": { "title": "asks", "summary": "options" }
+            "display": {
+              "title": "asks",
+              "summary": "options"
+            }
           }
         }
       }
@@ -61,7 +69,10 @@
         "entities": {
           "Tension": {
             "extends": "WeNode",
-            "flag": { "predicate": "we://flag", "value": "we://shape/software-team/tension" },
+            "flag": {
+              "predicate": "we://flag",
+              "value": "we://shape/software-team/tension"
+            },
             "extractable": true,
             "relations": {},
             "interpretationHint": "A conflict somebody names between two goals, plans or constraints: one thing could delay, break or cost another. Not a bug report and not a task.",
@@ -84,7 +95,10 @@
                 "interpretationHint": "The speaker who named it, as the transcript names them."
               }
             },
-            "display": { "title": "between", "summary": "why" }
+            "display": {
+              "title": "between",
+              "summary": "why"
+            }
           }
         }
       }
@@ -98,7 +112,10 @@
         "entities": {
           "Decision": {
             "extends": "WeNode",
-            "flag": { "predicate": "we://flag", "value": "we://shape/software-team/decision" },
+            "flag": {
+              "predicate": "we://flag",
+              "value": "we://shape/software-team/decision"
+            },
             "extractable": true,
             "relations": {},
             "interpretationHint": "Something the speakers agree on or settle: \"okay, X comes first\", \"let's go with Y\", \"we're doing Z\". Not a proposal nobody agreed to.",
@@ -121,7 +138,10 @@
                 "interpretationHint": "When it applies, as said (\"this quarter\"). Empty when not said."
               }
             },
-            "display": { "title": "what", "summary": "when" }
+            "display": {
+              "title": "what",
+              "summary": "when"
+            }
           }
         }
       }
@@ -135,7 +155,10 @@
         "entities": {
           "Task": {
             "extends": "WeNode",
-            "flag": { "predicate": "we://flag", "value": "we://shape/software-team/task" },
+            "flag": {
+              "predicate": "we://flag",
+              "value": "we://shape/software-team/task"
+            },
             "extractable": true,
             "relations": {},
             "interpretationHint": "A piece of work the speakers say needs doing and is not done yet: \"we need to…\", \"I'll…\", \"someone should…\".",
@@ -153,31 +176,60 @@
                 "interpretationHint": "Who took it on, as the transcript names them. Empty when nobody did."
               }
             },
-            "display": { "title": "title", "summary": "owner" }
+            "display": {
+              "title": "title",
+              "summary": "owner"
+            }
           }
         }
       }
     }
   ],
-  "flows": [
+  "workflows": [
     {
       "name": "Decide",
-      "entities": ["Question"],
+      "entities": ["TeamQuestion"],
       "hint": "How a question the team raised becomes a decision.",
       "states": [
-        { "name": "Raised", "hint": "Somebody asked it." },
-        { "name": "Discussed", "hint": "The team has talked it through." },
-        { "name": "Options", "hint": "The answers on the table are written down." },
+        {
+          "name": "Raised",
+          "hint": "Somebody asked it."
+        },
+        {
+          "name": "Discussed",
+          "hint": "The team has talked it through."
+        },
+        {
+          "name": "Options",
+          "hint": "The answers on the table are written down."
+        },
         {
           "name": "Decided",
           "hint": "Two people agreed on an answer.",
-          "requires": [{ "kind": "approvals", "count": 2 }]
+          "requires": [
+            {
+              "kind": "approvals",
+              "count": 2
+            }
+          ]
         }
       ],
       "transitions": [
-        { "from": "Raised", "to": "Discussed", "name": "Discuss" },
-        { "from": "Discussed", "to": "Options", "name": "List options" },
-        { "from": "Options", "to": "Decided", "name": "Decide" }
+        {
+          "from": "Raised",
+          "to": "Discussed",
+          "name": "Discuss"
+        },
+        {
+          "from": "Discussed",
+          "to": "Options",
+          "name": "List options"
+        },
+        {
+          "from": "Options",
+          "to": "Decided",
+          "name": "Decide"
+        }
       ]
     },
     {
@@ -185,23 +237,57 @@
       "entities": ["Task"],
       "hint": "How a task the team took on gets shipped.",
       "states": [
-        { "name": "ToDo", "hint": "Taken on, not started." },
-        { "name": "Doing", "hint": "Somebody is working on it." },
-        { "name": "Review", "hint": "Done, and waiting for a second pair of eyes." },
+        {
+          "name": "ToDo",
+          "hint": "Taken on, not started."
+        },
+        {
+          "name": "Doing",
+          "hint": "Somebody is working on it."
+        },
+        {
+          "name": "Review",
+          "hint": "Done, and waiting for a second pair of eyes."
+        },
         {
           "name": "Shipped",
           "hint": "Released, with a link to what shipped: whoever asks, and one more person, agree.",
           "requires": [
-            { "kind": "evidence", "entity": "LinkBlock", "via": { "relation": "responses" } },
-            { "kind": "approvals", "count": 2 }
+            {
+              "kind": "evidence",
+              "entity": "LinkBlock",
+              "via": {
+                "relation": "responses"
+              }
+            },
+            {
+              "kind": "approvals",
+              "count": 2
+            }
           ]
         }
       ],
       "transitions": [
-        { "from": "ToDo", "to": "Doing", "name": "Start" },
-        { "from": "Doing", "to": "Review", "name": "Ask for review" },
-        { "from": "Review", "to": "Shipped", "name": "Ship" },
-        { "from": "Review", "to": "Doing", "name": "Send back" }
+        {
+          "from": "ToDo",
+          "to": "Doing",
+          "name": "Start"
+        },
+        {
+          "from": "Doing",
+          "to": "Review",
+          "name": "Ask for review"
+        },
+        {
+          "from": "Review",
+          "to": "Shipped",
+          "name": "Ship"
+        },
+        {
+          "from": "Review",
+          "to": "Doing",
+          "name": "Send back"
+        }
       ]
     }
   ]

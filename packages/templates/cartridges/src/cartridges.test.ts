@@ -147,6 +147,139 @@ describe('the Coasys cartridge', () => {
   });
 
   /*
+    WE's rail carries the interpretation panel's button; this interface has no rail, so the call page is
+    where a way back to the panel has to live. It is the rail's own action — `launchModule` on the
+    panel's dock — so a press toggles and an open-but-hidden panel is brought forward, not closed.
+  */
+  it('opens the interpretation panel from a call’s bar, the rail’s own way', () => {
+    const aside = { children: callBarAside("'call-1'") };
+    const button = findNode(
+      aside,
+      (n) => n.type === 'we-button' && JSON.stringify(n.props).includes('transcribe:interpretation'),
+    )!;
+    expect(button).toBeDefined();
+    // "Interpretation" is the word the team agreed on, on the button and on its tooltip.
+    const tooltip = findNode(
+      aside,
+      (n) => n.type === 'we-tooltip' && (n as { children?: unknown[] }).children?.[0] === button,
+    );
+    expect((tooltip?.props as { content?: unknown } | undefined)?.content).toBe('Interpretation');
+    expect(JSON.stringify(callBarAside("'call-1'"))).not.toContain('Extraction');
+    expect(JSON.stringify(button.props)).toContain('spaceStore.launchModule');
+    expect(JSON.stringify(button.props)).toContain('transcribe:interpretation');
+    // The panel's own glyph, and its state on the button.
+    expect(JSON.stringify(button)).toContain('sparkle');
+    expect(JSON.stringify(button.props)).toContain('modules.transcribe.interpretationOpen');
+    // The transcript export it sits beside is still offered the same way.
+    expect(JSON.stringify(callBarAside("'call-1'"))).toContain('spaceStore.exportCallTranscript');
+  });
+
+  /*
+    The button opens a panel of the transcribe module, and the rail offers only the modules a space
+    has on: with transcription off, `launchModule` opens nothing. So the button stands under the
+    same gate the rail uses, and the export beside it does not.
+  */
+  it('offers the Interpretation button only where the space has transcription on', () => {
+    type Node = { type?: string; props?: Record<string, unknown>; children?: unknown[] };
+    const aside = callBarAside("'call-1'") as Node[];
+    const gate = aside.find(
+      (n) => n.type === '$if' && JSON.stringify(n.props).includes('transcribe:interpretation'),
+    ) as Node | undefined;
+    expect((gate?.props?.condition as { $?: string } | undefined)?.$).toBe("'transcribe' in spaceStore.activeModules");
+    const exportNode = aside[aside.length - 1];
+    expect(JSON.stringify(exportNode)).toContain('spaceStore.exportCallTranscript');
+    expect(JSON.stringify(exportNode)).not.toContain('activeModules');
+  });
+
+  /*
+    A call's page names its call to the modules, not only to the record view: the panel, its count
+    on the button and the transcript read `routeStore.params.call`, so an address without it showed
+    the joined call (or the space) on another call's page.
+  */
+  it('puts the call on its page’s address the way the modules read it', () => {
+    const url = new URL(
+      evaluateExpression(parseExpression(callPath("'c9'")), {
+        root: (name) => ({
+          bound: name === 'spaceStore' || name === 'routeStore',
+          value: name === 'spaceStore' ? { spacePath: '/space/s1' } : { params: {}, query: {}, templateSegments: [] },
+        }),
+        call: (name, args) =>
+          listFunctions()
+            .find((f) => f.name === name)
+            ?.impl(args, { context: {}, stores: {} }),
+      }) as string,
+      'http://we.test',
+    );
+    expect(url.searchParams.get('id')).toBe('c9');
+    expect(url.searchParams.get('call')).toBe('c9');
+  });
+
+  /*
+    What the panel holds, on the button that opens it: how many suggestions are waiting for somebody
+    to keep or drop them, and a spinner while a pass runs — both at once. Counted for the conversation
+    the panel itself shows, so the number is what opening it will list. No badge at zero: a 0 is a
+    mark with nothing to say. Evaluated by the expression engine the renderer uses.
+  */
+  it('shows on its button how many suggestions wait, and that a pass is running', () => {
+    const evaluate = (source: string, roots: Record<string, unknown>) =>
+      evaluateExpression(parseExpression(source), {
+        root: (name) => ({ bound: name in roots, value: roots[name] }),
+        call: (name, args) =>
+          listFunctions()
+            .find((f) => f.name === name)
+            ?.impl(args, { context: {}, stores: {} }),
+      });
+    const roots = (waiting: number, running = false) => ({
+      routeStore: { params: { call: 'call-1' } },
+      spaceStore: { root: 'space-root' },
+      modules: {
+        transcribe: {
+          callId: '',
+          passRunning: running,
+          proposalsFor: { 'call-1': Array.from({ length: waiting }, (_, i) => ({ id: `p${i}` })) },
+        },
+      },
+    });
+    type Node = { type?: string; props?: Record<string, unknown>; children?: unknown[] };
+    const button = findNode(
+      { children: callBarAside("'call-1'") },
+      (n) => n.type === 'we-button' && JSON.stringify(n.props).includes('transcribe:interpretation'),
+    ) as Node;
+    const subject =
+      'routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : ' +
+      'spaceStore.root)';
+    expect(JSON.stringify(button)).toContain(`modules.transcribe.proposalsFor[${subject}]`);
+
+    const badgeGate = findNode(button, (n) => n.type === '$if' && JSON.stringify(n).includes('we-badge')) as Node;
+    const gate = (badgeGate.props!.condition as { $: string }).$;
+    expect(evaluate(gate, roots(0))).toBeFalsy();
+    expect(evaluate(gate, roots(3))).toBeTruthy();
+    const badge = findNode(badgeGate.props!.then, (n) => n.type === 'we-badge') as Node;
+    expect(evaluate((badge.children![0] as { $: string }).$, roots(3))).toBe(3);
+
+    // Its name says the count, since a screen reader is not shown the badge.
+    const label = (button.props!.label as { $: string }).$;
+    expect(evaluate(label, roots(0))).toBe('Interpretation');
+    expect(evaluate(label, roots(1))).toBe('Interpretation, 1 suggestion to review');
+    expect(evaluate(label, roots(3))).toBe('Interpretation, 3 suggestions to review');
+
+    // Square while it holds one glyph; widened to take the badge beside it.
+    const square = (button.props!.square as { $: string }).$;
+    expect(evaluate(square, roots(0))).toBe(true);
+    expect(evaluate(square, roots(3))).toBe(false);
+
+    // The spinner takes the glyph's place while a pass runs, and the badge stays.
+    const busyGate = findNode(
+      button,
+      (n) => n.type === '$if' && JSON.stringify(n).includes('we-animated-icon'),
+    ) as Node;
+    const busy = (busyGate.props!.condition as { $: string }).$;
+    expect(evaluate(busy, roots(3, true))).toBe(true);
+    expect(evaluate(busy, roots(3, false))).toBe(false);
+    expect(evaluate(gate, roots(3, true))).toBeTruthy();
+  });
+
+  /*
     "Find or ask" scopes its chat to the member's *local* perspective id. `Space.uuid` is the
     creator's own local uuid, synced verbatim into every member's copy — on a joined space it names
     a perspective this device does not hold, so a chat pinned to it ran against nobody's graph (and
@@ -287,7 +420,7 @@ describe('the Coasys cartridge', () => {
     const props = graph.props as Record<string, unknown>;
     const options = (props.seeds as { options: Record<string, unknown> }).options;
     expect(JSON.stringify(options.canvas)).toContain('spaceStore.landmarks.canvas');
-    expect(options.contains).toEqual({ $: 'shapeStore.extractionCandidates' });
+    expect(options.contains).toEqual({ $: 'shapeStore.interpretationCandidates' });
     expect(options.connections).toBe('Relationship');
     expect(options.pending).toBeTruthy();
     expect((props.nodeActions as { id: string }[]).map((a) => a.id)).toEqual(
@@ -375,6 +508,7 @@ describe('the Coasys cartridge', () => {
         spaceStore: { spacePath: '/space/s1', landmarks: { canvas: 'c1' }, policy: { sentences: [] } },
         workflowStore: { open: null },
         shapeStore: { spaceShapes: [] },
+        local: { others: 'dim' },
         ...extra,
       };
       return (prop: unknown) =>
@@ -387,7 +521,29 @@ describe('the Coasys cartridge', () => {
         });
     };
     const graph = findNode(canvasPane, (n) => n.type === 'GraphView')!;
-    const focusRules = ((graph.props as { nodeStyle: unknown[] }).nodeStyle as unknown[]).slice(-3);
+    const focusRules = ((graph.props as { nodeStyle: unknown[] }).nodeStyle as unknown[]).slice(-5);
+    const hideWhere = (graph.props as { seeds: { options: { hideWhere: unknown } } }).seeds.options.hideWhere;
+    /** Which of these cards the rules dim, by the graph's own style resolver. */
+    const dimmedOf = (rules: unknown[], cards: { id: string; data: Record<string, unknown> }[]) =>
+      cards
+        .filter(
+          (card) =>
+            (
+              resolveStyle({ kind: 'entity', type: 'TaskBlock', ...card } as never, rules as never) as {
+                opacity?: number;
+              }
+            ).opacity === FOCUS_DIM,
+        )
+        .map((card) => card.id);
+    const SPACE = {
+      spacePath: '/space/s1',
+      root: 'space-root',
+      landmarks: { canvas: 'c1' },
+      policy: { sentences: [] },
+    };
+    const fromCall = { id: 'from-call', data: { origin: 'call-1' } };
+    const fromFeed = { id: 'from-feed', data: { origin: 'space-root' } };
+    const byHand = { id: 'by-hand', data: {} };
     const dims = (evaluate: (p: unknown) => unknown) => focusRules.flatMap((rule) => evaluate(rule) as unknown[]);
 
     it('says what to do on an empty canvas, rather than the canvas’s address', () => {
@@ -403,7 +559,7 @@ describe('the Coasys cartridge', () => {
       expect(JSON.stringify(view)).toContain('"type":"$routes"');
     });
 
-    it('dims to what was extracted from the call chosen, what a person made, or what is in a workflow', () => {
+    it('dims to what was interpreted from the call chosen, what a person made, or what is in a workflow', () => {
       expect(dims(at(['record'], { kind: 'call', id: 'call-1', view: 'canvas' }))).toEqual([
         { when: { 'data.origin': { not: 'call-1' } }, style: { opacity: FOCUS_DIM } },
       ]);
@@ -419,9 +575,51 @@ describe('the Coasys cartridge', () => {
       expect(dims(at(['record'], { kind: 'task', id: 't1', view: 'canvas' }))).toEqual([]);
     });
 
+    /*
+      Calls chosen as a group lit nothing: only one call dimmed the canvas. It lights what any call
+      produced now, over a card from a call, one found in the Feed, and one made by hand.
+    */
+    it('dims what came from no call when Calls is chosen', () => {
+      const rules = dims(at(['calls'], { view: 'canvas' }, { spaceStore: SPACE }));
+      expect(dimmedOf(rules, [fromCall, fromFeed, byHand])).toEqual(['from-feed', 'by-hand']);
+    });
+
+    it('hides what it would dim, and leaves everything alone when the reader asks to see it all', () => {
+      const hiding = at(['calls'], { view: 'canvas' }, { spaceStore: SPACE, local: { others: 'hide' } });
+      expect(hiding(hideWhere)).toEqual([{ 'data.origin': { exists: false } }, { 'data.origin': 'space-root' }]);
+      // Still faded while the canvas reads again without them.
+      expect(dimmedOf(dims(hiding), [fromCall, fromFeed, byHand])).toEqual(['from-feed', 'by-hand']);
+      expect(
+        at(['record'], { kind: 'call', id: 'call-1', view: 'canvas' }, { local: { others: 'hide' } })(hideWhere),
+      ).toEqual([{ 'data.origin': { not: 'call-1' } }]);
+
+      const showing = at(['calls'], { view: 'canvas' }, { spaceStore: SPACE, local: { others: 'show' } });
+      expect(dims(showing)).toEqual([]);
+      expect(showing(hideWhere)).toBeNull();
+      // Dimming hides nothing, and nothing chosen hides nothing.
+      expect(at(['calls'], { view: 'canvas' }, { spaceStore: SPACE })(hideWhere)).toBeNull();
+      expect(at([], { view: 'canvas' }, { local: { others: 'hide' } })(hideWhere)).toBeNull();
+    });
+
+    it('offers the choice in the bar only while something is chosen', () => {
+      const shown = findNode(
+        canvasPane,
+        (n) =>
+          n.type === '$if' &&
+          JSON.stringify((n.props as { then?: unknown } | undefined)?.then ?? '').includes('Everything else'),
+      )!;
+      const condition = (shown.props as { condition: unknown }).condition;
+      expect(at(['calls'], { view: 'canvas' }, { spaceStore: SPACE })(condition)).toBe(true);
+      expect(at(['person'], { did: 'did:ada', view: 'canvas' })(condition)).toBe(true);
+      expect(at([], { view: 'canvas' })(condition)).toBe(false);
+      expect(at(['record'], { kind: 'task', id: 't1', view: 'canvas' })(condition)).toBe(false);
+    });
+
     it('is carried by every navigation the tree makes, so choosing another thing stays on the canvas', () => {
       const evaluate = at([], { view: 'canvas' });
-      expect(evaluate({ $: callPath("'c9'") })).toBe('/space/s1/record/CollectionBlock?kind=call&id=c9&view=canvas');
+      expect(evaluate({ $: callPath("'c9'") })).toBe(
+        '/space/s1/record/CollectionBlock?kind=call&id=c9&call=c9&view=canvas',
+      );
       expect(evaluate({ $: personPath("'did:ada'") })).toBe('/space/s1/person?did=did:ada&view=canvas');
       expect(evaluate({ $: groupPath('calls') })).toBe('/space/s1/calls?view=canvas');
       expect(at([], {})({ $: groupPath('calls') })).toBe('/space/s1/calls');

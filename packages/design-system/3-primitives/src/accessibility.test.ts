@@ -98,7 +98,7 @@ const CASES: { name: string; markup: string }[] = [
   { name: 'we-textarea with a label', markup: '<we-textarea label="Description"></we-textarea>' },
   { name: 'we-checkbox with a label', markup: '<we-checkbox label="Listed"></we-checkbox>' },
   { name: 'we-radio with a label', markup: '<we-radio name="access" label="Personal"></we-radio>' },
-  { name: 'we-switch with a label', markup: '<we-switch label="Extract calls"></we-switch>' },
+  { name: 'we-switch with a label', markup: '<we-switch label="Interpret calls"></we-switch>' },
   { name: 'we-slider with a label', markup: '<we-slider label="Saturation" value="40"></we-slider>' },
   { name: 'we-number-input with a label', markup: '<we-number-input label="Port" value="12000"></we-number-input>' },
   { name: 'we-link', markup: '<we-link href="/spaces">Spaces</we-link>' },

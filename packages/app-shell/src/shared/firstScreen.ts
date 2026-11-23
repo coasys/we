@@ -4,7 +4,7 @@
  * Work the opening screen does not need waits until that screen has drawn.
  *
  * Opening an existing space at cold boot used to put everything on the wire at once: the Feed's first
- * page, and beside it the sidebar's calls, the workflow list, the extraction panel's reads (hundreds
+ * page, and beside it the sidebar's calls, the workflow list, the interpretation panel's reads (hundreds
  * of kilobytes of schema and staged suggestions), the members and their profiles, presence, the call
  * policy, the model status, the hosting balance, the file-storage language and the sharing templates.
  * One executor answers them in turn, so the page the reader opened for came back behind all of it.

@@ -39,8 +39,8 @@
  * placements, the canvas's colours and its routes are one read over all three; the tray is a second,
  * beside it; the connections between the cards are the only round that has to wait.
  */
-import type { GraphEdge, GraphNode, GraphValue, SeedSource } from '@we/graph-protocol';
-import { entityAddress, heldByChild, NODE_TYPE_KEY, parseAddress, treeEnds } from '@we/graph-protocol';
+import type { GraphEdge, GraphNode, GraphValue, MatchClause, SeedSource } from '@we/graph-protocol';
+import { entityAddress, heldByChild, matches, NODE_TYPE_KEY, parseAddress, treeEnds } from '@we/graph-protocol';
 
 import { rowToNode } from './nodes';
 import { placementsFor, resolvePlacement } from './placements';
@@ -71,7 +71,8 @@ export interface CanvasSeedOptions {
    *
    * For whatever draws or groups by source: a badge in the colour of the call a card came from, a
    * lens picking out one call's finds, a list of unplaced cards grouped by call. Read in the same query
-   * as the card, and only for types that declare the relation.
+   * as the card, and for every type: a record whose class does not declare the relation still says
+   * where it came from, since the link is owned by the source.
    */
   origin?: string;
   /**
@@ -81,11 +82,20 @@ export interface CanvasSeedOptions {
    */
   madeBy?: string;
   /**
-   * Keep only the records whose `origin` is this — every other card left off, with its lines, as
-   * `hidden` leaves them. A reader asking "what came out of Monday's call" and putting the rest
-   * away. Needs `origin`; a record with no origin is not from anywhere, so it goes too.
+   * Cards to leave off, with their lines, as `hidden` leaves them: every card this clause matches,
+   * read as a style rule's `when` reads a card. A reader asking "what came out of Monday's call" and
+   * putting the rest away passes `{ 'data.origin': { not: <call> } }`, and a record with no origin is
+   * not from anywhere, so it goes too.
+   *
+   * A clause rather than one field, because the question a lens asks changes with what it is scoped
+   * to: a call's finds by `origin`, a person's by `author`, a workflow's by `recordId`. Dimming the
+   * rest is the same clause in a style rule, so a lens that dims and one that hides cannot disagree
+   * about which cards are the rest.
+   *
+   * A list is any of them, as a list of dimming rules is: the clauses have no `OR`, and "made by hand
+   * or found in the feed" is two. An empty clause hides nothing rather than everything.
    */
-  onlyFrom?: string;
+  hideWhere?: MatchClause | MatchClause[] | null;
   /** Entity holding coordinates. */
   placementEntity?: string;
   /**
@@ -127,7 +137,7 @@ export interface CanvasSeedOptions {
    *
    * ## Children nobody placed
    *
-   * Extracted items often never get a `Placement` — the records a call's extraction wrote point at
+   * Extracted items often never get a `Placement` — the records a call's interpretation wrote point at
    * one that was placed, but sit in the space rather than on the canvas. With `children` on (the
    * default), every drawn card is also asked "what points at you", the answers are drawn as unplaced
    * cards — the layout positions them — and the walk repeats down the tree until it stops producing
@@ -437,7 +447,7 @@ export function canvasSeed(): SeedSource {
       hidden type is never asked for, so putting a kind away really does change which records the
       canvas is made of.
     */
-    refreshOptions: ['pending', 'changed', 'hidden', 'weigh', 'onlyFrom'],
+    refreshOptions: ['pending', 'changed', 'hidden', 'weigh', 'hideWhere'],
     /*
       Applied to answers already on the cards — see `derive` below. A reader re-weighing voices with a
       slider changes these many times a second, and none of it needs a read.
@@ -635,7 +645,7 @@ export function canvasSeed(): SeedSource {
         ...new Set(
           (options.contains ?? DEFAULT_CONTAINS).filter(
             // Never the entity drawn as lines: a connection is not also a card. The workshop passes the
-            // call's extraction targets here, and a call can extract connections as well as things.
+            // call's interpretation targets here, and a call can extract connections as well as things.
             (entity) =>
               entity !== options.connections &&
               entity !== placementEntity &&
@@ -778,7 +788,7 @@ export function canvasSeed(): SeedSource {
        * Filled as the cards are made rather than from the placements, so it holds exactly what is
        * drawn: the tray as well as the board, and less anything hidden or no longer there. The tray
        * counts because it is on the canvas — a row of cards somebody can see and drag — and it is
-       * where everything a call extracts lands. Counting only placed cards meant a connection the
+       * where everything a call interprets lands. Counting only placed cards meant a connection the
        * extraction drew between two of them was never drawn at all, in either reading of the canvas.
        */
       const onCanvas = new Set<string>();
@@ -790,7 +800,7 @@ export function canvasSeed(): SeedSource {
       /*
         The type of the card actually drawn wins over the one the connection stored. Both ends are
         known to be on the canvas by the time this is asked, so the drawn type is always there — and
-        it is a fact, where the stored one is a claim: a connection an extraction pass wrote carries
+        it is a fact, where the stored one is a claim: a connection an interpretation pass wrote carries
         whatever class name the model spelled, and a misspelt one addressed a node that does not
         exist, so the line was silently dropped.
       */
@@ -818,6 +828,11 @@ export function canvasSeed(): SeedSource {
       };
       /** Where a row came from. */
       const originOf = (row: Record<string, unknown>): string | undefined => idAt(row, options.origin);
+      /** A card the reader put away — see `hideWhere`. Judged on the card as drawn, as a style rule is. */
+      const hideClauses = (
+        Array.isArray(options.hideWhere) ? options.hideWhere : options.hideWhere ? [options.hideWhere] : []
+      ).filter((clause) => clause && typeof clause === 'object' && Object.keys(clause).length);
+      const leftOff = (card: GraphNode): boolean => hideClauses.some((clause) => matches(card, clause));
 
       /*
         What a card carries beside its own fields — the same for one somebody placed, one waiting
@@ -888,9 +903,10 @@ export function canvasSeed(): SeedSource {
         if (seen.has(node.id)) continue;
         seen.add(node.id);
         if (typeof row.id === 'string' && hidden.has(row.id)) continue;
-        // Seen first, so a record answering both reads is still left off by the first.
-        if (options.onlyFrom && originOf(row) !== options.onlyFrom) continue;
         const at = typeof row.id === 'string' ? positions.get(row.id) : undefined;
+        const data = cardData(entity, row, node, at);
+        // Seen first, so a record answering both reads is still left off by the first.
+        if (leftOff({ ...node, data })) continue;
         /*
           Coordinates land in `data`, where the `manual` layout reads them.
 
@@ -898,7 +914,7 @@ export function canvasSeed(): SeedSource {
           has: it is handed nodes and returns positions, and a seed that needed its own channel to
           the layout would be a seed only one layout could use.
         */
-        nodes.push({ ...node, data: cardData(entity, row, node, at) });
+        nodes.push({ ...node, data });
         if (typeof row.id === 'string') {
           onCanvas.add(row.id);
           typeOf.set(row.id, entity);
@@ -1002,7 +1018,6 @@ export function canvasSeed(): SeedSource {
           for (const { entity, row } of found) {
             const id = typeof row.id === 'string' ? row.id : undefined;
             if (!id || onCanvas.has(id) || hidden.has(id) || pending.has(id)) continue;
-            if (options.onlyFrom && originOf(row) !== options.onlyFrom) continue;
             pending.set(id, { entity, row });
           }
           /*
@@ -1026,7 +1041,9 @@ export function canvasSeed(): SeedSource {
               continue;
             }
             seen.add(node.id);
-            nodes.push({ ...node, data: cardData(entity, row, node) });
+            const data = cardData(entity, row, node);
+            if (leftOff({ ...node, data })) continue;
+            nodes.push({ ...node, data });
             onCanvas.add(id);
             typeOf.set(id, entity);
             cardRows.set(id, { entity, row });
@@ -1094,7 +1111,7 @@ export function canvasSeed(): SeedSource {
           if (!source || !target || !onCanvas.has(source) || !onCanvas.has(target)) continue;
           /*
             A connection from a card to itself is left off. A canvas has nothing sensible to draw for
-            it, and it is not a claim anybody makes by hand: an extraction pass writes one when dedup
+            it, and it is not a claim anybody makes by hand: an interpretation pass writes one when dedup
             resolves both ends of a "this leads to that" to the same record. Drawn, it was a line
             looping back into its own card.
           */

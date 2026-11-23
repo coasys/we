@@ -61,9 +61,9 @@ vertical('V3 social DNA: install, shapes, targets, wizard', (v) => {
     const targets = await until(
       async () => String((await Space.findAll(perspective))[0]?.extractionTargets ?? ''),
       (t) => DNA.classes.every((c) => t.includes(c.name)),
-      { timeout: 60_000, what: "the space's extraction targets" },
+      { timeout: 60_000, what: "the space's interpretation targets" },
     );
-    for (const cls of DNA.classes) assert.ok(targets.includes(cls.name), `${cls.name} is an extraction target`);
+    for (const cls of DNA.classes) assert.ok(targets.includes(cls.name), `${cls.name} is an interpretation target`);
   });
 
   v.step('a field added in the shape wizard changes the shape', async () => {
@@ -83,7 +83,7 @@ vertical('V3 social DNA: install, shapes, targets, wizard', (v) => {
       { timeout: 60_000, what: `${cls.name} to show ${fields} fields` },
     );
     const shacl = await until(
-      async () => JSON.stringify(await perspective.getShacl(cls.name)),
+      async () => JSON.stringify((await perspective.shapes([cls.name]))[0]?.shape),
       (s) => s.includes(FIELD),
       { timeout: 60_000, what: `${FIELD} in the SHACL of ${cls.name}` },
     );

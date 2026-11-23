@@ -332,7 +332,7 @@ describe('checking a starter', () => {
       expect(new Set(states.map((s) => s.slug)).size).toBe(states.length);
     });
 
-    it('names the states the extraction hint offers a model, so what it extracts lands in a column', () => {
+    it('names the states the interpretation hint offers a model, so what it extracts lands in a column', () => {
       const status = CORE_MANIFEST.entities.TaskBlock.properties.status as { options?: string[] };
       expect(states.map((s) => s.slug).sort()).toEqual([...(status.options ?? [])].sort());
     });
