@@ -778,7 +778,7 @@ export async function childrenToBlocks(perspective: BlockDataset, collection: Re
  * exactly as they cover `children` — both are multi-writer link sets.
  *
  * **Replies, not every response.** A call held about a post, or a channel spun off from one, is a
- * response too — but it is a feed, with its own participants, transcript and extracted records, and
+ * response too — but it is a feed, with its own participants, transcript and interpreted records, and
  * it lives in a room of its own. Deleting the post it was about does not delete that conversation;
  * it stays where it lives, about something that is gone.
  */

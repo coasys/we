@@ -47,6 +47,8 @@ const describeProperty = (p: SHACLShape['properties'][number]) => ({
   // The closed value set (`sh:in`) — a compiler that dropped or reordered it would write a shape
   // the other disagrees with, and a `vocabulary` property keeps it out on both sides.
   in: p.in ?? null,
+  // A relation's declared polymorphism, which the SHACL now carries as `ad4m://polymorphic`.
+  polymorphic: p.polymorphic ?? false,
 });
 
 const shapeSummary = (cls: unknown) => {
@@ -120,12 +122,12 @@ describe('core manifest ↔ hand-written classes', () => {
    * behavioural base the others are generated as subclasses of — so its relation decorators are the
    * one place the manifest's answer is repeated by hand.
    *
-   * The comparisons above cannot catch a mistake here: they compare SHACL, and `polymorphic` is a
-   * read-time instruction that never reaches a shape. So a `WeNode` whose decorators disagreed with
+   * The comparisons above cannot catch a mistake here: they compare the
+   * *generated* classes, and `WeNode` is hand-written, with no generated twin to compare against. So a `WeNode` whose decorators disagreed with
    * `WE_NODE_RELATIONS` would compile, install, round-trip and pass every other test in this file,
    * and fail only as a relation that quietly hands back bare URIs where the manifest promised
-   * records. Read from source for the same reason `generatedClasses` does: the decorator registry
-   * projection drops `polymorphic`, so the declaration itself is the only honest witness.
+   * records. Read from source for the same reason `generatedClasses` does: the decorator is the
+   * declaration itself, and this checks it against the manifest's answer directly.
    */
   it('WeNode declares polymorphic exactly where the manifest says it should', () => {
     // Line-based rather than one regex over the file: a typed relation's decorator carries an arrow

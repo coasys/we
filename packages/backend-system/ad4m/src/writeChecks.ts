@@ -12,7 +12,7 @@
  *   `add<Relation>` / `remove<Relation>` / `set<Relation>` accessor delegates to, and which the
  *   contract's relation writes (`relationWrites.ts`) reach through those accessors.
  *
- * Installed on the base class for the reason `clearOnEmpty.ts` gives: the model classes are
+ * Installed on the base class because the model classes are
  * generated, compiled from a manifest at runtime, or built from foreign SHACL, and they all extend
  * `Ad4mModel`, so one patch covers every class including those that do not exist yet.
  *
@@ -97,8 +97,7 @@ const idsOf = (value: unknown): string[] =>
 /**
  * Install the checks on `Ad4mModel.prototype`. Idempotent.
  *
- * Called once when the adapter builds its ports, beside `installClearOnEmpty` and
- * `installRelationWrites`.
+ * Called once when the adapter builds its ports, beside `installRelationWrites`.
  */
 export function installWriteChecks(model: typeof Ad4mModel): void {
   const prototype = model.prototype as unknown as Record<string | symbol, unknown>;

@@ -328,7 +328,7 @@ export function manifestToEntries(manifest: EntityManifest, opts: CompileManifes
           // AD4M's `@BelongsTo*` generates no `add`/`remove`/`set`, and an entry claiming otherwise
           // would build a runtime-adopted class that offers writes the hand-written one refuses.
           writable: !spec.reverseOf,
-          ...(spec.reverseOf ? { reverse: true } : {}),
+          ...(spec.reverseOf ? { reverse: true, reverseOf: spec.reverseOf } : {}),
           ...(spec.target ? { relatedEntity: spec.target } : {}),
           ...(spec.ordered ? { ordered: true } : {}),
           ...(resolvesPolymorphically(spec) ? { polymorphic: true } : {}),
@@ -337,6 +337,18 @@ export function manifestToEntries(manifest: EntityManifest, opts: CompileManifes
       ],
     };
   });
+}
+
+/** The module each compiled class was declared by. See {@link moduleOfModel}. */
+const declaringModule = new WeakMap<typeof Ad4mModel, string>();
+
+/**
+ * The module that declared a class compiled by {@link compileManifest}, or `undefined` for a class
+ * written by hand. What lets `installModuleSdna` register each module's classes in a call of its
+ * own from the flat list the schema port is handed.
+ */
+export function moduleOfModel(model: typeof Ad4mModel): string | undefined {
+  return declaringModule.get(model);
 }
 
 /**
@@ -380,6 +392,7 @@ export function compileManifest(
       classResolver: resolver,
       flag: { through: 'we://flag', value: `${prefix}${snakeCase(entry.name)}` },
     });
+    declaringModule.set(classes[entry.name], opts.moduleId);
   }
 
   return classes;

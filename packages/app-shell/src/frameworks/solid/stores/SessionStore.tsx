@@ -21,7 +21,7 @@ import {
   NO_IDENTITY_CAPABILITIES,
   trace,
 } from '@we/backend-shared';
-import { DEV_FEATURES, devToolsEnabled, setDevToolsMuted } from '@we/module-shared';
+import { DEV_FEATURES, devToolsEnabled, setDevToolsMuted, setTestPeopleOn, testPeopleEnabled } from '@we/module-shared';
 import {
   Accessor,
   batch,
@@ -36,6 +36,7 @@ import {
 import type { BackendAccountInfo, BackendHostInfo } from '../../../shared/backend/types';
 import { type SignInStep, signInStep as stepOf } from '../../../shared/signInStep';
 import { credential } from '../credential';
+import { firstScreen } from '../firstScreen';
 import { useBackend, usePlatform } from '../providers/PlatformProvider';
 import { startAppBridge } from '../services/appBridge';
 import { useAccountStore } from './AccountStore';
@@ -145,6 +146,14 @@ export interface SessionStore {
    * re-asks `devToolsEnabled` rather than storing what it was told.
    */
   setDevTools: (on: boolean) => void;
+  /**
+   * Whether the test people are offered: fake participants in a call, fake cursors, pretend people
+   * on a canvas. Off until a developer turns them on in Settings → Developer, and never on while
+   * `devTools` is off. See `testPeopleEnabled`.
+   */
+  testPeople: Accessor<boolean>;
+  /** Turn the test people on or off. Takes the value a `we-switch` emits. */
+  setTestPeople: (on: boolean) => void;
   /**
    * The ephemeral transport, as a single shared instance. One port for the whole app because it
    * refcounts scopes per dataset — two ports would mean two executor signal handlers on the same
@@ -287,9 +296,16 @@ export function SessionStoreProvider(props: ParentProps) {
     `devToolsEnabled` ands with the build flag on the way back in.
   */
   const [devTools, setDevToolsSignal] = createSignal(devToolsEnabled(DEV_FEATURES));
+  // The test people need the developer tools on, so either switch re-asks the reader.
+  const [testPeople, setTestPeopleSignal] = createSignal(testPeopleEnabled(DEV_FEATURES));
   const setDevTools = (on: boolean) => {
     setDevToolsMuted(!on);
     setDevToolsSignal(devToolsEnabled(DEV_FEATURES));
+    setTestPeopleSignal(testPeopleEnabled(DEV_FEATURES));
+  };
+  const setTestPeople = (on: boolean) => {
+    setTestPeopleOn(on);
+    setTestPeopleSignal(testPeopleEnabled(DEV_FEATURES));
   };
 
   // EphemeralPort is a function (dataset → scope | null), so this stable delegate can exist
@@ -363,6 +379,12 @@ export function SessionStoreProvider(props: ParentProps) {
 
   async function initialise(): Promise<void> {
     const started = performance.now();
+    /*
+      From here until the first screen is drawn, the reads it does not need wait — see
+      `shared/firstScreen.ts`. Before the backend comes up, because the backend's own setup is among
+      them. Once per app: initialising again finds it already open.
+    */
+    firstScreen.hold();
     try {
       // The connector owns the entire connection choreography (spawn/attach, auth, credential
       // acquisition, settling delays) — the shell receives a ready backend and runs the session
@@ -375,7 +397,7 @@ export function SessionStoreProvider(props: ParentProps) {
         host: hostInfo,
         account,
         guest,
-      } = await backend.initialize({ selfId: () => me()?.did });
+      } = await backend.initialize({ selfId: () => me()?.did, afterFirstScreen: () => firstScreen.whenOpen() });
       disconnectBackend = disconnect ?? null;
       setHost(hostInfo);
       setHostAccount(account);
@@ -619,6 +641,8 @@ export function SessionStoreProvider(props: ParentProps) {
     devFeatures: () => DEV_FEATURES,
     devTools,
     setDevTools,
+    testPeople,
+    setTestPeople,
     ephemeralPort,
 
     credentialEntered: credential.entered,

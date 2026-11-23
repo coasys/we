@@ -117,6 +117,37 @@ export async function pinCommit(pin) {
   return commit;
 }
 
+/** The ad4m dependencies of `crates/custody/Cargo.toml`: the rev is group 2. `bump:ad4m` writes it. */
+export const AD4M_REV = /(git = "https:\/\/github\.com\/coasys\/ad4m", rev = ")([0-9a-f]+)(")/g;
+
+/**
+ * The ad4m commit `crates/custody` builds against, which `bump:ad4m` moves with every pin, or
+ * undefined when its ad4m dependencies name none or disagree.
+ */
+export function custodyCommit(text = readFileSync(join(ROOT, 'crates', 'custody', 'Cargo.toml'), 'utf8')) {
+  const revs = new Set([...text.matchAll(AD4M_REV)].map((m) => m[2]));
+  return revs.size === 1 ? [...revs][0] : undefined;
+}
+
+/**
+ * The commit whose executor WE runs: the pin's commit, as `pinCommit`. A version's commit needs
+ * npm, so with npm out of reach (a network error, not an answer) a version falls back to the
+ * commit the custody crate builds against. npm stays the authority whenever it answers: an
+ * unknown version still fails rather than running the custody crate's commit.
+ */
+export async function executorCommit(pin, custody = custodyCommit) {
+  try {
+    return await pinCommit(pin);
+  } catch (error) {
+    const local = !(error instanceof PinError) && custody();
+    if (!local) throw error;
+    console.warn(
+      `npm is out of reach (${error.message}); running the ad4m commit crates/custody pins, ${local.slice(0, 9)}.`,
+    );
+    return local;
+  }
+}
+
 /** The pin in words, for a log line or a PR description. */
 export function describePin(pin) {
   return pin.kind === 'snapshot' ? `the ad4m snapshot of ${pin.commit.slice(0, 9)}` : `ad4m ${pin.version}`;

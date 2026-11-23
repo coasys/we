@@ -75,7 +75,7 @@ export type { TraceSink } from './trace';
 export {
   blockableEntities,
   CONTAINMENT_PREDICATE,
-  extractableEntities,
+  interpretableEntities,
   getEntity,
   getProperty,
   getRelation,
@@ -155,6 +155,7 @@ export { NAME_CANDIDATES, nameFromProperties, namePropertyOf } from './recordNam
 export type { NameableProperty } from './recordName';
 export { ANONYMOUS_AGENT_NAME, displayName, isProfileEmpty } from './profileTypes';
 export type { AgentProfileSummary, PublishProfileFields } from './profileTypes';
+export { ModuleSchemasRefused } from './backendPorts';
 export type {
   BackendPorts,
   BackendPortsContext,
@@ -195,6 +196,9 @@ export type {
 export type {
   AuthorizedApp,
   ConsentRequest,
+  ExecutorConfig,
+  ExecutorConfigEntry,
+  ExecutorConfigWrite,
   InstalledLanguage,
   PeerRecords,
   RuntimeAdminPort,

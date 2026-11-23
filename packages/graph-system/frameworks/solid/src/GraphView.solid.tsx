@@ -755,11 +755,29 @@ export function GraphView(props: GraphViewProps) {
             const card = parseAddress(id);
             return card?.kind === 'entity' && card.id ? [card.id] : [];
           });
+          /*
+            The event's node is the gesture's stub — an id and nothing else — so the seed's marks are
+            read off the stored node, resolved exactly as `nodeClick` resolves it above.
+          */
+          const node = engine.store.node(event.node.id);
+          /*
+            The edge the card hangs by, before the drop — read off the hierarchy the layout reported,
+            which is the data's rather than the preview's. A drop moves *that* link: a model field for
+            an edge a relation drew, a connection for one somebody drew. Without it a consumer would
+            have to work out again which of a card's links made it a child, by rules of its own.
+          */
+          const hungBy = engine.behaviourContext().hierarchy()?.parentEdges.get(event.node.id);
+          const edge = hungBy ? engine.store.edge(hungBy) : undefined;
           props.onNodeArrange?.({
             id: event.node.id,
             into: named || event.into === 'loose' ? event.into : 'loose',
             recordId: at.id,
             recordType: at.type ?? '',
+            ...(node?.data?.pending === true ? { pending: true } : {}),
+            ...(node?.data?.changed === true ? { changed: true } : {}),
+            ...(edge
+              ? { edge: { id: edge.id, type: edge.type ?? '', ...(edge.data ? { data: edge.data } : {}) } }
+              : {}),
             ...(named ? { targetId: named.id, targetType: named.type ?? '' } : {}),
             ...(event.before === undefined ? {} : { before: event.before }),
             ...(order ? { order } : {}),
@@ -4070,7 +4088,12 @@ export function GraphView(props: GraphViewProps) {
                   '--node-opacity': String((entry.visual.opacity ?? 1) * entry.foldScale),
                 }}
                 title={entry.visual.label}
+                data-type={entry.node.type || undefined}
               >
+                {/*
+                  The record's class, as `data-type`. The header draws a label, and `modelLabel` turns
+                  `TaskBlock` into "Task", so the words on the card cannot tell the two apart.
+                */}
                 {/*
                 A card carries its text *inside* the box — the post-it, where the content is the node
                 rather than a caption attached to a mark. Everything else keeps the label underneath,

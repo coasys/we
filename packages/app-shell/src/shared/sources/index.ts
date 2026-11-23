@@ -29,6 +29,7 @@ import { reactors } from './reactors';
 import { requirementLabel } from './requirementLabel';
 import { reactions, signalTally } from './signalTally';
 import { signalTypesByUse } from './signalTypesByUse';
+import { treeSpine, treeSpines } from './treeSpines';
 import { voices, voicesParam } from './voices';
 
 export interface HostSource {
@@ -163,14 +164,29 @@ export const hostSources: readonly HostSource[] = [
   {
     name: 'formatJson',
     params: ['options'],
-    doc: 'A JSON string indented for reading, or the text unchanged when it will not parse — which is the case worth showing rather than swallowing. Options: text. For displaying a stored blob (an extraction pass\u2019s prompt and response); a schema has no JSON.stringify of its own.',
+    doc: 'A JSON string indented for reading, or the text unchanged when it will not parse — which is the case worth showing rather than swallowing. Options: text. For displaying a stored blob (an interpretation pass\u2019s prompt and response); a schema has no JSON.stringify of its own.',
     example: 'formatJson({ text: pass.prompt })',
     fn: formatJson,
   },
   {
+    name: 'treeSpines',
+    params: ['options'],
+    doc: 'The choices a tree-mode spine picker offers: the space\'s named connection kinds, then every typed relation the installed models declare, grouped under "Model relations" and spelled rel:Class.prop — plus rel:* for all of them. Pass kinds (a RelationshipType query), shapes (shapeStore.spaceShapes) and foreign (datasetStore.currentDatasetEntities).',
+    example:
+      'treeSpines({ kinds: local.relationshipKinds, shapes: shapeStore.spaceShapes, foreign: datasetStore.currentDatasetEntities })',
+    fn: (options: unknown) => treeSpines(options ?? {}),
+  },
+  {
+    name: 'treeSpine',
+    params: ['options'],
+    doc: "A tree spine as the tree reads it, from the picker's value (local.spine): its kind — any, relationship (with id) or relation (with class and prop for one, without for all) — and selector (the forest layout's spine), offSpine (the when of a rule drawing the other lines faint; absent for any) and relations (whether the canvas seed should draw the models' relations). The one reader of the spelling, so pass this rather than local.spine to anything that needs the spine. Options: value.",
+    example: 'treeSpine({ value: local.spine }).selector',
+    fn: (options: unknown) => treeSpine(options ?? {}),
+  },
+  {
     name: 'generatedRun',
     params: ['options'],
-    doc: 'Whether a model made a record: { by: "run", run } naming the run that wrote it (a transcribed line, a record an extraction pass or an agent made, a reply in the editor\u2019s chat), or null for what a person made. Reads the record\u2019s own generatedBy, as an id or an included record, so it needs no query. Ask this rather than reading the relation. Options: record.',
+    doc: 'Whether a model made a record: { by: "run", run } naming the run that wrote it (a transcribed line, a record an interpretation pass or an agent made, a reply in the editor\u2019s chat), or null for what a person made. Reads the record\u2019s own generatedBy, as an id or an included record, so it needs no query. Ask this rather than reading the relation. Options: record.',
     example: "generatedRun({ record: post }) ? 'Written by AI' : ''",
     fn: (options: unknown) => generatedRun(((options ?? {}) as { record?: object }).record ?? {}) ?? null,
   },

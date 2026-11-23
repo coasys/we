@@ -36,7 +36,7 @@ export const scrollbar = {
    * How far the thumb is held off the edges of its own track.
    *
    * Without it the thumb fills the track, so an overflowing panel ends its content flush against
-   * the bar — the cards in the extraction panel are where that was noticed, and it was true of
+   * the bar — the cards in the interpretation panel are where that was noticed, and it was true of
    * every scroll region in WE. Padding on each scroller fixes one of them at a time and costs
    * layout: the padding cannot know whether anything is currently scrolling, so it is also there on
    * a panel with no bar, leaving the content nearer one edge than the other.

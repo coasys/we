@@ -134,8 +134,15 @@ export interface ExpanderQuery {
   limit?: number;
   offset?: number;
   include?: Record<string, unknown>;
-  /** Drill down from an anchor instance through one of its relations. */
-  scope?: { anchor: string; via: string; anchorId: string; direction?: 'in' | 'out' };
+  /**
+   * Drill down from an anchor instance through one of its relations — or from several at once.
+   *
+   * A list asks the same question of every anchor in one read, the way the query IR's `scope` does
+   * (`boundedTraversal.multiAnchor`): a level of a tree is one round trip rather than one per parent.
+   * `direction: 'in'` reads `result --via--> anchor`, so `via` is then the *result's* relation —
+   * "what points at these through `replyTo`".
+   */
+  scope?: { anchor: string; via: string; anchorId: string | string[]; direction?: 'in' | 'out' };
   signal?: AbortSignal;
 }
 
@@ -148,6 +155,34 @@ export interface ExpanderQuery {
 export type WatchQuery = Omit<ExpanderQuery, 'signal'>;
 
 /**
+ * Whether the record holding a declared link is the tree's *child* — the one direction rule.
+ *
+ * A link is read from its forward declaration (a reverse is never followed; see
+ * {@link EntityShape.relations}):
+ *
+ * - a forward to-one: the record holding the field is the child, and the value its parent — a
+ *   reply's `replyTo` names the message it hangs under;
+ * - a forward to-many: the holder is the parent, and each value a child.
+ *
+ * Here rather than in each consumer because three of them must agree: the canvas seed draws the
+ * edge by it, a tree drop writes the field by it, and a named spine decides which two classes it
+ * joins by it. A drop working it out differently from the seed writes a link the tree then draws
+ * the other way round.
+ */
+export function heldByChild(relation: { cardinality: 'one' | 'many' }): boolean {
+  return relation.cardinality === 'one';
+}
+
+/** The two ends of one held link — `holder` names `value` through `relation` — as the tree reads them. */
+export function treeEnds(
+  relation: { cardinality: 'one' | 'many' },
+  holder: string,
+  value: string,
+): { parent: string; child: string } {
+  return heldByChild(relation) ? { parent: value, child: holder } : { parent: holder, child: value };
+}
+
+/**
  * An entity type as the engine sees it — the neutral projection of whatever the backend calls a
  * schema. Enough to build a generic node from an instance nobody wrote code for.
  */
@@ -155,8 +190,14 @@ export interface EntityShape {
   name: string;
   /** Scalar fields, in declaration order. */
   properties: { name: string; type: 'string' | 'number' | 'boolean' | 'uri'; required?: boolean }[];
-  /** Typed relations — the edges of a schema-derived graph. */
-  relations: { name: string; target: string; cardinality: 'one' | 'many' }[];
+  /**
+   * Typed relations — the edges of a schema-derived graph.
+   *
+   * `reverse` marks a `belongsTo`/`reverseOf` relation: the link is owned by the *target* side and
+   * this property reads it back. A graph draws a link from its forward declaration only, so a reverse
+   * is never followed — see {@link heldByChild} for which end of a forward link is the parent.
+   */
+  relations: { name: string; target: string; cardinality: 'one' | 'many'; reverse?: boolean }[];
   /**
    * The property that names an instance — what a node is captioned with.
    *
@@ -173,6 +214,13 @@ export interface EntityShape {
    * only after {@link nameProperty} and the conventional names, where it is better than nothing.
    */
   identityProperty?: string;
+  /**
+   * The host's own bookkeeping — reactions, model runs, placements, the space itself — rather than
+   * anything a community's DNA declares. A seed following the models' relations skips a class marked
+   * so: the link is real, but following it fills the tree with furniture. WE marks its plumbing the
+   * same way the interpretation candidates do — one list, `WE_PLUMBING_CLASSES` in the app shell.
+   */
+  bookkeeping?: boolean;
   /** Human description of the type, where the backend has one. Shown in legends and tooltips. */
   description?: string;
 }

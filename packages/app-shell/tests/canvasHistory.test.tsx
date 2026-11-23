@@ -99,7 +99,11 @@ vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
   useSessionStore: () => ({ me: () => ({ did: 'did:key:z6Mk' }) }),
 }));
 vi.mock('../src/frameworks/solid/stores/ShapeStore', () => ({
-  useShapeStore: () => ({ spaceShapes: () => [], extractionCandidates: () => [] }),
+  useShapeStore: () => ({
+    spaceShapes: () => [],
+    interpretationCandidates: () => [],
+    interpretationCandidatesLoaded: () => true,
+  }),
   BLOCK_ICONS: {},
 }));
 

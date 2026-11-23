@@ -91,10 +91,11 @@ describe('recordView', () => {
       proposal,
       model,
       { record: 'p1', state: 'vote', waiting: [{ to: 'adopted', approvers: ['did:a', 'did:b'] }], stalled: false },
-      'Buy a kettle',
+      { title: 'Buy a kettle', entity: 'TextBlock' },
       'did:a',
     );
     expect(view.title).toBe('Buy a kettle');
+    expect(view.kind).toBe('Text');
     // No start time from the backend reads as none, not as 1970.
     expect(view.startedAt).toBe('');
     expect(view.walk.map((s) => s.at)).toEqual(['done', 'done', 'current', 'ahead']);
@@ -112,10 +113,27 @@ describe('when a record started', () => {
       proposal,
       model,
       { record: 'p1', state: 'draft', waiting: [], stalled: false, since: 0 },
-      '',
+      { title: '', entity: '' },
       undefined,
     );
     expect(view.startedAt).toBe('1970-01-01T00:00:00.000Z');
+  });
+});
+
+describe('a record with no name', () => {
+  // Every row on the Workflows page read "Untitled", which told nobody which record it was.
+  it('is called by its kind and a short id, and still says where it stands', () => {
+    const { model } = toLanes(proposal);
+    const view = recordView(
+      proposal,
+      model,
+      { record: 'literal://string:42ab9f', state: 'vote', waiting: [], stalled: false },
+      { title: '', entity: 'TaskBlock' },
+      undefined,
+    );
+    expect(view.title).toBe('Task 42ab9f');
+    expect(view.kind).toBe('Task');
+    expect(view.stateLabel).toBe('Vote');
   });
 });
 

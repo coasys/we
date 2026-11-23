@@ -42,7 +42,7 @@ import coasysBundle from '../../../../bundles/coasys.bundle.json';
 import fieldGuideBundle from '../../../../bundles/field-guide.bundle.json';
 import toolLibraryBundle from '../../../../bundles/tool-library.bundle.json';
 import { viewBar } from '../../../templates/cartridges/src/coasys/space/bar.ts';
-import { callBarAside } from '../../../templates/cartridges/src/coasys/space/views.ts';
+import { callBarAside, spaceRoutes } from '../../../templates/cartridges/src/coasys/space/views.ts';
 import { sharingPickerOptions } from '../../src/shared/sharingOptions';
 
 export interface Scenario {
@@ -1114,6 +1114,7 @@ const lineComposerScenario = (): Scenario => ({
       lineComposer({
         placeholder: 'Type a message…',
         sendLabel: 'Send it',
+        sending: { $: 'local.sending' },
         onSubmit: [
           { $setLocal: 'sent', value: { $: 'event.text' } },
           { $setLocal: 'sends', value: { $: 'local.sends + 1' } },
@@ -1782,8 +1783,8 @@ const bundleUpdatePrompt =
  */
 /**
  * The create-space modal on a deployment that can share a space both ways, listed as the AD4M
- * backend lists them: peer-to-peer first, then the server link language with AD4M's two link
- * servers. The sharing option and server `createSpace` was given are marked on the body.
+ * backend lists them: the server link language with AD4M's two link servers first, then
+ * peer-to-peer. The sharing option and server `createSpace` was given are marked on the body.
  */
 const createSpaceShared = (): Scenario => ({
   node: createSpaceModal as SchemaNode,
@@ -1791,15 +1792,15 @@ const createSpaceShared = (): Scenario => ({
   stores: {
     spaceStore: {
       sharingOptions: sharingPickerOptions([
-        { id: 'Qm-p2p', name: 'perspective-diff-sync', kind: 'peer-to-peer' },
         {
           id: 'Qm-server',
           name: 'server-link-language',
           kind: 'server',
           servers: ['https://link.ad4m.dev', 'https://link-staging.ad4m.dev'],
         },
+        { id: 'Qm-p2p', name: 'perspective-diff-sync', kind: 'peer-to-peer' },
       ]),
-      defaultSharing: 'Qm-p2p',
+      defaultSharing: 'Qm-server',
       starterChoices: [
         {
           id: 'coasys-default',
@@ -2185,7 +2186,10 @@ const coasysBar = (): Scenario => {
         viewBar(
           [
             { label: 'Social DNA', onClick: { $invoke: 'routeStore.navigate', args: ['/dna'] } },
-            { label: 'Signal types', onClick: { $invoke: 'routeStore.navigate', args: ['/dna?dna=signal'] } },
+            {
+              label: 'Signal types',
+              onClick: { $invoke: 'routeStore.navigate', args: ['/dna?dna=model%7CSignalType'] },
+            },
             { label: 'Like' },
           ],
           'dna',
@@ -2206,9 +2210,10 @@ const coasysBar = (): Scenario => {
 };
 
 /**
- * A running call's bar: Live and the transcript export at its end, beside Page and Canvas, in Glow.
+ * A running call's bar: Live, the way to the interpretation panel and the transcript export at its end,
+ * beside Page and Canvas, in Glow.
  */
-const coasysCallBar = (): Scenario => {
+const coasysCallBar = (live = true): Scenario => {
   const glow = BUNDLE_LAB_THEMES.find((t) => t.label === 'coasys-glow')?.theme ?? {};
   return {
     node: {
@@ -2227,8 +2232,134 @@ const coasysCallBar = (): Scenario => {
     stores: {
       routeStore: { params: {}, templateSegments: [], setParam: () => {}, navigate: () => {} },
       shellStore: { collapsedLanes: [] },
-      modules: { call: { liveCalls: [{ recordId: 'call-1', count: 2 }] } },
-      spaceStore: { exportCallTranscript: (id: string) => ((globalThis as { __exported?: string }).__exported = id) },
+      modules: {
+        call: { liveCalls: live ? [{ recordId: 'call-1', count: 2 }] : [] },
+        transcribe: { interpretationOpen: false },
+      },
+      spaceStore: {
+        activeModules: ['call', 'transcribe'],
+        exportCallTranscript: (id: string) => ((globalThis as { __exported?: string }).__exported = id),
+        launchModule: (id: string) => ((globalThis as { __launched?: string }).__launched = id),
+      },
+    },
+  };
+};
+
+/**
+ * The Coasys flows page, from the bundle itself, under Glow: one flow open with three records going
+ * through it, the second chosen (`?card=`) as a row under Active flows chooses it.
+ */
+const coasysFlowsPage = (): Scenario => {
+  const glow = BUNDLE_LAB_THEMES.find((t) => t.label === 'coasys-glow')?.theme ?? {};
+  const find = (node: unknown): SchemaNode | undefined => {
+    if (!node || typeof node !== 'object') return undefined;
+    const n = node as Record<string, unknown>;
+    if (n.path === '/workflows' && typeof n.type === 'string') return structuredClone(n) as SchemaNode;
+    for (const value of Object.values(n)) {
+      const found = Array.isArray(value) ? value.map(find).find(Boolean) : find(value);
+      if (found) return found;
+    }
+    return undefined;
+  };
+  const { path: _path, ...page } = find(coasysBundle) as SchemaNode & { path?: string };
+  const record = (id: string, title: string, stateLabel: string) => ({
+    id,
+    record: id,
+    title,
+    kind: 'Task',
+    startedAt: '2026-11-18T10:00:00.000Z',
+    state: stateLabel.toLowerCase(),
+    stateLabel,
+    stalled: false,
+    waiting: [],
+    walk: [],
+    next: [],
+  });
+  const review = { name: 'review', label: 'Review', archived: false, records: 3, running: 3, editable: true };
+  return {
+    node: { type: 'Column', theme: glow, props: { width: '900px', height: '640px', bg: 'page' }, children: [page] },
+    tables: {},
+    stores: {
+      routeStore: {
+        params: { card: 'r2' },
+        templateSegments: ['workflows'],
+        setParam: () => {},
+        navigate: () => {},
+      },
+      shellStore: { collapsedLanes: [] },
+      spaceStore: { root: 'root', spacePath: '/space/s1' },
+      workflowStore: {
+        available: true,
+        workflowsLoaded: true,
+        workflows: [review],
+        startable: [{ name: 'review', label: 'Review', entities: [] }],
+        open: {
+          ...review,
+          hint: '',
+          entities: [],
+          lanes: [],
+          steps: [],
+          exceptions: [],
+          managedBy: '',
+          recordsLoaded: true,
+          history: {},
+          records: [
+            record('r1', 'Fix the roof', 'Checking'),
+            record('r2', 'Paint the gate', 'Draft'),
+            record('r3', 'Order the tiles', 'Draft'),
+          ],
+        },
+      },
+    },
+  };
+};
+
+/**
+ * The Coasys Calls page, from the bundle itself, under Glow: three calls, the newest running. Each
+ * card opens its call and offers its transcript to take away, so the case can press both.
+ */
+const coasysCallsPage = (): Scenario => {
+  const glow = BUNDLE_LAB_THEMES.find((t) => t.label === 'coasys-glow')?.theme ?? {};
+  // The page is the space template's `/calls` route; found by its path, wherever the bundle holds it.
+  const find = (node: unknown): SchemaNode | undefined => {
+    if (!node || typeof node !== 'object') return undefined;
+    const n = node as Record<string, unknown>;
+    if (n.path === '/calls' && typeof n.type === 'string') return structuredClone(n) as SchemaNode;
+    for (const value of Object.values(n)) {
+      const found = Array.isArray(value) ? value.map(find).find(Boolean) : find(value);
+      if (found) return found;
+    }
+    return undefined;
+  };
+  const { path: _path, ...page } = find(coasysBundle) as SchemaNode & { path?: string };
+  return {
+    node: { type: 'Column', theme: glow, props: { width: '900px', height: '420px', bg: 'page' }, children: [page] },
+    tables: {
+      CollectionBlock: [
+        { id: 'call-3', kind: 'call', title: 'Design review', createdAt: '2026-11-11T09:00' },
+        { id: 'call-2', kind: 'call', title: 'Standup', createdAt: '2026-11-10T09:00' },
+        {
+          id: 'call-1',
+          kind: 'call',
+          title: 'Release planning for the next AD4M version',
+          createdAt: '2026-11-03T15:00',
+        },
+      ],
+    },
+    stores: {
+      routeStore: {
+        params: {},
+        templateSegments: [],
+        setParam: () => {},
+        navigate: (to: string) => ((globalThis as { __navigated?: string }).__navigated = to),
+      },
+      shellStore: { collapsedLanes: [] },
+      modules: { call: { liveCalls: [{ recordId: 'call-3', count: 2 }] } },
+      spaceStore: {
+        root: 'root',
+        spacePath: '/space/s1',
+        exportCallTranscript: (id: string) => ((globalThis as { __exported?: string }).__exported = id),
+      },
     },
   };
 };
@@ -2329,9 +2460,52 @@ const coasysTreeDna = (): Scenario => {
       Topic: [{ id: 'topic-bees', name: 'Bees', description: 'Hives, honey and swarms' }],
     },
     stores: {
+      // A flow written, three records through it and two still running, and one put away: Social DNA
+      // lists the first, and Active flows lists the two running in it, the latest first.
+      workflowStore: {
+        workflows: [
+          { name: 'review', label: 'Review', archived: false, records: 3, running: 2, editable: true, managedBy: '' },
+          { name: 'old', label: 'Old process', archived: true, records: 4, running: 4, editable: true, managedBy: '' },
+        ],
+        active: [
+          {
+            workflow: 'review',
+            label: 'Review',
+            record: 'run-roof',
+            title: 'Fix the roof',
+            kind: 'Task',
+            state: 'checking',
+            stateLabel: 'Checking',
+            lastActivity: '2026-11-19T10:00:00.000Z',
+            waiting: 1,
+            stalled: false,
+          },
+          {
+            workflow: 'review',
+            label: 'Review',
+            record: 'run-gate',
+            title: 'Paint the gate',
+            kind: 'Task',
+            state: 'draft',
+            stateLabel: 'Draft',
+            lastActivity: '2026-11-18T10:00:00.000Z',
+            waiting: 0,
+            stalled: false,
+          },
+        ],
+      },
+      templateStore: {
+        currentSwitcherId: 'coasys-space',
+        switcherGroups: [
+          { label: 'Space templates', items: [{ id: 'space::ours', name: 'Our layout', icon: 'layout' }] },
+          { label: 'My templates', items: [] },
+          { label: 'Built-in', items: [{ id: 'coasys-space', name: 'Coasys space', icon: 'layout' }] },
+        ],
+      },
       spaceStore: {
         root: 'root',
         members: [],
+        spaceDefaultTemplateId: 'coasys-space',
         taskStates: [
           {
             id: 'st-todo',
@@ -2369,12 +2543,30 @@ const coasysTreeDna = (): Scenario => {
         },
       },
       shapeStore: { spaceShapes: [{ id: 'shape-hive', name: 'Hive', icon: 'hexagon' }] },
-      recordStore: {
-        // What the tree's Models lists, as the vocabulary map's Models does: every kind of record.
-        creatableEntities: [
-          { value: 'Hive', label: 'Hive', icon: 'hexagon', hue: 'yellow', group: '', description: '', via: 'form' },
+      // Another app's class, and WE's plumbing an older version wrote under another IRI, which is left out.
+      datasetStore: {
+        currentDatasetEntities: [
+          { name: 'Placement', targetClass: 'old://Placement', properties: [] },
+          { name: 'Question', targetClass: 'conv://Question', properties: [] },
         ],
+      },
+      recordStore: {
+        // The space's own model and one of WE's blocks: the This space group, and the built-in group's vocabulary and Blocks.
+        creatableEntities: [
+          {
+            value: 'Hive',
+            label: 'Hive',
+            icon: 'hexagon',
+            hue: 'yellow',
+            group: 'This space',
+            description: '',
+            via: 'form',
+          },
+          { value: 'TaskBlock', label: 'Task', icon: 'check-square', hue: 'green', group: 'Built in', via: 'form' },
+        ],
+        plumbingClasses: ['Placement', 'Space', 'SignalType', 'TaskState'],
         displays: {
+          Question: { label: 'Question', icon: 'cube', fields: [] },
           Hive: {
             fields: [
               { name: 'name', label: 'Name', kind: 'text' },
@@ -2391,7 +2583,7 @@ const coasysTreeDna = (): Scenario => {
  * The Feed as a page: a few lines, one of them from a call, and what extraction found — in a box the
  * height of a view, so its stream scrolls and its box sits at the foot.
  */
-const feedViewPage = (): Scenario => {
+const feedViewPage = (hasMore = false): Scenario => {
   const line = (id: string, author: string, text: string, at: string, call = '', callTitle = '') => ({
     kind: 'line',
     id,
@@ -2431,7 +2623,7 @@ const feedViewPage = (): Scenario => {
             line('m1', 'did:them', 'Morning all', '2026-10-27T10:00:00Z'),
           ],
           feedLoaded: true,
-          feedHasMore: false,
+          feedHasMore: hasMore,
           feedFromStart: false,
           timelineOrientation: 'newestBottom',
           replyingTo: null,
@@ -2450,11 +2642,50 @@ const feedViewPage = (): Scenario => {
   };
 };
 
+/** A tree with each `$part` the map names swapped for the node that part draws. */
+const withParts = (node: unknown, parts: Record<string, SchemaNode>): unknown => {
+  if (Array.isArray(node)) return node.map((child) => withParts(child, parts));
+  if (!node || typeof node !== 'object') return node;
+  const n = node as SchemaNode;
+  const id = (n.props as { id?: string } | undefined)?.id;
+  if (n.type === '$part' && id && parts[id]) return parts[id];
+  return Object.fromEntries(Object.entries(n).map(([k, v]) => [k, withParts(v, parts)]));
+};
+
+/**
+ * A Coasys space's own page — its bar and the Feed — from the bundle's route, with the Feed's part
+ * drawn by the Feed module's view. The case sets `--we-covered-bottom` as a floating panel at the
+ * bottom of the window does.
+ */
+const coasysSpaceFeed = (): Scenario => {
+  const { path: _path, ...chat } = spaceRoutes[0] as SchemaNode & { path?: string };
+  const feed = feedViewPage();
+  return {
+    node: {
+      type: 'Column',
+      props: { width: '100%', height: '600px' },
+      children: [withParts(chat, { 'feed.feedView': feedView }) as SchemaNode],
+    },
+    stores: {
+      ...feed.stores,
+      routeStore: { params: {}, templateSegments: [], setParam: () => {}, navigate: () => {} },
+      // The space's own channel, with a call already held, so the page draws the Feed alone.
+      spaceStore: { root: 'root-1', rootLoaded: true },
+    },
+    tables: { CollectionBlock: [{ id: 'call-1', title: 'Monday sync', kind: 'call' }] },
+  };
+};
+
 export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'coasys:about': coasysAbout,
-  'feed:view': feedViewPage,
+  'feed:view': () => feedViewPage(),
+  'feed:view-more': () => feedViewPage(true),
+  'coasys:space-feed': coasysSpaceFeed,
   'coasys:bar': coasysBar,
-  'coasys:call-bar': coasysCallBar,
+  'coasys:call-bar': () => coasysCallBar(),
+  'coasys:call-bar-ended': () => coasysCallBar(false),
+  'coasys:calls-page': coasysCallsPage,
+  'coasys:flows-page': coasysFlowsPage,
   'border:with-hover': borderWithHover,
   'coasys:lockup': coasysLockup,
   'signIn:coasys': coasysSignIn,

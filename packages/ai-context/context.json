@@ -1100,6 +1100,12 @@
           "default": "false"
         },
         {
+          "name": "dismiss",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
+        },
+        {
           "name": "label",
           "type": "unknown",
           "optional": false
@@ -3634,7 +3640,7 @@
         },
         {
           "name": "onNodeArrange",
-          "type": "((payload: { id: string; into: \"child\" | \"sibling\" | \"loose\"; recordId: string; recordType: string; targetId?: string; targetType?: string; before?: boolean; order?: string[]; x: number; y: number; }) => void)",
+          "type": "((payload: { id: string; into: \"child\" | \"sibling\" | \"loose\"; recordId: string; recordType: string; pending?: boolean; changed?: boolean; edge?: { id: string; type: string; data?: Record<string, GraphValue>; }; targetId?: string; targetType?: string; before?: boolean; order?: string[]; x: number; y: number; }) => void)",
           "optional": true
         },
         {
@@ -6373,6 +6379,9 @@
         "currentDatasetEntities": {
           "type": "array"
         },
+        "currentDatasetEntitiesLoaded": {
+          "type": "boolean"
+        },
         "isWeSpace": {
           "type": "boolean"
         },
@@ -6417,7 +6426,7 @@
           "type": "boolean"
         }
       },
-      "actions": ["switchDataset", "reorderDatasets", "removeDataset", "cleanupSpaceSdna"],
+      "actions": ["switchDataset", "reorderDatasets", "removeDataset"],
       "ambient": ["switchDataset"],
       "destructive": ["removeDataset"],
       "needsArgs": ["switchDataset", "reorderDatasets", "removeDataset"]
@@ -6773,6 +6782,9 @@
         },
         "displays": {
           "type": "object"
+        },
+        "plumbingClasses": {
+          "type": "array"
         },
         "kinds": {
           "type": "array"
@@ -7156,6 +7168,19 @@
         "executorRestartPending": {
           "type": "boolean"
         },
+        "executorConfigFile": {
+          "type": "string"
+        },
+        "executorConfigRows": {
+          "type": "array",
+          "properties": ["id", "key", "value", "kind", "choice", "editable", "note"]
+        },
+        "executorLogTail": {
+          "type": "string"
+        },
+        "canRestartExecutor": {
+          "type": "boolean"
+        },
         "pendingConsent": {
           "type": "object",
           "properties": ["kind", "title", "message", "app", "peerId"]
@@ -7215,6 +7240,8 @@
         "importDatabase",
         "setMcpPort",
         "restartExecutor",
+        "setExecutorConfigValue",
+        "loadExecutorLogTail",
         "approveConsent",
         "denyConsent",
         "dismissConsentSecret"
@@ -7237,6 +7264,7 @@
         "loadAuthorizedApps",
         "loadNetworkMetrics",
         "loadPeerInfos",
+        "loadExecutorLogTail",
         "dismissConsentSecret"
       ],
       "destructive": [
@@ -7276,7 +7304,8 @@
         "setMcpEnabled",
         "setLogLevel",
         "removeLogLevel",
-        "setMcpPort"
+        "setMcpPort",
+        "setExecutorConfigValue"
       ]
     },
     {
@@ -7359,6 +7388,9 @@
         "devTools": {
           "type": "boolean"
         },
+        "testPeople": {
+          "type": "boolean"
+        },
         "credentialEntered": {
           "type": "boolean"
         },
@@ -7368,6 +7400,7 @@
       },
       "actions": [
         "setDevTools",
+        "setTestPeople",
         "unlock",
         "touchCredential",
         "clearPasswordError",
@@ -7376,7 +7409,7 @@
         "retryBoot"
       ],
       "ambient": ["touchCredential", "clearPasswordError"],
-      "needsArgs": ["setDevTools"]
+      "needsArgs": ["setDevTools", "setTestPeople"]
     },
     {
       "name": "shapeStore",
@@ -7421,8 +7454,11 @@
           "type": "array",
           "properties": ["entity", "source"]
         },
-        "extractionCandidates": {
+        "interpretationCandidates": {
           "type": "array"
+        },
+        "interpretationCandidatesLoaded": {
+          "type": "boolean"
         },
         "relationshipTargets": {
           "type": "array",
@@ -7446,7 +7482,7 @@
         "hintBusy": {
           "type": "boolean"
         },
-        "extractionNeedsIdentity": {
+        "interpretationNeedsIdentity": {
           "type": "boolean"
         },
         "memberOptions": {
@@ -7475,7 +7511,7 @@
         "setShapeField",
         "setIdentityMember",
         "setNameMember",
-        "setExtractable",
+        "setInterpretable",
         "addProperty",
         "addRelationship",
         "removeMember",
@@ -7504,7 +7540,7 @@
         "setShapeField",
         "setIdentityMember",
         "setNameMember",
-        "setExtractable",
+        "setInterpretable",
         "addProperty",
         "addRelationship",
         "removeMember",
@@ -7525,7 +7561,7 @@
         "setShapeField",
         "setIdentityMember",
         "setNameMember",
-        "setExtractable",
+        "setInterpretable",
         "removeMember",
         "setMemberField",
         "reorderMembers",
@@ -7801,6 +7837,7 @@
             "avatar",
             "kind",
             "isWeSpace",
+            "loading",
             "canAdminister",
             "modules",
             "shareLink",
@@ -7970,7 +8007,13 @@
         "landmarksLoaded": {
           "type": "boolean"
         },
-        "extractionTargets": {
+        "rootLoaded": {
+          "type": "boolean"
+        },
+        "firstScreenOpen": {
+          "type": "boolean"
+        },
+        "interpretationTargets": {
           "type": "array"
         },
         "taskWorkflowRule": {
@@ -8021,12 +8064,12 @@
         "setSpaceModuleSetting",
         "setMyModuleSetting",
         "setAgentModuleSetting",
-        "autoExtractFor",
-        "setAutoExtractFor",
-        "canSetExtractionFor",
+        "autoInterpretFor",
+        "setAutoInterpretFor",
+        "canSetInterpretationFor",
         "setAutoInterpret",
         "setThreadMode",
-        "setExtractionTarget",
+        "setInterpretationTarget",
         "setModuleInstalled",
         "setModuleVisible",
         "setViewEnabled",
@@ -8068,10 +8111,16 @@
         "copyShareLink",
         "copyGuestLink",
         "exportCallTranscript",
-        "exportExtractionLog",
+        "exportInterpretationLog",
         "removeSpaceFromGlobal"
       ],
-      "ambient": ["autoExtractFor", "canSetExtractionFor", "navigateToSpace", "openRecordRef", "canAdministerSpace"],
+      "ambient": [
+        "autoInterpretFor",
+        "canSetInterpretationFor",
+        "navigateToSpace",
+        "openRecordRef",
+        "canAdministerSpace"
+      ],
       "destructive": ["removeSpace", "deleteCollection", "removeSpaceFromGlobal"],
       "needsArgs": [
         "createSpace",
@@ -8103,12 +8152,12 @@
         "setSpaceModuleSetting",
         "setMyModuleSetting",
         "setAgentModuleSetting",
-        "autoExtractFor",
-        "setAutoExtractFor",
-        "canSetExtractionFor",
+        "autoInterpretFor",
+        "setAutoInterpretFor",
+        "canSetInterpretationFor",
         "setAutoInterpret",
         "setThreadMode",
-        "setExtractionTarget",
+        "setInterpretationTarget",
         "setModuleInstalled",
         "setModuleVisible",
         "setViewEnabled",
@@ -8149,7 +8198,7 @@
         "copyShareLink",
         "copyGuestLink",
         "exportCallTranscript",
-        "exportExtractionLog",
+        "exportInterpretationLog",
         "removeSpaceFromGlobal"
       ]
     },
@@ -8433,7 +8482,7 @@
         },
         "workflows": {
           "type": "array",
-          "properties": ["name", "label", "editable", "records", "managedBy", "archived", "steps", "moves"]
+          "properties": ["name", "label", "editable", "records", "running", "managedBy", "archived", "steps", "moves"]
         },
         "workflowsLoaded": {
           "type": "boolean"
@@ -8450,6 +8499,22 @@
         },
         "recordWorkflows": {
           "type": "object"
+        },
+        "active": {
+          "type": "array",
+          "properties": [
+            "id",
+            "workflow",
+            "label",
+            "record",
+            "title",
+            "kind",
+            "state",
+            "stateLabel",
+            "lastActivity",
+            "waiting",
+            "stalled"
+          ]
         }
       },
       "actions": [
@@ -8661,13 +8726,25 @@
     {
       "name": "formatJson",
       "params": ["options"],
-      "doc": "A JSON string indented for reading, or the text unchanged when it will not parse — which is the case worth showing rather than swallowing. Options: text. For displaying a stored blob (an extraction pass’s prompt and response); a schema has no JSON.stringify of its own.",
+      "doc": "A JSON string indented for reading, or the text unchanged when it will not parse — which is the case worth showing rather than swallowing. Options: text. For displaying a stored blob (an interpretation pass’s prompt and response); a schema has no JSON.stringify of its own.",
       "example": "formatJson({ text: pass.prompt })"
+    },
+    {
+      "name": "treeSpines",
+      "params": ["options"],
+      "doc": "The choices a tree-mode spine picker offers: the space's named connection kinds, then every typed relation the installed models declare, grouped under \"Model relations\" and spelled rel:Class.prop — plus rel:* for all of them. Pass kinds (a RelationshipType query), shapes (shapeStore.spaceShapes) and foreign (datasetStore.currentDatasetEntities).",
+      "example": "treeSpines({ kinds: local.relationshipKinds, shapes: shapeStore.spaceShapes, foreign: datasetStore.currentDatasetEntities })"
+    },
+    {
+      "name": "treeSpine",
+      "params": ["options"],
+      "doc": "A tree spine as the tree reads it, from the picker's value (local.spine): its kind — any, relationship (with id) or relation (with class and prop for one, without for all) — and selector (the forest layout's spine), offSpine (the when of a rule drawing the other lines faint; absent for any) and relations (whether the canvas seed should draw the models' relations). The one reader of the spelling, so pass this rather than local.spine to anything that needs the spine. Options: value.",
+      "example": "treeSpine({ value: local.spine }).selector"
     },
     {
       "name": "generatedRun",
       "params": ["options"],
-      "doc": "Whether a model made a record: { by: \"run\", run } naming the run that wrote it (a transcribed line, a record an extraction pass or an agent made, a reply in the editor’s chat), or null for what a person made. Reads the record’s own generatedBy, as an id or an included record, so it needs no query. Ask this rather than reading the relation. Options: record.",
+      "doc": "Whether a model made a record: { by: \"run\", run } naming the run that wrote it (a transcribed line, a record an interpretation pass or an agent made, a reply in the editor’s chat), or null for what a person made. Reads the record’s own generatedBy, as an id or an included record, so it needs no query. Ask this rather than reading the relation. Options: record.",
       "example": "generatedRun({ record: post }) ? 'Written by AI' : ''"
     }
   ],
@@ -9115,9 +9192,9 @@
           "doc": "Applies one suggested change to an agreed record."
         },
         {
-          "name": "autoExtract",
+          "name": "autoInterpret",
           "kind": "state",
-          "doc": "Whether the call this agent is in is extracted as it happens — its own answer."
+          "doc": "Whether the call this agent is in is interpreted as it happens — its own answer."
         },
         {
           "name": "autoJoined",
@@ -9137,7 +9214,7 @@
         {
           "name": "callId",
           "kind": "state",
-          "doc": "The record extraction decisions for this call are written against — the call’s own record from its first second."
+          "doc": "The record interpretation decisions for this call are written against — the call’s own record from its first second."
         },
         {
           "name": "callOnScreenLive",
@@ -9178,9 +9255,9 @@
           "doc": "Agreed records carrying a suggested change, by id."
         },
         {
-          "name": "closeExtractionPanel",
+          "name": "closeInterpretationPanel",
           "kind": "action",
-          "doc": "Closes the extraction panel.",
+          "doc": "Closes the interpretation panel.",
           "ambient": true
         },
         {
@@ -9251,61 +9328,6 @@
           "doc": "Why the session stopped, when status is error; empty otherwise."
         },
         {
-          "name": "extract",
-          "kind": "action",
-          "doc": "Runs one extraction pass over the call this agent is transcribing."
-        },
-        {
-          "name": "extractable",
-          "kind": "state",
-          "doc": "Whether this node can interpret at all — false when it has no language model."
-        },
-        {
-          "name": "extractCollection",
-          "kind": "action",
-          "doc": "Runs one extraction pass over any call’s record, by id."
-        },
-        {
-          "name": "extractCount",
-          "kind": "state",
-          "doc": "How many records the last pass wrote."
-        },
-        {
-          "name": "extractedId",
-          "kind": "state",
-          "doc": "The collection the last finished pass ran on, or empty."
-        },
-        {
-          "name": "extractError",
-          "kind": "state",
-          "doc": "Why the last pass failed; empty otherwise."
-        },
-        {
-          "name": "extractingId",
-          "kind": "state",
-          "doc": "The collection a pass is running on right now, or empty."
-        },
-        {
-          "name": "extractionFor",
-          "kind": "state",
-          "doc": "What one collection can extract, by record id — { targets, canChoose, canExtract, auto }, read as extractionFor[id]."
-        },
-        {
-          "name": "extractionOpen",
-          "kind": "state",
-          "doc": "Whether the extraction panel is open."
-        },
-        {
-          "name": "extractStatus",
-          "kind": "state",
-          "doc": "How the last one-shot extraction pass went — idle, running, done or error."
-        },
-        {
-          "name": "extractTurns",
-          "kind": "state",
-          "doc": "How many transcript turns the last pass read."
-        },
-        {
           "name": "flushNow",
           "kind": "action",
           "doc": "Writes what has been heard so far without waiting for the buffer to fill."
@@ -9319,6 +9341,61 @@
           "name": "inCall",
           "kind": "state",
           "doc": "Whether this agent is in a call right now."
+        },
+        {
+          "name": "interpret",
+          "kind": "action",
+          "doc": "Runs one interpretation pass over the call this agent is transcribing."
+        },
+        {
+          "name": "interpretable",
+          "kind": "state",
+          "doc": "Whether this node can interpret at all — false when it has no language model."
+        },
+        {
+          "name": "interpretationFor",
+          "kind": "state",
+          "doc": "What one collection can interpret, by record id — { targets, canChoose, canInterpret, auto }, read as interpretationFor[id]."
+        },
+        {
+          "name": "interpretationOpen",
+          "kind": "state",
+          "doc": "Whether the interpretation panel is open."
+        },
+        {
+          "name": "interpretCollection",
+          "kind": "action",
+          "doc": "Runs one interpretation pass over any call’s record, by id."
+        },
+        {
+          "name": "interpretCount",
+          "kind": "state",
+          "doc": "How many records the last pass wrote."
+        },
+        {
+          "name": "interpretedId",
+          "kind": "state",
+          "doc": "The collection the last finished pass ran on, or empty."
+        },
+        {
+          "name": "interpretError",
+          "kind": "state",
+          "doc": "Why the last pass failed; empty otherwise."
+        },
+        {
+          "name": "interpretingId",
+          "kind": "state",
+          "doc": "The collection a pass is running on right now, or empty."
+        },
+        {
+          "name": "interpretStatus",
+          "kind": "state",
+          "doc": "How the last one-shot interpretation pass went — idle, running, done or error."
+        },
+        {
+          "name": "interpretTurns",
+          "kind": "state",
+          "doc": "How many transcript turns the last pass read."
         },
         {
           "name": "invited",
@@ -9346,6 +9423,11 @@
           "doc": "True only while actually transcribing — what a record button highlights on."
         },
         {
+          "name": "liveCallRecords",
+          "kind": "state",
+          "doc": "The record of every call somebody is in right now."
+        },
+        {
           "name": "liveCollectionId",
           "kind": "state",
           "doc": "The record the call this agent is in is writing into, or empty when there is none."
@@ -9371,9 +9453,9 @@
           "doc": "Whether the transcript panel is open."
         },
         {
-          "name": "openExtractionPanel",
+          "name": "openInterpretationPanel",
           "kind": "action",
-          "doc": "Opens the extraction panel.",
+          "doc": "Opens the interpretation panel.",
           "ambient": true
         },
         {
@@ -9390,7 +9472,7 @@
         {
           "name": "passRunning",
           "kind": "state",
-          "doc": "Whether any extraction pass is running right now, this node’s or a peer’s."
+          "doc": "Whether any interpretation pass is running right now, this node’s or a peer’s."
         },
         {
           "name": "pending",
@@ -9483,6 +9565,11 @@
           "ambient": true
         },
         {
+          "name": "skipped",
+          "kind": "state",
+          "doc": "Utterances let go in this session without a transcript: the speech model was too far behind or could not be reached."
+        },
+        {
           "name": "speaking",
           "kind": "state",
           "doc": "Whether the microphone level currently counts as speech."
@@ -9524,14 +9611,14 @@
           "doc": "Starts or stops recording this agent’s microphone into the call, and opens the transcript when starting."
         },
         {
-          "name": "toggleAutoExtract",
+          "name": "toggleAutoInterpret",
           "kind": "action",
-          "doc": "Turns automatic extraction on or off for one collection, for everyone in it; defaults to the live call."
+          "doc": "Turns automatic interpretation on or off for one collection, for everyone in it; defaults to the live call."
         },
         {
-          "name": "toggleExtractionTarget",
+          "name": "toggleInterpretationTarget",
           "kind": "action",
-          "doc": "Includes or excludes one model from what a call extracts, for everyone in it; defaults to the live call."
+          "doc": "Includes or excludes one model from what a call interprets, for everyone in it; defaults to the live call."
         },
         {
           "name": "transcribers",
@@ -9561,7 +9648,7 @@
         {
           "name": "watchProblem",
           "kind": "state",
-          "doc": "Why the standing extraction watch is not running here; empty when it is."
+          "doc": "Why the standing interpretation watch is not running here; empty when it is."
         }
       ],
       "parts": [
@@ -9586,7 +9673,7 @@
           "name": "coverage"
         },
         {
-          "name": "extractionTargets"
+          "name": "interpretationTargets"
         },
         {
           "name": "pendingUtterance"
@@ -9600,8 +9687,8 @@
           "hostOwned": false
         },
         {
-          "name": "extraction",
-          "title": "Extraction",
+          "name": "interpretation",
+          "title": "Interpretation",
           "icon": "sparkle",
           "hostOwned": false
         }
@@ -9661,6 +9748,31 @@
           "doc": "The authors of lines in the Feed’s window whose own profile says they are a bot, by id — for `row.author in modules.feed.botAuthors`."
         },
         {
+          "name": "callFeedFromStart",
+          "kind": "state",
+          "doc": "Whether the call’s Feed is read from the call’s beginning rather than its newest line."
+        },
+        {
+          "name": "callFeedHasMore",
+          "kind": "state",
+          "doc": "Whether there is more of the call beyond its Feed’s window."
+        },
+        {
+          "name": "callFeedLoaded",
+          "kind": "state",
+          "doc": "Whether the call’s Feed has answered for this call yet."
+        },
+        {
+          "name": "callFeedRoot",
+          "kind": "state",
+          "doc": "The call whose Feed is drawn — the one shown most recently — or empty."
+        },
+        {
+          "name": "callFeedRows",
+          "kind": "state",
+          "doc": "The Feed of the call on screen: every line said, typed or answered in it, and a row per group of things found in it, merged by time. Rows are shaped as `feedRows`' are; a line's `source` says how it arrived ('spoken', 'typed', 'corrected', or none for a bot or the system)."
+        },
+        {
           "name": "cancelReply",
           "kind": "action",
           "doc": "Puts a reply down without sending it.",
@@ -9705,12 +9817,24 @@
         {
           "name": "feedRows",
           "kind": "state",
-          "doc": "The Feed's window: every message in the space and a row per group of things extracted or made, merged by time — newest first while following the live end, oldest first from the start. A row is { kind: 'line', id, at, author, text, marks, source, call, callTitle, replyTo } or { kind: 'activity', id, at, author, origin, originTitle, summary, items, suggested }."
+          "doc": "The Feed's window: every message in the space and a row per group of things interpretation found or somebody made, merged by time — newest first while following the live end, oldest first from the start. A message sent from here is in it at once, with `sending` true until a read has it. A row is { kind: 'line', id, at, author, text, marks, source, call, callTitle, replyTo, sending } or { kind: 'activity', id, at, author, origin, originTitle, summary, items, suggested }."
         },
         {
           "name": "openFeed",
           "kind": "action",
           "doc": "Opens the Feed panel.",
+          "ambient": true
+        },
+        {
+          "name": "readCallFeedFromStart",
+          "kind": "action",
+          "doc": "Re-anchors the call’s Feed at its beginning.",
+          "ambient": true
+        },
+        {
+          "name": "readCallFeedLive",
+          "kind": "action",
+          "doc": "Re-anchors the call’s Feed at its newest line.",
           "ambient": true
         },
         {
@@ -9733,7 +9857,12 @@
         {
           "name": "replyingTo",
           "kind": "state",
-          "doc": "The line a reply is being written to — { id, text, author } — or null."
+          "doc": "The line a reply is being written to — { id, text, author, surface } — or null. `surface` is the list it was started from, 'feed' or 'callFeed', so only that list's composer answers it."
+        },
+        {
+          "name": "sendToCallFeed",
+          "kind": "action",
+          "doc": "Writes a typed message into the call on screen — with its marks, when the composer gave any. Nothing when no call is shown. Writing into a call does not put the writer on its roster."
         },
         {
           "name": "sendToFeed",
@@ -9746,6 +9875,12 @@
           "doc": "Whether this reader asked the Feed to draw the lines calls spoke — off until they do, in this space only."
         },
         {
+          "name": "showMoreCallFeed",
+          "kind": "action",
+          "doc": "Grows the call’s Feed by a page.",
+          "ambient": true
+        },
+        {
           "name": "showMoreFeed",
           "kind": "action",
           "doc": "Grows the Feed’s window by a page.",
@@ -9754,7 +9889,7 @@
         {
           "name": "startReply",
           "kind": "action",
-          "doc": "Starts a reply to one line — pass { id, text, author } — which the Feed’s composer then sends as a reply.",
+          "doc": "Starts a reply to one line — pass { id, text, author, surface } — which the composer of that list ('feed', the default, or 'callFeed') then sends as a reply.",
           "ambient": true
         },
         {
@@ -9763,9 +9898,21 @@
           "doc": "Which way round this reader draws the Feed — 'newestBottom' or 'newestTop'. Their own setting."
         },
         {
+          "name": "unwatchCallFeed",
+          "kind": "action",
+          "doc": "One drawing of a call’s Feed was taken down.",
+          "ambient": true
+        },
+        {
           "name": "unwatchFeed",
           "kind": "action",
           "doc": "One drawing of the Feed was taken down.",
+          "ambient": true
+        },
+        {
+          "name": "watchCallFeed",
+          "kind": "action",
+          "doc": "A call’s Feed is drawn for this call: read it and keep it live.",
           "ambient": true
         },
         {
@@ -9778,6 +9925,10 @@
       "parts": [
         {
           "name": "feedView"
+        },
+        {
+          "name": "callFeed",
+          "subject": "routeStore.params.call"
         }
       ],
       "panels": [
@@ -9828,7 +9979,7 @@
       "requires": {
         "kernels": ["presence", "ephemeral", "view"]
       },
-      "capabilities": ["kernel:presence", "kernel:ephemeral", "kernel:view", "slot:call-controls", "slot:call-status"],
+      "capabilities": ["kernel:presence", "kernel:ephemeral", "kernel:view", "slot:call-menu", "slot:call-status"],
       "members": [
         {
           "name": "canDrive",
@@ -9945,14 +10096,6 @@
       ],
       "panels": [],
       "launchers": [
-        {
-          "key": "live:cursors",
-          "label": "Share your pointer"
-        },
-        {
-          "key": "live:wheel",
-          "label": "Take the wheel"
-        },
         {
           "key": "live:follow",
           "label": "Follow the driver"

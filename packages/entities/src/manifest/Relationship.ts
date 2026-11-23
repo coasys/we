@@ -61,7 +61,7 @@ export const Relationship: CoreEntityDef = {
       connection end to end, and three things stood in the way, all fixed with it: the class hint
       allowed only connections between records that already existed, which ruled out the case that
       matters — a new task said to depend on an old one; the canvas drew a line only between two
-      *placed* cards, and everything a call extracts lands unplaced, in the tray; and a connection
+      *placed* cards, and everything a call interprets lands unplaced, in the tray; and a connection
       drawn by hand carried no `connection` key, and the executor shows a model only the instances
       that have one, so the structure people had drawn was invisible to the pass meant to extend it.
     */

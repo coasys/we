@@ -245,6 +245,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     devFeatures: state('session'),
     devTools: state('session'),
     setDevTools: action('session'),
+    testPeople: state('session'),
+    setTestPeople: action('session'),
     credentialEntered: state('session'),
     credentialConfirmed: state('session'),
     // Signs in with the host field's password. No argument, so nothing a template collected can be
@@ -357,6 +359,10 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     mcpEnabled: state('runtime-admin'),
     mcpPort: state('runtime-admin'),
     executorRestartPending: state('runtime-admin'),
+    executorConfigFile: state('runtime-admin'),
+    executorConfigRows: state('runtime-admin'),
+    executorLogTail: state('runtime-admin'),
+    canRestartExecutor: state('runtime-admin'),
     pendingConsent: state('runtime-admin'),
     consentSecret: state('runtime-admin'),
     loadAiModels: ambient('runtime-admin'),
@@ -411,6 +417,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     importDatabase: destructive('runtime-admin'),
     setMcpPort: action('runtime-admin'),
     restartExecutor: destructive('runtime-admin'),
+    setExecutorConfigValue: action('runtime-admin'),
+    loadExecutorLogTail: ambient('runtime-admin'),
     approveConsent: destructive('runtime-admin'),
     denyConsent: action('runtime-admin'),
     dismissConsentSecret: ambient('runtime-admin'),
@@ -423,6 +431,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     currentDatasetUri: state('content'),
     currentDatasetCid: state('content'),
     currentDatasetEntities: state('content'),
+    currentDatasetEntitiesLoaded: state('content'),
     isWeSpace: state('navigation'),
     joinedSpaceCids: state('navigation'),
     datasetsLoaded: state('navigation'),
@@ -435,7 +444,6 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     switchDataset: ambient('navigation'),
     reorderDatasets: action('agent'),
     removeDataset: destructive('space-admin'),
-    cleanupSpaceSdna: action('space-admin'),
 
     /*
       Agent settings and the datasets that hold them.
@@ -465,6 +473,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       panels, which render at the chrome tier, have it.
     */
     personalDataset: state('agent'),
+    // The personal space's schema install, for the agent-data kernel to wait on. Not for templates.
+    whenPersonalDataset: WIRING,
     testDataset: WIRING,
     /*
       The global discovery space and the marketplace — shared neighbourhoods holding nothing of this
@@ -486,15 +496,9 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     updateAgentSettings: WIRING,
     clearCurrentDataset: WIRING,
     trackDataset: WIRING,
-    provideAutoInterpretGate: WIRING,
-    watchConversation: WIRING,
-    unwatchConversation: WIRING,
-    provideExtractionCandidates: WIRING,
-    provideCollectionExtraction: WIRING,
     onDatasetRemoved: WIRING,
     readDatasets: WIRING,
     initSystemDatasets: WIRING,
-    prepareDataset: WIRING,
     loadDatasets: WIRING,
     subscribeToChanges: WIRING,
     getDatasetOrder: WIRING,
@@ -544,6 +548,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // Where a space's things are and which record plays which part — read by any template that
     // shows the space at all, so `content` for the reason the space's vocabulary is.
     root: state('content'),
+    rootLoaded: state('content'),
+    firstScreenOpen: state('content'),
     landmarks: state('content'),
     landmarksLoaded: state('content'),
     taskWorkflowEnabled: state('content'),
@@ -571,7 +577,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     mutedAgents: state('content'),
     setAgentMuted: action('content'),
     exportCallTranscript: action('content'),
-    exportExtractionLog: action('content'),
+    exportInterpretationLog: action('content'),
     // A board is a collection like a call, and arranging one is content work rather than
     // administration: any member may make one and drag cards on it.
     createBoard: action('content'),
@@ -696,7 +702,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       Reading it is `space-settings`, writing it is still admin-gated below.
 
       Not `space-admin` like `enabledModules` beside it, and the difference is the audience: a card
-      showing "extracting automatically" is for every member, not only whoever may change it. The
+      showing "interpreting automatically" is for every member, not only whoever may change it. The
       results are written into everyone's copy of the space, so whether it is on is not an
       administrator's secret — it is a fact about the space, like its name.
 
@@ -712,10 +718,10 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       written on that collection by whoever is in it: stopping a standing pass mid-meeting is about
       that meeting, and gating it on administering the space makes the honest response "leave the
       call". The space's own collection is the exception, and the store refuses that one to anybody
-      who does not administer the space — `canSetExtractionFor` says so up front.
+      who does not administer the space — `canSetInterpretationFor` says so up front.
     */
-    autoExtractFor: ambient('content'),
-    canSetExtractionFor: ambient('content'),
+    autoInterpretFor: ambient('content'),
+    canSetInterpretationFor: ambient('content'),
     /*
       A capability's settings, at each of the three levels a screen can edit.
 
@@ -726,8 +732,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     spaceModuleSettings: state('space-settings'),
     myModuleSettings: state('space-settings'),
     agentModuleSettings: state('space-settings'),
-    extractionTargets: state('space-settings'),
-    setExtractionTarget: action('space-settings'),
+    interpretationTargets: state('space-settings'),
+    setInterpretationTarget: action('space-settings'),
     templateOverrideOptions: state('space-admin'),
     themeOverrideOptions: state('space-admin'),
     /*
@@ -751,7 +757,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     setModuleEnabled: hereOnly('space-settings', 2),
     setAutoInterpret: hereOnly('space-settings', 1),
     setThreadMode: hereOnly('space-settings', 1),
-    setAutoExtractFor: action('content'),
+    setAutoInterpretFor: action('content'),
     /*
       Writing one. `hereOnly` on the community setter for the reason every other community write has
       it: the space id is the last parameter, so a template that could pass one could reconfigure a
@@ -814,13 +820,16 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       'content' rather than 'space-settings', unlike everything else on this store.
 
       Capability groups name what a template is being trusted with, and this is read to *render*: a
-      feed showing what an extraction pass found on a call needs the list of models it could have
+      feed showing what an interpretation pass found on a call needs the list of models it could have
       found, the same way it needs `recordStore.displays` to draw one. Grouping it with the model
       wizard would make an ordinary card list ask for the capability that edits a space's vocabulary.
     */
-    extractionCandidates: state('content'),
-    provideExtractionEnroller: WIRING,
-    extractionNeedsIdentity: state('space-settings'),
+    interpretationCandidates: state('content'),
+    interpretationCandidatesLoaded: state('content'),
+    // Answers for a dataset that is not on screen — host plumbing, not a template's to aim.
+    interpretationCandidatesFor: WIRING,
+    provideInterpretationEnroller: WIRING,
+    interpretationNeedsIdentity: state('space-settings'),
     relationshipTargets: state('space-settings'),
     identityOptions: state('space-settings'),
     nameOptions: state('space-settings'),
@@ -832,7 +841,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     setShapeField: ambient('space-settings'),
     setIdentityMember: ambient('space-settings'),
     setNameMember: ambient('space-settings'),
-    setExtractable: ambient('space-settings'),
+    setInterpretable: ambient('space-settings'),
     addProperty: ambient('space-settings'),
     addRelationship: ambient('space-settings'),
     removeMember: ambient('space-settings'),
@@ -872,6 +881,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // in the tier every template can reach, beside `spaceStore.createPost`.
     creatableEntities: state('content'),
     kinds: state('content'),
+    plumbingClasses: state('content'),
     displays: state('content'),
     // SpaceStore fills this on the way past, with the lists a community owns — see `vocabulary` on
     // a property declaration. Wiring between two stores, never something a template names.
@@ -1545,6 +1555,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     open: state('content'),
     draft: state('view-state'),
     recordWorkflows: state('content'),
+    active: state('content'),
     refreshWorkflows: ambient('content'),
     openWorkflow: ambient('view-state'),
     closeWorkflow: ambient('view-state'),

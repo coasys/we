@@ -80,7 +80,7 @@ export class Space extends WeNode {
   enabledViews: string = '';
 
   /**
-   * Which candidate models a new collection here starts out extracting — a call, a channel, the
+   * Which candidate models a new collection here starts out interpreting — a call, a channel, the
    * space's own collection — as a JSON array of entity names.
    *
    * The middle of three layers. `EntitySchema.extractable` says what is a candidate at all —

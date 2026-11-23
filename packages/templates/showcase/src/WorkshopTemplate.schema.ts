@@ -36,7 +36,7 @@
  *
  * `meta.panels`, and three of the four kinds of entry it can carry:
  *
- * - **`node`** for the extraction readout and the calls list — this template's own schema.
+ * - **`node`** for the interpretation readout and the calls list — this template's own schema.
  * - **`module`** for the call stage, which no schema could express, and for the transcript, which
  *   one could and should not. The transcript was a `node` here for one real reason: the module's
  *   panel read the call being *recorded into*, and everything here is about the call *on screen*.
@@ -69,7 +69,6 @@ import {
   emptyState,
   field,
   FLOWS_LOCALS,
-  focusDim,
   formModal,
   inspectorPanel,
   kindGlyph,
@@ -83,6 +82,7 @@ import {
   peopleFilter,
   peopleRow,
   recordFormModal,
+  scopeLens,
   signalDisplay,
   suggestedChanges,
   SUGGESTION_STYLES,
@@ -97,6 +97,7 @@ import {
   TREE_ON,
   TREE_QUERIES,
   TREE_REFRAME,
+  TREE_RELATIONS,
   TREE_VOICE_SUMMARY,
   TREE_WEIGH,
   TREE_WEIGHTS,
@@ -187,7 +188,7 @@ const SPACE_CANVAS = { $: SPACE_CANVAS_EXPR };
  * must not take what that call already found off them, and neither should a kind only one call
  * ever looked for.
  */
-const EXTRACTABLE = { $: 'shapeStore.extractionCandidates' };
+const INTERPRETABLE = { $: 'shapeStore.interpretationCandidates' };
 
 /**
  * The scope lens: the space's views picking out what one conversation produced.
@@ -216,6 +217,11 @@ const FROM_MODE = `routeStore.params.${FROM_PARAM}`;
 const FROM_DIM = `(${SCOPE_RECORD}) && ${FROM_MODE} == 'dim'`;
 const FROM_HIDE = `(${SCOPE_RECORD}) && ${FROM_MODE} == 'hide'`;
 const FROM_ON = `(${FROM_DIM}) || (${FROM_HIDE})`;
+/** The lens over the canvas: everything the conversation in scope did not produce, dimmed or hidden. */
+const FROM_LENS = scopeLens({
+  mode: FROM_MODE,
+  scopes: [{ on: SCOPE_RECORD, rest: [`{ 'data.origin': { not: (${SCOPE_RECORD}) } }`] }],
+});
 /** The scope's parameter, carried between pages beside `FROM_QUERY`. */
 const SCOPE_QUERY = `\${${SCOPE} ? '&${SCOPE_PARAM}=' + ${SCOPE} : ''}`;
 /** The lens parameter, carried between pages the way `LENS_QUERY` carries the colour lens. */
@@ -291,7 +297,7 @@ const openLiveCall: SchemaProp = pageWithCall("''");
  *
  * They were `canvas`, `tasks` and `events` — one named for its form and two for a content type,
  * which reads as three different subjects when it is three readings of one. What a call produces is
- * not a fixed pair either: `EXTRACTABLE` asks the space what it could extract, so a community that
+ * not a fixed pair either: `INTERPRETABLE` asks the space what it could extract, so a community that
  * defines a `Sighting` gets Sightings on the canvas, and two tabs named after two members of an open
  * set stop describing it the moment somebody adds a third. A form-name stays true — a calendar is
  * still a calendar, and a record with no date is self-evidently not on it.
@@ -1674,7 +1680,7 @@ const callsPanel: SchemaNode = {
  * utterance, and a canvas of six hundred transcript fragments is not a canvas.
  *
  * `manual` layout parks anything without a placement in a grid, which is what makes a freshly
- * extracted record appear somewhere sensible rather than stacked at the origin. Dragging pins it and
+ * interpreted record appear somewhere sensible rather than stacked at the origin. Dragging pins it and
  * `onNodeDragEnd` writes that back — without which the canvas is a layout that forgets, silently,
  * until the next reload.
  */
@@ -1690,13 +1696,16 @@ const canvas: SchemaNode = {
           drawn and routed per canvas, the counts on each footer. See `canvasSeedOptions` in the kit.
         */
         ...canvasSeedOptions({ canvas: SPACE_CANVAS, members: { id: { $: 'spaceStore.root' }, via: 'children' } }),
-        // The lens, hiding: only what the conversation in scope produced. See `SCOPE_PARAM`.
-        onlyFrom: { $: `(${FROM_HIDE}) ? (${SCOPE_RECORD}) : ''` },
+        // The lens, hiding: only what the conversation in scope produced — the cards the dimming
+        // rule below names, put away instead. See `SCOPE_PARAM`.
+        hideWhere: FROM_LENS.hideWhere,
         // Put away while the reader hides suggestions — the switch in the key, shared with the board
         // and the calendar through the address. Changed records are never hidden.
         hidden: { $: `(${SUGGESTIONS_HIDDEN}) ? ${UNCONFIRMED} : []` },
         // Kinds the reader put away from the key's eye — every card of each, and the lines to them.
         hiddenTypes: { $: HIDDEN_KINDS },
+        // The models' own declared relations, followed as tree edges in tree mode. See `TREE_RELATIONS`.
+        relations: TREE_RELATIONS,
         /*
           What each card weighs, whenever the tree is shown or the order is a reaction — see `TREE_WEIGH`
           in the kit's `canvasTree` for why both.
@@ -1789,7 +1798,7 @@ const canvas: SchemaNode = {
         moment, and with the fade switched off at the press they flashed back to full strength in
         between. Dimmer than a suggestion (0.5), so the two read as different things.
       */
-      focusDim(FROM_ON, 'data.origin', SCOPE_RECORD),
+      ...FROM_LENS.dimmed,
     ],
     /*
       No ARMED `connect-nodes`. Connecting is a handle on the card, not a mode.
@@ -1868,7 +1877,7 @@ const canvas: SchemaNode = {
       whose conversation is over, where "as the conversation produces them" is only half the answer.
     */
     empty: {
-      $: `(${SPACE_CANVAS_EXPR}) ? 'Nothing on this canvas yet. Double-click anywhere to add a card, or start a call — what a conversation commits to appears here on its own.' : 'This space has no canvas of its own. Spaces made with one show everything extracted here.'`,
+      $: `(${SPACE_CANVAS_EXPR}) ? 'Nothing on this canvas yet. Double-click anywhere to add a card, or start a call — what a conversation commits to appears here on its own.' : 'This space has no canvas of its own. Spaces made with one show everything interpreted here.'`,
     },
     /*
       And drawn as an invitation, which is what both of those sentences are — the same gradient the
@@ -2374,7 +2383,7 @@ const kanbanRoute: RouteSchema = {
                       /*
                         Which cards a model proposed from a conversation — the provenance question this
                         template is built around. A mark on the card and a line in its people hovercard,
-                        rather than the author's name in heading type: on an extracted task the author is
+                        rather than the author's name in heading type: on an interpreted task the author is
                         whichever member's node ran the pass, not who proposed the work. Each card says
                         where it came from itself (`extractedFrom`), whichever call that was.
                       */
@@ -2865,7 +2874,7 @@ const eventList: SchemaNode = {
                                     condition: { $: UNCONFIRMED_EVENT('event') },
                                     then: {
                                       type: 'we-tooltip',
-                                      props: { content: 'Extraction proposed this — pending acceptance' },
+                                      props: { content: 'Interpretation proposed this — pending acceptance' },
                                       children: [
                                         {
                                           type: 'we-badge',
@@ -3504,7 +3513,7 @@ export const workshopTemplate: TemplateSchema = {
 
         `dock` still names which of the module's two panels this is. It is no longer load-bearing —
         without a `node` there is nothing to supply — but it is what says the entry means the
-        transcript rather than the extraction readout, and the entry below is its pair.
+        transcript rather than the interpretation readout, and the entry below is its pair.
       */
       {
         id: 'transcript',
@@ -3514,7 +3523,7 @@ export const workshopTemplate: TemplateSchema = {
         /*
           One sidebar cut in two, rather than two cards over the canvas.
 
-          `displace` with a shared `band`: the transcript and the extraction readout are one lane
+          `displace` with a shared `band`: the transcript and the interpretation readout are one lane
           down the left, meeting flush and costing the canvas their width once, with the boundary
           between them draggable. Floating, they covered the canvas's own edge and each kept its own
           width; the arrangement wanted here is a sidebar, and this is how a template says so.
@@ -3531,7 +3540,7 @@ export const workshopTemplate: TemplateSchema = {
           a lane divides base-plus-slack, so equal bases with equal shares come out equal.
 
           It was two shares against one, for a transcript that took about two thirds. That starved
-          the readout, which is where a pass's findings, its failures and the Extract button all
+          the readout, which is where a pass's findings, its failures and the Interpret button all
           live — the half of the column somebody acts on, where the transcript is the half they
           glance at.
 
@@ -3543,9 +3552,9 @@ export const workshopTemplate: TemplateSchema = {
         grow: 1,
       },
       {
-        id: 'extraction',
+        id: 'interpretation',
         /*
-          The module's extraction panel, placed — the twin of `transcript` above, and gone the same
+          The module's interpretation panel, placed — the twin of `transcript` above, and gone the same
           way for the same reasons.
 
           There was a body here too, and its own list of what a pass had found was the half of it
@@ -3554,14 +3563,14 @@ export const workshopTemplate: TemplateSchema = {
           lines or the watch's failure — so a failed pass was silent here and a settled one showed a
           green tick whether it had succeeded, found nothing or failed.
 
-          It was also wrong in a way nothing surfaced: the chips and the Extract button asked about
+          It was also wrong in a way nothing surfaced: the chips and the Interpret button asked about
           the *live* call while the results below them were the addressed one's, so a past call's
           list sat under another call's targets and the button that would have worked on it was
           hidden by a guard about the wrong record. The store answers per call now — see
-          `extractionFor` — which is what let the panel move.
+          `interpretationFor` — which is what let the panel move.
         */
         module: 'transcribe',
-        dock: 'extraction',
+        dock: 'interpretation',
         snap: 'left',
         // The same lane as the transcript — see there.
         displace: true,
@@ -3651,7 +3660,7 @@ export const workshopTemplate: TemplateSchema = {
           call: SPACE_CANVAS,
           callExpr: SPACE_CANVAS_EXPR,
           members: { $: 'spaceStore.root' },
-          extracted: EXTRACTABLE.$,
+          interpretable: INTERPRETABLE.$,
         }),
         title: 'Key',
         snap: 'top-right',

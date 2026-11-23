@@ -11,10 +11,12 @@
  * Dublin Core), `we://` only for what has none. The executor ignores them; they are ordinary links, so
  * they sync and are governed like the rest of the shape.
  *
- * Reading is the reverse. Structure comes from the SHACL. A closed value set, an abstract flag and a
- * single known parent are read from that structure when the shape carries no annotation for them.
- * Everything else comes from the annotations. Every function here is pure over links, so the round
- * trip is tested without an executor (`tests/shapeCodec.test.ts`).
+ * Reading is the reverse: structure from the shape the executor returns for the class (`shapes()`),
+ * everything else from the annotation links on its nodes, into the manifest that was saved. A closed
+ * value set, an abstract flag and a single known parent are read from that structure when the shape
+ * carries no annotation for them. The executor keeps the annotation links when it registers the class
+ * again, so nothing here has to put them back. Every function here is pure over a shape and links, so
+ * the round trip is tested without an executor (`tests/shapeCodec.test.ts`).
  *
  * ## What reading cannot get back, and how it says so
  *
@@ -119,6 +121,21 @@ function entityOf(manifest: EntityManifest): [string, EntitySchema] {
   const entries = Object.entries(manifest.entities);
   if (entries.length !== 1) throw new Error('shapes: a space shape declares exactly one entity');
   return entries[0];
+}
+
+/**
+ * A stored model as this file reads one: the shape `shapes()` returns for its class, and every link
+ * sourced at that shape's nodes (`shapeNodes`) — the annotations, and whatever else is there.
+ */
+export interface HeldShape {
+  shape: SHACLShape;
+  links: readonly LinkLike[];
+}
+
+/** The nodes a shape's links are on: its node shape first, then each field's property shape. */
+export function shapeNodes(shape: SHACLShape): string[] {
+  const { shapeUri, fields } = nodesOf(shape.toLinks());
+  return [shapeUri, ...fields.values()];
 }
 
 /** The shape's node and each field's property shape, by field name, as the SHACL links name them. */
@@ -319,12 +336,11 @@ export interface ReadShape {
 }
 
 /**
- * A stored shape read back: its structure from the SHACL, the rest from its annotations. `links` are
- * every link sourced at the shape's node and at its property shapes. `null` when they hold no shape
- * WE wrote — one without a `shapeId` is somebody else's.
+ * A stored shape read back: its structure from the shape, the rest from the annotations among
+ * `links`. `null` when they hold no shape WE wrote — one without a `shapeId` is somebody else's.
  */
-export function readShape(links: readonly LinkLike[]): ReadShape | null {
-  const { shapeUri, fields } = nodesOf(links);
+export function readShape({ shape, links }: HeldShape): ReadShape | null {
+  const { shapeUri, fields } = nodesOf(shape.toLinks());
   const at = (source: string | undefined, predicate: string) =>
     source ? links.find((l) => l.source === source && l.predicate === predicate)?.target : undefined;
   const value = (source: string | undefined, predicate: string) => {
@@ -335,8 +351,7 @@ export function readShape(links: readonly LinkLike[]): ReadShape | null {
   const shapeId = value(shapeUri, ANNOTATION.shapeId);
   if (typeof shapeId !== 'string' || !shapeId) return null;
 
-  const shape = SHACLShape.fromLinks(links as never, shapeUri);
-  const json = shape.toJSON() as {
+  const json = shape.toJSON() as unknown as {
     target_class?: string;
     interpretation_hint?: string;
     properties: RawProperty[];
@@ -500,10 +515,13 @@ export function linkKey(link: LinkLike): string {
 /**
  * Whether a stored shape says nothing a save from WE would lose.
  *
- * The SDK's JSON is the structure (`fromLinks` then `toJSON`). A native `sh:in` or `sh:node` that
- * the parser drops — empty, malformed, duplicated — is still a constraint, so those links are
- * checked on the raw graph as well. A later caller that holds `{ shape, links }` can pass the
- * shape's JSON in place of the parse; the presence check stays on the links.
+ * The structure is each side's shape as the SDK reads one back from its links (`fromLinks` then
+ * `toJSON`), so a field the executor fills in by default on one side and the SDK leaves out on the
+ * other is not a difference. Fields are matched by name and path, not by position: an executor lists
+ * them in its own order. A native `sh:in` or `sh:node` that the parser drops — empty, malformed,
+ * duplicated — is still a constraint, so where the stored links carry one it is checked on those
+ * links as well. The field nodes come from the shape, since the stored links may be only the
+ * annotations beside it.
  *
  * Equality, not a subset. A stored value set that is only part of the rebuilt one is a narrowing a
  * save would widen, and `in: []` accepts nothing — it is not an absent constraint. The one
@@ -511,13 +529,20 @@ export function linkKey(link: LinkLike): string {
  * `sh://in` or `sh://node` was never written. Adding that link loses nothing. A missing
  * `ad4m://abstract`, an `auto_accept` link, or any other predicate the rebuild does not write is
  * not that allowance.
+ *
+ * `stored.links` are what the dataset holds on the shape's nodes: the annotations, and the shape's
+ * own links where the backend keeps them in the graph. `rebuilt.links` are the annotations a save
+ * would write beside `rebuilt.shape`.
  */
-export function sameShape(stored: readonly LinkLike[], rebuilt: readonly LinkLike[]): boolean {
-  if (stored.some((link) => !writtenPredicate(rebuilt, link))) return false;
-  const storedNotes = new Set(stored.filter(isAnnotation).map(linkKey));
-  const rebuiltNotes = new Set(rebuilt.filter(isAnnotation).map(linkKey));
+export function sameShape(stored: HeldShape, rebuilt: HeldShape): boolean {
+  const written = [...(rebuilt.shape.toLinks() as LinkLike[]), ...rebuilt.links];
+  // A predicate the SDK does not read is invisible to the structure, so a constraint it has no field
+  // for would pass it. Any node and predicate a rebuild does not write is one saving drops.
+  if (stored.links.some((link) => !writtenPredicate(written, link))) return false;
+  const storedNotes = new Set(stored.links.filter(isAnnotation).map(linkKey));
+  const rebuiltNotes = new Set(written.filter(isAnnotation).map(linkKey));
   if (![...storedNotes].every((key) => rebuiltNotes.has(key))) return false;
-  return structuresMatch(stored, rebuilt);
+  return structuresMatch(stored, { shape: rebuilt.shape, links: written });
 }
 
 function writtenPredicate(links: readonly LinkLike[], link: LinkLike): boolean {
@@ -532,17 +557,17 @@ interface ShapeJson {
   [key: string]: unknown;
 }
 
-function asShape(links: readonly LinkLike[]): ShapeJson {
-  const { shapeUri } = nodesOf(links);
-  return SHACLShape.fromLinks(links as never, shapeUri).toJSON() as ShapeJson;
+/** A shape as the SDK reads one back from its links: what both sides of a comparison are put through. */
+function asShape(shape: SHACLShape): ShapeJson {
+  return SHACLShape.fromLinks(shape.toLinks(), shape.nodeShapeUri).toJSON();
 }
 
-function structuresMatch(storedLinks: readonly LinkLike[], rebuiltLinks: readonly LinkLike[]): boolean {
-  const stored = asShape(storedLinks);
-  const rebuilt = asShape(rebuiltLinks);
+function structuresMatch(storedHeld: HeldShape, rebuiltHeld: HeldShape): boolean {
+  const stored = asShape(storedHeld.shape);
+  const rebuilt = asShape(rebuiltHeld.shape);
   if ((stored.abstract === true) !== (rebuilt.abstract === true)) return false;
-  if (!parentsMatch(storedLinks, rebuiltLinks, stored.parent_shapes, rebuilt.parent_shapes)) return false;
-  if (!propertiesMatch(storedLinks, rebuiltLinks, stored.properties ?? [], rebuilt.properties ?? [])) return false;
+  if (!parentsMatch(storedHeld, rebuiltHeld, stored.parent_shapes, rebuilt.parent_shapes)) return false;
+  if (!propertiesMatch(storedHeld, rebuiltHeld, stored.properties ?? [], rebuilt.properties ?? [])) return false;
   const { properties: _sp, parent_shapes: _spa, abstract: _sa, ...storedRest } = stored;
   const { properties: _rp, parent_shapes: _rpa, abstract: _ra, ...rebuiltRest } = rebuilt;
   return deepEqual(storedRest, rebuiltRest);
@@ -550,23 +575,23 @@ function structuresMatch(storedLinks: readonly LinkLike[], rebuiltLinks: readonl
 
 /** Set equality of parent URIs. A missing `sh://node` is the legacy allowance, and only beside the same parent annotation. */
 function parentsMatch(
-  storedLinks: readonly LinkLike[],
-  rebuiltLinks: readonly LinkLike[],
+  stored: HeldShape,
+  rebuilt: HeldShape,
   storedParents: string[] | undefined,
   rebuiltParents: string[] | undefined,
 ): boolean {
   const storedSet = [...new Set(storedParents ?? [])].sort();
   const rebuiltSet = [...new Set(rebuiltParents ?? [])].sort();
   if (storedSet.length === rebuiltSet.length && storedSet.every((uri, i) => uri === rebuiltSet[i])) return true;
-  const { shapeUri } = nodesOf(storedLinks);
-  const raw = storedLinks.filter((link) => link.source === shapeUri && link.predicate === 'sh://node');
+  const shapeUri = stored.shape.nodeShapeUri;
+  const raw = stored.links.filter((link) => link.source === shapeUri && link.predicate === 'sh://node');
   if (raw.length !== 0 || storedSet.length !== 0 || rebuiltSet.length === 0) return false;
-  return samePresentAnnotation(storedLinks, rebuiltLinks, ANNOTATION.extends, shapeUri);
+  return samePresentAnnotation(stored.links, rebuilt.links, ANNOTATION.extends, shapeUri);
 }
 
 function propertiesMatch(
-  storedLinks: readonly LinkLike[],
-  rebuiltLinks: readonly LinkLike[],
+  storedHeld: HeldShape,
+  rebuiltHeld: HeldShape,
   storedProps: RawProperty[],
   rebuiltProps: RawProperty[],
 ): boolean {
@@ -583,12 +608,12 @@ function propertiesMatch(
   const stored = index(storedProps);
   const rebuilt = index(rebuiltProps);
   if (!stored || !rebuilt || stored.size !== rebuilt.size) return false;
-  const nodes = nodesOf(storedLinks).fields;
+  const nodes = nodesOf(storedHeld.shape.toLinks()).fields;
   for (const [key, storedProp] of stored) {
     const rebuiltProp = rebuilt.get(key);
     if (!rebuiltProp) return false;
-    if (!inMatch(storedLinks, rebuiltLinks, nodes.get(storedProp.name ?? ''), storedProp.in, rebuiltProp.in))
-      return false;
+    const node = nodes.get(storedProp.name ?? '');
+    if (!inMatch(storedHeld.links, rebuiltHeld.links, node, storedProp.in, rebuiltProp.in)) return false;
     const { in: _si, ...storedRest } = storedProp;
     const { in: _ri, ...rebuiltRest } = rebuiltProp;
     if (!deepEqual(storedRest, rebuiltRest)) return false;

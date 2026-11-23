@@ -48,7 +48,7 @@ export const Space: CoreEntityDef = {
       enabledViews: { type: 'string', predicate: 'we://enabled_views', default: '' },
       /**
        * Whether calls in this space are interpreted as they happen, rather than only when somebody
-       * presses Extract.
+       * presses Interpret.
        *
        * A property of the *space* rather than of the agent, because the consequences are the
        * community's: a standing watch spends an LLM call on whichever member's node wins the election,
@@ -56,10 +56,10 @@ export const Space: CoreEntityDef = {
        * rest up to both.
        *
        * Defaults off, and that default is the point — joining a space should never be the same act as
-       * volunteering to run its extraction.
+       * volunteering to run its interpretation.
        */
       /**
-       * Which candidate models a new collection here starts out extracting — a call, a channel, the
+       * Which candidate models a new collection here starts out interpreting — a call, a channel, the
        * space's own collection — as a JSON array of entity names.
        *
        * The middle of three layers. `EntitySchema.extractable` says what is a candidate at all —

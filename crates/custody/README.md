@@ -101,7 +101,7 @@ AD4M_IDENTITY_STORE_URL=<store url> AD4M_IDENTITY_STORE_KEYS=<store key> pnpm el
 **What store the executor uses, and whether it trusts it, is the executor's answer:**
 `identity.status` reports `store: { url, trusted } | null`. The custody service asks it before every
 step and for its public state (`status_and_store`, `trusted_store` in `src/service.rs`), in the Tauri
-app and the sidecar alike; it restates no rule of the executor's. Add a device names `store.url` in
+app and the sidecar alike; it restates no rule of the executor's. Link a device names `store.url` in
 its offer link, which the claiming device publishes through.
 
 **With no store, or one the executor trusts no key for, nothing can make or change an identity, and
@@ -124,7 +124,7 @@ computer, so an account only finishes — or reports — an incept that lists it
 key. An incept that can never be published is not retried forever: one whose executor already
 speaks for another identity is forgotten, and one the store refused for good (its key already in a
 key log, a different log under its identifier, an event it calls invalid) is shown with its cause
-when the person next makes an identity, with "Discard it" to forget it. Discarding forgets the
+when the person next makes an identity, with "Discard" to forget it. Discarding forgets the
 incept only; the master key stays where it rests.
 
 ## Testing
@@ -145,11 +145,16 @@ cargo test --config "$P.ad4m-identity-client.path=\"$A/ad4m-identity-client\"" \
 ```
 
 The end-to-end test runs the three flows against a real identity-store and two real executors; see
-the header of `tests/live.rs` for what it needs:
+the header of `tests/live.rs` for what it needs. The executors are the one every WE live test runs
+(`scripts/ad4m-executor.mjs --path`: `AD4M_EXECUTOR`, else the pinned download). `AD4M_REPO` names an
+ad4m checkout only for the identity-store binary and its `tests/js` language directories:
 
 ```sh
+pnpm e2e custody-live          # from the repository root
 CUSTODY_LIVE=1 AD4M_REPO=<ad4m> cargo test --features cheap-kdf --test live -- --nocapture
 ```
+
+It is a live contract test; `docs/testing/e2e.md` places it among the others.
 
 In the Tauri app build the generated `Cargo.toml` patches this crate's ad4m crates to the seed's
 checkout (`apps/we-tauri/src-tauri/Cargo.toml.template`), so there is one ad4m in the binary.

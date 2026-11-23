@@ -3,8 +3,8 @@
 > The launcher side of this contract is implemented in
 > `packages/app-shell/src/frameworks/solid/services/appBridge.ts` — read its
 > header for the full choreography (config handoff, the web host's postMessage
-> GraphQL proxy, and the buffering that covers an iframe asking before boot
-> finishes).
+> proxy for the executor's WebSocket RPC and HTTP, and the buffering that covers
+> an iframe asking before boot finishes).
 
 > **Example:** This guide uses Flux as a concrete example, but the pattern works for any external app you want to embed in the WE launcher.
 
