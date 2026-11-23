@@ -145,7 +145,7 @@ export function buildEntityClasses(shapes: ForeignShape[]): Record<string, Entit
     // `fromSHACL` records no `polymorphic` on a relation. A reference with no `sh:class` has no
     // class to hydrate into, and the executor refuses to include it unless the read is
     // polymorphic — the same rule `resolvesPolymorphically` applies to a declared manifest.
-    const relations = getRelationsMetadata(cls as never) as Record<string, { polymorphic?: boolean }>;
+    const relations = getRelationsMetadata(cls) as Record<string, { polymorphic?: boolean }>;
     for (const prop of shape.properties) {
       const relation = prop.name ? relations[prop.name] : undefined;
       if (relation && (prop.polymorphic ?? (prop.nodeKind === 'IRI' && !prop.class))) relation.polymorphic = true;
