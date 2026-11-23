@@ -221,11 +221,12 @@ export function registerTransactionRunner(runner: EntityTransactionRunner): void
  * one a runner of compound writes is built on: it holds the group's pending writes itself, rather
  * than asking the backend to show them back.
  *
- * Naming one as a write's *target or parent* works everywhere: a create's relations and `parent`, and
- * the relation writes on the instance a create returned. A write *addressed to* one by id — the
- * static `setRelation`/`addRelation`/`removeRelation` on a record created in the same group — is
- * where backends differ, since a backend whose relation writes start by reading the record finds
- * nothing to write. Make that write at creation, or through the returned instance.
+ * Naming one in a write works everywhere, by id as well as by instance: as a create's relations or
+ * `parent`, through the relation writes on the instance a create returned, and as the record the
+ * static `setRelation`/`addRelation`/`removeRelation` are addressed to. A relation write needs only the
+ * record's id and how its entity stores the relation, not a read of the record, so a backend must
+ * not answer one onto a record the group created by finding nothing and writing nothing. Within the
+ * group such a record holds only what the group wrote to it, so a `setRelation` there replaces that.
  *
  * A write inside `fn` that does not carry the token is not part of the group: it lands when it is
  * made, and is not undone if `fn` later throws.

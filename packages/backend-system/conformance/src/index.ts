@@ -37,12 +37,15 @@ import { CORE_MANIFEST } from '@we/entities/manifest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { describeEmptyValues, EMPTY_VALUE_CASES, type EmptyValueCase } from './emptyValues';
+import { describeSameBatch, SAME_BATCH_CASES, type SameBatchCase } from './sameBatch';
 import { describeTemplateQueries, TEMPLATE_QUERY_CASES, type TemplateQueryCase } from './templateQueries';
 import { describeWriteCases, WRITE_CASES, type WriteCase } from './writes';
 
 export {
   EMPTY_VALUE_CASES,
   type EmptyValueCase,
+  SAME_BATCH_CASES,
+  type SameBatchCase,
   TEMPLATE_QUERY_CASES,
   type TemplateQueryCase,
   WRITE_CASES,
@@ -174,9 +177,10 @@ export const CONFORMANCE_CASES = [
 
 /**
  * Every case a harness can name in `knownGaps` — the per-case ones above, empty values, grouped and
- * named writes, and the template queries.
+ * named writes, relation writes in the batch that created the record, and the template queries.
  */
-export type ConformanceCase = (typeof CONFORMANCE_CASES)[number] | EmptyValueCase | WriteCase | TemplateQueryCase;
+export type ConformanceCase =
+  (typeof CONFORMANCE_CASES)[number] | EmptyValueCase | WriteCase | SameBatchCase | TemplateQueryCase;
 
 interface Row {
   id: string;
@@ -1148,5 +1152,6 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
 
   describeEmptyValues(name, harness, timeout);
   describeWriteCases(name, harness, timeout);
+  describeSameBatch(name, harness, timeout);
   describeTemplateQueries(name, harness, timeout);
 }

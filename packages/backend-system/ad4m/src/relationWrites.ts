@@ -31,10 +31,22 @@
  *
  * ## The trap this file fell into once
  *
- * Everything here works off the **loaded record**, never off the class, and that is not an
- * incidental choice — see {@link accessorFor}. A call site holds the entity stand-in from
- * `@we/entities`, which forwards operations and cannot forward identity, so any class-level metadata
- * read through it answers for the wrong class. Nothing in the type system says so.
+ * Everything here works off a **real instance of the record's class**, never off the class, and
+ * that is not an incidental choice — see {@link accessorFor}. A call site holds the entity stand-in
+ * from `@we/entities`, which forwards operations and cannot forward identity, so any class-level
+ * metadata read through it answers for the wrong class. Nothing in the type system says so.
+ *
+ * ## A record created in the same batch
+ *
+ * The executor keeps a batch's writes out of every read until it commits, so a record created
+ * earlier in the batch cannot be loaded — and a relation write that began by loading its record did
+ * nothing at all for one. That is how every board came to be made with no columns. But a relation
+ * write never needed what a read returns: the generated accessor writes links out of the record's
+ * id under the relation's predicate, both of which the instance carries from its class. So the
+ * instances a batch creates are remembered by id while the batch is open ({@link trackBatchCreates}),
+ * and a write onto one of them goes through that instance with no read. It is the instance the
+ * create itself wrote, so its snapshot is what the batch staged: a `setRelation` there replaces only
+ * what the batch already wrote, since a record that has not committed holds nothing else.
  */
 import type { Ad4mModel } from '@coasys/ad4m';
 
@@ -45,6 +57,63 @@ type RelationAccessor = (arg: unknown, batchId?: string) => Promise<unknown>;
 
 interface ModelStatic {
   findOne(dataset: unknown, query: { where: { id: string } }): Promise<Record<string, unknown> | null>;
+}
+
+/**
+ * The records each open batch has created, by batch id and then record id.
+ *
+ * Filled by `save`, which every create ends in, and emptied when the batch's transaction settles,
+ * whether it committed or was discarded: after a commit the record can be read like any other.
+ */
+const createdInBatch = new Map<string, Map<string, Record<string, unknown>>>();
+
+interface SavedModel {
+  id?: string;
+  _snapshot?: unknown;
+}
+
+type Save = (this: SavedModel, batchId?: string, ...rest: unknown[]) => Promise<unknown>;
+type Transaction = (perspective: unknown, fn: (tx: { batchId: string }) => Promise<unknown>) => Promise<unknown>;
+
+/**
+ * Remember the instances each batch creates, for as long as the batch is open.
+ *
+ * A save with no snapshot is a create (an instance that was read has one), and one with a batch id
+ * is staged rather than committed. `Ad4mModel.transaction` is where every batch WE opens is opened
+ * and settled — the contract's runner and the SDK's own `create` both go through it — so that is
+ * where a batch's entry is dropped.
+ */
+function trackBatchCreates(model: typeof Ad4mModel): void {
+  const prototype = model.prototype as unknown as Record<string, unknown>;
+  const save = prototype.save as Save | undefined;
+  if (typeof save === 'function') {
+    prototype.save = async function remembered(this: SavedModel, batchId?: string, ...rest: unknown[]) {
+      const creating = !this._snapshot;
+      const result = await save.call(this, batchId, ...rest);
+      if (creating && batchId && this.id) {
+        let created = createdInBatch.get(batchId);
+        if (!created) createdInBatch.set(batchId, (created = new Map<string, Record<string, unknown>>()));
+        created.set(this.id, this as unknown as Record<string, unknown>);
+      }
+      return result;
+    };
+  }
+
+  const statics = model as unknown as Record<string, unknown>;
+  const transaction = statics.transaction as Transaction | undefined;
+  if (typeof transaction === 'function') {
+    statics.transaction = function settled(this: unknown, perspective: unknown, fn: Parameters<Transaction>[1]) {
+      let batch: string | undefined;
+      return transaction
+        .call(this, perspective, (tx) => {
+          batch = tx.batchId;
+          return fn(tx);
+        })
+        .finally(() => {
+          if (batch) createdInBatch.delete(batch);
+        });
+    };
+  }
 }
 
 const accessorName = (verb: string, relation: string) =>
@@ -69,9 +138,9 @@ function writableRelations(record: object): string[] {
 }
 
 /**
- * Load the record and hand back the accessor for this write, or explain why there is not one.
+ * The record's instance and the accessor for this write, or `null` when there is no such record.
  *
- * ## Why it asks the record and never the class
+ * ## Why it asks an instance and never the class
  *
  * `CollectionBlock` at a call site is the **stand-in** from `@we/entities`, not the AD4M class, and
  * a proxy forwards operations but cannot forward identity — which `entityProxy.ts` says in as many
@@ -81,14 +150,19 @@ function writableRelations(record: object): string[] {
  * `comments, signals, participants, calls, mentions` — `WeNode`'s, every one — and refused every
  * board write as being for a relation that does not exist.
  *
- * A loaded record has no such problem: it is a real instance of the real class, its prototype chain
- * is the real one, and the generated accessors are on it. So the accessor's *presence* is the test,
+ * An instance has no such problem: it is a real instance of the real class, its prototype chain is
+ * the real one, and the generated accessors are on it. So the accessor's *presence* is the test,
  * which also collapses two questions into one — a relation that does not exist and a getter-only
  * relation with no predicate both arrive here as "no such method", and neither can be written.
  *
- * A record that is not there resolves to `null` rather than throwing: a record deleted between being
- * read and being arranged is the ordinary race, and the caller's intent — "this record's relation
- * should read like that" — is satisfied by there being no such record.
+ * ## Which instance
+ *
+ * One this batch created, when the record is one: it cannot be read until the batch commits, and
+ * nothing a read would add is needed to write a relation (see the file's header). Otherwise the
+ * record as it is committed, loaded — which is also how a write onto a record that is not there is
+ * told apart from one onto a record that is. That resolves to `null` rather than throwing: a record
+ * deleted between being read and being arranged is the ordinary race, and the caller's intent —
+ * "this record's relation should read like that" — is satisfied by there being no such record.
  */
 async function accessorFor(
   entity: ModelStatic,
@@ -98,25 +172,9 @@ async function accessorFor(
   verb: 'set' | 'add' | 'remove',
   batch?: string,
 ): Promise<{ record: Record<string, unknown>; call: RelationAccessor } | null> {
-  const record = await entity.findOne(dataset, { where: { id } });
-  if (!record) {
-    /*
-      Said out loud when there is a batch, because then the ordinary race is not the likely reason.
-
-      The executor stages a batch's writes out of every read until it commits, so a record created
-      earlier in the same batch is not there to be found — and this write does nothing. That is how
-      every board came to be made with no columns: its columns were written by id onto a board the
-      same transaction had just created. Nothing failed and nothing was logged. Still not a throw,
-      since a record deleted mid-batch is as ordinary as one deleted outside one.
-    */
-    if (batch) {
-      console.warn(
-        `${verb}Relation("${relation}"): no record "${id}" is visible, so nothing was written. A record ` +
-          'created in this same batch cannot be read until it commits — write the relation at creation instead.',
-      );
-    }
-    return null;
-  }
+  const record =
+    (batch ? createdInBatch.get(batch)?.get(id) : undefined) ?? (await entity.findOne(dataset, { where: { id } }));
+  if (!record) return null;
 
   const call = record[accessorName(verb, relation)] as RelationAccessor | undefined;
   if (typeof call !== 'function') {
@@ -131,13 +189,15 @@ async function accessorFor(
 }
 
 /**
- * Install the relation writes on `Ad4mModel`. Idempotent.
+ * Install the relation writes on `Ad4mModel`, and the record of what each open batch has created
+ * that lets them reach a record no read can see yet. Idempotent.
  *
  * Called once when the adapter builds its ports.
  */
 export function installRelationWrites(model: typeof Ad4mModel): void {
   const statics = model as unknown as Record<string | symbol, unknown>;
   if (statics[PATCHED]) return;
+  trackBatchCreates(model);
 
   statics.setRelation = async function (
     this: ModelStatic,
