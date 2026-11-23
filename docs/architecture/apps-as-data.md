@@ -198,6 +198,11 @@ starter would write into the space for everyone in it, so it is left out until c
 so. A starter applies to new spaces only: changing one never changes a
 space made from an earlier version.
 
+**A space made from an app's starter is set up for that app.** Choosing the app's kit is choosing the
+app: the space gets the bundle's record types and workflows and has its sections switched on, as
+"Set up a space…" would do, and the dialog's line counts them among what the kit includes. An empty
+space gets none of it, and a dataset turned into a space is set up from Settings like any other.
+
 A built-in bundle's record types are not built in, so its starter may only write records of the
 space's own schema; the app shell's starter tests check every built-in starter the way `validate:seed` checks
 a seed's.
