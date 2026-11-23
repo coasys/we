@@ -73,6 +73,9 @@ export interface BundleRecordType {
   manifest: EntityManifest;
 }
 
+/** A workflow the app's records move through, in the shape `WorkflowPort.install` takes. */
+export type BundleWorkflow = WorkflowDefinition;
+
 /**
  * How spaces are shown in the app.
  *
@@ -120,7 +123,7 @@ export interface Bundle {
    * record types they are the space's, installed when a space is set up for the app, after the
    * record types they are about.
    */
-  workflows?: WorkflowDefinition[];
+  workflows?: BundleWorkflow[];
   display?: BundleDisplay;
   /** The app's name, mark and About page. Absent, the app goes by WE's. */
   brand?: BundleBrand;

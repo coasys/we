@@ -171,6 +171,7 @@ export {
   bundlePieceId,
   type BundleProblem,
   type BundleRecordType,
+  type BundleWorkflow,
   type BundleTheme,
   bundleThemes,
   readBundle,
