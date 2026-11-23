@@ -29,6 +29,7 @@
   },
   "dependencies": {
     "@we/backend-shared": "workspace:*",
+    "@we/expressions": "workspace:*",
     "@we/design-utils": "workspace:*",
     "@we/themes": "workspace:*",
     "@we/tokens": "workspace:*",
