@@ -36,7 +36,7 @@ import { ACORN_VIEWS } from '@we/template-acorn';
  * guess it — `createAcornProject` takes a `sourceLanguageHash` override for a host
  * holding a different build.
  */
-export const ACORN_BASE_LANGUAGE = 'QmzSYwdpgFHDkE41q6ouh4Kudn1R6YkhPbJkLqghseuY6buU2nj';
+export const ACORN_BASE_LANGUAGE = 'QmzSYwdmDsbDvTuuzH1Ngf97XirY8YjiPdHwzpEQbpmRy4ys6KV';
 
 /** The template an opened Acorn project renders through — the space's `defaultTemplateId`. */
 export const ACORN_TEMPLATE_ID = 'acorn';
