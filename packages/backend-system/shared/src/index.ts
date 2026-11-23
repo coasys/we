@@ -223,7 +223,7 @@ export type {
   TypedWhere,
   WriteProperties,
 } from './recordContract';
-export { RECORD_TYPE_KEY, recordTypeOf } from './recordContract';
+export { isRecordExists, RECORD_TYPE_KEY, RecordExistsError, recordTypeOf } from './recordContract';
 export type {
   ConversationReply,
   ConversationRequest,

@@ -20,9 +20,9 @@ function recorder() {
   const writes: Array<{ model: string; data: Record<string, unknown> }> = [];
   const links: Array<[string, string]> = [];
   const getEntity = (model: string) => ({
-    async create(_handle: unknown, data: Record<string, unknown>) {
+    async create(_handle: unknown, data: Record<string, unknown>, options?: { id?: string }) {
       writes.push({ model, data });
-      const id = (data.id as string) ?? `minted-${writes.length}`;
+      const id = options?.id ?? `minted-${writes.length}`;
       return {
         id,
         async addChildren(related: unknown) {

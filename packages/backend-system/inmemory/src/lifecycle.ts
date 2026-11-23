@@ -26,10 +26,17 @@ import type {
   SchemaPort,
 } from '@we/backend-shared';
 import { createInMemoryEphemeralPort, InMemoryBus, manifestEntries } from '@we/backend-shared';
-import { createJsonShapeStore, getEntity, getEntityForDataset, registerEntity, registerFileStore } from '@we/entities';
+import {
+  createJsonShapeStore,
+  getEntity,
+  getEntityForDataset,
+  registerEntity,
+  registerFileStore,
+  registerTransactionRunner,
+} from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 
-import { compileEntities, type EntityRuntime } from './entities';
+import { compileEntities, type EntityRuntime, runInMemoryTransaction } from './entities';
 import { inMemoryQueryAdapter } from './queryAdapter';
 import { createInMemoryReferencePort } from './references';
 import { createInMemoryWorkflowPort } from './workflows';
@@ -493,6 +500,10 @@ export function createInMemoryBackendPorts(
 
   const manifest = opts.entities === undefined ? CORE_MANIFEST : opts.entities;
   if (manifest) schemas.declare(manifest, { moduleId: 'core' });
+
+  // Batching, registered beside the entities it batches: a write group is staged and made at its
+  // end, all of it or none. See `runInMemoryTransaction`.
+  registerTransactionRunner(runInMemoryTransaction);
 
   // File-format fields keep their content inline: the "address" a store hands back is the data
   // URI itself, which the resolve pass recognises as already-renderable and leaves alone. Nothing

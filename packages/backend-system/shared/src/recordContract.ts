@@ -32,9 +32,14 @@ export interface RecordInstance {
   createdAt: unknown;
   updatedAt: unknown;
   /**
-   * `batch` is an opaque write-group token from {@link runEntityTransaction}-style runners: writes
+   * `batch` is an opaque write-group token from `runEntityTransaction` in `@we/entities`: writes
    * carrying the same token commit together where the backend supports atomicity, and a backend
    * without it ignores the token. Opaque here because its shape is the backend's own.
+   *
+   * A write in a group is staged, not made: no read sees it until the group commits, the group's
+   * own reads included. A read inside a transaction answers with committed state, so a later
+   * write that needs an earlier one's record names it by the id the earlier write returned (or the
+   * id the caller chose for it) rather than finding it.
    */
   save(batch?: string): Promise<unknown>;
   delete(batch?: string): Promise<unknown>;
@@ -244,11 +249,50 @@ export interface ParentRef {
   entity?: string;
 }
 
-/** What a write may say besides its fields: where it goes, and the batch it belongs to. */
+/** What a write may say besides its fields: where it goes, the batch it belongs to, and its id. */
 export interface CreateOptions {
   parent?: ParentRef;
+  /**
+   * The write group this create belongs to — see {@link RecordInstance.save} for the token, and
+   * `runEntityTransaction` in `@we/entities` for what a group promises.
+   */
   batchId?: string;
+  /**
+   * The id the new record is to have, chosen by the caller rather than minted by the backend.
+   *
+   * For an id the caller derived deterministically — from an invocation and the step that writes,
+   * say — so that running the same write twice names the same record, and a later step can address
+   * a record an earlier one is about to create without reading it back. A URI is safe on every
+   * backend; a backend may refuse a form it cannot store.
+   *
+   * A create onto an id some record already holds is refused with {@link RecordExistsError}, never
+   * an overwrite: two writers deriving the same id is the case the check exists for, and the second
+   * silently replacing the first is the failure it prevents. Where the backend judges that against
+   * is its own to say, and where it is weaker than "every write that has landed, including earlier
+   * ones in this batch" the backend's implementation says so.
+   *
+   * `id` is never a field in the create's properties: a record's id is not one of its values.
+   */
+  id?: string;
   [option: string]: unknown;
+}
+
+/**
+ * A create was refused because a record already holds the id it asked for.
+ *
+ * A type of its own because what follows differs from any other refusal: the caller asked for this
+ * exact record, and somebody — perhaps an earlier run of the same write — has made it already.
+ */
+export class RecordExistsError extends Error {
+  constructor(readonly id: string) {
+    super(`A record with the id "${id}" already exists; a create never overwrites one`);
+    this.name = 'RecordExistsError';
+  }
+}
+
+/** By name as well as by class, so a second copy of this package in a bundle still matches. */
+export function isRecordExists(err: unknown): err is RecordExistsError {
+  return err instanceof RecordExistsError || (err instanceof Error && err.name === 'RecordExistsError');
 }
 
 // ── Query and statics ──────────────────────────────────────────────────────────────────────────

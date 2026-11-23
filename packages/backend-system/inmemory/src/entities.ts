@@ -25,11 +25,13 @@ import type {
 } from '@we/backend-shared';
 import {
   compileQuery,
+  type CreateOptions,
   type EntityManifest,
   type EntitySchema,
   executeQueryIR,
   type InMemoryDataset,
   type InMemoryRelation,
+  RecordExistsError,
   type Row,
 } from '@we/backend-shared';
 import { checkEntityWrite } from '@we/entities';
@@ -76,8 +78,140 @@ function writeField(row: Record<string, unknown>, key: string, value: unknown): 
 /** Writes notify per dataset, so a live query re-runs exactly when its dataset changed. */
 const listeners = new WeakMap<object, Set<() => void>>();
 
+/**
+ * Datasets a transaction is committing into, and whether anything was written to each meanwhile. A
+ * live query hears a commit once, after it, rather than once per write inside it — which would hand
+ * it every state in between, the thing a transaction exists to hide.
+ */
+const holding = new Map<DatasetEntry, boolean>();
+
 function notify(dataset: DatasetEntry): void {
+  if (holding.has(dataset)) {
+    holding.set(dataset, true);
+    return;
+  }
   for (const listener of listeners.get(dataset) ?? []) listener();
+}
+
+// ── Transactions ────────────────────────────────────────────────────────────────────────────────
+
+/** One write a transaction has staged: made at commit, in the order it was asked for. */
+interface StagedWrite {
+  dataset: DatasetEntry;
+  apply(): Promise<void>;
+}
+
+/** The write groups open now, by the token their writes carry. */
+const openTransactions = new Map<string, StagedWrite[]>();
+
+/** The staged writes of the group `batch` names — undefined for no batch, or one not open here. */
+function stagedIn(batch: unknown): StagedWrite[] | undefined {
+  return typeof batch === 'string' ? openTransactions.get(batch) : undefined;
+}
+
+/** Make `write` now, or stage it in `batch`'s group when that is open. */
+async function writeIn(batch: unknown, dataset: DatasetEntry, write: () => Promise<void>): Promise<void> {
+  const staged = stagedIn(batch);
+  if (staged) staged.push({ dataset, apply: write });
+  else await write();
+}
+
+type Tables = Record<string, unknown[]>;
+
+/** Every table's rows as they stand, copied deep enough that a write to a row cannot reach the copy. */
+function snapshotTables(dataset: DatasetEntry): Tables {
+  const copy: Tables = {};
+  for (const [entity, rows] of Object.entries(dataset.tables)) {
+    copy[entity] = (rows as AnyRow[]).map((row) =>
+      Object.fromEntries(
+        Object.entries(row).map(([key, value]) => [key, Array.isArray(value) ? [...(value as unknown[])] : value]),
+      ),
+    );
+  }
+  return copy;
+}
+
+/** Put the tables back as `snapshot` held them, in place, since the lifecycle shares the object. */
+function restoreTables(dataset: DatasetEntry, snapshot: Tables): void {
+  for (const entity of Object.keys(dataset.tables)) if (!(entity in snapshot)) delete dataset.tables[entity];
+  for (const [entity, rows] of Object.entries(snapshot)) {
+    const table = dataset.tables[entity];
+    if (table) table.splice(0, table.length, ...rows);
+    else dataset.tables[entity] = rows;
+  }
+}
+
+/** Commits run one at a time, so two of them can never be holding, or restoring, the same tables. */
+let committing: Promise<unknown> = Promise.resolve();
+
+/**
+ * Make a group's staged writes, all of them or none.
+ *
+ * Each write runs as it would have outside a group — its write check, its relation links — but
+ * against the tables as the writes before it left them, so a write can name a record an earlier one
+ * created. If any of them throws, the tables go back to how they stood before the first, and nobody
+ * is told anything changed, because nothing did.
+ *
+ * What it cannot hold off is a write made outside any group while the commit is between two of its
+ * own: that one lands, and a rollback takes it away again. The window is a commit's write checks,
+ * which in this backend is as long as a microtask or two.
+ */
+function commit(staged: StagedWrite[]): Promise<void> {
+  const run = async () => {
+    const datasets = [...new Set(staged.map((write) => write.dataset))];
+    const before = new Map(datasets.map((dataset) => [dataset, snapshotTables(dataset)]));
+    for (const dataset of datasets) holding.set(dataset, false);
+    try {
+      for (const write of staged) await write.apply();
+    } catch (error) {
+      for (const [dataset, snapshot] of before) restoreTables(dataset, snapshot);
+      for (const dataset of datasets) holding.delete(dataset);
+      throw error;
+    }
+    const written = datasets.filter((dataset) => holding.get(dataset));
+    for (const dataset of datasets) holding.delete(dataset);
+    for (const dataset of written) notify(dataset);
+  };
+  const done = committing.then(run, run);
+  committing = done.catch(() => {});
+  return done;
+}
+
+/**
+ * This backend's transaction runner, registered by its ports.
+ *
+ * The writes `run` makes with the token it is handed are staged rather than made, and made together
+ * once it resolves; if it throws, none are made and its error is rethrown. Reads inside `run` see
+ * committed state only, which is the contract's rule, and here it falls out of staging: nothing
+ * staged is in a table until the commit.
+ *
+ * Instances a write handed back describe what it will write: a failed group leaves them describing
+ * records that were never made.
+ */
+export async function runInMemoryTransaction<R>(
+  _dataset: unknown,
+  run: (tx: { batchId?: string }) => Promise<R>,
+): Promise<R> {
+  const batchId = `batch:${crypto.randomUUID()}`;
+  const staged: StagedWrite[] = [];
+  openTransactions.set(batchId, staged);
+  let result: R;
+  try {
+    result = await run({ batchId });
+  } finally {
+    // Closed before the commit, so a write that arrives late with this token is made on its own
+    // rather than staged into a group that has already been decided.
+    openTransactions.delete(batchId);
+  }
+  await commit(staged);
+  return result;
+}
+
+/** The id `create` refuses: one some record in this dataset already holds, whichever entity's. */
+function refuseExisting(dataset: DatasetEntry, id: string): void {
+  for (const rows of Object.values(dataset.tables)) {
+    if ((rows as AnyRow[]).some((row) => row.id === id)) throw new RecordExistsError(id);
+  }
 }
 
 function watch(dataset: DatasetEntry, listener: () => void): () => void {
@@ -132,7 +266,7 @@ export interface EntityClassLike {
     dataset: unknown,
     query?: Q | AnyQuery,
   ): Promise<(InMemoryInstance & IncludeExtras<RecordInstance, IncludeOf<Q>>) | null>;
-  create(dataset: unknown, data?: Record<string, unknown>, options?: { parent?: ParentRef }): Promise<InMemoryInstance>;
+  create(dataset: unknown, data?: Record<string, unknown>, options?: CreateOptions): Promise<InMemoryInstance>;
   update(dataset: unknown, id: string, data: Record<string, unknown>): Promise<InMemoryInstance | null>;
   delete(dataset: unknown, id: string): Promise<unknown>;
   count(dataset: unknown, query?: AnyQuery): Promise<number>;
@@ -397,47 +531,59 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         Object.assign(this, defaults());
       }
 
-      /** Copy the persisted columns back over the row this instance came from. */
-      async save(): Promise<void> {
+      /**
+       * Copy the persisted columns back over the row this instance came from.
+       *
+       * In a transaction the fields are taken now and written at its commit, so what is saved is
+       * the instance as it stood at this call, and a record created earlier in the same group is
+       * there to be saved onto by then.
+       */
+      async save(batch?: string): Promise<void> {
         const dataset = homes.get(this);
         if (!dataset) throw new Error(`${name}.save(): this instance was never loaded from a dataset`);
-        const row = tableOf(dataset, name).find((r) => r.id === (this as unknown as AnyRow).id);
-        if (!row) throw new Error(`${name}.save(): row ${(this as unknown as AnyRow).id} no longer exists`);
-        const changed: Record<string, unknown> = {};
-        for (const [key, value] of Object.entries(this as unknown as Record<string, unknown>)) {
-          if (typeof value === 'function' || key.startsWith('$')) continue;
-          // Only what the caller changed since the read: a default standing in for a cleared field
-          // is not a change, and must not write the field back.
-          if (row[key] === value || loaded.get(this)?.[key] === value) continue;
-          changed[key] = value;
-        }
-        if (!Object.keys(changed).length) return;
-        checkClearable(changed);
-        await checkEntityWrite({
-          dataset: dataset,
-          entity: name,
-          kind: 'edit',
-          id: row.id as string,
-          data: changed,
-          record: copied(row),
+        const fields = { ...(this as unknown as Record<string, unknown>) };
+        await writeIn(batch, dataset, async () => {
+          const row = tableOf(dataset, name).find((r) => r.id === fields.id);
+          if (!row) throw new Error(`${name}.save(): row ${String(fields.id)} no longer exists`);
+          const changed: Record<string, unknown> = {};
+          for (const [key, value] of Object.entries(fields)) {
+            if (typeof value === 'function' || key.startsWith('$')) continue;
+            // Only what the caller changed since the read: a default standing in for a cleared field
+            // is not a change, and must not write the field back.
+            if (row[key] === value || loaded.get(this)?.[key] === value) continue;
+            changed[key] = value;
+          }
+          if (!Object.keys(changed).length) return;
+          checkClearable(changed);
+          await checkEntityWrite({
+            dataset: dataset,
+            entity: name,
+            kind: 'edit',
+            id: row.id as string,
+            data: changed,
+            record: copied(row),
+          });
+          for (const [key, value] of Object.entries(changed)) writeField(row, key, value);
+          // What was just saved is the new baseline, so changing a field back is a change again.
+          loaded.set(this, fields);
+          notify(dataset);
         });
-        for (const [key, value] of Object.entries(changed)) writeField(row, key, value);
-        // What was just saved is the new baseline, so changing a field back is a change again.
-        loaded.set(this, { ...(this as unknown as Record<string, unknown>) });
-        notify(dataset);
       }
 
-      async delete(): Promise<void> {
+      async delete(batch?: string): Promise<void> {
         const dataset = homes.get(this);
         if (!dataset) throw new Error(`${name}.delete(): this instance was never loaded from a dataset`);
-        const rows = tableOf(dataset, name);
-        const index = rows.findIndex((r) => r.id === (this as unknown as AnyRow).id);
-        if (index >= 0) {
-          await checkDelete(dataset, rows[index]);
-          rows.splice(index, 1);
-        }
-        forgetLinksTo(dataset, (this as unknown as AnyRow).id as string);
-        notify(dataset);
+        const id = (this as unknown as AnyRow).id as string;
+        await writeIn(batch, dataset, async () => {
+          const rows = tableOf(dataset, name);
+          const index = rows.findIndex((r) => r.id === id);
+          if (index >= 0) {
+            await checkDelete(dataset, rows[index]);
+            rows.splice(index, 1);
+          }
+          forgetLinksTo(dataset, id);
+          notify(dataset);
+        });
       }
 
       static hydrate(dataset: DatasetEntry, row: AnyRow): Entity {
@@ -535,16 +681,32 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         return found[0] ?? null;
       }
 
+      /**
+       * Write one record — now, or at the commit of the transaction `options.batchId` names.
+       *
+       * The row is built now either way, so the instance handed back carries its id at once and a
+       * later write in the same group can name it. Everything else — the id check, the write check,
+       * the row landing, its relations and its parent link — is the write, and waits for the commit
+       * with the rest of the group. So a refused create in a group refuses the whole group, at its end.
+       */
       static async create(
         handle: unknown,
         data: Record<string, unknown> = {},
-        options?: { parent?: ParentRef },
+        options?: CreateOptions,
       ): Promise<Entity> {
         const dataset = datasetOf(handle);
-        await checkEntityWrite({ dataset: handle, entity: name, kind: 'create', data, record: () => null });
+        // A record's id is not one of its values. Refused rather than honoured or dropped, so a caller
+        // still writing it as a field finds out here rather than by getting a different id back.
+        if ('id' in data) {
+          throw new Error(`${name}.create(): "id" is not a field — pass the id a caller chose as the "id" option`);
+        }
+        const chosen = options?.id;
+        if (chosen !== undefined && (typeof chosen !== 'string' || !chosen)) {
+          throw new Error(`${name}.create(): the "id" option must be a non-empty string`);
+        }
         const now = new Date().toISOString();
         const row: AnyRow = {
-          id: (data.id as string) ?? crypto.randomUUID(),
+          id: chosen ?? crypto.randomUUID(),
           author: runtime.selfId() ?? '',
           timestamp: now,
           createdAt: now,
@@ -556,16 +718,21 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
           if (value === '' || value === null) continue;
           row[key] = value;
         }
-        tableOf(dataset, name).push(row);
-        notify(dataset);
         const instance = Entity.hydrate(dataset, row);
-        writingCreate.add(instance);
-        try {
-          await Entity.linkNamedRelations(instance, data);
-        } finally {
-          writingCreate.delete(instance);
-        }
-        if (options?.parent) await linkUnder(dataset, options.parent, row.id as string);
+        await writeIn(options?.batchId, dataset, async () => {
+          // Judged when the row would land, so an earlier create in the same group counts too.
+          refuseExisting(dataset, row.id as string);
+          await checkEntityWrite({ dataset: handle, entity: name, kind: 'create', data, record: () => null });
+          tableOf(dataset, name).push(row);
+          notify(dataset);
+          writingCreate.add(instance);
+          try {
+            await Entity.linkNamedRelations(instance, data);
+          } finally {
+            writingCreate.delete(instance);
+          }
+          if (options?.parent) await linkUnder(dataset, options.parent, row.id as string);
+        });
         return instance;
       }
 
@@ -615,20 +782,27 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
        *
        * A relation this entity does not declare throws rather than writing nothing. The name arrives
        * as a string, so a typo is otherwise a write that silently does not happen — the failure that
-       * is hardest to see from the call site and easiest to report from here. `batch` is accepted and
-       * ignored: nothing concurrent can happen to an in-memory table, so every write is already
-       * atomic with respect to every reader.
+       * is hardest to see from the call site and easiest to report from here.
+       *
+       * In a transaction the write waits for its commit, and finds the record then — so a record
+       * created earlier in the same group can be written onto.
        */
-      static async setRelation(handle: unknown, id: string, relation: string, targetIds: readonly string[]) {
-        await Entity.viaAccessor(handle, id, relation, 'set', [...targetIds]);
+      static async setRelation(
+        handle: unknown,
+        id: string,
+        relation: string,
+        targetIds: readonly string[],
+        batch?: string,
+      ) {
+        await Entity.viaAccessor(handle, id, relation, 'set', [...targetIds], batch);
       }
 
-      static async addRelation(handle: unknown, id: string, relation: string, targetId: string) {
-        await Entity.viaAccessor(handle, id, relation, 'add', targetId);
+      static async addRelation(handle: unknown, id: string, relation: string, targetId: string, batch?: string) {
+        await Entity.viaAccessor(handle, id, relation, 'add', targetId, batch);
       }
 
-      static async removeRelation(handle: unknown, id: string, relation: string, targetId: string) {
-        await Entity.viaAccessor(handle, id, relation, 'remove', targetId);
+      static async removeRelation(handle: unknown, id: string, relation: string, targetId: string, batch?: string) {
+        await Entity.viaAccessor(handle, id, relation, 'remove', targetId, batch);
       }
 
       private static async viaAccessor(
@@ -637,6 +811,7 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         relation: string,
         verb: 'set' | 'add' | 'remove',
         argument: unknown,
+        batch?: string,
       ): Promise<void> {
         const info = relations.find((r) => r.name === relation);
         if (!info) {
@@ -645,12 +820,6 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
               `It declares: ${[...relationNames].join(', ') || '(none)'}.`,
           );
         }
-        const dataset = datasetOf(handle);
-        const row = tableOf(dataset, name).find((r) => r.id === id);
-        // Not an error: a record deleted between reading it and arranging it is the ordinary race,
-        // and the caller's intent — "this record's relation should read like that" — is satisfied by
-        // there being no such record.
-        if (!row) return;
         // A to-one link is a different write — "point this at that", not "your membership is this
         // list" — and the contract says an implementation refuses rather than guesses. Refusing here
         // rather than in the caller is what makes the refusal the same on every backend.
@@ -660,10 +829,17 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
               'for to-many relations; set a single link through the record itself.',
           );
         }
-
-        const instance = Entity.hydrate(dataset, row) as unknown as Record<string, unknown>;
-        const accessor = `${verb}${relation.charAt(0).toUpperCase()}${relation.slice(1)}`;
-        await (instance[accessor] as (a: unknown) => Promise<void>).call(instance, argument);
+        const dataset = datasetOf(handle);
+        await writeIn(batch, dataset, async () => {
+          const row = tableOf(dataset, name).find((r) => r.id === id);
+          // Not an error: a record deleted between reading it and arranging it is the ordinary race,
+          // and the caller's intent — "this record's relation should read like that" — is satisfied
+          // by there being no such record.
+          if (!row) return;
+          const instance = Entity.hydrate(dataset, row) as unknown as Record<string, unknown>;
+          const accessor = `${verb}${relation.charAt(0).toUpperCase()}${relation.slice(1)}`;
+          await (instance[accessor] as (a: unknown) => Promise<void>).call(instance, argument);
+        });
       }
 
       /**
@@ -721,36 +897,38 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
       const suffix = relation.name.charAt(0).toUpperCase() + relation.name.slice(1);
       const proto = Entity.prototype as unknown as Record<string, unknown>;
 
-      proto[`add${suffix}`] = async function (this: AnyRow, related: unknown): Promise<void> {
+      proto[`add${suffix}`] = async function (this: AnyRow, related: unknown, batch?: string): Promise<void> {
         const dataset = homes.get(this);
         if (!dataset) throw new Error(`${name}.add${suffix}(): this instance was never loaded from a dataset`);
         const relatedId = typeof related === 'string' ? related : (related as AnyRow)?.id;
         if (!relatedId) throw new Error(`${name}.add${suffix}(): expected a related instance or its id`);
-        await checkRelation(dataset, this, relation.name, 'add');
+        await writeIn(batch, dataset, async () => {
+          await checkRelation(dataset, this, relation.name, 'add');
 
-        if (relation.cardinality === 'one') {
-          const row = tableOf(dataset, name).find((r) => r.id === this.id);
-          if (row) row[relation.foreignKey] = relatedId;
-          this[relation.name] = relatedId;
-        } else {
-          // An untyped relation does not say which table the child is in, so look in all of them.
-          // Without this the link was never written at all: `addChildren` updated the in-memory
-          // instance array and nothing else, so containment vanished on the next read.
-          const targetRow = relation.target
-            ? tableOf(dataset, relation.target).find((r) => r.id === relatedId)
-            : Object.values(dataset.tables)
-                .flatMap((rows) => rows as AnyRow[])
-                .find((r) => r.id === relatedId);
-          if (targetRow) {
-            targetRow[relation.foreignKey] = this.id;
-            linkReverse(relation.name, targetRow, this.id as string, true);
+          if (relation.cardinality === 'one') {
+            const row = tableOf(dataset, name).find((r) => r.id === this.id);
+            if (row) row[relation.foreignKey] = relatedId;
+            this[relation.name] = relatedId;
+          } else {
+            // An untyped relation does not say which table the child is in, so look in all of them.
+            // Without this the link was never written at all: `addChildren` updated the in-memory
+            // instance array and nothing else, so containment vanished on the next read.
+            const targetRow = relation.target
+              ? tableOf(dataset, relation.target).find((r) => r.id === relatedId)
+              : Object.values(dataset.tables)
+                  .flatMap((rows) => rows as AnyRow[])
+                  .find((r) => r.id === relatedId);
+            if (targetRow) {
+              targetRow[relation.foreignKey] = this.id;
+              linkReverse(relation.name, targetRow, this.id as string, true);
+            }
+            const current = Array.isArray(this[relation.name]) ? (this[relation.name] as unknown[]) : [];
+            if (!current.includes(relatedId)) this[relation.name] = [...current, relatedId];
+            const row = tableOf(dataset, name).find((r) => r.id === this.id);
+            if (row) row[relation.name] = this[relation.name];
           }
-          const current = Array.isArray(this[relation.name]) ? (this[relation.name] as unknown[]) : [];
-          if (!current.includes(relatedId)) this[relation.name] = [...current, relatedId];
-          const row = tableOf(dataset, name).find((r) => r.id === this.id);
-          if (row) row[relation.name] = this[relation.name];
-        }
-        notify(dataset);
+          notify(dataset);
+        });
       };
 
       // eslint-disable-next-line @typescript-eslint/require-await -- Kept async so a failure hydrating a related row reaches the caller as a rejection, as the ORM's would.
@@ -766,33 +944,35 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         return rows.filter((r) => r[relation.foreignKey] === this.id).map((r) => target.hydrate(dataset, r));
       };
 
-      proto[`remove${suffix}`] = async function (this: AnyRow, related: unknown): Promise<void> {
+      proto[`remove${suffix}`] = async function (this: AnyRow, related: unknown, batch?: string): Promise<void> {
         const dataset = homes.get(this);
         if (!dataset) return;
-        const relatedId = typeof related === 'string' ? related : (related as AnyRow)?.id;
-        await checkRelation(dataset, this, relation.name, 'remove');
-        const row = tableOf(dataset, name).find((r) => r.id === this.id);
+        await writeIn(batch, dataset, async () => {
+          const relatedId = typeof related === 'string' ? related : (related as AnyRow)?.id;
+          await checkRelation(dataset, this, relation.name, 'remove');
+          const row = tableOf(dataset, name).find((r) => r.id === this.id);
 
-        if (relation.cardinality === 'one') {
-          if (row) row[relation.foreignKey] = '';
-          this[relation.name] = '';
-        } else {
-          // Looked up across every table when the relation is untyped, as `add` does — otherwise
-          // removing from an untyped relation left the child's key behind.
-          const targetRow = relation.target
-            ? tableOf(dataset, relation.target).find((r) => r.id === relatedId)
-            : Object.values(dataset.tables)
-                .flatMap((rows) => rows as AnyRow[])
-                .find((r) => r.id === relatedId);
-          if (targetRow) {
-            delete targetRow[relation.foreignKey];
-            linkReverse(relation.name, targetRow, this.id as string, false);
+          if (relation.cardinality === 'one') {
+            if (row) row[relation.foreignKey] = '';
+            this[relation.name] = '';
+          } else {
+            // Looked up across every table when the relation is untyped, as `add` does — otherwise
+            // removing from an untyped relation left the child's key behind.
+            const targetRow = relation.target
+              ? tableOf(dataset, relation.target).find((r) => r.id === relatedId)
+              : Object.values(dataset.tables)
+                  .flatMap((rows) => rows as AnyRow[])
+                  .find((r) => r.id === relatedId);
+            if (targetRow) {
+              delete targetRow[relation.foreignKey];
+              linkReverse(relation.name, targetRow, this.id as string, false);
+            }
+            const current = Array.isArray(this[relation.name]) ? (this[relation.name] as unknown[]) : [];
+            this[relation.name] = current.filter((id) => id !== relatedId);
+            if (row) row[relation.name] = this[relation.name];
           }
-          const current = Array.isArray(this[relation.name]) ? (this[relation.name] as unknown[]) : [];
-          this[relation.name] = current.filter((id) => id !== relatedId);
-          if (row) row[relation.name] = this[relation.name];
-        }
-        notify(dataset);
+          notify(dataset);
+        });
       };
 
       /*
@@ -804,41 +984,43 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         backend at all, and the fixtures could only append.
       */
       if (relation.cardinality === 'many') {
-        proto[`set${suffix}`] = async function (this: AnyRow, related: unknown[]): Promise<void> {
+        proto[`set${suffix}`] = async function (this: AnyRow, related: unknown[], batch?: string): Promise<void> {
           const dataset = homes.get(this);
           if (!dataset) throw new Error(`${name}.set${suffix}(): this instance was never loaded from a dataset`);
-          const next = (Array.isArray(related) ? related : [])
-            .map((entry) => (typeof entry === 'string' ? entry : (entry as AnyRow)?.id))
-            .filter((id): id is string => typeof id === 'string' && id.length > 0);
-          const current = Array.isArray(this[relation.name]) ? (this[relation.name] as string[]) : [];
-          // Setting the list adds what is new and removes what is gone, so it is checked as each.
-          if (next.some((id) => !current.includes(id))) await checkRelation(dataset, this, relation.name, 'add');
-          if (current.some((id) => !next.includes(id))) await checkRelation(dataset, this, relation.name, 'remove');
-          const rowsOf = (id: string): AnyRow | undefined =>
-            relation.target
-              ? tableOf(dataset, relation.target).find((r) => r.id === id)
-              : Object.values(dataset.tables)
-                  .flatMap((rows) => rows as AnyRow[])
-                  .find((r) => r.id === id);
-          for (const id of current) {
-            if (next.includes(id)) continue;
-            const targetRow = rowsOf(id);
-            if (targetRow) {
-              delete targetRow[relation.foreignKey];
-              linkReverse(relation.name, targetRow, this.id as string, false);
+          await writeIn(batch, dataset, async () => {
+            const next = (Array.isArray(related) ? related : [])
+              .map((entry) => (typeof entry === 'string' ? entry : (entry as AnyRow)?.id))
+              .filter((id): id is string => typeof id === 'string' && id.length > 0);
+            const current = Array.isArray(this[relation.name]) ? (this[relation.name] as string[]) : [];
+            // Setting the list adds what is new and removes what is gone, so it is checked as each.
+            if (next.some((id) => !current.includes(id))) await checkRelation(dataset, this, relation.name, 'add');
+            if (current.some((id) => !next.includes(id))) await checkRelation(dataset, this, relation.name, 'remove');
+            const rowsOf = (id: string): AnyRow | undefined =>
+              relation.target
+                ? tableOf(dataset, relation.target).find((r) => r.id === id)
+                : Object.values(dataset.tables)
+                    .flatMap((rows) => rows as AnyRow[])
+                    .find((r) => r.id === id);
+            for (const id of current) {
+              if (next.includes(id)) continue;
+              const targetRow = rowsOf(id);
+              if (targetRow) {
+                delete targetRow[relation.foreignKey];
+                linkReverse(relation.name, targetRow, this.id as string, false);
+              }
             }
-          }
-          for (const id of next) {
-            const targetRow = rowsOf(id);
-            if (targetRow) {
-              targetRow[relation.foreignKey] = this.id;
-              linkReverse(relation.name, targetRow, this.id as string, true);
+            for (const id of next) {
+              const targetRow = rowsOf(id);
+              if (targetRow) {
+                targetRow[relation.foreignKey] = this.id;
+                linkReverse(relation.name, targetRow, this.id as string, true);
+              }
             }
-          }
-          this[relation.name] = next;
-          const row = tableOf(dataset, name).find((r) => r.id === this.id);
-          if (row) row[relation.name] = next;
-          notify(dataset);
+            this[relation.name] = next;
+            const row = tableOf(dataset, name).find((r) => r.id === this.id);
+            if (row) row[relation.name] = next;
+            notify(dataset);
+          });
         };
       } else {
         /*

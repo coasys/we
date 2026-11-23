@@ -149,14 +149,18 @@ describe('scope drill-down', () => {
     const handle = dataset.handle;
 
     const CollectionBlock = getEntity('CollectionBlock') as unknown as {
-      create(h: unknown, d: Record<string, unknown>): Promise<{ id: string; addChildren(x: unknown): Promise<void> }>;
+      create(
+        h: unknown,
+        d: Record<string, unknown>,
+        o?: { id?: string },
+      ): Promise<{ id: string; addChildren(x: unknown): Promise<void> }>;
       findAll(h: unknown, q?: Record<string, unknown>): Promise<Array<{ id: string }>>;
     };
 
-    const channelA = await CollectionBlock.create(handle, { id: 'a', kind: 'channel', title: 'a' });
-    const channelB = await CollectionBlock.create(handle, { id: 'b', kind: 'channel', title: 'b' });
-    const inA = await CollectionBlock.create(handle, { id: 'a1', kind: 'message' });
-    const inB = await CollectionBlock.create(handle, { id: 'b1', kind: 'message' });
+    const channelA = await CollectionBlock.create(handle, { kind: 'channel', title: 'a' }, { id: 'a' });
+    const channelB = await CollectionBlock.create(handle, { kind: 'channel', title: 'b' }, { id: 'b' });
+    const inA = await CollectionBlock.create(handle, { kind: 'message' }, { id: 'a1' });
+    const inB = await CollectionBlock.create(handle, { kind: 'message' }, { id: 'b1' });
     await channelA.addChildren(inA);
     await channelB.addChildren(inB);
 
@@ -177,15 +181,19 @@ describe('an ordered collection, through the harness', () => {
     const handle = (await ports.lifecycle.get('ds-main'))!.handle;
 
     const CollectionBlock = getEntity('CollectionBlock') as unknown as {
-      create(h: unknown, d: Record<string, unknown>): Promise<{ id: string; addChildren(x: unknown): Promise<void> }>;
+      create(
+        h: unknown,
+        d: Record<string, unknown>,
+        o?: { id?: string },
+      ): Promise<{ id: string; addChildren(x: unknown): Promise<void> }>;
       findAll(h: unknown, q?: Record<string, unknown>): Promise<Array<{ id: string; children: unknown }>>;
     };
 
-    const post = await CollectionBlock.create(handle, { id: 'post', kind: 'post' });
+    const post = await CollectionBlock.create(handle, { kind: 'post' }, { id: 'post' });
     // Created in one order and composed in another, which is the whole point: creation order is an
     // accident of typing, and the sequence somebody arranged is the data.
-    const first = await CollectionBlock.create(handle, { id: 'para', kind: 'text' });
-    const second = await CollectionBlock.create(handle, { id: 'image', kind: 'image' });
+    const first = await CollectionBlock.create(handle, { kind: 'text' }, { id: 'para' });
+    const second = await CollectionBlock.create(handle, { kind: 'image' }, { id: 'image' });
     await post.addChildren(second);
     await post.addChildren(first);
 
