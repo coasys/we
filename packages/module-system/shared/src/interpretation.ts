@@ -36,7 +36,7 @@ export interface InterpretationKernel {
    */
   autoEnabled: (collectionId?: string) => boolean;
   /**
-   * Turn automatic extraction on or off for one call, for everyone in it.
+   * Turn automatic interpretation on or off for one call, for everyone in it.
    *
    * A **group** decision recorded beside the call, exactly as {@link setTarget} is and for the same
    * reason: the standing watch is one registration the whole neighbourhood shares. Does not stop a
@@ -45,7 +45,7 @@ export interface InterpretationKernel {
    */
   setAuto: (collectionId: string, on: boolean) => Promise<void>;
   /**
-   * What this call extracts, and what else it could — one row per model, ticked when it is on.
+   * What this call interprets, and what else it could — one row per model, ticked when it is on.
    *
    * Handed the answer rather than the inputs: three layers decide it (which entities are candidates,
    * which the space starts with, which the call's participants chose) and a module has no read
@@ -62,7 +62,7 @@ export interface InterpretationKernel {
    */
   targetsLoaded?: () => boolean;
   /**
-   * Add or remove one model from what this call extracts — a group decision, taking effect from here
+   * Add or remove one model from what this call interprets — a group decision, taking effect from here
    * on. Rejects on a host that cannot record it.
    */
   setTarget: (collectionId: string, entity: string, on: boolean) => Promise<void>;
@@ -159,7 +159,7 @@ export interface InterpretationActivitySummary {
   mine: boolean;
   /** True while the pass is in flight. */
   running: boolean;
-  /** A whole clause: "Anna is waiting on the model", "Extracted 3 records". */
+  /** A whole clause: "Anna is waiting on the model", "Found 3 records". */
   label: string;
   /** `m:ss` since the pass started, empty once it has settled. */
   elapsed: string;

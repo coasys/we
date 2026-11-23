@@ -124,6 +124,21 @@ describe('a service published after the store was built', () => {
   });
 });
 
+describe('asking the host to show a part', () => {
+  it('answers no before the space publishes, so the module shows the part its own way', () => {
+    const deps = createModuleStoreDeps({ signal: (v) => [() => v, () => {}], effect: (fn) => fn() });
+    expect(deps.showPart?.('feed.feedView')).toBe(false);
+  });
+
+  it('reaches the space published after the store was built', () => {
+    const deps = createModuleStoreDeps({ signal: (v) => [() => v, () => {}], effect: (fn) => fn() });
+    const asked: string[] = [];
+    provideModuleHostServices({ showPart: (part) => (asked.push(part), true) });
+    expect(deps.showPart?.('feed.feedView')).toBe(true);
+    expect(asked).toEqual(['feed.feedView']);
+  });
+});
+
 describe('a module registering before any component exists', () => {
   /**
    * The failure this is here for: no cursors at all, of any kind, ever.

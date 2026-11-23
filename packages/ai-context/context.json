@@ -6673,9 +6673,6 @@
         "isReadOnly": {
           "type": "boolean"
         },
-        "hasPendingChanges": {
-          "type": "boolean"
-        },
         "pickerOpen": {
           "type": "boolean"
         },
@@ -7644,10 +7641,10 @@
           "type": "array",
           "properties": ["entity", "source"]
         },
-        "extractionCandidates": {
+        "interpretationCandidates": {
           "type": "array"
         },
-        "extractionCandidatesLoaded": {
+        "interpretationCandidatesLoaded": {
           "type": "boolean"
         },
         "relationshipTargets": {
@@ -7672,7 +7669,7 @@
         "hintBusy": {
           "type": "boolean"
         },
-        "extractionNeedsIdentity": {
+        "interpretationNeedsIdentity": {
           "type": "boolean"
         },
         "memberOptions": {
@@ -7701,7 +7698,7 @@
         "setShapeField",
         "setIdentityMember",
         "setNameMember",
-        "setExtractable",
+        "setInterpretable",
         "addProperty",
         "addRelationship",
         "removeMember",
@@ -7730,7 +7727,7 @@
         "setShapeField",
         "setIdentityMember",
         "setNameMember",
-        "setExtractable",
+        "setInterpretable",
         "addProperty",
         "addRelationship",
         "removeMember",
@@ -7751,7 +7748,7 @@
         "setShapeField",
         "setIdentityMember",
         "setNameMember",
-        "setExtractable",
+        "setInterpretable",
         "removeMember",
         "setMemberField",
         "reorderMembers",
@@ -8206,7 +8203,7 @@
         "firstScreenOpen": {
           "type": "boolean"
         },
-        "extractionTargets": {
+        "interpretationTargets": {
           "type": "array"
         },
         "taskWorkflowRule": {
@@ -8257,12 +8254,12 @@
         "setSpaceModuleSetting",
         "setMyModuleSetting",
         "setAgentModuleSetting",
-        "autoExtractFor",
-        "setAutoExtractFor",
-        "canSetExtractionFor",
+        "autoInterpretFor",
+        "setAutoInterpretFor",
+        "canSetInterpretationFor",
         "setAutoInterpret",
         "setThreadMode",
-        "setExtractionTarget",
+        "setInterpretationTarget",
         "setModuleInstalled",
         "setModuleVisible",
         "setViewEnabled",
@@ -8304,10 +8301,16 @@
         "copyShareLink",
         "copyGuestLink",
         "exportCallTranscript",
-        "exportExtractionLog",
+        "exportInterpretationLog",
         "removeSpaceFromGlobal"
       ],
-      "ambient": ["autoExtractFor", "canSetExtractionFor", "navigateToSpace", "openRecordRef", "canAdministerSpace"],
+      "ambient": [
+        "autoInterpretFor",
+        "canSetInterpretationFor",
+        "navigateToSpace",
+        "openRecordRef",
+        "canAdministerSpace"
+      ],
       "destructive": ["removeSpace", "deleteCollection", "removeSpaceFromGlobal"],
       "needsArgs": [
         "createSpace",
@@ -8339,12 +8342,12 @@
         "setSpaceModuleSetting",
         "setMyModuleSetting",
         "setAgentModuleSetting",
-        "autoExtractFor",
-        "setAutoExtractFor",
-        "canSetExtractionFor",
+        "autoInterpretFor",
+        "setAutoInterpretFor",
+        "canSetInterpretationFor",
         "setAutoInterpret",
         "setThreadMode",
-        "setExtractionTarget",
+        "setInterpretationTarget",
         "setModuleInstalled",
         "setModuleVisible",
         "setViewEnabled",
@@ -8385,7 +8388,7 @@
         "copyShareLink",
         "copyGuestLink",
         "exportCallTranscript",
-        "exportExtractionLog",
+        "exportInterpretationLog",
         "removeSpaceFromGlobal"
       ]
     },
@@ -8913,7 +8916,7 @@
     {
       "name": "formatJson",
       "params": ["options"],
-      "doc": "A JSON string indented for reading, or the text unchanged when it will not parse — which is the case worth showing rather than swallowing. Options: text. For displaying a stored blob (an extraction pass’s prompt and response); a schema has no JSON.stringify of its own.",
+      "doc": "A JSON string indented for reading, or the text unchanged when it will not parse — which is the case worth showing rather than swallowing. Options: text. For displaying a stored blob (an interpretation pass’s prompt and response); a schema has no JSON.stringify of its own.",
       "example": "formatJson({ text: pass.prompt })"
     },
     {
@@ -8931,7 +8934,7 @@
     {
       "name": "generatedRun",
       "params": ["options"],
-      "doc": "Whether a model made a record: { by: \"run\", run } naming the run that wrote it (a transcribed line, a record an extraction pass or an agent made, a reply in the editor’s chat), or null for what a person made. Reads the record’s own generatedBy, as an id or an included record, so it needs no query. Ask this rather than reading the relation. Options: record.",
+      "doc": "Whether a model made a record: { by: \"run\", run } naming the run that wrote it (a transcribed line, a record an interpretation pass or an agent made, a reply in the editor’s chat), or null for what a person made. Reads the record’s own generatedBy, as an id or an included record, so it needs no query. Ask this rather than reading the relation. Options: record.",
       "example": "generatedRun({ record: post }) ? 'Written by AI' : ''"
     }
   ],
@@ -9379,9 +9382,9 @@
           "doc": "Applies one suggested change to an agreed record."
         },
         {
-          "name": "autoExtract",
+          "name": "autoInterpret",
           "kind": "state",
-          "doc": "Whether the call this agent is in is extracted as it happens — its own answer."
+          "doc": "Whether the call this agent is in is interpreted as it happens — its own answer."
         },
         {
           "name": "autoJoined",
@@ -9401,7 +9404,7 @@
         {
           "name": "callId",
           "kind": "state",
-          "doc": "The record extraction decisions for this call are written against — the call’s own record from its first second."
+          "doc": "The record interpretation decisions for this call are written against — the call’s own record from its first second."
         },
         {
           "name": "callOnScreenLive",
@@ -9442,9 +9445,9 @@
           "doc": "Agreed records carrying a suggested change, by id."
         },
         {
-          "name": "closeExtractionPanel",
+          "name": "closeInterpretationPanel",
           "kind": "action",
-          "doc": "Closes the extraction panel.",
+          "doc": "Closes the interpretation panel.",
           "ambient": true
         },
         {
@@ -9515,61 +9518,6 @@
           "doc": "Why the session stopped, when status is error; empty otherwise."
         },
         {
-          "name": "extract",
-          "kind": "action",
-          "doc": "Runs one extraction pass over the call this agent is transcribing."
-        },
-        {
-          "name": "extractable",
-          "kind": "state",
-          "doc": "Whether this node can interpret at all — false when it has no language model."
-        },
-        {
-          "name": "extractCollection",
-          "kind": "action",
-          "doc": "Runs one extraction pass over any call’s record, by id."
-        },
-        {
-          "name": "extractCount",
-          "kind": "state",
-          "doc": "How many records the last pass wrote."
-        },
-        {
-          "name": "extractedId",
-          "kind": "state",
-          "doc": "The collection the last finished pass ran on, or empty."
-        },
-        {
-          "name": "extractError",
-          "kind": "state",
-          "doc": "Why the last pass failed; empty otherwise."
-        },
-        {
-          "name": "extractingId",
-          "kind": "state",
-          "doc": "The collection a pass is running on right now, or empty."
-        },
-        {
-          "name": "extractionFor",
-          "kind": "state",
-          "doc": "What one collection can extract, by record id — { targets, canChoose, canExtract, auto }, read as extractionFor[id]."
-        },
-        {
-          "name": "extractionOpen",
-          "kind": "state",
-          "doc": "Whether the extraction panel is open."
-        },
-        {
-          "name": "extractStatus",
-          "kind": "state",
-          "doc": "How the last one-shot extraction pass went — idle, running, done or error."
-        },
-        {
-          "name": "extractTurns",
-          "kind": "state",
-          "doc": "How many transcript turns the last pass read."
-        },
-        {
           "name": "flushNow",
           "kind": "action",
           "doc": "Writes what has been heard so far without waiting for the buffer to fill."
@@ -9583,6 +9531,61 @@
           "name": "inCall",
           "kind": "state",
           "doc": "Whether this agent is in a call right now."
+        },
+        {
+          "name": "interpret",
+          "kind": "action",
+          "doc": "Runs one interpretation pass over the call this agent is transcribing."
+        },
+        {
+          "name": "interpretable",
+          "kind": "state",
+          "doc": "Whether this node can interpret at all — false when it has no language model."
+        },
+        {
+          "name": "interpretationFor",
+          "kind": "state",
+          "doc": "What one collection can interpret, by record id — { targets, canChoose, canInterpret, auto }, read as interpretationFor[id]."
+        },
+        {
+          "name": "interpretationOpen",
+          "kind": "state",
+          "doc": "Whether the interpretation panel is open."
+        },
+        {
+          "name": "interpretCollection",
+          "kind": "action",
+          "doc": "Runs one interpretation pass over any call’s record, by id."
+        },
+        {
+          "name": "interpretCount",
+          "kind": "state",
+          "doc": "How many records the last pass wrote."
+        },
+        {
+          "name": "interpretedId",
+          "kind": "state",
+          "doc": "The collection the last finished pass ran on, or empty."
+        },
+        {
+          "name": "interpretError",
+          "kind": "state",
+          "doc": "Why the last pass failed; empty otherwise."
+        },
+        {
+          "name": "interpretingId",
+          "kind": "state",
+          "doc": "The collection a pass is running on right now, or empty."
+        },
+        {
+          "name": "interpretStatus",
+          "kind": "state",
+          "doc": "How the last one-shot interpretation pass went — idle, running, done or error."
+        },
+        {
+          "name": "interpretTurns",
+          "kind": "state",
+          "doc": "How many transcript turns the last pass read."
         },
         {
           "name": "invited",
@@ -9640,9 +9643,9 @@
           "doc": "Whether the transcript panel is open."
         },
         {
-          "name": "openExtractionPanel",
+          "name": "openInterpretationPanel",
           "kind": "action",
-          "doc": "Opens the extraction panel.",
+          "doc": "Opens the interpretation panel.",
           "ambient": true
         },
         {
@@ -9659,7 +9662,7 @@
         {
           "name": "passRunning",
           "kind": "state",
-          "doc": "Whether any extraction pass is running right now, this node’s or a peer’s."
+          "doc": "Whether any interpretation pass is running right now, this node’s or a peer’s."
         },
         {
           "name": "pending",
@@ -9798,14 +9801,14 @@
           "doc": "Starts or stops recording this agent’s microphone into the call, and opens the transcript when starting."
         },
         {
-          "name": "toggleAutoExtract",
+          "name": "toggleAutoInterpret",
           "kind": "action",
-          "doc": "Turns automatic extraction on or off for one collection, for everyone in it; defaults to the live call."
+          "doc": "Turns automatic interpretation on or off for one collection, for everyone in it; defaults to the live call."
         },
         {
-          "name": "toggleExtractionTarget",
+          "name": "toggleInterpretationTarget",
           "kind": "action",
-          "doc": "Includes or excludes one model from what a call extracts, for everyone in it; defaults to the live call."
+          "doc": "Includes or excludes one model from what a call interprets, for everyone in it; defaults to the live call."
         },
         {
           "name": "transcribers",
@@ -9835,7 +9838,7 @@
         {
           "name": "watchProblem",
           "kind": "state",
-          "doc": "Why the standing extraction watch is not running here; empty when it is."
+          "doc": "Why the standing interpretation watch is not running here; empty when it is."
         }
       ],
       "parts": [
@@ -9860,7 +9863,7 @@
           "name": "coverage"
         },
         {
-          "name": "extractionTargets"
+          "name": "interpretationTargets"
         },
         {
           "name": "pendingUtterance"
@@ -9874,8 +9877,8 @@
           "hostOwned": false
         },
         {
-          "name": "extraction",
-          "title": "Extraction",
+          "name": "interpretation",
+          "title": "Interpretation",
           "icon": "sparkle",
           "hostOwned": false
         }

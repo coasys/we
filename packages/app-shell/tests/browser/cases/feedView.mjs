@@ -14,7 +14,7 @@ export async function check({ evaluate, measureText, screenshot }) {
   const problems = [];
   for (const words of ['Morning all', 'Who has the venue?', 'See you all on Friday'])
     if (!(await measureText(words))) problems.push(`no "${words}" line`);
-  if (!(await measureText('2 tasks extracted from Monday sync'))) problems.push('no row for what was found');
+  if (!(await measureText('2 tasks found in Monday sync'))) problems.push('no row for what was found');
   if (!(await measureText('1 suggested'))) problems.push('the row does not say what is still a suggestion');
 
   const layout = await evaluate(() => {
@@ -47,6 +47,6 @@ export async function check({ evaluate, measureText, screenshot }) {
   await screenshot?.('feed-view-bots');
   if (!(await measureText('The venue is booked for Friday.'))) problems.push('Bots hides the bot’s line');
   if (await measureText('Morning all')) problems.push('Bots still shows a person’s line');
-  if (await measureText('2 tasks extracted from Monday sync')) problems.push('Bots still shows what was found');
+  if (await measureText('2 tasks found in Monday sync')) problems.push('Bots still shows what was found');
   return problems;
 }

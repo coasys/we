@@ -109,25 +109,25 @@ describe('the panels on screen', () => {
 describe('a template panel’s contents', () => {
   it('are wrapped in a body the host renders with the template’s own bag', () => {
     const frame = dockFrame(
-      { id: 'template:extraction', moduleId: 'template', edge: 'edge:extraction' } as unknown as DockEntry,
-      { type: 'TemplatePanelBody', props: { panelId: 'extraction' } },
+      { id: 'template:interpretation', moduleId: 'template', edge: 'edge:interpretation' } as unknown as DockEntry,
+      { type: 'TemplatePanelBody', props: { panelId: 'interpretation' } },
     );
 
     // The frame holds a slot; what it shows is the panel host's to draw, once — see `PanelHost`.
     expect(JSON.stringify(frame)).toContain('"type":"PanelSlot"');
-    const json = JSON.stringify(panelContent('template:extraction'));
+    const json = JSON.stringify(panelContent('template:interpretation'));
     expect(json).toContain('TemplatePanelBody');
     // The id, not the node: a node passed as a prop goes through the prop resolver on the way in,
     // and freezes the declaration at the moment the frame was registered.
-    expect(json).toContain('"panelId":"extraction"');
+    expect(json).toContain('"panelId":"interpretation"');
   });
 
   it('the frame itself still names the host-layout members it needs', () => {
     // The other half of the split: taking chrome grants away from the *frame* would break the grip
     // and the position menu, which is why the fix is two bags rather than one demotion.
     const frame = dockFrame(
-      { id: 'template:extraction', moduleId: 'template', edge: 'edge:extraction' } as unknown as DockEntry,
-      { type: 'TemplatePanelBody', props: { panelId: 'extraction' } },
+      { id: 'template:interpretation', moduleId: 'template', edge: 'edge:interpretation' } as unknown as DockEntry,
+      { type: 'TemplatePanelBody', props: { panelId: 'interpretation' } },
     );
 
     expect(JSON.stringify(frame)).toContain('shellStore.beginDockMove');

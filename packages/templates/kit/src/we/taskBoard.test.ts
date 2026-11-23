@@ -195,8 +195,8 @@ describe('a board read by who is on the work', () => {
     // One hovercard per stack, each listing only its own people.
     expect(extracted.match(/"slot":"content"/g)?.length).toBeGreaterThanOrEqual(3);
     expect(extracted).toContain("p.semantic == 'reviewing').filter(p, p.kind == part.slug)");
-    // Provenance is the extracted mark's to say, never a people hovercard's.
-    expect(extracted).toContain('Extracted from the conversation');
+    // Provenance is the interpreted mark's to say, never a people hovercard's.
+    expect(extracted).toContain('Interpreted from the conversation');
     expect(extracted).toContain('generatedRun({ record: card }) || (card.x)');
     expect(extracted).not.toContain('Added by');
   });

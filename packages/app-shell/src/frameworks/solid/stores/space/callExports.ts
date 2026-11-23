@@ -1,11 +1,11 @@
 /**
- * A call's two exports — its transcript as text and everything extraction did with it as Markdown —
+ * A call's two exports — its transcript as text and everything interpretation did with it as Markdown —
  * and what they share: one gather for the transcript, one label for each person, one report of the save.
  */
 import {
   type AmendmentEntry,
   exportFileName,
-  formatExtractionLog,
+  formatInterpretationLog,
   type PassEntry,
   transcriptLine,
 } from '@shared/interpretation/callExport';
@@ -24,8 +24,8 @@ export interface CallExportDeps {
   interpretation: () => InterpretationPort | undefined;
   profileStore: Pick<ProfileStore, 'fetchProfile' | 'profiles'>;
   /**
-   * The space's name and the call's extraction answers — what this call extracts, what the space
-   * extracts, and whether this call is extracted as it grows — read for the dataset named rather
+   * The space's name and the call's extraction answers — what this call interprets, what the space
+   * extracts, and whether this call is interpreted as it grows — read for the dataset named rather
    * than the space on screen, which may have moved on by the time the gathered content is laid out.
    */
   exportMeta: (
@@ -112,13 +112,13 @@ export function createCallExports(deps: CallExportDeps) {
   }
 
   /**
-   * Everything extraction did with one call, as one Markdown file — see `formatExtractionLog`.
+   * Everything extraction did with one call, as one Markdown file — see `formatInterpretationLog`.
    *
    * Every member's passes, not only this agent's: the prompts and responses are stored on the shared
    * record, so this exports what the panel already shows. Read in full rather than through the
-   * panel's query, which is capped for drawing and an hour of automatic extraction outruns.
+   * panel's query, which is capped for drawing and an hour of automatic interpretation outruns.
    */
-  async function exportExtractionLog(callId: string): Promise<void> {
+  async function exportInterpretationLog(callId: string): Promise<void> {
     const dataset = deps.dataset();
     if (!dataset || !callId) return;
     const p = dataset.handle;
@@ -134,14 +134,14 @@ export function createCallExports(deps: CallExportDeps) {
       */
       const titled = await CollectionBlock.findOne(p, { where: { id: callId } });
       const outcome = await saveFile({
-        name: exportFileName(titled?.title, 'call', 'md', exportedAt).replace(/\.md$/, '-extraction-log.md'),
+        name: exportFileName(titled?.title, 'call', 'md', exportedAt).replace(/\.md$/, '-interpretation-log.md'),
         type: 'text/markdown;charset=utf-8',
         content: async () => {
           // The settings head the log and are not its substance: unreadable, the history still goes.
           // Started with the call's read but awaited only once there is a log to head, so a call with
           // no passes is answered without them; the fallback keeps an early return from leaving a rejection.
           const settings = deps.exportMeta(p, callId).catch((error) => {
-            console.error('SpaceStore: exportExtractionLog could not read the settings', error);
+            console.error('SpaceStore: exportInterpretationLog could not read the settings', error);
             return undefined;
           });
           const call = await CollectionBlock.findOne(p, {
@@ -187,7 +187,7 @@ export function createCallExports(deps: CallExportDeps) {
             ].filter((did): did is string => typeof did === 'string' && did !== ''),
           );
 
-          return formatExtractionLog({
+          return formatInterpretationLog({
             callId,
             callTitle: row?.title,
             spaceName: meta?.spaceName,
@@ -204,12 +204,12 @@ export function createCallExports(deps: CallExportDeps) {
           });
         },
       });
-      reportSave(outcome, 'Extraction log exported.', 'No extraction has run on this call yet.');
+      reportSave(outcome, 'Interpretation log exported.', 'No interpretation has run on this call yet.');
     } catch (error) {
-      console.error('SpaceStore: exportExtractionLog failed', error);
-      toastService.error('Could not export the extraction log.');
+      console.error('SpaceStore: exportInterpretationLog failed', error);
+      toastService.error('Could not export the interpretation log.');
     }
   }
 
-  return { exportCallTranscript, exportExtractionLog };
+  return { exportCallTranscript, exportInterpretationLog };
 }

@@ -199,8 +199,8 @@ function humanise(entity: string): string {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1).toLowerCase();
 }
 
-/** How an extraction pass is going. `done` holds until the next run, so the result stays readable. */
-export type ExtractStatus = 'idle' | 'running' | 'done' | 'error';
+/** How an interpretation pass is going. `done` holds until the next run, so the result stays readable. */
+export type InterpretStatus = 'idle' | 'running' | 'done' | 'error';
 
 /** One proposed value, as a row a schema can render and an edit control can write back to. */
 export interface ProposalField {
@@ -422,7 +422,7 @@ type CollectionSlot = { state: 'ready'; id: string } | { state: 'waiting' } | { 
  *
  * Members are private to this module's own chrome unless marked with `deps.state` or `deps.action`
  * — see `store.ts` in `@we/module-shared`. Everything a template can reasonably want is marked: the
- * transcript's live state, the recording controls, the extraction surface and the review actions.
+ * transcript's live state, the recording controls, the interpretation surface and the review actions.
  * What stays unmarked is plumbing a test or the port feeds (`receiveText`, `markUtteranceSent`,
  * `stopNow`), which no template has any business calling.
  *
@@ -491,14 +491,14 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   /** Whether the transcript panel is showing. Independent of recording, so a finished session can be read. */
   const [open, setOpen] = signal(false);
   /**
-   * Whether the extraction panel is showing — its own flag, because it is its own surface.
+   * Whether the interpretation panel is showing — its own flag, because it is its own surface.
    *
    * Separate from `open` for the reason the two panels are separate: a transcript is read while
    * somebody talks and extraction is read afterwards, so wanting one on screen says nothing about
    * wanting the other. Sharing a flag would mean opening either opened both, which is the bundled
    * panel again with two titlebars.
    */
-  const [extractionOpen, setExtractionOpen] = signal(false);
+  const [interpretationOpen, setInterpretationOpen] = signal(false);
   /** A decision waiting on a confirmation because it would decide others too — see `TiedDecision`. */
   const [tiedDecision, setTiedDecision] = signal<TiedDecision | null>(null);
   /** Whether a confirmed tied decision is still being written. */
@@ -581,19 +581,19 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * that does nothing visible for that long reads as broken. `count` survives into `done` so the
    * panel can say what happened rather than just stopping.
    */
-  const [extractStatus, setExtractStatus] = signal<ExtractStatus>('idle');
-  const [extractCount, setExtractCount] = signal(0);
-  const [extractError, setExtractError] = signal('');
+  const [interpretStatus, setInterpretStatus] = signal<InterpretStatus>('idle');
+  const [interpretCount, setInterpretCount] = signal(0);
+  const [interpretError, setInterpretError] = signal('');
   /**
    * Which collection a pass is running on, and which one the last result describes.
    *
    * Two ids rather than one, because extraction is now offered per card in a list: a single status
    * flag would put "Reading…" on every call in the space while one of them is working, and would
-   * attribute a finished pass's count to whichever card the eye landed on. `extractingId` clears
-   * when the pass ends; `extractedId` persists so the card that asked can show what came back.
+   * attribute a finished pass's count to whichever card the eye landed on. `interpretingId` clears
+   * when the pass ends; `interpretedId` persists so the card that asked can show what came back.
    */
-  const [extractingId, setExtractingId] = signal('');
-  const [extractedId, setExtractedId] = signal('');
+  const [interpretingId, setInterpretingId] = signal('');
+  const [interpretedId, setInterpretedId] = signal('');
   /**
    * How many turns the last pass actually read.
    *
@@ -603,7 +603,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * every one of those failures (a wrong containment predicate, an unreadable timestamp, the wrong
    * collection) looks exactly like a quiet meeting.
    */
-  const [extractTurns, setExtractTurns] = signal(0);
+  const [interpretTurns, setInterpretTurns] = signal(0);
   /**
    * Suggestions the backend staged instead of writing, awaiting a person.
    *
@@ -625,7 +625,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    *
    * Keyed, because the surface reading it is about whichever call is *on screen* — the live one
    * usually, and a past one whenever somebody opened it from a link — and there is no way for an
-   * expression to pass an argument to a store member. The same reason `extractionFor` is keyed, and
+   * expression to pass an argument to a store member. The same reason `interpretationFor` is keyed, and
    * the same `namespace` mechanism.
    *
    * Fetched on first read of a key rather than from an effect, because only the reader knows which
@@ -1520,7 +1520,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     nobody waiting on it: it runs on whichever peer registered the watch, stages what it found in
     the shared graph, and announces nothing this client acts on. So auto-extraction produced proposals
     that were really there and never appeared — the review list only ever filled after somebody
-    pressed Extract, which reads as "automatic extraction cannot propose anything".
+    pressed Interpret, which reads as "automatic interpretation cannot propose anything".
 
     Keyed on how many passes have *settled* rather than on the feed itself: a running pass emits a
     step every few seconds and reloading on each would be a round trip per phase, for an answer that
@@ -1576,7 +1576,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   });
 
   /**
-   * What this call extracts, and what else it could — the host's answer, not this module's.
+   * What this call interprets, and what else it could — the host's answer, not this module's.
    *
    * Three layers decide it and none of them is a module's business: the codebase says what is a
    * candidate, the space says what its calls start with, the call's participants say what this one
@@ -1602,13 +1602,13 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    *
    * The one record we know is empty is the *live* call's, before the transcriber has adopted it —
    * `startCall` writes the record from the first second and nobody has said anything into it yet, so
-   * offering Extract there spends an LLM call on an empty transcript. Any other id was named by
+   * offering Interpret there spends an LLM call on an empty transcript. Any other id was named by
    * somebody who had it, which means it exists and has children.
    *
    * Kept apart from `targetCollection`, which deliberately answers for that same empty record:
    * choosing what a meeting will look for, before the meeting, is exactly when somebody wants to.
    * The two questions had one answer between them until extraction became per-call, and collapsing
-   * them would have put the Extract button on an empty call.
+   * them would have put the Interpret button on an empty call.
    */
   const hasTranscript = (collection: string): boolean =>
     Boolean(collection) && (collection !== myCall()?.recordId || collectionId() === collection);
@@ -1631,10 +1631,10 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   const targetCollection = (): string => collectionId() ?? myCall()?.recordId ?? '';
 
   /**
-   * One extraction pass over a named collection.
+   * One interpretation pass over a named collection.
    *
    * Flushes only when the named collection is the live one, which is exactly right: pressing
-   * Extract on this morning's call should not push a word said just now into it.
+   * Interpret on this morning's call should not push a word said just now into it.
    *
    * One shot, driven by a press rather than a timer. A standing watch is a better *feature* and a
    * worse thing to demonstrate — a button has a visible cause and a visible result, can be pressed
@@ -1643,22 +1643,22 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * Re-running is safe and expected: the engine dedups against instances already in the graph, so a
    * second press over the same conversation updates what it found rather than duplicating it.
    */
-  async function runExtraction(collection: string): Promise<void> {
+  async function runInterpretation(collection: string): Promise<void> {
     if (!collection || !interpretation) return;
     // One at a time across every surface. Two passes over one collection would race their writes,
     // and two over different collections would make the shared status unreadable.
-    if (extractStatus() === 'running') return;
+    if (interpretStatus() === 'running') return;
 
-    setExtractingId(collection);
-    setExtractStatus('running');
-    setExtractError('');
+    setInterpretingId(collection);
+    setInterpretStatus('running');
+    setInterpretError('');
     try {
       if (collection === collectionId()) await flush();
       const result = await interpretation.runOnCollection(collection);
-      setExtractCount(result.ids.length);
-      setExtractTurns(result.turns);
-      setExtractedId(collection);
-      setExtractStatus('done');
+      setInterpretCount(result.ids.length);
+      setInterpretTurns(result.turns);
+      setInterpretedId(collection);
+      setInterpretStatus('done');
       // Only worth a round trip when the pass actually staged something. A backend with no
       // provenance gate reports nothing proposed and never had a list to fetch.
       //
@@ -1677,11 +1677,11 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       */
       if (result.ids.length) void interpretation.passSettled?.(collection);
     } catch (error) {
-      setExtractError(error instanceof Error ? error.message : String(error));
-      setExtractedId(collection);
-      setExtractStatus('error');
+      setInterpretError(error instanceof Error ? error.message : String(error));
+      setInterpretedId(collection);
+      setInterpretStatus('error');
     } finally {
-      setExtractingId('');
+      setInterpretingId('');
     }
   }
 
@@ -2330,7 +2330,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     stacking up watches. Whoever gets there first writes it; the rest write the same thing.
 
     Best-effort throughout. A backend that cannot hold a watch, a space with the setting off, a
-    node that is simply offline — none of those are worth interrupting a call for, and the Extract
+    node that is simply offline — none of those are worth interrupting a call for, and the Interpret
     button remains the whole feature without them.
   */
   let watched: string | null = null;
@@ -2374,7 +2374,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * call that is over. Pairing the two here makes that structural rather than remembered.
    */
   function useCollection(next: string | null, options?: { keepWatch?: boolean }): void {
-    // Nothing to reset: what a call extracts is recorded beside the call, so a different
+    // Nothing to reset: what a call interprets is recorded beside the call, so a different
     // conversation reads its own list — or the space's, when nobody has touched it.
     setCollectionId(next);
     void syncWatch(next, options);
@@ -2401,9 +2401,9 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   let watchedClasses = '';
 
   /**
-   * Whether automatic extraction was on when the watch was last decided — the third half of the key
+   * Whether automatic interpretation was on when the watch was last decided — the third half of the key
    * below, and the one that was missing. Without it a call that started with the watch registered
-   * short-circuited every later run, so switching automatic extraction off mid-call never reached
+   * short-circuited every later run, so switching automatic interpretation off mid-call never reached
    * the unwatch and the watch kept spending a model call per pass.
    */
   let watchedAuto = true;
@@ -2423,7 +2423,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   let warnedEmpty: string | null = null;
 
   /**
-   * Whether one collection is extracted as it grows — its own answer, which the host reads.
+   * Whether one collection is interpreted as it grows — its own answer, which the host reads.
    *
    * Feature-tested like every other interpretation call — the host publishes a forwarding wrapper
    * that is always present, so `interpretation?.` only answers "is there a wrapper". A host that
@@ -2531,7 +2531,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       /*
         Nothing said, because nothing is wrong.
 
-        This set "Automatic extraction is off for this call." and the panel printed it under the
+        This set "Automatic interpretation is off for this call." and the panel printed it under the
         controls — a sentence restating the switch immediately above it, permanently, for everyone
         who had deliberately turned it off. `watchProblem` is for the cases somebody cannot see and
         cannot fix from here; a setting they just changed is neither.
@@ -2588,7 +2588,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
           days, from a call in which nobody happened to say anything extractable.
 
           Still not thrown. The caller is a call starting, and a watch that cannot be registered is
-          not a reason to interrupt one — the Extract button remains the whole feature without it.
+          not a reason to interrupt one — the Interpret button remains the whole feature without it.
           So it goes somewhere a surface can choose to show.
         */
         setWatchProblem(error instanceof Error ? error.message : String(error));
@@ -2609,18 +2609,18 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       */
       if (warnedEmpty !== next) {
         warnedEmpty = next;
-        notify?.('warning', 'No models selected for extraction');
+        notify?.('warning', 'No models selected for interpretation');
       }
       setWatchProblem('');
       console.info('[transcribe] no extraction targets in this space — nothing to watch for');
     } else if (next) {
-      setWatchProblem('This host cannot run a standing extraction watch.');
+      setWatchProblem('This host cannot run a standing interpretation watch.');
       console.info('[transcribe] host has no watchCollection — auto-extraction unavailable');
     }
   }
 
   /*
-    Move the watch when what this call extracts changes, not only when the call does.
+    Move the watch when what this call interprets changes, not only when the call does.
 
     Two things change it mid-meeting and both have to land: a community adopting a model, and the
     participants toggling one for this conversation. Until this existed the watch registered at the
@@ -2652,9 +2652,9 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * Adopt a continued call's record straight away.
    *
    * A fresh call's record is empty until somebody speaks, so it is adopted on the first flush and
-   * `canExtract` says no until then — correct, since a pass over nothing spends a model call to find
+   * `canInterpret` says no until then — correct, since a pass over nothing spends a model call to find
    * nothing. A *continued* call is the opposite case: its record already holds last time's words,
-   * and the same rule left Extract disabled and the panel empty until this agent said something. The
+   * and the same rule left Interpret disabled and the panel empty until this agent said something. The
    * transcript panel's own Continue button worked around it with a `resume` action chained after
    * `continueCall`; the rail's path into the same call could not, so the two disagreed about
    * whether the call had a transcript.
@@ -3158,10 +3158,10 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       constants — `right`, `md`, `false` — with `edge` doubling as "whether" by answering null while
       closed. A panel's opening bid is data, so it is declared on the `PanelContribution` in
       `index.ts`; whether the panel is up is the one thing left that is genuinely state, and that is
-      `open` above and `extractionOpen` below.
+      `open` above and `interpretationOpen` below.
     */
     /**
-     * Whether the extraction panel is up — its own flag, and module-owned for its own reason.
+     * Whether the interpretation panel is up — its own flag, and module-owned for its own reason.
      *
      * Separate from `open` because a transcript is read while somebody talks and extraction is read
      * afterwards, so wanting one on screen says nothing about wanting the other. Module-owned
@@ -3169,9 +3169,13 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * automatic extraction on: the four people in five who did not start a pass are the ones who
      * need telling, and a host-held flag would leave the module no way to tell them.
      */
-    extractionOpen: state(extractionOpen, 'Whether the extraction panel is open.'),
-    openExtractionPanel: action(() => setExtractionOpen(true), 'Opens the extraction panel.', { ambient: true }),
-    closeExtractionPanel: action(() => setExtractionOpen(false), 'Closes the extraction panel.', { ambient: true }),
+    interpretationOpen: state(interpretationOpen, 'Whether the interpretation panel is open.'),
+    openInterpretationPanel: action(() => setInterpretationOpen(true), 'Opens the interpretation panel.', {
+      ambient: true,
+    }),
+    closeInterpretationPanel: action(() => setInterpretationOpen(false), 'Closes the interpretation panel.', {
+      ambient: true,
+    }),
     level: state(onScreen(level, 0), 'Microphone loudness as the voice detector measures it, 0–1.'),
     speaking: state(onScreen(speaking, false), 'Whether the microphone level currently counts as speech.'),
     /**
@@ -3314,15 +3318,18 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       'There is audio to listen to — a microphone the host is capturing.',
     ),
 
-    // ── Extraction ───────────────────────────────────────────────────────────
-    extractStatus: state(extractStatus, 'How the last one-shot extraction pass went — idle, running, done or error.'),
-    extractCount: state(extractCount, 'How many records the last pass wrote.'),
-    extractError: state(extractError, 'Why the last pass failed; empty otherwise.'),
-    extractingId: state(extractingId, 'The collection a pass is running on right now, or empty.'),
-    extractedId: state(extractedId, 'The collection the last finished pass ran on, or empty.'),
-    extractTurns: state(extractTurns, 'How many transcript turns the last pass read.'),
+    // ── Interpretation ───────────────────────────────────────────────────────────
+    interpretStatus: state(
+      interpretStatus,
+      'How the last one-shot interpretation pass went — idle, running, done or error.',
+    ),
+    interpretCount: state(interpretCount, 'How many records the last pass wrote.'),
+    interpretError: state(interpretError, 'Why the last pass failed; empty otherwise.'),
+    interpretingId: state(interpretingId, 'The collection a pass is running on right now, or empty.'),
+    interpretedId: state(interpretedId, 'The collection the last finished pass ran on, or empty.'),
+    interpretTurns: state(interpretTurns, 'How many transcript turns the last pass read.'),
     /**
-     * The record this call's extraction decisions are written against.
+     * The record this call's interpretation decisions are written against.
      *
      * `collectionId` is what the transcriber is *writing into*, and it is null until somebody
      * speaks; the call's own record exists from the first second. Choosing what a meeting looks for,
@@ -3331,30 +3338,30 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      */
     callId: state(
       onScreen(() => targetCollection(), ''),
-      'The record extraction decisions for this call are written against — the call’s own record from its first second.',
+      'The record interpretation decisions for this call are written against — the call’s own record from its first second.',
     ),
 
     /**
      * What can be extracted from **one named call**, indexed by its record id.
      *
-     * `modules.transcribe.extractionFor[<id>].canExtract`, and the same for `targets` and
+     * `modules.transcribe.interpretationFor[<id>].canInterpret`, and the same for `targets` and
      * `canChoose`. Keyed rather than three accessors about the live call, because the panel that
      * reads them is about whichever call is *on screen* — which is the live one most of the time and
      * a past one whenever somebody opened it from a link, and there is no way for an expression to
      * pass an argument to a store member. Same shape as `recordStore.displays[row.type]`.
      *
-     * That gap is not hypothetical: the workshop template's own extraction panel asked these three
+     * That gap is not hypothetical: the workshop template's own interpretation panel asked these three
      * about the live call and drew the results of the addressed one, so the chips said what one call
-     * was looking for above a list of what a different call had found — and its Extract button was
-     * hidden by a `canExtract` about the wrong record even though the action it guards takes an id
+     * was looking for above a list of what a different call had found — and its Interpret button was
+     * hidden by a `canInterpret` about the wrong record even though the action it guards takes an id
      * and would have worked.
      *
      * The three answers travel together because they fail differently and a surface has to tell them
-     * apart. `canExtract` false with `targets` empty is a space that has marked no models; with
+     * apart. `canInterpret` false with `targets` empty is a space that has marked no models; with
      * `canChoose` false it is a call nothing has been said in yet; with both true it is a node with
-     * no model at all, which `extractable` answers.
+     * no model at all, which `interpretable` answers.
      */
-    extractionFor: state(
+    interpretationFor: state(
       () =>
         /*
         A `namespace`, not a plain object and not a `Proxy`.
@@ -3397,7 +3404,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
                  * the guard that stops the button being offered when neither can be fixed by pressing
                  * it.
                  */
-                canExtract:
+                canInterpret:
                   hasTranscript(collection) && (interpretation?.available() ?? false) && hasTargets(collection),
                 /**
                  * Whether this collection is extracted as it grows — its own answer, copied from the
@@ -3409,22 +3416,22 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
             }
           }
         }),
-      'What one collection can extract, by record id — { targets, canChoose, canExtract, auto }, read as extractionFor[id].',
+      'What one collection can interpret, by record id — { targets, canChoose, canInterpret, auto }, read as interpretationFor[id].',
     ),
     /**
      * Include or exclude one model from what **this call** extracts, for everyone in it.
      *
      * A group decision recorded beside the call, not a private preference: the standing watch is one
      * registration the whole neighbourhood shares, so per-agent lists would have peers overwriting
-     * each other's. Turning the last one off is allowed and leaves `canExtract` false, so the button
+     * each other's. Turning the last one off is allowed and leaves `canInterpret` false, so the button
      * says what is wrong rather than running a pass that asks the model for nothing.
      *
      * Applies to what is said from here on — a watch keeps a processed-turn cursor. The one-shot
-     * button carries none, so pressing Extract is how the rest of the conversation gets swept with
+     * button carries none, so pressing Interpret is how the rest of the conversation gets swept with
      * the new list.
      */
-    toggleExtractionTarget: action(async (entity: string, collection?: string) => {
-      // Named, or the one this agent is in — the same pair `extractCollection` and `extract` are,
+    toggleInterpretationTarget: action(async (entity: string, collection?: string) => {
+      // Named, or the one this agent is in — the same pair `interpretCollection` and `interpret` are,
       // so a panel about a call somebody opened from a link changes *that* call's list.
       const target = collection || targetCollection();
       if (!target || typeof interpretation?.setTarget !== 'function') return;
@@ -3432,25 +3439,25 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       try {
         await interpretation.setTarget(target, entity, !current?.selected);
       } catch (error) {
-        console.warn('[transcribe] could not change what this call extracts', error);
+        console.warn('[transcribe] could not change what this call interprets', error);
       }
-    }, 'Includes or excludes one model from what a call extracts, for everyone in it; defaults to the live call.'),
+    }, 'Includes or excludes one model from what a call interprets, for everyone in it; defaults to the live call.'),
     /**
-     * Whether the call this agent is in is extracted as it happens — its own answer. For any other
-     * collection, read `extractionFor[id].auto`.
+     * Whether the call this agent is in is interpreted as it happens — its own answer. For any other
+     * collection, read `interpretationFor[id].auto`.
      *
      * Absent a call it answers with the space's default, which is the honest reading of "does this
      * happen here" when there is no conversation to be about.
      */
-    autoExtract: state(
+    autoInterpret: state(
       () => autoEnabled(callElsewhere() ? undefined : (collectionId() ?? myCall()?.recordId ?? undefined)),
-      'Whether the call this agent is in is extracted as it happens — its own answer.',
+      'Whether the call this agent is in is interpreted as it happens — its own answer.',
     ),
     /**
-     * Whether any pass is running right now, this node's or a peer's — what the rail's Extraction
+     * Whether any pass is running right now, this node's or a peer's — what the rail's Interpretation
      * launcher spins on, via `busyWhen`.
      *
-     * Read off the host's activity feed rather than `extractStatus`, which only knows about the
+     * Read off the host's activity feed rather than `interpretStatus`, which only knows about the
      * one-shot pass this agent pressed for. The four people in five who did not start a pass are the
      * ones this exists for, and their node is not the one running it. Feature-tested for the reason
      * the settled-count effect above is: the forwarding wrapper is always present, the feed is not.
@@ -3458,22 +3465,22 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     passRunning: state(
       () =>
         typeof interpretation?.activity === 'function' ? interpretation.activity().some((pass) => pass.running) : false,
-      'Whether any extraction pass is running right now, this node’s or a peer’s.',
+      'Whether any interpretation pass is running right now, this node’s or a peer’s.',
     ),
     /**
      * Turn it on or off for **one collection**, for everyone in it — the one named, or the call this
      * agent is in.
      *
-     * A group decision on the collection, like `toggleExtractionTarget` — the standing watch is one
+     * A group decision on the collection, like `toggleInterpretationTarget` — the standing watch is one
      * registration the whole neighbourhood shares. It leaves the space's default alone, so a
      * conversation that has wandered somewhere nobody wants records of can be stopped without the
      * community changing its mind about every future one. The host refuses the space's own
      * collection to anybody who does not administer the space.
      *
      * Refused quietly where there is nothing to record it against, in the same shape and for the
-     * same reason as `toggleExtractionTarget`.
+     * same reason as `toggleInterpretationTarget`.
      */
-    toggleAutoExtract: action(async (collection?: unknown) => {
+    toggleAutoInterpret: action(async (collection?: unknown) => {
       // A string only: an `$invoke` written without `args` hands the click event over in its place.
       const named = typeof collection === 'string' ? collection : '';
       const live = named || collectionId() || myCall()?.recordId || '';
@@ -3483,15 +3490,15 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       // and for the same reason: starting something invisible and saying nothing about it is how a
       // feature comes to look broken. Switching it off leaves the panel alone, since what it already
       // found is still worth reading.
-      if (next) setExtractionOpen(true);
+      if (next) setInterpretationOpen(true);
       try {
         await interpretation.setAuto(live, next);
       } catch (error) {
-        console.warn('[transcribe] could not change whether this is extracted as it happens', error);
+        console.warn('[transcribe] could not change whether this is interpreted as it happens', error);
       }
-    }, 'Turns automatic extraction on or off for one collection, for everyone in it; defaults to the live call.'),
+    }, 'Turns automatic interpretation on or off for one collection, for everyone in it; defaults to the live call.'),
     /** True when the backend could interpret but there is no transcript yet — a waiting state. */
-    extractable: state(
+    interpretable: state(
       () => interpretation?.available() ?? false,
       'Whether this node can interpret at all — false when it has no language model.',
     ),
@@ -3515,7 +3522,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     /**
      * Suggestions staged on one conversation — `modules.transcribe.proposalsFor[<id>]`.
      *
-     * Keyed for `extractionFor`'s reason: the surface asking is about whichever call is on screen,
+     * Keyed for `interpretationFor`'s reason: the surface asking is about whichever call is on screen,
      * and an expression cannot pass an argument to a store member. Reading a key it has not seen
      * fetches it, which is what makes a review list fill after a restart — see `proposalsByCall`.
      *
@@ -3595,16 +3602,16 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      */
     canEditProposals: state(() => !!updateEntity, 'Whether an edited suggestion can be written back on accept.'),
     /**
-     * Why auto-extraction is not running here, or empty when it is.
+     * Why auto-interpretation is not running here, or empty when it is.
      *
-     * Distinct from `extractable`, which answers whether the node can interpret at all. A watch can
+     * Distinct from `interpretable`, which answers whether the node can interpret at all. A watch can
      * fail on a node that interprets perfectly well — the host may simply not coordinate standing
      * watches — and the two want different sentences.
      */
-    watchProblem: state(watchProblem, 'Why the standing extraction watch is not running here; empty when it is.'),
+    watchProblem: state(watchProblem, 'Why the standing interpretation watch is not running here; empty when it is.'),
 
     /*
-      ── Live extraction ──────────────────────────────────────────────────────
+      ── Live interpretation ─────────────────────────────────────────────────────
 
       The feed, its halves and its counts are `interpretationStore`'s, and this module names none of
       them: one capability's state has one publisher, and re-exporting another capability is how a
@@ -3678,7 +3685,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       name, and a way to hide the notice while still being recorded.
     */
     /*
-      No `togglePanel` or `toggleExtractionPanel` any more.
+      No `togglePanel` or `toggleInterpretationPanel` any more.
 
       They were the launchers' actions, and a launcher exists now only for a press that does
       something other than open one panel. A panel's rail button is derived from the panel: the host
@@ -3707,22 +3714,22 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * Re-running is safe and expected. The engine dedups against instances already in the graph, so
      * a second press over the same conversation updates what it found rather than duplicating it.
      */
-    extract: action(
-      () => runExtraction(collectionId() ?? ''),
-      'Runs one extraction pass over the call this agent is transcribing.',
+    interpret: action(
+      () => runInterpretation(collectionId() ?? ''),
+      'Runs one interpretation pass over the call this agent is transcribing.',
     ),
     /**
      * The same pass over any call's record, named by id.
      *
-     * The reachable form, and the one the calls list uses. {@link extract} can only ever mean "the
+     * The reachable form, and the one the calls list uses. {@link interpret} can only ever mean "the
      * call I am in and transcribing", because `collectionId` is cleared the moment the call ends —
      * so a finished call, or one somebody else recorded, had no way to be extracted at all. The
      * gathering was never the limit: it drills down through the collection's children and so has
      * always read every agent's utterances, not only this one's.
      */
-    extractCollection: action(
-      (collection: string) => runExtraction(collection),
-      'Runs one extraction pass over any call’s record, by id.',
+    interpretCollection: action(
+      (collection: string) => runInterpretation(collection),
+      'Runs one interpretation pass over any call’s record, by id.',
     ),
     /** Re-read what is staged. Called after a pass; exposed so a panel can refresh on open. */
     /**

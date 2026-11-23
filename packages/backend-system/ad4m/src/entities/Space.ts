@@ -80,7 +80,7 @@ export class Space extends WeNode {
   enabledViews: string = '';
 
   /**
-   * Which candidate models a new collection here starts out extracting — a call, a channel, the
+   * Which candidate models a new collection here starts out interpreting — a call, a channel, the
    * space's own collection — as a JSON array of entity names.
    *
    * The middle of three layers. `EntitySchema.extractable` says what is a candidate at all —
@@ -146,7 +146,7 @@ export class Space extends WeNode {
    *
    * Defaults to `fractal`, which is what every surface did before the setting existed.
    */
-  @Property({ through: 'we://thread_mode' })
+  @Property({ through: 'we://thread_mode', options: [{ value: 'fractal' }, { value: 'flat' }] })
   threadMode: string = 'fractal';
 
   /**
@@ -199,7 +199,10 @@ export class Space extends WeNode {
    * back one. Anything but empty runs the states as a workflow, so a move it does not allow is refused
    * on the board rather than made.
    */
-  @Property({ through: 'we://task_workflow_rule' })
+  @Property({
+    through: 'we://task_workflow_rule',
+    options: [{ value: '' }, { value: 'next' }, { value: 'next-and-back' }],
+  })
   taskWorkflowRule: string = '';
 
   @HasOne(() => LocationBlock, { through: 'we://location' })

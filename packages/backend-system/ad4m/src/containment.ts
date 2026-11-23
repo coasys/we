@@ -71,7 +71,7 @@ const INSTALLED = Symbol.for('we.ad4m.containmentPredicate');
  * Callers reach the model statics directly — through `@we/entities`' class proxy, not through any
  * function in this package — so the translation has to sit on the statics themselves. Patched once
  * on `Ad4mModel`, it reaches every class that extends it: generated, compiled from the manifest, or
- * built from a foreign shape. Same approach, and the same reason, as `installClearOnEmpty`.
+ * built from a foreign shape.
  */
 export function installContainmentPredicate(Model: typeof Ad4mModel): void {
   const statics = Model as unknown as Record<string | symbol, unknown>;
