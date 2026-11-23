@@ -103,7 +103,7 @@ describe('gatherTranscriptTurns', () => {
 
   it('reads only what a person said or wrote', async () => {
     // A bot writing into a call does not know the field, so its replies arrive with no source — and
-    // read back in as input, a summary that mentions three tasks is extracted into three more.
+    // read back in as input, a summary that mentions three tasks is interpreted into three more.
     const turns = await gatherTranscriptTurns(
       deps([
         { text: 'said', author: 'did:a', createdAt: 1, source: 'spoken' },

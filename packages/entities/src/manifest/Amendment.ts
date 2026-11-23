@@ -66,7 +66,7 @@ export const Amendment: CoreEntityDef = {
        * type, and a reader needs one to know how to draw the row or what to query.
        *
        * Empty where the backend could not classify the record, which is the executor gap the rest
-       * of the extraction panel already degrades around.
+       * of the interpretation panel already degrades around.
        */
       nodeType: { type: 'string', predicate: 'we://node_type', default: '' },
     },

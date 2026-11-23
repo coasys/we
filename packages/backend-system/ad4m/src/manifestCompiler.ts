@@ -10,8 +10,12 @@
  * manifest projection to hold that fidelity.
  *
  * Scope: scalars, typed relations, defaults, interpretation hints and identity. Flags are minted
- * automatically (one type flag per entity). `options` (closed value sets) are manifest-level
- * metadata for forms and prompts — not compiled, since SHACL carries no enum the executor reads.
+ * automatically (one type flag per entity). `options` compiles to `sh:in` — the closed value set
+ * the executor enforces from AD4M task A1 on — except on a `vocabulary` property, whose real value
+ * set is the space's own (see options.ts). `abstract` compiles to `@Model({ abstract })`, and
+ * `extends` to the parent's *shape*. A concrete parent is extended in TypeScript, which writes
+ * `sh://node`. An abstract parent is declared through `implements` (the structural check) and the
+ * compiled shape also names that parent's shape URI, because `implements` itself writes no link.
  */
 import {
   Ad4mModel,
@@ -35,10 +39,16 @@ import { CORE_MANIFEST } from '@we/entities/manifest';
 
 import { toAd4mPredicate } from './containment';
 import type { EntityManifestEntry } from './manifestTypes';
+import { toAd4mOptions } from './options';
 
 /** A manifest entry plus the declared extras the neutral projection has no place for. */
 export type CompilableEntry = EntityManifestEntry & {
-  flag?: { predicate: string; value: string };
+  /** `false`: no type marker at all — a record is one when it has the required fields. */
+  flag?: { predicate: string; value: string } | false;
+  /** The class's IRI prefix, where the declaration names one. See `EntitySchema.namespace`. */
+  namespace?: string;
+  /** Name of the parent entity — resolved to its *class* at build time, where the link lives. */
+  extends?: string;
   abstract?: boolean;
 };
 
@@ -100,7 +110,20 @@ export function buildEntityFromEntry(
   // class initialises them in its constructor, so anything walking an instance's own properties —
   // which the write path does — would otherwise see an object with no fields at all.
   const fieldDefaults: Record<string, unknown> = {};
-  const cls = class extends Ad4mModel {
+  /*
+    `extends` names the parent's *class*, and how the child binds depends on what that class is.
+    A concrete parent is extended in the TypeScript sense: the SDK reads the class's prototype
+    chain and writes a `sh://node` link to the parent's shape — the same link every generated
+    class's `extends WeNode` already writes. An abstract parent cannot be instantiated and AD4M's
+    is-a is structural anyway, so the child declares it through `implements` — `checkImplements`
+    holds the child's names against the parent's at declaration, and the flattening in
+    `manifestToEntries` is what guarantees them. A parent that resolves to nothing (no resolver
+    handed over, or the name registered nowhere) degrades to no parent, exactly the way an
+    unresolved relation target does.
+  */
+  const parentClass = entry.extends ? opts?.classResolver?.(entry.extends) : undefined;
+  const abstractParent = (parentClass as { isAbstract?: boolean } | undefined)?.isAbstract === true;
+  const cls = class extends (parentClass !== undefined && !abstractParent ? parentClass : Ad4mModel) {
     constructor(...args: unknown[]) {
       super(...(args as ConstructorParameters<typeof Ad4mModel>));
       Object.assign(this, fieldDefaults);
@@ -114,11 +137,14 @@ export function buildEntityFromEntry(
   // orphan every existing instance.
   // An abstract entity is never instantiated, so it carries no type marker — minting one anyway
   // would tag every subtype's instances as the base type too.
-  const flag = entry.abstract
-    ? undefined
-    : entry.flag
-      ? { through: entry.flag.predicate, value: entry.flag.value }
-      : opts?.flag;
+  // A declaration that says it has no marker gets none minted either: its records are known by
+  // their required fields, as the vocabulary it comes from wrote them.
+  const flag =
+    entry.abstract || entry.flag === false
+      ? undefined
+      : entry.flag
+        ? { through: entry.flag.predicate, value: entry.flag.value }
+        : opts?.flag;
   if (flag) {
     proto.flag = '';
     fieldDefaults.flag = '';
@@ -179,14 +205,48 @@ export function buildEntityFromEntry(
         // exactly the path TaskBlock's do.
         ...(p.interpretationHint !== undefined ? { interpretationHint: p.interpretationHint } : {}),
         ...(p.identity ? { identity: true } : {}),
+        // The closed value set, written as `sh:in`. Entries only carry this where the property has
+        // no `vocabulary` — the suppression lives in the projection (see options.ts).
+        ...(p.options !== undefined ? { options: p.options } : {}),
       })(proto as never, p.name as never);
     }
   }
 
   Model({
     name: entry.name,
+    // Pinned where the declaration names it. Otherwise the SDK takes the scheme of the first field,
+    // which is the minted flag's `we://`.
+    ...(entry.namespace !== undefined ? { namespace: entry.namespace } : {}),
+    // An abstract entity compiles to AD4M's own abstract: it can never be created, and the
+    // executor's model query matches its members by structure.
+    ...(entry.abstract ? { abstract: true } : {}),
+    // `implements` asserts structure and writes no link — `checkImplements` runs here, at
+    // declaration. The link itself is added below, from the parent's own shape URI.
+    ...(parentClass !== undefined && abstractParent ? { implements: [parentClass] } : {}),
     ...(entry.interpretationHint !== undefined ? { interpretationHint: entry.interpretationHint } : {}),
   })(cls);
+
+  // The parent's URI is the one its class emits. The lookup waits until this child's shape is
+  // generated, which is after `compileManifest` has put every class in the resolver. Reading it
+  // here, while this child is still being built, would generate the parent early: a typed relation
+  // on that parent whose target is this child, or a class compiled later, resolves to nothing, and
+  // the SDK memoises that shape. `addParentShape` ignores a repeat, so a second `generateSHACL()`
+  // does not write a second `sh://node`. The SDK's own memo stays in place.
+  if (parentClass !== undefined && abstractParent) {
+    const parent = parentClass as unknown as {
+      generateSHACL?: () => { shape?: { nodeShapeUri?: string } };
+    };
+    const compiled = cls as unknown as {
+      generateSHACL: () => { shape?: { addParentShape: (uri: string) => void } };
+    };
+    const generate = compiled.generateSHACL.bind(compiled);
+    compiled.generateSHACL = () => {
+      const parentUri = parent.generateSHACL?.().shape?.nodeShapeUri;
+      const result = generate();
+      if (parentUri) result.shape?.addParentShape(parentUri);
+      return result;
+    };
+  }
   return cls;
 }
 
@@ -209,7 +269,7 @@ function schemaOf(manifest: EntityManifest, name: string): EntitySchema {
  * Project a neutral manifest onto AD4M-side entries: resolve each property/relation to a concrete
  * predicate (override → core vocabulary → mint under the module subtree).
  */
-export function manifestToEntries(manifest: EntityManifest, opts: CompileManifestOptions): EntityManifestEntry[] {
+export function manifestToEntries(manifest: EntityManifest, opts: CompileManifestOptions): CompilableEntry[] {
   const prefix = `we://module/${opts.moduleId}/`;
   const resolvePredicate = (entity: string, prop: string): string =>
     opts.predicates?.[`${entity}.${prop}`] ?? `${prefix}${snakeCase(prop)}`;
@@ -233,28 +293,38 @@ export function manifestToEntries(manifest: EntityManifest, opts: CompileManifes
       name,
       targetClass: '',
       flag: entity.flag,
+      ...(entity.namespace !== undefined ? { namespace: entity.namespace } : {}),
+      // The *declared* parent, even after flattening merged its members in: the class binding in
+      // buildEntityFromEntry is what a stored shape can name, the members alone cannot.
+      ...(entity.extends ? { extends: entity.extends } : {}),
       ...(entity.abstract ? { abstract: true } : {}),
       ...(entity.interpretationHint !== undefined ? { interpretationHint: entity.interpretationHint } : {}),
       properties: [
-        ...Object.entries(entity.properties).map(([propName, spec]) => ({
-          name: propName,
-          predicate: spec.predicate ?? resolvePredicate(name, propName),
-          // The neutral `format: 'file'` binds to this backend's file-storage language; `readAs`
-          // decides whether reads come back transformed (see buildEntityFromEntry).
-          ...(spec.format === 'file' ? { resolveLanguage: FILE_STORAGE_LANGUAGE } : {}),
-          ...(spec.readAs === 'dataUri' ? { readAs: 'dataUri' as const } : {}),
-          ...(spec.default !== undefined ? { default: spec.default } : {}),
-          ...(spec.interpretationHint !== undefined ? { interpretationHint: spec.interpretationHint } : {}),
-          ...(spec.identity ? { identity: true } : {}),
-          // datetime/json have no SHACL datatype of their own — stored as strings, like the
-          // hand-written models store timestamps.
-          // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- this callback's return has no contextual type, so without it the literals widen to string
-          type: (spec.type === 'number' ? 'number' : spec.type === 'boolean' ? 'boolean' : 'string') as
-            'string' | 'number' | 'boolean',
-          isCollection: false,
-          required: spec.required ?? false,
-          writable: true,
-        })),
+        ...Object.entries(entity.properties).map(([propName, spec]) => {
+          // `options` becomes `sh:in` on the class; a `vocabulary` property keeps it out — the
+          // real list is the space's own and an enforced `sh:in` would reject it (see options.ts).
+          const options = toAd4mOptions(spec);
+          return {
+            name: propName,
+            predicate: spec.predicate ?? resolvePredicate(name, propName),
+            // The neutral `format: 'file'` binds to this backend's file-storage language; `readAs`
+            // decides whether reads come back transformed (see buildEntityFromEntry).
+            ...(spec.format === 'file' ? { resolveLanguage: FILE_STORAGE_LANGUAGE } : {}),
+            ...(spec.readAs === 'dataUri' ? { readAs: 'dataUri' as const } : {}),
+            ...(spec.default !== undefined ? { default: spec.default } : {}),
+            ...(spec.interpretationHint !== undefined ? { interpretationHint: spec.interpretationHint } : {}),
+            ...(spec.identity ? { identity: true } : {}),
+            ...(options !== undefined ? { options } : {}),
+            // datetime/json have no SHACL datatype of their own — stored as strings, like the
+            // hand-written models store timestamps.
+            // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- this callback's return has no contextual type, so without it the literals widen to string
+            type: (spec.type === 'number' ? 'number' : spec.type === 'boolean' ? 'boolean' : 'string') as
+              'string' | 'number' | 'boolean',
+            isCollection: false,
+            required: spec.required ?? false,
+            writable: true,
+          };
+        }),
         ...Object.entries(entity.relations).map(([relName, spec]) => ({
           name: relName,
           // Containment has one name on every backend, whatever a manifest spelled — see
@@ -306,7 +376,28 @@ export function compileManifest(
   const resolver = (name: string) => classes[name] ?? opts.resolveExternal?.(name);
   const prefix = `we://module/${opts.moduleId}/`;
 
-  for (const entry of manifestToEntries(manifest, opts)) {
+  /*
+    Parents before children: an entry's `extends` binds the parent's *class*, so one this manifest
+    declares must be built inside this very loop — a parent it does not declare answers through the
+    resolver at build time instead. The walk is stable: declaration order wherever `extends` does
+    not say otherwise.
+  */
+  const entries = manifestToEntries(manifest, opts);
+  const declared = new Map(entries.map((entry) => [entry.name, entry]));
+  const ordered: CompilableEntry[] = [];
+  const seen = new Set<string>();
+  const visit = (entry: CompilableEntry): void => {
+    if (seen.has(entry.name)) return;
+    seen.add(entry.name);
+    if (entry.extends !== undefined) {
+      const parent = declared.get(entry.extends);
+      if (parent !== undefined) visit(parent);
+    }
+    ordered.push(entry);
+  };
+  for (const entry of entries) visit(entry);
+
+  for (const entry of ordered) {
     classes[entry.name] = buildEntityFromEntry(entry, {
       classResolver: resolver,
       flag: { through: 'we://flag', value: `${prefix}${snakeCase(entry.name)}` },

@@ -1,5 +1,5 @@
 /**
- * Extraction settings belong to the collection, and a space's settings are only where a new one
+ * Interpretation settings belong to the collection, and a space's settings are only where a new one
  * starts.
  *
  * Every other capability setting in WE resolves by *who is asking* — deployment, agent everywhere,
@@ -12,12 +12,12 @@
  * let a space's setting overrule every conversation. These assertions are what fails instead.
  */
 import {
-  collectionExtractionDefaults,
-  LEGACY_EXTRACTION_TARGETS,
+  collectionInterpretationDefaults,
+  LEGACY_INTERPRETATION_TARGETS,
   parseEntityList,
-  resolveCollectionAutoExtract,
-  resolveCollectionExtractionTargets,
-  resolveSpaceExtractionTargets,
+  resolveCollectionAutoInterpret,
+  resolveCollectionInterpretationTargets,
+  resolveSpaceInterpretationTargets,
 } from '@we/entities';
 import { describe, expect, it } from 'vitest';
 
@@ -47,23 +47,26 @@ describe('parseEntityList — absent, empty and broken are three different answe
 
 describe('the space level', () => {
   it('falls back to the migration floor when the space has never been asked', () => {
-    expect(resolveSpaceExtractionTargets(CANDIDATES, undefined)).toEqual(LEGACY_EXTRACTION_TARGETS);
-    expect(resolveSpaceExtractionTargets(CANDIDATES, '')).toEqual(LEGACY_EXTRACTION_TARGETS);
+    expect(resolveSpaceInterpretationTargets(CANDIDATES, undefined)).toEqual(LEGACY_INTERPRETATION_TARGETS);
+    expect(resolveSpaceInterpretationTargets(CANDIDATES, '')).toEqual(LEGACY_INTERPRETATION_TARGETS);
   });
 
-  it('narrows to what is extractable here, so a deleted model cannot take a pass down', () => {
-    expect(resolveSpaceExtractionTargets(CANDIDATES, '["Sighting","Retired","TaskBlock"]')).toEqual([
+  it('narrows to what is interpretable here, so a deleted model cannot take a pass down', () => {
+    expect(resolveSpaceInterpretationTargets(CANDIDATES, '["Sighting","Retired","TaskBlock"]')).toEqual([
       'TaskBlock',
       'Sighting',
     ]);
   });
 
   it('orders by the candidates, not by the order somebody ticked things', () => {
-    expect(resolveSpaceExtractionTargets(CANDIDATES, '["Decision","TaskBlock"]')).toEqual(['TaskBlock', 'Decision']);
+    expect(resolveSpaceInterpretationTargets(CANDIDATES, '["Decision","TaskBlock"]')).toEqual([
+      'TaskBlock',
+      'Decision',
+    ]);
   });
 
   it('lets a space turn everything off', () => {
-    expect(resolveSpaceExtractionTargets(CANDIDATES, '[]')).toEqual([]);
+    expect(resolveSpaceInterpretationTargets(CANDIDATES, '[]')).toEqual([]);
   });
 });
 
@@ -71,40 +74,40 @@ describe("the collection level — a collection's own list is the answer", () =>
   const SPACE = '["TaskBlock","EventBlock"]';
 
   it('defers to the space only for a collection made without a copy', () => {
-    expect(resolveCollectionExtractionTargets(CANDIDATES, SPACE, undefined)).toEqual(['TaskBlock', 'EventBlock']);
-    expect(resolveCollectionExtractionTargets(CANDIDATES, SPACE, '')).toEqual(['TaskBlock', 'EventBlock']);
+    expect(resolveCollectionInterpretationTargets(CANDIDATES, SPACE, undefined)).toEqual(['TaskBlock', 'EventBlock']);
+    expect(resolveCollectionInterpretationTargets(CANDIDATES, SPACE, '')).toEqual(['TaskBlock', 'EventBlock']);
   });
 
   it('takes the collection over the space when it holds a list', () => {
-    expect(resolveCollectionExtractionTargets(CANDIDATES, SPACE, '["Sighting"]')).toEqual(['Sighting']);
+    expect(resolveCollectionInterpretationTargets(CANDIDATES, SPACE, '["Sighting"]')).toEqual(['Sighting']);
   });
 
-  it('lets a collection extract nothing while the space still defaults to something', () => {
+  it('lets a collection interpret nothing while the space still defaults to something', () => {
     // The case a migration into the generic settings resolver would lose: [] on the collection is a
     // decision, and it has to beat a space that says otherwise.
-    expect(resolveCollectionExtractionTargets(CANDIDATES, SPACE, '[]')).toEqual([]);
+    expect(resolveCollectionInterpretationTargets(CANDIDATES, SPACE, '[]')).toEqual([]);
   });
 
   it('narrows the collection list to the candidates too', () => {
-    expect(resolveCollectionExtractionTargets(CANDIDATES, SPACE, '["Sighting","Gone"]')).toEqual(['Sighting']);
+    expect(resolveCollectionInterpretationTargets(CANDIDATES, SPACE, '["Sighting","Gone"]')).toEqual(['Sighting']);
   });
 });
 
 describe('autoExtract on a collection', () => {
   it('defers to the space only when the collection holds no answer', () => {
-    expect(resolveCollectionAutoExtract(true, undefined)).toBe(true);
-    expect(resolveCollectionAutoExtract(false, null)).toBe(false);
+    expect(resolveCollectionAutoInterpret(true, undefined)).toBe(true);
+    expect(resolveCollectionAutoInterpret(false, null)).toBe(false);
   });
 
   it('lets a collection stay off while the space defaults to on, and the reverse', () => {
-    expect(resolveCollectionAutoExtract(true, false)).toBe(false);
-    expect(resolveCollectionAutoExtract(false, true)).toBe(true);
+    expect(resolveCollectionAutoInterpret(true, false)).toBe(false);
+    expect(resolveCollectionAutoInterpret(false, true)).toBe(true);
   });
 });
 
 describe('the copy a new collection is made with', () => {
   it("copies the space's defaults as they stand", () => {
-    expect(collectionExtractionDefaults({ autoInterpret: true, extractionTargets: '["Sighting"]' })).toEqual({
+    expect(collectionInterpretationDefaults({ autoInterpret: true, extractionTargets: '["Sighting"]' })).toEqual({
       autoExtract: true,
       extractionTargets: '["Sighting"]',
     });
@@ -113,13 +116,13 @@ describe('the copy a new collection is made with', () => {
   it('writes the floor for a space that never chose a list, so the copy is a real answer', () => {
     // Copying '' would leave the collection unset, and it would then follow the space's later
     // changes — the live inheritance the copy exists to avoid.
-    expect(collectionExtractionDefaults({ autoInterpret: false })).toEqual({
+    expect(collectionInterpretationDefaults({ autoInterpret: false })).toEqual({
       autoExtract: false,
-      extractionTargets: JSON.stringify(LEGACY_EXTRACTION_TARGETS),
+      extractionTargets: JSON.stringify(LEGACY_INTERPRETATION_TARGETS),
     });
   });
 
   it('copies nothing where there is no space, leaving the collection unset', () => {
-    expect(collectionExtractionDefaults(null)).toBeUndefined();
+    expect(collectionInterpretationDefaults(null)).toBeUndefined();
   });
 });

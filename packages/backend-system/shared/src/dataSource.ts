@@ -117,7 +117,7 @@ export interface RendererDataBindings {
   /**
    * Dataset-scoped model resolution, for backends whose model classes are per-dataset (synthesised
    * from a schema the dataset itself carries). Receives the dataset **handle**, not an id
-   * extracted from it — deriving a key is the host's job, since only the host knows the concrete
+   * found in it — deriving a key is the host's job, since only the host knows the concrete
    * type. This is what lets the renderer treat a handle as fully opaque.
    */
   $getEntityForDataset?: (name: string, dataset?: DatasetHandle) => EntityClass | undefined;

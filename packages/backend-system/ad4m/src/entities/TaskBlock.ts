@@ -52,7 +52,7 @@ export class TaskBlock extends WeNode {
    * `identity` is what makes extraction *converge*. A class that declares none is skipped when
    * the executor assembles the "instances that already exist" block, so the model is never
    * shown it, the deterministic dedup net has nothing to compare against, and every pass mints
-   * fresh copies of everything it finds. Without this, pressing Extract twice on one call
+   * fresh copies of everything it finds. Without this, pressing Interpret twice on one call
    * produced two of every task.
    *
    * It is not what admits a class to extraction — `extractable` on the entity is (a class
@@ -109,6 +109,7 @@ export class TaskBlock extends WeNode {
 
   @Property({
     through: 'we://priority',
+    options: [{ value: 'low' }, { value: 'medium' }, { value: 'high' }],
     interpretationHint:
       'Exactly one of: "low", "medium", "high". Use "medium" unless urgency is stated; do not infer it from tone.',
   })

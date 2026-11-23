@@ -189,7 +189,7 @@ describe('createInterpretationRelay', () => {
   });
 
   it('does not let two peers collide on a client-chosen pass id', () => {
-    // Both press Extract at once on the same collection and pick the same id — which they can,
+    // Both press Interpret at once on the same collection and pick the same id — which they can,
     // since a one-shot pass id is chosen client-side.
     const { anna, bo } = pair();
     anna.publish(activity({ passId: 'same', phase: 'thinking' }));

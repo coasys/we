@@ -12,14 +12,14 @@ The suite does not skip a step silently.
 
 ## Coverage
 
-| Vertical              | File                         | Asserted                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Todo                                                                                                                                                    |
-| --------------------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| V1 space              | `v1-space.e2e.mjs`           | Alice makes a shared space from the starter. The empty state and the tree show. The starter's SHACL shapes are in the perspective. The invite link is in Space settings. Bob joins from it. Both see two members.                                                                                                                                                                                                                                                                                                                      | "+ Invite" in the tree. The agent badge.                                                                                                                |
-| V2 call               | `v2-call-extraction.e2e.mjs` | The DNA installs through the UI. Its classes are the call's targets. A call starts and shows as live in the tree. Lines land in the transcript. Extraction makes records of the package's classes, linked to the call. They show on the canvas. One dragged onto the canvas is stored as a placement, and when the canvas is opened again it reads its placements with no `cannot read` or `cannot watch` warning. Accepting one clears its pending mark. Leaving ends the live mark.                                                  | The "Big picture" graph. The records in the Feed (product bug, see below).                                                                              |
-| V3 social DNA         | `v3-social-dna.e2e.mjs`      | Install from a file. The shapes are in the space's SHACL. They are listed under Social DNA. They are offered and switched on as call targets. A field added in the shape wizard changes the stored shape.                                                                                                                                                                                                                                                                                                                              | The setup prompt. Suggested shapes. A shape edited by voice.                                                                                            |
-| V4 Decide flow        | `v4-decide-flow.e2e.mjs`     | Flows install and the Workflows page lists them. Bob joins. A call finds a Question, and Alice accepts it. Alice starts Decide from the inspector and moves it step by step. The gated move waits for a second approval. Bob agrees, and the history has both approvers. Alice's screen follows.                                                                                                                                                                                                                                       | The ring diagram. The timeline. The decision spec.                                                                                                      |
-| V5 Build flow + agent | `v5-build-agent.e2e.mjs`     | An agent account speaks only MCP. It joins from the neighbourhood link, finds the Task with `instance_query`/`instance_get`, and takes it with `instance_update`. Alice's screen shows the owner. The agent moves the Task through the flow, and Alice's screen follows. Shipped without evidence is refused (`unmet`). The agent makes a `LinkBlock` with `instance_create`, adds it to the Task's responses with `instance_add_to_collection`, asks again, and the move waits. Alice agrees, and the Task ships with both approvers. | The agent asks for a flow move over MCP (no MCP tool proposes one). The agent in the call. CONTEXT for the agent. The decision spec starts Build.       |
-| V6 interfaces         | `v6-interfaces-feed.e2e.mjs` | A call finds records, and the call is a record of the space. The space reads as a canvas (records, no lines) and as a page again. A personal theme from Space settings → Appearance repaints the page.                                                                                                                                                                                                                                                                                                                                 | The Feed: the call, its lines, what was found, and a line's call button (product bug, see below). A Board for Build. A Vote for Decide. The Graph view. |
+| Vertical              | File                             | Asserted                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Todo                                                                                                                                                    |
+| --------------------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| V1 space              | `v1-space.e2e.mjs`               | Alice makes a shared space from the starter. The empty state and the tree show. The starter's SHACL shapes are in the perspective. The invite link is in Space settings. Bob joins from it. Both see two members.                                                                                                                                                                                                                                                                                                                      | "+ Invite" in the tree. The agent badge.                                                                                                                |
+| V2 call               | `v2-call-interpretation.e2e.mjs` | The DNA installs through the UI. Its classes are the call's targets. A call starts and shows as live in the tree. Lines land in the transcript. Interpretation makes records of the package's classes, linked to the call. They show on the canvas. One dragged onto the canvas is stored as a placement, and when the canvas is opened again it reads its placements with no `cannot read` or `cannot watch` warning. Accepting one clears its pending mark. Leaving ends the live mark.                                              | The "Big picture" graph. The records in the Feed (product bug, see below).                                                                              |
+| V3 social DNA         | `v3-social-dna.e2e.mjs`          | Install from a file. The shapes are in the space's SHACL. They are listed under Social DNA. They are offered and switched on as call targets. A field added in the shape wizard changes the stored shape.                                                                                                                                                                                                                                                                                                                              | The setup prompt. Suggested shapes. A shape edited by voice.                                                                                            |
+| V4 Decide flow        | `v4-decide-flow.e2e.mjs`         | The package's workflows install with it and the Workflows page lists them. Bob joins. A call finds a TeamQuestion, and Alice accepts it. Alice starts Decide from the inspector and moves it step by step. The gated move waits for a second approval. Bob agrees, and the history has both approvers. Alice's screen follows.                                                                                                                                                                                                         | The ring diagram. The timeline. The decision spec.                                                                                                      |
+| V5 Build flow + agent | `v5-build-agent.e2e.mjs`         | An agent account speaks only MCP. It joins from the neighbourhood link, finds the Task with `instance_query`/`instance_get`, and takes it with `instance_update`. Alice's screen shows the owner. The agent moves the Task through the flow, and Alice's screen follows. Shipped without evidence is refused (`unmet`). The agent makes a `LinkBlock` with `instance_create`, adds it to the Task's responses with `instance_add_to_collection`, asks again, and the move waits. Alice agrees, and the Task ships with both approvers. | The agent asks for a flow move over MCP (no MCP tool proposes one). The agent in the call. CONTEXT for the agent. The decision spec starts Build.       |
+| V6 interfaces         | `v6-interfaces-feed.e2e.mjs`     | A call finds records, and the call is a record of the space. The space reads as a canvas (records, no lines) and as a page again. A personal theme from Space settings → Appearance repaints the page.                                                                                                                                                                                                                                                                                                                                 | The Feed: the call, its lines, what was found, and a line's call button (product bug, see below). A Board for Build. A Vote for Decide. The Graph view. |
 
 The verticals run in order in one process (`all.e2e.mjs`). They share one executor, one served
 app and one browser (`context.mjs`). Each vertical makes its own accounts and its own space, so one
@@ -31,16 +31,16 @@ skipped, and the other verticals still run.
 `COASYS_SPACES_TIER` selects the tier.
 
 - **`stub`** (default) — no model, no microphone, no GPU.
-  - `stub-llm.mjs` serves an OpenAI-compatible endpoint. It answers extraction from a script.
+  - `stub-llm.mjs` serves an OpenAI-compatible endpoint. It answers interpretation from a script.
   - What is said goes in as typed lines, written from Node as the call's author. This is the same
     `TextBlock` with `source: 'typed'` that the transcribe module's composer writes.
   - The results are exact and repeatable, so the steps assert the exact records.
-  - The suite registers the call's extraction watch from Node (`watchCall` in `call.mjs`). It sends
+  - The suite registers the call's interpretation watch from Node (`watchCall` in `call.mjs`). It sends
     the same request that the app's `watchConversation` sends. This is necessary because the app
     registers a call's watch only when the transcribe module files its first transcribed line. With
     no transcription model, the module does not join the call. Thus the app does not watch a call
     that has only typed lines (see "Product gaps" below).
-  - When extraction does not find the records, the error includes what the executor holds for the
+  - When interpretation does not find the records, the error includes what the executor holds for the
     call's watch: the config links, the turns that its scope query reads, and the calls made to the
     stub.
 - **`real`** — a real language model, and a speech-to-text model for the call.
@@ -80,29 +80,30 @@ So the result converges through the stub's own answers, not through the executor
 `SOCIAL_DNA_PACKAGE` names the package. The default is `fixtures/software-team.dna.json`.
 
 A package is a **WE bundle** (`format: "we-bundle"`, see `docs/architecture/apps-as-data.md`) with
-`recordTypes` (Question, Tension, Decision, Task) and a theme. It has one extra field:
+`recordTypes` (TeamQuestion, Tension, Decision, Task), the `workflows` they move through, and a theme:
 
 ```jsonc
 {
   "format": "we-bundle",
   "recordTypes": [{ "name": "Task", "manifest": { "entities": { "Task": { … } } } }, …],
-  "flows": [ /* WorkflowDefinition[] — @we/backend-shared, workflows.ts */ ]
+  "workflows": [ /* WorkflowDefinition[] — @we/backend-shared, workflows.ts */ ]
 }
 ```
 
-- **The bundle half installs through the UI.** The path is Settings → Apps & templates → install from a
-  file, with the space ticked in the install prompt. A person takes the same path.
-- **The flows install from Node.** Bundles have no field for flows yet, so the suite calls
-  `createAd4mBackendPorts(client).workflows.install`. The app's Workflows page writes through the same
-  port.
-  - Before the install, the suite declares the package's shapes in its own process (`schemas.declareInDataset`,
-    with module id `shape/<name>`). Build's evidence names a relation of a bundle record type
-    (`responses` of a Task), and the port resolves a relation only from shapes declared in the
-    process that installs the flow.
+- **It installs through the UI.** The path is Settings → Apps & templates → install from a file, with the
+  space ticked in the install prompt. A person takes the same path. Setting the space up adds the record
+  types and installs the workflows.
+- **The suite reads the workflows back from Node** (`expectWorkflows`), through
+  `createAd4mBackendPorts(client).workflows`, after declaring the package's shapes in its own process
+  (`schemas.declareInDataset`, module id `shape/<name>`): Build's evidence names a relation of a bundle
+  record type (`responses` of a Task), and the port resolves a relation only from shapes declared in
+  the process that uses it.
+- **`TeamQuestion`, not `Question`.** The Coasys starter brings a `Question` of its own, and setting a
+  space up refuses a record type of a name the space already has from another app.
 
 The fixture holds two flows:
 
-- **Decide**: Question, Raised → Discussed → Options → Decided. Decided needs two approvals.
+- **Decide**: TeamQuestion, Raised → Discussed → Options → Decided. Decided needs two approvals.
 - **Build**: Task, ToDo → Doing → Review → Shipped. Shipped needs evidence (a `LinkBlock` among the Task's
   `responses`) and two approvals.
 
@@ -152,24 +153,24 @@ Change `LINES`, `HEARD` and the recording together. `COASYS_SPACES_WAV` names an
 
 - Chromium plays the recording in a loop. So the suite waits until the call's stored lines hold one
   word of each line (`HEARD`: edits, quarter, release, friday), and then presses the call bar's
-  "Stop transcribing". The call and its extraction watch stay. Extraction then reads one pass of
+  "Stop transcribing". The call and its interpretation watch stay. Interpretation then reads one pass of
   the recording, not a transcript that grows every 20 s.
 - The transcript check reads those words from the call's `TextBlock` records. Then it finds on the
   screen a stored line that holds one of them, as the speech model wrote it. No space name holds these words,
   so only the transcript can pass the check.
-- V4 waits for a titled `Question` and V5 for a titled `Task`. Each waits for the class that it
+- V4 waits for a titled `TeamQuestion` and V5 for a titled `Task`. Each waits for the class that it
   uses, not for the first record of any class.
 - A wait longer than a minute writes one line each minute (`[until] still waiting for …`), so that
   CI's no-output timeout does not stop a long real-tier run.
 
 ### A red V4 or V5 in the real tier
 
-In the real tier, a model decides what is in the call. If V4 does not get a `Question` or V5 does
+In the real tier, a model decides what is in the call. If V4 does not get a `TeamQuestion` or V5 does
 not get a `Task`, the cause can be model variance and not a product break. To find which:
 
-1. Read the step's error. It ends with the extraction facts: the call's watch config, the `turns`
+1. Read the step's error. It ends with the interpretation facts: the call's watch config, the `turns`
    that its scope query reads, and the call's links. If the turns hold the four lines and the call
-   has records of other classes, extraction ran. Step 2 says whether it asked for that class.
+   has records of other classes, interpretation ran. Step 2 says whether it asked for that class.
 2. Read `executor.log` in the artifacts. Find the interpretation lines:
    - `🧠 interpretation start … classes=[…]` — a pass started, and the classes it asked for.
    - `✅ 🧠 interpretation done … bases_written=N` — the pass ended and wrote N records.
@@ -179,8 +180,8 @@ not get a `Task`, the cause can be model variance and not a product break. To fi
    A pass can write records without having asked for the missing class, so `bases_written` above 0
    says nothing on its own. First check that the class is a target of the call: it is in the
    `classes=[…]` of the passes, and in the call's watch config in the step's error (the space's
-   extraction targets, Space settings → Features → "What new calls look for", when the call
-   started). If it is not, the cause is the extraction setup, not the model. If the passes asked for
+   interpretation targets, Space settings → Features → "What new calls look for", when the call
+   started). If it is not, the cause is the interpretation setup, not the model. If the passes asked for
    the class, ended with `bases_written` above 0, and the class is not in the step's records, the
    cause is model variance. If no pass started, or every pass failed, the cause is a product break
    or a setup break.
@@ -278,7 +279,7 @@ the rows or the content, start from the host: `spaceTree()` in `steps.mjs`, and 
 
 ## Product gaps the suite works around
 
-- **A call that nobody transcribes is not extracted.** Typed lines (`addMessage`,
+- **A call that nobody transcribes is not interpreted.** Typed lines (`addMessage`,
   `packages/module-system/transcribe/src/store.ts`) do not register the call's watch. Only
   `ensureCollection` registers it, on the first transcribed line. With no transcription model,
   auto-join stops (`giveUpAutoJoin`, "no-model"). The suite registers the watch from Node.

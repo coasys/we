@@ -125,7 +125,7 @@ describe('making a board', () => {
     expect(committed.get('call')?.children).toContain(boardId);
   });
 
-  it('gives a call’s board its columns when extraction makes it', async () => {
+  it('gives a call’s board its columns when interpretation makes it', async () => {
     const boardId = await actions().ensureBoardFor('call');
 
     expect(committed.get('call')?.board).toBe(boardId);

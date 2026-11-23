@@ -88,7 +88,7 @@ const SHAPES: EntityShape[] = [
     ],
     relations: [{ name: 'node', target: '', cardinality: 'one' }],
   },
-  // A subject-class model the way extracted records arrive: every link is a typed relation on the
+  // A subject-class model the way interpreted records arrive: every link is a typed relation on the
   // instances themselves, and no `Relationship` rows exist for any of it.
   {
     name: 'DiscussionTopic',
@@ -698,7 +698,7 @@ describe('canvasSeed', () => {
   });
 
   it('drops a connection from a card to itself', async () => {
-    // What an extraction pass writes when dedup resolves both ends to one record. There is nothing
+    // What an interpretation pass writes when dedup resolves both ends to one record. There is nothing
     // to draw, and a self-loop is the one shape the rest of the canvas has to treat specially.
     const { context: ctx } = context({
       Placement: [
@@ -721,7 +721,7 @@ describe('canvasSeed', () => {
   });
 
   it('draws a connection to a card still in the tray', async () => {
-    // The tray is on the canvas — it is where everything a call extracts lands — so a connection the
+    // The tray is on the canvas — it is where everything a call interprets lands — so a connection the
     // extraction drew between a placed card and one nobody has positioned yet is a line between two
     // cards somebody can see. Counting only placed cards meant it was never drawn, in freeform or tree.
     const { context: ctx } = context({
@@ -742,7 +742,7 @@ describe('canvasSeed', () => {
   });
 
   it('addresses an end by the card drawn, not the type the connection stored', async () => {
-    // An extraction pass writes whatever class name the model spelled. Trusted over the drawn card,
+    // An interpretation pass writes whatever class name the model spelled. Trusted over the drawn card,
     // a misspelt one addressed a node that does not exist and the layout dropped the line unseen.
     const { context: ctx } = context({
       Placement: [
@@ -765,7 +765,7 @@ describe('canvasSeed', () => {
   });
 
   it('marks a connection still only suggested, and leaves off one put away', async () => {
-    // An extraction pass stages connections as well as cards, so a line answers to the same two flags:
+    // An interpretation pass stages connections as well as cards, so a line answers to the same two flags:
     // drawn as the draft it is while nobody has agreed to it, and gone when suggestions are hidden.
     const { context: ctx } = context({
       Placement: [
@@ -818,7 +818,7 @@ describe('canvasSeed', () => {
 /**
  * Cards that stand for a suggestion nobody has agreed to yet.
  *
- * An extraction pass can stage a whole record rather than writing it, and a staged record is in the
+ * An interpretation pass can stage a whole record rather than writing it, and a staged record is in the
  * graph: it answers this seed's query exactly as an accepted one does. So a canvas drew a card for
  * something nobody had said yes to, identical to the cards for everything they had. Only the
  * capability that staged it knows which those are, which is why this arrives as ids.
@@ -1546,7 +1546,7 @@ describe('a canvas over another record’s members', () => {
  * The model-relation half of `relations`: the classes' own typed edges, beside the connections.
  *
  * The rule being kept is the template's direction rule — the record that *holds* a to-one pointer
- * is the child of the record it points at — because that is what makes an extracted call's fields
+ * is the child of the record it points at — because that is what makes an interpreted call's fields
  * (`Position.about`, `DiscussionTopic.subTopicOf`) draw as the agenda they describe rather than
  * upside down.
  */

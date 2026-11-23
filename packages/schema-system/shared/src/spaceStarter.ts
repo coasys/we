@@ -98,7 +98,7 @@ export interface SpaceStarter {
    */
   policy?: 'open' | 'community';
   /**
-   * Whether the space collection — the messages typed outside any call — is extracted as it grows.
+   * Whether the space collection — the messages typed outside any call — is interpreted as it grows.
    * Written onto that collection when it is made (`CollectionBlock.autoExtract`); absent, it starts
    * with the space's default like any other new collection.
    */

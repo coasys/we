@@ -162,3 +162,37 @@ describe('EntityManifest', () => {
     });
   });
 });
+
+describe('a type from a vocabulary outside WE', () => {
+  const question = (over: Partial<EntityManifest['entities'][string]> = {}): EntityManifest => ({
+    version: '1',
+    entities: {
+      Question: {
+        namespace: 'conv://',
+        flag: false,
+        properties: { text: { type: 'string', predicate: 'conv://text', required: true } },
+        relations: {},
+        ...over,
+      },
+    },
+  });
+
+  it('may name its namespace and carry no flag', () => {
+    expect(validateManifest(question()).valid).toBe(true);
+    expect(validateManifest(question({ namespace: 'https://example.org/ns#' })).valid).toBe(true);
+  });
+
+  it('needs a required property when it has no flag, since that is how its records are known', () => {
+    const result = validateManifest(question({ properties: { text: { type: 'string', predicate: 'conv://text' } } }));
+    expect(result.valid).toBe(false);
+    if (!result.valid) expect(result.errors.map((e) => e.path)).toContain('entities.Question.flag');
+  });
+
+  it('refuses a namespace that is not an IRI prefix', () => {
+    for (const namespace of ['conv', 'conv://Question', 'not an iri']) {
+      const result = validateManifest(question({ namespace }));
+      expect(result.valid, namespace).toBe(false);
+      if (!result.valid) expect(result.errors.map((e) => e.path)).toContain('entities.Question.namespace');
+    }
+  });
+});

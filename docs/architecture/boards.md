@@ -87,7 +87,7 @@ were one card set with different column headings.
 | **A container's board** | that container                      | that container's own work                       |
 | **One somebody made**   | nothing                             | only what somebody put on it                    |
 
-Extraction files what every call finds into the space collection, with the call as its provenance
+Interpretation files what every call finds into the space collection, with the call as its provenance
 (`extractedFrom`), so a call's finds are on **Everything** and a call needs no board of its own. A
 view that wants one call's work picks it out of Everything by provenance rather than by board. A space
 made before spaces had a collection keeps an Everything that gathers from the `Space` record, which a
@@ -131,7 +131,7 @@ column one of two quite different things.
 
 A lane is how somebody organises without imposing: "Thursday", "Waiting on Ana", "Discuss at
 standup". Never filling itself is the price of claiming no shared meaning, and it is the right
-price — a lane called "Thursday" has no business collecting extracted work. A lane that turns out to
+price — a lane called "Thursday" has no business collecting interpreted work. A lane that turns out to
 matter is **promoted** by naming it in Settings → Vocabulary, which makes it a slug and gives it a
 `semantic`; from then on it behaves like any other bound column, on every board.
 
@@ -151,14 +151,14 @@ board. Storing the name at creation froze the vocabulary as of the day each boar
 ## Why a _gathering_ board's membership is a query and not containment
 
 The obvious design is pure containment: a card is in To-do because To-do's list holds a link to it.
-It is rejected, and not because the link is hard to write — an extraction pass knows which call it
+It is rejected, and not because the link is hard to write — an interpretation pass knows which call it
 ran on and could write it in a few lines. It is rejected for four reasons that all follow from
 membership _being_ the link:
 
 1. **Membership would have to be maintained per board, forever.** A board created tomorrow is empty
    of yesterday's work unless creating a board backfills links from every existing task. Every new
    board is a backfill; every new task is a fan-out across every board that should show it.
-2. **The fan-out is one member's node writing into everybody's containers.** Extraction runs
+2. **The fan-out is one member's node writing into everybody's containers.** Interpretation runs
    wherever the election lands. That node would write into boards it has not synced, or that were
    made while it was offline.
 3. **The failure modes are opposite, and this is what decides it.** When containment goes wrong the
@@ -290,10 +290,10 @@ A board with `people` also reads the `Involvement` records — one person's part
 The decisions that look arbitrary from the code:
 
 **The creator is not on a card.** Every board that has settled this puts only whoever is on the work
-on a card's face; who made it is history, and lives on the extracted mark's tooltip and at the foot of the
+on a card's face; who made it is history, and lives on the interpreted mark's tooltip and at the foot of the
 inspector. On an
-extracted card the author is whichever member's node ran the pass, not who proposed the work, so the
-name was false as well as prominent — an `extracted` mark says what is true.
+interpreted card the author is whichever member's node ran the pass, not who proposed the work, so the
+name was false as well as prominent — an interpreted mark says what is true.
 
 **Declined is not being on it.** A "not going" never matches a filter, and never puts somebody in a
 row.
@@ -356,7 +356,7 @@ then show: a board a group moves forward together, not enforcement. A backend wi
 (`server`) can refuse such a write outright. Either way, writing `status` past the workflow is something
 every surface that reads `status` has to live with until it moves through the workflow too.
 
-**Not built yet:** other writers of `status` — the inspector, extraction's suggestions — still write
+**Not built yet:** other writers of `status` — the inspector, interpretation's suggestions — still write
 it directly in a space with a workflow, so such an edit shows everywhere except the board. Routing them
 through the workflow is the natural next step.
 
@@ -366,7 +366,7 @@ through the workflow is the natural next step.
   space's `board` role. A new space's starter writes it, with a column per state the starter seeds;
   in a space whose starter made none, it is made the first time somebody presses "make a board".
 - **A call's board** — gathering from the call, parented to it so an anchored Boards view lists it,
-  and pointed at by the call's `board`. Made by **the first extraction pass that leaves the call
+  and pointed at by the call's `board`. Made by **the first interpretation pass that leaves the call
   holding a task** — not when somebody opens the route.
 
 Neither is created on a route mounting. Writing records into a space everybody shares as a side

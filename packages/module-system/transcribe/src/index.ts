@@ -73,8 +73,8 @@ import {
   captureMeter,
   captureStatus,
   coverage,
-  extractionPanel,
-  extractionTargets,
+  interpretationPanel,
+  interpretationTargets,
   panel,
   pendingUtterance,
   SUBJECT_EXPR,
@@ -86,12 +86,12 @@ import { createTranscribeStore, TRANSCRIBE_ACTIVITY } from './store';
 import { tiedDecisionModals } from './TiedDecision.schema';
 
 export { CALL_CONTROLS_ANCHOR, callControl } from './CallControl.schema';
-export { extractionActivity } from './ExtractionStatus.schema';
+export { interpretationActivity } from './InterpretationStatus.schema';
 export {
   captureMeter,
   captureStatus,
   coverage,
-  extractionTargets,
+  interpretationTargets,
   panel,
   pendingUtterance,
   transcriptComposer,
@@ -215,9 +215,9 @@ export const transcribeModule = defineModule({
         label: 'Who is recorded',
         description: 'Who in the call is being transcribed and who is not.',
       },
-      extractionTargets: {
-        node: extractionTargets,
-        label: 'What to extract',
+      interpretationTargets: {
+        node: interpretationTargets,
+        label: 'What to interpret',
         description: 'Which kinds of thing a call is turned into.',
       },
       pendingUtterance: {
@@ -233,12 +233,12 @@ export const transcribeModule = defineModule({
         Only the record button. The bar is for what a person does to themselves right now — mute,
         camera, transcribe-me — and this is the one control of that kind this module has.
 
-        Extraction had a square here too, in three lives: a readout on a second anchor under the
-        bar, then a way into the panel, then the switch for automatic extraction with a spinner while
+        Interpretation had a square here too, in three lives: a readout on a second anchor under the
+        bar, then a way into the panel, then the switch for automatic interpretation with a spinner while
         a pass ran. Each was a fair answer to "how does somebody see a pass is running without opening
         anything", and each put a group decision beside a personal one in a row that reads as one set
-        of controls. The rail answers the visibility question now — see `busyWhen` on the extraction
-        panel below — and the switch lives in the extraction panel, which has room to say whose
+        of controls. The rail answers the visibility question now — see `busyWhen` on the interpretation
+        panel below — and the switch lives in the interpretation panel, which has room to say whose
         decision it is. The call module's `call-status` anchor has nothing left to hold.
       */
       { anchor: CALL_CONTROLS_ANCHOR, node: callControl, order: 10 },
@@ -290,7 +290,7 @@ export const transcribeModule = defineModule({
      * being open is a fact about the screen. These two are the exception the contract describes.
      * Pressing record opens the transcript, because starting something invisible and saying nothing
      * about it is how a feature comes to look broken; a pass *starting* — anybody's — opens the
-     * extraction panel, because the four people in five who did not start it are the ones who need
+     * interpretation panel, because the four people in five who did not start it are the ones who need
      * telling; and the store reads `open` to keep polling for a model while the panel says there is
      * none. Each of those is the module changing or reading the flag, which a host-held flag would
      * leave it no way to do. So both name `open`, and with it `show` and `close`, which the rail and
@@ -300,7 +300,7 @@ export const transcribeModule = defineModule({
      *
      * Derived from the panels — a panel with an `icon` gets one — so the two launchers this used to
      * declare are gone. The transcript's is the plain module entry it has always been; the
-     * extraction's spins while any peer's pass runs, which is the glance the call bar's square used
+     * interpretation's spins while any peer's pass runs, which is the glance the call bar's square used
      * to give, in the place that outlives the call and opens the panel that explains it.
      */
     panels: [
@@ -319,15 +319,15 @@ export const transcribeModule = defineModule({
         order: 90,
       },
       {
-        name: 'extraction',
-        title: 'Extraction',
+        name: 'interpretation',
+        title: 'Interpretation',
         icon: 'sparkle',
         busyWhen: 'passRunning',
-        node: extractionPanel,
+        node: interpretationPanel,
         bid: { edge: 'right', size: 'sm' },
-        open: 'extractionOpen',
-        show: 'openExtractionPanel',
-        close: 'closeExtractionPanel',
+        open: 'interpretationOpen',
+        show: 'openInterpretationPanel',
+        close: 'closeInterpretationPanel',
         order: 91,
       },
     ],

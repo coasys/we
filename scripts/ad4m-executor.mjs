@@ -42,7 +42,7 @@ import {
   NotPublished,
   writeExecutor,
 } from './ad4m-executor-download.mjs';
-import { pinCommit, readPin, ROOT } from './ad4m-pin.mjs';
+import { executorCommit, readPin, ROOT } from './ad4m-pin.mjs';
 
 const { readSeed, seedLabel } = createRequire(import.meta.url)('./seed.cjs');
 
@@ -76,12 +76,13 @@ export function chooseExecutor({ env = process.env, seed, commit, root = ROOT, d
 
 /**
  * The executor WE runs, for the pin and seed in this checkout. The pin is read only when it decides,
- * since reading a version pin asks npm.
+ * since reading a version pin asks npm (`executorCommit`: with npm out of reach, the custody crate's
+ * commit).
  */
 export async function resolveExecutor(env = process.env) {
   const seed = readSeed();
   const chosen = chooseExecutor({ env, seed, commit: '' });
-  return chosen.source === 'pin' ? chooseExecutor({ env, seed, commit: await pinCommit(readPin()) }) : chosen;
+  return chosen.source === 'pin' ? chooseExecutor({ env, seed, commit: await executorCommit(readPin()) }) : chosen;
 }
 
 /**
