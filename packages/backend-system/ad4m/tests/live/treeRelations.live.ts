@@ -281,11 +281,11 @@ describe('a tree over an installed SDNA’s relations, live', () => {
 
   /*
     The clear a tree drop into the unconnected area, and the undo of a first attach, both need: an
-    installed class's `max_count: 1` relation is a plain property to the model, and WE's
-    `clearOnEmpty` makes `update(..., { field: '' })` remove that property's links. Checked against
-    what the perspective stores, not what the model reads back. `null` is skipped, as documented.
+    installed class's `max_count: 1` relation is a plain property to the model, and the SDK
+    makes `update(..., { field: '' })` and `{ field: null }` remove that property's links. Checked
+    against what the perspective stores, not what the model reads back.
   */
-  it('clears an installed to-one with an empty value, and skips null', { timeout: 120_000 }, async () => {
+  it('clears an installed to-one with an empty value or null', { timeout: 120_000 }, async () => {
     const { url, token } = inject('ad4mExecutor');
     client ??= new Ad4mClient(url, token);
     const agent = (await client.agent.me()).did;
@@ -307,6 +307,8 @@ describe('a tree over an installed SDNA’s relations, live', () => {
       expect(await stored()).toEqual([t.id]);
 
       await Position.update(ref.handle, p.id, { about: null });
+      expect(await stored()).toEqual([]);
+      await Position.update(ref.handle, p.id, { about: t.id });
       expect(await stored()).toEqual([t.id]);
 
       await Position.update(ref.handle, p.id, { about: '' });

@@ -36,7 +36,6 @@ import {
 } from './agentHelpers';
 import { createAd4mAgentPort } from './agentPort';
 import { createAd4mCallPort } from './callPort';
-import { installClearOnEmpty } from './clearOnEmpty';
 import { installContainmentPredicate } from './containment';
 import { Space } from './entities';
 import { type Ad4mCustodyHost, createAd4mIdentityPort } from './identityPort';
@@ -185,11 +184,7 @@ export function createAd4mBackendPorts(
   // infrastructure (`Ad4mLifecycleOptions`).
   options: Ad4mRuntimeOptions & Ad4mLifecycleOptions & Ad4mConnectionOptions = {},
 ): BackendPorts {
-  // `''` clears a property, which is what four separate call sites in WE already assumed and none
-  // of them got. Installed before any model is registered so every class inherits it — generated,
-  // manifest-compiled or built from foreign SHACL. See `clearOnEmpty.ts` for what it repairs.
-  installClearOnEmpty(Ad4mModel);
-  // And the relation writes, for the same reason and in the same place: the contract can say
+  // The relation writes, installed before any model is registered so every class inherits them: the contract can say
   // "this relation's membership is now that list", and every model class — generated, compiled
   // or built from foreign SHACL — inherits the ability to carry it out. See `relationWrites.ts`.
   installRelationWrites(Ad4mModel);

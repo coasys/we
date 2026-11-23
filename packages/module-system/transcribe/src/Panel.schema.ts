@@ -3775,6 +3775,7 @@ const composerRow: SchemaNode = {
         lineComposer({
           placeholder: 'Type a message…',
           sendLabel: 'Add this to the transcript',
+          sending: { $: 'local.sending' },
           onSubmit: { $if: { condition: { $: '!local.sending' }, then: sendMessage } },
         }),
       ],
