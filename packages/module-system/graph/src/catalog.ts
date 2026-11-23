@@ -93,7 +93,7 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
           name: 'pending',
           type: 'string[]',
           description:
-            'Record ids whose card stands for a suggestion nobody has agreed to yet — an extraction pass can stage a whole record, so it is on the canvas and answers every query the accepted ones do. Read onto the matching node as `data.pending`, for a style rule or a node action to pick up with `{ when: { "data.pending": true } }` — the `data.` prefix is required, since a bare key reads a node field rather than seeded data, and matches nothing here. Ids rather than a query because only the capability that staged them knows which they are.',
+            'Record ids whose card stands for a suggestion nobody has agreed to yet — an interpretation pass can stage a whole record, so it is on the canvas and answers every query the accepted ones do. Read onto the matching node as `data.pending`, for a style rule or a node action to pick up with `{ when: { "data.pending": true } }` — the `data.` prefix is required, since a bare key reads a node field rather than seeded data, and matches nothing here. Ids rather than a query because only the capability that staged them knows which they are.',
         },
         {
           name: 'changed',

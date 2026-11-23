@@ -11,7 +11,7 @@
  *
  * ## What it offers
  *
- * - **The person the conversation named**, first, when `said` is a name — what an extraction pass
+ * - **The person the conversation named**, first, when `said` is a name — what an interpretation pass
  *   writes into `TaskBlock.assignee`, since a model cannot know a DID — that matches exactly one
  *   member, and nobody is doing the work yet. Exactly one: two Jameses is a guess, and a guess about
  *   who owns work is the wrong thing to make one click away.

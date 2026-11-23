@@ -1,5 +1,5 @@
 /**
- * What a call looks like written to a file: its transcript, and everything extraction did with it.
+ * What a call looks like written to a file: its transcript, and everything interpretation did with it.
  *
  * Pure, so the store only gathers and downloads. Both exports exist to be handed to a person or a
  * model investigating a call — "why did it extract *that*", "what should the prompt say instead" —
@@ -123,7 +123,7 @@ export interface AmendmentEntry {
   node?: string;
 }
 
-export interface ExtractionLogInput {
+export interface InterpretationLogInput {
   callId: string;
   callTitle?: string;
   spaceName?: string;
@@ -166,7 +166,7 @@ function parseTargets(detail: string | undefined): string[] {
 }
 
 /** The whole log, as one Markdown document. */
-export function formatExtractionLog(input: ExtractionLogInput): string {
+export function formatInterpretationLog(input: InterpretationLogInput): string {
   const title = input.callTitle?.trim() || 'Untitled call';
   const passes = [...input.passes].sort((a, b) => isoOf(a.createdAt).localeCompare(isoOf(b.createdAt)));
   // What is waiting on each record, by kind: a record extraction made, or a change to an agreed one.
@@ -174,7 +174,7 @@ export function formatExtractionLog(input: ExtractionLogInput): string {
   const out: string[] = [];
 
   out.push(
-    `# Extraction log: ${title}`,
+    `# Interpretation log: ${title}`,
     '',
     `- Call id: \`${input.callId}\``,
     ...(input.spaceName ? [`- Space: ${input.spaceName}`] : []),
@@ -184,9 +184,9 @@ export function formatExtractionLog(input: ExtractionLogInput): string {
       A paragraph for whoever this is handed to, which is as likely to be a model as a person. It
       has no other way to learn what the sections are or that the prompt is the ground truth.
     */
-    'Every extraction pass run over this call, oldest first. Each pass shows what started it, who ran it, ' +
+    'Every interpretation pass run over this call, oldest first. Each pass shows what started it, who ran it, ' +
       'how it ended, and the exact prompt the model was given and the response it returned. After the ' +
-      'passes: the records extraction wrote against this call as they are stored now (people may have ' +
+      'passes: the records interpretation wrote against this call as they are stored now (people may have ' +
       'edited them since), the changes it suggested to records that already existed and somebody kept, ' +
       'and the suggestions still waiting on a decision. The transcript the passes read is included ' +
       'once, below the settings.',
@@ -195,7 +195,7 @@ export function formatExtractionLog(input: ExtractionLogInput): string {
     '',
     `- Looking for, on this call: ${list(input.callTargets)}`,
     `- Space default: ${list(input.spaceTargets)}`,
-    `- Extracts automatically as the call happens: ${input.autoInterpret === undefined ? '(unavailable)' : input.autoInterpret ? 'yes' : 'no'}`,
+    `- Interprets automatically as the call happens: ${input.autoInterpret === undefined ? '(unavailable)' : input.autoInterpret ? 'yes' : 'no'}`,
     '',
     `## Transcript (${input.transcript.length} ${input.transcript.length === 1 ? 'line' : 'lines'})`,
     '',
@@ -207,7 +207,7 @@ export function formatExtractionLog(input: ExtractionLogInput): string {
     '',
   );
 
-  if (!passes.length) out.push('_No extraction pass has run on this call._', '');
+  if (!passes.length) out.push('_No interpretation pass has run on this call._', '');
 
   passes.forEach((pass, index) => {
     const targets = parseTargets(pass.detail);
@@ -241,15 +241,15 @@ export function formatExtractionLog(input: ExtractionLogInput): string {
     );
   });
 
-  out.push(`## Extracted records (${input.records.length})`, '');
-  if (!input.records.length) out.push('_Nothing extracted from this call is stored._', '');
+  out.push(`## Interpreted records (${input.records.length})`, '');
+  if (!input.records.length) out.push('_Nothing interpreted from this call is stored._', '');
   for (const record of input.records) {
     const fields = plainFields(record);
     const id = typeof fields.id === 'string' ? fields.id : '';
     out.push(
       `### ${recordTypeOf(record) ?? 'Record'}${id ? `: \`${id}\`` : ''}`,
       '',
-      `- Awaiting a decision: ${waiting.get(id) === 'create' ? 'yes — made by extraction, not kept yet' : waiting.get(id) === 'update' ? 'yes — a change to it is suggested' : 'no'}`,
+      `- Awaiting a decision: ${waiting.get(id) === 'create' ? 'yes — made by interpretation, not kept yet' : waiting.get(id) === 'update' ? 'yes — a change to it is suggested' : 'no'}`,
       ...(typeof fields.author === 'string' ? [`- Author: ${input.nameFor(fields.author)}`] : []),
       '',
       fenced(JSON.stringify(fields, null, 2), 'json'),

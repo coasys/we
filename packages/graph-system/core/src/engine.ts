@@ -1912,7 +1912,7 @@ export class GraphEngine {
    * without shrinking its box — the covered pixels are still canvas — so the two differ, and this is
    * the one that answers the question a layout asks. `manual` puts a node with no stored position in
    * the top-left of this rectangle, which is right where a transcript panel sits: on the workshop's
-   * canvas every freshly extracted card appeared underneath one, present and unreachable. See
+   * canvas every freshly interpreted card appeared underneath one, present and unreachable. See
    * `Viewport.setObscured`.
    */
   private visibleWorldRect(): { x: number; y: number; width: number; height: number } {

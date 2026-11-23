@@ -92,6 +92,44 @@ describe('routeStore params', () => {
   });
 
   /*
+    Going to what a page draws with nothing in its query. Restored, the remembered query showed
+    another view of the page: a space remembering `?channel=` opened that channel, not the Feed a
+    bot notice's Open was for.
+  */
+  it('a fresh navigate restores no remembered search', () => {
+    const store = mountStore();
+    const nav = vi.fn();
+    store.setNavigateFunction(nav as never);
+
+    store.setParam('sort', 'likes');
+    window.history.replaceState(null, '', '/about');
+    store.setCurrentPath('/about');
+
+    store.navigate('/cards', { fresh: true });
+    expect(nav).toHaveBeenLastCalledWith('/cards', undefined);
+  });
+
+  it('a fresh navigate leaves the same page under another query', () => {
+    const store = mountStore();
+    const nav = vi.fn();
+    store.setNavigateFunction(nav as never);
+    store.setCurrentPath('/cards', '?sort=likes');
+
+    // Without fresh this is the page already on screen, and nothing moves.
+    store.navigate('/cards');
+    expect(nav).not.toHaveBeenCalled();
+
+    store.navigate('/cards', { fresh: true });
+    expect(nav).toHaveBeenLastCalledWith('/cards', undefined);
+
+    // Already there with no query: nothing to do.
+    nav.mockClear();
+    store.setCurrentPath('/cards', '');
+    store.navigate('/cards', { fresh: true });
+    expect(nav).not.toHaveBeenCalled();
+  });
+
+  /*
     A record id is a URI. Pasted into a path it is several segments and the route never matches;
     pasted into a query by hand, one holding `&`, `+` or `#` reads back as something else. Handed to
     navigate as a query value, it reads back exactly, and stays readable in the address.

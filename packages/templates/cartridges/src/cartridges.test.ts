@@ -173,15 +173,15 @@ describe('the Coasys cartridge', () => {
   });
 
   /*
-    WE's rail carries the extraction panel's button; this interface has no rail, so the call page is
+    WE's rail carries the interpretation panel's button; this interface has no rail, so the call page is
     where a way back to the panel has to live. It is the rail's own action — `launchModule` on the
     panel's dock — so a press toggles and an open-but-hidden panel is brought forward, not closed.
   */
-  it('opens the extraction panel from a call’s bar, the rail’s own way', () => {
+  it('opens the interpretation panel from a call’s bar, the rail’s own way', () => {
     const aside = { children: callBarAside("'call-1'") };
     const button = findNode(
       aside,
-      (n) => n.type === 'we-button' && JSON.stringify(n.props).includes('transcribe:extraction'),
+      (n) => n.type === 'we-button' && JSON.stringify(n.props).includes('transcribe:interpretation'),
     )!;
     expect(button).toBeDefined();
     // "Interpretation" is the word the team agreed on, on the button and on its tooltip.
@@ -192,10 +192,10 @@ describe('the Coasys cartridge', () => {
     expect((tooltip?.props as { content?: unknown } | undefined)?.content).toBe('Interpretation');
     expect(JSON.stringify(callBarAside("'call-1'"))).not.toContain('Extraction');
     expect(JSON.stringify(button.props)).toContain('spaceStore.launchModule');
-    expect(JSON.stringify(button.props)).toContain('transcribe:extraction');
+    expect(JSON.stringify(button.props)).toContain('transcribe:interpretation');
     // The panel's own glyph, and its state on the button.
     expect(JSON.stringify(button)).toContain('sparkle');
-    expect(JSON.stringify(button.props)).toContain('modules.transcribe.extractionOpen');
+    expect(JSON.stringify(button.props)).toContain('modules.transcribe.interpretationOpen');
     // The transcript export it sits beside is still offered the same way.
     expect(JSON.stringify(callBarAside("'call-1'"))).toContain('spaceStore.exportCallTranscript');
   });
@@ -208,8 +208,9 @@ describe('the Coasys cartridge', () => {
   it('offers the Interpretation button only where the space has transcription on', () => {
     type Node = { type?: string; props?: Record<string, unknown>; children?: unknown[] };
     const aside = callBarAside("'call-1'") as Node[];
-    const gate = aside.find((n) => n.type === '$if' && JSON.stringify(n.props).includes('transcribe:extraction')) as
-      Node | undefined;
+    const gate = aside.find(
+      (n) => n.type === '$if' && JSON.stringify(n.props).includes('transcribe:interpretation'),
+    ) as Node | undefined;
     expect((gate?.props?.condition as { $?: string } | undefined)?.$).toBe("'transcribe' in spaceStore.activeModules");
     const exportNode = aside[aside.length - 1];
     expect(JSON.stringify(exportNode)).toContain('spaceStore.exportCallTranscript');
@@ -268,7 +269,7 @@ describe('the Coasys cartridge', () => {
     type Node = { type?: string; props?: Record<string, unknown>; children?: unknown[] };
     const button = findNode(
       { children: callBarAside("'call-1'") },
-      (n) => n.type === 'we-button' && JSON.stringify(n.props).includes('transcribe:extraction'),
+      (n) => n.type === 'we-button' && JSON.stringify(n.props).includes('transcribe:interpretation'),
     ) as Node;
     const subject =
       'routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : ' +
@@ -445,7 +446,7 @@ describe('the Coasys cartridge', () => {
     const props = graph.props as Record<string, unknown>;
     const options = (props.seeds as { options: Record<string, unknown> }).options;
     expect(JSON.stringify(options.canvas)).toContain('spaceStore.landmarks.canvas');
-    expect(options.contains).toEqual({ $: 'shapeStore.extractionCandidates' });
+    expect(options.contains).toEqual({ $: 'shapeStore.interpretationCandidates' });
     expect(options.connections).toBe('Relationship');
     expect(options.pending).toBeTruthy();
     expect((props.nodeActions as { id: string }[]).map((a) => a.id)).toEqual(
@@ -584,7 +585,7 @@ describe('the Coasys cartridge', () => {
       expect(JSON.stringify(view)).toContain('"type":"$routes"');
     });
 
-    it('dims to what was extracted from the call chosen, what a person made, or what is in a workflow', () => {
+    it('dims to what was interpreted from the call chosen, what a person made, or what is in a workflow', () => {
       expect(dims(at(['record'], { kind: 'call', id: 'call-1', view: 'canvas' }))).toEqual([
         { when: { 'data.origin': { not: 'call-1' } }, style: { opacity: FOCUS_DIM } },
       ]);

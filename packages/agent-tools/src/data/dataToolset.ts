@@ -20,7 +20,7 @@
  */
 import { type EntityManifestEntry, type EntityManifestProperty, manifestEntries } from '@we/backend-shared';
 import { type ContentBlock, createBlocks, type TextContentBlock } from '@we/block-shared';
-import { completeResponse, getEntityForDataset, withExtractionDefaults } from '@we/entities';
+import { completeResponse, getEntityForDataset, withInterpretationDefaults } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 
 import type { SessionAnswer, SessionTool, SessionToolset } from '../core/conversation';
@@ -308,10 +308,10 @@ export function createDataToolset(options: DataToolsetOptions): SessionToolset {
     if (problem) return { text: problem };
     const placed = placement(args);
     if (placed.error) return { text: placed.error };
-    // A new feed starts with its space's extraction defaults, as the app's own `record.create` writes it.
+    // A new feed starts with its space's interpretation defaults, as the app's own `record.create` writes it.
     const stamped =
       name === 'CollectionBlock' && fields.mode === 'feed'
-        ? withExtractionDefaults(name, fields, await spaceRecord())
+        ? withInterpretationDefaults(name, fields, await spaceRecord())
         : fields;
     // Marked in the same write, so the record is never seen without it. A to-one relation is
     // written as the single-entry list the model layer takes.

@@ -68,7 +68,7 @@ vertical('V6 interfaces: the Feed, page and canvas, a theme', (v) => {
     const { page } = alice;
     await openSpacePath(page, shared);
     await page.getByRole('button', { name: 'Canvas', exact: true }).click();
-    // In the canvas's own element: the Extraction panel lists the same titles.
+    // In the canvas's own element: the Interpretation panel lists the same titles.
     const canvas = page.locator('.we-graph');
     for (const title of titles) await canvas.getByText(title).first().waitFor({ timeout: SLOW });
     if (STUB) {

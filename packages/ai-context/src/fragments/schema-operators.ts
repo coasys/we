@@ -376,7 +376,7 @@ the template was not written for. Put the query inside an $each over a list of m
 the row:
 {
   "type": "$each",
-  "props": { "items": { "$": "shapeStore.extractionTargets" }, "as": "target" },
+  "props": { "items": { "$": "shapeStore.interpretationCandidates" }, "as": "target" },
   "children": [{
     "type": "Column",
     "$queries": { "found": { "entity": { "$": "target" }, "order": { "createdAt": "asc" } } },
@@ -398,7 +398,7 @@ are on this canvas", or anything whose total or emptiness you need to read above
 {
   "$queries": {
     "produced": {
-      "entity": { "$": "shapeStore.extractionCandidates" },
+      "entity": { "$": "shapeStore.interpretationCandidates" },
       "scope": { "anchor": "CollectionBlock", "via": "children", "anchorId": { "$": "local.callId" } },
       "order": { "createdAt": "desc" },
       "limit": 50

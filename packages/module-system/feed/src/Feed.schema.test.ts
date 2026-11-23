@@ -264,3 +264,16 @@ describe('the Feed of one call', () => {
     expect(callView).toContain('"$invoke":"modules.feed.showMoreCallFeed"');
   });
 });
+
+describe('sending from the composer', () => {
+  /*
+    The line is drawn as it is sent, so the box is not held while the write runs: a second message
+    can be typed at once, and both show.
+  */
+  it('does not hold the next message behind the write', () => {
+    for (const json of [panel, view, callView]) {
+      expect(json).not.toContain('!local.sending');
+      expect(json).not.toContain('"$setLocal":"sending"');
+    }
+  });
+});

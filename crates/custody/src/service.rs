@@ -11,7 +11,18 @@
 //!
 //! The client's futures are not `Send` (their RPC trait is `?Send`), so the service runs on a
 //! thread of its own with a current-thread runtime; [`CustodyHandle`] is the `Send` way in.
+//!
+//! A state read asks the vault on a separate thread ([`keychain_call`]), one call at a time. While
+//! a device link waits for its claim, the custody task selects on Cancel, the claim's deadline and
+//! that read, so an unlock prompt cannot hold the other two. The read still completes and answers
+//! whoever asked, including when Cancel or the claim gets there first.
+//!
+//! A flow's own unlock, and resuming a pending incept, still call the vault on the custody task:
+//! the identity client's vault is synchronous and its futures are not `Send`. Those calls happen
+//! between screens, not while the claim select is running.
 
+use std::collections::VecDeque;
+use std::pin::Pin;
 use std::sync::Arc;
 
 use ad4m_client::ws_rpc::WsRpcClient;
@@ -21,7 +32,7 @@ use ad4m_identity_client::flows::link::{Claimed, LinkFlow};
 use ad4m_identity_client::flows::revoke::revoke;
 use ad4m_identity_client::flows::unlink::unlink_key;
 use ad4m_identity_client::{
-    ClientError, ExecutorRpc, OsRandom, Secret, SystemClock, VaultError, ViaExecutor,
+    ClientError, Clock, ExecutorRpc, OsRandom, Secret, SystemClock, VaultError, ViaExecutor,
 };
 use ad4m_identity_core::link::OfferKind;
 use ad4m_identity_core::{Event, Op};
@@ -33,6 +44,130 @@ use crate::vault::DesktopVault;
 
 static CLOCK: SystemClock = SystemClock;
 static RANDOM: OsRandom = OsRandom;
+
+/// Runs `job` on the process's one keychain thread and completes when the job does.
+///
+/// The OS keychain and the Secret Service answer on the thread that calls them, and that call can
+/// sit inside an unlock prompt. The custody task never makes the call. It waits on this thread,
+/// and while it waits it can still select on Cancel and the claim deadline. The thread runs one
+/// job at a time, so a second read stays queued behind the prompt instead of opening another.
+/// The job is sent when this is called, which is when the future is first polled, not when the
+/// future is built: a read kept queued behind another has not entered the keychain yet.
+fn keychain_call<T: Send + 'static>(
+    job: impl FnOnce() -> T + Send + 'static,
+) -> impl std::future::Future<Output = T> {
+    let (tx, rx) = oneshot::channel();
+    keychain_sender()
+        .send(Box::new(move || {
+            let _ = tx.send(job());
+        }))
+        .expect("custody keychain thread");
+    async move { rx.await.expect("custody keychain thread ended") }
+}
+
+fn keychain_sender() -> &'static std::sync::mpsc::Sender<Box<dyn FnOnce() + Send>> {
+    static SENDER: std::sync::OnceLock<std::sync::mpsc::Sender<Box<dyn FnOnce() + Send>>> =
+        std::sync::OnceLock::new();
+    SENDER.get_or_init(|| {
+        let (tx, rx) = std::sync::mpsc::channel::<Box<dyn FnOnce() + Send>>();
+        std::thread::Builder::new()
+            .name("custody-keychain".into())
+            .spawn(move || {
+                while let Ok(job) = rx.recv() {
+                    job();
+                }
+            })
+            .expect("custody keychain thread");
+        tx
+    })
+}
+
+type ReadFut = Pin<Box<dyn std::future::Future<Output = CustodyPublic> + Send + 'static>>;
+type ReadStart = Box<dyn FnOnce() -> ReadFut + Send>;
+
+struct HeldRead {
+    reply: oneshot::Sender<CustodyPublic>,
+    start: ReadStart,
+}
+
+/// State reads whose keychain half has not finished.
+///
+/// Dropping the owner — Cancel, the next step input, or the claim arriving — does not drop the
+/// replies. The rest is spawned on the runtime, still one keychain call at a time. The caller was
+/// not asking to cancel the read. The future is `Send`: it only waits on the keychain thread.
+struct LiveReads {
+    flying: Option<(oneshot::Sender<CustodyPublic>, ReadFut)>,
+    waiting: VecDeque<HeldRead>,
+}
+
+impl LiveReads {
+    fn new() -> Self {
+        Self {
+            flying: None,
+            waiting: VecDeque::new(),
+        }
+    }
+
+    fn busy(&self) -> bool {
+        self.flying.is_some()
+    }
+
+    /// Starts `start` now, or holds it until the read already in the keychain has returned.
+    /// `start` is what calls [`keychain_call`], so a held read has not entered the keychain.
+    fn push(
+        &mut self,
+        reply: oneshot::Sender<CustodyPublic>,
+        start: impl FnOnce() -> ReadFut + Send + 'static,
+    ) {
+        if self.flying.is_some() {
+            self.waiting.push_back(HeldRead {
+                reply,
+                start: Box::new(start),
+            });
+            return;
+        }
+        self.flying = Some((reply, start()));
+    }
+
+    fn deliver(&mut self, public: CustodyPublic) {
+        if let Some((reply, _)) = self.flying.take() {
+            let _ = reply.send(public);
+        }
+        if self.flying.is_none() {
+            if let Some(held) = self.waiting.pop_front() {
+                self.flying = Some((held.reply, (held.start)()));
+            }
+        }
+    }
+
+    /// Keeps the outstanding reads going after the caller returns to the rest of the step.
+    fn detach(&mut self) {
+        let flying = self.flying.take();
+        let mut waiting = std::mem::take(&mut self.waiting);
+        if flying.is_none() && waiting.is_empty() {
+            return;
+        }
+        // Outside a runtime there is nowhere to finish them; the senders drop and the callers
+        // see the service stop. Every custody path runs inside its runtime.
+        if tokio::runtime::Handle::try_current().is_err() {
+            return;
+        }
+        tokio::spawn(async move {
+            if let Some((reply, done)) = flying {
+                let _ = reply.send(done.await);
+            }
+            while let Some(held) = waiting.pop_front() {
+                let _ = held.reply.send((held.start)().await);
+            }
+        });
+    }
+}
+
+impl Drop for LiveReads {
+    fn drop(&mut self) {
+        self.detach();
+    }
+}
 
 /// A change the main window may ask for. Making an identity, adding a device, unlinking one (retired:
 /// its history stays valid) and revoking one (lost or stolen); a later change adds more.
@@ -368,6 +503,7 @@ fn failed(e: &ClientError) -> Screen {
 }
 
 async fn serve(vault: DesktopVault, address: ExecutorAddress, mut rx: Rx) {
+    let vault = Arc::new(vault);
     while let Some(request) = rx.recv().await {
         match request {
             Request::Start(step, reply) => {
@@ -391,6 +527,8 @@ async fn serve(vault: DesktopVault, address: ExecutorAddress, mut rx: Rx) {
             Request::Cancel(reply) => {
                 let _ = reply.send(());
             }
+            // No step is open, so nothing is selecting on Cancel. The keychain half still runs
+            // off this task; this arm just waits for it before the next request.
             Request::Public(reply) => {
                 let _ = reply.send(public_state(&vault, &address).await);
             }
@@ -478,18 +616,25 @@ async fn finish_pending_quietly<R: ExecutorRpc>(executor: &ViaExecutor<R>, vault
     }
 }
 
-async fn public_state(vault: &DesktopVault, address: &ExecutorAddress) -> CustodyPublic {
+struct Prepared {
+    did: Option<String>,
+    blocked: Option<&'static str>,
+    scid: Option<String>,
+}
+
+async fn prepare_connected(vault: &Arc<DesktopVault>, address: &ExecutorAddress) -> Prepared {
     match connect(address).await {
-        Ok(executor) => public_state_on(Some(&executor), vault).await,
-        Err(_) => public_state_on::<WsRpcClient>(None, vault).await,
+        Ok(executor) => prepare(Some(&executor), vault).await,
+        Err(_) => prepare::<WsRpcClient>(None, vault).await,
     }
 }
 
-/// [`public_state`] with the executor, when it answers.
-async fn public_state_on<R: ExecutorRpc>(
+/// The executor's did and whether a step is blocked, without asking the keychain. The keychain
+/// half is [`finish_from`], so a caller can select while that half waits.
+async fn prepare<R: ExecutorRpc>(
     executor: Option<&ViaExecutor<R>>,
     vault: &DesktopVault,
-) -> CustodyPublic {
+) -> Prepared {
     let (did, blocked) = match executor {
         Some(executor) => {
             finish_pending_quietly(executor, vault).await;
@@ -503,35 +648,74 @@ async fn public_state_on<R: ExecutorRpc>(
         }
         None => (None, None),
     };
-    // Whether this identity's key is held here and, if so, whether it is sealed.
-    let sealed = did
+    let scid = did
         .as_deref()
         .and_then(ad4m_identity_core::scid_of)
-        .and_then(|scid| match held_sealed(vault, scid) {
-            Ok(sealed) => sealed,
-            // The store could not be asked (no Secret Service, a keychain error, a copy on both
-            // sides): reported as not known to hold one, and logged so the cause is not lost.
-            Err(e) => {
-                log::warn!("custody: cannot tell whether the master key is held here: {e}");
-                None
-            }
-        });
-    // The index sits inside the sealed item; only master #0 is held for now (no rotation yet).
-    let holds_master = sealed.map(|_| HoldsMaster { index: 0 });
-    // The unlock of the key reported as held; with none held, the unlock a new one would get.
-    let unlock = if sealed.unwrap_or_else(|| vault.needs_passphrase()) {
-        "passphrase"
-    } else {
-        // The operating system's own prompt: Touch ID or the login password on macOS, the Secret
-        // Service's unlock on Linux. One word for every platform, so no caller names one.
-        "os"
-    };
-    CustodyPublic {
-        did,
-        holds_master,
-        unlock,
-        blocked,
+        .map(str::to_string);
+    Prepared { did, blocked, scid }
+}
+
+async fn public_state(vault: &Arc<DesktopVault>, address: &ExecutorAddress) -> CustodyPublic {
+    match connect(address).await {
+        Ok(executor) => public_state_on(Some(&executor), vault).await,
+        Err(_) => public_state_on::<WsRpcClient>(None, vault).await,
     }
+}
+
+/// [`public_state`] with the executor, when it answers. `None` asks the vault with no did.
+async fn public_state_on<R: ExecutorRpc>(
+    executor: Option<&ViaExecutor<R>>,
+    vault: &Arc<DesktopVault>,
+) -> CustodyPublic {
+    let prepared = prepare(executor, vault).await;
+    finish_from(Arc::clone(vault), prepared).await
+}
+
+/// Whether this identity's key is held here and, if so, whether it is sealed. Off the custody
+/// task: `holds` and `needs_passphrase` reach the keychain or the Secret Service, and either can
+/// sit inside an unlock prompt. With none held, the unlock a new key would get.
+fn finish_from(vault: Arc<DesktopVault>, prepared: Prepared) -> ReadFut {
+    Box::pin(async move {
+        let Prepared { did, blocked, scid } = prepared;
+        let (sealed, needs_new) = keychain_call(move || {
+            let sealed = match scid.as_deref() {
+                Some(scid) => match held_sealed(&vault, scid) {
+                    Ok(sealed) => sealed,
+                    // The store could not be asked (no Secret Service, a keychain error, a copy on
+                    // both sides): reported as not known to hold one, and logged so the cause is
+                    // not lost.
+                    Err(e) => {
+                        log::warn!("custody: cannot tell whether the master key is held here: {e}");
+                        None
+                    }
+                },
+                None => None,
+            };
+            let needs_new = if sealed.is_none() {
+                vault.needs_passphrase()
+            } else {
+                false
+            };
+            (sealed, needs_new)
+        })
+        .await;
+        // The index sits inside the sealed item; only master #0 is held for now (no rotation yet).
+        let holds_master = sealed.map(|_| HoldsMaster { index: 0 });
+        let unlock = if sealed.unwrap_or(needs_new) {
+            "passphrase"
+        } else {
+            // The operating system's own prompt: Touch ID or the login password on macOS, the
+            // Secret Service's unlock on Linux. One word for every platform, so no caller names
+            // one.
+            "os"
+        };
+        CustodyPublic {
+            did,
+            holds_master,
+            unlock,
+            blocked,
+        }
+    })
 }
 
 /// `None` when `scid`'s key is not held here; else whether it is sealed under a passphrase — from
@@ -553,28 +737,40 @@ fn answer(reply: &mut Reply, screen: Result<Screen, CustodyError>) {
 }
 
 /// The next request inside a flow: a step input (with its reply slot filled), or the flow's end.
-/// A second `Start` while a step is open is refused, and `Public` is answered in passing.
+/// A second `Start` while a step is open is refused. A `Public` read runs off this task, and the
+/// loop selects on it and on the next request, so Cancel is not held by the read. Leaving the
+/// loop does not drop a read that is still in the keychain ([`LiveReads`]).
 async fn next_input(
-    vault: &DesktopVault,
+    vault: &Arc<DesktopVault>,
     address: &ExecutorAddress,
     rx: &mut Rx,
     reply: &mut Reply,
 ) -> Option<StepInput> {
+    let mut reads = LiveReads::new();
     loop {
-        match rx.recv().await? {
-            Request::Step(input, r) => {
-                *reply = Some(r);
-                return Some(input);
+        tokio::select! {
+            request = rx.recv() => {
+                match request? {
+                    Request::Step(input, r) => {
+                        *reply = Some(r);
+                        return Some(input);
+                    }
+                    Request::Cancel(r) => {
+                        let _ = r.send(());
+                        return None;
+                    }
+                    Request::Start(_, r) => {
+                        let _ = r.send(Err(CustodyError::Busy));
+                    }
+                    Request::Public(r) => {
+                        let prepared = prepare_connected(vault, address).await;
+                        let vault = Arc::clone(vault);
+                        reads.push(r, move || finish_from(vault, prepared));
+                    }
+                }
             }
-            Request::Cancel(r) => {
-                let _ = r.send(());
-                return None;
-            }
-            Request::Start(_, r) => {
-                let _ = r.send(Err(CustodyError::Busy));
-            }
-            Request::Public(r) => {
-                let _ = r.send(public_state(vault, address).await);
+            public = async { reads.flying.as_mut().unwrap().1.as_mut().await }, if reads.busy() => {
+                reads.deliver(public);
             }
         }
     }
@@ -603,7 +799,7 @@ fn passphrase_error(problem: PassphraseProblem) -> Option<String> {
 // ─── create ─────────────────────────────────────────────────────────────────────
 
 async fn run_create(
-    vault: &DesktopVault,
+    vault: &Arc<DesktopVault>,
     address: &ExecutorAddress,
     rx: &mut Rx,
     reply: &mut Reply,
@@ -618,7 +814,7 @@ async fn run_create(
 /// [`run_create`] once the executor answers.
 async fn create_on<R: ExecutorRpc>(
     executor: &ViaExecutor<R>,
-    vault: &DesktopVault,
+    vault: &Arc<DesktopVault>,
     address: &ExecutorAddress,
     rx: &mut Rx,
     reply: &mut Reply,
@@ -778,7 +974,7 @@ async fn create_on<R: ExecutorRpc>(
 /// holds no log that names it.
 async fn offer_discard<R: ExecutorRpc>(
     executor: &ViaExecutor<R>,
-    vault: &DesktopVault,
+    vault: &Arc<DesktopVault>,
     address: &ExecutorAddress,
     rx: &mut Rx,
     reply: &mut Reply,
@@ -844,17 +1040,35 @@ fn passphrase_for(vault: &DesktopVault, did: &str) -> Result<bool, ClientError> 
     Ok(vault.needs_passphrase_for(scid)?)
 }
 
-async fn run_link(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, reply: &mut Reply) {
+async fn run_link(
+    vault: &Arc<DesktopVault>,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+) {
     let executor = match connect(address).await {
         Ok(e) => e,
         Err(message) => return answer(reply, Ok(Screen::Failed { message })),
     };
+    link_on(&executor, vault, address, rx, reply, &CLOCK).await
+}
+
+/// [`run_link`] once the executor answers. `clock` is the offer's clock: the claim deadline is
+/// `open` time plus the offer's lifetime, checked while [`LinkFlow::wait_for_claim`] is polled.
+async fn link_on<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    vault: &Arc<DesktopVault>,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+    clock: &dyn Clock,
+) {
     // The offer names the store the executor uses, and the claiming device publishes through it.
-    let store_url = match trusted_store(&executor).await {
+    let store_url = match trusted_store(executor).await {
         Ok(url) => url,
         Err(refused) => return answer(reply, Ok(refused)),
     };
-    finish_pending_quietly(&executor, vault).await;
+    finish_pending_quietly(executor, vault).await;
     let did = match executor.status().await {
         Ok(status) => match status.did {
             Some(did) => did,
@@ -893,12 +1107,12 @@ async fn run_link(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, 
         }
         let unlocking = vault.unlocking(passphrase.take());
         match LinkFlow::open(
-            &executor,
+            executor,
             &unlocking,
             &did,
             OfferKind::Node,
             &store_url,
-            &CLOCK,
+            clock,
             &RANDOM,
         )
         .await
@@ -921,7 +1135,7 @@ async fn run_link(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, 
         Ok(Screen::Offer {
             qr_svg: qr_svg(&link),
             link,
-            expires: offer_expiry(),
+            expires: offer_expiry(clock),
         }),
     );
 
@@ -932,10 +1146,11 @@ async fn run_link(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, 
         };
         match input {
             StepInput::WaitClaim if claimed.is_none() => {
-                // Waits for the claim, or for the window to cancel meanwhile.
+                // The claim future carries the deadline (the offer's expiry). `wait_cancel`
+                // selects on Cancel and on the state read, which runs off this task.
                 let outcome = tokio::select! {
                     claim = flow.wait_for_claim() => Some(claim),
-                    () = wait_cancel(vault, address, rx) => None,
+                    () = wait_cancel(executor, vault, rx) => None,
                 };
                 match outcome {
                     Some(Ok(claim)) => {
@@ -963,30 +1178,52 @@ async fn run_link(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, 
     }
 }
 
-/// Resolves when the window cancels; answers `Public` in passing and refuses anything else.
-async fn wait_cancel(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx) {
+/// Resolves when the window cancels. A `Public` read uses the flow's executor for the did, then
+/// asks the keychain off this task ([`keychain_call`]). This loop selects on the next request and
+/// on that read finishing, so Cancel is answered while the read waits. At most one read is in the
+/// keychain: a second `Public` waits for the first to finish before it asks. The caller selects
+/// this future against the claim, whose deadline is the offer's expiry. Dropping it when the
+/// claim arrives does not drop the read.
+async fn wait_cancel<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    vault: &Arc<DesktopVault>,
+    rx: &mut Rx,
+) {
+    let mut reads = LiveReads::new();
     loop {
-        match rx.recv().await {
-            None => return,
-            Some(Request::Cancel(r)) => {
-                let _ = r.send(());
-                return;
+        tokio::select! {
+            request = rx.recv() => {
+                match request {
+                    None => return,
+                    Some(Request::Cancel(r)) => {
+                        let _ = r.send(());
+                        return;
+                    }
+                    Some(Request::Public(r)) => {
+                        // The did comes from this flow's executor (a reconnect would miss a fake
+                        // one, and would open a second socket in production). The keychain half
+                        // owns its data, so it can finish after this select is dropped.
+                        let prepared = prepare(Some(executor), vault).await;
+                        let vault = Arc::clone(vault);
+                        reads.push(r, move || finish_from(vault, prepared));
+                    }
+                    Some(Request::Start(_, r)) => {
+                        let _ = r.send(Err(CustodyError::Busy));
+                    }
+                    Some(Request::Step(_, r)) => {
+                        let _ = r.send(Err(CustodyError::Busy));
+                    }
+                }
             }
-            Some(Request::Public(r)) => {
-                let _ = r.send(public_state(vault, address).await);
-            }
-            Some(Request::Start(_, r)) => {
-                let _ = r.send(Err(CustodyError::Busy));
-            }
-            Some(Request::Step(_, r)) => {
-                let _ = r.send(Err(CustodyError::Busy));
+            public = async { reads.flying.as_mut().unwrap().1.as_mut().await }, if reads.busy() => {
+                reads.deliver(public);
             }
         }
     }
 }
 
-fn offer_expiry() -> u64 {
-    ad4m_identity_client::Clock::now(&CLOCK) + ad4m_identity_core::link::OFFER_TTL_S
+fn offer_expiry(clock: &dyn Clock) -> u64 {
+    clock.now() + ad4m_identity_core::link::OFFER_TTL_S
 }
 
 /// The offer link as a QR code, SVG, drawn in the theme's colours by the window's CSS.
@@ -1056,7 +1293,7 @@ async fn open_key_change(
 // ─── unlink ─────────────────────────────────────────────────────────────────────
 
 async fn run_unlink(
-    vault: &DesktopVault,
+    vault: &Arc<DesktopVault>,
     address: &ExecutorAddress,
     rx: &mut Rx,
     reply: &mut Reply,
@@ -1116,7 +1353,7 @@ async fn run_unlink(
 // ─── revoke ─────────────────────────────────────────────────────────────────────
 
 async fn run_revoke(
-    vault: &DesktopVault,
+    vault: &Arc<DesktopVault>,
     address: &ExecutorAddress,
     rx: &mut Rx,
     reply: &mut Reply,
@@ -1196,6 +1433,9 @@ async fn run_revoke(
 mod tests {
     use super::*;
     use std::cell::{Cell, RefCell};
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+    use std::sync::{Condvar, Mutex};
+    use std::time::{Duration, Instant};
 
     use ad4m_identity_client::vault::KeySigner;
     use ad4m_identity_client::{RpcError, Vault};
@@ -1205,7 +1445,7 @@ mod tests {
 
     use crate::pending::PendingIncepts;
     use crate::seal::Kdf;
-    use crate::store::FileStore;
+    use crate::store::{FileStore, SecretStore, StoreKind};
 
     const CHEAP: Kdf = Kdf {
         m_kib: 64,
@@ -1227,6 +1467,16 @@ mod tests {
         store: RefCell<Value>,
         publishes: Cell<u32>,
         calls: Cell<u32>,
+        /// Events `identity.publish` took, in order, answered back by `identity.log`.
+        events: RefCell<Vec<Value>>,
+        /// The signed offer `identity.openOffer` took, listed by `identity.offers`.
+        offer: RefCell<Option<Value>>,
+        /// When set, an `identity.offers` call with `wait > 0` waits until it clears.
+        hold_offers: Arc<AtomicBool>,
+        /// Set while that wait is in progress.
+        offers_waiting: Arc<AtomicBool>,
+        /// Wakes the waiting `identity.offers` so it rechecks `hold_offers`.
+        offer_release: Arc<tokio::sync::Notify>,
     }
 
     impl FakeExecutor {
@@ -1240,6 +1490,11 @@ mod tests {
                 store: RefCell::new(json!({ "url": "https://store.example", "trusted": true })),
                 publishes: Cell::new(0),
                 calls: Cell::new(0),
+                events: RefCell::new(Vec::new()),
+                offer: RefCell::new(None),
+                hold_offers: Arc::new(AtomicBool::new(false)),
+                offers_waiting: Arc::new(AtomicBool::new(false)),
+                offer_release: Arc::new(tokio::sync::Notify::new()),
             }
         }
     }
@@ -1284,12 +1539,49 @@ mod tests {
                         });
                     }
                     let event = Event::from_json(&p["events"][0]).unwrap();
+                    self.events.borrow_mut().push(p["events"][0].clone());
                     self.publishes.set(self.publishes.get() + 1);
                     *self.held.borrow_mut() = Some(event.scid.clone());
                     Ok(json!({
                         "scid": event.scid, "seq": 0, "hash": "h", "time": 0,
                         "store": "did:key:zStore", "sig": "s",
                     }))
+                }
+                "identity.log" => {
+                    let did = p["did"].as_str().unwrap_or("").to_string();
+                    let events = self.events.borrow().clone();
+                    let scid = events
+                        .first()
+                        .and_then(|e| e["scid"].as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    Ok(json!({
+                        "did": did,
+                        "events": events,
+                        "head": {
+                            "scid": scid, "seq": 0, "hash": "h", "time": 0,
+                            "store": "did:key:zStore", "sig": "s",
+                        },
+                        "fork": null,
+                    }))
+                }
+                "identity.openOffer" => {
+                    let offer = p["signedOffer"].clone();
+                    let id = offer["offer"]["offerId"].as_str().unwrap_or("").to_string();
+                    *self.offer.borrow_mut() = Some(offer);
+                    Ok(json!({ "offerId": id }))
+                }
+                "identity.offers" => {
+                    let wait = p["wait"].as_u64().unwrap_or(0);
+                    if wait > 0 && self.hold_offers.load(Ordering::SeqCst) {
+                        self.offers_waiting.store(true, Ordering::SeqCst);
+                        while self.hold_offers.load(Ordering::SeqCst) {
+                            self.offer_release.notified().await;
+                        }
+                        self.offers_waiting.store(false, Ordering::SeqCst);
+                    }
+                    let offer = self.offer.borrow().clone().unwrap_or(Value::Null);
+                    Ok(json!([{ "offer": offer, "state": { "state": "open" } }]))
                 }
                 other => Err(RpcError {
                     code: 404,
@@ -1313,12 +1605,12 @@ mod tests {
     }
 
     /// The desktop vault over `dir`, as the app opens it on each start.
-    fn open_vault(dir: &std::path::Path) -> DesktopVault {
-        DesktopVault::with_kdf(
+    fn open_vault(dir: &std::path::Path) -> Arc<DesktopVault> {
+        Arc::new(DesktopVault::with_kdf(
             Box::new(FileStore::new(dir)),
             PendingIncepts::file(dir),
             CHEAP,
-        )
+        ))
     }
 
     fn pass() -> Option<Secret<String>> {
@@ -1560,10 +1852,10 @@ mod tests {
     /// executor's store, and not set while nothing is known.
     #[tokio::test]
     async fn the_public_state_is_blocked_when_the_executor_has_no_store_it_trusts() {
-        let vault = DesktopVault::new(
+        let vault = Arc::new(DesktopVault::new(
             Box::new(crate::store::MemoryStore::new()),
             PendingIncepts::memory(),
-        );
+        ));
         let executor = ViaExecutor::new(FakeExecutor::new());
         assert_eq!(public_state_on(Some(&executor), &vault).await.blocked, None);
         for store in [
@@ -1632,10 +1924,10 @@ mod tests {
         ] {
             let executor = ViaExecutor::new(FakeExecutor::new());
             *executor.rpc().store.borrow_mut() = store;
-            let vault = DesktopVault::new(
+            let vault = Arc::new(DesktopVault::new(
                 Box::new(crate::store::MemoryStore::new()),
                 PendingIncepts::memory(),
-            );
+            ));
             let screens =
                 run_create_on(&executor, &vault, |_, first| async move { vec![first] }).await;
             assert_eq!(
@@ -1845,7 +2137,7 @@ mod tests {
     /// The step ends when the driver returns (the window closes).
     async fn run_create_on<F, Fut>(
         executor: &ViaExecutor<FakeExecutor>,
-        vault: &DesktopVault,
+        vault: &Arc<DesktopVault>,
         window: F,
     ) -> Vec<Screen>
     where
@@ -1890,5 +2182,333 @@ mod tests {
                 confirm: Some(PASSPHRASE.into()),
             })
             .await
+    }
+
+    /// A keychain whose calls sit until [`Block::release`]. `kind` does not: a new item's unlock
+    /// is decided without a prompt, and the block stands in for the prompt a later read opens.
+    struct BlockingKeychain {
+        items: Mutex<std::collections::HashMap<String, Vec<u8>>>,
+        block: Arc<Block>,
+    }
+
+    struct Block {
+        mu: Mutex<BlockInner>,
+        cv: Condvar,
+    }
+
+    struct BlockInner {
+        armed: bool,
+        in_flight: u32,
+        max_in_flight: u32,
+    }
+
+    impl Block {
+        fn new() -> Arc<Self> {
+            Arc::new(Block {
+                mu: Mutex::new(BlockInner {
+                    armed: false,
+                    in_flight: 0,
+                    max_in_flight: 0,
+                }),
+                cv: Condvar::new(),
+            })
+        }
+
+        fn enter(&self) {
+            let mut g = self.mu.lock().unwrap();
+            if !g.armed {
+                return;
+            }
+            g.in_flight += 1;
+            g.max_in_flight = g.max_in_flight.max(g.in_flight);
+            while g.armed {
+                g = self.cv.wait(g).unwrap();
+            }
+            g.in_flight = g.in_flight.saturating_sub(1);
+        }
+
+        fn arm(&self) {
+            self.mu.lock().unwrap().armed = true;
+        }
+
+        fn release(&self) {
+            let mut g = self.mu.lock().unwrap();
+            g.armed = false;
+            self.cv.notify_all();
+        }
+
+        fn in_flight(&self) -> u32 {
+            self.mu.lock().unwrap().in_flight
+        }
+
+        fn max_in_flight(&self) -> u32 {
+            self.mu.lock().unwrap().max_in_flight
+        }
+    }
+
+    impl BlockingKeychain {
+        fn new(block: Arc<Block>) -> Self {
+            BlockingKeychain {
+                items: Mutex::new(std::collections::HashMap::new()),
+                block,
+            }
+        }
+    }
+
+    impl SecretStore for BlockingKeychain {
+        fn kind(&self) -> StoreKind {
+            StoreKind::Keychain
+        }
+
+        fn kind_of(&self, _: &str) -> Result<StoreKind, VaultError> {
+            self.block.enter();
+            Ok(StoreKind::Keychain)
+        }
+
+        fn put(&self, name: &str, bytes: &[u8]) -> Result<(), VaultError> {
+            self.block.enter();
+            self.items
+                .lock()
+                .unwrap()
+                .insert(name.to_string(), bytes.to_vec());
+            Ok(())
+        }
+
+        fn get(&self, name: &str) -> Result<Option<Vec<u8>>, VaultError> {
+            self.block.enter();
+            Ok(self.items.lock().unwrap().get(name).cloned())
+        }
+
+        fn contains(&self, name: &str) -> Result<bool, VaultError> {
+            self.block.enter();
+            Ok(self.items.lock().unwrap().contains_key(name))
+        }
+
+        fn delete(&self, name: &str) -> Result<(), VaultError> {
+            self.block.enter();
+            self.items.lock().unwrap().remove(name);
+            Ok(())
+        }
+    }
+
+    struct ManualClock(AtomicU64);
+
+    impl Clock for ManualClock {
+        fn now(&self) -> u64 {
+            self.0.load(Ordering::SeqCst)
+        }
+    }
+
+    fn wait_until(timeout: Duration, pred: impl Fn() -> bool) -> bool {
+        let start = Instant::now();
+        while start.elapsed() < timeout {
+            if pred() {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        pred()
+    }
+
+    /// Which answer must arrive while the keychain call is still inside its prompt.
+    enum WhileBlocked {
+        Cancel,
+        Deadline,
+    }
+
+    /// One active link whose state read blocks in the keychain. `mode` is the answer that has to
+    /// arrive within a second anyway: Cancel, or the claim deadline.
+    async fn blocking_keychain_while_linked(mode: WhileBlocked) -> Result<(), String> {
+        let block = Block::new();
+        let hold_offers = Arc::new(AtomicBool::new(true));
+        let offers_waiting = Arc::new(AtomicBool::new(false));
+        let offer_release = Arc::new(tokio::sync::Notify::new());
+        let clock = Arc::new(ManualClock(AtomicU64::new(1_700_000_000)));
+        let (to_service, mut rx) = mpsc::unbounded_channel();
+        let (first_tx, first_rx) = oneshot::channel();
+
+        let block_thread = Arc::clone(&block);
+        let hold_thread = Arc::clone(&hold_offers);
+        let waiting_thread = Arc::clone(&offers_waiting);
+        let release_thread = Arc::clone(&offer_release);
+        let clock_thread = Arc::clone(&clock);
+        let thread = std::thread::Builder::new()
+            .name("custody-link-test".into())
+            .spawn(move || {
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .expect("test runtime");
+                rt.block_on(async move {
+                    let mut fake = FakeExecutor::new();
+                    fake.hold_offers = hold_thread;
+                    fake.offers_waiting = waiting_thread;
+                    fake.offer_release = release_thread;
+                    let executor = ViaExecutor::new(fake);
+                    let vault = Arc::new(DesktopVault::with_kdf(
+                        Box::new(BlockingKeychain::new(block_thread)),
+                        PendingIncepts::memory(),
+                        CHEAP,
+                    ));
+                    confirmed(41)
+                        .finish(&executor, &vault.unlocking(None))
+                        .await
+                        .expect("create");
+                    let address = ExecutorAddress {
+                        url: "http://127.0.0.1:9".into(),
+                        admin_credential: Arc::from("x"),
+                    };
+                    let mut reply = Some(first_tx);
+                    link_on(
+                        &executor,
+                        &vault,
+                        &address,
+                        &mut rx,
+                        &mut reply,
+                        clock_thread.as_ref(),
+                    )
+                    .await;
+                });
+            })
+            .expect("custody test thread");
+
+        // Releases the prompt and the offer poll if this case returns or panics, then joins.
+        // A panic in the custody thread fails the case: `finish` reports it, and `Drop` still
+        // joins on the paths that return earlier.
+        struct Stop {
+            block: Arc<Block>,
+            hold_offers: Arc<AtomicBool>,
+            offer_release: Arc<tokio::sync::Notify>,
+            thread: Option<std::thread::JoinHandle<()>>,
+        }
+        fn panic_payload(e: Box<dyn std::any::Any + Send>) -> String {
+            e.downcast_ref::<&str>()
+                .map(|s| (*s).to_string())
+                .or_else(|| e.downcast_ref::<String>().cloned())
+                .unwrap_or_else(|| "unknown panic".into())
+        }
+        impl Stop {
+            fn release(&self) {
+                self.block.release();
+                self.hold_offers.store(false, Ordering::SeqCst);
+                self.offer_release.notify_waiters();
+            }
+
+            fn finish(mut self) -> Result<(), String> {
+                // Unblock the prompt before joining. The assertions have already run; the thread
+                // may still be leaving the step, and it must not sit in the keychain until join.
+                self.release();
+                let joined = self.thread.take().map(|thread| thread.join());
+                match joined {
+                    Some(Err(e)) => Err(format!(
+                        "custody test thread panicked: {}",
+                        panic_payload(e)
+                    )),
+                    _ => Ok(()),
+                }
+            }
+        }
+        impl Drop for Stop {
+            fn drop(&mut self) {
+                self.release();
+                if let Some(thread) = self.thread.take() {
+                    if let Err(e) = thread.join() {
+                        eprintln!("custody test thread panicked: {}", panic_payload(e));
+                    }
+                }
+            }
+        }
+        let _stop = Stop {
+            block: Arc::clone(&block),
+            hold_offers: Arc::clone(&hold_offers),
+            offer_release: Arc::clone(&offer_release),
+            thread: Some(thread),
+        };
+
+        let first = match tokio::time::timeout(Duration::from_secs(20), first_rx).await {
+            Ok(Ok(Ok(screen))) => screen,
+            Ok(Ok(Err(e))) => return Err(format!("the link refused the step: {e:?}")),
+            Ok(Err(_)) => return Err("the link ended before a screen".into()),
+            Err(_) => return Err("no screen within 20s".into()),
+        };
+        let Screen::Offer { expires, .. } = first else {
+            return Err(format!("expected the offer, got {first:?}"));
+        };
+
+        let (step_tx, step_rx) = oneshot::channel();
+        to_service
+            .send(Request::Step(StepInput::WaitClaim, step_tx))
+            .map_err(|_| "the link ended before wait-claim".to_string())?;
+        if !wait_until(Duration::from_secs(10), || {
+            offers_waiting.load(Ordering::SeqCst)
+        }) {
+            return Err("the claim poll never started".into());
+        }
+
+        block.arm();
+        let (pub_tx, _pub_rx) = oneshot::channel();
+        let (pub2_tx, _pub2_rx) = oneshot::channel();
+        to_service
+            .send(Request::Public(pub_tx))
+            .map_err(|_| "the link ended before the state read".to_string())?;
+        to_service
+            .send(Request::Public(pub2_tx))
+            .map_err(|_| "the link ended before the second state read".to_string())?;
+        if !wait_until(Duration::from_secs(10), || block.in_flight() >= 1) {
+            return Err("the state read never reached the keychain".into());
+        }
+        // The second read is queued behind the one prompt, so the keychain sees one call.
+        std::thread::sleep(Duration::from_millis(50));
+        let max = block.max_in_flight();
+        if max != 1 {
+            return Err(format!("keychain calls in flight at once: {max}"));
+        }
+
+        let bound = Duration::from_secs(1);
+        match mode {
+            WhileBlocked::Cancel => {
+                let (cancel_tx, cancel_rx) = oneshot::channel();
+                to_service
+                    .send(Request::Cancel(cancel_tx))
+                    .map_err(|_| "the link ended before cancel".to_string())?;
+                match tokio::time::timeout(bound, cancel_rx).await {
+                    Ok(Ok(())) => Ok(()),
+                    Ok(Err(_)) => Err("cancel was dropped".into()),
+                    Err(_) => Err(
+                        "cancel did not answer within 1s while the keychain read was blocked"
+                            .into(),
+                    ),
+                }
+            }
+            WhileBlocked::Deadline => {
+                clock.0.store(expires, Ordering::SeqCst);
+                hold_offers.store(false, Ordering::SeqCst);
+                offer_release.notify_waiters();
+                match tokio::time::timeout(bound, step_rx).await {
+                    Ok(Ok(Ok(Screen::Failed { message }))) if message.contains("expired") => Ok(()),
+                    Ok(Ok(other)) => Err(format!("the deadline answered {other:?}")),
+                    Ok(Err(_)) => Err("the claim wait was dropped".into()),
+                    Err(_) => Err(
+                        "the claim deadline did not answer within 1s while the keychain read was blocked"
+                            .into(),
+                    ),
+                }
+            }
+        }?;
+        _stop.finish()?;
+        Ok(())
+    }
+
+    /// A vault call that never returns (an unlock prompt nobody answers) must not hold the custody
+    /// task: Cancel and the offer's expiry still answer during the claim wait, and a second state
+    /// read does not enter the keychain beside the first.
+    #[tokio::test]
+    async fn a_blocking_keychain_read_during_a_link_lets_cancel_and_the_deadline_fire() {
+        blocking_keychain_while_linked(WhileBlocked::Cancel)
+            .await
+            .unwrap();
+        blocking_keychain_while_linked(WhileBlocked::Deadline)
+            .await
+            .unwrap();
     }
 }

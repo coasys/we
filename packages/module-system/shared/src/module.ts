@@ -739,6 +739,16 @@ export interface ModuleStoreDeps {
    */
   showCallOnScreen?: (recordId: string, datasetUri: string | null) => void;
   /**
+   * Go to the page of the space on screen that draws one of this module's parts (`<moduleId>.<name>`),
+   * as the space's own navigation goes there. Answers whether there was one: `false`, going nowhere,
+   * where the space's template draws the part on no page — and absent on a host that cannot say.
+   *
+   * For a module asked to show what it also offers as a panel. A template that gave the part a page
+   * has said where it lives, and a window over that page would be a second copy of it; where no page
+   * draws it, the panel is how the module shows it.
+   */
+  showPart?: (part: string) => boolean;
+  /**
    * This module's own settings, resolved for where the agent is right now and defaulted where nobody
    * spoke. Reactive. Secret-typed settings are absent here — read them through the `secrets` kernel.
    */
@@ -756,7 +766,7 @@ export interface ModuleStoreDeps {
   /**
    * The first screen after a cold boot — for a module whose part is what a person opened the app to
    * read. While it is reading, the host holds back work that screen does not need (the sidebar's
-   * lists, the extraction panel, presence, settings reads), so the one executor answers this first.
+   * lists, the interpretation panel, presence, settings reads), so the one executor answers this first.
    *
    * Say {@link ModuleFirstScreen.waiting} as the part's first read leaves — not as the part is drawn,
    * since a part with nothing to read must not hold anything — and {@link ModuleFirstScreen.answered}

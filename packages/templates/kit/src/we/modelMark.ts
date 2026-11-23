@@ -4,7 +4,7 @@ import type { SchemaNode } from '@we/schema-shared';
  * A sparkle on a record a model made, saying where it came from when somebody hovers it.
  *
  * Whether a model made it is `generatedRun`'s to say, so every surface draws the same records as
- * model-made: a task an extraction pass wrote, an event the agent added from a chat, anything else a
+ * model-made: a task an interpretation pass wrote, an event the agent added from a chat, anything else a
  * run marks in the future. A record a person made has nothing unusual to explain, and draws nothing.
  *
  * The words name what kind of making it was where the record says: extracted from a conversation
@@ -44,7 +44,7 @@ export function modelMark(opts: { as: string; extracted?: string }): SchemaNode 
                           fontSize: '200',
                           text: {
                             $:
-                              `\`\${${as}.extractedFrom ? 'Extracted from the conversation' : 'Written by AI'}` +
+                              `\`\${${as}.extractedFrom ? 'Interpreted from the conversation' : 'Written by AI'}` +
                               " · run by ${author.did == me.person ? 'you' : author.name}`",
                           },
                         },

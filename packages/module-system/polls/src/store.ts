@@ -144,7 +144,7 @@ export function createPollsStore(deps: ModuleStoreDeps) {
      *
      * A `namespace` rather than an object: poll ids are not enumerable from here, and the evaluator
      * guards property reads with `property in base`, which a Proxy over an empty target fails for
-     * every key. The same mechanism `modules.transcribe.extractionFor` uses.
+     * every key. The same mechanism `modules.transcribe.interpretationFor` uses.
      *
      * Pass it to `tally` and read it for the selected choice; absent means the rows are the answer.
      */

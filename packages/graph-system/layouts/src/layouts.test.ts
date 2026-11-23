@@ -378,7 +378,7 @@ describe('manual layout', () => {
       The regression this actually shipped with. The first run parks a card that carries no
       coordinate; on the second, that parked position arrives as `previous` and counts as reused —
       nothing read from data, nothing newly parked, something reused, which is the exact shape of
-      "this layout did nothing". So a canvas of freshly extracted cards, laid out perfectly well,
+      "this layout did nothing". So a canvas of freshly interpreted cards, laid out perfectly well,
       raised a warning telling its reader to choose a different layout.
 
       One layout instance across both runs, because that is what the engine keeps and what makes the

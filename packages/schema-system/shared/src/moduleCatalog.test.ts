@@ -41,7 +41,7 @@ const transcribe: ModuleCatalogEntry = {
   parts: [],
   panels: [
     { name: 'transcript', title: 'Transcript', hostOwned: false },
-    { name: 'extraction', title: 'Extraction', hostOwned: false },
+    { name: 'interpretation', title: 'Interpretation', hostOwned: false },
   ],
   components: [],
   functions: [],

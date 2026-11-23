@@ -1114,6 +1114,7 @@ const lineComposerScenario = (): Scenario => ({
       lineComposer({
         placeholder: 'Type a message…',
         sendLabel: 'Send it',
+        sending: { $: 'local.sending' },
         onSubmit: [
           { $setLocal: 'sent', value: { $: 'event.text' } },
           { $setLocal: 'sends', value: { $: 'local.sends + 1' } },
@@ -2233,7 +2234,7 @@ const coasysCallBar = (live = true): Scenario => {
       shellStore: { collapsedLanes: [] },
       modules: {
         call: { liveCalls: live ? [{ recordId: 'call-1', count: 2 }] : [] },
-        transcribe: { extractionOpen: false },
+        transcribe: { interpretationOpen: false },
       },
       spaceStore: {
         activeModules: ['call', 'transcribe'],

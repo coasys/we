@@ -865,7 +865,7 @@ const shapeWizardModal: SchemaNode = {
           the three read as one decision in the order they are made: what this is, whether AI may
           create them, and how it recognises one it has already created. Off by default: a model
           somebody curates by hand should not have an interpreter minting rows into it, and every
-          model an extraction pass names puts its whole shape into the prompt at the community's
+          model an interpretation pass names puts its whole shape into the prompt at the community's
           expense.
 
           Ticking it does two things, deliberately. It marks the *model* extractable, which travels
@@ -893,7 +893,7 @@ const shapeWizardModal: SchemaNode = {
                       type: 'we-text',
                       props: { variant: 'footnote', color: 'text-faint' },
                       children: [
-                        'Extraction passes over this space’s calls may create entries of this model from what was said, and saving adds it to what calls here look for by default. Leave off for a model your community fills in by hand.',
+                        'Interpretation passes over this space’s calls may create entries of this model from what was said, and saving adds it to what calls here look for by default. Leave off for a model your community fills in by hand.',
                       ],
                     },
                   ],
@@ -905,7 +905,7 @@ const shapeWizardModal: SchemaNode = {
                     checked: { $: 'shapeStore.shapeDraft.extractable' },
                     // Bare `event.detail` — an operator around it would resolve at render time,
                     // before the event exists.
-                    onChange: { $invoke: 'shapeStore.setExtractable', args: [{ $: 'event.detail' }] },
+                    onChange: { $invoke: 'shapeStore.setInterpretable', args: [{ $: 'event.detail' }] },
                   },
                 },
               ],
@@ -923,12 +923,12 @@ const shapeWizardModal: SchemaNode = {
             {
               type: '$if',
               props: {
-                condition: { $: 'shapeStore.extractionNeedsIdentity' },
+                condition: { $: 'shapeStore.interpretationNeedsIdentity' },
                 then: {
                   type: 'we-alert',
                   props: { tone: 'warning' },
                   children: [
-                    'Without an identifying field below, every extraction pass will create fresh entries rather than recognising ones it already made.',
+                    'Without an identifying field below, every interpretation pass will create fresh entries rather than recognising ones it already made.',
                   ],
                 },
               },
@@ -946,7 +946,7 @@ const shapeWizardModal: SchemaNode = {
           props: {
             label: 'Identifying field',
             description:
-              'When AI extraction finds one of these, it compares this field to decide whether it has seen it before. Leave as None if nothing about these names one uniquely.',
+              'When AI interpretation finds one of these, it compares this field to decide whether it has seen it before. Leave as None if nothing about these names one uniquely.',
           },
           children: [
             {
@@ -1093,7 +1093,7 @@ const hintEditorModal: SchemaNode = {
           type: 'we-text',
           props: { variant: 'footnote', color: 'text-faint' },
           children: [
-            'These hints steer AI extraction in this space. Once customized, they stay as this community set them — updates to the defaults no longer apply until you reset.',
+            'These hints steer AI interpretation in this space. Once customized, they stay as this community set them — updates to the defaults no longer apply until you reset.',
           ],
         },
         {

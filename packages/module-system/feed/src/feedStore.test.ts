@@ -636,7 +636,7 @@ describe('the Feed reading only when something changed', () => {
     await vi.runAllTimersAsync();
 
     close();
-    // A call goes on elsewhere: lines are said, and extraction stages more.
+    // A call goes on elsewhere: lines are said, and interpretation stages more.
     s.write('TextBlock', 'call-3');
     s.write('TextBlock', 'call-3');
     staged.move(['task-1', 'task-2']);
@@ -865,6 +865,194 @@ describe('the Feed grouping by person', () => {
     expect(asked).toBeGreaterThan(0);
     expect(activity()).toHaveLength(1);
     expect(activity()[0].items?.map((item) => item.id)).toEqual(['task-1', 'task-2']);
+    vi.useRealTimers();
+  });
+});
+
+describe('a message sent from the Feed', () => {
+  /*
+    The write is about four round trips and the re-read after it more, so the line is drawn as it is
+    sent, dimmed, and the window's own read takes its place once it has the record.
+  */
+  type Holder = { id: string; relation: string; entity?: string };
+
+  /** A Feed over `s` whose writes the test settles: `finish` resolves the oldest, `refuse` fails it. */
+  function writing(s: ReturnType<typeof space>, options: { root?: string; fromStart?: boolean } = {}) {
+    const r = reactive();
+    const writes: { holder: Holder; text: string; settle: (id: string | null, error?: Error) => void }[] = [];
+    const feed = createFeed({
+      signal: r.signal,
+      effect: r.effect,
+      state: markState,
+      action: markAction,
+      onDispose: () => {},
+      dataset: () => 'space-1',
+      spaceRoot: () => options.root ?? 'root-1',
+      selfId: () => 'did:me',
+      records: s.records as never,
+      interpretation: undefined,
+      write: (holder, text) =>
+        new Promise((resolve, reject) => {
+          writes.push({ holder, text, settle: (id, error) => (error ? reject(error) : resolve(id)) });
+        }),
+    });
+    if (options.fromStart) (feed.readFeedFromStart as unknown as () => void)();
+    (feed.openFeed as unknown as () => void)();
+    const rows = () => (feed.feedRows as unknown as () => { id: string; text: string; sending: boolean }[])();
+    const send = (text: string) => (feed.sendToFeed as unknown as (text: string) => Promise<void>)(text);
+    return { feed, writes, rows, send, post: feed.post };
+  }
+
+  /** What a read finds once a message is stored: it is in the space, as the executor has it. */
+  const store = (s: ReturnType<typeof space>, id: string, text: string, createdAt: number) =>
+    s.lines.push({ id, text, author: 'did:me', createdAt, source: 'typed' });
+
+  it('draws the line at once, dimmed, before the write has resolved', async () => {
+    vi.useFakeTimers();
+    const s = busySpace();
+    const f = writing(s);
+    await vi.runAllTimersAsync();
+    const before = f.rows().length;
+    void f.send('on my way');
+    expect(f.rows()).toHaveLength(before + 1);
+    // Newest first, so the sent line leads the window; its author is this agent.
+    expect(f.rows()[0]).toMatchObject({
+      kind: 'line',
+      text: 'on my way',
+      sending: true,
+      author: 'did:me',
+      source: 'typed',
+    });
+    expect(f.writes).toHaveLength(1);
+    vi.useRealTimers();
+  });
+
+  it('is replaced by the real row, in the same place, once a read has its id', async () => {
+    vi.useFakeTimers();
+    const s = busySpace();
+    const f = writing(s);
+    await vi.runAllTimersAsync();
+    const sending = f.send('on my way');
+    expect(f.rows()[0]).toMatchObject({ text: 'on my way', sending: true });
+    store(s, 'msg-2', 'on my way', Date.now() + 5);
+    f.writes[0].settle('msg-2');
+    await sending;
+    await vi.runAllTimersAsync();
+    const rows = f.rows();
+    expect(rows.filter((row) => row.text === 'on my way')).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id: 'msg-2', text: 'on my way', sending: false });
+    vi.useRealTimers();
+  });
+
+  it('is not dropped by a read that lands before the write has resolved', async () => {
+    vi.useFakeTimers();
+    const s = busySpace();
+    const f = writing(s);
+    await vi.runAllTimersAsync();
+    void f.send('on my way');
+    // The executor has it already; the write has not told us its id yet.
+    store(s, 'msg-2', 'on my way', Date.now() + 5);
+    s.write('TextBlock', 'root-1');
+    await vi.runAllTimersAsync();
+    const sent = f.rows().filter((row) => row.text === 'on my way');
+    expect(sent.map((row) => row.sending)).toContain(true);
+    // The id arrives after the read that already has it: one row, the real one.
+    f.writes[0].settle('msg-2');
+    await vi.runAllTimersAsync();
+    expect(f.rows().filter((row) => row.text === 'on my way')).toMatchObject([{ id: 'msg-2', sending: false }]);
+    vi.useRealTimers();
+  });
+
+  it('takes the line down and reports the error when the write fails', async () => {
+    vi.useFakeTimers();
+    const s = busySpace();
+    const f = writing(s);
+    await vi.runAllTimersAsync();
+    const before = f.rows().length;
+    const sending = f.send('on my way');
+    expect(f.rows()).toHaveLength(before + 1);
+    f.writes[0].settle(null, new Error('executor unreachable'));
+    await expect(sending).rejects.toThrow('executor unreachable');
+    expect(f.rows()).toHaveLength(before);
+    vi.useRealTimers();
+  });
+
+  it('keeps two quick sends in the order they were sent', async () => {
+    vi.useFakeTimers();
+    const s = busySpace();
+    const f = writing(s);
+    await vi.runAllTimersAsync();
+    void f.send('first');
+    void f.send('second');
+    // Newest first: the second leads.
+    expect(
+      f
+        .rows()
+        .slice(0, 2)
+        .map((row) => row.text),
+    ).toEqual(['second', 'first']);
+    vi.useRealTimers();
+  });
+
+  it('draws a reply as the newest line, quoting the line it answers', async () => {
+    vi.useFakeTimers();
+    const s = busySpace();
+    const f = writing(s);
+    await vi.runAllTimersAsync();
+    void f.post({ id: 'msg-1', relation: 'responses' }, 'yes please', undefined, {
+      id: 'msg-1',
+      author: 'did:ann',
+      text: 'lunch at 1?',
+    });
+    expect(f.rows()[0]).toMatchObject({
+      text: 'yes please',
+      sending: true,
+      replyTo: { id: 'msg-1', author: 'did:ann', text: 'lunch at 1?' },
+    });
+    expect(f.writes[0].holder).toEqual({ id: 'msg-1', relation: 'responses' });
+    vi.useRealTimers();
+  });
+
+  it('is drawn at the end of the window when it is read from the start', async () => {
+    vi.useFakeTimers();
+    const s = busySpace();
+    const f = writing(s, { fromStart: true });
+    await vi.runAllTimersAsync();
+    void f.send('on my way');
+    const rows = f.rows();
+    expect(rows[rows.length - 1]).toMatchObject({ text: 'on my way', sending: true });
+    vi.useRealTimers();
+  });
+
+  it('is left out of a window from the start that does not reach the end', async () => {
+    vi.useFakeTimers();
+    const s = busySpace();
+    for (let n = 0; n < 60; n += 1)
+      s.lines.push({ id: `old-${n}`, text: `old ${n}`, author: 'did:ann', createdAt: 10 + n });
+    const f = writing(s, { fromStart: true });
+    await vi.runAllTimersAsync();
+    expect((f.feed.feedHasMore as unknown as () => boolean)()).toBe(true);
+    const before = f.rows().length;
+    void f.send('on my way');
+    expect(f.rows()).toHaveLength(before);
+    vi.useRealTimers();
+  });
+
+  it('behaves the same in a call’s window, which reads one call’s collection', async () => {
+    vi.useFakeTimers();
+    const s = busySpace();
+    s.said['call-2'] = [{ id: 'line-2', text: 'said in 2', author: 'did:bo', createdAt: 2.5 }];
+    const f = writing(s, { root: 'call-2' });
+    await vi.runAllTimersAsync();
+    void f.send('typed in the call');
+    expect(f.rows()[0]).toMatchObject({ text: 'typed in the call', sending: true });
+    expect(f.writes[0].holder).toEqual({ id: 'call-2', relation: 'children', entity: 'CollectionBlock' });
+    f.writes[0].settle('line-9');
+    s.said['call-2'].push({ id: 'line-9', text: 'typed in the call', author: 'did:me', createdAt: Date.now() + 5 });
+    await vi.runAllTimersAsync();
+    expect(f.rows().filter((row) => row.text === 'typed in the call')).toMatchObject([
+      { id: 'line-9', sending: false },
+    ]);
     vi.useRealTimers();
   });
 });

@@ -115,9 +115,9 @@ const findingsQuery = {
 };
 
 /**
- * What extraction wrote onto this call, one group per model this space can extract into.
+ * What interpretation wrote onto this call, one group per model this space can extract into.
  *
- * The list of models comes from `shapeStore.extractionCandidates` — everything that *could* be
+ * The list of models comes from `shapeStore.interpretationCandidates` — everything that *could* be
  * extracted here, rather than what this call is currently looking for. Deliberately the widest of
  * the three layers: a record found an hour ago is still on this call after its target is switched
  * off, and a card that hid it would be reporting the setting rather than the conversation.
@@ -139,7 +139,7 @@ const findingsQuery = {
  */
 const findings: SchemaNode = {
   type: '$each',
-  props: { items: { $: 'shapeStore.extractionCandidates' }, as: 'target' },
+  props: { items: { $: 'shapeStore.interpretationCandidates' }, as: 'target' },
   children: [
     {
       type: 'Column',
@@ -428,7 +428,7 @@ export const callsList: SchemaNode = {
                             /*
                           That extraction is running by itself, when it is.
 
-                          Auto-extraction is otherwise completely invisible: a pass runs on somebody's
+                          Auto-interpretation is otherwise completely invisible: a pass runs on somebody's
                           node, writes records, and announces nothing — so a call with nothing found
                           yet looks identical to a space where the setting was never turned on. That
                           ambiguity cost a full day of debugging, and it would cost a user the same
@@ -452,7 +452,7 @@ export const callsList: SchemaNode = {
                                     {
                                       type: 'we-text',
                                       props: { variant: 'footnote', color: 'text-faint' },
-                                      children: ['Extracting automatically'],
+                                      children: ['Interpreting automatically'],
                                     },
                                   ],
                                 },
@@ -602,7 +602,7 @@ export const callsList: SchemaNode = {
                             {
                               type: '$if',
                               props: {
-                                condition: { $: 'modules.transcribe.extractable' },
+                                condition: { $: 'modules.transcribe.interpretable' },
                                 then: {
                                   type: 'we-tooltip',
                                   props: { content: 'Find the tasks and events in this call', placement: 'top' },
@@ -616,10 +616,10 @@ export const callsList: SchemaNode = {
                                         // Keyed on *this* card's id, not on a global flag. A shared status
                                         // would spin every call in the list while one of them worked, and
                                         // would hang the finished count on whichever card the eye landed on.
-                                        loading: { $: 'modules.transcribe.extractingId == call.id' },
-                                        disabled: { $: "modules.transcribe.extractStatus == 'running'" },
+                                        loading: { $: 'modules.transcribe.interpretingId == call.id' },
+                                        disabled: { $: "modules.transcribe.interpretStatus == 'running'" },
                                         onClick: {
-                                          $invoke: 'modules.transcribe.extractCollection',
+                                          $invoke: 'modules.transcribe.interpretCollection',
                                           args: [{ $: 'call.id' }],
                                         },
                                       },
@@ -630,7 +630,7 @@ export const callsList: SchemaNode = {
                                         {
                                           type: '$if',
                                           props: {
-                                            condition: { $: '!(modules.transcribe.extractingId == call.id)' },
+                                            condition: { $: '!(modules.transcribe.interpretingId == call.id)' },
                                             then: { type: 'we-icon', props: { name: 'sparkle' } },
                                           },
                                         },
@@ -674,7 +674,7 @@ export const callsList: SchemaNode = {
                           in words beside it.
 
                           It used to say `${count} found` on a hit, and that has to go: the count came
-                          from `extractCount`, which is *this agent's last press* — so it ignored what
+                          from `interpretCount`, which is *this agent's last press* — so it ignored what
                           auto-extraction wrote, it survived leaving and re-entering the route (the
                           module store outlives navigation), and it sat directly above the findings
                           groups, which count what is actually attached. Two numbers about the same
@@ -690,7 +690,7 @@ export const callsList: SchemaNode = {
                             {
                               type: '$if',
                               props: {
-                                condition: { $: 'modules.transcribe.extractingId == call.id' },
+                                condition: { $: 'modules.transcribe.interpretingId == call.id' },
                                 then: {
                                   type: 'we-text',
                                   props: { fontSize: '200', color: 'text' },
@@ -702,14 +702,14 @@ export const callsList: SchemaNode = {
                               type: '$if',
                               props: {
                                 condition: {
-                                  $: "modules.transcribe.extractedId == call.id && modules.transcribe.extractStatus == 'done' && !modules.transcribe.extractCount",
+                                  $: "modules.transcribe.interpretedId == call.id && modules.transcribe.interpretStatus == 'done' && !modules.transcribe.interpretCount",
                                 },
                                 then: {
                                   type: 'we-text',
                                   props: { fontSize: '200', color: 'text-muted' },
                                   children: [
                                     {
-                                      $: "modules.transcribe.extractTurns ? `Nothing found in ${modules.transcribe.extractTurns} turns` : 'No transcript to read'",
+                                      $: "modules.transcribe.interpretTurns ? `Nothing found in ${modules.transcribe.interpretTurns} turns` : 'No transcript to read'",
                                     },
                                   ],
                                 },
@@ -728,16 +728,16 @@ export const callsList: SchemaNode = {
                               type: '$if',
                               props: {
                                 condition: {
-                                  $: "modules.transcribe.extractedId == call.id && modules.transcribe.extractStatus == 'error'",
+                                  $: "modules.transcribe.interpretedId == call.id && modules.transcribe.interpretStatus == 'error'",
                                 },
                                 then: {
                                   type: 'we-tooltip',
-                                  props: { content: { $: 'modules.transcribe.extractError' }, placement: 'top' },
+                                  props: { content: { $: 'modules.transcribe.interpretError' }, placement: 'top' },
                                   children: [
                                     {
                                       type: 'we-text',
                                       props: { fontSize: '200', color: 'danger-text' },
-                                      children: ['Extraction failed'],
+                                      children: ['Interpretation failed'],
                                     },
                                   ],
                                 },
@@ -898,7 +898,7 @@ export const callsList: SchemaNode = {
 
                       Above, because it is the part someone opening a finished call actually wants —
                       the transcript is the evidence, and evidence belongs under the finding. It is
-                      also the only place the result of pressing Extract is visible as *records*
+                      also the only place the result of pressing Interpret is visible as *records*
                       rather than as a count.
 
                       Grouped by type rather than filtered by one, because two or three items make a

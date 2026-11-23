@@ -3,7 +3,7 @@
  *
  * ## What it is for
  *
- * A live cursor, a highlight on something an extraction pass touched, a comment pin, "two people are
+ * A live cursor, a highlight on something an interpretation pass touched, a comment pin, "two people are
  * reading this": each of them is a mark that belongs at a record rather than at a coordinate, and each
  * needs the same answer from the DOM — which box is that record, and where is it right now. In a flow
  * layout there is nothing else durable to measure against: a kanban column is wherever the columns

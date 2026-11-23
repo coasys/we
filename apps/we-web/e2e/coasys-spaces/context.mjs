@@ -59,7 +59,7 @@ export const ARTIFACTS = artifactsDir({ dir: process.env.COASYS_SPACES_ARTIFACTS
 
 export const DNA_PATH = resolve(process.env.SOCIAL_DNA_PACKAGE ?? join(HERE, 'fixtures', 'software-team.dna.json'));
 
-/** How long a step waits for what extraction, sync or a flow write produces. Longer for a real model. */
+/** How long a step waits for what interpretation, sync or a flow write produces. Longer for a real model. */
 export const SLOW = STUB ? 120_000 : 600_000;
 
 /** How long a step may take by default: one {@link SLOW} wait, and two minutes for the screen around it. */
@@ -67,7 +67,7 @@ const STEP = SLOW + 120_000;
 
 /**
  * How long a step that holds a call until it finds records may take (`callThatFinds` in
- * `steps.mjs`): the lines landing, then extraction, each up to {@link SLOW}, and five minutes for
+ * `steps.mjs`): the lines landing, then interpretation, each up to {@link SLOW}, and five minutes for
  * starting, leaving and reaching the call on the screen.
  */
 export const CALL_STEP = 2 * SLOW + 300_000;

@@ -20,7 +20,7 @@ import { workflowStateOf } from '@shared/taskWorkflow';
 import { taskWorkflowLive } from '@shared/taskWorkflowLive';
 import { landsOnRoot } from '@shared/templateLanding';
 import { copyText } from '@shared/utils';
-import { withExtractionDefaults } from '@we/entities';
+import { withInterpretationDefaults } from '@we/entities';
 import { completeResponse, respondsThrough } from '@we/entities';
 
 import { signalOptimism } from '../../../shared/signalOptimism';
@@ -221,15 +221,15 @@ export default function TemplateProvider() {
   }
 
   /**
-   * A new feed starts with its space's extraction defaults — written onto it, not inherited.
+   * A new feed starts with its space's interpretation defaults — written onto it, not inherited.
    *
-   * Every collection that conversations happen in holds its own answer to "is this extracted as it
-   * grows, and for what", copied from the space when it is made; see `collectionExtraction` in `@we/entities`
+   * Every collection that conversations happen in holds its own answer to "is this interpreted as it
+   * grows, and for what", copied from the space when it is made; see `collectionInterpretation` in `@we/entities`
    * for why a copy. Done here because this is where both of the ways a new one arrives meet: a
    * template's `record.create` (a channel) and a module's write (a call). Anything the caller
    * already said wins, and a dataset with no space gets nothing, which leaves the collection unset.
    *
-   * Feeds only. A document is one author's artifact and is not extracted as it grows; stamping
+   * Feeds only. A document is one author's artifact and is not interpreted as it grows; stamping
    * every post would be two links on each for an answer nobody asks.
    */
   async function withCollectionDefaults(
@@ -243,7 +243,7 @@ export default function TemplateProvider() {
       perspective === datasetStore.currentDataset()?.handle
         ? spaceStore.currentSpace()
         : await Space.findOne(perspective).catch(() => null);
-    return withExtractionDefaults(entity, fields, space);
+    return withInterpretationDefaults(entity, fields, space);
   }
 
   /**
@@ -927,8 +927,8 @@ export default function TemplateProvider() {
         `$part` expanded here as well as `$slot`, which the registry does on its way out.
 
         A module composing its own chrome out of its own published parts is an ordinary thing to
-        write — the transcript panel builds its feed from `transcriptLines`, and the extraction panel
-        its chips from `extractionTargets` — and until now the only thing that expanded a part was a
+        write — the transcript panel builds its feed from `transcriptLines`, and the interpretation panel
+        its chips from `interpretationTargets` — and until now the only thing that expanded a part was a
         *template* placing one. So the workshop, which supplies both panel bodies and renders them
         through `TemplatePanelBody`, worked; the default template rendered the module's own panels
         through this path and drew "Unknown component $part" in a red box where each fragment should

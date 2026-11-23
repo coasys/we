@@ -20,7 +20,7 @@
  * the bundle's own, recorded against what it installed so a later version can be recognised as an
  * update to the same app rather than a second copy.
  */
-import type { EntityManifest } from '@we/backend-shared';
+import { type EntityManifest, validateWorkflowDefinition, type WorkflowDefinition } from '@we/backend-shared';
 
 import { type SpaceStarter, STARTER_KEYS } from './spaceStarter';
 import type { SchemaNode, TemplateSchema } from './types';
@@ -73,6 +73,9 @@ export interface BundleRecordType {
   manifest: EntityManifest;
 }
 
+/** A workflow the app's records move through, in the shape `WorkflowPort.install` takes. */
+export type BundleWorkflow = WorkflowDefinition;
+
 /**
  * How spaces are shown in the app.
  *
@@ -115,6 +118,12 @@ export interface Bundle {
    */
   themes?: BundleTheme[];
   recordTypes?: BundleRecordType[];
+  /**
+   * The workflows the app's records move through, in the shape `WorkflowPort.install` takes. Like
+   * record types they are the space's, installed when a space is set up for the app, after the
+   * record types they are about.
+   */
+  workflows?: BundleWorkflow[];
   display?: BundleDisplay;
   /** The app's name, mark and About page. Absent, the app goes by WE's. */
   brand?: BundleBrand;
@@ -334,6 +343,28 @@ export function readBundle(
             `${path}.manifest`,
             `Must define exactly one entity, "${name}" — it defines ${defined.join(', ') || 'none'}`,
           );
+      });
+    }
+  }
+
+  if (input.workflows !== undefined) {
+    if (!Array.isArray(input.workflows)) problem('workflows', 'workflows must be a list');
+    else {
+      const names = new Set<string>();
+      input.workflows.forEach((workflow, index) => {
+        const path = `workflows.${index}`;
+        if (
+          !isObject(workflow) ||
+          typeof workflow.name !== 'string' ||
+          !Array.isArray(workflow.entities) ||
+          !Array.isArray(workflow.states) ||
+          !Array.isArray(workflow.transitions)
+        )
+          return problem(path, 'Not a workflow: needs a name, its entities, its states and its transitions');
+        if (names.has(workflow.name)) problem(`${path}.name`, `"${workflow.name}" is defined twice`);
+        names.add(workflow.name);
+        for (const message of validateWorkflowDefinition(workflow as unknown as WorkflowDefinition))
+          problem(path, message);
       });
     }
   }
