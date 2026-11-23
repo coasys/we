@@ -10,7 +10,7 @@
  * signals, and never learns which model or provider answered.
  */
 import { agentTurns } from '@shared/agentTurns';
-import { isEditorChord } from '@shared/editorChord';
+import { isEditorChord, pressEditorChord } from '@shared/editorChord';
 import { registerHostDockStore, unregisterHostDockStore } from '@shared/registries/dockRegistry';
 import { EDITOR_STORE_ID } from '@shared/registries/editorDocks';
 import { sameTemplateContent } from '@shared/templateSync';
@@ -133,7 +133,8 @@ export interface EditorStore {
   // --- Template editing mode ---
   isEditingTemplate: Accessor<boolean>;
   editAction: Accessor<'edit' | 'fork' | 'fresh' | null>;
-  enterTemplateEditing: (action?: 'edit' | 'fork' | 'fresh') => void;
+  /** Whether a session opened: asking to edit a built-in offers its fork instead. */
+  enterTemplateEditing: (action?: 'edit' | 'fork' | 'fresh') => boolean;
   /** Opens an editing session on the app — the one named, made the agent's app first, or the one they are in. Starts in preview, as a template's does. */
   editApp: (id?: string) => Promise<void>;
   /** The same, then asks for a name for a copy of it: how WE's own app, which is built in, is made one's own. */
@@ -563,10 +564,10 @@ export function EditorStoreProvider(props: ParentProps) {
     first — and a session opened over a template that cannot be saved would hold edits nobody could
     keep.
   */
-  function enterTemplateEditing(action: 'edit' | 'fork' | 'fresh' = 'edit') {
+  function enterTemplateEditing(action: 'edit' | 'fork' | 'fresh' = 'edit'): boolean {
     if (action === 'edit' && edit.isBuiltIn()) {
       startFork();
-      return;
+      return false;
     }
     setEditAction(action);
     setIsEditingTemplate(true);
@@ -574,6 +575,7 @@ export function EditorStoreProvider(props: ParentProps) {
     setCodePanelOpen(false);
     setContentModeSignal('preview');
     setThemePanelOpen(false);
+    return true;
   }
 
   /*
@@ -893,8 +895,12 @@ export function EditorStoreProvider(props: ParentProps) {
   function cancelPicker() {
     setPickerOpen(false);
     // A fork asked for from outside a session pointed the editor at the app it would copy; with no
-    // fork, nothing is being edited, so the chrome goes back to being drawn from the saved app.
-    if (!isEditingTemplate()) edit.leave();
+    // fork, nothing is being edited, so the chrome goes back to being drawn from the saved app — and
+    // nothing is drawn as though it were being edited, whatever asked for the fork.
+    if (!isEditingTemplate()) {
+      edit.leave();
+      setContentModeSignal('preview');
+    }
   }
 
   // ----------------------------------------------------------------
@@ -1176,11 +1182,12 @@ export function EditorStoreProvider(props: ParentProps) {
       if (!isEditorChord(event)) return;
       event.preventDefault();
       event.stopPropagation();
-      if (isEditingTemplate()) exitTemplateEditing();
-      else {
-        enterTemplateEditing('edit');
-        setContentMode('visual');
-      }
+      pressEditorChord({
+        editing: isEditingTemplate,
+        exit: exitTemplateEditing,
+        enter: () => enterTemplateEditing('edit'),
+        toVisual: () => setContentMode('visual'),
+      });
     };
     window.addEventListener('keydown', onEditorChord, true);
     onCleanup(() => window.removeEventListener('keydown', onEditorChord, true));

@@ -4,7 +4,7 @@
  * An app template decides whether the chrome has any button that opens the editor; this chord is the
  * host's, so an app with none is still one key from being changed back.
  */
-import { isEditorChord } from '@shared/editorChord';
+import { isEditorChord, pressEditorChord } from '@shared/editorChord';
 import { describe, expect, it } from 'vitest';
 
 // Plain objects: the predicate reads four fields, and this project runs without a DOM.
@@ -20,5 +20,31 @@ describe('the editor chord', () => {
     expect(isEditorChord(key({ code: 'KeyE', ctrlKey: true, shiftKey: true }))).toBe(false);
     expect(isEditorChord(key({ code: 'KeyE', ctrlKey: true, altKey: true }))).toBe(false);
     expect(isEditorChord(key({ code: 'KeyS', ctrlKey: true, altKey: true, shiftKey: true }))).toBe(false);
+  });
+});
+
+describe('pressing the editor chord', () => {
+  const press = (editing: boolean, opens: boolean) => {
+    const did: string[] = [];
+    pressEditorChord({
+      editing: () => editing,
+      exit: () => void did.push('exit'),
+      enter: () => (did.push('enter'), opens),
+      toVisual: () => void did.push('visual'),
+    });
+    return did;
+  };
+
+  it('opens a session in visual editing', () => {
+    expect(press(false, true)).toEqual(['enter', 'visual']);
+  });
+
+  it('leaves a session that is open', () => {
+    expect(press(true, true)).toEqual(['exit']);
+  });
+
+  it('draws nothing as edited when no session opened — a built-in offers its fork instead', () => {
+    // Visual editing turned on anyway left a cancelled fork with outlines on the template on screen.
+    expect(press(false, false)).toEqual(['enter']);
   });
 });
