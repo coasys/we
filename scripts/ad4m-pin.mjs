@@ -18,6 +18,11 @@
  * is in its URL, and only there — its package.json carries the release's version and no `gitHead`
  * — while a version's commit is the `gitHead` npm recorded when it was published.
  *
+ * A third kind answers a spike rather than a release line: **`file:`**, a tarball packed from a
+ * local ad4m checkout (`kind: 'local'`). It carries no commit, so the two-package cross-check has
+ * nothing to compare and `pinCommit` has nothing to answer — a reader that needs a commit is told
+ * to take `AD4M_EXECUTOR` or the seed's `ad4m.executorPath`, the same knobs a hand build uses.
+ *
  * Refused, rather than guessed at: a short sha (the cache key, the concurrency group and GitHub's
  * compare API all take the full one), a URL that is not exactly the snapshot form, the two packages
  * pinned to different commits or versions, and one package pinned by version and the other by
@@ -52,9 +57,10 @@ export function snapshotUrl(name, commit) {
   return `${SNAPSHOT_BASE}${name}@${commit}`;
 }
 
-/** One package's override, as `{ kind, commit | version }`. */
+/** One package's override, as `{ kind, commit | version | path }`. */
 function parseOne(name, spec) {
   if (typeof spec !== 'string' || !spec) throw new PinError(`${name} has no override in the root package.json.`);
+  if (spec.startsWith('file:')) return { kind: 'local', path: spec };
   if (VERSION.test(spec)) return { kind: 'version', version: spec };
   const prefix = `${SNAPSHOT_BASE}${name}@`;
   if (spec.startsWith(prefix)) {
@@ -71,9 +77,12 @@ function parseOne(name, spec) {
   );
 }
 
-/** The pin the root `pnpm.overrides` hold: `{ kind: 'snapshot', commit }` or `{ kind: 'version', version }`. */
+/** The pin the root `pnpm.overrides` hold: `{ kind: 'snapshot' | 'version' | 'local', … }`. */
 export function parsePin(overrides) {
   const [sdk, connect] = PACKAGES.map((name) => parseOne(name, overrides?.[name]));
+  // A local tarball names no ad4m commit, so the two-package alignment it cannot answer is
+  // not a refusal either — the SDK's entry is the pin, whatever connect is held to.
+  if (sdk.kind === 'local') return sdk;
   if (sdk.kind !== connect.kind) {
     throw new PinError(
       `${PACKAGES[0]} is pinned by ${sdk.kind} and ${PACKAGES[1]} by ${connect.kind}. Pin both the same way.`,
@@ -108,6 +117,12 @@ export async function versionCommit(version, name = PACKAGES[0]) {
 /** The ad4m commit a pin stands for. */
 export async function pinCommit(pin) {
   if (pin.kind === 'snapshot') return pin.commit;
+  if (pin.kind === 'local') {
+    throw new PinError(
+      `a file: pin (${pin.path}) names no ad4m commit. Point AD4M_EXECUTOR or the seed's ` +
+        `ad4m.executorPath at the build the tarball came from.`,
+    );
+  }
   const commit = await versionCommit(pin.version);
   if (!commit) {
     throw new PinError(
@@ -119,6 +134,7 @@ export async function pinCommit(pin) {
 
 /** The pin in words, for a log line or a PR description. */
 export function describePin(pin) {
+  if (pin.kind === 'local') return `the local ad4m tarball ${pin.path}`;
   return pin.kind === 'snapshot' ? `the ad4m snapshot of ${pin.commit.slice(0, 9)}` : `ad4m ${pin.version}`;
 }
 
