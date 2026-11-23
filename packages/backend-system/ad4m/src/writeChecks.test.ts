@@ -2,7 +2,7 @@
  * The host's write check is asked before each of `Ad4mModel`'s write methods, and a refused write
  * never reaches the method.
  *
- * Against a stand-in with the shape the patch touches, as `clearOnEmpty.test.ts` does: the real
+ * Against a stand-in with the shape the patch touches: the real
  * methods need an executor. The stand-in's `save()` writes a relation the way the real one does, so
  * the case that a save's own relation writes pass unchecked is the real call order.
  */
