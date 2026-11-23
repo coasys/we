@@ -42,6 +42,8 @@ export const templateRegistry = withDerivedIdsAll({ ...bundledTemplates, ...seed
 
 export type TemplateId = keyof typeof templateRegistry;
 
+/** The bundled templates, unmerged — for a caller that must know what *this build* carries. */
+export { bundledTemplates } from './bundledTemplates.generated';
 /** The bundled templates that are developer features — see `bundledTemplates.generated.ts`. */
 export { devOnlyTemplateIds } from './bundledTemplates.generated';
 

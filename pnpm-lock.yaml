@@ -702,6 +702,9 @@ importers:
       '@we/schema-solid':
         specifier: workspace:*
         version: link:../schema-system/frameworks/solid
+      '@we/template-acorn':
+        specifier: workspace:*
+        version: link:../templates/acorn
       '@we/template-default':
         specifier: workspace:*
         version: link:../templates/default

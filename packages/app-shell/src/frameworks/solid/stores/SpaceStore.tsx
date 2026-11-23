@@ -1,3 +1,11 @@
+import {
+  ACORN_SECTION_IDS,
+  ACORN_TEMPLATE_ID,
+  type AcornOperationState,
+  type AcornProjectRef,
+  type AcornSetupIntent,
+  createAcornLifecycle,
+} from '@shared/acornLifecycle';
 import { boardOptimism } from '@shared/boardOptimism';
 import { createBoardActions, type CreateBoardOptions } from '@shared/boards';
 import { spaceStarterChoices } from '@shared/bundles/bundleStarter';
@@ -18,6 +26,7 @@ import {
   INVOLVEMENT_SEMANTICS,
   type InvolvementTypeView,
   parseAppliesTo,
+  relationId,
   resolveInvolvementTypes,
 } from '@shared/involvements';
 import { reportModuleRefusal } from '@shared/moduleSchemaRefusal';
@@ -42,6 +51,7 @@ import {
   moduleSurface,
 } from '@shared/registries/moduleRegistry';
 import { seedBundlePieces } from '@shared/registries/seedBundles';
+import { bundledTemplates } from '@shared/registries/templateRegistry';
 import { defaultViewOrder, viewRegistry } from '@shared/registries/viewRegistry';
 import { getSeed } from '@shared/seedRegistry';
 import { type SharingPickerOption, sharingPickerOptions } from '@shared/sharingOptions';
@@ -120,7 +130,7 @@ import {
 } from '@shared/viewResolution';
 import { evidenceLabel, refusalWords } from '@shared/workflowViews';
 import type { AgentProfileSummary, DatasetRef, EntityStatic, RecordInstance, WorkflowView } from '@we/backend-shared';
-import { isPolicyRefusal, parseServerUrl, SELF_PERSONS, trace, validatePolicy } from '@we/backend-shared';
+import { displayName, isPolicyRefusal, parseServerUrl, SELF_PERSONS, trace, validatePolicy } from '@we/backend-shared';
 import type { ContentInput } from '@we/block-shared';
 import {
   contentHash,
@@ -457,7 +467,12 @@ export interface SpaceStore {
    * Rejects when the join could not be completed, so a caller's `onSuccess` means what it says.
    */
   joinSpace: (id: string, focus?: boolean) => Promise<void>;
-  initializeAsWeSpace: (name: string, description: string, avatarValue?: File | string | null) => Promise<Space>;
+  initializeAsWeSpace: (
+    name: string,
+    description: string,
+    avatarValue?: File | string | null,
+    target?: DatasetRef,
+  ) => Promise<Space>;
   /** Remove a space: clears its global-discovery listing (when authored by this agent) and
    * removes the backing dataset. */
   removeSpace: (uuid: string) => Promise<void>;
@@ -590,7 +605,47 @@ export interface SpaceStore {
   updateSpaceImage: (field: 'avatar' | 'coverImage', imageFile: File, spaceUuid?: string) => Promise<void>;
   updateSpaceMeta: (updates: SpaceMetaUpdate, spaceUuid?: string) => Promise<void>;
   setSpaceDefaultTemplate: (templateId: string, spaceUuid?: string) => Promise<void>;
+  setSpaceViews: (viewIds: string[], spaceUuid?: string) => Promise<void>;
   setSpaceDefaultTheme: (themeId: string, spaceUuid?: string) => Promise<void>;
+  /**
+   * Whether this session's backend can mount Acorn languages — the gate the
+   * Acorn projects chrome reads. False on the in-memory host, where the four
+   * members below still exist but no-op.
+   */
+  acornAvailable: Accessor<boolean>;
+  /** The mounted Acorn projects, fetched while the projects chrome is open — empty otherwise. */
+  acornProjects: Accessor<AcornProjectRef[]>;
+  /**
+   * Where the in-flight or parked Acorn operation stands — `preparing →
+   * mounting(attempt) → setting-up`, or `failed` with the cause and whether a
+   * Retry resumes it. Null when nothing is running or retained: the projects
+   * dialog draws its progress and its resumable failure from this signal.
+   */
+  acornPending: Accessor<AcornOperationState | null>;
+  /**
+   * The projects dialog's Retry — resumes the retained operation on the same
+   * dataset and language it parked, never allocating another. `datasetId` and
+   * `languageAddress` name the failure on display so its Retry resumes that
+   * target and not whichever operation happens to be parked first. The
+   * create/join forms' own buttons stay the way a *changed* ask is made.
+   */
+  retryAcornProject: (datasetId?: string, languageAddress?: string) => Promise<string | null>;
+  /** The agent's mounted Acorn projects — every dataset the executor reports a mount on. */
+  listAcornProjects: () => Promise<AcornProjectRef[]>;
+  /**
+   * A new Acorn project: template the seed into its language, mount it on a fresh
+   * dataset, and open the result as a WE space. The dataset's id, or null where
+   * the backend cannot mount.
+   */
+  createAcornProject: (name: string, passphrase: string, sourceLanguageHash?: string) => Promise<string | null>;
+  /** An existing project by language address or by passphrase alone — same mount → open sequence. */
+  joinAcornProject: (
+    languageAddress: string | undefined,
+    passphrase: string,
+    sourceLanguageHash?: string,
+  ) => Promise<string | null>;
+  /** A project the executor already has mounted — initialize it if needed and land on it. */
+  openAcornProject: (datasetId: string) => Promise<string | null>;
   setModuleEnabled: (moduleId: string, enabled: boolean, spaceUuid?: string) => Promise<void>;
   /**
    * What each capability that declares settings is currently set to **for this community**, as rows
@@ -808,7 +863,12 @@ export interface SpaceStore {
   upsertSignal: (nodeId: string, signalTypeId: string, value: number | null) => Promise<void>;
   /** Take back this agent's reaction of one type on one record. */
   withdrawSignal: (nodeId: string, signalTypeId: string) => Promise<void>;
-  navigateToSpace: (spaceId: string, view?: string) => Promise<void>;
+  /**
+   * `stillWanted` is asked once more after each navigation await and just before the
+   * route commit — for a caller whose ask can go stale while the round trips run
+   * (the Acorn open's generation check, which a selection that moved since supersedes).
+   */
+  navigateToSpace: (spaceId: string, view?: string, options?: { stillWanted?: () => boolean }) => Promise<void>;
   openRecordRef: (ref: string) => Promise<void>;
   /** Whether this agent may change what every member of that space sees. */
   canAdministerSpace: (uuid: string) => boolean;
@@ -1650,15 +1710,35 @@ export function SpaceStoreProvider(props: ParentProps) {
       otherwise about the messages typed outside calls (`input`).
     */
     const defaults = collectionExtractionDefaults(space);
-    const root = await CollectionBlock.create(dataset, {
-      kind: SPACE_COLLECTION_KIND,
-      // A feed: every member adds to it, so no one member's editor may ever reconcile it, and a
-      // response to anything that lives in it lives in it too.
-      mode: 'feed',
-      title: '',
-      ...defaults,
-      ...(starter?.input !== undefined && { autoExtract: starter.input }),
-    });
+    /*
+      But find one first — and only the one this write could have left. A run that committed
+      this create and then failed before `setRoot` left exactly one shape behind: a channel-kind
+      collection with no parent (`partOf` is `children` read backwards — the root is a child of
+      nothing), no space claiming it, and the body it is made with — an untitled feed holding
+      nothing yet. Anything else unparented is somebody else's record: an import, a channel
+      whose parent was removed, another app's seeding — and adopting it would relink existing
+      content into the space's root and send the starter's writes down with it. And only one
+      candidate can be the orphan: two cannot both be the root a failed run left, so an
+      ambiguous set fails closed the same way none does.
+    */
+    const claimed = new Set(
+      (await Space.findAll(dataset)).map((s) => relationId(s.root)).filter((id) => id.length > 0),
+    );
+    const candidates = (await CollectionBlock.findAll(dataset, { where: { kind: SPACE_COLLECTION_KIND } })).filter(
+      (c) => !relationId(c.partOf) && !claimed.has(c.id) && !c.title && c.mode === 'feed' && !c.children?.length,
+    );
+    const existing = candidates.length === 1 ? candidates[0] : undefined;
+    const root =
+      existing ??
+      (await CollectionBlock.create(dataset, {
+        kind: SPACE_COLLECTION_KIND,
+        // A feed: every member adds to it, so no one member's editor may ever reconcile it, and a
+        // response to anything that lives in it lives in it too.
+        mode: 'feed',
+        title: '',
+        ...defaults,
+        ...(starter?.input !== undefined && { autoExtract: starter.input }),
+      }));
     await space.setRoot({ id: root.id });
 
     const target = {
@@ -1870,28 +1950,50 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (space && !space.url) await share(space, shares()[uuid]?.task ?? {});
   }
 
-  /**
-   * Turns the currently-viewed dataset — which already has some other app's
-   * SDNA installed (e.g. a Flux Community) but not WE's — into a WE space in place.
-   * Unlike createSpace, this never creates a new dataset or publishes a new
-   * neighbourhood: the dataset is already a joined, published neighbourhood
-   * (that's the only way it could be showing in the sidebar), so access is always
-   * 'shared' here, not a real user choice.
+  /*
+   * The schema half of making a dataset a WE space — additive/idempotent (it does not
+   * remove the dataset's existing foreign SDNA), then the wait for the shape index to
+   * see what the install wrote.
    */
-  async function initializeAsWeSpace(
+  async function installSpaceSchemas(ds: AppDataset): Promise<void> {
+    const initSchemas = session.backendPorts()!.schemas;
+    await initSchemas
+      .installSpace(ds.handle, moduleRegistry.moduleSchemas(initSchemas))
+      .catch(reportModuleRefusal('SpaceStore: installSpaceSchemas'));
+
+    /*
+      The shape index lags the links installSpace just wrote — on a mounted dataset the
+      executor rebuilds it through the mount projection and the gap outlasts the settle
+      the port already waits, so a `.create` can still hear "No SHACL shape stored".
+      Poll the query path the creates below are about to take until it answers for both
+      classes they write, then let create speak for itself whether the wait made it or not.
+    */
+    const deadline = Date.now() + 60_000;
+    const queryable = (findAll: (d: DatasetProxy) => Promise<unknown>) =>
+      findAll(ds.handle).then(
+        () => true,
+        (error) =>
+          String(error).includes('No SHACL shape stored')
+            ? false
+            : Promise.reject(error instanceof Error ? error : new Error(String(error))),
+      );
+    for (;;) {
+      const [spaceReady, collectionReady] = await Promise.all([
+        queryable((d) => Space.findAll(d)),
+        queryable((d) => CollectionBlock.findAll(d)),
+      ]);
+      if ((spaceReady && collectionReady) || Date.now() >= deadline) break;
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+    }
+  }
+
+  /** The record half — the Space row, its root structure, and the spaces cache. */
+  async function writeSpaceRecord(
+    ds: AppDataset,
     name: string,
     description: string,
     avatarValue?: File | string | null,
   ): Promise<Space> {
-    const ds = datasetStore.currentDataset();
-    if (!ds) throw new Error('SpaceStore: initializeAsWeSpace called with no active dataset');
-
-    // Additive/idempotent — does not remove or touch the dataset's existing foreign SDNA.
-    const initSchemas = session.backendPorts()!.schemas;
-    await initSchemas
-      .installSpace(ds.handle, moduleRegistry.moduleSchemas(initSchemas))
-      .catch(reportModuleRefusal('SpaceStore: initializeAsWeSpace'));
-
     let avatarData: FileData | undefined;
     if (avatarValue instanceof File) {
       avatarData = await compressImageToFileData(avatarValue, 'space-avatar', SPACE_AVATAR_PX);
@@ -1920,14 +2022,69 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (!mySpaces().some((s) => s.uuid === spaceRecord.uuid)) {
       setMySpaces((prev) => [...prev, spaceRecord]);
     }
-
-    // Re-run switchDataset on the same uuid rather than hand-duplicating its
-    // classes/registerDynamicEntities/manifest refresh: this atomically flips isWeSpace,
-    // refreshes the dynamic model registry, and hands this store a new dataset handle
-    // so its currentSpace effect re-fires now that a Space instance exists.
-    await datasetStore.switchDataset(ds.id);
-
     return spaceRecord;
+  }
+
+  /*
+   * Re-run switchDataset on the same uuid rather than hand-duplicating its
+   * classes/registerDynamicEntities/manifest refresh: it atomically flips isWeSpace,
+   * refreshes the dynamic model registry, and hands this store a new dataset handle
+   * so its currentSpace effect re-fires now that a Space instance exists. Only while
+   * the target is still the dataset on screen, though — a setup for a dataset nobody
+   * is looking at does not get to move the selection; the open sequence's own
+   * navigation does that, guarded, and a superseded open must not reclaim it here.
+   */
+  const reswitchIfShowing = async (ds: AppDataset) => {
+    if (datasetStore.currentDataset()?.id === ds.id)
+      await datasetStore.switchDataset(ds.id, { stillWanted: () => datasetStore.currentDataset()?.id === ds.id });
+  };
+
+  /**
+   * Turns a dataset — which already has some other app's SDNA installed (e.g. a
+   * Flux Community) but not WE's — into a WE space in place. The current dataset
+   * by default; `target` names another explicitly. Unlike createSpace, this never
+   * creates a new dataset or publishes a new neighbourhood: the dataset is already
+   * a joined, published neighbourhood, so access is always 'shared' here, not a
+   * real user choice.
+   */
+  async function initializeAsWeSpace(
+    name: string,
+    description: string,
+    avatarValue?: File | string | null,
+    target?: DatasetRef,
+  ): Promise<Space> {
+    /*
+      `target` binds the setup to the dataset it was asked for — the Acorn open
+      sequence hands it over because "the current dataset" can change while any
+      of the awaits below is in flight, and these writes belong to the project
+      that was opened, not to wherever the person has since navigated.
+    */
+    const ds: AppDataset | null = target ? { ...target } : datasetStore.currentDataset();
+    if (!ds) throw new Error('SpaceStore: initializeAsWeSpace called with no active dataset');
+
+    await installSpaceSchemas(ds);
+    const spaceRecord = await writeSpaceRecord(ds, name, description, avatarValue);
+    await reswitchIfShowing(ds);
+    return spaceRecord;
+  }
+
+  /**
+   * The conditional form of `initializeAsWeSpace` for the Acorn open sequence:
+   * the schemas always (the install is additive), the Space record only when
+   * missing, the root structure only when the record's `root` never landed. A
+   * reopen that finds the structure whole writes nothing, and a partial one gets
+   * the piece it lacks rather than a second copy of the pieces it has.
+   */
+  async function ensureSpaceStructure(name: string, description: string, target: DatasetRef): Promise<void> {
+    const ds: AppDataset = { ...target };
+    await installSpaceSchemas(ds);
+    const [space] = await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) });
+    if (!space) {
+      await writeSpaceRecord(ds, name, description);
+      await reswitchIfShowing(ds);
+      return;
+    }
+    if (!relationId(space.root)) await writeSpaceStructure(ds.handle, space, chosenStarter(undefined));
   }
 
   /**
@@ -2297,6 +2454,177 @@ export function SpaceStoreProvider(props: ParentProps) {
     },
   });
 
+  /*
+    The Acorn project lifecycle, from `@shared/acornLifecycle`.
+
+    Same arrangement as the boards above: the sequence — template the seed into a
+    language, mount it on a fresh dataset, initialise it as a WE space, set the
+    acorn template, then the member interactions — lives in the shared module, and
+    the store stays its **surface**: a schema names `spaceStore.createAcornProject`
+    and where the implementation sits is not the schema's business. What reaches
+    in is the session's ports (an accessor each, since they appear on connect,
+    after this store is built) and the store's own space functions, so the open
+    sequence ends in the same `initializeAsWeSpace` a normal space lands on.
+
+    Everything degrades on a backend that cannot mount — the port is optional and
+    the members no-op where it is absent; `acornAvailable` is what the chrome
+    gates itself on.
+  */
+  /*
+    Owed remote setup, persisted: the mounted language cannot answer "is the meta
+    written / was the join announced" later, so the intent set at mount time is
+    the record an interrupted create or join leaves behind. localStorage is the
+    durable store the shell already owns — a crashed run's open finds the debt
+    across a restart, not just across calls.
+
+    `missedIntents` holds only what storage refused to record: an embed that
+    denies every access still owes the work for the session, and a clear that
+    could not reach storage keeps a null shadow so the stale entry it left
+    behind is not read back as debt.
+  */
+  const missedIntents = new Map<string, AcornSetupIntent | null>();
+  const intentKey = (id: string) => `we-acorn-setup:${id}`;
+  const acornSetupIntents = {
+    get: (id: string): AcornSetupIntent | null => {
+      if (missedIntents.has(id)) return missedIntents.get(id) ?? null;
+      try {
+        const raw = localStorage.getItem(intentKey(id));
+        return raw ? (JSON.parse(raw) as AcornSetupIntent) : null;
+      } catch {
+        return null;
+      }
+    },
+    set: (id: string, intent: AcornSetupIntent): void => {
+      try {
+        localStorage.setItem(intentKey(id), JSON.stringify(intent));
+        missedIntents.delete(id);
+      } catch {
+        // A store that cannot keep the intent keeps it for the session instead.
+        missedIntents.set(id, intent);
+      }
+    },
+    clear: (id: string): void => {
+      try {
+        localStorage.removeItem(intentKey(id));
+        missedIntents.delete(id);
+      } catch {
+        // Storage may still hold the debt — remember this run paid it.
+        missedIntents.set(id, null);
+      }
+    },
+  };
+  /*
+    The operation the projects dialog reports on — its live progress, and the
+    parked failure a close leaves retained for the next open to offer continuing.
+    Declared before the lifecycle: it is the `progress` sink the factory writes.
+  */
+  const [acornPending, setAcornPending] = createSignal<AcornOperationState | null>(null);
+  const acorn = createAcornLifecycle({
+    port: () => session.backendPorts()?.acornLifecycle,
+    lifecycle: () => session.lifecycle(),
+    schemas: () => session.backendPorts()?.schemas ?? null,
+    spaceSetup: async (target) => {
+      // The dataset's own Space row — `spaceSelfWhere`, not "any Space": a
+      // discovery copy counts for nothing here. `root` reads off the row like
+      // `readSpaceRoot` does. The section flag is the completion marker first —
+      // a finished setup writes it — and "any Acorn section present" second, the
+      // pre-marker evidence a space set up before it existed still has: either
+      // says the list was decided, so a members' list holding none of the recipe
+      // is never mistaken for an unwritten one.
+      const ds: AppDataset = { ...target };
+      const [space] = await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) });
+      const views = space ? parseIdList(space.enabledViews) : [];
+      const setupDone = parseSettings(space?.moduleSettings).acorn?.setupComplete === true;
+      return {
+        spaceRecord: Boolean(space),
+        root: Boolean(space && relationId(space.root)),
+        enabledViews: setupDone || views.some((id) => ACORN_SECTION_IDS.includes(id)),
+        defaultTemplate: space?.defaultTemplateId === ACORN_TEMPLATE_ID,
+        setupDone,
+      };
+    },
+    currentDatasetId: () => datasetStore.currentDataset()?.id,
+    navigateToSpace: (id, stillWanted) => navigateToSpace(id, undefined, { stillWanted }),
+    ensureSpaceStructure: (name, description, target) => ensureSpaceStructure(name, description, target),
+    setupIntent: acornSetupIntents,
+    setSpaceDefaultTemplate: (templateId, spaceUuid) => setSpaceDefaultTemplate(templateId, spaceUuid),
+    /*
+      The marker lives on the Space record's `moduleSettings` — the community-level
+      JSON bag, so it travels to every member and no settings surface renders it
+      (the `acorn` group declares no `ModuleSetting`). Written through the same
+      merge helper every other setting write uses, and only when absent.
+    */
+    markSpaceSetupDone: async (spaceUuid) => {
+      const ds = targetDataset(spaceUuid);
+      if (!ds) return;
+      const [space] = await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) });
+      if (!space) return;
+      const next = writeSetting(space.moduleSettings, 'acorn', 'setupComplete', true);
+      if (next !== space.moduleSettings) await Space.update(ds.handle, space.id, { moduleSettings: next });
+    },
+    setSpaceViews: (viewIds, spaceUuid) => setSpaceViews(viewIds, spaceUuid),
+    setSpaceTemplateOverride: (templateId, spaceUuid) => setSpaceTemplateOverride(templateId, spaceUuid),
+    /*
+      The project meta is a foreign entity on the target — its class exists only
+      after the mount's shapes were swept into the dataset's registry, so the
+      read registers them first and answers null while nothing has landed. Null
+      is also the wrong-passphrase answer: an empty cell never gets a meta.
+    */
+    projectMeta: async (target) => {
+      const schemas = session.backendPorts()?.schemas;
+      if (!schemas) return null;
+      const ds: AppDataset = { ...target };
+      await schemas.foreignSchemas(ds.handle).catch(() => [] as never[]);
+      const Meta = getEntityForDataset('AcornProjectMeta', ds.handle) as EntityStatic<RecordInstance> | undefined;
+      if (!Meta) return null;
+      const [meta] = await Meta.findAll(ds.handle, {});
+      return meta ? { name: (meta as { name?: string }).name } : null;
+    },
+    updateSpaceMeta: (updates, spaceUuid) => updateSpaceMeta(updates, spaceUuid),
+    hasAcornTemplate: () => ACORN_TEMPLATE_ID in bundledTemplates,
+    agentName: () => {
+      const did = session.me()?.did?.replace('did://', '');
+      const profile = did ? profileStore.profiles().find((entry) => entry.did === did) : undefined;
+      return profile ? displayName(profile) : undefined;
+    },
+    progress: setAcornPending,
+  });
+
+  /*
+    Whether this session can offer the Acorn projects chrome at all — the mount-capable
+    backend, the module that draws the space's views, and the template the lifecycle's last
+    write names. The first alone would leave a sidebar entry whose lifecycle calls cannot
+    answer; the second or third alone a project that opens into views or a
+    `defaultTemplateId: 'acorn'` this build cannot resolve.
+  */
+  const acornAvailable = createMemo(
+    () =>
+      Boolean(session.backendPorts()?.acornLifecycle) &&
+      moduleRegistry.has('acorn') &&
+      ACORN_TEMPLATE_ID in bundledTemplates,
+  );
+
+  /*
+    The rows the projects modal draws, fetched while it is open and empty the rest of the
+    time — a mounts walk per dataset is not something to hold open while nobody can see it.
+  */
+  const [acornProjects, setAcornProjects] = createSignal<AcornProjectRef[]>([]);
+  createEffect(() => {
+    if (!shellStore.acornProjectsOpen()) {
+      setAcornProjects([]);
+      acorn.dismissAcornOperation();
+      return;
+    }
+    void acorn
+      .listAcornProjects()
+      .then(setAcornProjects)
+      .catch(() => setAcornProjects([]));
+    void acorn
+      .pendingAcornOperation()
+      .then(setAcornPending)
+      .catch(() => {});
+  });
+
   /**
    * Join or leave a node's participant roster — an event RSVP, a document's co-editor list.
    *
@@ -2353,7 +2681,11 @@ export function SpaceStoreProvider(props: ParentProps) {
     lastPlaceInSpace.set(ds.id, query ? `${path}?${query}` : path);
   });
 
-  async function navigateToSpace(spaceId: string, view?: string): Promise<void> {
+  async function navigateToSpace(
+    spaceId: string,
+    view?: string,
+    options?: { stillWanted?: () => boolean },
+  ): Promise<void> {
     // spaceId may be a local id or a shared id — no shape-guessing needed with refs.
     const ds = datasetStore.datasets().find((d) => datasetAddressedBy(d, spaceId));
 
@@ -2400,7 +2732,20 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (ds && datasetStore.currentDataset()?.id !== ds.id) {
       // Pre-load space templates before switching so the template and data arrive together
       await templateStore.preloadSpaceTemplates(ds);
-      await datasetStore.switchDataset(ds.id);
+      /*
+        A caller whose ask can go stale gets asked again between the awaits — the
+        preload above and the switch below are each long enough for somebody to have
+        navigated past. The switch gets the same predicate, so it can refuse to
+        publish a dataset its asker no longer owns.
+      */
+      if (options?.stillWanted && !options.stillWanted()) return;
+      await datasetStore.switchDataset(ds.id, { stillWanted: options?.stillWanted });
+      /*
+        And whether the switch landed — it may itself have stood down at its own late
+        check, leaving the dataset somebody else picked. Continuing to the route write
+        then would put this space's address over another dataset's screen.
+      */
+      if (options?.stillWanted && datasetStore.currentDataset()?.id !== ds.id) return;
     }
     // If no dataset found, route change alone will show the join gate
 
@@ -2438,6 +2783,8 @@ export function SpaceStoreProvider(props: ParentProps) {
       `openRecordRef`'s is a host route rather than a section.
     */
     const section = view ?? (ds && !usesSectionsFor(ds.id) ? '' : carried);
+    // The last place ownership is asked: the route write and the overlay close are the commit.
+    if (options?.stillWanted && !options.stillWanted()) return;
     shellStore.closeShellView();
     /*
       Back where you were in it, when you have been in it this session and are arriving from somewhere
@@ -5969,6 +6316,19 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
   };
 
+  /**
+   * A space's whole section list, written at once — the Acorn lifecycle's open sequence
+   * declares the space's sections rather than toggling them one at a time. Goes through
+   * `writeEnabledViews` so the merge that keeps sections this build does not know applies
+   * here the same as it does to the settings toggles.
+   */
+  async function setSpaceViews(viewIds: string[], spaceUuid?: string): Promise<void> {
+    const ds = targetDataset(spaceUuid);
+    if (!ds) return;
+    const [space] = await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) });
+    if (space) await writeEnabledViews(ds, space, viewIds);
+  }
+
   async function setSpaceDefaultTemplate(templateId: string, spaceUuid?: string): Promise<void> {
     const ds = targetDataset(spaceUuid);
     if (!ds) return;
@@ -6267,6 +6627,12 @@ export function SpaceStoreProvider(props: ParentProps) {
     updatePost,
     moveChild,
     ...boards,
+    acornAvailable,
+    acornProjects,
+    acornPending,
+    retryAcornProject: (datasetId?: string, languageAddress?: string) =>
+      acorn.resumeAcornOperation(datasetId, languageAddress),
+    ...acorn,
     setAttending,
     mutedDids,
     mutedAgents,
@@ -6280,6 +6646,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     updateSpaceImage,
     updateSpaceMeta,
     setSpaceDefaultTemplate,
+    setSpaceViews,
     setSpaceDefaultTheme,
     setModuleEnabled,
     autoInterpret,

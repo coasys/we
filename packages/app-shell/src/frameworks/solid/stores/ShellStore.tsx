@@ -280,6 +280,14 @@ export interface ShellStore {
   joinSpaceOpen: Accessor<boolean>;
   setJoinSpaceOpen: (open: boolean) => void;
   /**
+   * The Acorn projects dialog — the agent's mounted projects and the create/join forms —
+   * is up. Chrome rather than a module flag for the same reason `joinSpaceOpen` is: the
+   * sidebar's spaces menu is not the only surface that can open it, and the modal is drawn
+   * by the host whichever surface asked.
+   */
+  acornProjectsOpen: Accessor<boolean>;
+  setAcornProjectsOpen: (open: boolean) => void;
+  /**
    * The screens and windows the host is waiting for somebody to choose between, or none.
    *
    * Non-empty only on a desktop host whose OS draws no picker of its own, and only while a share is
@@ -1174,6 +1182,7 @@ export function ShellStoreProvider(props: ParentProps) {
   const lastShellPath: Record<string, string> = {};
   const [createSpaceOpen, setCreateSpaceOpen] = createSignal(false);
   const [joinSpaceOpen, setJoinSpaceOpen] = createSignal(false);
+  const [acornProjectsOpen, setAcornProjectsOpen] = createSignal(false);
 
   /*
     Which screen to share, when the OS will not ask.
@@ -3348,6 +3357,8 @@ export function ShellStoreProvider(props: ParentProps) {
     setCreateSpaceOpen,
     joinSpaceOpen,
     setJoinSpaceOpen,
+    acornProjectsOpen,
+    setAcornProjectsOpen,
     pendingScreenSources,
     chooseScreenSource,
     pendingDestructive,
