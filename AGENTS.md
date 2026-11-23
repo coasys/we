@@ -4234,6 +4234,18 @@ Needs: backends ad4m.
 - Actions (`{ "$invoke": "modules.flux.<name>" }`):
   - subgroupMessages — The messages in one of Flux’s conversation subgroups, oldest first — { id, author, timestamp, body }. Read when asked, since a subgroup’s messages are not a relation a $query can follow.
 
+### Acorn (`acorn`)
+Project management over a mounted Acorn project — outcomes, the tree, priorities, members
+- No store: everything this module does is declared.
+- Parts: `acorn.outcomeList`, `acorn.outcomeCard` (subject: outcome; needs outcome — the AcornOutcome record this card draws), `acorn.expandedOutcome` (subject: outcome; needs outcome — the AcornOutcome record shown expanded), `acorn.outcomeTable`, `acorn.priorityList`, `acorn.projectDashboard`, `acorn.mapView`
+- Functions:
+  - acornTasks(taskList) — An outcome's task list, parsed from its JSON field into `{ task, complete }` rows.  e.g. acornTasks({ taskList: outcome.taskList })
+  - acornTaskProgress(taskList) — How far an outcome's task list is — '2/3', or '' when it has none.  e.g. acornTaskProgress({ taskList: outcome.taskList })
+  - acornStatusLabel(status) — An outcome's achievement status as a person reads it — 'Achieved', 'Not achieved'.  e.g. acornStatusLabel({ status: outcome.achievementStatus })
+  - acornScopeLabel(scope) — An outcome's scope — 'Big', 'Small', 'Uncertain' — as a label.  e.g. acornScopeLabel({ scope: outcome.scopeType })
+  - acornTimeFrameLabel(timeFrame) — An outcome's time frame as a date range, or '' when unset.  e.g. acornTimeFrameLabel({ timeFrame: outcome.timeFrame })
+  - acornOutcomeSummary(outcome) — One line on an outcome — status, task progress and scope, joined where present.  e.g. acornOutcomeSummary({ outcome: outcome })
+
 ### Polls (`polls`)
 Ask the space a question and watch the answer arrive.
 Needs: kernels records.
