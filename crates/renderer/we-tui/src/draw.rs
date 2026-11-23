@@ -277,6 +277,29 @@ fn bare_icon_button(node: &ResolvedNode) -> bool {
         && matches!(prop_str(node, "variant"), Some("ghost" | "bare"))
 }
 
+/// What [`paint_menu`](Painter::paint_menu) writes for one item.
+fn menu_item_label(item: &Value) -> String {
+    match item {
+        Value::Obj(m) => m
+            .get("label")
+            .or_else(|| m.get("id"))
+            .map(|v| v.js_string())
+            .unwrap_or_default(),
+        other => other.js_string(),
+    }
+}
+
+/// `(AB)` — the same string [`paint_avatar`](Painter::paint_avatar) draws.
+fn avatar_line(node: &ResolvedNode) -> String {
+    let label = prop_str(node, "initials")
+        .map(initials_of)
+        .or_else(|| prop_str(node, "icon").and_then(|i| icons::glyph(i).map(|g| g.to_string())));
+    match label {
+        Some(l) if !l.is_empty() => format!("({l})"),
+        _ => "(?)".to_string(),
+    }
+}
+
 /// `open` on a tree item — a plain truthy prop read.
 fn tree_open(node: &ResolvedNode) -> bool {
     prop(node, "open").truthy()
@@ -385,6 +408,25 @@ impl<'a> Painter<'a> {
         }
         let max_w = (area.x + area.width - x) as usize;
         self.buf.set_stringn(x, y, s, max_w, style);
+    }
+
+    /// [`put`](Self::put), but a string wider than the area ends in `…`
+    /// instead of stopping mid-word (`Settings` → `Set`).
+    fn put_line(&mut self, area: Rect, x: u16, y: u16, s: &str, style: TStyle) {
+        if area.width == 0 || x >= area.x + area.width {
+            return;
+        }
+        let max_w = (area.x + area.width - x) as usize;
+        if UnicodeWidthStr::width(s) <= max_w {
+            self.put(area, x, y, s, style);
+            return;
+        }
+        let shown = if max_w <= 1 {
+            "…".to_string()
+        } else {
+            format!("{}…", truncate_str(s, max_w - 1))
+        };
+        self.put(area, x, y, &shown, style);
     }
 
     /// Style-patch `rect` — bg fills without touching symbols.
@@ -658,6 +700,18 @@ impl<'a> Painter<'a> {
         if let Some(w) = dim_cells(&self.scx, style.layout.width.as_ref(), avail_w, vw) {
             dim.w = w;
         }
+        // A media fallback's px box is the mark (28px → 4 cells). The
+        // terminal draws its alt in that box ("Coasys"). Grow to the alt
+        // when the parent has room, so a short label stays one line inside
+        // the rail; the px width stays the minimum. A narrower parent
+        // keeps the smaller box, and `wrap` splits the alt across rows.
+        if tag(node) == Tag::CatalogFallback {
+            let text_w = UnicodeWidthStr::width(self.node_text(node).as_str()) as u16;
+            if text_w > 0 {
+                let room = inner_w.max(dim.w);
+                dim.w = dim.w.max(text_w).min(room.max(1));
+            }
+        }
         if let Some(h) = dim_cells(&self.scx, height, avail_h, vh) {
             dim.h = h;
         }
@@ -882,6 +936,9 @@ impl<'a> Painter<'a> {
                 }
                 if lw == 0 && ww > width {
                     // A word longer than the line — hard-break by chars.
+                    // Ellipsis is a label's job (`put_line`), not the
+                    // shared wrapper: dropping the tail here would lose
+                    // the rest of a URL or a word in a message body.
                     let mut rest = word;
                     while UnicodeWidthStr::width(rest) > width {
                         let (head, tail) = split_at_cells(rest, width);
@@ -1299,6 +1356,10 @@ impl<'a> Painter<'a> {
         let r = dim_cells(&self.scx, inset.right.as_ref(), base.width, vw);
         let t = dim_cells(&self.scx, inset.top.as_ref(), base.height, vh);
         let b = dim_cells(&self.scx, inset.bottom.as_ref(), base.height, vh);
+        // Keep the authored width. Growing a fixed rail here paints it
+        // over a page that was laid out against that width (the shell
+        // offsets the page by 72px). Labels that do not fit ellipsize
+        // in `put_line` instead.
         let dim = self.measure(node, base.width, base.height);
         let (x, w) = match (l, r, style.layout.width.is_some()) {
             (Some(l), Some(r), false) => (l, base.width.saturating_sub(l + r)),
@@ -1705,26 +1766,35 @@ impl<'a> Painter<'a> {
         }
     }
 
+    /// What [`paint_button`](Self::paint_button) writes — the label plus
+    /// the variant's chrome. `put_line` ellipsizes it when the box is narrower.
+    fn button_line(&self, node: &ResolvedNode) -> String {
+        let label = self.button_label(node);
+        if bare_icon_button(node) {
+            return label;
+        }
+        let (l, r) = match prop_str(node, "variant") {
+            Some("ghost" | "bare") => (" ", " "),
+            _ => ("[", "]"),
+        };
+        format!("{l} {label} {r}")
+    }
+
     /// `[ label ]` — variant decides the look: solid fills, outline
     /// brackets, ghost/bare plain text. `square` icon buttons show their
     /// icon glyph.
     fn paint_button(&mut self, node: &ResolvedNode, area: Rect, ink: &Ink) {
-        let label = self.button_label(node);
+        let line = self.button_line(node);
         if bare_icon_button(node) {
             let st = ink.style(self, self.default_fg());
-            self.put(area, area.x, area.y, &label, st);
+            self.put_line(area, area.x, area.y, &line, st);
             return;
         }
-        let variant = prop_str(node, "variant").unwrap_or("solid");
         let mut st = ink.style(self, self.default_fg());
         if prop_bool(node, "disabled") {
             st = st.add_modifier(Modifier::DIM);
         }
-        let (l, r) = match variant {
-            "ghost" | "bare" => (" ", " "),
-            _ => ("[", "]"),
-        };
-        self.put(area, area.x, area.y, &format!("{l} {label} {r}"), st);
+        self.put_line(area, area.x, area.y, &line, st);
     }
 
     /// The icon's glyph — its `name` mapped, the catalog label when the
@@ -1745,13 +1815,7 @@ impl<'a> Painter<'a> {
     /// `(AB)` — initials from the `initials` prop (a name; the widget
     /// derives the letters), or the `icon` prop's glyph.
     fn paint_avatar(&mut self, node: &ResolvedNode, area: Rect, ink: &Ink) {
-        let label = prop_str(node, "initials").map(initials_of).or_else(|| {
-            prop_str(node, "icon").and_then(|i| icons::glyph(i).map(|g| g.to_string()))
-        });
-        let text = match label {
-            Some(l) if !l.is_empty() => format!("({l})"),
-            _ => "(?)".to_string(),
-        };
+        let text = avatar_line(node);
         let mut ink = *ink;
         ink.bold = true;
         self.put(
@@ -2100,15 +2164,8 @@ impl<'a> Painter<'a> {
         };
         let st = ink.style(self, self.default_fg());
         for (y, item) in (area.y..area.y + area.height).zip(items.iter()) {
-            let label = match item {
-                Value::Obj(m) => m
-                    .get("label")
-                    .or_else(|| m.get("id"))
-                    .map(|v| v.js_string())
-                    .unwrap_or_default(),
-                other => other.js_string(),
-            };
-            self.put(area, area.x, y, &format!("  {label}"), st);
+            let label = menu_item_label(item);
+            self.put_line(area, area.x, y, &format!("  {label}"), st);
         }
     }
 

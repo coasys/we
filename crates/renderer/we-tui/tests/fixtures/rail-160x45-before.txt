@@ -1,0 +1,45 @@
+           │
+           │
+    Coas   │
+    ys     │
+           │
+           │
+           │
+           │
+           │
+     Spa   │
+           │
+           │
+           │
+           │
+     Set   │
+           │
+           │
+           │
+           │
+     Pro   │
+           │
+           │
+           │
+           │
+   About   │
+   Log out │
+           │
+           │
+           │
+           │
+           │
+           │
+           │
+           │
+           │
+           │
+           │
+           │
+           │
+           │
+           │
+           │
+           │
+           │
+ /  ·  8 nodes   tab/↑↓ focus · enter activate · ←/→ fold · q quit
