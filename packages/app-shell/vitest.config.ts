@@ -16,6 +16,8 @@ const SOLID_TESTS = [
   // Mounts a part's frame and changes its subject under it: real Solid effects and cleanups.
   'tests/partWhileShown.test.tsx',
   'tests/executorFreeBoot.test.tsx',
+  // Acorn setup through the real SpaceStore + in-memory backend: record writes, not mocks.
+  'tests/acornSpaceSetup.test.tsx',
   // The real template store, its sibling stores doubled: which space a late read may still answer for.
   'tests/templateStoreSpaceSwitch.test.tsx',
   'tests/runtimeStore.test.tsx',
@@ -131,6 +133,8 @@ const SOLID_TESTS = [
   'tests/createSpaceServer.test.tsx',
   // The AI settings schema through the real renderer: what an install's progress re-renders.
   'tests/localAiProgressRender.test.tsx',
+  // The Acorn projects dialog through the real renderer: its busy/failure/Retry states are DOM.
+  'tests/acornProjectsModal.test.tsx',
 ];
 
 export default defineConfig({
