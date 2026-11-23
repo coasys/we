@@ -277,6 +277,70 @@ fn bare_icon_button(node: &ResolvedNode) -> bool {
         && matches!(prop_str(node, "variant"), Some("ghost" | "bare"))
 }
 
+/// A fixed full-height strip on one side — the Coasys rail. Both insets
+/// would be a stretched band; neither would be a floating layer. A box
+/// already half the viewport wide is a page, not a rail, and is left alone.
+fn is_side_rail(style: &we_style::Style, base: Rect, explicit: u16) -> bool {
+    if !matches!(style.layout.position, Some(we_style::Position::Fixed)) {
+        return false;
+    }
+    let full_height = matches!(style.layout.height, Some(Dimension::Percent(p)) if p >= 0.99_f32);
+    if !full_height || explicit == 0 || explicit.saturating_mul(2) >= base.width {
+        return false;
+    }
+    let left = style.layout.inset.left.is_some();
+    let right = style.layout.inset.right.is_some();
+    left != right
+}
+
+/// What [`paint_menu`](Painter::paint_menu) writes for one item.
+fn menu_item_label(item: &Value) -> String {
+    match item {
+        Value::Obj(m) => m
+            .get("label")
+            .or_else(|| m.get("id"))
+            .map(|v| v.js_string())
+            .unwrap_or_default(),
+        other => other.js_string(),
+    }
+}
+
+/// The widest `  {label}` line a menu paints.
+fn menu_line_cells(node: &ResolvedNode) -> u16 {
+    let Value::List(items) = prop(node, "items") else {
+        return 0;
+    };
+    items
+        .iter()
+        .map(|item| {
+            let label = menu_item_label(item);
+            2u16.saturating_add(UnicodeWidthStr::width(label.as_str()) as u16)
+        })
+        .max()
+        .unwrap_or(0)
+}
+
+/// `(AB)` — the same string [`paint_avatar`](Painter::paint_avatar) draws.
+fn avatar_line(node: &ResolvedNode) -> String {
+    let label = prop_str(node, "initials")
+        .map(initials_of)
+        .or_else(|| prop_str(node, "icon").and_then(|i| icons::glyph(i).map(|g| g.to_string())));
+    match label {
+        Some(l) if !l.is_empty() => format!("({l})"),
+        _ => "(?)".to_string(),
+    }
+}
+
+/// An icon's glyph width — one cell when the name is empty.
+fn icon_cells(node: &ResolvedNode) -> u16 {
+    let name = prop_str(node, "name").unwrap_or("");
+    let w = match icons::glyph(name) {
+        Some(g) => UnicodeWidthStr::width(g),
+        None => UnicodeWidthStr::width(name),
+    };
+    w.max(1) as u16
+}
+
 /// `open` on a tree item — a plain truthy prop read.
 fn tree_open(node: &ResolvedNode) -> bool {
     prop(node, "open").truthy()
@@ -385,6 +449,25 @@ impl<'a> Painter<'a> {
         }
         let max_w = (area.x + area.width - x) as usize;
         self.buf.set_stringn(x, y, s, max_w, style);
+    }
+
+    /// [`put`](Self::put), but a string wider than the area ends in `…`
+    /// instead of stopping mid-word (`Settings` → `Set`).
+    fn put_line(&mut self, area: Rect, x: u16, y: u16, s: &str, style: TStyle) {
+        if area.width == 0 || x >= area.x + area.width {
+            return;
+        }
+        let max_w = (area.x + area.width - x) as usize;
+        if UnicodeWidthStr::width(s) <= max_w {
+            self.put(area, x, y, s, style);
+            return;
+        }
+        let shown = if max_w <= 1 {
+            "…".to_string()
+        } else {
+            format!("{}…", truncate_str(s, max_w - 1))
+        };
+        self.put(area, x, y, &shown, style);
     }
 
     /// Style-patch `rect` — bg fills without touching symbols.
@@ -658,6 +741,17 @@ impl<'a> Painter<'a> {
         if let Some(w) = dim_cells(&self.scx, style.layout.width.as_ref(), avail_w, vw) {
             dim.w = w;
         }
+        // A media fallback's px box is the mark (28px → 4 cells). The
+        // terminal draws its alt in that box ("Coasys"), which wrapped
+        // mid-word. Grow to the alt when the parent has room; the px
+        // width stays the minimum, and a narrower parent still ellipsizes.
+        if tag(node) == Tag::CatalogFallback {
+            let text_w = UnicodeWidthStr::width(self.node_text(node).as_str()) as u16;
+            if text_w > 0 {
+                let room = inner_w.max(dim.w);
+                dim.w = dim.w.max(text_w).min(room.max(1));
+            }
+        }
         if let Some(h) = dim_cells(&self.scx, height, avail_h, vh) {
             dim.h = h;
         }
@@ -881,7 +975,20 @@ impl<'a> Painter<'a> {
                     lw = 0;
                 }
                 if lw == 0 && ww > width {
-                    // A word longer than the line — hard-break by chars.
+                    // A word of ordinary letters longer than the line
+                    // ("Coasys" in a 4-cell mark) used to hard-split onto
+                    // the next row (`Coas` / `ys`). One line, ellipsis.
+                    // A glyph wider than the line still hard-breaks: the
+                    // ellipsis would not fit beside it, and the walk has
+                    // to consume a char each turn.
+                    let single_cell = word
+                        .chars()
+                        .all(|ch| UnicodeWidthChar::width(ch).unwrap_or(1) <= 1);
+                    if single_cell && width >= 2 {
+                        let head = truncate_str(word, width - 1);
+                        lines.push(format!("{head}…"));
+                        continue;
+                    }
                     let mut rest = word;
                     while UnicodeWidthStr::width(rest) > width {
                         let (head, tail) = split_at_cells(rest, width);
@@ -1299,7 +1406,13 @@ impl<'a> Painter<'a> {
         let r = dim_cells(&self.scx, inset.right.as_ref(), base.width, vw);
         let t = dim_cells(&self.scx, inset.top.as_ref(), base.height, vh);
         let b = dim_cells(&self.scx, inset.bottom.as_ref(), base.height, vh);
-        let dim = self.measure(node, base.width, base.height);
+        let mut dim = self.measure(node, base.width, base.height);
+        // The collapsed rail is 72px. Hover is what opens it, and a
+        // terminal has no hover, so the labels the GUI unmounts until
+        // then are painted into those 9 cells and clip (`Spa`, `Set`).
+        // Grow a full-height side rail up to the expanded 256px when the
+        // viewport can spare a page beside it.
+        dim.w = self.fit_rail_width(node, &style, base, dim.w);
         let (x, w) = match (l, r, style.layout.width.is_some()) {
             (Some(l), Some(r), false) => (l, base.width.saturating_sub(l + r)),
             (Some(l), _, _) => (l, dim.w),
@@ -1316,6 +1429,106 @@ impl<'a> Painter<'a> {
         let y = base.y.saturating_add(y);
         let w = w.min((base.x + base.width).saturating_sub(x));
         Rect::new(x, y, w, h)
+    }
+
+    /// Grow a side rail to one line of its labels. The template's expanded
+    /// width is 256px (`cap`); past that, paint ellipsizes. `reserve` keeps
+    /// a page beside the rail — half the viewport, and at least 24 cells —
+    /// so a 32-column frame stays at the collapsed width. Never shrinks a
+    /// rail the template already drew wider than that.
+    fn fit_rail_width(
+        &self,
+        node: &ResolvedNode,
+        style: &we_style::Style,
+        base: Rect,
+        explicit: u16,
+    ) -> u16 {
+        if !is_side_rail(style, base, explicit) {
+            return explicit;
+        }
+        let needed = self.one_line_width(node, base.width);
+        let cap = (256.0 / CELL_PX).round() as u16;
+        let reserve = (base.width / 2).max(24).min(base.width);
+        let room = base
+            .width
+            .saturating_sub(reserve)
+            .max(explicit.min(base.width));
+        let grown = needed.min(room).min(cap.max(explicit));
+        explicit.max(grown)
+    }
+
+    /// Outer width of one line: content plus this node's horizontal inset,
+    /// clamped to `avail`. `display: none` is zero — it is not painted.
+    fn one_line_width(&self, node: &ResolvedNode, avail: u16) -> u16 {
+        if avail == 0 {
+            return 0;
+        }
+        let style = self.style(node);
+        if hidden(&style) {
+            return 0;
+        }
+        let (l, _, r, _) = self.box_inset(node, &style, avail, 1);
+        let pad = l.saturating_add(r);
+        let budget = avail.saturating_sub(pad).max(1);
+        let content = self.one_line_content(node, budget);
+        content.saturating_add(pad).min(avail)
+    }
+
+    /// The cells one line of `node` needs inside its padding. A labelled
+    /// button is its painted line — walking its children would count the
+    /// label twice (the prop, and the `$if` text the GUI mounts when open).
+    fn one_line_content(&self, node: &ResolvedNode, budget: u16) -> u16 {
+        match tag(node) {
+            Tag::Button if !composite_button(node) => {
+                UnicodeWidthStr::width(self.button_line(node).as_str()) as u16
+            }
+            Tag::Menu => menu_line_cells(node),
+            Tag::Avatar => UnicodeWidthStr::width(avatar_line(node).as_str()) as u16,
+            Tag::Icon => icon_cells(node),
+            Tag::Text | Tag::Link | Tag::CatalogFallback => {
+                UnicodeWidthStr::width(self.node_text(node).as_str()) as u16
+            }
+            Tag::Badge | Tag::Chip => {
+                UnicodeWidthStr::width(self.node_text(node).as_str()) as u16 + 2
+            }
+            _ => self.one_line_stack(node, budget),
+        }
+    }
+
+    /// A row sums its shown children; a column takes the widest. Hidden
+    /// and out-of-flow children are skipped — they are not on the line.
+    fn one_line_stack(&self, node: &ResolvedNode, budget: u16) -> u16 {
+        let row = matches!(tag(node), Tag::Tabs) || direction_of(node) == Direction::Row;
+        let gap = if row {
+            self.gap_cells(&self.style(node), Direction::Row)
+        } else {
+            0
+        };
+        let mut total = 0u16;
+        let mut widest = 0u16;
+        let mut n = 0u16;
+        for c in &node.children {
+            let w = match c {
+                ResolvedChild::Node(child) => {
+                    if hidden(&self.style(child)) || self.out_of_flow(child).is_some() {
+                        continue;
+                    }
+                    self.one_line_width(child, budget)
+                }
+                ResolvedChild::Text(t) => (UnicodeWidthStr::width(t.as_ref()) as u16).min(budget),
+            };
+            widest = widest.max(w);
+            total = total.saturating_add(w);
+            n = n.saturating_add(1);
+        }
+        if n == 0 {
+            return (UnicodeWidthStr::width(self.node_text(node).as_str()) as u16).min(budget);
+        }
+        if row {
+            total.saturating_add(gap.saturating_mul(n.saturating_sub(1)))
+        } else {
+            widest
+        }
     }
 
     /// Vertical stack: children take their measured height, `flex` splits
@@ -1705,26 +1918,35 @@ impl<'a> Painter<'a> {
         }
     }
 
+    /// What [`paint_button`](Self::paint_button) writes — the label plus
+    /// the variant's chrome, so the rail's width and the paint agree.
+    fn button_line(&self, node: &ResolvedNode) -> String {
+        let label = self.button_label(node);
+        if bare_icon_button(node) {
+            return label;
+        }
+        let (l, r) = match prop_str(node, "variant") {
+            Some("ghost" | "bare") => (" ", " "),
+            _ => ("[", "]"),
+        };
+        format!("{l} {label} {r}")
+    }
+
     /// `[ label ]` — variant decides the look: solid fills, outline
     /// brackets, ghost/bare plain text. `square` icon buttons show their
     /// icon glyph.
     fn paint_button(&mut self, node: &ResolvedNode, area: Rect, ink: &Ink) {
-        let label = self.button_label(node);
+        let line = self.button_line(node);
         if bare_icon_button(node) {
             let st = ink.style(self, self.default_fg());
-            self.put(area, area.x, area.y, &label, st);
+            self.put_line(area, area.x, area.y, &line, st);
             return;
         }
-        let variant = prop_str(node, "variant").unwrap_or("solid");
         let mut st = ink.style(self, self.default_fg());
         if prop_bool(node, "disabled") {
             st = st.add_modifier(Modifier::DIM);
         }
-        let (l, r) = match variant {
-            "ghost" | "bare" => (" ", " "),
-            _ => ("[", "]"),
-        };
-        self.put(area, area.x, area.y, &format!("{l} {label} {r}"), st);
+        self.put_line(area, area.x, area.y, &line, st);
     }
 
     /// The icon's glyph — its `name` mapped, the catalog label when the
@@ -1745,13 +1967,7 @@ impl<'a> Painter<'a> {
     /// `(AB)` — initials from the `initials` prop (a name; the widget
     /// derives the letters), or the `icon` prop's glyph.
     fn paint_avatar(&mut self, node: &ResolvedNode, area: Rect, ink: &Ink) {
-        let label = prop_str(node, "initials").map(initials_of).or_else(|| {
-            prop_str(node, "icon").and_then(|i| icons::glyph(i).map(|g| g.to_string()))
-        });
-        let text = match label {
-            Some(l) if !l.is_empty() => format!("({l})"),
-            _ => "(?)".to_string(),
-        };
+        let text = avatar_line(node);
         let mut ink = *ink;
         ink.bold = true;
         self.put(
@@ -2100,15 +2316,8 @@ impl<'a> Painter<'a> {
         };
         let st = ink.style(self, self.default_fg());
         for (y, item) in (area.y..area.y + area.height).zip(items.iter()) {
-            let label = match item {
-                Value::Obj(m) => m
-                    .get("label")
-                    .or_else(|| m.get("id"))
-                    .map(|v| v.js_string())
-                    .unwrap_or_default(),
-                other => other.js_string(),
-            };
-            self.put(area, area.x, y, &format!("  {label}"), st);
+            let label = menu_item_label(item);
+            self.put_line(area, area.x, y, &format!("  {label}"), st);
         }
     }
 

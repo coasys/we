@@ -1,0 +1,45 @@
+                  │
+                  │
+    Coasys        │
+                  │
+                  │
+                  │
+                  │
+                  │
+                  │
+     Spaces       │
+                  │
+                  │
+                  │
+                  │
+     Settings     │
+                  │
+                  │
+                  │
+                  │
+     Profile      │
+                  │
+                  │
+                  │
+                  │
+   About          │
+   Log out        │
+                  │
+                  │
+                  │
+                  │
+                  │
+                  │
+                  │
+                  │
+                  │
+                  │
+                  │
+                  │
+                  │
+                  │
+                  │
+                  │
+                  │
+                  │
+ /  ·  8 nodes   tab/↑↓ focus · enter activate · ←/→ fold · q quit
