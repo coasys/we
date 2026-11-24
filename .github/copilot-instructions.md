@@ -4243,7 +4243,6 @@ Needs: backends ad4m.
 
 ### Polls (`polls`)
 Ask the space a question and watch the answer arrive.
-Needs: kernels records.
 - State (read in an expression as `modules.polls.<name>`):
   - lastError — Why the last vote could not be recorded, or empty.
   - pendingVote — This agent’s vote on a poll, written and not yet read back — { author, option }, or nothing. Keyed by poll id.
@@ -4286,7 +4285,150 @@ operation only where it could make the same writes one at a time.
 The namespace is who declared it: core for WE, a module id for a module, a bundle id for an app.
 An app installed at runtime brings its own, which this list does not show.
 
-This build registers no operations yet.
+- ops.core.addBoardColumn — Add a column to a board: bound to a state when a slug is given — work in that state arrives on its own — or a lane of this board’s own when not.
+  Params: board: string (required) — The board.; name: string — The column’s heading. Stored only where it differs from its state’s name.; slug: string — The state the column stands for. Omit for a lane.; states: list (required) — The states the community offers, in its own order, each { slug, name }.
+  Returns: nothing
+  Writes: adds to CollectionBlock.children; creates a CollectionBlock
+
+- ops.core.addStateColumn — Give a board a column for a state, unless one of its columns is already bound to it — what naming a new state does to the space’s own board.
+  Params: board: string (required) — The board.; slug: string (required) — The state.; name: string — The state’s name.; states: list (required) — The states the community offers, in its own order, each { slug, name }.
+  Returns: nothing
+  Writes: adds to CollectionBlock.children; creates a CollectionBlock
+
+- ops.core.addTaskToColumn — Make a task in a column: parented to the collection the board gathers from where there is one, arranged into the column, in the state given.
+  Params: column: string (required) — The column.; title: string (required) — The task’s title.; status: string — The state it starts in.; anchor: string — The collection it belongs to — the call the board gathers from.; arrange: boolean — Whether to arrange it into the column. False where its state is still to be agreed.
+  Returns: a value, read in onSuccess as result
+  Writes: adds to CollectionBlock.arranges; adds to CollectionBlock.children; creates a TaskBlock
+
+- ops.core.arrangeColumn — Store the order of a column’s cards: the ids given, then whatever the column still holds that they leave out.
+  Params: column: string (required) — The column (or a board, for what it holds in no column).; ids: list (required) — Card ids, in the order wanted.
+  Returns: a value, read in onSuccess as result
+  Writes: adds to CollectionBlock.arranges; removes from CollectionBlock.arranges (destructive)
+
+- ops.core.clearPlacements — Take a card off a canvas: every placement it has there, so no duplicate puts it back.
+  Params: placements: list (required) — The placements’ ids.
+  Returns: nothing
+  Writes: deletes a Placement (may write many records in one call, destructive)
+
+- ops.core.colorCanvasType — Colour every card of one kind on a canvas: the canvas’s style for the kind edited, or made where there is none.
+  Params: canvas: string (required) — The canvas.; nodeType: string (required) — The kind of record.; color: string (required) — The colour, or the host’s value for none of its own.; create: boolean — Whether to make a style where there is none. False when clearing.
+  Returns: nothing
+  Writes: adds to CollectionBlock.children; creates a TypeStyle; edits a TypeStyle
+
+- ops.core.colorSpaceType — Colour one kind of record in the space’s key: its style edited, or made where there is none, and any duplicate removed.
+  Params: space: string (required) — The Space record.; nodeType: string (required) — The kind of record.; color: string (required) — The colour.
+  Returns: nothing
+  Writes: adds to Space.typeStyles; creates a TypeStyle; deletes a TypeStyle; edits a TypeStyle (may write many records in one call, destructive)
+
+- ops.core.connectRecords — Connect two records with a Relationship — of a community-named kind where one is given — and answer with its id.
+  Params: source: string (required) — The record the connection runs from.; sourceType: string — Its entity.; target: string (required) — The record it runs to.; targetType: string — Its entity.; key: string — The connection’s dedup key, from both ends’ titles and its label.; kind: string — The RelationshipType it is one of.; fields: object — Anything else it says — a label, a description.; home: string — A collection to make it inside.
+  Returns: a value, read in onSuccess as result
+  Writes: adds to CollectionBlock.children; creates a Relationship
+
+- ops.core.createBoard — Make a board with a column for each state given, in that order; optionally inside a collection and gathering from a record.
+  Params: title: string (required) — What the board is called.; states: list (required) — The slugs of the states to make a column for, in order, each once.; parent: string — A collection to put the board in. Left loose when the collection is not there.; gathers: string — The record the board draws its work from. Omit for a board showing only what is put on it.
+  Returns: a value, read in onSuccess as result
+  Writes: adds to CollectionBlock.children; creates a CollectionBlock (may write many records in one call)
+
+- ops.core.createPost — Write a composed document — a post, a message or a reply — with its blocks, in a collection or in response to a record, threaded under its subject.
+  Params: root: object (required) — The root’s own fields: kind, mode, and what it stores about its blocks (editorState, textContent), plus where a copy came from.; blocks: list (required) — The blocks in document order, each { key, entity, fields, parent } — parent the planned id of the collection block it is in, absent at the top level.; mentions: list — The DIDs the document mentions.; container: string — The collection it is a child of.; respondsTo: string — The record it answers.; thread: string — The subject of the thread it joins — respondsTo, or the first record above it that is not itself a response.; threadEntity: string — The thread subject’s entity.; generatedBy: string — The ModelRun that wrote it, when a model did.
+  Returns: a value, read in onSuccess as result
+  Writes: adds to its parent.responses; adds to AudioBlock.thread; creates a AudioBlock; adds to CalloutBlock.thread; creates a CalloutBlock; adds to CodeBlock.thread; creates a CodeBlock; adds to CollectionBlock.children; adds to CollectionBlock.thread; creates a CollectionBlock; adds to DividerBlock.thread; creates a DividerBlock; adds to EmbedBlock.thread; creates a EmbedBlock; adds to EventBlock.thread; creates a EventBlock; adds to FileBlock.thread; creates a FileBlock; adds to ImageBlock.thread; creates a ImageBlock; adds to LinkBlock.thread; creates a LinkBlock; adds to LocationBlock.thread; creates a LocationBlock; adds to Relationship.thread; adds to TagBlock.thread; creates a TagBlock; adds to TaskBlock.thread; creates a TaskBlock; adds to TextBlock.thread; creates a TextBlock; adds to Topic.thread; adds to VideoBlock.thread; creates a VideoBlock (may write many records in one call)
+
+- ops.core.detachConnection — Delete a connection nobody has said anything about. One carrying comments or reactions is refused — select the line itself to remove an argued claim.
+  Params: connection: string (required) — The Relationship.
+  Returns: nothing
+  Writes: deletes a Relationship (destructive)
+
+- ops.core.ensureBoardFor — Give a collection a board once it holds a task, and not before; answers with the board’s id, or nothing while it holds no task.
+  Params: collection: string (required) — The collection — a call, usually.; states: list (required) — The slugs a new board gets a column for, in order.
+  Returns: a value, read in onSuccess as result
+  Writes: adds to CollectionBlock.children; creates a CollectionBlock; edits a CollectionBlock (may write many records in one call)
+
+- ops.core.makeSpaceBoard — Make the space’s own board — gathering from the space collection, or from the space where it has none — and name it the space’s board landmark.
+  Params: space: string (required) — The Space record’s id.; root: string — The space collection’s id, where the space has one.; title: string — What the board is called; "Everything" when omitted.; states: list (required) — The slugs to make a column for, in order.
+  Returns: a value, read in onSuccess as result
+  Writes: adds to CollectionBlock.children; creates a CollectionBlock; adds to Space.landmarks; creates a SpaceLandmark (may write many records in one call)
+
+- ops.core.moveCard — Move a card from one column to another, in one transaction: it leaves the first, joins the second (where it was dropped, or at the end), and takes the second’s state when that column is bound to one.
+  Params: to: string (required) — The column it joins.; from: string — The column it leaves.; card: string (required) — The card.; ids: list — The joined column’s order with the card where it was dropped. Omit to append.
+  Returns: nothing
+  Writes: adds to CollectionBlock.arranges; removes from CollectionBlock.arranges; edits a TaskBlock (destructive)
+
+- ops.core.openBoardFor — The board a collection points at, made — gathering from the collection, inside it — when it has none yet. Answers with its id, or nothing when the collection is not there.
+  Params: anchor: string (required) — The collection whose board this is.; title: string — What a board made here is called; "This call" when omitted.; states: list (required) — The slugs a new board gets a column for, in order.
+  Returns: a value, read in onSuccess as result
+  Writes: adds to CollectionBlock.children; creates a CollectionBlock; edits a CollectionBlock (may write many records in one call)
+
+- ops.core.placeCard — Write where a card sits on a canvas, or how it looks there: the placement the canvas draws is edited, or one made where there is none, and duplicates beside it removed. Answers { from, to } — what the fields held before — for an undo.
+  Params: canvas: string (required) — The canvas.; node: string (required) — The record the card is.; nodeType: string — Its entity, for a placement made here.; fields: object (required) — Placement fields — x and y, a size, a colour, a rank …; placement: string — The placement the canvas draws for the card, where it has one.; duplicates: list — Placements of the card the drawn one outranks, to remove.; create: boolean — Whether a card with no placement may be given one. False for a style, which needs a position.
+  Returns: a value, read in onSuccess as result
+  Writes: adds to CollectionBlock.children; creates a Placement; deletes a Placement; edits a Placement (may write many records in one call, destructive)
+
+- ops.core.rankCards — Write the ranks that order cards among their siblings in a tree read as arranged, all at once, so the tree never reads a half-written row.
+  Params: ranks: list (required) — Each { placement, rank }: the placement the canvas draws for a card, and its new rank.
+  Returns: nothing
+  Writes: edits a Placement (may write many records in one call)
+
+- ops.core.rekeyConnection — Bring a connection’s dedup key back in line with its ends’ titles and its label.
+  Params: connection: string (required) — The Relationship.; key: string (required) — The key as it should read.
+  Returns: nothing
+  Writes: edits a Relationship
+
+- ops.core.removeBoardColumn — Take a column off a board — never the work in it: its cards move to the board’s own arrangement, so a made board keeps them.
+  Params: board: string (required) — The board.; column: string (required) — The column.
+  Returns: nothing
+  Writes: adds to CollectionBlock.arranges; adds to CollectionBlock.children; deletes a CollectionBlock; removes from CollectionBlock.arranges; removes from CollectionBlock.children (destructive)
+
+- ops.core.renameBoardColumn — Rename a column on its board. The state it stands for is untouched; renamed back to the state’s own name, it follows the vocabulary again.
+  Params: column: string (required) — The column.; name: string (required) — Its new heading.; states: list (required) — The states the community offers, in its own order, each { slug, name }.
+  Returns: nothing
+  Writes: edits a CollectionBlock
+
+- ops.core.reorderBoardColumns — Put a board’s columns in an order. Only ids the board already holds are written; any it holds that the order leaves out follow.
+  Params: board: string (required) — The board.; ids: list (required) — Column ids, in the order wanted.
+  Returns: a value, read in onSuccess as result
+  Writes: adds to CollectionBlock.children; removes from CollectionBlock.children (destructive)
+
+- ops.core.respond — Give the invoker’s own answer to a record — going, maybe, not going — replacing any answer they gave before; with no kind, withdraw it.
+  Params: node: string (required) — The record answered.; kind: string — A reflexive InvolvementType’s slug; absent withdraws the answer.
+  Returns: nothing
+  Writes: creates a Involvement; deletes a Involvement (may write many records in one call, destructive)
+
+- ops.core.restyleSpaceType — Say how the space presents one kind of record, whole: its styles removed and one made holding exactly the fields given — none, where nothing is left to say.
+  Params: space: string (required) — The Space record.; nodeType: string (required) — The kind of record.; fields: object (required) — color, display, controls, authoring — what it says.
+  Returns: nothing
+  Writes: adds to Space.typeStyles; creates a TypeStyle; deletes a TypeStyle (may write many records in one call, destructive)
+
+- ops.core.retargetConnection — Move one end of a connection onto a different record — the claim changes, on every canvas — with its key kept in step with the ends.
+  Params: connection: string (required) — The Relationship.; end: string (required) — source or target.; node: string (required) — The record the end moves to.; nodeType: string (required) — Its entity.; key: string — The connection’s key with the end moved.
+  Returns: nothing
+  Writes: edits a Relationship
+
+- ops.core.setInvolvement — Put somebody on a record as one of the space’s kinds of involvement, or take them off. A kind that is somebody’s own answer is given only by them, and replaces their last.
+  Params: node: string (required) — The record they are on.; agent: string (required) — Who, as a DID.; kind: string (required) — The InvolvementType’s slug.; on: boolean (required) — The state wanted, so pressing twice cannot undo itself.
+  Returns: nothing
+  Writes: creates a Involvement; deletes a Involvement (may write many records in one call, destructive)
+
+- ops.core.upsertSignal — Give the invoker’s reaction of one type on a record, or change it: one per person per type, edited in place, any duplicates removed.
+  Params: node: string (required) — The record reacted to.; signalType: string (required) — The SignalType’s id.; value: number (required) — What the reaction says. Zero is a value like any other; withdrawing is withdrawSignal.
+  Returns: a value, read in onSuccess as result
+  Writes: adds to its parent.signals; creates a Signal; deletes a Signal; edits a Signal (may write many records in one call, destructive)
+
+- ops.core.withdrawSignal — Take back the invoker’s reaction of one type on a record — every copy of it, so a doubled one does not survive the withdrawal.
+  Params: node: string (required) — The record reacted to.; signalType: string (required) — The SignalType’s id.
+  Returns: nothing
+  Writes: deletes a Signal (may write many records in one call, destructive)
+
+- ops.core.writeEdgeRoute — Write how a connection is drawn on one canvas — its pinned sides and its bends — editing the route, replacing it, making one, or deleting one that says nothing any more.
+  Params: canvas: string (required) — The canvas.; connection: string (required) — The Relationship.; route: string — The connection’s route on this canvas, where it has one.; action: string (required) — update, replace, create or delete.; fields: object — sourceAnchor, targetAnchor, points — what the route says.
+  Returns: nothing
+  Writes: adds to CollectionBlock.children; creates a EdgeRoute; deletes a EdgeRoute; edits a EdgeRoute (destructive)
+
+- ops.polls.vote — Cast the invoker’s vote on a poll, or change it — one vote per person per poll, any duplicates removed.
+  Params: poll: string (required) — The Poll’s id.; option: string (required) — The choice, as it is written in the poll’s options.
+  Returns: nothing
+  Writes: creates a Vote; deletes a Vote; edits a Vote (may write many records in one call, destructive)
 
 ---
 
