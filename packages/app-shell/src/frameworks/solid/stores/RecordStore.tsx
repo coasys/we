@@ -76,6 +76,7 @@ import { bringIn as decideBringIn, type BringInItem, type BroughtIn } from '../.
 import { routeWrite } from '../../../shared/edgeRoute';
 import { toEntityShape } from '../../../shared/graphEntityShape';
 import { hostSlot } from '../../../shared/hostSlot';
+import { isRank, isUnder, rowFor, seatInRow } from '../../../shared/kernels/treeRanks';
 import { kindHue } from '../../../shared/kindHue';
 import { notifyCopiedIn } from '../../../shared/registries/moduleHostServices';
 import { WE_PLUMBING_CLASSES } from '../../../shared/shapes/interpretationCandidates';
@@ -107,7 +108,6 @@ import {
   writeFieldValue,
 } from '../../../shared/shapes/recordDraft';
 import { modelManifestEntries, parseSpine, type Spine } from '../../../shared/sources/treeSpines';
-import { isRank, seatInRow } from '../../../shared/treeOrder';
 import { type AppDataset, useDatasetStore } from './DatasetStore';
 import { useSessionStore } from './SessionStore';
 import { BLOCK_ICONS, useShapeStore } from './ShapeStore';
@@ -1660,25 +1660,6 @@ export function RecordStoreProvider(props: ParentProps) {
   }
 
   /**
-   * Whether `candidate` is `card` itself or somewhere under it, walking up the spine.
-   *
-   * The one check the gesture cannot make. `arrange-nodes` reports geometry, and whether one card is
-   * inside another is a question about which relation the hierarchy is — which only this knows. The
-   * `seen` set is not defensive: the connections are shared, last-write-wins data, so a loop is a
-   * state the space can genuinely be in and a walk without one would hang the tab.
-   */
-  function isUnder(candidate: string, card: string, parentOf: Map<string, SpineLink>): boolean {
-    const seen = new Set<string>();
-    let at: string | undefined = candidate;
-    while (at && !seen.has(at)) {
-      if (at === card) return true;
-      seen.add(at);
-      at = parentOf.get(at)?.source;
-    }
-    return false;
-  }
-
-  /**
    * Take a card out of its tree, unless that would throw away something somebody said.
    *
    * Removing the claim means deleting the record, and a deleted record's links go with it: re-creating
@@ -2134,7 +2115,7 @@ export function RecordStoreProvider(props: ParentProps) {
     const placements = (await Placement.findAll(handle, {
       parent: { id: canvas, relation: 'children', entity: 'CollectionBlock' },
     })) as unknown as { node?: string; rank?: number }[];
-    const rankOf = new Map<string, number>();
+    const ranks: Record<string, number> = {};
     /*
       Which cards have a placement to hold a rank. A model relation's children are mostly pulled in
       by the seed and never placed, and a rank written at one of those fails with "drag this onto the
@@ -2144,33 +2125,21 @@ export function RecordStoreProvider(props: ParentProps) {
     for (const row of placements) {
       const rank = Number(row.rank);
       if (typeof row.node === 'string') placed.add(row.node);
-      if (typeof row.node === 'string' && isRank(rank)) rankOf.set(row.node, rank);
+      if (typeof row.node === 'string' && isRank(rank)) ranks[row.node] = rank;
     }
-    const byRank = (a: string, b: string) => {
-      const [one, two] = [rankOf.get(a), rankOf.get(b)];
-      if (one !== undefined && two !== undefined) return one - two || a.localeCompare(b);
-      return one !== undefined ? -1 : two !== undefined ? 1 : a.localeCompare(b);
-    };
-    const shown = event.order?.filter((id) => id === cardId || siblings.includes(id));
-    let row: string[];
-    let index: number;
-    if (shown?.includes(cardId)) {
-      const inRow = shown.filter((id) => id !== cardId);
-      row = [...inRow, ...siblings.filter((id) => !inRow.includes(id)).sort(byRank)];
-      index = shown.indexOf(cardId);
-    } else {
-      row = [...siblings].sort(byRank);
-      const beside = row.indexOf(targetId);
-      index = event.into === 'child' || beside < 0 ? row.length : beside + (event.before ? 0 : 1);
-    }
+    const { row, index } = rowFor({
+      card: cardId,
+      siblings,
+      ranks,
+      order: event.order,
+      target: targetId,
+      into: event.into === 'child' ? 'child' : 'sibling',
+      before: event.before,
+    });
     const writes = new Map(
-      [
-        ...seatInRow(
-          row.map((id) => ({ id, ...(rankOf.has(id) ? { rank: rankOf.get(id)! } : {}) })),
-          cardId,
-          index,
-        ),
-      ].filter(([id]) => placed.has(id)),
+      seatInRow(row, cardId, index)
+        .filter((write) => placed.has(write.id))
+        .map((write) => [write.id, write.rank] as const),
     );
     for (const [id, rank] of writes) hold(id, { rank });
     for (const [id, rank] of writes) await stylePlacement(canvas, id, { rank });
@@ -2181,7 +2150,7 @@ export function RecordStoreProvider(props: ParentProps) {
       cardId,
       from,
       parentId,
-      [...writes].map(([nodeId, rank]) => ({ nodeId, before: { rank: rankOf.get(nodeId) ?? 0 }, after: { rank } })),
+      [...writes].map(([nodeId, rank]) => ({ nodeId, before: { rank: ranks[nodeId] ?? 0 }, after: { rank } })),
     );
   }
 
@@ -2289,7 +2258,12 @@ export function RecordStoreProvider(props: ParentProps) {
         return;
       }
       if (parentId === cardId) return;
-      if (isUnder(parentId, cardId, parentOf)) {
+      const parents = Object.fromEntries(
+        [...parentOf]
+          .filter(([, link]) => typeof link.source === 'string')
+          .map(([child, link]) => [child, link.source!]),
+      );
+      if (isUnder(parentId, cardId, parents)) {
         toastService.info('That would put a card inside itself.');
         return;
       }
@@ -2320,47 +2294,27 @@ export function RecordStoreProvider(props: ParentProps) {
       const placements = (await Placement.findAll(handle, {
         parent: { id: canvas, relation: 'children', entity: 'CollectionBlock' },
       })) as unknown as { node?: string; rank?: number }[];
-      const rankOf = new Map<string, number>();
+      const ranks: Record<string, number> = {};
       for (const row of placements) {
         const rank = Number(row.rank);
-        if (typeof row.node === 'string' && isRank(rank)) rankOf.set(row.node, rank);
+        if (typeof row.node === 'string' && isRank(rank)) ranks[row.node] = rank;
       }
       const siblings = (childrenOf.get(parentId) ?? []).filter((id) => id !== cardId);
 
       /*
-        The row as the reader saw the card land in it, when the drop says — see `order` on the event.
-
-        Taken from the drop rather than worked out again here, because the two orders are made by different
-        rules wherever the data leaves a choice: the tree puts cards nobody has ranked after the ranked ones
-        and in the order they were made, and nothing in this store knows when that was. Ordered here instead,
-        a row nobody had arranged was written in some other order than the one on screen — which the tree
-        then showed, a moment after showing the drop. Only the parent's real children are kept, and any the
-        drop did not mention follow, so a stale or partial order cannot write a rank onto a stranger.
+        The row as the reader saw the card land in it, when the drop says — see `order` on the event,
+        and `rowFor` for why it is taken from the drop rather than worked out again here.
       */
-      const byRank = (a: string, b: string) => {
-        const [one, two] = [rankOf.get(a), rankOf.get(b)];
-        if (one !== undefined && two !== undefined) return one - two || a.localeCompare(b);
-        return one !== undefined ? -1 : two !== undefined ? 1 : a.localeCompare(b);
-      };
-      const shown = event.order?.filter((id) => id === cardId || siblings.includes(id));
-      let row: string[];
-      let index: number;
-      if (shown?.includes(cardId)) {
-        const seen = shown.filter((id) => id !== cardId);
-        row = [...seen, ...siblings.filter((id) => !seen.includes(id)).sort(byRank)];
-        index = shown.indexOf(cardId);
-      } else {
-        // No order said: a drop ON a parent goes last, one BESIDE a sibling goes on the side it named.
-        row = [...siblings].sort(byRank);
-        const beside = row.indexOf(targetId);
-        index = event.into === 'child' || beside < 0 ? row.length : beside + (event.before ? 0 : 1);
-      }
-
-      const writes = seatInRow(
-        row.map((id) => ({ id, ...(rankOf.has(id) ? { rank: rankOf.get(id)! } : {}) })),
-        cardId,
-        index,
-      );
+      const { row, index } = rowFor({
+        card: cardId,
+        siblings,
+        ranks,
+        order: event.order,
+        target: targetId,
+        into: event.into === 'child' ? 'child' : 'sibling',
+        before: event.before,
+      });
+      const writes = new Map(seatInRow(row, cardId, index).map((write) => [write.id, write.rank] as const));
       /*
         Every rank held before any is written, so the tree reads the whole new order at once. Written one by
         one, a row being renumbered would pass through each half-written order on its way, and would take a
@@ -2374,7 +2328,7 @@ export function RecordStoreProvider(props: ParentProps) {
         relationshipTypeId,
         card,
         step,
-        [...writes].map(([nodeId, rank]) => ({ nodeId, before: { rank: rankOf.get(nodeId) ?? 0 }, after: { rank } })),
+        [...writes].map(([nodeId, rank]) => ({ nodeId, before: { rank: ranks[nodeId] ?? 0 }, after: { rank } })),
       );
     } catch (error) {
       console.error('RecordStore: arranging a card in a tree failed', error);

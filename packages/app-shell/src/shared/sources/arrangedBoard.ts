@@ -17,6 +17,11 @@
  *
  * ## What it decides
  *
+ * The arrangement itself — what each column shows and what is left over — is the pure kernel in
+ * `kernels/boardArrangement.ts`, which a second host implements against its recorded vectors. This
+ * file substitutes what the host knows that the data does not (a write not yet seen, a run's state)
+ * before calling it, and adds the people, the workflow and the vocabulary's icons and colours after.
+ *
  * **State is a fact about the work; position is a fact about the pair.** A column shows the records
  * whose `status` matches its `slug` — a query — in the order its `arranges` puts them, then whatever
  * matches that nobody has arranged. A column with no slug is a **lane**: it shows only what it
@@ -79,6 +84,13 @@
  */
 import { fillForSemantic, iconForSemantic } from '@we/template-kit';
 
+import {
+  arrangeBoard,
+  type BoardRow,
+  type CardRow,
+  type ColumnRow,
+  type StateRow as KernelStateRow,
+} from '../kernels/boardArrangement';
 import { type TaskMoveCard, taskMoveCard, type TaskWorkflowView, workflowStateOf } from '../taskWorkflow';
 import {
   involvement,
@@ -171,32 +183,12 @@ export interface PendingBoardState {
   status?: (recordId: string, observed: string | undefined) => string | undefined;
 }
 
-export interface BoardRow {
-  id?: string;
-  children?: unknown[];
-  arranges?: unknown[];
-  gathers?: unknown;
-}
+export type { BoardRow, CardRow, ColumnRow } from '../kernels/boardArrangement';
 
-export interface ColumnRow {
-  id: string;
-  slug?: string;
-  title?: string;
-  arranges?: unknown[];
-}
-
-export interface CardRow {
-  id: string;
-  status?: string;
-}
-
-export interface StateRow {
-  slug: string;
-  name?: string;
-  semantic?: string;
+/** A state as the host reads it: the kernel's, and how the community draws it. */
+export interface StateRow extends KernelStateRow {
   color?: string;
   icon?: string;
-  retired?: boolean;
 }
 
 /** What one column shows, and how its heading reads. */
@@ -327,115 +319,56 @@ export function arrangedBoard(options: ArrangedBoardOptions | null | undefined):
   const records = asRows<CardRow>(options?.records).filter((r) => r && typeof r.id === 'string');
   const states = asRows<StateRow>(options?.states);
   const pending = options?.pending ?? null;
+  const workflow = options?.workflow ?? null;
 
   /*
-    The two substitutions the overlay makes, and the only two places it is consulted.
-
-    Everything below reads a relation's order through `arrangesOf`/`childrenOf` and a record's state
-    through `statusOf`, so an arrangement that has been written and not yet observed is indis-
-    tinguishable here from one that has. That is deliberate: the alternative is a second pass that
-    patches the answers, and the answers are eight fields derived from these two — the one somebody
-    forgets to patch is a heading's count, and it disagrees with the cards under it.
+    The two substitutions — a write not yet seen, and a run's state — made once, as data, before the
+    arrangement is worked out. Everything the kernel derives (every count, whether Unplaced appears)
+    then follows them, where a second pass patching the answers would miss one.
   */
-  const orderOf = (id: string | undefined, relation: string, stored: unknown): string[] => {
-    const observed = idsOf(stored);
-    if (!id || !pending?.order) return observed;
-    return pending.order(id, relation, observed) ?? observed;
+  const orders: Record<string, Record<string, string[]>> = {};
+  const overlay = (id: string | undefined, relation: string, stored: unknown) => {
+    if (!id || !pending?.order) return;
+    const drawn = pending.order(id, relation, idsOf(stored));
+    if (drawn) (orders[id] ??= {})[relation] = drawn;
   };
-  const arrangesOf = (record: { id?: string; arranges?: unknown } | null | undefined) =>
-    orderOf(record?.id, 'arranges', record?.arranges);
-  const childrenOf = (record: { id?: string; children?: unknown } | null | undefined) =>
-    orderOf(record?.id, 'children', record?.children);
-  // The stored state is the run's where the task has one, and `status` otherwise — then the overlay,
-  // so a drop into a column that asks for nothing still lands before the round trip does.
-  const workflow = options?.workflow ?? null;
-  const storedStatusOf = (record: CardRow): string | undefined => workflowStateOf(workflow, record.id) ?? record.status;
-  const statusOf = (record: CardRow): string | undefined =>
-    pending?.status?.(record.id, storedStatusOf(record)) ?? storedStatusOf(record);
-
-  const ready = Boolean(board && typeof board === 'object' && board.id);
-  const gathers = Boolean(ready && board?.gathers);
-
-  // The board says the order; the columns query says the contents. A child the columns query does
-  // not know — deleted by another agent, or not a column at all — renders as nothing rather than a hole.
-  const byId = new Map(columnRows.map((c) => [c.id, c]));
-  const columns = ready
-    ? childrenOf(board)
-        .map((id) => byId.get(id))
-        .filter((c): c is ColumnRow => Boolean(c))
-    : [];
-
-  const recordById = new Map(records.map((r) => [r.id, r]));
-  const stateBySlug = new Map(states.filter((s) => s && s.slug).map((s) => [s.slug, s]));
-
-  // Everything this board holds anywhere: its columns' arrangements, and what it holds in no column.
-  const held = new Set<string>();
-  for (const column of columns) for (const id of arrangesOf(column)) held.add(id);
-  for (const id of arrangesOf(board)) held.add(id);
-
-  // The work this board could show: everything in scope, or only what it holds.
-  const pool = gathers ? records : records.filter((r) => held.has(r.id));
-
-  // Placed somewhere that *shows* it: a lane it is arranged in, or a bound column whose slug still
-  // matches. A hint in a column that no longer matches counts for nothing, so the card falls back to
-  // its state's column rather than vanishing.
-  const placed = new Set<string>();
-  for (const column of columns) {
-    const bound = Boolean(column.slug);
-    for (const id of arrangesOf(column)) {
-      const record = recordById.get(id);
-      if (!record) continue;
-      if (!bound || statusOf(record) === column.slug) placed.add(id);
-    }
+  if (board?.id) {
+    overlay(board.id, 'children', board.children);
+    overlay(board.id, 'arranges', board.arranges);
+  }
+  for (const column of columnRows) overlay(column.id, 'arranges', column.arranges);
+  const statuses: Record<string, string> = {};
+  for (const record of records) {
+    const stored = workflowStateOf(workflow, record.id) ?? record.status;
+    const drawn = pending?.status?.(record.id, stored) ?? stored;
+    if (drawn !== record.status && drawn !== undefined) statuses[record.id] = drawn;
   }
 
-  const boundSlugs = new Set(columns.map((c) => c.slug).filter((s): s is string => Boolean(s)));
+  const arranged = arrangeBoard({ board, columns: columnRows, records, states, statuses, orders });
+  const { ready, gathers, columns } = arranged;
+  const stateBySlug = new Map(states.filter((s) => s && s.slug).map((s) => [s.slug, s]));
 
   const contents: Record<string, ColumnContents> = {};
   for (const column of columns) {
-    const slug = column.slug ?? '';
-    const state = slug ? stateBySlug.get(slug) : undefined;
-    const arranged = arrangesOf(column)
-      .map((id) => recordById.get(id))
-      .filter((r): r is CardRow => Boolean(r) && (!slug || statusOf(r!) === slug));
-    const unarranged = slug ? pool.filter((r) => statusOf(r) === slug && !placed.has(r.id)) : [];
-    const semantic = state?.semantic ?? 'open';
+    const cell = arranged.contents[column.id];
+    const state = cell.slug ? stateBySlug.get(cell.slug) : undefined;
     contents[column.id] = {
-      id: column.id,
-      slug,
-      lane: !slug,
-      label: column.title || state?.name || slug || 'Untitled',
-      icon: slug ? state?.icon || iconForSemantic(semantic) : '',
-      color: slug ? state?.color || fillForSemantic(semantic) : LANE_COLOR,
-      arranged,
-      unarranged,
-      count: arranged.length + unarranged.length,
+      id: cell.id,
+      slug: cell.slug,
+      lane: cell.lane,
+      label: cell.label,
+      icon: cell.slug ? state?.icon || iconForSemantic(cell.semantic) : '',
+      color: cell.slug ? state?.color || fillForSemantic(cell.semantic) : LANE_COLOR,
+      arranged: cell.arranged,
+      unarranged: cell.unarranged,
+      count: cell.count,
       // Filled in below, once the board knows who is on what.
-      shown: arranged.length + unarranged.length,
-      matched: arranged.length + unarranged.length,
-      order: [],
+      shown: cell.count,
+      matched: cell.count,
+      order: cell.order,
     };
   }
-
-  const unplacedAll = pool.filter((r) => !placed.has(r.id) && !boundSlugs.has(statusOf(r) ?? ''));
-
-  /*
-    Everything this board DRAWS, which is not the same as everything it has been given.
-
-    A bound column shows work by state as well as by arrangement — that is what binding a column
-    means — so a card can be on screen without anybody having placed it. `available` asked `held`,
-    which counts only arrangements, and so offered cards the board was already showing: on a
-    gathering board the "bring in work that already exists" picker listed what was sitting in the
-    next column along, and picking one moved a card from where it was to where it was.
-
-    Taken here, before the people filter runs: that narrows what is DRAWN for one reader, and
-    whether a card is already on the board is not a question about who is looking at it.
-  */
-  const shown = new Set<string>(unplacedAll.map((r) => r.id));
-  for (const column of columns) {
-    for (const record of contents[column.id].arranged) shown.add(record.id);
-    for (const record of contents[column.id].unarranged) shown.add(record.id);
-  }
+  const unplacedAll = arranged.unplaced;
 
   /*
     People. Worked out after the columns rather than threaded through them, so everything above says
@@ -472,7 +405,6 @@ export function arrangedBoard(options: ArrangedBoardOptions | null | undefined):
   const onBoard = new Map<string, CardRow>();
   for (const column of columns) {
     const cell = contents[column.id];
-    cell.order = [...cell.arranged, ...cell.unarranged].map((r) => r.id);
     cell.matched = narrowing ? [...cell.arranged, ...cell.unarranged].filter(matches).length : cell.count;
     for (const record of [...cell.arranged, ...cell.unarranged]) onBoard.set(record.id, record);
   }
@@ -563,14 +495,6 @@ export function arrangedBoard(options: ArrangedBoardOptions | null | undefined):
     cell.shown = cell.arranged.length + cell.unarranged.length;
   }
   const unplaced = (hiding ? unplacedAll.filter(keep) : unplacedAll).filter(awaited);
-  const seen = new Set<string>();
-  const unplacedStates: { slug: string; name: string }[] = [];
-  for (const record of unplacedAll) {
-    const slug = statusOf(record) ?? '';
-    if (!slug || seen.has(slug)) continue;
-    seen.add(slug);
-    unplacedStates.push({ slug, name: stateBySlug.get(slug)?.name || slug });
-  }
 
   return {
     ready,
@@ -578,13 +502,11 @@ export function arrangedBoard(options: ArrangedBoardOptions | null | undefined):
     columns,
     contents,
     unplaced,
-    unplacedStates,
-    available: records.filter((r) => !shown.has(r.id)),
-    choices: columns.map((c) => ({ id: c.id, label: contents[c.id].label })),
-    unboundStates: states
-      .filter((s) => s && s.slug && !s.retired && !boundSlugs.has(s.slug))
-      .map((s) => ({ slug: s.slug, name: s.name || s.slug })),
-    total: records.length,
+    unplacedStates: arranged.unplacedStates,
+    available: arranged.available,
+    choices: arranged.choices,
+    unboundStates: arranged.unboundStates,
+    total: arranged.total,
     // Everyone's order, narrowed to who is on a card here — so the viewer still leads.
     involved: everyoneOn.dids.filter((did) => onThisBoard.has(did)),
     filtering,
