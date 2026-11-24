@@ -51,7 +51,8 @@ a `$query` are always identified by `id`.
 Implemented by: [`SchemaRenderer.tsx`](../../../packages/schema-system/frameworks/solid/src/SchemaRenderer.tsx)
 (the `$each` branch), [`keptRows.ts`](../../../packages/schema-system/frameworks/solid/src/keptRows.ts).
 Pinned by: render vectors `render.each.items`, `render.each.default-as`, `render.each.index-prev`,
-`render.each.prev-plain`, `render.each.empty`, `render.each.only-first-child`, `render.each.nested`,
+`render.each.prev-plain`, `render.each.empty`, `render.each.only-first-child`,
+`render.each.several-children-keyed`, `render.each.several-children-plain`, `render.each.nested`,
 `render.each.live`, `render.each.comprehension`, `render.local.per-row`.
 
 ## `$if`
@@ -86,7 +87,7 @@ expression.
 Implemented by: [`ConditionalRenderer.tsx`](../../../packages/schema-system/frameworks/solid/src/ConditionalRenderer.tsx),
 [`zodSchemas.ts`](../../../packages/schema-system/shared/src/zodSchemas.ts) (`zSchemaNode`).
 Pinned by: render vectors `render.if.then`, `render.if.else`, `render.if.no-else`, `render.if.toggles`,
-`render.if.absent`, `render.if.literal`, `render.if.children-ignored`;
+`render.if.absent`, `render.if.literal`, `render.if.children-ignored`, `render.if.children-not-drawn`;
 [`semanticValidation.test.ts`](../../../packages/schema-system/shared/tests/semanticValidation.test.ts).
 
 ## `$single`
@@ -136,7 +137,8 @@ Where the exit leaves the box closed without a `reveal`, it does not take pointe
 ---
 
 Implemented by: [`AnimateRenderer.tsx`](../../../packages/schema-system/frameworks/solid/src/AnimateRenderer.tsx).
-Pinned by: render vectors `render.animate.condition`, `render.animate.mount`.
+Pinned by: render vectors `render.animate.condition`, `render.animate.mount`,
+`render.animate.several-children`, `render.animate.several-children-reveal`.
 
 ### Transitions
 

@@ -56,7 +56,8 @@ required to update one in place.
 Implemented by: [`SchemaRenderer.tsx`](../../../packages/schema-system/frameworks/solid/src/SchemaRenderer.tsx)
 (`RenderNode`), [`templateElements.ts`](../../../packages/schema-system/shared/src/templateElements.ts).
 Pinned by: render vectors `render.node.component`, `render.node.custom-element`, `render.node.native`,
-`render.degrade.unknown-component`, `render.degrade.unknown-element`, `render.safety.native-tags`.
+`render.degrade.unknown-component`, `render.degrade.unknown-element`,
+`render.degrade.unknown-element-in-list`, `render.degrade.foreign-element`, `render.safety.native-tags`.
 
 ## Children
 
@@ -205,4 +206,4 @@ Implemented by: [`definitions.ts`](../../../packages/schema-system/shared/src/de
 (`validateSchema`, which expands first).
 Pinned by: [`definitions.test.ts`](../../../packages/schema-system/shared/src/definitions.test.ts);
 render vectors `render.node.ref`, `render.node.ref-nested`, `render.node.ref-missing`,
-`render.node.ref-cycle`.
+`render.node.ref-no-defs`, `render.node.ref-cycle`, `render.node.ref-cycle-through`.

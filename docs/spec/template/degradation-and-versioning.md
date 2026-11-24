@@ -34,8 +34,11 @@ format `1`.
 
 Implemented by: [`templateFormat.ts`](../../../packages/schema-system/shared/src/templateFormat.ts)
 (`TEMPLATE_SCHEMA_VERSION`, `TEMPLATE_SCHEMA_VERSIONS`, `templateVersionProblem`, `readTemplate`),
-[`validators.ts`](../../../packages/schema-system/shared/src/validators.ts) (`validateStructure`).
-Pinned by: [`templateFormat.test.ts`](../../../packages/schema-system/shared/tests/templateFormat.test.ts).
+[`validators.ts`](../../../packages/schema-system/shared/src/validators.ts) (`validateStructure`),
+[`semanticValidation.ts`](../../../packages/schema-system/shared/src/semanticValidation.ts) (`validateSchema`).
+Pinned by: [`templateFormat.test.ts`](../../../packages/schema-system/shared/tests/templateFormat.test.ts);
+[`semanticValidation.test.ts`](../../../packages/schema-system/shared/tests/semanticValidation.test.ts)
+(the version is judged before shared shapes are expanded).
 
 ## How the format evolves
 
@@ -112,6 +115,8 @@ Implemented by: [`SchemaRenderer.tsx`](../../../packages/schema-system/framework
 [`moduleParts.ts`](../../../packages/app-shell/src/shared/registries/moduleParts.ts),
 [`templateAcceptance.ts`](../../../packages/app-shell/src/shared/templateAcceptance.ts).
 Pinned by: render vectors `render.degrade.unknown-component`, `render.degrade.unknown-element`,
+`render.degrade.unknown-element-in-list`, `render.degrade.foreign-element`,
 `render.degrade.unknown-part`, `render.degrade.part-no-id`, `render.degrade.failing-expression`,
-`render.node.ref-missing`, `render.node.ref-cycle`, `render.slot.in-template`,
+`render.node.ref-missing`, `render.node.ref-no-defs`, `render.node.ref-cycle`,
+`render.node.ref-cycle-through`, `render.slot.in-template`,
 `render.handler.missing-method`; [`templateAcceptance.test.ts`](../../../packages/app-shell/tests/templateAcceptance.test.ts).
