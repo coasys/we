@@ -40,6 +40,19 @@ describe('a message line', () => {
   });
 });
 
+describe('the files a line carries', () => {
+  const line = JSON.stringify(messageLine({ as: 'row', actions: 'modules.feed', surface: 'feed', relative: false }));
+
+  it('draws each as a file block, which saves it, and names one that is not stored yet', () => {
+    expect(line).toContain('"row.attachments ?? []"');
+    expect(line).toContain("_type: 'file'");
+    expect(line).toContain('"BlockRenderer"');
+    // A link to the bytes would be dropped — a template may not carry a `data:` URL that is not media.
+    expect(line).not.toContain('"href"');
+    expect(line).toContain('"file.sizeLabel"');
+  });
+});
+
 describe('how a line arrived', () => {
   it('turns a heard line corrected when somebody edits it, and leaves anything else as it was', () => {
     expect(sourceAfterEdit(SPOKEN)).toBe(CORRECTED);

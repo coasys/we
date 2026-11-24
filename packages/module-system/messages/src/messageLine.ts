@@ -595,6 +595,48 @@ export function messageLine(opts: {
                       },
                     },
                   },
+                  /*
+                    The files sent with it — a line of the transcript has none, and draws nothing.
+
+                    A file is drawn as the block composer draws one, by the file block's own display,
+                    because that is what saves it: a link to the bytes is no use here, since a template
+                    may not carry a `data:` URL that is not media. Until the write has stored it (no
+                    address yet) it is only named.
+                  */
+                  {
+                    type: '$each',
+                    props: { items: { $: `${as}.attachments ?? []` }, as: 'file' },
+                    children: [
+                      {
+                        type: '$if',
+                        props: {
+                          condition: { $: 'file.url' },
+                          then: {
+                            type: 'BlockRenderer',
+                            props: {
+                              editorState: {
+                                $: "[{ _type: 'file', _key: file.id, name: file.name, mimeType: file.mimeType, size: file.size, url: file.url }]",
+                              },
+                              rootClass: 'we-block-content--compact',
+                            },
+                          },
+                          else: {
+                            type: 'Row',
+                            props: { gap: '200', ay: 'center' },
+                            children: [
+                              { type: 'we-icon', props: { name: 'paperclip', color: 'text-muted' } },
+                              { type: 'we-text', props: { truncate: true }, children: [{ $: 'file.name' }] },
+                              {
+                                type: 'we-text',
+                                props: { variant: 'footnote', color: 'text-muted' },
+                                children: [{ $: 'file.sizeLabel' }],
+                              },
+                            ],
+                          },
+                        },
+                      },
+                    ],
+                  },
                 ],
               },
             },

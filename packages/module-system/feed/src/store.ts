@@ -14,7 +14,7 @@ import { sourceAfterEdit, TYPED } from '@we/messages';
 import type { ModuleStoreDeps, RecordsKernel } from '@we/module-shared';
 
 import { watchBotMessages } from './botWatch';
-import { createFeed, type FeedHolder } from './feedStore';
+import { createFeed, type FeedHolder, filesOf } from './feedStore';
 
 /**
  * Where a reply was started: the space's Feed, or the Feed of one call. Both lists are this store's,
@@ -31,6 +31,15 @@ const CALL_TITLE = 'this call';
 /** Lend a window its members unmarked: this store publishes them under the call's names. */
 const unmarked = (<T>(value: T) => value) as never;
 
+/** A browser file as the file-storage language takes it — see `FileData` in `@we/entities`. */
+async function fileData(file: File): Promise<{ data_base64: string; name: string; file_type: string }> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  // In slices: one `fromCharCode` over a large file overflows the call stack.
+  let binary = '';
+  for (let at = 0; at < bytes.length; at += 0x8000) binary += String.fromCharCode(...bytes.subarray(at, at + 0x8000));
+  return { data_base64: btoa(binary), name: file.name, file_type: file.type || 'application/octet-stream' };
+}
+
 export function createFeedStore(deps: ModuleStoreDeps) {
   const { signal, effect, settings, dataset, onDispose, state, action } = deps;
   const { records, interpretation } = deps.kernels;
@@ -39,11 +48,62 @@ export function createFeedStore(deps: ModuleStoreDeps) {
   const updateEntity: RecordsKernel['update'] | undefined =
     typeof records?.update === 'function' ? (...args) => records.update(...args) : undefined;
 
+  const linkEntity: RecordsKernel['link'] | undefined =
+    typeof records?.link === 'function' ? (...args) => records.link(...args) : undefined;
+  const removeEntity: RecordsKernel['remove'] | undefined =
+    typeof records?.remove === 'function' ? (...args) => records.remove(...args) : undefined;
+
   /** One typed line, into whatever holds it: the space, or — as a reply — the line it answers. */
-  async function writeMessage(holder: FeedHolder, text: string, marks?: string) {
+  async function writeMessage(holder: FeedHolder, text: string, marks?: string, files: File[] = []) {
     const words = String(text ?? '').trim();
     if (!words || !createEntity) return null;
-    return createEntity('TextBlock', { text: words, source: TYPED, ...(marks ? { marks } : {}) }, { parent: holder });
+    if (files.length > 0 && (!linkEntity || !removeEntity)) return null;
+    /*
+      Each file is a `FileBlock` the message holds — the same record the block composer makes, its bytes
+      stored through the dataset's file storage as the record is written. The kernel has no write group,
+      so the steps that can fail come first: the files are written (and uploaded) before the message,
+      unparented, and joined to it last by a link, which moves no bytes. A failure along the way takes
+      down what was written, so the sender never sees a message everyone else has, or the reverse.
+    */
+    const written: { entity: string; id: string }[] = [];
+    try {
+      for (const file of files) {
+        const fileId = await createEntity('FileBlock', {
+          name: file.name,
+          mimeType: file.type,
+          size: file.size,
+          url: await fileData(file),
+        });
+        if (!fileId) throw new Error(`Could not attach ${file.name}`);
+        written.push({ entity: 'FileBlock', id: fileId });
+      }
+      const id = await createEntity(
+        'TextBlock',
+        { text: words, source: TYPED, ...(marks ? { marks } : {}) },
+        { parent: holder },
+      );
+      if (!id) {
+        await discard(written);
+        return null;
+      }
+      written.push({ entity: 'TextBlock', id });
+      for (const { id: fileId } of written.slice(0, -1)) await linkEntity?.('TextBlock', id, 'children', fileId);
+      return id;
+    } catch (error) {
+      await discard(written);
+      throw error;
+    }
+  }
+
+  /** Take down what a failed write left, newest first; what cannot be removed is left, and the failure stands. */
+  async function discard(written: { entity: string; id: string }[]) {
+    for (const { entity, id } of [...written].reverse()) {
+      try {
+        await removeEntity?.(entity, id);
+      } catch {
+        // The original failure is the one to report.
+      }
+    }
   }
 
   const {
@@ -226,7 +286,7 @@ export function createFeedStore(deps: ModuleStoreDeps) {
       { ambient: true },
     ),
     cancelReply: action(() => setReply(null), 'Puts a reply down without sending it.', { ambient: true }),
-    reply: action(async (parentId: string, text: string, marks?: string) => {
+    reply: action(async (parentId: string, text: string, marks?: string, files?: File[]) => {
       if (!parentId) {
         console.warn('[feed] a reply has no line to answer, so it was not sent');
         return;
@@ -235,12 +295,18 @@ export function createFeedStore(deps: ModuleStoreDeps) {
       // Put down as the line is drawn, so the next message is not sent as a reply as well.
       if (reply === answering) setReply(null);
       const post = answering?.surface === 'callFeed' ? postToCall : postToFeed;
-      await post({ id: parentId, relation: 'responses' }, text, marks, {
-        id: parentId,
-        author: answering?.author ?? '',
-        text: answering?.text ?? '',
-      });
-    }, 'Answers one line with a typed line of its own, linked from it as a reply.'),
+      await post(
+        { id: parentId, relation: 'responses' },
+        text,
+        marks,
+        {
+          id: parentId,
+          author: answering?.author ?? '',
+          text: answering?.text ?? '',
+        },
+        filesOf(files),
+      );
+    }, 'Answers one line with a typed line of its own, linked from it as a reply — with the files attached to it, when it was given any.'),
     /*
       Correct the words on a line. Anybody may, as in a transcript, and it is not hidden: a heard line
       becomes `corrected` (see `sourceAfterEdit`), so a mended line never reads as a verbatim quote.

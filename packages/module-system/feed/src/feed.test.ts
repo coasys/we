@@ -84,6 +84,47 @@ describe('the feed window', () => {
     expect(drawn[1]).toMatchObject({ call: '', source: 'typed' });
   });
 
+  it('names the files a message holds, reading each file once', async () => {
+    const withFile = [
+      ...rows,
+      line('sent', 10, ROOT, { source: 'typed', children: ['f1'] }),
+      {
+        entity: 'FileBlock',
+        id: 'f1',
+        name: 'plan.pdf',
+        mimeType: 'application/pdf',
+        size: 2048,
+        url: 'data:application/pdf;base64,JVBE',
+      },
+    ];
+    const { find, asked } = store(withFile);
+    const known = new Map();
+    const { rows: drawn } = await readFeedWindow(find, {
+      root: ROOT,
+      shown: 10,
+      fromStart: false,
+      activityTypes: [],
+      attachments: known,
+    });
+    expect(drawn[0]).toMatchObject({
+      id: 'sent',
+      attachments: [
+        {
+          id: 'f1',
+          name: 'plan.pdf',
+          mimeType: 'application/pdf',
+          size: 2048,
+          sizeLabel: '2.0 KB',
+          url: 'data:application/pdf;base64,JVBE',
+        },
+      ],
+    });
+    expect(drawn.find((r) => r.id === 'm1')).toMatchObject({ attachments: [] });
+
+    await readFeedWindow(find, { root: ROOT, shown: 10, fromStart: false, activityTypes: [], attachments: known });
+    expect(asked.filter((a) => a.entity === 'FileBlock')).toHaveLength(1);
+  });
+
   it('stops between call pages once its answer is no longer wanted, rather than reading the rest', async () => {
     const { find, asked } = store(rows);
     const callPages = () => asked.filter((a) => a.entity === 'TextBlock' && a.query.within !== ROOT).length;

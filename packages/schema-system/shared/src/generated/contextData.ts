@@ -208,6 +208,7 @@ export const contextData: ContextData = {
         { name: 'multiple', type: 'boolean', optional: false, default: 'false' },
         { name: 'disabled', type: 'boolean', optional: false, default: 'false' },
         { name: 'name', type: 'string', optional: false, default: "''" },
+        { name: 'files', type: 'File[] | undefined', optional: true },
       ],
     },
     {
@@ -1930,7 +1931,7 @@ export const contextData: ContextData = {
         { name: 'source', type: 'string', predicate: 'we://text_source', required: false },
         { name: 'version', type: 'number', predicate: 'we://version', required: false },
       ],
-      relations: [],
+      relations: [{ name: 'children', kind: 'HasMany', predicate: 'we://child', target: 'FileBlock' }],
     },
     {
       name: 'Topic',
@@ -4779,7 +4780,7 @@ export const contextData: ContextData = {
         {
           name: 'reply',
           kind: 'action',
-          doc: 'Answers one line with a typed line of its own, linked from it as a reply.',
+          doc: 'Answers one line with a typed line of its own, linked from it as a reply — with the files attached to it, when it was given any.',
         },
         {
           name: 'replyingTo',
@@ -4794,7 +4795,7 @@ export const contextData: ContextData = {
         {
           name: 'sendToFeed',
           kind: 'action',
-          doc: 'Writes a message straight into the space, outside any call — with its marks, when the composer gave any.',
+          doc: 'Writes a message straight into the space, outside any call — with its marks, when the composer gave any, and the files attached to it, when it was given any.',
         },
         {
           name: 'showCallTranscripts',

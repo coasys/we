@@ -28,12 +28,20 @@ import {
   CALL_FIELDS,
   FEED_FIRST_PAGE,
   FEED_PAGE,
+  type FeedAttachment,
   type FeedLine,
   FeedReadStopped,
   type FeedRow,
   markPending,
   readFeedWindow,
+  sizeLabel,
 } from './feed';
+
+/** The files a send was given, whatever the schema passed — a list of browser files, or nothing. */
+export const filesOf = (value: unknown): File[] =>
+  (Array.isArray(value) ? value : []).filter(
+    (file): file is File => typeof File !== 'undefined' && file instanceof File,
+  );
 
 /** How long a burst of changes is collected before the window is read again. */
 const SETTLE_MS = 250;
@@ -79,7 +87,7 @@ export interface FeedDeps {
    * Write a message under `holder` — the store's own, so typed lines and feed messages are written
    * one way. Resolves with the new record's id, or `null` when there was nowhere to write it.
    */
-  write: (holder: FeedHolder, text: string, marks?: string) => Promise<string | null>;
+  write: (holder: FeedHolder, text: string, marks?: string, files?: File[]) => Promise<string | null>;
 }
 
 /** What a message is written under: the collection it is a child of, or the line it answers. */
@@ -121,6 +129,8 @@ export function createFeed(deps: FeedDeps) {
     what was read, never written into it.
   */
   const [sent, setSent] = signal<SentLine[]>([]);
+  /** The files read for the window, by `FileBlock` id — see `readAttachments`. */
+  const readFiles = new Map<string, FeedAttachment>();
   let sentKeys = 0;
   let lastSentAt = 0;
   /*
@@ -281,6 +291,7 @@ export function createFeed(deps: FeedDeps) {
         fromStart: anchoredAtStart,
         spoken,
         activityTypes,
+        attachments: readFiles,
         pending: new Set(unconfirmed()),
         stopped: () => !same() || !looking(),
       });
@@ -318,7 +329,13 @@ export function createFeed(deps: FeedDeps) {
    * resolves, so a read matches it by that id and never before: one that lands first leaves it be. A
    * failed write takes it down and says so to whoever sent it.
    */
-  async function post(holder: FeedHolder, text: string, marks?: string, replyTo: FeedLine['replyTo'] = null) {
+  async function post(
+    holder: FeedHolder,
+    text: string,
+    marks?: string,
+    replyTo: FeedLine['replyTo'] = null,
+    files: File[] = [],
+  ) {
     const words = text.trim();
     // Strictly later than the last, so two sends in one millisecond keep the order they were made in.
     lastSentAt = Math.max(Date.now(), lastSentAt + 1);
@@ -338,12 +355,21 @@ export function createFeed(deps: FeedDeps) {
       callTitle: '',
       replyTo,
       content: lineContent({ text: words, marks }),
+      // Named as they will be; there is nothing to download until the write has stored them.
+      attachments: files.map((file) => ({
+        id: '',
+        name: file.name,
+        mimeType: file.type,
+        size: file.size,
+        sizeLabel: sizeLabel(file.size),
+        url: '',
+      })),
       sending: true,
     };
     setSent([...sent(), { key, line }]);
     const forget = () => setSent(sent().filter((entry) => entry.key !== key));
     try {
-      const id = await deps.write(holder, words, marks);
+      const id = await deps.write(holder, words, marks, files);
       if (!id) return forget();
       // A read may have landed with it while the write was resolving.
       if (rows().some((row) => row.id === id)) return forget();
@@ -566,10 +592,10 @@ export function createFeed(deps: FeedDeps) {
       'Re-anchors the Feed at the newest message.',
       { ambient: true },
     ),
-    sendToFeed: action(async (text: string, marks?: string) => {
+    sendToFeed: action(async (text: string, marks?: string, files?: File[]) => {
       const space = root();
       if (!space || !text?.trim()) return;
-      await post({ id: space, relation: 'children', entity: 'CollectionBlock' }, text, marks);
-    }, 'Writes a message straight into the space, outside any call — with its marks, when the composer gave any.'),
+      await post({ id: space, relation: 'children', entity: 'CollectionBlock' }, text, marks, null, filesOf(files));
+    }, 'Writes a message straight into the space, outside any call — with its marks, when the composer gave any, and the files attached to it, when it was given any.'),
   };
 }

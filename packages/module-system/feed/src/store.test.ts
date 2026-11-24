@@ -86,6 +86,9 @@ function harness(
   const live = new Set<{ entity: string; within?: string }>();
   const finds: { entity: string; within?: string }[] = [];
   const linked: unknown[] = [];
+  const removed: { entity: string; id: string }[] = [];
+  /** Names of the records whose write fails, as an upload the executor refuses does. */
+  const refusing = new Set<string>();
   const identities = new Map<string, { kind: string }>([['did:bot', { kind: 'bot' }]]);
   const records = {
     find: async (entity: string, query: Record<string, unknown> = {}) => {
@@ -108,10 +111,14 @@ function harness(
       linked.push(args);
     },
     create: async (entity: string, fields: Record<string, unknown>, options: unknown) => {
+      if (refusing.has(String(fields.name))) throw new Error(`the executor refused ${fields.name}`);
       created.push({ entity, fields, options });
       const id = `new-${created.length}`;
       await creating;
       return id;
+    },
+    remove: async (entity: string, id: string) => {
+      removed.push({ entity, id });
     },
     update: async (entity: string, id: string, fields: Record<string, unknown>) => {
       updated.push({ entity, id, fields });
@@ -150,6 +157,8 @@ function harness(
     answer,
     notices,
     created,
+    removed,
+    refusing,
     holdCreates,
     updated,
     subscriptions,
@@ -508,6 +517,74 @@ describe('the Feed of one call', () => {
       },
     ]);
     // Writing into a call is not being in it: nobody is put on its roster from here.
+    expect(h.linked).toEqual([]);
+    vi.useRealTimers();
+  });
+
+  it('writes each attached file as a FileBlock the message holds, files first and the message after', async () => {
+    vi.useFakeTimers();
+    const h = harness([], {}, CALL_LINES);
+    h.store.watchCallFeed('call-9');
+    await vi.runAllTimersAsync();
+    const plan = new File(['%PDF'], 'plan.pdf', { type: 'application/pdf' });
+    const map = new File(['png!'], 'map.png', { type: 'image/png' });
+
+    await h.store.sendToCallFeed('plan and map', '', [plan, map]);
+
+    // The bytes go first, the step that can fail; the message is written only once they are stored.
+    expect(h.created.map((c) => c.entity)).toEqual(['FileBlock', 'FileBlock', 'TextBlock']);
+    expect(h.created[0]).toEqual({
+      entity: 'FileBlock',
+      fields: {
+        name: 'plan.pdf',
+        mimeType: 'application/pdf',
+        size: 4,
+        url: { data_base64: btoa('%PDF'), name: 'plan.pdf', file_type: 'application/pdf' },
+      },
+      options: undefined,
+    });
+    // The message holds them through its `children` relation, which the executor reads as containment.
+    expect(h.linked).toEqual([
+      ['TextBlock', 'new-3', 'children', 'new-1'],
+      ['TextBlock', 'new-3', 'children', 'new-2'],
+    ]);
+    expect(h.removed).toEqual([]);
+    vi.useRealTimers();
+  });
+
+  it('writes the files of a message sent to the space, and of a reply, the same way', async () => {
+    vi.useFakeTimers();
+    const h = harness();
+    await vi.runAllTimersAsync();
+    const note = new File(['hi'], 'note.txt', { type: 'text/plain' });
+
+    await h.store.sendToFeed('see attached', undefined, [note]);
+    expect(h.created.map((c) => c.entity)).toEqual(['FileBlock', 'TextBlock']);
+
+    h.store.startReply({ id: 'line-1', text: 'who has the venue?', author: 'did:ann' });
+    await h.store.reply('line-1', 'here', undefined, [note]);
+    expect(h.created.map((c) => c.entity)).toEqual(['FileBlock', 'TextBlock', 'FileBlock', 'TextBlock']);
+    expect(h.created[3].options).toEqual({ parent: { id: 'line-1', relation: 'responses' } });
+    expect(h.linked).toEqual([
+      ['TextBlock', 'new-2', 'children', 'new-1'],
+      ['TextBlock', 'new-4', 'children', 'new-3'],
+    ]);
+    vi.useRealTimers();
+  });
+
+  it('stores no text block when an attached file fails, and takes the files already written down', async () => {
+    vi.useFakeTimers();
+    const h = harness();
+    await vi.runAllTimersAsync();
+    const first = new File(['one'], 'one.txt', { type: 'text/plain' });
+    const second = new File(['two'], 'two.txt', { type: 'text/plain' });
+    // The first upload lands; the second is refused.
+    h.refusing.add('two.txt');
+
+    await expect(h.store.sendToFeed('with files', undefined, [first, second])).rejects.toThrow('refused');
+
+    expect(h.created.map((c) => c.entity)).not.toContain('TextBlock');
+    expect(h.removed).toEqual([{ entity: 'FileBlock', id: 'new-1' }]);
     expect(h.linked).toEqual([]);
     vi.useRealTimers();
   });

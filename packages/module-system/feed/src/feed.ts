@@ -44,6 +44,19 @@ export const ACTIVITY_GROUP_MS = 60 * 1000;
 export const FEED_FIRST_PAGE = 50;
 export const FEED_PAGE = 100;
 
+/** A file sent with a message — what the line draws to name it, size it and offer it. */
+export interface FeedAttachment {
+  /** The `FileBlock` record, or `''` while the message is still being written. */
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  /** The size as people read it — "2.4 MB". */
+  sizeLabel: string;
+  /** What a link downloads: the file's bytes as a data URI. Empty while the message is still being written. */
+  url: string;
+}
+
 /** One message, as the Feed draws it. */
 export interface FeedLine {
   kind: 'line';
@@ -63,6 +76,8 @@ export interface FeedLine {
   replyTo: { id: string; author: string; text: string } | null;
   /** The line as one block for a renderer, when it has marks — see `lineContent`. */
   content: Record<string, unknown>[] | null;
+  /** The files sent with it — each a `FileBlock` held by the message. */
+  attachments: FeedAttachment[];
   /** Sent from here and not yet read back — drawn at once, dimmed, until a read of the window has it. */
   sending: boolean;
 }
@@ -114,6 +129,8 @@ export interface FeedWindowOptions {
   spoken?: boolean;
   /** The kinds of record an activity row can be about. Empty draws messages only. */
   activityTypes: string[];
+  /** The files already read, by `FileBlock` id — kept by the caller between windows so none is read twice. */
+  attachments?: Map<string, FeedAttachment>;
   /** Records still awaiting a decision, by id. */
   pending?: ReadonlySet<string>;
   /**
@@ -165,7 +182,23 @@ function summarise(items: { entity: string }[]): string {
   return parts.length <= 1 ? (parts[0] ?? '') : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
 }
 
+export function sizeLabel(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** The ids of the files each line holds, until {@link readAttachments} has read them. */
+const heldFiles = new WeakMap<FeedLine, string[]>();
+
 function toLine(row: Row, call: string, callTitle: string): FeedLine {
+  const files = [row.children ?? []].flat().map(idOf).filter(Boolean);
+  const line = lineOf(row, call, callTitle);
+  if (files.length) heldFiles.set(line, files);
+  return line;
+}
+
+function lineOf(row: Row, call: string, callTitle: string): FeedLine {
   return {
     kind: 'line',
     id: text(row.id),
@@ -180,8 +213,45 @@ function toLine(row: Row, call: string, callTitle: string): FeedLine {
     callTitle,
     replyTo: (row.replyTo as FeedLine['replyTo']) ?? null,
     content: lineContent(row),
+    attachments: [],
     sending: false,
   };
+}
+
+/**
+ * Fill in the files of the lines a window holds: one read of the `FileBlock`s they name, never of a
+ * file read before — a file's bytes do not change, and reading every one on each refresh would pull
+ * every attachment on the page through the executor again and again. A file that cannot be read is
+ * left off its line; the message is still drawn.
+ */
+async function readAttachments(rows: FeedRow[], find: FeedFind, known: Map<string, FeedAttachment>): Promise<void> {
+  const held = rows.flatMap((row) => (row.kind === 'line' ? (heldFiles.get(row) ?? []) : []));
+  const unread = [...new Set(held)].filter((id) => !known.has(id));
+  if (unread.length) {
+    try {
+      for (const file of await find('FileBlock', {
+        where: { id: unread },
+        select: ['name', 'mimeType', 'size', 'url'],
+      })) {
+        const size = Number(file.size) || 0;
+        known.set(text(file.id), {
+          id: text(file.id),
+          name: text(file.name),
+          mimeType: text(file.mimeType),
+          size,
+          sizeLabel: sizeLabel(size),
+          url: text(file.url),
+        });
+      }
+    } catch (error) {
+      console.warn('[feed] could not read the files sent with the messages', error);
+    }
+  }
+  for (const row of rows) {
+    if (row.kind !== 'line') continue;
+    const files = (heldFiles.get(row) ?? []).map((id) => known.get(id)).filter((f): f is FeedAttachment => !!f);
+    if (files.length) row.attachments = files;
+  }
 }
 
 /** Group extracted and hand-made records into activity rows — see the module comment. */
@@ -377,5 +447,7 @@ export async function readFeedWindow(
   const activity = groupActivity(extracted.flat(), titles, options.pending);
   const merged: FeedRow[] = [...lines, ...activity].sort((a, b) => (before(timeOf(a), timeOf(b)) ? -1 : 1));
   const hasMore = merged.length > shown || filled || reachedCalls < calls.length || calls.length >= CALL_WINDOW;
-  return { rows: merged.slice(0, shown), hasMore };
+  const window = merged.slice(0, shown);
+  await readAttachments(window, find, options.attachments ?? new Map<string, FeedAttachment>());
+  return { rows: window, hasMore };
 }

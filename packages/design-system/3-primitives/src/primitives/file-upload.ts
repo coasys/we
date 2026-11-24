@@ -81,12 +81,21 @@ export default class FileUpload extends DesignSystemElement {
   @property({ type: Boolean, reflect: true }) disabled = false;
   @property({ type: String }) name = '';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
+  /**
+   * The files held, when the host owns the list: set it to `[]` after the files were taken (a message
+   * sent with them) and the drop zone lets go of them. Left unset, the element keeps its own list.
+   */
+  @property({ type: Array }) files?: File[];
 
   @state() private _files: File[] = [];
   @state() private _dragover = false;
 
   static getDefaultProps() {
     return DEFAULT_PROPS;
+  }
+
+  protected willUpdate(changed: Map<string, unknown>) {
+    if (changed.has('files') && this.files) this._files = [...this.files];
   }
 
   private _click() {

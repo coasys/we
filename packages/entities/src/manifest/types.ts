@@ -400,6 +400,7 @@ export interface TextBlockRecord extends WeNodeRecord {
   marks: string;
   source: string;
   version: number;
+  children: string[];
 }
 
 export interface TopicRecord extends WeNodeRecord {

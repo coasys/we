@@ -4,8 +4,9 @@
  * The manifest module is the source of truth: its schema, hints and prose. Rebuild with
  * `pnpm --filter @we/entities generate:classes` after changing it.
  */
-import { Flag, Model, Property } from '@coasys/ad4m';
+import { Flag, HasMany, Model, Property } from '@coasys/ad4m';
 
+import { FileBlock } from './FileBlock';
 import { WeNode } from './WeNode';
 
 /**
@@ -120,4 +121,12 @@ export class TextBlock extends WeNode {
 
   @Property({ through: 'we://version' })
   version: number = 0;
+
+  /**
+   * The files attached to this line — a message sent with a file under it. Containment, so the
+   * executor sees the line as a holder (`ad4m://Container`) and a woken agent is told of the
+   * files it holds. Only `FileBlock`s are written here.
+   */
+  @HasMany(() => FileBlock, { through: 'ad4m://has_child' })
+  children: string[] = [];
 }

@@ -1446,7 +1446,7 @@ Give every nested zone `noArm`, so picking something up speaks once about the co
 than once about every row inside it.
   Props: accepts: string = '', disabled: boolean = false, noArm: boolean = false, noSelf: boolean = false, hint: string = ''
 - we-file-upload (DesignSystemElement)
-  Props: accept: string = '', multiple: boolean = false, disabled: boolean = false, name: string = ''
+  Props: accept: string = '', multiple: boolean = false, disabled: boolean = false, name: string = '', files?: File[] | undefined
 - we-form-field (DesignSystemElement)
   Props: label: string = '', description: string = '', error: string = '', required: boolean = false, size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-html (DesignSystemElement) — Renders a raw HTML string safely via DOMPurify sanitization.
@@ -2929,6 +2929,8 @@ TextBlock extends WeNode:
   - marks: json [we://marks]
   - source: string [we://text_source]
   - version: number [we://version]
+  Relations:
+  - children: HasMany → FileBlock [we://child]
 
 Topic extends WeNode:
   Fields:
@@ -4134,9 +4136,9 @@ Needs: kernels records, interpretation.
   - readCallFeedLive — Re-anchors the call’s Feed at its newest line.
   - readFeedFromStart — Re-anchors the Feed at the beginning of the space.
   - readFeedLive — Re-anchors the Feed at the newest message.
-  - reply — Answers one line with a typed line of its own, linked from it as a reply.
+  - reply — Answers one line with a typed line of its own, linked from it as a reply — with the files attached to it, when it was given any.
   - sendToCallFeed — Writes a typed message into the call on screen — with its marks, when the composer gave any. Nothing when no call is shown. Writing into a call does not put the writer on its roster.
-  - sendToFeed — Writes a message straight into the space, outside any call — with its marks, when the composer gave any.
+  - sendToFeed — Writes a message straight into the space, outside any call — with its marks, when the composer gave any, and the files attached to it, when it was given any.
   - showMoreCallFeed — Grows the call’s Feed by a page.
   - showMoreFeed — Grows the Feed’s window by a page.
   - startReply — Starts a reply to one line — pass { id, text, author, surface } — which the composer of that list ('feed', the default, or 'callFeed') then sends as a reply.

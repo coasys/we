@@ -38,9 +38,63 @@ export interface LineComposerOptions {
    * the box: `{ $callLocal: '<name>' }` from anything on the page that invites somebody to write.
    */
   focusLocal?: string;
+  /**
+   * Offer to attach files. The files chosen are the `attachments` local — a list of browser `File`s
+   * the caller's `onSubmit` reads as `{ $: 'local.attachments' }` — and the composer empties it
+   * after the submit, as it empties the line.
+   */
+  attach?: { label: string };
 }
 
+/** What the attach control looks like: a quiet line under the box, not a drop zone. */
+const ATTACH_STYLES = {
+  border: 'none',
+  padding: '0',
+  minHeight: '0',
+  alignItems: 'flex-start',
+  gap: '100',
+  width: 'fit-content',
+};
+
 export function lineComposer(opts: LineComposerOptions): SchemaNode {
+  const row = lineRow(opts);
+  if (!opts.attach) return row;
+  return {
+    type: 'Column',
+    props: { gap: '100', width: '100%' },
+    $localState: { attachments: { type: 'array', initial: [] } },
+    children: [
+      row,
+      {
+        type: 'we-file-upload',
+        props: {
+          multiple: true,
+          styles: ATTACH_STYLES,
+          files: { $: 'local.attachments' },
+          onChange: { $setLocal: 'attachments', value: { $: 'event.detail' } },
+        },
+        children: [
+          {
+            type: 'Row',
+            props: { gap: '100', ay: 'center' },
+            children: [
+              { type: 'we-icon', props: { name: 'paperclip' } },
+              { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: [opts.attach.label] },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function lineRow(rawOpts: LineComposerOptions): SchemaNode {
+  const opts = rawOpts.attach
+    ? {
+        ...rawOpts,
+        onSubmit: [rawOpts.onSubmit, { $setLocal: 'attachments', value: [] }].flat(),
+      }
+    : rawOpts;
   return {
     type: 'Row',
     props: { gap: '200', ay: 'end', width: '100%' },
