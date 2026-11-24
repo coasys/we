@@ -123,4 +123,20 @@ describe('a record whose creation has rules', () => {
     });
     expect(refused.text).toBe('Error: The Involvement was not made: That is not a kind of involvement this space has.');
   });
+
+  it('a vocabulary entry gets the slug its operation derives, and the same name twice is refused', async () => {
+    const make = (name: string) => tools().call('create_record', { entity: 'TaskState', fields: { name } });
+    const made = await make('In review');
+    const [state] = await model('TaskState').findAll(dataset);
+    expect(state).toMatchObject({ name: 'In review', slug: 'in-review' });
+    expect(made.text).toBe(`Made a TaskState: ${state!.id}.`);
+    expect((await make('in review')).text).toBe(
+      'Error: The TaskState was not made: This space already has one called that.',
+    );
+    const extra = await tools().call('create_record', {
+      entity: 'TaskState',
+      fields: { name: 'Later', retired: true },
+    });
+    expect(extra.text).toMatch(/^Error: A TaskState is made from name, semantic, icon, color — not retired\./);
+  });
 });

@@ -30,6 +30,7 @@ import {
   describeEffects,
   describeOperation,
   getEntityForDataset,
+  getOperation,
   isOperationError,
   operationCatalog,
   type OperationCatalogEntry,
@@ -133,7 +134,31 @@ const CREATED_THROUGH: Record<
         ? { node: on, agent: fields.agent, kind: fields.kind, on: true }
         : 'Error: An Involvement needs `on` (the record they are on) and `fields` { agent, kind }.',
   },
+  // The space's vocabularies: a slug derived from the name, and refused when the space holds it.
+  SignalType: named('core.createSignalType', 'A SignalType'),
+  TaskState: named('core.createTaskState', 'A TaskState'),
+  RelationshipType: named('core.createRelationshipType', 'A RelationshipType'),
+  InvolvementType: named('core.createInvolvementType', 'An InvolvementType'),
 };
+
+/**
+ * A record a community names, made by the operation that derives its slug: the fields it takes are
+ * the operation's params, and the rest are the operation's to set (a slug it derives, a range its
+ * mode fixes) or nobody's at creation (`retired`).
+ */
+function named(operation: string, what: string): (typeof CREATED_THROUGH)[string] {
+  return {
+    operation,
+    args: (fields) => {
+      if (!str(fields.name)) return `Error: ${what} needs \`fields.name\`.`;
+      const params = getOperation(operation)?.params ?? {};
+      const extra = Object.keys(fields).filter((key) => !(key in params));
+      if (extra.length)
+        return `Error: ${what} is made from ${Object.keys(params).join(', ')} — not ${extra.join(', ')}.`;
+      return fields;
+    },
+  };
+}
 
 const coreEntries = (() => {
   let entries: EntityManifestEntry[] | undefined;
@@ -389,7 +414,9 @@ export function createDataToolset(options: DataToolsetOptions): SessionToolset {
     const params = through.args(fields, on);
     if (typeof params === 'string') return { text: params };
     try {
-      const id = await runOperation(through.operation, params, { dataset, invoker: options.invoker });
+      const made = await runOperation(through.operation, params, { dataset, invoker: options.invoker });
+      // An operation answers with the id of what it made, or with the record.
+      const id = typeof made === 'string' ? made : (made as { id?: unknown } | undefined)?.id;
       return typeof id === 'string'
         ? { text: `Made a ${name}: ${id}.`, wrote: [{ entity: name, id, change: 'created' }] }
         : { text: `Made a ${name}.` };
