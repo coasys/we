@@ -878,6 +878,29 @@ describe('composed validation', () => {
     expect(result.errors.length).toBeGreaterThan(0);
   });
 
+  it('judges the format version before expanding shared shapes', () => {
+    // Each shape uses the next twice: expanded, this is 2^40 nodes. A template in a format this
+    // build does not read must be refused on its version without the expansion ever running.
+    const depth = 40;
+    const $defs: Record<string, unknown> = { [`d${depth}`]: { type: 'Text' } };
+    for (let i = depth - 1; i >= 1; i--) {
+      const use = { type: '$ref', props: { def: `d${i + 1}` } };
+      $defs[`d${i}`] = { type: 'Column', children: [use, use] };
+    }
+    const template = {
+      schemaVersion: 2,
+      meta: { name: 'Test', description: 'test', icon: 'test' },
+      type: 'Column',
+      $defs,
+      children: [{ type: '$ref', props: { def: 'd1' } }],
+    };
+    const result = validateSchema(template, ctx());
+    expect(result.valid).toBe(false);
+    expect(result.errors).toEqual([
+      { path: 'schemaVersion', message: expect.stringContaining('template format 2'), severity: 'error' },
+    ]);
+  });
+
   it('returns combined errors when structural passes', () => {
     const result = validateSchema(
       {

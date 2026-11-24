@@ -23,7 +23,7 @@ import { HOST_PART_IDS, isHostPartId } from './hostPartIds';
 import { isRelativePath } from './navigationPaths';
 import { parseRecordViewKey } from './recordViews';
 import { isTemplateElement } from './templateElements';
-import { TEMPLATE_SCHEMA_VERSION } from './templateFormat';
+import { TEMPLATE_SCHEMA_VERSION, templateVersionProblem } from './templateFormat';
 import { type ChildPositionKind, childrenOf } from './treeUtils';
 import type { SchemaNode } from './types';
 import type { ValidationError, ValidationResult } from './validators';
@@ -2961,6 +2961,16 @@ export function validateSemantic(schema: unknown, context: ValidationContext): V
 }
 
 export function validateSchema(schema: unknown, context: ValidationContext): ValidationResult {
+  /*
+    The format version is judged before anything else, expansion included: a newer format is free to
+    change what `$defs` and `$ref` mean, so expanding them by this format's rules would already be
+    reading the template as something it may not be.
+  */
+  const versionProblem =
+    schema && typeof schema === 'object' && 'meta' in schema ? templateVersionProblem(schema) : null;
+  if (versionProblem)
+    return { valid: false, errors: [{ path: 'schemaVersion', message: versionProblem, severity: 'error' }] };
+
   /*
     A template that says a repeated shape once is checked as the tree it will BE.
 
