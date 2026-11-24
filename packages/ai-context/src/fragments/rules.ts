@@ -75,6 +75,11 @@ Native HTML elements (lowercase tags render directly without registry entries):
 - Media: img, video, audio, canvas, figure, figcaption
 - Other: a, table, tr, td, th, details, summary, dialog
 
+A we- name is the design system's: one it does not define draws a dashed "Unknown element" box in
+its place, as an unknown component does, and the validator reports it. Copy primitive names from the
+Component Registry rather than guessing one. A custom element under any other prefix is a library's,
+which a deployment adds to its seed's elements list.
+
 Only elements that display, group or take input may be mounted; the full list is
 TEMPLATE_HTML_ELEMENTS in @we/schema-shared. Anything else renders nothing and the validator reports
 it — script, style, link, meta, base, iframe, object, embed, template, svg among them, because each

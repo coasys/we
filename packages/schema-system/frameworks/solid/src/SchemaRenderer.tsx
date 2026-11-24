@@ -8,6 +8,7 @@ import {
   hasToken,
   isRelativePath,
   isTemplateElement,
+  isUndefinedWeElement,
   localPersistKey,
   localSyncSpec,
   localWriteMirror,
@@ -614,6 +615,67 @@ function isStaticValue(value: unknown): boolean {
 }
 
 /**
+ * What the page shows where a node could not be drawn: a dashed box saying what and why.
+ *
+ * One look for every cause — an unknown component, an element nobody defined, a shape the template
+ * names but does not hold — so a reader learns it once, and so nothing that cannot be drawn is ever
+ * drawn as a blank. `reason` names the cause for anything reading the page rather than looking at
+ * it; an unknown component, the first cause there was, carries none.
+ */
+function MissingMarker(props: { type: string; message: string; reason?: string }): JSX.Element {
+  return (
+    <div
+      data-we-missing-component={props.type}
+      data-we-missing-reason={props.reason}
+      style={{
+        padding: 'var(--we-space-300, 12px)',
+        border: '1px dashed var(--we-color-danger-400, #d66)',
+        'border-radius': 'var(--we-radius-300, 6px)',
+        color: 'var(--we-color-danger-600, #a33)',
+        'font-size': 'var(--we-font-size-100, 12px)',
+      }}
+    >
+      {props.message}
+    </div>
+  );
+}
+
+/**
+ * A `we-*` element nobody has defined, drawn as the missing marker until somebody does.
+ *
+ * Mounted as it was written, such an element is an empty box that never upgrades — a blank where
+ * something was meant, which is the one failure the renderer does not allow itself. But the prefix
+ * is also open to anything that defines an element under it after the page has mounted, so the
+ * marker waits on the document's registry and the node is drawn for real the moment its element
+ * exists; a typo simply never gets there.
+ */
+function UndefinedElement(props: RenderProps & { node: SchemaNode & { type: string } }): RendererOutput {
+  // A mounted node keeps its type (see `renderChildren`).
+  const type = untrack(() => props.node.type);
+  const [defined, setDefined] = createSignal(false);
+  if (typeof customElements !== 'undefined') {
+    let live = true;
+    onCleanup(() => (live = false));
+    void customElements.whenDefined(type).then(() => live && setDefined(true));
+  }
+  console.error(`Unknown element <${type}>: the design system has no such element and nothing has defined one.`);
+  return (
+    <Show
+      when={defined()}
+      fallback={
+        <MissingMarker
+          type={type}
+          reason="unknown-element"
+          message={`Unknown element "${type}": no element of that name is defined`}
+        />
+      }
+    >
+      {untrack(() => RenderNode(props))}
+    </Show>
+  );
+}
+
+/**
  * A template that says a repeated shape once is put back together here, and nowhere else.
  *
  * `$defs` lives on the root and only on the root, so this fires exactly once per mounted tree:
@@ -633,6 +695,19 @@ export function RenderSchema(props: RenderProps): RendererOutput {
 
 function RenderNode({ node, stores, registry, context = {}, children }: RenderProps): RendererOutput {
   if (!node) return null;
+  // Decided before anything on the node is set up, so a marker holds no state or subscription of its own.
+  // A registry entry under the name is a definition too: a host may draw a primitive its own way.
+  if (typeof node.type === 'string' && !registry[node.type] && isUndefinedWeElement(node.type)) {
+    return (
+      <UndefinedElement
+        node={node as SchemaNode & { type: string }}
+        stores={stores}
+        registry={registry}
+        context={context}
+        children={children}
+      />
+    );
+  }
 
   const visualEditor = useVisualEditor();
 
@@ -1218,20 +1293,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
   if (!untrack(component)) {
     const message = `Unknown component "${node.type}"`;
     console.error(`${message}. It may belong to a feature module that is not enabled, or the type may be misspelt.`);
-    return (
-      <div
-        data-we-missing-component={node.type}
-        style={{
-          padding: 'var(--we-space-300, 12px)',
-          border: '1px dashed var(--we-color-danger-400, #d66)',
-          'border-radius': 'var(--we-radius-300, 6px)',
-          color: 'var(--we-color-danger-600, #a33)',
-          'font-size': 'var(--we-font-size-100, 12px)',
-        }}
-      >
-        {message}
-      </div>
-    );
+    return <MissingMarker type={node.type ?? ''} message={message} />;
   }
 
   // Prepare the slot elements in a reactive store

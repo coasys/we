@@ -114,8 +114,9 @@ one entry for the mount and one per step: `{ tree, actions, params?, storage? }`
 
 `tree` is renderer-neutral: `{ type, props?, slot?, children? }` per node (`type` as the template
 wrote it; `props` what the renderer handed over, handlers left out), `{ slot, children }` for a named
-slot a component received, a string for text, `{ missing: type }` for the missing-component marker,
-and `{ type: '$surface', children }` for a responsive boundary. The renderer's own box-less wrappers
+slot a component received, a string for text, `{ missing: type }` for the missing marker drawn for an
+unknown component and `{ missing: type, reason }` for the other causes (`unknown-element`,
+`missing-definition`, `cyclic-definition`), and `{ type: '$surface', children }` for a responsive boundary. The renderer's own box-less wrappers
 are not in it. Layout components (`Column`, `Row`, `Card`, `Grid`, `PartFrame`, `PanelLane`) are
 probes drawing only their props and children; what a component does with its props is its own
 contract. `actions` are the store methods called during the step, in order: `{ call, args }`.

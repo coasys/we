@@ -69,6 +69,35 @@ describe('SchemaRenderer', () => {
     expect(container.querySelector('[data-we-missing-component="UnknownComponent"]')).toBeTruthy();
   });
 
+  // --- An undefined we-* element ---
+  it('draws the marker for a we-* element nobody defined, saying so', () => {
+    const { container } = renderSchema({ type: 'Column', children: [{ type: 'we-no-such-thing' }] } as SchemaNode, {
+      registry: { Column: (props: any) => <div>{props.children}</div> },
+    });
+    const marker = container.querySelector('[data-we-missing-component="we-no-such-thing"]');
+    expect(marker?.getAttribute('data-we-missing-reason')).toBe('unknown-element');
+    expect(marker?.textContent).toContain('no element of that name is defined');
+    expect(container.querySelector('we-no-such-thing')).toBeNull();
+  });
+
+  it('replaces the marker with the element once something defines it', async () => {
+    const node: SchemaNode = { type: 'we-defined-later', props: { label: 'late' }, children: ['inside'] };
+    const { container } = renderSchema(node);
+    expect(container.querySelector('[data-we-missing-component="we-defined-later"]')).toBeTruthy();
+
+    customElements.define('we-defined-later', class extends HTMLElement {});
+    await vi.waitFor(() => expect(container.querySelector('we-defined-later')).toBeTruthy());
+    expect(container.querySelector('[data-we-missing-component]')).toBeNull();
+    expect((container.querySelector('we-defined-later') as unknown as { label: string }).label).toBe('late');
+    expect(container.querySelector('we-defined-later')?.textContent).toBe('inside');
+  });
+
+  it('mounts a design-system element whose definition has not run, rather than marking it', () => {
+    const { container } = renderSchema({ type: 'we-badge', children: ['3'] });
+    expect(container.querySelector('we-badge')?.textContent).toBe('3');
+    expect(container.querySelector('[data-we-missing-component]')).toBeNull();
+  });
+
   // --- $store prop resolution ---
   it('resolves $store props and passes to component', () => {
     const TestComp = (props: any) => <span>{typeof props.value === 'function' ? props.value() : props.value}</span>;

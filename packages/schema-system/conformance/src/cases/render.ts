@@ -986,7 +986,7 @@ export const RENDER_CASES: RenderCase[] = [
   ),
   C(
     'render.degrade.unknown-element',
-    'an unknown custom element is mounted as an element with no definition — blank, not a marker',
+    'a we-* element nobody defined renders the missing marker, saying so, not an empty element',
     { type: 'Column', children: [{ type: 'we-no-such-element', children: ['inside'] }] },
   ),
   C('render.degrade.unknown-part', 'a part no module publishes resolves to a frame naming it, with nothing inside', {
@@ -1072,5 +1072,25 @@ export const RENDER_CASES: RenderCase[] = [
       gated: ['record.create'],
       steps: [{ op: 'click', target: 'press' }],
     },
+  ),
+  C(
+    'render.degrade.unknown-element-in-list',
+    'an undefined we-* element in a row draws the marker in every row, and the rows around it render',
+    {
+      type: 'Column',
+      children: [
+        {
+          type: '$each',
+          props: { items: { $: 'app.rows' }, as: 'row' },
+          children: [{ type: 'Row', children: [{ type: 'we-nothing-here' }, { $: 'row.name' }] }],
+        },
+      ],
+    },
+    { data: { app: { rows: [{ name: 'a' }, { name: 'b' }] } } },
+  ),
+  C(
+    'render.degrade.foreign-element',
+    'a custom element outside the we- prefix is for the seed to name: mounted as written, no marker',
+    { type: 'Column', children: [{ type: 'x-rating', props: { value: 3 } }] },
   ),
 ];
