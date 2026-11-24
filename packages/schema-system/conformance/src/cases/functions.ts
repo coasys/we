@@ -298,4 +298,8 @@ export const FUNCTION_CASES: FunctionCase[] = numbered([
   F('merge', { color: 'red' }, { color: U }),
   F('keys', { b: null, a: '' }),
   F('values', { b: '', a: null }),
+  // a list, a boolean or text that is not wholly a numeral is no number
+  F('round', [2.6]),
+  F('sum', [[1], '2', true, ' 3']),
+  F('max', '7', [9]),
 ]);

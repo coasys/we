@@ -2335,7 +2335,7 @@
       "id": "op.add-bool",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "true + 1",
-      "result": 2,
+      "result": 1,
       "print": "true + 1"
     },
     {
@@ -4799,6 +4799,148 @@
       "source": "endsWith('photo.PNG', '.png')",
       "result": false,
       "print": "endsWith('photo.PNG', '.png')"
+    },
+    {
+      "id": "op.lt-text",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "'b' < 'c'",
+      "result": true,
+      "print": "'b' < 'c'"
+    },
+    {
+      "id": "op.lt-numeric-text",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "'3' < '10'",
+      "result": true,
+      "print": "'3' < '10'"
+    },
+    {
+      "id": "op.lt-text-numeral-and-word",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "'3' < 'b'",
+      "result": true,
+      "print": "'3' < 'b'"
+    },
+    {
+      "id": "op.lt-number-and-word",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "3 < 'b'",
+      "result": false,
+      "print": "3 < 'b'"
+    },
+    {
+      "id": "op.lt-padded-text",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "' 3' < '10'",
+      "result": true,
+      "print": "' 3' < '10'"
+    },
+    {
+      "id": "op.gt-exponent-text",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "'1e3' > 999",
+      "result": true,
+      "print": "'1e3' > 999"
+    },
+    {
+      "id": "op.ge-iso-dates",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "'2026-09-30T18:00' >= '2026-09-15'",
+      "result": true,
+      "print": "'2026-09-30T18:00' >= '2026-09-15'"
+    },
+    {
+      "id": "op.lt-undef",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "missing < 1",
+      "env": "stock",
+      "result": false,
+      "print": "missing < 1"
+    },
+    {
+      "id": "op.ge-undef-zero",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "missing >= 0",
+      "env": "stock",
+      "result": false,
+      "print": "missing >= 0"
+    },
+    {
+      "id": "op.lt-null",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "null < 1",
+      "result": false,
+      "print": "null < 1"
+    },
+    {
+      "id": "op.lt-bool",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "false < true",
+      "result": false,
+      "print": "false < true"
+    },
+    {
+      "id": "op.gt-list",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "[5] > 1",
+      "result": false,
+      "print": "[5] > 1"
+    },
+    {
+      "id": "op.le-same-text",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "'a' <= 'a'",
+      "result": true,
+      "print": "'a' <= 'a'"
+    },
+    {
+      "id": "op.mul-list",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "[5] * 2",
+      "result": 0,
+      "print": "[5] * 2"
+    },
+    {
+      "id": "op.add-list",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "[2] + 1",
+      "result": 1,
+      "print": "[2] + 1"
+    },
+    {
+      "id": "op.sub-object",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "{ a: 1 } - 1",
+      "result": -1,
+      "print": "{ a: 1 } - 1"
+    },
+    {
+      "id": "op.neg-list",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "-[3]",
+      "result": 0,
+      "print": "-[3]"
+    },
+    {
+      "id": "op.mul-hex-text",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "'0x10' * 1",
+      "result": 0,
+      "print": "'0x10' * 1"
+    },
+    {
+      "id": "op.mul-padded-text",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "' 4' * 2",
+      "result": 0,
+      "print": "' 4' * 2"
+    },
+    {
+      "id": "op.mul-numeral-text",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "'2.5' * 2",
+      "result": 5,
+      "print": "'2.5' * 2"
     }
   ]
 }

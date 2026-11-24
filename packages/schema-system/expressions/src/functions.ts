@@ -33,7 +33,7 @@
  * `functions: 'core'` (see `check.ts`), which refuses every name outside `CORE_FUNCTIONS`.
  */
 import { DENIED_PROPERTIES } from './ast';
-import { plainZero } from './evaluate';
+import { compareCodePoints, plainZero, toNumber } from './evaluate';
 import { readField } from './reach';
 import { asText, matchesWhere } from './where';
 
@@ -108,10 +108,8 @@ export function arityOf(spec: FunctionSpec): [number, number] {
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 const asList = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
-const asNumber = (value: unknown): number => {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : 0;
-};
+/** A value as a number, by the evaluator's one reading: what is not a number is 0. */
+const asNumber = toNumber;
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 const isAbsent = (value: unknown): boolean => value === undefined || value === null;
@@ -165,22 +163,6 @@ const asKey = (key: unknown): string | undefined => {
     typeof key === 'string' ? key : typeof key === 'number' && Number.isFinite(key) ? String(key) : undefined;
   return name === undefined || DENIED_PROPERTIES.has(name) ? undefined : name;
 };
-
-/**
- * Text compared by Unicode code point, not by UTF-16 unit and not by locale. The two differ only
- * past U+FFFF, but a sort every implementation agrees on has to say which, and code points are what
- * a language without JavaScript's string representation sees.
- */
-function compareCodePoints(a: string, b: string): number {
-  const left = Array.from(a);
-  const right = Array.from(b);
-  const length = Math.min(left.length, right.length);
-  for (let i = 0; i < length; i++) {
-    const diff = left[i].codePointAt(0)! - right[i].codePointAt(0)!;
-    if (diff !== 0) return diff;
-  }
-  return left.length - right.length;
-}
 
 /** A dot path read field by field, through `readField`. */
 function readPath(value: unknown, path: string): unknown {

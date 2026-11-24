@@ -334,6 +334,29 @@ export const EXPRESSION_CASES: ExpressionCase[] = [
   C('op.contains-case', "contains('Anna', 'ANN')"),
   C('op.startswith-case', "startsWith('Anna', 'an')"),
   C('op.endswith-case', "endsWith('photo.PNG', '.png')"),
+  // Comparison: numbers (and text that is wholly a numeral) as numbers, other text by code point,
+  // anything else false.
+  C('op.lt-text', "'b' < 'c'"),
+  C('op.lt-numeric-text', "'3' < '10'"),
+  C('op.lt-text-numeral-and-word', "'3' < 'b'"),
+  C('op.lt-number-and-word', "3 < 'b'"),
+  C('op.lt-padded-text', "' 3' < '10'"),
+  C('op.gt-exponent-text', "'1e3' > 999"),
+  C('op.ge-iso-dates', "'2026-09-30T18:00' >= '2026-09-15'"),
+  C('op.lt-undef', 'missing < 1', 'stock'),
+  C('op.ge-undef-zero', 'missing >= 0', 'stock'),
+  C('op.lt-null', 'null < 1'),
+  C('op.lt-bool', 'false < true'),
+  C('op.gt-list', '[5] > 1'),
+  C('op.le-same-text', "'a' <= 'a'"),
+  // A list, an object, a boolean or text that is not a numeral is no number: arithmetic reads it as 0.
+  C('op.mul-list', '[5] * 2'),
+  C('op.add-list', '[2] + 1'),
+  C('op.sub-object', '{ a: 1 } - 1'),
+  C('op.neg-list', '-[3]'),
+  C('op.mul-hex-text', "'0x10' * 1"),
+  C('op.mul-padded-text', "' 4' * 2"),
+  C('op.mul-numeral-text', "'2.5' * 2"),
 ];
 
 /* Extra named environments the ported cases need. */

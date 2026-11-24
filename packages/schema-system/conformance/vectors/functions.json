@@ -2478,7 +2478,7 @@
       "note": "the min built-in",
       "fn": "min",
       "args": [[5], 2],
-      "result": 2
+      "result": 0
     },
     {
       "id": "max.199",
@@ -2631,6 +2631,27 @@
         }
       ],
       "result": [null, ""]
+    },
+    {
+      "id": "round.212",
+      "note": "the round built-in",
+      "fn": "round",
+      "args": [[2.6]],
+      "result": 0
+    },
+    {
+      "id": "sum.213",
+      "note": "the sum built-in",
+      "fn": "sum",
+      "args": [[[1], "2", true, " 3"]],
+      "result": 2
+    },
+    {
+      "id": "max.214",
+      "note": "the max built-in",
+      "fn": "max",
+      "args": ["7", [9]],
+      "result": 7
     }
   ]
 }

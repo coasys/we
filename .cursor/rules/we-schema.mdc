@@ -537,15 +537,17 @@ A store's actions are unreachable — spaceStore.createPost reads as nothing; on
 
 Operators, in JavaScript's spelling and precedence:
   == !=                          strict equality
-  < > <= >=                      numeric comparison
+  < > <= >=                      numbers as numbers (text that is wholly a numeral counts, so '3' < '10'),
+                                 other text by Unicode code point (so ISO dates order), anything else false
   in                             list membership:  item.role in ['admin', 'moderator']
   ! && ||                        boolean logic. && and || ANSWER WITH A BOOLEAN, never with an operand,
                                  so name || 'Untitled' is true, not a name — the validator warns
   ??                             the fallback-value idiom:  local.name ?? 'Untitled' — for absent only;
                                  an empty string stays empty, so write name ? name : 'Untitled' for both
   test ? a : b                   conditional value
-  + - * / %                      arithmetic; + joins strings when either side is one; a missing or
-                                 non-number operand is 0 (so -missing is 0); / and % by 0 are 0
+  + - * / %                      arithmetic; + joins strings when either side is one; anything that is
+                                 not a number — missing, a boolean, a list, non-numeral text — is 0
+                                 (so -missing is 0); / and % by 0 are 0
   `…${expr}…`                    interpolation
   a.name   a[i]                  property and index reads; a missing path is undefined, never an error
   [a, b]   { key: value }        list and object literals — the where-object below is one
