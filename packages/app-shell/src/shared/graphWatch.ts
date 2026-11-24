@@ -5,11 +5,10 @@
  * object here, and the callbacks are the only way out.
  */
 
-/** The part of a live query this needs — `subscribe` resolves with the answer as it stands. */
-export interface LiveRead<T> {
-  subscribe(cb: (rows: T[]) => void): Promise<T[]>;
-  dispose(): void;
-}
+import type { LivePage as Page, LiveQuery } from '@we/backend-shared';
+
+/** The part of a live query this needs. */
+export type LiveRead<T> = Pick<LiveQuery<Page<T>>, 'first' | 'subscribe' | 'dispose'>;
 
 export interface FollowOptions {
   /**
@@ -47,39 +46,26 @@ function differ(a: readonly string[], b: readonly string[]): boolean {
 export function followRead<T>(subscription: LiveRead<T>, { seen, onChange, onError }: FollowOptions): () => void {
   let live = true;
   /*
-    The first answer is the current state, not a change — unless it is not the state the graph read.
+    The first result is the current state, not a change — unless it is not the state the graph read.
 
-    The graph reads its seeds with `findAll` and subscribes after, so a write landing between the
-    two is in `subscribe`'s first answer and in no callback: the subscription has no earlier state
-    to differ from. That first answer is compared with what the read returned for the same
-    question, and a difference is a change. A first answer that matches is not one, so opening a
-    graph does not re-run every seed for a state it already has. With no read to compare with,
-    nothing is reported — the graph is as it was before this compared anything.
+    The graph reads its seeds with `findAll` and opens this after, so a write landing between the two
+    is in the first result and in no later snapshot: the query has no earlier state to differ from.
+    That first result is compared with what the read returned for the same question, and a difference
+    is a change. One that matches is not, so opening a graph does not re-run every seed for a state it
+    already has. With no read to compare with, nothing is reported.
 
-    `pending` covers a callback arriving before the first answer: a write landing then is a real
-    change, and dropping it would lose exactly the update that arrived while the graph was opening.
-    It and a differing first answer are one change, reported once.
+    Every snapshot after the first is a change. A live query is only called once it has a result, so
+    a write landing while it opens is already in that result.
   */
-  let primed = false;
-  let pending = false;
-
-  subscription
-    .subscribe(() => {
-      if (!live) return;
-      if (!primed) {
-        pending = true;
-        return;
-      }
-      onChange();
-    })
-    .then((initial) => {
-      primed = true;
-      if (!live) return;
-      const read = seen();
-      const moved = read !== undefined && Array.isArray(initial) && differ(read, idsOf(initial));
-      if (pending || moved) onChange();
-    })
-    .catch(onError);
+  subscription.subscribe((snapshot) => {
+    if (!live || snapshot.status !== 'ready' || !snapshot.data) return;
+    if (!snapshot.initial) return onChange();
+    const read = seen();
+    if (read !== undefined && differ(read, idsOf(snapshot.data.results))) onChange();
+  });
+  subscription.first.catch((error: unknown) => {
+    if (live) onError(error);
+  });
 
   return () => {
     live = false;

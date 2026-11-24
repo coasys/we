@@ -72,7 +72,7 @@ export interface FeedLine {
   call: string;
   callTitle: string;
   replyTo: { id: string; author: string; text: string } | null;
-  /** The line as one block for a renderer, when it has marks — see `lineContent`. */
+  /** The line as the blocks a renderer draws, or `null` for a line with no words — see `lineContent`. */
   content: Record<string, unknown>[] | null;
   /** The files sent with it — each a `FileBlock` held by the message. */
   attachments: FeedAttachment[];

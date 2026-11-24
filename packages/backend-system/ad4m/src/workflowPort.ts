@@ -695,21 +695,44 @@ export function createAd4mWorkflowPort(selfId: () => string | undefined = () => 
         trace('workflows', 'changed', { cause });
         for (const listener of [...listeners]) listener();
       };
-      const started = Promise.all([
-        ...WATCHED_PREDICATES.map((predicate) =>
-          perspective.subscribeQuery(`SELECT ?s ?o WHERE { ?s <${predicate}> ?o }`).then((sub) => {
-            sub.onResult(() => notify(predicate));
-            return sub;
-          }),
-        ),
+      // Everything opened so far, so a failure can let go of what did open.
+      const opened: { dispose(): void }[] = [];
+      const releaseOpened = () => {
+        for (const sub of opened.splice(0)) {
+          try {
+            sub.dispose();
+          } catch (error) {
+            console.warn('workflows: could not release a watch that failed to open', error);
+          }
+        }
+      };
+      let started: Promise<{ dispose(): void }[]>;
+      try {
         // Every flow on the perspective at once, and only this agent's: the executor delivers a
         // state change to the sockets of the agent whose pass derived it.
-        Promise.resolve({ dispose: perspective.onFlowStateChanged(() => notify('flow-state-changed')) }),
-      ]);
+        const listener = { dispose: perspective.onFlowStateChanged(() => notify('flow-state-changed')) };
+        opened.push(listener);
+        started = Promise.all([
+          ...WATCHED_PREDICATES.map((predicate) => {
+            const live = perspective.liveSparql(`SELECT ?s ?o WHERE { ?s <${predicate}> ?o }`);
+            opened.push(live);
+            // The first snapshot is the rows as they are now, not a change; a failed open is no change either.
+            live.subscribe((snapshot) => {
+              if (snapshot.status === 'ready' && !snapshot.initial) notify(predicate);
+            });
+            return live.first.then(() => live);
+          }),
+          Promise.resolve(listener),
+        ]);
+      } catch (error) {
+        releaseOpened();
+        throw error;
+      }
       const created: Watch = { listeners, started };
       watches.set(perspective, created);
-      // A watch that never started holds nothing; the next caller asks again.
+      // A watch that never started holds nothing: what did open is let go, and the next caller asks again.
       started.catch(() => {
+        releaseOpened();
         if (watches.get(perspective) === created) watches.delete(perspective);
       });
       watch = created;
