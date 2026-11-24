@@ -91,7 +91,7 @@ Glossary (these terms pervade stores, models, and \`$query\`/\`perspective\` in 
 | \`@we/template-shell\` · \`@we/template-default\` | templates/* | WE's shell surfaces and built-in space templates, as data | Agnostic |
 | \`@we/editor\` | packages/editor | Template/theme editing surface, embeddable via \`EditorHost\` | Solid (mount fn at the boundary) |
 | \`@we/expressions\` | schema-system/expressions | The expression language: grammar, checker, evaluator and the core function library, with the subset an operation may call (\`CORE_FUNCTIONS\`); depends only on the backend contract | **Agnostic** |
-| \`@we/schema-shared\` | schema-system/shared | Schema semantics: prop resolvers, validation, indexer, registry types, reactivity port | **Agnostic** |
+| \`@we/schema-shared\` | schema-system/shared | Schema semantics: prop resolvers, validation, indexer, registry types | **Agnostic** |
 | \`@we/schema-solid\` | schema-system/frameworks/solid | The schema renderer (walks the tree, mounts components) | Solid (thin adapter) |
 | \`@we/backend-shared\` | backend-system/shared | The backend contract: \`DataSource\`, query IR + engine, ephemeral, presence & transcription ports, model manifest | **Agnostic** |
 | \`@we/backend-ad4m\` | backend-system/ad4m | The AD4M adapter: query adapter, ports, agent identity, SDNA install — and the AD4M model classes, generated from @we/entities' manifest (src/models) | Agnostic |
@@ -103,6 +103,7 @@ Glossary (these terms pervade stores, models, and \`$query\`/\`perspective\` in 
 | \`@we/module-globe\` · \`-call\` · \`-feed\` · \`-notes\` · \`-pocket\` · \`-polls\` · \`-transcribe\` · \`-graph\` | module-system/* | Bundled feature modules — each exports \`createModule(host)\` and the seed's \`modules\` list generates the registry; globe is a *family* (module · protocol · layers · widget) | Agnostic (components injected) |
 | \`@we/graph-protocol\` · \`-core\` · \`-expanders\` · \`-layouts\` · \`-solid\` | graph-system/* | The graph engine: expander/layout/renderer contracts, the neutral engine, first-party plugins, and the Solid adapter | **Agnostic** (Solid only in the adapter) |
 | \`@we/block-shared\` | block-system/shared | Block content types + serialization | Agnostic |
+| \`@we/reactivity\` · \`@we/reactivity-solid\` | reactivity-system/* | The reactivity port every store, module store and the prop resolvers take (signal, memo, effect, untrack, batch, root, onCleanup), its three timing guarantees, a second implementation for tests, and Solid's implementation | **Agnostic** (Solid only in \`-solid\`) |
 | \`@we/optimism\` | packages/optimism | A write drawn before it has been seen come back — hold, baseline, settle, and when to stop believing it | Agnostic (signal injected) |
 | \`@we/clock\` | packages/clock | A moment being looked at and the playback that moves it — clocks by name, so a globe, a scrubber and a module follow the same one | Agnostic |
 | \`@we/history\` | packages/history | Undo as a stack of this agent's own inverse writes, replayed **forwards** — the only shape that is safe on shared, last-write-wins data | Agnostic (signal injected) |
@@ -133,13 +134,13 @@ that declares \`backends: ['ad4m']\` — nothing else. See \`docs/architecture/p
 
 2. **Schema semantics live in \`@we/schema-shared\`, parameterized by a reactivity port.** All token
    resolution (\`{ $ }\` expressions, \`$invoke\`, \`$query\`, \`$setLocal\`, …) is in \`propResolvers/\`.
-   \`resolveProp(value, stores, context, memo)\` takes a framework-injected memoization function
-   (\`memo\`), and \`markReactive()\` (from \`@we/expressions\`, whose evaluator reads the tag) tags accessors so a renderer
+   \`resolveProp(value, stores, context, memo)\` takes the host's \`ReactivityPort\` memo
+   (\`@we/reactivity\`), and \`markReactive()\` (from \`@we/expressions\`, whose evaluator reads the tag) tags accessors so a renderer
    knows a prop is reactive. The entire schema engine AND its reactivity wiring are framework-neutral;
-   a framework only injects its signal primitive.
+   a framework only injects its implementation of the port.
 
 3. **The renderer is a thin per-framework adapter over a component registry.** \`@we/schema-solid\`
-   walks the schema tree, resolves props with Solid's \`createMemo\` as \`memo\`, maps
+   walks the schema tree, resolves props with the Solid port's \`memo\` (\`@we/reactivity-solid\`), maps
    \`$each\`/\`$if\`/\`$routes\` onto \`<For>\`/\`<Show>\`/\`<Dynamic>\`, and mounts each node — a tag string
    for primitives, a registered component for layer-4/5. Adding a framework = a new adapter of this
    shape, NOT re-implementing the semantics.

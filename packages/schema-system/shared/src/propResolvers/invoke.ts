@@ -1,8 +1,10 @@
+import type { ReactivityPort } from '@we/reactivity';
+
 import { captureGesture, runWithGesture } from '../gesture';
 import type { resolveProp } from './dispatcher';
 import { isDeferredArg } from './expression';
 import { deepUnwrap } from './reactive';
-import { type Memo, noMemo, type Props } from './types';
+import { noMemo, type Props } from './types';
 
 // Helper function to process $arg / $event tokens with access to callback arguments.
 // Recurses into nested objects and arrays so the tokens work at any depth.
@@ -57,7 +59,7 @@ export function resolveInvokeProp(
   value: unknown,
   context: Props,
   stores: Props,
-  memo: Memo,
+  memo: ReactivityPort['memo'],
   resolvePropFn: typeof resolveProp,
 ): unknown {
   const token = value as {

@@ -34,6 +34,7 @@
  * framework or a backend.
  */
 import type { DatasetHandle, EntityManifest } from '@we/backend-shared';
+import type { ReactivityPort } from '@we/reactivity';
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 
 import type { KernelName, ModuleKernels } from './kernels';
@@ -690,10 +691,13 @@ export interface ModuleFirstScreen {
  * says and an install screen shows.
  */
 export interface ModuleStoreDeps {
-  /** Returns a `[read, write]` pair — Solid's `createSignal` shape, which every framework can supply. */
-  signal: <T>(initial: T) => [() => T, (next: T) => void];
-  /** Re-run `fn` when anything it reads changes — `createEffect` in Solid, `watchEffect` in Vue. */
-  effect?: (fn: () => void) => void;
+  /**
+   * Returns a `[read, write]` pair, from the host's reactivity port. The setter takes a value, never
+   * an updater: a function written is stored as the value.
+   */
+  signal: ReactivityPort['signal'];
+  /** Re-run `fn` when anything it reads changes, from the same port. */
+  effect?: ReactivityPort['effect'];
   /**
    * Register teardown for this module's store. Run when the module is unregistered, in reverse order,
    * each guarded. Through the deps bag rather than as a `destroy` key on the store, because a store

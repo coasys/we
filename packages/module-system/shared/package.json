@@ -20,6 +20,7 @@
     "@we/backend-shared": "workspace:*",
     "@we/clock": "workspace:*",
     "@we/entities": "workspace:*",
+    "@we/reactivity": "workspace:*",
     "@we/schema-shared": "workspace:*"
   },
   "devDependencies": {

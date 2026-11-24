@@ -1,3 +1,4 @@
+import { solidReactivity } from '@we/reactivity-solid';
 import type { TransitionConfig } from '@we/schema-shared';
 import { resolveProp } from '@we/schema-shared';
 import { createEffect, createMemo, createSignal, onCleanup, Show, untrack } from 'solid-js';
@@ -64,7 +65,7 @@ export function AnimateRenderer({ node, stores, context, renderBody }: AnimateRe
   // A condition, like `$if`'s — except the child stays mounted either way. See the effect below.
   const hasCondition = node.props?.condition !== undefined;
   const conditionMet = createMemo(() => {
-    const condition = resolveProp(node.props?.condition, stores, context, createMemo);
+    const condition = resolveProp(node.props?.condition, stores, context, solidReactivity.memo);
     return !!(typeof condition === 'function' ? (condition as () => unknown)() : condition);
   });
 

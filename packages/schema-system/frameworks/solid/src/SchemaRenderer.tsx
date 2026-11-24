@@ -1,5 +1,6 @@
 import type { EntityClass, QueryAdapter, RendererStores } from '@we/backend-shared';
 import { combineEntityRows, entityNamesOf, routeQuery } from '@we/backend-shared';
+import { solidReactivity } from '@we/reactivity-solid';
 import type { LocalFieldMeta, QueryDescriptor, RouteParamsBinding, ValidationRule } from '@we/schema-shared';
 import {
   applyThemeVars,
@@ -845,7 +846,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
         !Array.isArray(rawInitial) &&
         Object.keys(rawInitial).some((k) => k.startsWith('$'))
       ) {
-        const reactiveVal = resolveProp(rawInitial, stores, context, createMemo);
+        const reactiveVal = resolveProp(rawInitial, stores, context, solidReactivity.memo);
         createEffect(() => {
           const next =
             typeof reactiveVal === 'function' && REACTIVE_ACCESSOR in (reactiveVal as object)
@@ -963,7 +964,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
             // fine-grained dependencies. A `$query` cannot be read from here — children render
             // inside a memo, and a subscription is an effect — so a question for the backend is
             // hoisted into `$queries` and read back through `local`.
-            const resolved = resolveProp(child, stores, nodeContext, createMemo);
+            const resolved = resolveProp(child, stores, nodeContext, solidReactivity.memo);
             return (
               <>
                 {() => {
@@ -1078,7 +1079,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
       itemsArray = createMemo(() => {
         // Read from store proxy INSIDE the memo so Solid tracks mutations from updateSchema/patching
         const currentItems = (node.props as Record<string, unknown>)?.items;
-        const resolvedItems = resolveProp(currentItems, stores, effectiveContext, createMemo);
+        const resolvedItems = resolveProp(currentItems, stores, effectiveContext, solidReactivity.memo);
         const items: unknown = typeof resolvedItems === 'function' ? (resolvedItems as () => unknown)() : resolvedItems;
         return Array.isArray(items) ? (items as unknown[]) : [];
       });
@@ -1374,7 +1375,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
       propMemos[key] = createMemo(() => {
         const current = (node.props as Record<string, unknown>)?.[k];
         if (!isStaticValue(current)) {
-          return deepUnwrap(resolveProp(current, stores, effectiveContext, createMemo));
+          return deepUnwrap(resolveProp(current, stores, effectiveContext, solidReactivity.memo));
         }
         return current;
       });
@@ -1406,7 +1407,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
         };
     } else {
       propMemos[key] = createMemo(() => {
-        const resolved = resolveProp(rawValue, stores, effectiveContext, createMemo);
+        const resolved = resolveProp(rawValue, stores, effectiveContext, solidReactivity.memo);
         return deepUnwrap(resolved);
       });
     }
@@ -1564,7 +1565,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
       if (currentProps) {
         for (const key of Object.keys(currentProps)) {
           if (!(key in propMemos) && !isEventProp(key)) {
-            const resolved = resolveProp(currentProps[key], stores, effectiveContext, createMemo);
+            const resolved = resolveProp(currentProps[key], stores, effectiveContext, solidReactivity.memo);
             assignToHost(hostRef, key, permitted(key, deepUnwrap(resolved), false));
             currentDynamicKeys.add(key);
           }
@@ -1621,7 +1622,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
     if (currentProps) {
       for (const key of Object.keys(currentProps)) {
         if (!(key in propMemos)) {
-          const resolved = deepUnwrap(resolveProp(currentProps[key], stores, effectiveContext, createMemo));
+          const resolved = deepUnwrap(resolveProp(currentProps[key], stores, effectiveContext, solidReactivity.memo));
           attrs[key] = isEventProp(key) ? asThisNode(resolved) : permitted(key, resolved, native);
         }
       }

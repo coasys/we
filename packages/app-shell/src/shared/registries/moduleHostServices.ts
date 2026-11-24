@@ -51,6 +51,7 @@ import type {
   ViewKernel,
 } from '@we/module-shared';
 import { coalesceByKey } from '@we/module-shared';
+import type { ReactivityPort } from '@we/reactivity';
 
 import { clockRegistry } from '../clocks';
 import type { FirstScreen } from '../firstScreen';
@@ -359,17 +360,18 @@ export const HOST_KERNELS: readonly KernelName[] = [
 /**
  * Build the deps bag handed to every module store.
  *
- * `signal` and `effect` come from the framework, because only the host knows which one it is running.
+ * `signal` and `effect` come from the host's reactivity port, because only the host knows which
+ * framework it is running.
  * Everything else reads through the late-bound registry above. The registry narrows `kernels` per
  * module and injects `state`, `action`, `onDispose` and `settings`; the placeholders here are what a
  * store built with the bag directly — a test — gets.
  */
-export function createModuleStoreDeps(framework: {
-  signal: <T>(initial: T) => [() => T, (next: T) => void];
-  effect: (fn: () => void) => void;
-  /** The host's first-screen gate — see `shared/firstScreen.ts`. Absent: nothing is held. */
-  firstScreen?: FirstScreen;
-}): ModuleStoreDeps {
+export function createModuleStoreDeps(
+  framework: Pick<ReactivityPort, 'signal' | 'effect'> & {
+    /** The host's first-screen gate — see `shared/firstScreen.ts`. Absent: nothing is held. */
+    firstScreen?: FirstScreen;
+  },
+): ModuleStoreDeps {
   // A signal for the published stream, so a consumer reading `input()` inside a derived value re-runs
   // when the publisher changes it.
   const [mediaInput, setMediaInput] = framework.signal<MediaStream | null>(null);

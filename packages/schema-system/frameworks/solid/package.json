@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@we/design-types": "workspace:*",
+    "@we/reactivity-solid": "workspace:*",
     "@we/schema-shared": "workspace:*",
     "@we/backend-shared": "workspace:*"
   },

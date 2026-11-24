@@ -1,3 +1,4 @@
+import { solidReactivity } from '@we/reactivity-solid';
 import type { TransitionConfig } from '@we/schema-shared';
 import { resolveProp } from '@we/schema-shared';
 import { createEffect, createMemo, createSignal, onCleanup, Show, untrack } from 'solid-js';
@@ -57,7 +58,7 @@ export function ConditionalRenderer({ node, stores, context, renderNode }: Condi
   // A condition that asks the backend a question hoists its `$query` into `$queries` and reads the
   // result from `local`; the condition itself is a plain expression over what is already in scope.
   const conditionMet = createMemo(() => {
-    const resolved = resolveProp(node.props?.condition, stores, context, createMemo);
+    const resolved = resolveProp(node.props?.condition, stores, context, solidReactivity.memo);
     return typeof resolved === 'function' ? (resolved as () => unknown)() : resolved;
   });
 
@@ -226,7 +227,7 @@ export function ConditionalRenderer({ node, stores, context, renderNode }: Condi
   const declaredCss = (name: string): (() => string | undefined) | undefined => {
     const raw = contentProps[name];
     if (raw === undefined || raw === null) return undefined;
-    const resolved = resolveProp(raw, stores, context, createMemo);
+    const resolved = resolveProp(raw, stores, context, solidReactivity.memo);
     return () => {
       const value = typeof resolved === 'function' ? (resolved as () => unknown)() : resolved;
       // Only text or a number is a CSS value; anything else is left undeclared rather than applied

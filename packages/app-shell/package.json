@@ -76,6 +76,8 @@
     "@we/module-transcribe": "workspace:*",
     "@we/optimism": "workspace:*",
     "@we/primitives": "workspace:*",
+    "@we/reactivity": "workspace:*",
+    "@we/reactivity-solid": "workspace:*",
     "@we/schema-kit": "workspace:*",
     "@we/schema-shared": "workspace:*",
     "@we/schema-solid": "workspace:*",

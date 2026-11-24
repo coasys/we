@@ -693,6 +693,12 @@ importers:
       '@we/primitives':
         specifier: workspace:*
         version: link:../design-system/3-primitives
+      '@we/reactivity':
+        specifier: workspace:*
+        version: link:../reactivity-system/shared
+      '@we/reactivity-solid':
+        specifier: workspace:*
+        version: link:../reactivity-system/frameworks/solid
       '@we/schema-kit':
         specifier: workspace:*
         version: link:../schema-system/kit
@@ -1613,6 +1619,10 @@ importers:
         version: 5.0.5(@types/node@26.6.6)(@vitest/coverage-v8@5.0.5)(happy-dom@21.0.4)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.107.1)(tsx@4.23.15)(yaml@2.9.1))
 
   packages/history:
+    dependencies:
+      '@we/reactivity':
+        specifier: workspace:*
+        version: link:../reactivity-system/shared
     devDependencies:
       '@types/node':
         specifier: ^26.6.6
@@ -2065,6 +2075,9 @@ importers:
       '@we/entities':
         specifier: workspace:*
         version: link:../../entities
+      '@we/reactivity':
+        specifier: workspace:*
+        version: link:../../reactivity-system/shared
       '@we/schema-shared':
         specifier: workspace:*
         version: link:../../schema-system/shared
@@ -2142,6 +2155,10 @@ importers:
         version: 5.0.5(@types/node@26.6.6)(@vitest/coverage-v8@5.0.5)(happy-dom@21.0.4)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.107.1)(tsx@4.23.15)(yaml@2.9.1))
 
   packages/optimism:
+    dependencies:
+      '@we/reactivity':
+        specifier: workspace:*
+        version: link:../reactivity-system/shared
     devDependencies:
       '@types/node':
         specifier: ^26.6.6
@@ -2296,6 +2313,9 @@ importers:
       '@we/design-types':
         specifier: workspace:*
         version: link:../../../design-system/types
+      '@we/reactivity-solid':
+        specifier: workspace:*
+        version: link:../../../reactivity-system/frameworks/solid
       '@we/schema-shared':
         specifier: workspace:*
         version: link:../../shared
@@ -2355,6 +2375,9 @@ importers:
       '@we/expressions':
         specifier: workspace:*
         version: link:../expressions
+      '@we/reactivity':
+        specifier: workspace:*
+        version: link:../../reactivity-system/shared
       '@we/themes':
         specifier: workspace:*
         version: link:../../design-system/2-themes

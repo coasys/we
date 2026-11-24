@@ -31,6 +31,7 @@
     "@we/backend-shared": "workspace:*",
     "@we/expressions": "workspace:*",
     "@we/design-utils": "workspace:*",
+    "@we/reactivity": "workspace:*",
     "@we/themes": "workspace:*",
     "@we/tokens": "workspace:*",
     "zod": "^4.6.7"
