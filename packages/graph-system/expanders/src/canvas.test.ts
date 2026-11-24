@@ -158,43 +158,48 @@ function answer(
   const several = Array.isArray(request.entity);
   const where = request.where as Record<string, unknown> | undefined;
   const withCards = Boolean((request.include as { node?: unknown } | undefined)?.node);
-  return (several ? (request.entity as string[]) : [request.entity as string]).flatMap((entity) => {
-    let rows = tables[entity] ?? [];
-    if (where) {
-      // A bare array is set membership, on a relation field as much as on `id` — the backend
-      // emits a SPARQL `VALUES` clause either way.
-      rows = rows.filter((row) =>
-        Object.entries(where).every(([field, expected]) =>
-          Array.isArray(expected) ? expected.includes(row[field]) : row[field] === expected,
-        ),
-      );
-    } else if (request.scope && request.scope.anchorId !== canvas) {
-      /*
+  // Bounded the way a backend bounds a read: `limit` over the whole list, several kinds or one.
+  const cut = (rows: Record<string, unknown>[]) =>
+    typeof request.limit === 'number' ? rows.slice(0, request.limit) : rows;
+  return cut(
+    (several ? (request.entity as string[]) : [request.entity as string]).flatMap((entity) => {
+      let rows = tables[entity] ?? [];
+      if (where) {
+        // A bare array is set membership, on a relation field as much as on `id` — the backend
+        // emits a SPARQL `VALUES` clause either way.
+        rows = rows.filter((row) =>
+          Object.entries(where).every(([field, expected]) =>
+            Array.isArray(expected) ? expected.includes(row[field]) : row[field] === expected,
+          ),
+        );
+      } else if (request.scope && request.scope.anchorId !== canvas) {
+        /*
         A scope read past the canvas is a relation pull. Inbound — what the row's own `via` points
         at — is the shared reader's backward read, over every anchor at once; outbound is the
         anchor's own list, which the backend keeps as a foreign key on the child's row.
       */
-      const { anchor, via, direction } = request.scope;
-      const anchors = ([] as string[]).concat(request.scope.anchorId);
-      rows =
-        direction === 'in'
-          ? rows.filter((row) =>
-              ([] as unknown[]).concat(row[via] ?? []).some((value) => anchors.includes(idOf(value))),
-            )
-          : rows.filter(
-              (row) => anchors.includes(row[`__${anchor}_${via}`] as string) || anchors.includes(row[via] as string),
-            );
-    }
-    // A forward read's includes, hydrated the way the backend does: the row's own field, else the
-    // children holding the foreign key the relation writes.
-    if (where && request.include && !several) {
-      rows = rows.map((row) => hydrate(tables, entity, row, request.include as Record<string, unknown>));
-    }
-    // A placement's `node` is an untyped to-one, so an include reads it as whatever kind it is.
-    if (withCards && entity === 'Placement') rows = rows.map((row) => ({ ...row, node: cardFor(tables, row.node) }));
-    // A read over several kinds says which each row was read as.
-    return several ? rows.map((row) => ({ ...row, [NODE_TYPE_KEY]: entity })) : rows;
-  });
+        const { anchor, via, direction } = request.scope;
+        const anchors = ([] as string[]).concat(request.scope.anchorId);
+        rows =
+          direction === 'in'
+            ? rows.filter((row) =>
+                ([] as unknown[]).concat(row[via] ?? []).some((value) => anchors.includes(idOf(value))),
+              )
+            : rows.filter(
+                (row) => anchors.includes(row[`__${anchor}_${via}`] as string) || anchors.includes(row[via] as string),
+              );
+      }
+      // A forward read's includes, hydrated the way the backend does: the row's own field, else the
+      // children holding the foreign key the relation writes.
+      if (where && request.include && !several) {
+        rows = rows.map((row) => hydrate(tables, entity, row, request.include as Record<string, unknown>));
+      }
+      // A placement's `node` is an untyped to-one, so an include reads it as whatever kind it is.
+      if (withCards && entity === 'Placement') rows = rows.map((row) => ({ ...row, node: cardFor(tables, row.node) }));
+      // A read over several kinds says which each row was read as.
+      return several ? rows.map((row) => ({ ...row, [NODE_TYPE_KEY]: entity })) : rows;
+    }),
+  );
 }
 
 const idOf = (value: unknown) =>
@@ -483,7 +488,7 @@ describe('canvasSeed', () => {
     expect(nodes.find((n) => n.type === 'CodeBlock')).toBeUndefined();
   });
 
-  it('reads the whole canvas in two rounds and three reads, whatever it holds', async () => {
+  it('reads the whole canvas in two rounds and four reads, whatever it holds', async () => {
     /*
       What decides how long a canvas takes to appear is the number of *sequential* rounds: every
       read is a round trip to a peer-to-peer data layer. And what it costs while open is the number
@@ -491,7 +496,9 @@ describe('canvasSeed', () => {
       to be five queries deep before anything was drawn, then three rounds and up to eleven reads.
 
       Two is the floor. The placements bring their cards, so the records they name need no round of
-      their own; only the connections genuinely wait, for the ends to be known.
+      their own; only the connections genuinely wait, for the ends to be known. The key reads beside
+      the placements rather than with them: sharing one read shared one bound, and a canvas with more
+      cards than that bound lost its colours along with the cards past it.
     */
     const rounds: string[][] = [];
     const { context: ctx } = context(
@@ -512,9 +519,9 @@ describe('canvasSeed', () => {
 
     await canvasSeed().seed({ canvas: 'b1', connections: 'Relationship', typeStyles: 'TypeStyle' }, ctx);
 
-    // The placements with their cards, and the key, in one read; the tray beside it, asked by
-    // containment; then the connections, which could not be asked for until the ends were known.
-    expect(rounds).toEqual([['Placement+TypeStyle', 'CollectionBlock'], ['Relationship']]);
+    // The placements with their cards; the key; the tray, asked by containment — all together; then
+    // the connections, which could not be asked for until the ends were known.
+    expect(rounds).toEqual([['Placement', 'TypeStyle', 'CollectionBlock'], ['Relationship']]);
   });
 
   it("colours a node by its type, from the canvas's own key", async () => {
@@ -983,7 +990,7 @@ describe('canvas connection routes', () => {
     /*
       What decides how long a canvas takes to appear is the number of *sequential* rounds. A route
       names its connection by id, so it can be read in round one with the placements — in the same
-      read, even — where waiting for the connections it describes would add a round to every canvas
+      read as the key — where waiting for the connections it describes would add a round to every canvas
       that has any.
     */
     const rounds: string[][] = [];
@@ -997,7 +1004,7 @@ describe('canvas connection routes', () => {
       ctx,
     );
 
-    expect(rounds[0]).toEqual(['Placement+TypeStyle+EdgeRoute', 'CollectionBlock']);
+    expect(rounds[0]).toEqual(['Placement', 'TypeStyle+EdgeRoute', 'CollectionBlock']);
     expect(rounds).toHaveLength(2);
   });
 
@@ -1130,6 +1137,90 @@ describe('the canvas seed’s reads', () => {
     await canvasSeed().seed({ canvas: 'b1', limit: 2 }, ctx);
 
     expect(warnings.some((w) => w.includes('stopped at 2 placed cards'))).toBe(true);
+  });
+
+  it('keeps the colours on a canvas holding as many cards as its bound', async () => {
+    // The placements once shared a read with the key, so whichever filled the bound cut the other.
+    const { context: ctx } = context({
+      Placement: [
+        { id: 'p1', node: 't1', nodeType: 'TaskBlock', x: 0, y: 0 },
+        { id: 'p2', node: 'c1', nodeType: 'CollectionBlock', x: 1, y: 1 },
+      ],
+      TaskBlock: [{ id: 't1', title: 'One' }],
+      CollectionBlock: [{ id: 'c1', title: 'Two' }],
+      TypeStyle: [{ id: 's1', nodeType: 'TaskBlock', color: 'warning-200' }],
+    });
+
+    const { nodes } = await canvasSeed().seed(
+      { canvas: 'b1', limit: 1, contains: ['CollectionBlock', 'TaskBlock'], typeStyles: 'TypeStyle' },
+      ctx,
+    );
+
+    expect(nodes).toHaveLength(2);
+    expect(nodes.find((n) => n.type === 'TaskBlock')?.data?.canvasTypeColor).toBe('warning-200');
+  });
+
+  it('bounds the placements by the kinds the canvas holds', async () => {
+    // `limit` is per kind; three kinds on a canvas is three times the cards, whatever else is read.
+    const { context: ctx } = context({
+      Placement: [
+        { id: 'p1', node: 't1', nodeType: 'TaskBlock', x: 0, y: 0 },
+        { id: 'p2', node: 'c1', nodeType: 'CollectionBlock', x: 1, y: 1 },
+        { id: 'p3', node: 'k1', nodeType: 'CodeBlock', x: 2, y: 2 },
+      ],
+      TaskBlock: [{ id: 't1', title: 'One' }],
+      CollectionBlock: [{ id: 'c1', title: 'Two' }],
+      CodeBlock: [{ id: 'k1', title: 'Three' }],
+    });
+
+    const { nodes } = await canvasSeed().seed(
+      { canvas: 'b1', limit: 1, contains: ['CollectionBlock', 'TaskBlock', 'CodeBlock'] },
+      ctx,
+    );
+
+    // Placed, each of them — a card the placements dropped still arrives through the tray, unplaced.
+    expect(nodes).toHaveLength(3);
+    expect(nodes.every((n) => typeof n.data?.x === 'number')).toBe(true);
+  });
+
+  it('reads the lines by the cards drawn, not by the cards of one kind', async () => {
+    const { context: ctx, warnings } = context({
+      Placement: [
+        { id: 'p1', node: 't1', nodeType: 'TaskBlock', x: 0, y: 0 },
+        { id: 'p2', node: 't2', nodeType: 'TaskBlock', x: 1, y: 1 },
+      ],
+      TaskBlock: [
+        { id: 't1', title: 'One' },
+        { id: 't2', title: 'Two' },
+      ],
+      Relationship: [
+        { id: 'r1', source: 't1', sourceType: 'TaskBlock', target: 't2', targetType: 'TaskBlock' },
+        { id: 'r2', source: 't2', sourceType: 'TaskBlock', target: 't1', targetType: 'TaskBlock' },
+        { id: 'r3', source: 't1', sourceType: 'TaskBlock', target: 't2', targetType: 'TaskBlock' },
+      ],
+    });
+
+    const { edges } = await canvasSeed().seed(
+      { canvas: 'b1', limit: 2, contains: ['TaskBlock'], connections: 'Relationship' },
+      ctx,
+    );
+
+    expect(edges).toHaveLength(3);
+    expect(warnings.filter((w) => w.includes('connections'))).toEqual([]);
+  });
+
+  it('says when it stopped short of the cards nobody has placed', async () => {
+    // The tray is where an interpretation pass's cards land, so on a busy space it is most of them.
+    const { context: ctx, warnings } = context({
+      CollectionBlock: [
+        { id: 'c1', title: 'One' },
+        { id: 'c2', title: 'Two' },
+      ],
+    });
+
+    await canvasSeed().seed({ canvas: 'b1', limit: 2 }, ctx);
+
+    expect(warnings.some((w) => w.includes('stopped at 2 cards not yet placed'))).toBe(true);
   });
 
   it('says nothing about a cap it did not reach', async () => {
