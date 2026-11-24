@@ -53,8 +53,6 @@ export interface FeedAttachment {
   size: number;
   /** The size as people read it — "2.4 MB". */
   sizeLabel: string;
-  /** What a link downloads: the file's bytes as a data URI. Empty while the message is still being written. */
-  url: string;
 }
 
 /** One message, as the Feed draws it. */
@@ -231,7 +229,8 @@ async function readAttachments(rows: FeedRow[], find: FeedFind, known: Map<strin
     try {
       for (const file of await find('FileBlock', {
         where: { id: unread },
-        select: ['name', 'mimeType', 'size', 'url'],
+        // Never `url`: for a stored file that is the whole file. It is fetched when somebody saves it.
+        select: ['name', 'mimeType', 'size'],
       })) {
         const size = Number(file.size) || 0;
         known.set(text(file.id), {
@@ -240,7 +239,6 @@ async function readAttachments(rows: FeedRow[], find: FeedFind, known: Map<strin
           mimeType: text(file.mimeType),
           size,
           sizeLabel: sizeLabel(size),
-          url: text(file.url),
         });
       }
     } catch (error) {

@@ -12,6 +12,7 @@
  */
 import { sourceAfterEdit, TYPED } from '@we/messages';
 import type { ModuleStoreDeps, RecordsKernel } from '@we/module-shared';
+import { ATTACH_MAX_BYTES } from '@we/schema-kit';
 
 import { watchBotMessages } from './botWatch';
 import { createFeed, type FeedHolder, filesOf } from './feedStore';
@@ -58,6 +59,19 @@ export function createFeedStore(deps: ModuleStoreDeps) {
     const words = String(text ?? '').trim();
     if (!words || !createEntity) return null;
     if (files.length > 0 && (!linkEntity || !removeEntity)) return null;
+    const tooBig = files.filter((file) => file.size > ATTACH_MAX_BYTES);
+    if (tooBig.length)
+      throw new Error(
+        `Files over ${ATTACH_MAX_BYTES / (1024 * 1024)} MB can't be attached: ${tooBig.map((f) => f.name).join(', ')}`,
+      );
+    /*
+      The dataset is named once, here, before anything is awaited, and every write and removal below
+      goes to it. Left to the host, a write with no dataset goes to the space on screen — and this send
+      spans file reads and uploads (and a call's Feed outlives navigation), so somebody changing space
+      meanwhile would have the next file, the message and the rollback land in the other one.
+    */
+    const uri = deps.datasetUri?.();
+    const target = uri ? { dataset: uri } : undefined;
     /*
       Each file is a `FileBlock` the message holds — the same record the block composer makes, its bytes
       stored through the dataset's file storage as the record is written. The kernel has no write group,
@@ -68,38 +82,38 @@ export function createFeedStore(deps: ModuleStoreDeps) {
     const written: { entity: string; id: string }[] = [];
     try {
       for (const file of files) {
-        const fileId = await createEntity('FileBlock', {
-          name: file.name,
-          mimeType: file.type,
-          size: file.size,
-          url: await fileData(file),
-        });
+        const fileId = await createEntity(
+          'FileBlock',
+          { name: file.name, mimeType: file.type, size: file.size, url: await fileData(file) },
+          target,
+        );
         if (!fileId) throw new Error(`Could not attach ${file.name}`);
         written.push({ entity: 'FileBlock', id: fileId });
       }
       const id = await createEntity(
         'TextBlock',
         { text: words, source: TYPED, ...(marks ? { marks } : {}) },
-        { parent: holder },
+        { parent: holder, ...target },
       );
       if (!id) {
-        await discard(written);
+        await discard(written, target);
         return null;
       }
       written.push({ entity: 'TextBlock', id });
-      for (const { id: fileId } of written.slice(0, -1)) await linkEntity?.('TextBlock', id, 'children', fileId);
+      for (const { id: fileId } of written.slice(0, -1))
+        await linkEntity?.('TextBlock', id, 'children', fileId, target);
       return id;
     } catch (error) {
-      await discard(written);
+      await discard(written, target);
       throw error;
     }
   }
 
   /** Take down what a failed write left, newest first; what cannot be removed is left, and the failure stands. */
-  async function discard(written: { entity: string; id: string }[]) {
+  async function discard(written: { entity: string; id: string }[], target?: { dataset: string }) {
     for (const { entity, id } of [...written].reverse()) {
       try {
-        await removeEntity?.(entity, id);
+        await removeEntity?.(entity, id, target);
       } catch {
         // The original failure is the one to report.
       }

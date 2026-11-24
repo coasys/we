@@ -35,4 +35,30 @@ describe('we-file-upload files', () => {
     await el.updateComplete;
     expect(names(el)).toEqual([]);
   });
+
+  it('draws no list when the host shows the files itself', async () => {
+    const el = await mount();
+    (el as unknown as { hideList: boolean }).hideList = true;
+    el.files = [new File(['a'], 'plan.pdf')];
+    await el.updateComplete;
+    expect(names(el)).toEqual([]);
+  });
+
+  it('leaves out a file over its limit, and says which', async () => {
+    const el = (await mount()) as UploadEl & { maxSize: number; _addFiles: (files: File[]) => void };
+    el.maxSize = 4;
+    const heard: { files: File[]; names: string }[] = [];
+    const changed: unknown[] = [];
+    el.addEventListener('reject', (e) => heard.push((e as CustomEvent).detail));
+    el.addEventListener('change', (e) => changed.push((e as CustomEvent).detail));
+
+    el._addFiles([new File(['1234'], 'ok.txt'), new File(['12345'], 'big.bin')]);
+
+    expect(heard.map((d) => d.names)).toEqual(['big.bin']);
+    expect((changed[0] as File[]).map((f) => f.name)).toEqual(['ok.txt']);
+
+    // Only a refused file: no change to announce.
+    el._addFiles([new File(['12345'], 'big2.bin')]);
+    expect(changed).toHaveLength(1);
+  });
 });

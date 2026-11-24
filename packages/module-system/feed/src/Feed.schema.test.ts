@@ -100,8 +100,9 @@ describe('one line, the Feed’s own actions', () => {
       expect(upload?.props).toMatchObject({ multiple: true });
       const composer = findNode(root, (n) => n.type === 'BlockComposer')!;
       const sent = JSON.stringify(composer.props?.onSubmit);
-      // The send, and the reply, both take what is attached; the box then lets go of it.
-      expect(sent.match(/"local\.attachments"/g)).toHaveLength(2);
+      // The send, and the reply, both take what is attached; the box lets go of it once each resolves.
+      expect(sent.match(/"\$invoke":"modules\.feed\.(reply|sendToFeed|sendToCallFeed)"/g)).toHaveLength(2);
+      expect(sent.match(/"onSuccess":\[/g)).toHaveLength(2);
       expect(sent).toContain('"$setLocal":"attachments"');
     }
   });

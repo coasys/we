@@ -86,6 +86,14 @@ export default class FileUpload extends DesignSystemElement {
    * sent with them) and the drop zone lets go of them. Left unset, the element keeps its own list.
    */
   @property({ type: Array }) files?: File[];
+  /**
+   * The most one file may hold, in bytes; `0` is no limit. A larger file is not added: the element
+   * says so with a `reject` event — `detail.files`, and `detail.names` as one line to show — so the
+   * host can tell the person why.
+   */
+  @property({ type: Number, attribute: 'max-size' }) maxSize = 0;
+  /** Draw no list of the files held: the host shows them itself, as chips beside a one-button drop zone. */
+  @property({ type: Boolean, attribute: 'hide-list' }) hideList = false;
 
   @state() private _files: File[] = [];
   @state() private _dragover = false;
@@ -109,7 +117,19 @@ export default class FileUpload extends DesignSystemElement {
     input.value = '';
   }
 
-  private _addFiles(files: File[]) {
+  private _addFiles(chosen: File[]) {
+    const tooBig = this.maxSize > 0 ? chosen.filter((file) => file.size > this.maxSize) : [];
+    const files = tooBig.length ? chosen.filter((file) => !tooBig.includes(file)) : chosen;
+    if (tooBig.length) {
+      this.dispatchEvent(
+        new CustomEvent('reject', {
+          detail: { files: tooBig, names: tooBig.map((file) => file.name).join(', ') },
+          bubbles: true,
+          composed: true,
+        }),
+      );
+      if (!files.length) return;
+    }
     this._files = this.multiple ? [...this._files, ...files] : files.slice(0, 1);
     const detail = this.multiple ? this._files : (this._files[0] ?? null);
     this.dispatchEvent(new CustomEvent('change', { detail, bubbles: true, composed: true }));
@@ -164,7 +184,7 @@ export default class FileUpload extends DesignSystemElement {
         </slot>
 
         ${
-          this._files.length > 0
+          this._files.length > 0 && !this.hideList
             ? html`
                 <div part="file-list" @click=${(e: Event) => e.stopPropagation()}>
                   ${this._files.map(

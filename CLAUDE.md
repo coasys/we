@@ -1446,7 +1446,7 @@ Give every nested zone `noArm`, so picking something up speaks once about the co
 than once about every row inside it.
   Props: accepts: string = '', disabled: boolean = false, noArm: boolean = false, noSelf: boolean = false, hint: string = ''
 - we-file-upload (DesignSystemElement)
-  Props: accept: string = '', multiple: boolean = false, disabled: boolean = false, name: string = '', files?: File[] | undefined
+  Props: accept: string = '', multiple: boolean = false, disabled: boolean = false, name: string = '', files?: File[] | undefined, maxSize: number = 0, hideList: boolean = false
 - we-form-field (DesignSystemElement)
   Props: label: string = '', description: string = '', error: string = '', required: boolean = false, size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-html (DesignSystemElement) — Renders a raw HTML string safely via DOMPurify sanitization.
@@ -3762,6 +3762,7 @@ SpaceStore:
   - copyGuestLink(uuid: string): copies that space's guest invite link — a URL that creates an account on the space's host and joins, with no sign-up and no download. Empty, and the control hidden, unless BOTH this app's origin and the node's URL are addresses a recipient could reach: a loopback address on either half resolves to the reader's own machine. Read `spaceList[].guestLink` to decide whether to offer it; `shareLink` is the one for somebody who already has WE
   - exportCallTranscript(callId: string): writes the call's transcript to a .txt file (one line per utterance: name, timestamp, text) and downloads it. Read-only and client-side — it reads the shared record and writes to the caller's own device
   - exportInterpretationLog(callId: string): writes everything interpretation did with the call to a Markdown file and downloads it — the settings it ran under, the transcript once, every member's passes with their prompts and responses verbatim, the records written as they are stored now, and the suggestions still awaiting a decision. For handing to a person or a model investigating the interpretation. Read-only and client-side, like exportCallTranscript
+  - saveFileBlock(fileId: string): saves a file a message carries (a FileBlock, by its id) to the reader's machine, reading its bytes from the space on screen when called. A message line holds only the file's name and size. Read-only and client-side
   - removeSpaceFromGlobal(spaceUuid: string): withdraws a space's listing from the global discovery space, leaving the space itself alone. Only its author may; removeSpace does this for you
 
 TemplateStore:

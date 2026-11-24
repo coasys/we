@@ -115,10 +115,12 @@ describe('the feed window', () => {
           mimeType: 'application/pdf',
           size: 2048,
           sizeLabel: '2.0 KB',
-          url: 'data:application/pdf;base64,JVBE',
         },
       ],
     });
+    // The line holds the card, never the bytes.
+    expect(JSON.stringify(drawn[0])).not.toContain('JVBE');
+    expect(asked.find((a) => a.entity === 'FileBlock')?.query.select).not.toContain('url');
     expect(drawn.find((r) => r.id === 'm1')).toMatchObject({ attachments: [] });
 
     await readFeedWindow(find, { root: ROOT, shown: 10, fromStart: false, activityTypes: [], attachments: known });

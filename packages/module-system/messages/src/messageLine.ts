@@ -598,42 +598,43 @@ export function messageLine(opts: {
                   /*
                     The files sent with it — a line of the transcript has none, and draws nothing.
 
-                    A file is drawn as the block composer draws one, by the file block's own display,
-                    because that is what saves it: a link to the bytes is no use here, since a template
-                    may not carry a `data:` URL that is not media. Until the write has stored it (no
-                    address yet) it is only named.
+                    Named and sized from what the line read, and no more: the bytes of a stored file are
+                    not held with the line (a long page of attachments would be all of them in memory).
+                    The host fetches them when the button is pressed. Until the write has stored the
+                    file (no id yet) there is nothing to fetch, and it is only named.
                   */
                   {
                     type: '$each',
                     props: { items: { $: `${as}.attachments ?? []` }, as: 'file' },
                     children: [
                       {
-                        type: '$if',
-                        props: {
-                          condition: { $: 'file.url' },
-                          then: {
-                            type: 'BlockRenderer',
+                        type: 'Row',
+                        props: { gap: '200', ay: 'center' },
+                        children: [
+                          { type: 'we-icon', props: { name: 'paperclip', color: 'text-muted' } },
+                          { type: 'we-text', props: { truncate: true }, children: [{ $: 'file.name' }] },
+                          {
+                            type: 'we-text',
+                            props: { variant: 'footnote', color: 'text-muted' },
+                            children: [{ $: 'file.sizeLabel' }],
+                          },
+                          {
+                            type: '$if',
                             props: {
-                              editorState: {
-                                $: "[{ _type: 'file', _key: file.id, name: file.name, mimeType: file.mimeType, size: file.size, url: file.url }]",
+                              condition: { $: 'file.id' },
+                              then: {
+                                type: 'we-button',
+                                props: {
+                                  size: 'xs',
+                                  variant: 'ghost',
+                                  label: 'Save file',
+                                  onClick: { $invoke: 'spaceStore.saveFileBlock', args: [{ $: 'file.id' }] },
+                                },
+                                children: [{ type: 'we-icon', props: { name: 'download-simple' } }],
                               },
-                              rootClass: 'we-block-content--compact',
                             },
                           },
-                          else: {
-                            type: 'Row',
-                            props: { gap: '200', ay: 'center' },
-                            children: [
-                              { type: 'we-icon', props: { name: 'paperclip', color: 'text-muted' } },
-                              { type: 'we-text', props: { truncate: true }, children: [{ $: 'file.name' }] },
-                              {
-                                type: 'we-text',
-                                props: { variant: 'footnote', color: 'text-muted' },
-                                children: [{ $: 'file.sizeLabel' }],
-                              },
-                            ],
-                          },
-                        },
+                        ],
                       },
                     ],
                   },

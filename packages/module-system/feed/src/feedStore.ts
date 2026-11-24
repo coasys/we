@@ -173,6 +173,8 @@ export function createFeed(deps: FeedDeps) {
     // A root that reads other signals (the calls drawn) can re-run this for the same collection.
     if (ds === datasetWas && now === rootWas) return;
     datasetWas = ds;
+    // A file's id means a file in one dataset only.
+    readFiles.clear();
     setRows([]);
     setSent([]);
     setLoaded(false);
@@ -362,7 +364,6 @@ export function createFeed(deps: FeedDeps) {
         mimeType: file.type,
         size: file.size,
         sizeLabel: sizeLabel(file.size),
-        url: '',
       })),
       sending: true,
     };

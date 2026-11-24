@@ -43,13 +43,13 @@ describe('a message line', () => {
 describe('the files a line carries', () => {
   const line = JSON.stringify(messageLine({ as: 'row', actions: 'modules.feed', surface: 'feed', relative: false }));
 
-  it('draws each as a file block, which saves it, and names one that is not stored yet', () => {
+  it('names each file and offers to save it only once stored, carrying no bytes', () => {
     expect(line).toContain('"row.attachments ?? []"');
-    expect(line).toContain("_type: 'file'");
-    expect(line).toContain('"BlockRenderer"');
-    // A link to the bytes would be dropped — a template may not carry a `data:` URL that is not media.
-    expect(line).not.toContain('"href"');
     expect(line).toContain('"file.sizeLabel"');
+    // The save is asked for by the file's id — the bytes are read when it is pressed, not drawn from the line.
+    expect(line).toContain('"$invoke":"spaceStore.saveFileBlock","args":[{"$":"file.id"}]');
+    expect(line).toContain('"condition":{"$":"file.id"}');
+    expect(line).not.toContain('file.url');
   });
 });
 

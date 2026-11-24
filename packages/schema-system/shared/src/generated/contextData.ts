@@ -209,6 +209,8 @@ export const contextData: ContextData = {
         { name: 'disabled', type: 'boolean', optional: false, default: 'false' },
         { name: 'name', type: 'string', optional: false, default: "''" },
         { name: 'files', type: 'File[] | undefined', optional: true },
+        { name: 'maxSize', type: 'number', optional: false, default: '0' },
+        { name: 'hideList', type: 'boolean', optional: false, default: 'false' },
       ],
     },
     {
@@ -3463,6 +3465,7 @@ export const contextData: ContextData = {
         'copyGuestLink',
         'exportCallTranscript',
         'exportInterpretationLog',
+        'saveFileBlock',
         'removeSpaceFromGlobal',
       ],
       ambient: [
@@ -3550,6 +3553,7 @@ export const contextData: ContextData = {
         'copyGuestLink',
         'exportCallTranscript',
         'exportInterpretationLog',
+        'saveFileBlock',
         'removeSpaceFromGlobal',
       ],
     },

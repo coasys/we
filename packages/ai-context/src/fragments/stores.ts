@@ -570,6 +570,7 @@ export const storeEntries: StoreEntry[] = [
       'copyGuestLink',
       'exportCallTranscript',
       'exportInterpretationLog',
+      'saveFileBlock',
       'setModuleEnabled',
       'setModuleInstalled',
       'setModuleVisible',
@@ -1680,6 +1681,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '(uuid: string): whether this agent may change what every member of that space sees — true for a personal space; for the shared space on screen, for whoever holds its `admin` role (its author, while nobody does); for any other shared space, for its author, since its roles are read once it is open. A UI affordance for deciding whether to offer the controls, NOT enforcement: a shared space is a neighbourhood every member can write to. Ask by name rather than comparing author to me.did, so the answer follows the space\u2019s roles without every template changing',
       exportCallTranscript:
         "(callId: string): writes the call's transcript to a .txt file (one line per utterance: name, timestamp, text) and downloads it. Read-only and client-side — it reads the shared record and writes to the caller's own device",
+      saveFileBlock:
+        "(fileId: string): saves a file a message carries (a FileBlock, by its id) to the reader's machine, reading its bytes from the space on screen when called. A message line holds only the file's name and size. Read-only and client-side",
       exportInterpretationLog:
         "(callId: string): writes everything interpretation did with the call to a Markdown file and downloads it — the settings it ran under, the transcript once, every member's passes with their prompts and responses verbatim, the records written as they are stored now, and the suggestions still awaiting a decision. For handing to a person or a model investigating the interpretation. Read-only and client-side, like exportCallTranscript",
       setModuleInstalled:

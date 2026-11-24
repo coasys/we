@@ -2,6 +2,7 @@
  * The Feed module's own store: messages written from it, and staying live while it is drawn.
  */
 import { markAction, markState } from '@we/module-shared';
+import { ATTACH_MAX_BYTES } from '@we/schema-kit';
 import { describe, expect, it, vi } from 'vitest';
 
 import { BOT_BURST_MS } from './botWatch';
@@ -42,6 +43,9 @@ function reactive() {
 }
 
 type Created = { entity: string; fields: Record<string, unknown>; options: unknown };
+
+/** Where the harness has the reader at the start, as a write names it. */
+const SPACE_1 = { dataset: 'space-1' };
 
 function harness(
   proposals: { id: string; kind: string }[] = [],
@@ -86,9 +90,16 @@ function harness(
   const live = new Set<{ entity: string; within?: string }>();
   const finds: { entity: string; within?: string }[] = [];
   const linked: unknown[] = [];
-  const removed: { entity: string; id: string }[] = [];
+  const removed: { entity: string; id: string; target?: unknown }[] = [];
+  /** The dataset the reader has on screen — `datasetUri` answers it, and a test moves it. */
+  const screen = { uri: 'space-1' };
+  /** Names of the records whose removal, or whose link, the executor refuses. */
+  const unremovable = new Set<string>();
+  const failLinks = { on: false };
   /** Names of the records whose write fails, as an upload the executor refuses does. */
   const refusing = new Set<string>();
+  /** Entities whose write is answered with no id, as a host with nowhere to write answers. */
+  const returnsNothing = new Set<string>();
   const identities = new Map<string, { kind: string }>([['did:bot', { kind: 'bot' }]]);
   const records = {
     find: async (entity: string, query: Record<string, unknown> = {}) => {
@@ -108,17 +119,21 @@ function harness(
       return () => live.delete(sub);
     },
     link: async (...args: unknown[]) => {
+      if (failLinks.on) throw new Error('the link was refused');
       linked.push(args);
     },
     create: async (entity: string, fields: Record<string, unknown>, options: unknown) => {
       if (refusing.has(String(fields.name))) throw new Error(`the executor refused ${fields.name}`);
+      if (refusing.has(entity)) throw new Error(`the executor refused a ${entity}`);
       created.push({ entity, fields, options });
       const id = `new-${created.length}`;
       await creating;
+      if (returnsNothing.has(entity)) return null;
       return id;
     },
-    remove: async (entity: string, id: string) => {
-      removed.push({ entity, id });
+    remove: async (entity: string, id: string, target?: unknown) => {
+      if (unremovable.has(entity)) throw new Error(`could not remove ${entity}`);
+      removed.push({ entity, id, target });
     },
     update: async (entity: string, id: string, fields: Record<string, unknown>) => {
       updated.push({ entity, id, fields });
@@ -142,6 +157,7 @@ function harness(
     action: markAction,
     onDispose: (stop: () => void) => void disposers.push(stop),
     dataset: () => 'space-1',
+    datasetUri: () => screen.uri,
     spaceRoot: () => resolvedRoot() ?? spaceRoot(),
     settings: () => moduleSettings,
     identities: { get: (id: string) => identities.get(id), fetch: () => {} },
@@ -159,6 +175,10 @@ function harness(
     created,
     removed,
     refusing,
+    returnsNothing,
+    screen,
+    unremovable,
+    failLinks,
     holdCreates,
     updated,
     subscriptions,
@@ -182,7 +202,7 @@ describe('messages written from the Feed', () => {
       {
         entity: 'TextBlock',
         fields: { text: 'see you all on Friday', source: 'typed', marks: '[{"start":0,"end":3,"type":"strong"}]' },
-        options: { parent: { id: 'root-1', relation: 'children', entity: 'CollectionBlock' } },
+        options: { parent: { id: 'root-1', relation: 'children', entity: 'CollectionBlock' }, dataset: 'space-1' },
       },
     ]);
     vi.useRealTimers();
@@ -513,7 +533,7 @@ describe('the Feed of one call', () => {
       {
         entity: 'TextBlock',
         fields: { text: 'running late', source: 'typed' },
-        options: { parent: { id: 'call-9', relation: 'children', entity: 'CollectionBlock' } },
+        options: { parent: { id: 'call-9', relation: 'children', entity: 'CollectionBlock' }, dataset: 'space-1' },
       },
     ]);
     // Writing into a call is not being in it: nobody is put on its roster from here.
@@ -541,12 +561,12 @@ describe('the Feed of one call', () => {
         size: 4,
         url: { data_base64: btoa('%PDF'), name: 'plan.pdf', file_type: 'application/pdf' },
       },
-      options: undefined,
+      options: SPACE_1,
     });
     // The message holds them through its `children` relation, which the executor reads as containment.
     expect(h.linked).toEqual([
-      ['TextBlock', 'new-3', 'children', 'new-1'],
-      ['TextBlock', 'new-3', 'children', 'new-2'],
+      ['TextBlock', 'new-3', 'children', 'new-1', SPACE_1],
+      ['TextBlock', 'new-3', 'children', 'new-2', SPACE_1],
     ]);
     expect(h.removed).toEqual([]);
     vi.useRealTimers();
@@ -564,10 +584,10 @@ describe('the Feed of one call', () => {
     h.store.startReply({ id: 'line-1', text: 'who has the venue?', author: 'did:ann' });
     await h.store.reply('line-1', 'here', undefined, [note]);
     expect(h.created.map((c) => c.entity)).toEqual(['FileBlock', 'TextBlock', 'FileBlock', 'TextBlock']);
-    expect(h.created[3].options).toEqual({ parent: { id: 'line-1', relation: 'responses' } });
+    expect(h.created[3].options).toEqual({ parent: { id: 'line-1', relation: 'responses' }, dataset: 'space-1' });
     expect(h.linked).toEqual([
-      ['TextBlock', 'new-2', 'children', 'new-1'],
-      ['TextBlock', 'new-4', 'children', 'new-3'],
+      ['TextBlock', 'new-2', 'children', 'new-1', SPACE_1],
+      ['TextBlock', 'new-4', 'children', 'new-3', SPACE_1],
     ]);
     vi.useRealTimers();
   });
@@ -584,8 +604,116 @@ describe('the Feed of one call', () => {
     await expect(h.store.sendToFeed('with files', undefined, [first, second])).rejects.toThrow('refused');
 
     expect(h.created.map((c) => c.entity)).not.toContain('TextBlock');
-    expect(h.removed).toEqual([{ entity: 'FileBlock', id: 'new-1' }]);
+    expect(h.removed).toEqual([{ entity: 'FileBlock', id: 'new-1', target: SPACE_1 }]);
     expect(h.linked).toEqual([]);
+    vi.useRealTimers();
+  });
+
+  it('leaves nothing stored when the message itself cannot be written', async () => {
+    vi.useFakeTimers();
+    const h = harness();
+    await vi.runAllTimersAsync();
+    const note = new File(['hi'], 'note.txt', { type: 'text/plain' });
+
+    // Refused: the write throws.
+    h.refusing.add('TextBlock');
+    await expect(h.store.sendToFeed('with a file', undefined, [note])).rejects.toThrow('refused');
+    expect(h.removed).toEqual([{ entity: 'FileBlock', id: 'new-1', target: SPACE_1 }]);
+    expect(h.linked).toEqual([]);
+
+    // Answered with no id: nothing was written, and the file is taken down as well.
+    h.refusing.clear();
+    h.removed.length = 0;
+    h.returnsNothing.add('TextBlock');
+    await h.store.sendToFeed('with a file', undefined, [note]);
+    expect(h.removed).toEqual([{ entity: 'FileBlock', id: 'new-2', target: SPACE_1 }]);
+    expect(h.linked).toEqual([]);
+    vi.useRealTimers();
+  });
+
+  it('takes the message and every file down when a link fails', async () => {
+    vi.useFakeTimers();
+    const h = harness();
+    await vi.runAllTimersAsync();
+    const note = new File(['hi'], 'note.txt', { type: 'text/plain' });
+    h.failLinks.on = true;
+
+    await expect(h.store.sendToFeed('with a file', undefined, [note])).rejects.toThrow('link was refused');
+
+    // Newest first: the message, then the file it would have held.
+    expect(h.removed).toEqual([
+      { entity: 'TextBlock', id: 'new-2', target: SPACE_1 },
+      { entity: 'FileBlock', id: 'new-1', target: SPACE_1 },
+    ]);
+    vi.useRealTimers();
+  });
+
+  it('says so, and keeps going, when a removal is itself refused: the failure that stands is the first', async () => {
+    vi.useFakeTimers();
+    const h = harness();
+    await vi.runAllTimersAsync();
+    const note = new File(['hi'], 'note.txt', { type: 'text/plain' });
+    h.failLinks.on = true;
+    // The message cannot be taken down; the file still is. What remains is a message with no file.
+    h.unremovable.add('TextBlock');
+
+    await expect(h.store.sendToFeed('with a file', undefined, [note])).rejects.toThrow('link was refused');
+
+    expect(h.removed).toEqual([{ entity: 'FileBlock', id: 'new-1', target: SPACE_1 }]);
+    vi.useRealTimers();
+  });
+
+  it('refuses a file over the size limit before anything is written', async () => {
+    vi.useFakeTimers();
+    const h = harness();
+    await vi.runAllTimersAsync();
+    const big = new File(['x'], 'huge.bin');
+    Object.defineProperty(big, 'size', { value: ATTACH_MAX_BYTES + 1 });
+
+    await expect(h.store.sendToFeed('too much', undefined, [big])).rejects.toThrow('huge.bin');
+
+    expect(h.created).toEqual([]);
+    vi.useRealTimers();
+  });
+
+  it('writes and takes down in the space the send began in, whatever the reader moves to meanwhile', async () => {
+    vi.useFakeTimers();
+    const h = harness();
+    await vi.runAllTimersAsync();
+    const one = new File(['one'], 'one.txt', { type: 'text/plain' });
+    const two = new File(['two'], 'two.txt', { type: 'text/plain' });
+    h.refusing.add('two.txt');
+    const upload = h.holdCreates();
+
+    const sending = h.store.sendToFeed('with files', undefined, [one, two]);
+    (sending as Promise<unknown>).catch(() => {});
+    // The reader goes to another space while the first file is still going up.
+    h.screen.uri = 'space-2';
+    upload.release();
+    await expect(sending as Promise<unknown>).rejects.toThrow('refused');
+
+    expect(h.created.map((c) => c.options)).toEqual([SPACE_1]);
+    expect(h.removed).toEqual([{ entity: 'FileBlock', id: 'new-1', target: SPACE_1 }]);
+    vi.useRealTimers();
+  });
+
+  it('names that space on every create, link and removal of a send that succeeds across a switch', async () => {
+    vi.useFakeTimers();
+    const h = harness();
+    await vi.runAllTimersAsync();
+    const note = new File(['hi'], 'note.txt', { type: 'text/plain' });
+    const upload = h.holdCreates();
+
+    const sending = h.store.sendToFeed('with a file', undefined, [note]);
+    h.screen.uri = 'space-2';
+    upload.release();
+    await sending;
+
+    expect(h.created.map((c) => c.options)).toEqual([
+      SPACE_1,
+      { parent: { id: 'root-1', relation: 'children', entity: 'CollectionBlock' }, dataset: 'space-1' },
+    ]);
+    expect(h.linked).toEqual([['TextBlock', 'new-2', 'children', 'new-1', SPACE_1]]);
     vi.useRealTimers();
   });
 

@@ -275,6 +275,53 @@ describe('the Feed staying live', () => {
   });
 });
 
+describe('the files the window has read', () => {
+  it("forgets them when the dataset changes, so a file id never names another space's file", async () => {
+    vi.useFakeTimers();
+    const { signal, effect } = reactive();
+    const [dataset, setDataset] = signal('space-1');
+    const [spaceRoot, setRoot] = signal('root-1');
+    const s = space();
+    const line = { id: 'msg-1', text: 'plan', author: 'did:ann', createdAt: 3, children: ['f1'] };
+    s.lines.push(line);
+    const fileReads: Record<string, unknown>[] = [];
+    const records = {
+      ...s.records,
+      find: async (entity: string, query: { within?: string; select?: string[] } = {}) => {
+        if (entity === 'TextBlock' && query.within?.startsWith('root-')) return s.lines.map((l) => ({ ...l }));
+        if (entity !== 'FileBlock') return s.records.find(entity, query);
+        fileReads.push(query);
+        return [{ id: 'f1', name: 'plan.pdf', mimeType: 'application/pdf', size: 10 }];
+      },
+    };
+    const feed = createFeed({
+      signal,
+      effect,
+      state: markState,
+      action: markAction,
+      onDispose: () => {},
+      dataset,
+      spaceRoot,
+      records: records as never,
+      interpretation: undefined,
+      write: async () => null,
+    });
+    await vi.runAllTimersAsync();
+    (feed.openFeed as unknown as () => void)();
+    await vi.runAllTimersAsync();
+    expect(fileReads).toHaveLength(1);
+    expect(fileReads[0].select).toEqual(['name', 'mimeType', 'size']);
+
+    // Another space, with a line holding a file of the same id: asked for again, not drawn from the last space's.
+    s.lines.splice(0, s.lines.length, { ...line, id: 'msg-2' });
+    setDataset('space-2');
+    setRoot('root-2');
+    await vi.runAllTimersAsync();
+    expect(fileReads).toHaveLength(2);
+    vi.useRealTimers();
+  });
+});
+
 describe('whether the reader counts as on the newest line', () => {
   it('is false until a read has landed, and again after one fails', async () => {
     /*
