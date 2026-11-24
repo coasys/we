@@ -1680,12 +1680,29 @@ export class GraphEngine {
    *
    * Truncating silently is the failure mode this exists to avoid: a map that quietly stops growing
    * reads as complete, and every conclusion drawn from it is wrong.
+   *
+   * Only nodes the graph does not already hold cost anything. A refresh hands back the seed's whole
+   * answer — mostly the very nodes on screen — and an expansion repeated hands back children already
+   * there; counting those against the room left once made a refresh of more than half the budget cut
+   * itself, and the cut nodes were then released as though the seed had stopped returning them. A
+   * canvas of 1,500 cards came back as 500, and the next refresh as 1,500 again.
    */
   private trimToBudget(nodes: GraphNode[]): GraphNode[] {
-    const room = this.maxNodes() - this.store.nodeCount;
+    let room = this.maxNodes() - this.store.nodeCount;
     if (nodes.length <= room) return nodes;
-    this.reportBudgetReached();
-    return nodes.slice(0, Math.max(0, room));
+    const kept: GraphNode[] = [];
+    const admitted = new Set<string>();
+    let cut = false;
+    for (const node of nodes) {
+      if (this.store.hasNode(node.id) || admitted.has(node.id)) kept.push(node);
+      else if (room > 0) {
+        kept.push(node);
+        admitted.add(node.id);
+        room -= 1;
+      } else cut = true;
+    }
+    if (cut) this.reportBudgetReached();
+    return kept;
   }
 
   private reportBudgetReached(): void {
