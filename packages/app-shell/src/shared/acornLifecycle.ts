@@ -42,6 +42,14 @@ export const ACORN_BASE_LANGUAGE = 'QmzSYwdmDsbDvTuuzH1Ngf97XirY8YjiPdHwzpEQbpmR
 export const ACORN_TEMPLATE_ID = 'acorn';
 
 /**
+ * The theme an opened Acorn project wears — the space's `defaultThemeId`. Written beside
+ * the template for the same reason the views are: a space record made by `initializeAsWeSpace`
+ * inherits the deployment starter's theme, which the space-theme rule then reads as the
+ * community's own pick and holds above the template's suggestion.
+ */
+export const ACORN_THEME_ID = 'acorn';
+
+/**
  * The sections an Acorn space's nav carries, in order — the template package's own
  * catalogue, so first in the object is where a member lands: the outcomes list. Written
  * onto `Space.enabledViews` at open, because a space that names no sections falls back to
@@ -167,6 +175,8 @@ export interface AcornSpaceSetup {
   enabledViews: boolean;
   /** `Space.defaultTemplateId` names the Acorn template. */
   defaultTemplate: boolean;
+  /** `Space.defaultThemeId` names the Acorn theme — the other half of the pair the rule reads. */
+  defaultTheme: boolean;
   /**
    * The explicit end-of-setup marker — written by the lifecycle once the structure, recipe and
    * template writes all landed. What `enabledViews` reads before it trusts a member-edited list.
@@ -360,6 +370,12 @@ export interface AcornLifecycleDeps {
   };
   /** The space's default template — written after init, per Q7. */
   setSpaceDefaultTemplate: (templateId: string, spaceUuid?: string) => Promise<void>;
+  /**
+   * The space's default theme — `Space.defaultThemeId`. Written beside the template:
+   * the theme rule reads them as the pair a space was given, so a starter's theme left
+   * on the record would stand above the Acorn suggestion forever.
+   */
+  setSpaceDefaultTheme: (themeId: string, spaceUuid?: string) => Promise<void>;
   /**
    * The end-of-setup marker, recorded on the space record once the structure, section and
    * template writes all landed. It is what lets a later open tell "the recipe was written
@@ -1348,6 +1364,17 @@ export function createAcornLifecycle(deps: AcornLifecycleDeps) {
       }
       if (setup && !setup.defaultTemplate) {
         await deps.setSpaceDefaultTemplate(ACORN_TEMPLATE_ID, ref.id);
+        if (!own()) return;
+      }
+      /*
+        The theme half of the same pair. `initializeAsWeSpace` seeds the record from the
+        deployment's starter — under the Coasys app that is `coasys--glow` — and while the
+        record's template is Acorn the theme rule holds the space's own theme above the
+        template's suggestion: without this write an Acorn space keeps the starter's look
+        no matter what `meta.themeId` says.
+      */
+      if (setup && !setup.defaultTheme) {
+        await deps.setSpaceDefaultTheme(ACORN_THEME_ID, ref.id);
         if (!own()) return;
       }
       /*

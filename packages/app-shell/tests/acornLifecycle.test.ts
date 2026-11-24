@@ -32,6 +32,7 @@ const EMPTY_SETUP: AcornSpaceSetup = {
   root: false,
   enabledViews: false,
   defaultTemplate: false,
+  defaultTheme: false,
   setupDone: false,
 };
 /** Every invariant holds — the answer a finished project gives on reopen. */
@@ -40,6 +41,7 @@ const FULL_SETUP: AcornSpaceSetup = {
   root: true,
   enabledViews: true,
   defaultTemplate: true,
+  defaultTheme: true,
   setupDone: true,
 };
 
@@ -123,6 +125,9 @@ function deps(
     },
     setSpaceDefaultTemplate: vi.fn(async (id: string, uuid?: string) => {
       record.push(`template:${id}:${uuid}`);
+    }),
+    setSpaceDefaultTheme: vi.fn(async (id: string, uuid?: string) => {
+      record.push(`theme:${id}:${uuid}`);
     }),
     markSpaceSetupDone: vi.fn(async (uuid: string) => {
       record.push(`marker:${uuid}`);
@@ -602,6 +607,7 @@ describe('openAcornProject', () => {
             root: false,
             enabledViews: true,
             defaultTemplate: true,
+            defaultTheme: true,
             setupDone: false,
           }) as AcornSpaceSetup,
       ),
@@ -628,6 +634,7 @@ describe('openAcornProject', () => {
             root: true,
             enabledViews: false,
             defaultTemplate: true,
+            defaultTheme: true,
             setupDone: false,
           }) as AcornSpaceSetup,
       ),
@@ -657,6 +664,7 @@ describe('openAcornProject', () => {
             root: true,
             enabledViews: true,
             defaultTemplate: false,
+            defaultTheme: false,
             setupDone: false,
           }) as AcornSpaceSetup,
       ),

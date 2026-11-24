@@ -1,6 +1,7 @@
 import {
   ACORN_SECTION_IDS,
   ACORN_TEMPLATE_ID,
+  ACORN_THEME_ID,
   type AcornOperationState,
   type AcornProjectRef,
   type AcornSetupIntent,
@@ -2540,6 +2541,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         root: Boolean(space && relationId(space.root)),
         enabledViews: setupDone || views.some((id) => ACORN_SECTION_IDS.includes(id)),
         defaultTemplate: space?.defaultTemplateId === ACORN_TEMPLATE_ID,
+        defaultTheme: space?.defaultThemeId === ACORN_THEME_ID,
         setupDone,
       };
     },
@@ -2548,6 +2550,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     ensureSpaceStructure: (name, description, target) => ensureSpaceStructure(name, description, target),
     setupIntent: acornSetupIntents,
     setSpaceDefaultTemplate: (templateId, spaceUuid) => setSpaceDefaultTemplate(templateId, spaceUuid),
+    setSpaceDefaultTheme: (themeId, spaceUuid) => setSpaceDefaultTheme(themeId, spaceUuid),
     /*
       The marker lives on the Space record's `moduleSettings` — the community-level
       JSON bag, so it travels to every member and no settings surface renders it
