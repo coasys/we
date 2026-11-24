@@ -96,3 +96,31 @@ describe('the operation tools', () => {
     expect(run.confirm?.({ name: 'demo.addTask' })).toBeUndefined();
   });
 });
+
+describe('a record whose creation has rules', () => {
+  it('is made by the operation holding them: one reaction per person per type, replaced', async () => {
+    const post = await model('CollectionBlock').create(dataset, { kind: 'post' });
+    const react = (value: number) =>
+      tools().call('create_record', { entity: 'Signal', fields: { signalTypeId: 'like', value }, on: post.id });
+    const first = await react(1);
+    const second = await react(2);
+    const signals = await model('Signal').findAll(dataset);
+    expect(signals.map((s) => s.value)).toEqual([2]);
+    expect(first.text).toBe(`Made a Signal: ${signals[0]!.id}.`);
+    expect(second.wrote).toEqual([{ entity: 'Signal', id: signals[0]!.id, change: 'created' }]);
+  });
+
+  it('says what it needs, and what the rules refused', async () => {
+    const missing = await tools().call('create_record', {
+      entity: 'Signal',
+      fields: { signalTypeId: 'like', value: 1 },
+    });
+    expect(missing.text).toMatch(/^Error: A Signal needs `on`/);
+    const refused = await tools().call('create_record', {
+      entity: 'Involvement',
+      fields: { agent: 'did:test:ana', kind: 'shepherd' },
+      on: rootId,
+    });
+    expect(refused.text).toBe('Error: The Involvement was not made: That is not a kind of involvement this space has.');
+  });
+});
