@@ -176,6 +176,7 @@ export const CONFORMANCE_CASES = [
   'relations.delete-takes-links-to-it',
   'relations.ordered-read',
   'relations.create-links-one',
+  'relations.edit-points-one',
   'relations.create-links-many',
   'relations.replace-whole',
   'relations.member-type',
@@ -820,6 +821,34 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
           include: { location: true },
         });
         expect((row.location as Row | undefined)?.id).toBe(place.id);
+      });
+
+      /*
+        An edit that names a to-one relation points it somewhere else — what a declared operation's
+        `update` of one does, through the record's own save. Written as a one-element list, the
+        spelling a create takes too.
+      */
+      test('relations.edit-points-one', 'points a to-one relation named in an edit', async () => {
+        const [here, there] = [
+          await model('LocationBlock').create(subject.dataset, { name: 'Ham Wall' }),
+          await model('LocationBlock').create(subject.dataset, { name: 'Shapwick' }),
+        ];
+        const event = await model('EventBlock').create(subject.dataset, {
+          title: 'Dawn walk',
+          startDate: '2026-10-10',
+          location: here.id,
+        });
+        const [found] = (await model('EventBlock').findAll(subject.dataset, { where: { id: event.id } })) as (Row & {
+          save(batch?: string): Promise<void>;
+        })[];
+        found.location = [there.id];
+        await found.save();
+
+        const [row] = await reader('EventBlock').findAll(subject.dataset, {
+          where: { id: event.id },
+          include: { location: true },
+        });
+        expect((row.location as Row | undefined)?.id).toBe(there.id);
       });
 
       test('relations.create-links-many', 'links a to-many relation named in a create', async () => {

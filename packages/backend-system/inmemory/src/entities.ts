@@ -484,6 +484,7 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
     const entity = resolved(name);
     const relations = relationsByEntity[name];
     const relationNames = new Set(relations.map((r) => r.name));
+    const toOne = new Set(relations.filter((r) => r.cardinality === 'one').map((r) => r.name));
 
     /** Declared starting values — the manifest's `default`, and nothing invented on top. */
     const defaults = (): Record<string, unknown> => {
@@ -585,6 +586,19 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
             if (typeof value === 'function' || key.startsWith('$')) continue;
             if (jsonProps.has(key)) {
               if (!sameJson(row[key], value)) changed[key] = value;
+              continue;
+            }
+            /*
+              A to-one relation written in an edit is stored as the one id it points at, however it
+              arrives — an id, a record, or a one-element list, which is the spelling AD4M's save
+              needs to write the link at all. A create already reads it that way.
+            */
+            if (toOne.has(key) && value !== '' && value !== null) {
+              const one: unknown = Array.isArray(value) ? value[0] : value;
+              const id = typeof one === 'string' ? one : (one as AnyRow | null | undefined)?.id;
+              if (typeof id !== 'string' || !id) continue;
+              if (row[key] === id) continue;
+              changed[key] = id;
               continue;
             }
             // Only what the caller changed since the read: a default standing in for a cleared field
