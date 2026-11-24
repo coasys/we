@@ -424,7 +424,8 @@ export type SchemaNode = {
   slots?: Record<string, SchemaNode>; // Named slots for components that support them
   slot?: string; // The name of the slot this node should be rendered into
   routes?: RouteSchema[]; // Routes for routing components
-  children?: (SchemaNode | string | OperatorToken)[]; // Child nodes, text strings, or operator tokens ($concat, $store, etc.)
+  /** Child nodes, text, and expressions drawn as their value. No other token: a child has no event and no owner for a query. */
+  children?: (SchemaNode | string | ExpressionToken)[];
   theme?: ThemeOverrides; // Scoped theme overrides — applied as CSS custom properties on a display:contents wrapper
   styles?: Record<string, string | number>; // Raw CSS escape hatch — applied as inline styles on the node wrapper element
   $localState?: Record<string, LocalStateField>; // Scoped local state — creates signals on mount, discarded on unmount

@@ -71,8 +71,7 @@ Pinned by: render vectors `render.node.component`, `render.node.custom-element`,
 
 How an entry is told apart: a string is text; an object with a `type` or an `id` is a node, whatever
 else it carries; any other object whose keys all start with `$` is a token; any other object is a
-node. A writer MUST NOT put any other token (a query, a handler) in `children`, and a renderer is not
-required to draw anything meaningful for one.
+node. Any other token (a query, a handler) in `children` is invalid, and a validator refuses it.
 
 A list entry that is neither a string nor an object is invalid.
 
@@ -86,7 +85,8 @@ Implemented by: [`treeUtils.ts`](../../../packages/schema-system/shared/src/tree
 (`isSchemaChild`), [`SchemaRenderer.tsx`](../../../packages/schema-system/frameworks/solid/src/SchemaRenderer.tsx)
 (`renderChildren`).
 Pinned by: render vectors `render.node.text-children`, `render.node.expression-child`,
-`render.node.reactive-prop`.
+`render.node.reactive-prop`; [`zodSchemas.test.ts`](../../../packages/schema-system/shared/tests/zodSchemas.test.ts)
+(the tokens a child refuses).
 
 ## Slots
 

@@ -1,4 +1,4 @@
-import type { OperatorToken, SchemaNode, SchemaProp } from '@we/schema-shared';
+import type { ExpressionToken, SchemaNode, SchemaProp } from '@we/schema-shared';
 import { field } from '@we/template-kit';
 
 import { aiForms, aiModelsSection, aiSetupFlow, aiSetupHeading } from './AiSettings.schema.ts';
@@ -223,7 +223,7 @@ const firstRunSplash: SchemaNode = {
  * position would be done relative to that wrapper rather than to the window. See `switcherCorner`.
  */
 function accountSwitcher(): SchemaNode {
-  const tile = (label: string | SchemaNode | OperatorToken, avatar: SchemaNode, onClick: SchemaProp): SchemaNode => ({
+  const tile = (label: string | SchemaNode | ExpressionToken, avatar: SchemaNode, onClick: SchemaProp): SchemaNode => ({
     type: 'we-button',
     // Deliberately not disabled mid-switch: the fade out and back is its own flicker, and switching
     // again is a reasonable thing to want. The store handles it.

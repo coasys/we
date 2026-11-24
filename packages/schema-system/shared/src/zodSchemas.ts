@@ -1,7 +1,15 @@
 import { PALETTE_HUES, role, SURFACE_IMAGE_ROLES, TYPE_ROLES } from '@we/tokens';
 import { z } from 'zod';
 
-import type { RouteSchema, SchemaNode, SchemaProp, TemplateMeta, TemplateSchema, ThemeOverrides } from './types';
+import type {
+  ExpressionToken,
+  RouteSchema,
+  SchemaNode,
+  SchemaProp,
+  TemplateMeta,
+  TemplateSchema,
+  ThemeOverrides,
+} from './types';
 
 // Zod's JIT probe trips Electron's production CSP — see the note in @we/backend-shared's
 // queryIR.ts. Repeated per module because the probe fires on the first `z.object()`.
@@ -338,6 +346,50 @@ const zLocalStateDeclaration = z.record(z.string(), zLocalStateField);
 const zQueryStateField = zQuery; // $queries entries use the same neutral query grammar
 const zQueriesDeclaration = z.record(z.string(), zQueryStateField);
 
+/**
+ * What a child is: text, a node, or an expression drawn as its value. No other token — a handler in a
+ * child has no event to run on, and a query no owner to hold its subscription; a question for the
+ * backend is hoisted into `$queries`.
+ *
+ * A token is refused in words before the union is tried, since the union can only say which key it
+ * did not recognise, and "Unrecognized key: $invoke" does not tell the author where it goes instead.
+ */
+const HANDLER_KEYS = new Set([
+  '$invoke',
+  '$if',
+  '$setLocal',
+  '$touch',
+  '$resetLocal',
+  '$toggleLocal',
+  '$toggleLocalIn',
+  '$callLocal',
+]);
+const zChild = z.union([lazySchemaNode, z.string(), zExpressionToken]);
+const zChildren = z.array(z.custom<SchemaNode | string | ExpressionToken>()).superRefine((children, ctx) => {
+  children.forEach((child, index) => {
+    const misplaced =
+      typeof child === 'object' && child !== null && !Array.isArray(child) && !('type' in child) && !('id' in child)
+        ? Object.keys(child).find((key) => key.startsWith('$') && key !== '$')
+        : undefined;
+    if (misplaced) {
+      ctx.addIssue({
+        code: 'custom',
+        path: [index],
+        message:
+          misplaced === '$query'
+            ? 'A child is text, a node or an expression. A $query has no owner here: hoist it into $queries and read it back as local.<name>.'
+            : HANDLER_KEYS.has(misplaced)
+              ? `A child is text, a node or an expression. ${misplaced} has no event to run on here: put it in an event prop such as onClick.`
+              : `A child is text, a node or an expression ({ "$": "…" }); ${misplaced} is not a token.`,
+      });
+      return;
+    }
+    const parsed = zChild.safeParse(child);
+    if (!parsed.success)
+      for (const issue of parsed.error.issues) ctx.addIssue({ ...issue, path: [index, ...issue.path] });
+  });
+});
+
 /** Known node-level operator types */
 export const NODE_OPERATORS = new Set(['$each', '$if', '$routes']);
 
@@ -349,7 +401,7 @@ function schemaNodeShape() {
     slots: z.record(z.string(), lazySchemaNode).optional(),
     slot: z.string().optional(),
     routes: z.array(lazyRouteSchema).optional(),
-    children: z.array(z.union([lazySchemaNode, z.string(), zPropToken])).optional(),
+    children: zChildren.optional(),
     theme: zThemeOverrides.optional(),
     styles: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
     $localState: zLocalStateDeclaration.optional(),
