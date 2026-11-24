@@ -356,8 +356,8 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
   /**
    * A neutral read, as the ORM's options — the one translation, shared by the fetch and the watch.
    *
-   * They must not drift: a watch subscribes in order to fingerprint the rows the fetch would
-   * return, so a difference between the two is a change the graph is never told about. `undefined`
+   * They must not drift: a watch follows the rows the fetch would return and compares each
+   * result with the last, so a difference between the two is a change the graph is never told about. `undefined`
    * means the read resolves to nothing at all, which is a scope this dataset cannot name.
    */
   function queryOptions(request: WatchQuery): QueryOptions | undefined {
@@ -592,7 +592,7 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
     /**
      * Tell the graph when the answer to one of its reads changes here.
      *
-     * The same live path `$query` uses — `EntityClass.query(...).subscribe(...)` — which is why a
+     * The same live path `$query` uses — the live query `EntityClass.query(...)` opens — which is why a
      * post appears in the cards route the moment it is written. The graph took `findAll` instead,
      * so it read once and never again; that is the whole difference between a map of a space and a
      * picture of one.
@@ -600,9 +600,9 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
      * ## Why it subscribes to the seed's own query
      *
      * It used to subscribe to `{ limit: 1 }` over the type, on the reasoning that the rows are
-     * thrown away and only the notification matters. That is not what an AD4M model subscription
-     * is. It re-runs *its own* query on a change and fingerprints the rows, and calls back **only
-     * when that fingerprint differs** — so a one-row probe over a type is silent for every change
+     * thrown away and only the notification matters. That is not what an AD4M live query
+     * is. It re-runs *its own* query on a change and compares the result, and makes a new snapshot **only
+     * when the result differs** — so a one-row probe over a type is silent for every change
      * that leaves its single row alone. A space with one task in it already: extract a second, and
      * the probe's answer is the same first row, so nothing fires and the board stays as loaded.
      * The interpretation panel beside it updated, because its `$query` subscribes to its own narrower

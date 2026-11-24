@@ -12,6 +12,7 @@
  * name an older executor sent, or a class nothing in WE registered. So the read does not depend on
  * which executor answered it.
  */
+import { type LivePage as Page, type LiveQuery, mapLiveQuery } from '@we/backend-shared';
 import { getEntityNameByTargetClass } from '@we/entities';
 
 const SUBJECT_CLASS = '__subjectClass';
@@ -66,60 +67,13 @@ export function nameRecordTypes<T>(rows: T, dataset?: unknown): T {
   return rows;
 }
 
-/** The builder methods that answer rows, by where the rows are: in the answer, or in a callback. */
-const ANSWERS_ROWS = new Set(['get', 'getSparql']);
-const ANSWERS_ROW = new Set(['first']);
-const SUBSCRIBES_ROWS = new Set(['subscribe', 'subscribeSparql']);
-const ANSWERS_PAGE = new Set(['paginate', 'paginateSparql']);
-const SUBSCRIBES_PAGE = new Set(['paginateSubscribe', 'paginateSubscribeSparql']);
-
-const namePage = (page: unknown, dataset: unknown) => {
-  if (isRecord(page)) nameRecordTypes(page.results, dataset);
-  return page;
-};
-
 /**
- * A query builder whose rows come back with their record types named — see {@link nameRecordTypes}.
- * Every other method is the builder's own; a chained one answers this wrapper again.
+ * A live query whose rows come back with their record types named — see {@link nameRecordTypes}.
+ * Each page is named before anyone sees it, the first one and every change after it.
  */
-export function namingBuilder<B extends object>(builder: B, dataset: unknown): B {
-  const wrapped: B = new Proxy(builder, {
-    get(target, property, receiver) {
-      const value = Reflect.get(target, property, receiver) as unknown;
-      if (typeof value !== 'function' || typeof property !== 'string') return value;
-      const method = value as (...args: unknown[]) => unknown;
-      if (ANSWERS_ROWS.has(property)) {
-        return async (...args: unknown[]) => nameRecordTypes(await method.apply(target, args), dataset);
-      }
-      if (ANSWERS_ROW.has(property)) {
-        return async (...args: unknown[]) => {
-          const row = await method.apply(target, args);
-          nameRecordTypes([row], dataset);
-          return row;
-        };
-      }
-      if (SUBSCRIBES_ROWS.has(property)) {
-        return async (callback: (rows: unknown) => void) =>
-          nameRecordTypes(
-            await method.call(target, (rows: unknown) => callback(nameRecordTypes(rows, dataset))),
-            dataset,
-          );
-      }
-      if (ANSWERS_PAGE.has(property)) {
-        return async (...args: unknown[]) => namePage(await method.apply(target, args), dataset);
-      }
-      if (SUBSCRIBES_PAGE.has(property)) {
-        return async (size: unknown, page: unknown, callback: (page: unknown) => void) =>
-          namePage(
-            await method.call(target, size, page, (answer: unknown) => callback(namePage(answer, dataset))),
-            dataset,
-          );
-      }
-      return (...args: unknown[]) => {
-        const answer = method.apply(target, args);
-        return answer === target ? wrapped : answer;
-      };
-    },
+export function namingLive<T>(live: LiveQuery<Page<T>>, dataset: unknown): LiveQuery<Page<T>> {
+  return mapLiveQuery(live, (page) => {
+    nameRecordTypes(page.results, dataset);
+    return page;
   });
-  return wrapped;
 }

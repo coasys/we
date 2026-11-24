@@ -10,26 +10,41 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { followRead, type LiveRead } from '../src/shared/graphWatch';
 
-/** A subscription that answers `initial` and calls back only when the test says so. */
-function liveRead(initial: { id: string }[]) {
-  let callback: ((rows: { id: string }[]) => void) | undefined;
-  let resolve!: (rows: { id: string }[]) => void;
-  const answered = new Promise<{ id: string }[]>((r) => (resolve = r));
-  const subscription: LiveRead<{ id: string }> = {
-    subscribe(cb) {
-      callback = cb;
-      return answered;
+type Row = { id: string };
+type Snapshot = { status: 'ready'; data: { results: Row[] }; initial: boolean };
+
+/** A live query that opens on `initial` when the test says so, and changes only when the test says so. */
+function liveRead(initial: Row[]) {
+  const listeners = new Set<(snapshot: Snapshot) => void>();
+  let current: Snapshot | undefined;
+  let resolve!: (page: { results: Row[] }) => void;
+  let reject!: (error: Error) => void;
+  const first = new Promise<{ results: Row[] }>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  const emit = (rows: Row[], isInitial: boolean) => {
+    current = { status: 'ready', data: { results: rows }, initial: isInitial };
+    for (const fn of [...listeners]) fn(current);
+  };
+  const subscription: LiveRead<Row> = {
+    first,
+    subscribe(fn) {
+      listeners.add(fn as (snapshot: Snapshot) => void);
+      if (current) fn(current as never);
+      return () => void listeners.delete(fn as (snapshot: Snapshot) => void);
     },
     dispose: vi.fn(),
   };
   return {
     subscription,
     answer: async () => {
-      resolve(initial);
-      await answered;
-      await Promise.resolve();
+      emit(initial, true);
+      resolve({ results: initial });
+      await first;
     },
-    change: (rows: { id: string }[]) => callback?.(rows),
+    change: (rows: Row[]) => emit(rows, false),
+    fail: (error: Error) => reject(error),
   };
 }
 
@@ -58,18 +73,6 @@ describe('followRead', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it('reports a change that arrived before the first answer once, not twice', async () => {
-    const read = liveRead([{ id: 'a' }]);
-    const onChange = vi.fn();
-    followRead(read.subscription, { seen: () => [], onChange, onError: vi.fn() });
-
-    read.change([{ id: 'a' }]);
-    await read.answer();
-    await settle();
-
-    expect(onChange).toHaveBeenCalledTimes(1);
-  });
-
   it('reports every change after the first answer', async () => {
     const read = liveRead([{ id: 'a' }]);
     const onChange = vi.fn();
@@ -88,6 +91,7 @@ describe('followRead', () => {
 
     stop();
     await read.answer();
+    read.change([{ id: 'a' }, { id: 'b' }]);
     await settle();
 
     expect(onChange).not.toHaveBeenCalled();
@@ -105,5 +109,16 @@ describe('followRead', () => {
     await settle();
 
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('reports a failure to open', async () => {
+    const read = liveRead([]);
+    const onError = vi.fn();
+    followRead(read.subscription, { seen: () => [], onChange: vi.fn(), onError });
+
+    read.fail(new Error('refused'));
+    await settle();
+
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'refused' }));
   });
 });
