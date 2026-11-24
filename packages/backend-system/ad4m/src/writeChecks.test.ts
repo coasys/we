@@ -101,14 +101,14 @@ describe('adding to a single-valued relation, which replaces its member', () => 
     expect(written).not.toHaveBeenCalled();
   });
 
-  it('checks only add on an empty one, or when the member is already the one added', async () => {
-    const empty = loaded();
-    empty._snapshot = { ...empty._snapshot, owner: null };
-    await empty.addRelationValue('owner', 'did:new');
-    const same = loaded();
-    same._snapshot = { ...same._snapshot, owner: 'did:new' };
-    await same.addRelationValue('owner', 'did:new');
-    expect(kinds()).toEqual(['add:owner', 'add:owner']);
+  it('checks a remove even when the snapshot says empty: a relation write does not update the snapshot', async () => {
+    // Read empty, then two adds: the second replaces the first while the snapshot still says empty.
+    const note = loaded();
+    note._snapshot = { ...note._snapshot, owner: null };
+    refuse = (w) => w.kind === 'remove';
+    await expect(note.addRelationValue('owner', 'did:first')).rejects.toThrow('refused');
+    await expect(note.addRelationValue('owner', 'did:second')).rejects.toThrow('refused');
+    expect(written).not.toHaveBeenCalled();
   });
 
   it('checks only add on a collection', async () => {

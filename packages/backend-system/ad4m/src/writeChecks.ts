@@ -94,10 +94,6 @@ const idsOf = (value: unknown): string[] =>
     return typeof id === 'string' ? id : '';
   });
 
-/** The ids a relation held when the instance was read, or null when there is no snapshot to say. */
-const currentOf = (model: ModelInternals, relation: string): string[] | null =>
-  model._snapshot && relation in model._snapshot ? idsOf(model._snapshot[relation]) : null;
-
 /** As the SDK reads it: a relation with `maxCount === 1` holds one member, and adding replaces it. */
 const isSingleValued = (model: ModelInternals, relation: string): boolean =>
   model.constructor.getModelMetadata?.().relations?.[relation]?.maxCount === 1;
@@ -165,16 +161,13 @@ export function installWriteChecks(model: typeof Ad4mModel): void {
     }),
   );
 
-  // Adding to a single-valued relation replaces its member, so it removes one too when there is one
-  // other than the one added (or, with no snapshot to say, may).
-  wrap('addRelationValue', async (self, [key, value]) => {
+  // Adding to a single-valued relation replaces its member, so it is checked as a remove too. The
+  // snapshot cannot rule a replacement out: a relation write does not update it.
+  wrap('addRelationValue', async (self, [key]) => {
     if (self[SAVING]) return;
     const relation = String(key);
     await relationCheck(self, 'add', relation);
-    if (!isSingleValued(self, relation)) return;
-    const current = currentOf(self, relation);
-    const [added] = idsOf(value);
-    if (!current || current.some((id) => id !== added)) await relationCheck(self, 'remove', relation);
+    if (isSingleValued(self, relation)) await relationCheck(self, 'remove', relation);
   });
   wrap('removeRelationValue', (self, [key]) => (self[SAVING] ? undefined : relationCheck(self, 'remove', String(key))));
   // Setting a list adds what is new and removes what is gone. Without a snapshot to diff against,
@@ -183,7 +176,7 @@ export function installWriteChecks(model: typeof Ad4mModel): void {
     if (self[SAVING]) return;
     const relation = String(key);
     const next = idsOf(value);
-    const current = currentOf(self, relation);
+    const current = self._snapshot && relation in self._snapshot ? idsOf(self._snapshot[relation]) : null;
     if (!current || next.some((id) => !current.includes(id))) await relationCheck(self, 'add', relation);
     if (!current || current.some((id) => !next.includes(id))) await relationCheck(self, 'remove', relation);
   });
