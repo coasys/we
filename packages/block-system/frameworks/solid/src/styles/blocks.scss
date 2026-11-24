@@ -224,12 +224,24 @@
 // whole content, where a thread wraps and does not.
 .we-block-content--compact {
   :is(.we-block, p, h1, h2, h3, blockquote, .we-list-item) {
-    padding: var(--we-space-100) 0;
+    padding-top: var(--we-space-100);
+    padding-right: 0;
+    padding-bottom: var(--we-space-100);
   }
 
-  // The markers' room, given back: `::before` is positioned at `left: 10px` in both.
-  :is(blockquote, .we-list-item) {
-    padding-left: 30px;
+  /*
+    The left inset goes only where no marker sits in it: a bullet and a quote bar keep the room
+    their `::before`/`::after` is positioned into (`left: 10px`), which the document rule gives them.
+
+    Not "take it off everything, then give the markers theirs back", which is how this was first
+    written and why no list in a thread ever showed its bullet. `.we-list-item` and `blockquote`
+    `@extend .we-block`, so Sass expands the `:is()` above to include `.we-block-content .we-list-item`
+    — two classes — and an `:is()` is as specific as its most specific argument. The rule taking the
+    padding off out-ranked the one giving it back, and every compact list item drew its bullet over
+    its first letter.
+  */
+  :is(.we-block, p, h1, h2, h3):not(blockquote, .we-list-item) {
+    padding-left: 0;
   }
 
   .we-list-item::before {
