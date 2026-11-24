@@ -40,3 +40,4 @@ let preconditions mean more than "on this replica, at commit".
 
 Details: `packages/entities/CONVENTIONS.md` ("Declaring an operation"), `docs/architecture/space-policy.md`,
 `docs/architecture/capabilities-and-surfaces.md`.
+The format, normatively, with its conformance vectors: [`docs/spec/operations/`](../../spec/operations/README.md).

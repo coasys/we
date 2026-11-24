@@ -43,6 +43,12 @@ How to build with WE.
 Per-system docs live with the code — every `packages/<system>/` directory has a README
 (`graph-system`'s is the model), and packages with authoring rules carry a `CONVENTIONS.md`.
 
+## Specifications
+
+Normative specs of WE's portable formats, for another implementation to read and run the same data,
+each with a conformance suite: [spec/](spec/README.md). Start with
+[declared operations](spec/operations/README.md).
+
 ## Decisions
 
 The choices every later change has to respect — one file each, with what was rejected and when to
