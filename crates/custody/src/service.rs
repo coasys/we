@@ -5572,6 +5572,23 @@ mod tests {
             self.block.enter();
             self.inner.claim_secret(n, b)
         }
+        fn put_tagged(
+            &self,
+            n: &str,
+            b: &[u8],
+            tag: &crate::store::ItemTag,
+        ) -> Result<(), VaultError> {
+            self.block.enter();
+            self.inner.put_tagged(n, b, tag)
+        }
+        fn tag_of(&self, n: &str) -> Result<Option<crate::store::ItemTag>, VaultError> {
+            self.block.enter();
+            self.inner.tag_of(n)
+        }
+        fn rename(&self, from: &str, to: &str) -> Result<(), VaultError> {
+            self.block.enter();
+            self.inner.rename(from, to)
+        }
     }
 
     struct ManualClock(std::sync::atomic::AtomicU64);
@@ -5639,7 +5656,13 @@ mod tests {
                             CHEAP,
                         ));
                         confirmed(41)
-                            .finish(&executor, &vault.unlocking(None))
+                            .finish(
+                                &executor,
+                                &vault.unlocking(None),
+                                this_computer(None, true, Some(0)),
+                                &CLOCK,
+                                &RANDOM,
+                            )
                             .await
                             .expect("create");
                         let (address, _, _, _, _) = opened();
