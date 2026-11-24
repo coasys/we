@@ -1005,6 +1005,9 @@ importers:
       '@we/entities':
         specifier: workspace:*
         version: link:../../entities
+      marked:
+        specifier: ^18.1.2
+        version: 18.1.2
     devDependencies:
       '@we/cli':
         specifier: workspace:*

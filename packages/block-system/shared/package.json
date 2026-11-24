@@ -17,9 +17,10 @@
     }
   },
   "dependencies": {
+    "@we/backend-shared": "workspace:*",
     "@we/design-types": "workspace:*",
     "@we/entities": "workspace:*",
-    "@we/backend-shared": "workspace:*"
+    "marked": "^18.1.2"
   },
   "peerDependencies": {},
   "devDependencies": {

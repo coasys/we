@@ -52,6 +52,7 @@ export {
 } from './marks';
 export type { FoundUrl } from './links';
 export { findUrls, isUrl, withFoundLinks } from './links';
+export { markdownToBlocks } from './markdown';
 export type { BlockEntityStatic, BlockRegistration } from './registry';
 export {
   getBlockRecord,
