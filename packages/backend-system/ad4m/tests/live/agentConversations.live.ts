@@ -44,6 +44,8 @@ describe('agent conversations, live', () => {
   let space: PerspectiveProxy;
   let conversations: ReturnType<typeof createAd4mAgentConversations>;
   const made: string[] = [];
+  /** The session `id` from `ai.sessionList` (the executor has no single-session read), or undefined. */
+  const sessionById = async (id: string) => (await client.ai.sessionList()).find((s) => s.id === id);
 
   beforeAll(async () => {
     const { url, token } = inject('ad4mExecutor');
@@ -62,7 +64,7 @@ describe('agent conversations, live', () => {
     const ref = await conversations.create({ title: 'global chat' });
     made.push(ref.id);
 
-    const session = await client.ai.session(ref.id);
+    const session = (await sessionById(ref.id))!;
     expect(session.id).toBe(ref.id);
     expect(session.title).toBe('global chat');
     // Created without `capabilities`: the row either stores none or the token's materialized
@@ -76,7 +78,7 @@ describe('agent conversations, live', () => {
     const ref = await conversations.create({ title: 'space chat', scope: { perspectiveUuid: space.uuid } });
     made.push(ref.id);
 
-    const session = await client.ai.session(ref.id);
+    const session = (await sessionById(ref.id))!;
     expect(session.defaultPerspective).toBe(space.uuid);
     // The executor may hand the grant back as one capability per action (a multi-user executor
     // does), so compare the grants the capabilities give, not how they are grouped.
@@ -106,10 +108,10 @@ describe('agent conversations, live', () => {
   it('renames a session and drops it', async () => {
     const ref = await conversations.create({ title: 'before' });
     await conversations.update?.(ref, { title: 'after' });
-    expect((await client.ai.session(ref.id)).title).toBe('after');
+    expect((await sessionById(ref.id))?.title).toBe('after');
 
     await conversations.delete(ref);
-    await expect(client.ai.session(ref.id)).rejects.toThrow();
+    expect(await sessionById(ref.id)).toBeUndefined();
     expect((await conversations.list()).some((s) => s.ref.id === ref.id)).toBe(false);
   });
 

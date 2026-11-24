@@ -27,9 +27,9 @@ cheap-kdf = []
 # the two agree. For a local ad4m checkout, override with
 #   cargo test --config 'patch."https://github.com/coasys/ad4m".ad4m-identity-client.path="<ad4m>/ad4m-identity-client"' …
 # (and the same for ad4m-identity-core and ad4m-client), as `crates/custody/README.md` says.
-ad4m-identity-client = { git = "https://github.com/coasys/ad4m", rev = "6296f4e54edf62bf403cf5f0e2cb67d7cbd268fb", features = ["ws"] }
-ad4m-identity-core = { git = "https://github.com/coasys/ad4m", rev = "6296f4e54edf62bf403cf5f0e2cb67d7cbd268fb", features = ["build", "words"] }
-ad4m-client = { git = "https://github.com/coasys/ad4m", rev = "6296f4e54edf62bf403cf5f0e2cb67d7cbd268fb" }
+ad4m-identity-client = { git = "https://github.com/coasys/ad4m", rev = "01f300363def0cc1528d499454c95bb8a6c8f894", features = ["ws"] }
+ad4m-identity-core = { git = "https://github.com/coasys/ad4m", rev = "01f300363def0cc1528d499454c95bb8a6c8f894", features = ["build", "words"] }
+ad4m-client = { git = "https://github.com/coasys/ad4m", rev = "01f300363def0cc1528d499454c95bb8a6c8f894" }
 # `io-std` and `io-util`: the sidecar's lines on stdin and stdout.
 tokio = { version = "1", features = ["rt", "sync", "macros", "time", "io-std", "io-util"] }
 serde = { version = "1", features = ["derive"] }

@@ -42,7 +42,7 @@ instead be bare strings, bare numbers, or `{ value: number }`. Comparison uses
 the scalar text, as a set. A label or any other field is compared beside that
 set. A save that would drop one stays read-only.
 A _number_ property stores its values as
-`literal:number:2` (`valueToLiteralIri` → `Literal.from(2).toUrl()`), while its
+`literal:number:2` (`Literal.from(2).toUrl()`), while its
 option is `{ value: '2' }` — the decoded scalar's string form. A URI-valued
 option (`task://todo`) stores the URI itself, so one rule covers both: **A1
 compares `String(term)` against `value`, where `term` is
