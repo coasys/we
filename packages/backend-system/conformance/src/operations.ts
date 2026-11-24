@@ -398,6 +398,45 @@ const CASES: OperationCase[] = [
     invokedAt: AT,
     observe: [{ entity: 'Placement', fields: ['nodeType', 'x', 'y'], relations: [] }],
   },
+  /*
+    The slug rule every vocabulary create follows: derived from the name, and refused when the space
+    already holds it — a retired record included, since it still names the work sitting in it.
+  */
+  {
+    id: 'core-create-task-state-taken',
+    note: 'core.createTaskState refuses a name whose slug a retired state still holds, and writes nothing',
+    operations: CORE_OPERATIONS,
+    dataset: [
+      { entity: 'TaskState', id: 'urn:example:blocked', fields: { name: 'Blocked', slug: 'blocked', retired: true } },
+    ],
+    operation: 'createTaskState',
+    args: { name: ' BLOCKED ' },
+    invocationId: '00000000-0000-4000-8000-000000000020',
+    invokedAt: AT,
+    observe: [{ entity: 'TaskState', fields: ['name', 'slug', 'retired'], relations: [] }],
+  },
+  {
+    id: 'core-mark-read-heals',
+    note: 'core.markRead moves the oldest marker for a record to the invocation’s time and removes a doubled one',
+    operations: CORE_OPERATIONS,
+    dataset: [
+      {
+        entity: 'ReadMarker',
+        id: 'urn:example:marker',
+        fields: { nodeId: 'urn:example:channel', spaceUuid: 'space', lastReadAt: '2026-01-01T00:00:00.000Z' },
+      },
+      {
+        entity: 'ReadMarker',
+        id: 'urn:example:doubled',
+        fields: { nodeId: 'urn:example:channel', spaceUuid: 'space', lastReadAt: '2026-01-02T00:00:00.000Z' },
+      },
+    ],
+    operation: 'markRead',
+    args: { node: 'urn:example:channel', space: 'space' },
+    invocationId: '00000000-0000-4000-8000-000000000021',
+    invokedAt: AT,
+    observe: [{ entity: 'ReadMarker', fields: ['nodeId', 'spaceUuid', 'lastReadAt'], relations: [] }],
+  },
 ];
 
 /** Each case carries only the operation it runs, so its vector reads on its own. */

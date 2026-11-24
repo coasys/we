@@ -1784,6 +1784,301 @@
           }
         ]
       }
+    },
+    {
+      "id": "core-create-task-state-taken",
+      "note": "core.createTaskState refuses a name whose slug a retired state still holds, and writes nothing",
+      "manifest": {
+        "version": "1",
+        "entities": {},
+        "operations": {
+          "createTaskState": {
+            "description": "Name a state this community’s work moves through, refused when the space already has one by that name.",
+            "params": {
+              "name": {
+                "type": "string",
+                "required": true,
+                "description": "What the state is called."
+              },
+              "semantic": {
+                "type": "string",
+                "description": "What it counts as, one of ['open', 'active', 'blocked', 'done', 'cancelled']; open when not given."
+              },
+              "icon": {
+                "type": "string",
+                "description": "A glyph; empty clears it."
+              },
+              "color": {
+                "type": "string",
+                "description": "A colour; empty clears it."
+              }
+            },
+            "errors": {
+              "noSlug": "That name needs a letter or a digit in it.",
+              "slugTaken": "This space already has one called that.",
+              "notASemantic": "That is not something a state can count as."
+            },
+            "steps": [
+              {
+                "check": {
+                  "condition": {
+                    "$": "!semantic || semantic in ['open', 'active', 'blocked', 'done', 'cancelled']"
+                  },
+                  "error": "notASemantic"
+                }
+              },
+              {
+                "check": {
+                  "condition": {
+                    "$": "slug(trim(name)) != ''"
+                  },
+                  "error": "noSlug"
+                }
+              },
+              {
+                "find": {
+                  "as": "taken",
+                  "entity": "TaskState",
+                  "where": {
+                    "slug": {
+                      "$": "slug(trim(name))"
+                    }
+                  }
+                }
+              },
+              {
+                "check": {
+                  "condition": {
+                    "$": "count(taken) == 0"
+                  },
+                  "error": "slugTaken"
+                }
+              },
+              {
+                "create": {
+                  "as": "made",
+                  "entity": "TaskState",
+                  "fields": {
+                    "name": {
+                      "$": "trim(name)"
+                    },
+                    "slug": {
+                      "$": "slug(trim(name))"
+                    },
+                    "semantic": {
+                      "$": "semantic ?? 'open'"
+                    },
+                    "color": {
+                      "$": "color"
+                    },
+                    "icon": {
+                      "$": "icon"
+                    }
+                  }
+                }
+              }
+            ],
+            "returns": {
+              "$": "made"
+            }
+          }
+        }
+      },
+      "dataset": [
+        {
+          "entity": "TaskState",
+          "id": "urn:example:blocked",
+          "fields": {
+            "name": "Blocked",
+            "slug": "blocked",
+            "retired": true
+          }
+        }
+      ],
+      "operation": "createTaskState",
+      "args": {
+        "name": " BLOCKED "
+      },
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000020",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "TaskState",
+          "fields": ["name", "slug", "retired"],
+          "relations": []
+        }
+      ],
+      "outcome": {
+        "error": {
+          "class": "precondition",
+          "code": "slugTaken"
+        }
+      },
+      "records": {
+        "TaskState": [
+          {
+            "id": "urn:example:blocked",
+            "name": "Blocked",
+            "slug": "blocked",
+            "retired": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "core-mark-read-heals",
+      "note": "core.markRead moves the oldest marker for a record to the invocation’s time and removes a doubled one",
+      "manifest": {
+        "version": "1",
+        "entities": {},
+        "operations": {
+          "markRead": {
+            "description": "Say the invoker has read a record as of now: one marker per record, moved forward.",
+            "params": {
+              "node": {
+                "type": "string",
+                "required": true,
+                "description": "The record read."
+              },
+              "space": {
+                "type": "string",
+                "required": true,
+                "description": "The space’s dataset id."
+              }
+            },
+            "steps": [
+              {
+                "find": {
+                  "as": "rows",
+                  "entity": "ReadMarker",
+                  "where": {
+                    "nodeId": {
+                      "$": "node"
+                    }
+                  },
+                  "order": {
+                    "createdAt": "asc"
+                  }
+                }
+              },
+              {
+                "create": {
+                  "as": "made",
+                  "entity": "ReadMarker",
+                  "fields": {
+                    "nodeId": {
+                      "$": "node"
+                    },
+                    "spaceUuid": {
+                      "$": "space"
+                    },
+                    "lastReadAt": {
+                      "$": "invokedAt"
+                    }
+                  }
+                },
+                "when": {
+                  "$": "count(rows) == 0"
+                }
+              },
+              {
+                "update": {
+                  "entity": "ReadMarker",
+                  "id": {
+                    "$": "first(rows)"
+                  },
+                  "fields": {
+                    "spaceUuid": {
+                      "$": "space"
+                    },
+                    "lastReadAt": {
+                      "$": "invokedAt"
+                    }
+                  }
+                },
+                "when": {
+                  "$": "count(rows) > 0"
+                }
+              },
+              {
+                "forEach": {
+                  "in": {
+                    "$": "slice(rows, 1)"
+                  },
+                  "as": "extra",
+                  "steps": [
+                    {
+                      "delete": {
+                        "entity": "ReadMarker",
+                        "id": {
+                          "$": "extra"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            "returns": {
+              "$": "merge({ id: count(rows) > 0 ? first(rows).id : made.id }, { nodeId: node, spaceUuid: space, lastReadAt: invokedAt })"
+            }
+          }
+        }
+      },
+      "dataset": [
+        {
+          "entity": "ReadMarker",
+          "id": "urn:example:marker",
+          "fields": {
+            "nodeId": "urn:example:channel",
+            "spaceUuid": "space",
+            "lastReadAt": "2026-01-01T00:00:00.000Z"
+          }
+        },
+        {
+          "entity": "ReadMarker",
+          "id": "urn:example:doubled",
+          "fields": {
+            "nodeId": "urn:example:channel",
+            "spaceUuid": "space",
+            "lastReadAt": "2026-01-02T00:00:00.000Z"
+          }
+        }
+      ],
+      "operation": "markRead",
+      "args": {
+        "node": "urn:example:channel",
+        "space": "space"
+      },
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000021",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "ReadMarker",
+          "fields": ["nodeId", "spaceUuid", "lastReadAt"],
+          "relations": []
+        }
+      ],
+      "outcome": {
+        "result": {
+          "id": "urn:example:marker",
+          "lastReadAt": "2026-11-24T00:00:00.000Z",
+          "nodeId": "urn:example:channel",
+          "spaceUuid": "space"
+        }
+      },
+      "records": {
+        "ReadMarker": [
+          {
+            "id": "urn:example:marker",
+            "nodeId": "urn:example:channel",
+            "spaceUuid": "space",
+            "lastReadAt": "2026-11-24T00:00:00.000Z"
+          }
+        ]
+      }
     }
   ]
 }
