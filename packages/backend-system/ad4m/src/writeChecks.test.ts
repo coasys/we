@@ -117,6 +117,17 @@ describe('adding to a single-valued relation, which replaces its member', () => 
   });
 });
 
+describe('setting a list, which the snapshot cannot diff', () => {
+  it('checks a remove on successive sets after an empty read: the first set does not update the snapshot', async () => {
+    const note = loaded();
+    note._snapshot = { ...note._snapshot, children: [] };
+    refuse = (w) => w.kind === 'remove';
+    await expect(note.setRelationValues('children', ['a'])).rejects.toThrow('refused');
+    await expect(note.setRelationValues('children', [])).rejects.toThrow('refused');
+    expect(written).not.toHaveBeenCalled();
+  });
+});
+
 describe('the write check on the production adapter', () => {
   it('checks a save of a new instance as a create, and its own relation writes not at all', async () => {
     const note = new FakeModel();
@@ -157,19 +168,17 @@ describe('the write check on the production adapter', () => {
     expect(await writes[0].record!()).toMatchObject({ id: 'n-2', text: 'stored', author: 'did:ann' });
   });
 
-  it('checks a relation write as an add or a remove, and setting a list as what it changes', async () => {
+  it('checks a relation write as an add or a remove, and setting a list as both unless it empties it', async () => {
     const note = loaded();
     await note.addRelationValue('children', 'b');
     await note.removeRelationValue('children', 'a');
-    await note.setRelationValues('children', ['a', 'c']); // adds c
-    await note.setRelationValues('children', []); // removes a
-    await new FakeModel('n-3').setRelationValues('children', ['x']); // nothing to diff against
+    await note.setRelationValues('children', ['a', 'c']);
+    await note.setRelationValues('children', []); // adds nothing
     expect(writes.map((w) => `${w.kind}:${w.relation}`)).toEqual([
       'add:children',
       'remove:children',
       'add:children',
       'remove:children',
-      'add:children',
       'remove:children',
     ]);
   });

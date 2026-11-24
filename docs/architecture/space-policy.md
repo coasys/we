@@ -75,7 +75,8 @@ An add to a single-valued relation (a `@HasOne`, `maxCount` 1) replaces its memb
 `<Entity>.<relation>.add` and `.remove`, even when the relation is empty: the model's snapshot does not
 move on a relation write, so it cannot rule a replacement out. A role that may fill such a relation
 needs both permissions. (The in-memory backend has no add on a to-one relation: it sets the link
-through the record, which is an edit.)
+through the record, which is an edit.) For the same reason, setting a relation's whole list needs
+`.remove`, and `.add` too unless the list is empty.
 
 - **The backends.** The in-memory backend asks in each write method. The production adapter installs
   the check on its model base class (`backend-ad4m/src/writeChecks.ts`), so every model class,

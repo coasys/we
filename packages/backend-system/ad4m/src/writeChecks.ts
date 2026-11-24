@@ -170,15 +170,13 @@ export function installWriteChecks(model: typeof Ad4mModel): void {
     if (isSingleValued(self, relation)) await relationCheck(self, 'remove', relation);
   });
   wrap('removeRelationValue', (self, [key]) => (self[SAVING] ? undefined : relationCheck(self, 'remove', String(key))));
-  // Setting a list adds what is new and removes what is gone. Without a snapshot to diff against,
-  // it may do either, so it is checked as both.
+  // Setting a list adds what is new and removes what is gone. The snapshot cannot say which, for the
+  // same reason, so it is checked as both: as a remove only when it empties the relation.
   wrap('setRelationValues', async (self, [key, value]) => {
     if (self[SAVING]) return;
     const relation = String(key);
-    const next = idsOf(value);
-    const current = self._snapshot && relation in self._snapshot ? idsOf(self._snapshot[relation]) : null;
-    if (!current || next.some((id) => !current.includes(id))) await relationCheck(self, 'add', relation);
-    if (!current || current.some((id) => !next.includes(id))) await relationCheck(self, 'remove', relation);
+    if (idsOf(value).length) await relationCheck(self, 'add', relation);
+    await relationCheck(self, 'remove', relation);
   });
 
   prototype[PATCHED] = true;
