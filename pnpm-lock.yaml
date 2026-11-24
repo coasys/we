@@ -1440,6 +1440,9 @@ importers:
       '@we/backend-shared':
         specifier: workspace:*
         version: link:../backend-system/shared
+      '@we/expressions':
+        specifier: workspace:*
+        version: link:../schema-system/expressions
     devDependencies:
       '@types/node':
         specifier: ^26.6.6
