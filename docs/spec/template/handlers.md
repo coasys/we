@@ -180,7 +180,7 @@ A node MAY declare `$localState`, an object of field name to declaration:
 | Key         | Value                                                                                                                                 |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | `type`      | REQUIRED. `string`, `boolean`, `number`, `object`, `array` (a set of values, the type `$toggleLocalIn` writes), `function` or `file`. |
-| `initial`   | REQUIRED. A literal (text, number, boolean, `null` or a list) or a token: the value at mount.                                         |
+| `initial`   | REQUIRED. A literal (text, number, boolean, `null` or a list) or a token: the value at mount. Text is text, whatever it starts with.  |
 | `validate`  | A list of [validation rules](values.md#validation-rules).                                                                             |
 | `syncParam` | Mirror the field into a URL query parameter: text naming it, or `{ "name", "push"? }`.                                                |
 | `persist`   | Keep the field on the device, under the text given as its key.                                                                        |
@@ -199,7 +199,7 @@ seeded from the space on screen follows a change of space).
 Implemented by: [`SchemaRenderer.tsx`](../../../packages/schema-system/frameworks/solid/src/SchemaRenderer.tsx)
 (`$localState`), [`types.ts`](../../../packages/schema-system/shared/src/types.ts) (`LocalStateField`).
 Pinned by: render vectors `render.local.initial`, `render.local.initial-expression`,
-`render.local.shadowing`, `render.local.per-row`.
+`render.local.initial-dollar-text`, `render.local.shadowing`, `render.local.per-row`.
 
 ### Persistence: `syncParam` and `persist`
 

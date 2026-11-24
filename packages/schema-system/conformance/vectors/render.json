@@ -6684,6 +6684,66 @@
           "actions": []
         }
       ]
+    },
+    {
+      "id": "render.local.initial-dollar-text",
+      "note": "an initial string is text whatever it starts with, even where it names a bound value",
+      "template": {
+        "type": "$each",
+        "props": {
+          "items": {
+            "$": "app.rows"
+          },
+          "as": "row"
+        },
+        "children": [
+          {
+            "type": "Column",
+            "$localState": {
+              "s": {
+                "type": "string",
+                "initial": "$row.name"
+              }
+            },
+            "children": [
+              {
+                "type": "we-text",
+                "children": [
+                  {
+                    "$": "local.s"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "data": {
+        "app": {
+          "rows": [
+            {
+              "id": "a",
+              "name": "Ann"
+            }
+          ]
+        }
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["$row.name"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
     }
   ]
 }

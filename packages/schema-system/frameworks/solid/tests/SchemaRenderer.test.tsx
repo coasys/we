@@ -250,17 +250,24 @@ describe('SchemaRenderer', () => {
     expect(input.value).toBe('My Space');
   });
 
-  it('leaves a literal starting with $ alone when it matches no context key', () => {
+  it('reads an initial string starting with $ as text, even where it names a bound value', () => {
     const InputComp = (props: any) => <input data-testid="input" value={props.value} />;
     const registry: ComponentRegistry = { InputComp };
+    const stores = { spaceStore: { spaceList: markReactive(() => [{ uuid: 'abc', name: 'My Space' }]) } };
     const node: SchemaNode = {
-      type: 'div',
-      $localState: { price: { type: 'string', initial: '$5.00' as any } },
-      children: [{ type: 'InputComp', props: { value: { $: 'local.price' } } }],
+      type: '$each',
+      props: { items: { $: 'spaceStore.spaceList' }, as: 'space' },
+      children: [
+        {
+          type: 'div',
+          $localState: { editName: { type: 'string', initial: '$space.name' } },
+          children: [{ type: 'InputComp', props: { value: { $: 'local.editName' } } }],
+        },
+      ],
     };
-    const { container } = renderSchema(node, { registry, stores: {} });
+    const { container } = renderSchema(node, { registry, stores });
     const input = container.querySelector('[data-testid="input"]') as HTMLInputElement;
-    expect(input.value).toBe('$5.00');
+    expect(input.value).toBe('$space.name');
   });
 
   it('resets $localState signal when the $store expression source changes reactively', async () => {

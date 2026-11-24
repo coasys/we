@@ -738,29 +738,16 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
     const metaEntries: Record<string, LocalFieldMeta> = {};
     const scopeFields: string[] = [];
 
-    // Evaluate an `initial` value: if it's an expression, resolve it once against the current
-    // stores + parent context. Otherwise use it as a literal. Called both at mount and inside
-    // reset() so that reset re-reads the current store value.
-    //
-    // Expression means either a token object (`{ $: … }`, `{ $query: … }`) or a `$`-prefixed
-    // **string** — the old context reference, `'$space.name'`. Only objects were resolved here, so a
-    // form seeded from a `$each` item silently rendered the string `$space.name` in its input: no
-    // error, and the field looked filled in.
-    //
-    // **This is the last place a `$`-string evaluates.** Every other position treats one as literal
-    // text and the validator rejects it, which is the contract as of #169 — an `initial` is the one
-    // exception, kept so a template written before that still seeds its fields rather than putting
-    // the ten characters into them. Do not read this as the spelling being alive.
-    //
-    // A `$`-string that matches no context key or store global comes back unchanged (the
-    // dispatcher's final pass-through), so a literal that merely starts with `$` is unaffected.
+    // Evaluate an `initial` value: if it's a token (`{ $: … }`), resolve it once against the current
+    // stores + parent context. Otherwise use it as a literal — a string included, whatever it starts
+    // with, as everywhere else. Called both at mount and inside reset() so that reset re-reads the
+    // current store value.
     const resolveInitial = (raw: unknown): unknown => {
       const isExpression =
-        (typeof raw === 'string' && raw.startsWith('$') && raw.length > 1) ||
-        (raw !== null &&
-          typeof raw === 'object' &&
-          !Array.isArray(raw) &&
-          Object.keys(raw).some((k) => k.startsWith('$')));
+        raw !== null &&
+        typeof raw === 'object' &&
+        !Array.isArray(raw) &&
+        Object.keys(raw).some((k) => k.startsWith('$'));
       if (!isExpression) return raw;
 
       const resolved = resolveProp(raw, stores, context);

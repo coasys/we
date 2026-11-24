@@ -1183,4 +1183,20 @@ export const RENDER_CASES: RenderCase[] = [
       },
     ],
   }),
+  C(
+    'render.local.initial-dollar-text',
+    'an initial string is text whatever it starts with, even where it names a bound value',
+    {
+      type: '$each',
+      props: { items: { $: 'app.rows' }, as: 'row' },
+      children: [
+        {
+          type: 'Column',
+          $localState: { s: { type: 'string', initial: '$row.name' } },
+          children: [text({ $: 'local.s' })],
+        },
+      ],
+    },
+    { data: { app: { rows: [{ id: 'a', name: 'Ann' }] } } },
+  ),
 ];
