@@ -17,7 +17,14 @@
 import { readFileSync } from 'node:fs';
 
 import type { DatasetHandle, OperationDefinition } from '@we/backend-shared';
-import { getEntity, isOperationError, registerOperations, runOperation, unregisterOperations } from '@we/entities';
+import {
+  callsOf,
+  getEntity,
+  isOperationError,
+  registerOperations,
+  runOperation,
+  unregisterOperations,
+} from '@we/entities';
 import { CORE_OPERATIONS } from '@we/entities/manifest';
 import { beforeEach, describe, expect, it } from 'vitest';
 
@@ -63,6 +70,11 @@ export interface OperationVector {
   id: string;
   note: string;
   manifest: { version: string; entities: Record<string, never>; operations: Record<string, OperationDefinition> };
+  /**
+   * WE's own operations the case's operation calls, at any depth, by qualified name (`core.thread`)
+   * — registered under their own namespaces by whoever runs the vector, as a call names them.
+   */
+  calls: Record<string, OperationDefinition>;
   dataset: SeedRecord[];
   operation: string;
   args: Record<string, unknown>;
@@ -437,6 +449,59 @@ const CASES: OperationCase[] = [
     invokedAt: AT,
     observe: [{ entity: 'ReadMarker', fields: ['nodeId', 'spaceUuid', 'lastReadAt'], relations: [] }],
   },
+  /*
+    The generic record writes, on whatever record type they are handed: several deleted as one act,
+    and a record moved between holders through a relation the call names.
+  */
+  {
+    id: 'core-delete-records-any',
+    note: 'core.deleteRecords deletes records of two types named at run time, and leaves the rest',
+    operations: CORE_OPERATIONS,
+    dataset: [
+      { entity: 'TaskBlock', id: 'urn:example:gone-task', fields: { title: 'Gone', status: 'todo' } },
+      { entity: 'TaskBlock', id: 'urn:example:kept-task', fields: { title: 'Kept', status: 'todo' } },
+      { entity: 'TextBlock', id: 'urn:example:gone-line', fields: { text: 'gone' } },
+    ],
+    operation: 'deleteRecords',
+    args: {
+      records: [
+        { entity: 'TaskBlock', id: 'urn:example:gone-task' },
+        { entity: 'TextBlock', id: 'urn:example:gone-line' },
+      ],
+    },
+    invocationId: '00000000-0000-4000-8000-000000000022',
+    invokedAt: AT,
+    observe: [
+      { entity: 'TaskBlock', fields: ['title'], relations: [] },
+      { entity: 'TextBlock', fields: ['text'], relations: [] },
+    ],
+  },
+  {
+    id: 'core-move-under',
+    note: 'core.moveUnder takes a record off one holder’s list and onto another’s, the relation named at run time',
+    operations: CORE_OPERATIONS,
+    dataset: [
+      { entity: 'TaskBlock', id: 'urn:example:card', fields: { title: 'Card', status: 'todo' } },
+      {
+        entity: 'CollectionBlock',
+        id: 'urn:example:from',
+        fields: { kind: 'folder' },
+        relations: { children: ['urn:example:card'] },
+      },
+      { entity: 'CollectionBlock', id: 'urn:example:to', fields: { kind: 'folder' } },
+    ],
+    operation: 'moveUnder',
+    args: {
+      holder: 'CollectionBlock',
+      relation: 'children',
+      record: 'urn:example:card',
+      from: 'urn:example:from',
+      to: 'urn:example:to',
+    },
+    invocationId: '00000000-0000-4000-8000-000000000023',
+    invokedAt: AT,
+    observe: [{ entity: 'CollectionBlock', fields: ['kind'], relations: ['children'] }],
+  },
 ];
 
 /** Each case carries only the operation it runs, so its vector reads on its own. */
@@ -444,6 +509,25 @@ export const OPERATION_CASES: OperationCase[] = CASES.map((c) => ({
   ...c,
   operations: { [c.operation]: c.operations[c.operation] },
 }));
+
+/** The core operations a definition calls, at any depth, by qualified name, sorted. */
+function coreCalls(op: OperationDefinition): Record<string, OperationDefinition> {
+  const found: Record<string, OperationDefinition> = {};
+  const visit = (current: OperationDefinition) => {
+    for (const name of callsOf(current)) {
+      const callee = name.startsWith('core.') ? CORE_OPERATIONS[name.slice('core.'.length)] : undefined;
+      if (!callee || name in found) continue;
+      found[name] = callee;
+      visit(callee);
+    }
+  };
+  visit(op);
+  return Object.fromEntries(
+    Object.keys(found)
+      .sort()
+      .map((name) => [name, found[name]]),
+  );
+}
 
 export const OPERATION_CONFORMANCE_CASES = OPERATION_CASES.map((c) => `operations.${c.id}` as const);
 export type OperationConformanceCase = `operations.${string}`;
@@ -519,6 +603,7 @@ export function vectorOf(c: OperationCase, produced: Pick<OperationVector, 'outc
     id: c.id,
     note: c.note,
     manifest: { version: '1', entities: {}, operations: c.operations },
+    calls: coreCalls(c.operations[c.operation]),
     dataset: c.dataset,
     operation: c.operation,
     args: c.args,

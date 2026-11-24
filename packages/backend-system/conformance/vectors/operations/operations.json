@@ -74,6 +74,7 @@
           }
         }
       },
+      "calls": {},
       "dataset": [],
       "operation": "makeBoard",
       "args": {
@@ -199,6 +200,7 @@
           }
         }
       },
+      "calls": {},
       "dataset": [],
       "operation": "makeBoard",
       "args": {
@@ -301,6 +303,7 @@
           }
         }
       },
+      "calls": {},
       "dataset": [
         {
           "entity": "CollectionBlock",
@@ -388,6 +391,7 @@
           }
         }
       },
+      "calls": {},
       "dataset": [
         {
           "entity": "CollectionBlock",
@@ -479,6 +483,7 @@
           }
         }
       },
+      "calls": {},
       "dataset": [],
       "operation": "guarded",
       "args": {
@@ -542,6 +547,7 @@
           }
         }
       },
+      "calls": {},
       "dataset": [],
       "operation": "writeTwice",
       "args": {},
@@ -605,6 +611,7 @@
           }
         }
       },
+      "calls": {},
       "dataset": [
         {
           "entity": "CollectionBlock",
@@ -774,6 +781,7 @@
           }
         }
       },
+      "calls": {},
       "dataset": [
         {
           "entity": "CollectionBlock",
@@ -922,6 +930,7 @@
           }
         }
       },
+      "calls": {},
       "dataset": [
         {
           "entity": "InvolvementType",
@@ -1116,23 +1125,18 @@
                 }
               },
               {
-                "link": {
-                  "entity": {
-                    "$": "threadEntity"
-                  },
-                  "oneOf": [
-                    {
-                      "category": "blockable"
+                "call": {
+                  "operation": "core.thread",
+                  "args": {
+                    "record": {
+                      "$": "post.id"
                     },
-                    "Relationship",
-                    "Topic"
-                  ],
-                  "id": {
-                    "$": "thread"
-                  },
-                  "relation": "thread",
-                  "target": {
-                    "$": "post"
+                    "thread": {
+                      "$": "thread"
+                    },
+                    "threadEntity": {
+                      "$": "threadEntity"
+                    }
                   }
                 },
                 "when": {
@@ -1144,6 +1148,51 @@
               "$": "post.id"
             }
           }
+        }
+      },
+      "calls": {
+        "core.thread": {
+          "description": "Link a response from the subject of the thread it joins, so the whole discussion under a record is one read.",
+          "params": {
+            "record": {
+              "type": "string",
+              "required": true,
+              "description": "The response."
+            },
+            "thread": {
+              "type": "string",
+              "required": true,
+              "description": "The subject of the thread it joins — what it answers, or the first record above that is not itself a response."
+            },
+            "threadEntity": {
+              "type": "string",
+              "required": true,
+              "description": "The subject’s entity."
+            }
+          },
+          "steps": [
+            {
+              "link": {
+                "entity": {
+                  "$": "threadEntity"
+                },
+                "oneOf": [
+                  {
+                    "category": "blockable"
+                  },
+                  "Relationship",
+                  "Topic"
+                ],
+                "id": {
+                  "$": "thread"
+                },
+                "relation": "thread",
+                "target": {
+                  "$": "record"
+                }
+              }
+            }
+          ]
         }
       },
       "dataset": [
@@ -1337,6 +1386,7 @@
           }
         }
       },
+      "calls": {},
       "dataset": [
         {
           "entity": "TaskBlock",
@@ -1519,6 +1569,7 @@
           }
         }
       },
+      "calls": {},
       "dataset": [
         {
           "entity": "TaskBlock",
@@ -1721,6 +1772,7 @@
           }
         }
       },
+      "calls": {},
       "dataset": [
         {
           "entity": "Placement",
@@ -1884,6 +1936,7 @@
           }
         }
       },
+      "calls": {},
       "dataset": [
         {
           "entity": "TaskState",
@@ -2026,6 +2079,7 @@
           }
         }
       },
+      "calls": {},
       "dataset": [
         {
           "entity": "ReadMarker",
@@ -2076,6 +2130,269 @@
             "nodeId": "urn:example:channel",
             "spaceUuid": "space",
             "lastReadAt": "2026-11-24T00:00:00.000Z"
+          }
+        ]
+      }
+    },
+    {
+      "id": "core-delete-records-any",
+      "note": "core.deleteRecords deletes records of two types named at run time, and leaves the rest",
+      "manifest": {
+        "version": "1",
+        "entities": {},
+        "operations": {
+          "deleteRecords": {
+            "description": "Delete several records of any type, for everyone, as one act. Not undoable.",
+            "params": {
+              "records": {
+                "type": "list",
+                "required": true,
+                "description": "Each { entity, id }."
+              }
+            },
+            "steps": [
+              {
+                "forEach": {
+                  "in": {
+                    "$": "records"
+                  },
+                  "as": "record",
+                  "steps": [
+                    {
+                      "delete": {
+                        "entity": {
+                          "$": "record.entity"
+                        },
+                        "oneOf": [
+                          {
+                            "category": "any"
+                          }
+                        ],
+                        "id": {
+                          "$": "record.id"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [
+        {
+          "entity": "TaskBlock",
+          "id": "urn:example:gone-task",
+          "fields": {
+            "title": "Gone",
+            "status": "todo"
+          }
+        },
+        {
+          "entity": "TaskBlock",
+          "id": "urn:example:kept-task",
+          "fields": {
+            "title": "Kept",
+            "status": "todo"
+          }
+        },
+        {
+          "entity": "TextBlock",
+          "id": "urn:example:gone-line",
+          "fields": {
+            "text": "gone"
+          }
+        }
+      ],
+      "operation": "deleteRecords",
+      "args": {
+        "records": [
+          {
+            "entity": "TaskBlock",
+            "id": "urn:example:gone-task"
+          },
+          {
+            "entity": "TextBlock",
+            "id": "urn:example:gone-line"
+          }
+        ]
+      },
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000022",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "TaskBlock",
+          "fields": ["title"],
+          "relations": []
+        },
+        {
+          "entity": "TextBlock",
+          "fields": ["text"],
+          "relations": []
+        }
+      ],
+      "outcome": {
+        "result": null
+      },
+      "records": {
+        "TaskBlock": [
+          {
+            "id": "urn:example:kept-task",
+            "title": "Kept"
+          }
+        ],
+        "TextBlock": []
+      }
+    },
+    {
+      "id": "core-move-under",
+      "note": "core.moveUnder takes a record off one holder’s list and onto another’s, the relation named at run time",
+      "manifest": {
+        "version": "1",
+        "entities": {},
+        "operations": {
+          "moveUnder": {
+            "description": "Move a record from one holder to another through a to-many relation the holders declare — off the old list and onto the new in one write, so nobody reads it on neither or on both.",
+            "params": {
+              "holder": {
+                "type": "string",
+                "required": true,
+                "description": "The holders’ entity."
+              },
+              "relation": {
+                "type": "string",
+                "required": true,
+                "description": "The relation holding it."
+              },
+              "record": {
+                "type": "string",
+                "required": true,
+                "description": "The record moved."
+              },
+              "from": {
+                "type": "string",
+                "description": "The holder it leaves."
+              },
+              "to": {
+                "type": "string",
+                "description": "The holder it joins; absent to take it off and put it nowhere."
+              }
+            },
+            "steps": [
+              {
+                "unlink": {
+                  "entity": {
+                    "$": "holder"
+                  },
+                  "oneOf": [
+                    {
+                      "category": "any"
+                    }
+                  ],
+                  "id": {
+                    "$": "from"
+                  },
+                  "relation": {
+                    "$": "relation"
+                  },
+                  "target": {
+                    "$": "record"
+                  }
+                },
+                "when": {
+                  "$": "from && from != to"
+                }
+              },
+              {
+                "link": {
+                  "entity": {
+                    "$": "holder"
+                  },
+                  "oneOf": [
+                    {
+                      "category": "any"
+                    }
+                  ],
+                  "id": {
+                    "$": "to"
+                  },
+                  "relation": {
+                    "$": "relation"
+                  },
+                  "target": {
+                    "$": "record"
+                  }
+                },
+                "when": {
+                  "$": "to && to != from"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [
+        {
+          "entity": "TaskBlock",
+          "id": "urn:example:card",
+          "fields": {
+            "title": "Card",
+            "status": "todo"
+          }
+        },
+        {
+          "entity": "CollectionBlock",
+          "id": "urn:example:from",
+          "fields": {
+            "kind": "folder"
+          },
+          "relations": {
+            "children": ["urn:example:card"]
+          }
+        },
+        {
+          "entity": "CollectionBlock",
+          "id": "urn:example:to",
+          "fields": {
+            "kind": "folder"
+          }
+        }
+      ],
+      "operation": "moveUnder",
+      "args": {
+        "holder": "CollectionBlock",
+        "relation": "children",
+        "record": "urn:example:card",
+        "from": "urn:example:from",
+        "to": "urn:example:to"
+      },
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000023",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "CollectionBlock",
+          "fields": ["kind"],
+          "relations": ["children"]
+        }
+      ],
+      "outcome": {
+        "result": null
+      },
+      "records": {
+        "CollectionBlock": [
+          {
+            "id": "urn:example:from",
+            "kind": "folder"
+          },
+          {
+            "id": "urn:example:to",
+            "kind": "folder",
+            "children": ["urn:example:card"]
           }
         ]
       }
