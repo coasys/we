@@ -16,6 +16,8 @@ packages:
   - packages/module-system/*
   # The globe module is a family: module + protocol + layers + widget
   - packages/module-system/globe/*
+  # Test-only packages — fixtures and harnesses, never shipped
+  - packages/testing/*
 
 onlyBuiltDependencies:
   - electron
