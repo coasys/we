@@ -12,10 +12,10 @@ once those footers are dropped or rewritten.
 
 ## The specs
 
-| Spec                                        | What it covers                                                                                                                                                    |
-| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [Operations](operations/README.md)          | Declared operations: named, parameterised compound writes over records, the steps they are built from, how they run, and the expression subset they compute with. |
-| [Template format, core](template/README.md) | The template format's stable core: nodes, block types, tokens, handlers, local state, the query format and routing. Being written.                                |
+| Spec                                        | What it covers                                                                                                                                                                                                                                                   |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Operations](operations/README.md)          | Declared operations: named, parameterised compound writes over records, the steps they are built from, how they run, and the expression subset they compute with.                                                                                                |
+| [Template format, core](template/README.md) | The template format's stable core: nodes and their child positions, block types, values, the template expression language, queries, handlers and local state, routing, panels, degradation and versioning, the safety rules, catalogs, and the renderer vectors. |
 
 ## Conventions
 
@@ -38,7 +38,7 @@ are set apart and are not:
 **Versions.** Each spec carries its own version, stated at the top of its README, as
 `major.minor`. A minor version adds to the format without changing what a valid document already
 means; a major version may. The data a spec describes carries its own format version too (an
-operations manifest's `version`, a bundle's `formatVersion`), which is a different number with
+operations manifest's `version`, a template's `schemaVersion`, a bundle's `formatVersion`), which is a different number with
 its own rules, given in each spec's versioning section.
 
 **Conformance suites.** A spec comes with a suite of language-neutral vectors: inputs and the

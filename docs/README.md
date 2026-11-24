@@ -46,8 +46,8 @@ Per-system docs live with the code — every `packages/<system>/` directory has 
 ## Specifications
 
 Normative specs of WE's portable formats, for another implementation to read and run the same data,
-each with a conformance suite: [spec/](spec/README.md). Start with
-[declared operations](spec/operations/README.md).
+each with a conformance suite: [spec/](spec/README.md) — [declared operations](spec/operations/README.md)
+and [the template format's stable core](spec/template/README.md).
 
 ## Decisions
 
