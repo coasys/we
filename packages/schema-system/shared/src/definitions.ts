@@ -195,6 +195,7 @@ export function compactDefinitions(schema: SchemaNode, options: CompactOptions =
   tally(schema);
 
   const defs: Record<string, SchemaNode> = {};
+  const existing = definitionsOf(schema);
   const nameOf = new Map<string, string>();
   let next = 1;
 
@@ -214,7 +215,9 @@ export function compactDefinitions(schema: SchemaNode, options: CompactOptions =
 
     let name = nameOf.get(key);
     if (!name) {
-      name = `d${next++}`;
+      // A name of its own: the template may carry definitions already, and they are kept.
+      do name = `d${next++}`;
+      while (name in existing);
       nameOf.set(key, name);
       // The definition is rewritten too, so a shape shared between definitions is stored once.
       defs[name] = mapChildren(node, (child) => rewrite(child, false));

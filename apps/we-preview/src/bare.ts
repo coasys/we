@@ -1,9 +1,14 @@
+import { type ChildPositionKind, mapChildren } from '@we/schema-shared';
+
 export type SchemaNode = {
   type?: string;
   props?: Record<string, unknown>;
   children?: unknown[];
   [key: string]: unknown;
 };
+/** Where a `$routes` outlet can sit: not in `routes` (those outlets are nested routes') or panels. */
+const OUTLET_POSITIONS: readonly ChildPositionKind[] = ['children', 'slots', 'props'];
+
 export type ExternalTemplate = SchemaNode & { id?: string; routes?: Array<SchemaNode & { path?: string }> };
 
 /**
@@ -19,7 +24,7 @@ export type ExternalTemplate = SchemaNode & { id?: string; routes?: Array<Schema
  *
  * The route asked for, else `/`, else the first the template declares; `path` says which it was.
  * The outlet may sit at any depth, as it may in the app — a header and a tab strip above it is the
- * usual shape — so the swap walks the children rather than looking only at the root's.
+ * usual shape, and behind a `$if` too — so the swap walks the tree rather than looking only at the root's.
  */
 export function bareNode(template: ExternalTemplate, requested: string | null): { node: SchemaNode; path?: string } {
   const routes = template.routes ?? [];
@@ -27,15 +32,8 @@ export function bareNode(template: ExternalTemplate, requested: string | null): 
   const { routes: _routes, id: _id, schemaVersion: _v, meta: _meta, ...root } = template;
   if (!route) return { node: root };
 
+  // Through every position the outlet can render from — a gate's branch, a slot — not only children.
   const swap = (node: SchemaNode): SchemaNode =>
-    node.children
-      ? {
-          ...node,
-          children: node.children.map((child) => {
-            if (!child || typeof child !== 'object') return child;
-            return (child as SchemaNode).type === '$routes' ? route : swap(child as SchemaNode);
-          }),
-        }
-      : node;
+    mapChildren(node as never, (child) => (child.type === '$routes' ? route : swap(child)) as never, OUTLET_POSITIONS);
   return { node: swap(root), path: route.path };
 }

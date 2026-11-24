@@ -257,7 +257,13 @@ function placesPart(tree: unknown, id: string): boolean {
   return Object.entries(node).some(([key, value]) => key !== 'meta' && placesPart(value, id));
 }
 
-/** Whether a node of this type appears anywhere in a tree — through children, slots, routes and `$if` branches. */
+/**
+ * Whether a node of this type appears anywhere in a tree — through children, slots, routes, `$if`
+ * branches and `$defs`, by looking in every value.
+ *
+ * Except `meta`, on purpose: what this answers is whether the screen itself has the field, and a
+ * panel is the person's to close or never open, so a field placed only in one does not count.
+ */
 export function placesNode(tree: unknown, type: string): boolean {
   if (Array.isArray(tree)) return tree.some((entry) => placesNode(entry, type));
   if (!tree || typeof tree !== 'object') return false;
