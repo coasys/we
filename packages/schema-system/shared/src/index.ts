@@ -102,7 +102,19 @@ export {
   runWithGesture,
 } from './gesture';
 export type { GestureOwner, GestureToken } from './gesture';
-export { isPropsSchemaNode, isSchemaChild, replaceNodeInTree } from './treeUtils';
+export {
+  CHILD_POSITIONS,
+  type ChildPosition,
+  type ChildPositionKind,
+  childrenOf,
+  forEachChild,
+  isPropsSchemaNode,
+  isSchemaChild,
+  mapChildren,
+  positionName,
+  RENDERED_POSITIONS,
+  replaceNodeInTree,
+} from './treeUtils';
 export {
   type CompactOptions,
   compactDefinitions,

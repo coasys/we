@@ -32,6 +32,9 @@ import { pathToFileURL } from 'node:url';
 import { ROLE_NAMES } from '@we/design-utils';
 import { RAMP_FAMILIES } from '@we/tokens';
 
+import { childrenOf } from '../treeUtils';
+import type { SchemaNode } from '../types';
+
 register('./assetHooks.mjs', import.meta.url);
 
 interface Node {
@@ -185,24 +188,8 @@ const isKnownColour = (name: string) =>
   name === 'black' ||
   HUES.some((hue) => SCALE.test(name) && name.startsWith(`${hue}-`));
 
-/** Every child position a node can hold — children, routes, slots, and nodes hiding inside props. */
-function descend(node: Node): Node[] {
-  const out: Node[] = [];
-  const push = (v: unknown) => {
-    if (Array.isArray(v)) v.forEach(push);
-    else if (isNode(v)) out.push(v);
-  };
-  push(node.children);
-  push(node.routes);
-  if (node.slots) Object.values(node.slots).forEach(push);
-  if (node.props) {
-    for (const [k, v] of Object.entries(node.props)) {
-      if (k === 'styles') continue;
-      push(v);
-    }
-  }
-  return out;
-}
+/** Every child of a node, through every position the schema has — see `CHILD_POSITIONS`. */
+const descend = (node: Node): Node[] => childrenOf(node as SchemaNode);
 
 /** Every string literal inside an expression: `"a ? 'success-500' : 'surface'"` yields both. */
 const EXPRESSION_LITERAL = /'([^']*)'|"([^"]*)"/g;

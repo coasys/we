@@ -32,7 +32,7 @@
  * follows the node through a reordering rather than following its position. Fragments set it from
  * whatever identifies their output — `field({ name })` keys its field by the name.
  */
-import { isPropsSchemaNode, isSchemaChild, panelsOf } from './treeUtils';
+import { type ChildPosition, forEachChild, panelsOf } from './treeUtils';
 import type { SchemaNode } from './types';
 
 /** How long an id is. Ten base-36 characters is about 3.6 × 10^15 values, after the leading letter. */
@@ -94,35 +94,39 @@ export function derivedNodeId(source: string): string {
  * where a node is rather than as a list of indices.
  */
 function namedPositions(node: SchemaNode): { group: string; nodes: SchemaNode[] }[] {
-  const out: { group: string; nodes: SchemaNode[] }[] = [];
-  const nodesIn = (value: unknown): SchemaNode[] => {
-    if (Array.isArray(value)) return value.filter<SchemaNode>((v) => isSchemaChild(v) || isPropsSchemaNode(v));
-    return isSchemaChild(value) || isPropsSchemaNode(value) ? [value] : [];
-  };
-  if (Array.isArray(node.children)) out.push({ group: 'c', nodes: nodesIn(node.children) });
-  if (Array.isArray(node.routes)) out.push({ group: 'r', nodes: nodesIn(node.routes) });
-  for (const [name, slot] of Object.entries(node.slots ?? {})) out.push({ group: `s:${name}`, nodes: nodesIn(slot) });
-  /*
-    A prop holds a node only where its type names something the renderer mounts — the test the id
-    walk (`forEachNode`) makes. The looser test the other positions use takes any object without a
-    `$` key, and here that gave a derived id to every transition, style, `hoverProps` object and
-    select option in a built-in, which a copy then carried into somebody's template.
-  */
-  const propsNodes = (value: unknown): SchemaNode[] =>
-    (Array.isArray(value) ? value : [value]).filter(isPropsSchemaNode);
-  for (const [name, value] of Object.entries(node.props ?? {})) {
-    const nodes = propsNodes(value);
-    if (nodes.length) out.push({ group: `p:${name}`, nodes });
+  const groups = new Map<string, SchemaNode[]>();
+  const panels = panelsOf(node) ?? [];
+  forEachChild(node, (child, at) => {
+    const group = groupOf(at, panels);
+    const list = groups.get(group);
+    if (list) list.push(child);
+    else groups.set(group, [child]);
+  });
+  return [...groups].map(([group, nodes]) => ({ group, nodes }));
+}
+
+/**
+ * The name a position goes by in a derived id's path. Part of every id below it, so these are
+ * printed exactly as they always have been: changing how one reads would re-key nodes already
+ * stored. A panel is named by its own id rather than its place in the list, so reordering panels
+ * keeps the ids inside them.
+ */
+function groupOf(at: ChildPosition, panels: readonly unknown[]): string {
+  switch (at.in) {
+    case 'children':
+      return 'c';
+    case 'routes':
+      return 'r';
+    case 'slots':
+      return `s:${at.name}`;
+    case 'props':
+      return `p:${at.name}`;
+    case 'panels':
+      // eslint-disable-next-line @typescript-eslint/restrict-template-expressions -- a panel id is text in practice.
+      return `panel:${(panels[at.index] as { id?: unknown }).id}`;
+    case '$defs':
+      return `d:${at.name}`;
   }
-  for (const panel of panelsOf(node) ?? []) {
-    if (!isSchemaChild(panel.node)) continue;
-    // The group is part of every derived id inside the panel, so the id is printed exactly as it
-    // always has been: changing how an unusual one reads would re-key nodes already stored.
-    // eslint-disable-next-line @typescript-eslint/restrict-template-expressions -- see above; a panel id is text in practice.
-    out.push({ group: `panel:${panel.id}`, nodes: [panel.node] });
-  }
-  for (const [name, def] of Object.entries(node.$defs ?? {})) out.push({ group: `d:${name}`, nodes: [def] });
-  return out;
 }
 
 /**

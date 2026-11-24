@@ -61,85 +61,210 @@ export function isPropsSchemaNode(val: unknown): val is SchemaNode {
   return /^[A-Z$]/.test(type) || type.includes('-') || TEMPLATE_HTML_ELEMENTS.has(type);
 }
 
+// ── Child positions: the one answer to "what are a node's children" ──────────────────────────
+
 /**
- * Return a copy of `schema` with `target` (matched by identity) replaced by
- * `replacement`. Traverses the same edges the renderer does: children, routes,
- * slots, and SchemaNodes embedded in props (e.g. $if.props.then / .else).
- * The original tree is left intact; every visited node is shallow-cloned.
+ * The places a node can hold another node, in the order every walk visits them.
+ *
+ * - `children` — each entry of `children` that is a node. A string is text and an object whose
+ *   keys are all `$`-prefixed is an expression token; neither is a node (`isSchemaChild`).
+ *   `$each` and `$animate` render only the first, and `$if` renders none of them, but every entry
+ *   is part of the tree, so every walk reaches them all.
+ * - `routes` — each entry of `routes`. A route is always a node, whatever else it carries.
+ * - `slots` — the node under each name in `slots`.
+ * - `props` — a prop whose value, or an entry of whose list value, names something the renderer
+ *   mounts (`isPropsSchemaNode`): `$if`'s `then` and `else`, a card's `front`. Only that level: a
+ *   node buried inside other prop data (a handler's arguments, an options list) is data.
+ * - `panels` — the `node` of each `meta.panels` entry. The entry is configuration; its node is
+ *   the interface.
+ * - `$defs` — each shape in `$defs`. Root only. A walk over the tree *as rendered* leaves these
+ *   out and follows each `$ref` instead, or walks the expanded tree.
+ *
+ * Anything that walks a template asks here, rather than deciding for itself, because the walks
+ * that decided for themselves disagreed, and the cost was always silent — nodes inside panels with
+ * no ids, a component in a panel invisible to the uninstall check, a part inside a shared shape
+ * drawn as an unknown component.
+ */
+export const CHILD_POSITIONS = ['children', 'routes', 'slots', 'props', 'panels', '$defs'] as const;
+
+export type ChildPositionKind = (typeof CHILD_POSITIONS)[number];
+
+/** Where one child sits in its parent. `index` is absent for a prop that holds a single node. */
+export type ChildPosition =
+  | { in: 'children'; index: number }
+  | { in: 'routes'; index: number }
+  | { in: 'slots'; name: string }
+  | { in: 'props'; name: string; index?: number }
+  | { in: 'panels'; index: number }
+  | { in: '$defs'; name: string };
+
+/** Every position except `$defs`: the tree as it renders, for walks that follow `$ref` or run after expansion. */
+export const RENDERED_POSITIONS: readonly ChildPositionKind[] = CHILD_POSITIONS.filter((kind) => kind !== '$defs');
+
+const isObject = (value: unknown): value is SchemaNode =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/**
+ * Call `fn` for each child of `node`, in `CHILD_POSITIONS` order, with where it sits. `kinds`
+ * narrows the walk to a subset; a walk that takes one says why where it does.
+ */
+export function forEachChild(
+  node: SchemaNode,
+  fn: (child: SchemaNode, at: ChildPosition) => void,
+  kinds: readonly ChildPositionKind[] = CHILD_POSITIONS,
+): void {
+  for (const kind of kinds) {
+    switch (kind) {
+      case 'children':
+        if (Array.isArray(node.children))
+          node.children.forEach((child, index) => {
+            if (isSchemaChild(child)) fn(child, { in: 'children', index });
+          });
+        break;
+      case 'routes':
+        if (Array.isArray(node.routes))
+          node.routes.forEach((route, index) => {
+            if (isObject(route)) fn(route, { in: 'routes', index });
+          });
+        break;
+      case 'slots':
+        if (isObject(node.slots))
+          for (const [name, slot] of Object.entries(node.slots)) if (isObject(slot)) fn(slot, { in: 'slots', name });
+        break;
+      case 'props':
+        if (isObject(node.props))
+          for (const [name, value] of Object.entries(node.props)) {
+            if (Array.isArray(value))
+              value.forEach((item, index) => {
+                if (isPropsSchemaNode(item)) fn(item, { in: 'props', name, index });
+              });
+            else if (isPropsSchemaNode(value)) fn(value, { in: 'props', name });
+          }
+        break;
+      case 'panels':
+        (panelsOf(node) ?? []).forEach((panel, index) => {
+          if (isObject(panel.node)) fn(panel.node, { in: 'panels', index });
+        });
+        break;
+      case '$defs':
+        if (isObject(node.$defs))
+          for (const [name, def] of Object.entries(node.$defs)) if (isObject(def)) fn(def, { in: '$defs', name });
+        break;
+    }
+  }
+}
+
+/** The children of `node` as a list, in `CHILD_POSITIONS` order. */
+export function childrenOf(node: SchemaNode, kinds: readonly ChildPositionKind[] = CHILD_POSITIONS): SchemaNode[] {
+  const out: SchemaNode[] = [];
+  forEachChild(node, (child) => out.push(child), kinds);
+  return out;
+}
+
+/** A position as a short name — `c.0`, `s:header`, `p:then`, `p:items.2`, `panel:1`, `d:d3`. */
+export function positionName(at: ChildPosition): string {
+  switch (at.in) {
+    case 'children':
+      return `c.${at.index}`;
+    case 'routes':
+      return `r.${at.index}`;
+    case 'slots':
+      return `s:${at.name}`;
+    case 'props':
+      return at.index === undefined ? `p:${at.name}` : `p:${at.name}.${at.index}`;
+    case 'panels':
+      return `panel:${at.index}`;
+    case '$defs':
+      return `d:${at.name}`;
+  }
+}
+
+/**
+ * A shallow copy of `node` with each child replaced by `map(child, at)`; everything that is not a
+ * child is kept as it was. The node and each container holding a child are copied, so the result
+ * can be changed without reaching the original. `meta` is copied only when it holds panels.
+ */
+export function mapChildren(
+  node: SchemaNode,
+  map: (child: SchemaNode, at: ChildPosition) => SchemaNode,
+  kinds: readonly ChildPositionKind[] = CHILD_POSITIONS,
+): SchemaNode {
+  const out: SchemaNode = { ...node };
+  for (const kind of kinds) {
+    switch (kind) {
+      case 'children':
+        if (Array.isArray(node.children))
+          out.children = node.children.map((child, index) =>
+            isSchemaChild(child) ? map(child, { in: 'children', index }) : child,
+          );
+        break;
+      case 'routes':
+        if (Array.isArray(node.routes))
+          out.routes = node.routes.map((route, index) =>
+            isObject(route) ? map(route, { in: 'routes', index }) : route,
+          ) as SchemaNode['routes'];
+        break;
+      case 'slots':
+        if (isObject(node.slots))
+          out.slots = Object.fromEntries(
+            Object.entries(node.slots).map(([name, slot]) => [
+              name,
+              isObject(slot) ? map(slot, { in: 'slots', name }) : slot,
+            ]),
+          ) as Record<string, SchemaNode>;
+        break;
+      case 'props':
+        if (isObject(node.props))
+          out.props = Object.fromEntries(
+            Object.entries(node.props).map(([name, value]) => {
+              if (Array.isArray(value))
+                return [
+                  name,
+                  value.map((item, index) =>
+                    isPropsSchemaNode(item) ? map(item, { in: 'props', name, index }) : item,
+                  ),
+                ];
+              return [name, isPropsSchemaNode(value) ? map(value, { in: 'props', name }) : value];
+            }),
+          ) as SchemaNode['props'];
+        break;
+      case 'panels': {
+        const panels = panelsOf(node);
+        if (panels) {
+          const meta = (node as { meta: Record<string, unknown> }).meta;
+          (out as { meta?: Record<string, unknown> }).meta = {
+            ...meta,
+            // The entry is configuration and is kept as it is; only its `node` is mapped.
+            panels: panels.map((panel, index) =>
+              isObject(panel.node) ? { ...panel, node: map(panel.node, { in: 'panels', index }) } : panel,
+            ),
+          };
+        }
+        break;
+      }
+      case '$defs':
+        if (isObject(node.$defs))
+          out.$defs = Object.fromEntries(
+            Object.entries(node.$defs).map(([name, def]) => [
+              name,
+              isObject(def) ? map(def, { in: '$defs', name }) : def,
+            ]),
+          ) as Record<string, SchemaNode>;
+        break;
+    }
+  }
+  return out;
+}
+
+/**
+ * Return a copy of `schema` with `target` (matched by identity) replaced by `replacement`, through
+ * every child position — panels and `$defs` included. Panels matter in particular: the visual
+ * editor reaches a panel's nodes the moment they have ids, and an edit to one that came back
+ * dropped would be worse than a node that cannot be picked up.
+ *
+ * The original tree is left intact; every node on the way down is shallow-cloned.
  */
 export function replaceNodeInTree(schema: SchemaNode, target: SchemaNode, replacement: SchemaNode): SchemaNode {
   if (schema === target) return replacement;
-  const clone: SchemaNode = { ...schema };
-  if (Array.isArray(schema.children)) {
-    clone.children = schema.children.map((child) => {
-      if (typeof child === 'string') return child;
-      const c = child as SchemaNode;
-      return c === target ? replacement : replaceNodeInTree(c, target, replacement);
-    });
-  }
-  if (Array.isArray(schema.routes)) {
-    clone.routes = schema.routes.map((r) => {
-      const route = r as SchemaNode;
-      return route === target ? replacement : replaceNodeInTree(route, target, replacement);
-    }) as SchemaNode['routes'];
-  }
-  if (schema.slots && typeof schema.slots === 'object') {
-    const slots: Record<string, SchemaNode> = {};
-    for (const [k, v] of Object.entries(schema.slots)) {
-      slots[k] = v === target ? replacement : replaceNodeInTree(v, target, replacement);
-    }
-    clone.slots = slots;
-  }
-  if (schema.props) {
-    const newProps: Record<string, unknown> = {};
-    let changed = false;
-    for (const [k, v] of Object.entries(schema.props)) {
-      if (Array.isArray(v)) {
-        const arr = v.map((item) => {
-          if (!isPropsSchemaNode(item)) return item;
-          const r = item === target ? replacement : replaceNodeInTree(item, target, replacement);
-          if (r !== item) changed = true;
-          return r;
-        });
-        newProps[k] = arr;
-      } else if (isPropsSchemaNode(v)) {
-        const r = v === target ? replacement : replaceNodeInTree(v, target, replacement);
-        if (r !== v) changed = true;
-        newProps[k] = r;
-      } else {
-        newProps[k] = v;
-      }
-    }
-    if (changed) clone.props = newProps as SchemaNode['props'];
-  }
-  /*
-    And the interfaces in `meta.panels`, which the visual editor reaches the moment they have ids.
-
-    This branch is here because giving panel nodes ids without it makes things WORSE rather than
-    better. `node.id` is what the renderer stamps as `data-we-node-id`, so before they were
-    numbered a node inside a panel could not be clicked at all — visibly inert. Numbered, it
-    selects, the inspector opens on it, `findNodeById` resolves it, `mergeNode` patches it — and
-    then this function returned a tree with the change dropped. An edit that silently does
-    nothing is a worse failure than a node that cannot be picked up.
-
-    Rebuilt immutably, like `props` above: `meta` is cloned only when a panel actually changed,
-    so a template with no panels, or none containing the target, is returned exactly as before.
-  */
-  const panels = panelsOf(schema);
-  if (panels) {
-    let changed = false;
-    const nextPanels = panels.map((panel) => {
-      const node = panel.node;
-      if (!isSchemaChild(node)) return panel;
-      const replaced = node === target ? replacement : replaceNodeInTree(node, target, replacement);
-      if (replaced === node) return panel;
-      changed = true;
-      return { ...panel, node: replaced };
-    });
-    if (changed) {
-      const meta = (schema as { meta?: Record<string, unknown> }).meta ?? {};
-      (clone as { meta?: Record<string, unknown> }).meta = { ...meta, panels: nextPanels };
-    }
-  }
-  return clone;
+  return mapChildren(schema, (child) => replaceNodeInTree(child, target, replacement));
 }

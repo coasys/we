@@ -42,6 +42,9 @@ import { register } from 'node:module';
 import { join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import { childrenOf } from '../treeUtils';
+import type { SchemaNode } from '../types';
+
 register('./assetHooks.mjs', import.meta.url);
 
 interface Node {
@@ -166,24 +169,8 @@ const declared = (file: string, name: string, entity: string): string | undefine
       (!d.entity || d.entity === entity),
   )?.why;
 
-/** Every child position a node can hold — children, routes, slots, and nodes hiding inside props. */
-function descend(node: Node): Node[] {
-  const out: Node[] = [];
-  const push = (v: unknown) => {
-    if (Array.isArray(v)) v.forEach(push);
-    else if (isNode(v)) out.push(v);
-  };
-  push(node.children);
-  push(node.routes);
-  if (node.slots) Object.values(node.slots).forEach(push);
-  if (node.props) {
-    for (const [k, v] of Object.entries(node.props)) {
-      if (k === 'styles') continue;
-      push(v);
-    }
-  }
-  return out;
-}
+/** Every child of a node, through every position the schema has — see `CHILD_POSITIONS`. */
+const descend = (node: Node): Node[] => childrenOf(node as SchemaNode);
 
 /** What the query asks for, for the report — a literal name, a list of them, or the expression. */
 function entityOf(query: Record<string, unknown>): string {

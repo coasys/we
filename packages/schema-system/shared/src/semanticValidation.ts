@@ -23,6 +23,8 @@ import { HOST_PART_IDS, isHostPartId } from './hostPartIds';
 import { isRelativePath } from './navigationPaths';
 import { parseRecordViewKey } from './recordViews';
 import { isTemplateElement } from './templateElements';
+import { type ChildPositionKind, childrenOf } from './treeUtils';
+import type { SchemaNode } from './types';
 import type { ValidationError, ValidationResult } from './validators';
 import { validateStructure } from './validators';
 
@@ -2657,33 +2659,18 @@ function checkRoutes(
   }
 }
 
-function hasRoutesOutlet(node: unknown): boolean {
-  if (typeof node !== 'object' || node === null) return false;
-  const n = node as Record<string, unknown>;
-  if (n.type === '$routes') return true;
-  const children = n.children as unknown[] | undefined;
-  if (Array.isArray(children)) {
-    for (const child of children) {
-      if (hasRoutesOutlet(child)) return true;
-    }
-  }
-  const slots = n.slots as Record<string, unknown> | undefined;
-  if (slots && typeof slots === 'object') {
-    for (const slotNode of Object.values(slots)) {
-      if (hasRoutesOutlet(slotNode)) return true;
-    }
-  }
-  /**
-   * A `$if` keeps its branches in `props`, not `children` — and putting the outlet behind a gate is
-   * the normal shape, not an exotic one: the default template renders its space routes only once the
-   * dataset is confirmed to be a WE space. Without this the outlet is invisible here and the node is
-   * accused of having routes with nowhere to render them.
-   */
-  const props = n.props as Record<string, unknown> | undefined;
-  if (props && typeof props === 'object') {
-    if (hasRoutesOutlet(props.then) || hasRoutesOutlet(props.else)) return true;
-  }
-  return false;
+/**
+ * Whether a node draws its routes somewhere: a `$routes` outlet in its own subtree.
+ *
+ * Through children, slots and node-valued props — a `$if`'s branches especially, since the outlet
+ * behind a gate is the normal shape (the default template renders its space routes only once the
+ * dataset is confirmed to be a WE space). Not `routes`, whose outlets are for routes nested in them,
+ * and not panels, which never draw a route.
+ */
+const OUTLET_POSITIONS: readonly ChildPositionKind[] = ['children', 'slots', 'props'];
+
+function hasRoutesOutlet(node: SchemaNode): boolean {
+  return node.type === '$routes' || childrenOf(node, OUTLET_POSITIONS).some(hasRoutesOutlet);
 }
 
 function walkChildren(

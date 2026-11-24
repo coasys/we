@@ -41,6 +41,9 @@ import { join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { gzipSync } from 'node:zlib';
 
+import { childrenOf } from '../treeUtils';
+import type { SchemaNode } from '../types';
+
 register('./assetHooks.mjs', import.meta.url);
 
 interface Node {
@@ -58,24 +61,8 @@ const isNode = (v: unknown): v is Node => !!v && typeof v === 'object' && !Array
 /** Smallest repeat worth a line. Below this the copies cost less than the attention. */
 const MIN_REPEAT_CHARS = 400;
 
-/** Every child position a node can hold — children, routes, slots, and nodes hiding inside props. */
-function descend(node: Node): Node[] {
-  const out: Node[] = [];
-  const push = (v: unknown) => {
-    if (Array.isArray(v)) v.forEach(push);
-    else if (isNode(v)) out.push(v);
-  };
-  push(node.children);
-  push(node.routes);
-  if (node.slots) Object.values(node.slots).forEach(push);
-  if (node.props) {
-    for (const [k, v] of Object.entries(node.props)) {
-      if (k === 'styles') continue;
-      push(v);
-    }
-  }
-  return out;
-}
+/** Every child of a node, through every position the schema has — see `CHILD_POSITIONS`. */
+const descend = (node: Node): Node[] => childrenOf(node as SchemaNode);
 
 /**
  * A node as one string, with object keys in a fixed order.
