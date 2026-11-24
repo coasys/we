@@ -259,6 +259,11 @@ describe('zodSchemas', () => {
     expect(() => zSchemaProp.parse({ $resetLocal: '$scope' })).not.toThrow();
   });
 
+  it('rejects $resetLocal naming anything but the scope', () => {
+    const result = zSchemaProp.safeParse({ $resetLocal: 'email' });
+    expect(result.success).toBe(false);
+  });
+
   it('rejects $resetLocal with extra keys', () => {
     expect(() => zSchemaProp.parse({ $resetLocal: '$scope', extra: true })).toThrow();
   });

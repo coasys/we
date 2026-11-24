@@ -1199,4 +1199,26 @@ export const RENDER_CASES: RenderCase[] = [
     },
     { data: { app: { rows: [{ id: 'a', name: 'Ann' }] } } },
   ),
+  C(
+    'render.handler.reset-local-not-scope',
+    '$resetLocal naming anything but $scope resets nothing (and a validator refuses it)',
+    {
+      type: 'Column',
+      $localState: { a: { type: 'string', initial: 'a0' }, b: { type: 'number', initial: 0 } },
+      children: [
+        button('change', [
+          { $setLocal: 'a', value: 'a1' },
+          { $setLocal: 'b', value: 9 },
+        ]),
+        button('reset', { $resetLocal: 'a' } as unknown as { $resetLocal: '$scope' }),
+        text({ $: '`${local.a} ${local.b}`' }),
+      ],
+    },
+    {
+      steps: [
+        { op: 'click', target: 'change' },
+        { op: 'click', target: 'reset' },
+      ],
+    },
+  ),
 ];

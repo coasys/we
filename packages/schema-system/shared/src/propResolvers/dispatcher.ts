@@ -58,7 +58,8 @@ export function resolveProp(value: unknown, stores: Props, context: Props, memo:
     if (hasToken(value, '$setLocal', 'string'))
       return resolveSetLocalProp(value as { $setLocal: string; value?: unknown }, context, stores, resolveProp);
     if (hasToken(value, '$touch', 'string')) return resolveTouchProp(value as { $touch: string }, context);
-    if (hasToken(value, '$resetLocal', 'string')) return resolveResetLocalProp(context);
+    if (hasToken(value, '$resetLocal', 'string'))
+      return resolveResetLocalProp(value as { $resetLocal: string }, context);
     if (hasToken(value, '$toggleLocal', 'string'))
       return resolveToggleLocalProp(value as { $toggleLocal: string }, context);
     if (hasToken(value, '$toggleLocalIn', 'string'))

@@ -6744,6 +6744,156 @@
           "actions": []
         }
       ]
+    },
+    {
+      "id": "render.handler.reset-local-not-scope",
+      "note": "$resetLocal naming anything but $scope resets nothing (and a validator refuses it)",
+      "template": {
+        "type": "Column",
+        "$localState": {
+          "a": {
+            "type": "string",
+            "initial": "a0"
+          },
+          "b": {
+            "type": "number",
+            "initial": 0
+          }
+        },
+        "children": [
+          {
+            "type": "we-button",
+            "props": {
+              "data-case": "change",
+              "onClick": [
+                {
+                  "$setLocal": "a",
+                  "value": "a1"
+                },
+                {
+                  "$setLocal": "b",
+                  "value": 9
+                }
+              ]
+            },
+            "children": ["change"]
+          },
+          {
+            "type": "we-button",
+            "props": {
+              "data-case": "reset",
+              "onClick": {
+                "$resetLocal": "a"
+              }
+            },
+            "children": ["reset"]
+          },
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "`${local.a} ${local.b}`"
+              }
+            ]
+          }
+        ]
+      },
+      "steps": [
+        {
+          "op": "click",
+          "target": "change"
+        },
+        {
+          "op": "click",
+          "target": "reset"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "change"
+                  },
+                  "children": ["change"]
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "reset"
+                  },
+                  "children": ["reset"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["a0 0"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "change"
+                  },
+                  "children": ["change"]
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "reset"
+                  },
+                  "children": ["reset"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["a1 9"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "change"
+                  },
+                  "children": ["change"]
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "reset"
+                  },
+                  "children": ["reset"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["a1 9"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
     }
   ]
 }

@@ -144,9 +144,11 @@ Pinned by: render vector `render.handler.call-local`.
 `{ "$resetLocal": "$scope" }` puts every field of the nearest enclosing `$localState` scope back to
 its declared initial (an expression initial re-evaluated now), clears its touched flag, removes its
 stored copy and its URL parameter ([Persistence](#persistence-syncparam-and-persist)). `"$scope"` is
-the only value defined in this version; a writer MUST NOT write another.
+the only value defined in this version: a validator refuses any other, and a renderer that meets
+one does nothing.
 
-Pinned by: render vectors `render.handler.reset-local`, `render.local.persist`.
+Pinned by: render vectors `render.handler.reset-local`, `render.handler.reset-local-not-scope`,
+`render.local.persist`; [`semanticValidation.test.ts`](../../../packages/schema-system/shared/tests/semanticValidation.test.ts).
 
 ## Handler `$if`
 

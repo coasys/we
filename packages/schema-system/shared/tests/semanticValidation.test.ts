@@ -914,6 +914,31 @@ describe('composed validation', () => {
   });
 });
 
+describe('$resetLocal', () => {
+  it('takes "$scope" and refuses a field name', () => {
+    const node = (value: string) => ({
+      type: 'Column',
+      $localState: { email: { type: 'string', initial: '' } },
+      children: [{ type: 'we-button', props: { onClick: { $resetLocal: value } } }],
+    });
+    expect(validateSemantic(node('$scope'), ctx()).errors.filter((e) => e.message.includes('$resetLocal'))).toEqual([]);
+    const refused = validateSemantic(node('email'), ctx()).errors.filter((e) => e.path.endsWith('.$resetLocal'));
+    expect(refused).toEqual([
+      {
+        path: expect.stringContaining('onClick'),
+        message: expect.stringContaining('takes only "$scope"'),
+        severity: 'error',
+      },
+    ]);
+    const structural = validateSchema(
+      { schemaVersion: 1, meta: { name: 'T', description: 'd', icon: 'i' }, ...node('email') },
+      ctx(),
+    );
+    expect(structural.valid).toBe(false);
+    expect(structural.errors.map((e) => e.message).join('\n')).toContain('takes only "$scope"');
+  });
+});
+
 describe('severity', () => {
   it('errors make result invalid', () => {
     const result = validateSemantic({ type: 'we-buttn' }, ctx());

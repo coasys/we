@@ -241,8 +241,15 @@ export function resolveTouchProp(value: { $touch: string }, context: Props): () 
   return () => meta.setTouched(true);
 }
 
-/** Resolves $resetLocal tokens: { $resetLocal: "$scope" } → handler that resets all scoped fields */
-export function resolveResetLocalProp(context: Props): () => void {
+/**
+ * Resolves $resetLocal tokens: { $resetLocal: "$scope" } → handler that resets all scoped fields.
+ * Any other value is refused and does nothing, rather than resetting the scope whatever it named.
+ */
+export function resolveResetLocalProp(value: { $resetLocal: string }, context: Props): () => void {
+  if (value.$resetLocal !== '$scope') {
+    warn(`Schema $resetLocal: "${value.$resetLocal}" is not a scope; the only value is "$scope"`);
+    return () => {};
+  }
   const metaMap = getMeta(context);
   const scopeFields = getScopeFields(context);
   if (!metaMap || !scopeFields) {

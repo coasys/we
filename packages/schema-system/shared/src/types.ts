@@ -663,7 +663,8 @@ export type ValidationRule = RequiredRule | MinLengthRule | MaxLengthRule | MinR
 export type SetLocalToken =
   { $setLocal: string; value: unknown } | { $setLocal: string; merge: Record<string, unknown> };
 export type TouchToken = { $touch: string };
-export type ResetLocalToken = { $resetLocal: string };
+/** Reset the nearest enclosing `$localState` scope. `'$scope'` is the only value this format defines. */
+export type ResetLocalToken = { $resetLocal: '$scope' };
 export type ToggleLocalToken = { $toggleLocal: string };
 /** Add/remove one value in an array-typed field — per-row state whose rows come from data. */
 export type ToggleLocalInToken = { $toggleLocalIn: string; value: unknown };

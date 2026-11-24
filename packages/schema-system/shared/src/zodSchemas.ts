@@ -287,7 +287,16 @@ const zSetLocalToken = z.union([
   z.object({ $setLocal: z.string().min(1), merge: z.record(z.string(), z.unknown()) }).strict(),
 ]);
 const zTouchToken = z.object({ $touch: z.string().min(1) }).strict();
-const zResetLocalToken = z.object({ $resetLocal: z.string().min(1) }).strict();
+// `'$scope'` is the one value defined: a field name here used to be accepted and then ignored, the
+// handler resetting the whole scope whatever it named. A refinement rather than a literal, so a
+// union of tokens reports this message rather than another branch's unrecognised key.
+const zResetLocalToken = z
+  .object({
+    $resetLocal: z
+      .string()
+      .refine((v) => v === '$scope', '$resetLocal resets the whole enclosing scope and takes only "$scope".'),
+  })
+  .strict();
 const zToggleLocalToken = z.object({ $toggleLocal: z.string().min(1) }).strict();
 const zToggleLocalInToken = z.object({ $toggleLocalIn: z.string().min(1), value: z.unknown() }).strict();
 const zCallLocalToken = z.object({ $callLocal: z.string().min(1) }).strict();

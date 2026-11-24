@@ -2029,12 +2029,14 @@ function checkTokenValue(
     }
   }
 
-  // $resetLocal token — skip $scope
-  if ('$resetLocal' in obj && typeof obj.$resetLocal === 'string') {
-    if (obj.$resetLocal !== '$scope') {
-      checkLocalRef(obj.$resetLocal, `${path}.$resetLocal`, 'resetLocal', state, errors);
-      checkLocalWrite(obj.$resetLocal, `${path}.$resetLocal`, 'resetLocal', state, errors);
-    }
+  // $resetLocal resets the whole scope: "$scope" is the only value, and a field name is refused
+  // rather than read as one, since the handler would reset everything else beside it.
+  if ('$resetLocal' in obj && obj.$resetLocal !== '$scope') {
+    errors.push({
+      path: `${path}.$resetLocal`,
+      message: `$resetLocal resets the whole enclosing scope and takes only "$scope", not ${JSON.stringify(obj.$resetLocal)}. To reset one field, $setLocal it to its initial.`,
+      severity: 'error',
+    });
   }
 
   // Recurse into nested token objects ($if, $concat, $map, $eq, $ne, etc.)
